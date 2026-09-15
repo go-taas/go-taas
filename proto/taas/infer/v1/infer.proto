@@ -1,0 +1,120 @@
+syntax = "proto3";
+
+package taas.infer.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/infer/v1;inferv1";
+
+// InferServiceService manages the lifecycle of inference services:
+// desired-state maintenance, change publication to the message queue and
+// endpoint registration for the data-plane gateway.
+service InferServiceService {
+  // CreateInferenceService deploys a model with the given image and
+  // replicas. The change is published to the message queue and applied
+  // by the controller.
+  rpc CreateInferenceService(CreateInferenceServiceRequest) returns (CreateInferenceServiceResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/inference-services"
+      body: "*"
+    };
+  }
+
+  // ListInferenceServices returns inference services of the caller's
+  // organization.
+  rpc ListInferenceServices(ListInferenceServicesRequest) returns (ListInferenceServicesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/inference-services"
+    };
+  }
+
+  // GetInferenceService returns one inference service with its endpoints.
+  rpc GetInferenceService(GetInferenceServiceRequest) returns (GetInferenceServiceResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/inference-services/{service_id}"
+    };
+  }
+
+  // ScaleInferenceService changes the replica count.
+  rpc ScaleInferenceService(ScaleInferenceServiceRequest) returns (ScaleInferenceServiceResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/inference-services/{service_id}:scale"
+      body: "*"
+    };
+  }
+
+  // DeleteInferenceService tears an inference service down.
+  rpc DeleteInferenceService(DeleteInferenceServiceRequest) returns (DeleteInferenceServiceResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/inference-services/{service_id}"
+    };
+  }
+}
+
+message CreateInferenceServiceRequest {
+  string name = 1;
+  string model_id = 2;
+  string model_version = 3;
+  string image_id = 4;
+  int32 replicas = 5;
+  // accelerator names the hardware platform (nvidia, iluvatar, metax).
+  string accelerator = 6;
+  // accelerator_type is the concrete card model requested.
+  string accelerator_type = 7;
+}
+
+message CreateInferenceServiceResponse {
+  taas.common.v1.Response response = 1;
+  string service_id = 2;
+}
+
+message ListInferenceServicesRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListInferenceServicesResponse {
+  taas.common.v1.Response response = 1;
+  repeated InferenceServiceSummary services = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message InferenceServiceSummary {
+  string service_id = 1;
+  string name = 2;
+  string model_id = 3;
+  string model_version = 4;
+  string image_id = 5;
+  int32 replicas = 6;
+  // state is the observed lifecycle state: pending, deploying, running,
+  // failed, terminated.
+  string state = 7;
+  int64 updated_at = 8;
+}
+
+message GetInferenceServiceRequest {
+  string service_id = 1;
+}
+
+message GetInferenceServiceResponse {
+  taas.common.v1.Response response = 1;
+  InferenceServiceSummary service = 2;
+  repeated string endpoints = 3;
+}
+
+message ScaleInferenceServiceRequest {
+  string service_id = 1;
+  int32 replicas = 2;
+}
+
+message ScaleInferenceServiceResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message DeleteInferenceServiceRequest {
+  string service_id = 1;
+}
+
+message DeleteInferenceServiceResponse {
+  taas.common.v1.Response response = 1;
+}

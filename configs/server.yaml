@@ -1,0 +1,46 @@
+# Configuration for the API server binary (taas-server). It serves all
+# six domain services over gRPC and HTTP.
+
+log:
+  level: info
+  encoding: console
+
+db:
+  master:
+    host: 127.0.0.1
+    port: 5432
+    dbName: taas
+    user: taas
+    password: taas
+    sslMode: disable
+    maxOpenConns: 32
+    maxIdleConns: 8
+    connMaxLifetime: 30m
+    debug: false
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+  password: ""
+  db: 0
+  maxIdle: 8
+  maxActive: 64
+  idleTimeout: 5m
+
+mq:
+  driver: nats
+  url: nats://127.0.0.1:4222
+  namespace: taas-dev
+
+auth:
+  sessionTTL: 24h
+  apiKeyCacheTTL: 60s
+  localPasswordLogin: true
+  autoRegister: true
+
+metering:
+  bufferSize: 1024
+  flushInterval: 5s
+
+billing:
+  settlementInterval: 1h

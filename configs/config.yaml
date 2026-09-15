@@ -1,0 +1,53 @@
+# Shared configuration loaded by every binary. Values here can be
+# overridden by environment variables prefixed with CONFIG_, e.g.
+# CONFIG_DB_MASTER_HOST=postgres.
+
+log:
+  level: info
+  encoding: console
+
+db:
+  master:
+    host: 127.0.0.1
+    port: 5432
+    dbName: taas
+    user: taas
+    password: taas
+    sslMode: disable
+    maxOpenConns: 32
+    maxIdleConns: 8
+    connMaxLifetime: 30m
+    debug: false
+
+redis:
+  host: 127.0.0.1
+  port: 6379
+  password: ""
+  db: 0
+  maxIdle: 8
+  maxActive: 64
+  idleTimeout: 5m
+
+mq:
+  # Driver selects the broker: "nats" or "fake" (in-memory, for local
+  # development without a broker).
+  driver: nats
+  url: nats://127.0.0.1:4222
+  namespace: taas-dev
+
+auth:
+  sessionTTL: 24h
+  apiKeyCacheTTL: 60s
+  localPasswordLogin: true
+  autoRegister: true
+
+metering:
+  bufferSize: 1024
+  flushInterval: 5s
+
+billing:
+  settlementInterval: 1h
+
+controller:
+  workers: 4
+  maxRetries: 5

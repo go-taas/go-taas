@@ -1,0 +1,85 @@
+syntax = "proto3";
+
+package taas.image.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/image/v1;imagev1";
+
+// ImageService manages inference engine container images: registration,
+// the hardware/engine compatibility matrix and node-level warmup tasks.
+service ImageService {
+  // RegisterImage registers an inference engine image.
+  rpc RegisterImage(RegisterImageRequest) returns (RegisterImageResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/images"
+      body: "*"
+    };
+  }
+
+  // ListImages returns registered images, optionally filtered by the
+  // compatibility matrix.
+  rpc ListImages(ListImagesRequest) returns (ListImagesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/images"
+    };
+  }
+
+  // TriggerWarmup enqueues a warmup task so the controller pre-pulls the
+  // image on compute nodes.
+  rpc TriggerWarmup(TriggerWarmupRequest) returns (TriggerWarmupResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/images/{image_id}:warmup"
+      body: "*"
+    };
+  }
+}
+
+message RegisterImageRequest {
+  string name = 1;
+  string tag = 2;
+  string digest = 3;
+  // accelerator names the hardware platform the image runs on.
+  string accelerator = 4;
+  // engine names the inference engine (vllm, sglang, ...).
+  string engine = 5;
+}
+
+message RegisterImageResponse {
+  taas.common.v1.Response response = 1;
+  string image_id = 2;
+}
+
+message ListImagesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string accelerator = 2;
+  string engine = 3;
+}
+
+message ListImagesResponse {
+  taas.common.v1.Response response = 1;
+  repeated ImageSummary images = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message ImageSummary {
+  string image_id = 1;
+  string name = 2;
+  string tag = 3;
+  string digest = 4;
+  string accelerator = 5;
+  string engine = 6;
+  int64 created_at = 7;
+}
+
+message TriggerWarmupRequest {
+  string image_id = 1;
+  // node_selector restricts the warmup to nodes matching the labels.
+  map<string, string> node_selector = 2;
+}
+
+message TriggerWarmupResponse {
+  taas.common.v1.Response response = 1;
+  string task_id = 2;
+}

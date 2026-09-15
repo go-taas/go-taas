@@ -1,0 +1,65 @@
+syntax = "proto3";
+
+package taas.metering.v1;
+
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/metering/v1;meteringv1";
+
+// MeteringService consumes token-usage events from the data-plane gateway,
+// produces tamper-evident metering vouchers and forwards settlement
+// events to the billing pipeline.
+service MeteringService {
+  // IngestMeteringEvent records one token-usage event. It is called by
+  // the gateway's Wasm plugin through the message queue (or directly in
+  // tests).
+  rpc IngestMeteringEvent(IngestMeteringEventRequest) returns (IngestMeteringEventResponse);
+
+  // ListVouchers returns metering vouchers for auditing.
+  rpc ListVouchers(ListVouchersRequest) returns (ListVouchersResponse);
+}
+
+message IngestMeteringEventRequest {
+  // request_id uniquely identifies the inference request.
+  string request_id = 1;
+  string organization_id = 2;
+  string api_key_id = 3;
+  string model_id = 4;
+  // token_usage carries the per-part token counts.
+  TokenUsage usage = 5;
+  int64 completed_at = 6;
+}
+
+message TokenUsage {
+  int64 prompt_tokens = 1;
+  int64 completion_tokens = 2;
+  int64 cached_tokens = 3;
+  int64 reasoning_tokens = 4;
+}
+
+message IngestMeteringEventResponse {
+  taas.common.v1.Response response = 1;
+  string voucher_id = 2;
+}
+
+message ListVouchersRequest {
+  taas.common.v1.PageRequest page = 1;
+  string organization_id = 2;
+  int64 since = 3;
+  int64 until = 4;
+}
+
+message ListVouchersResponse {
+  taas.common.v1.Response response = 1;
+  repeated VoucherSummary vouchers = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message VoucherSummary {
+  string voucher_id = 1;
+  string request_id = 2;
+  string organization_id = 3;
+  string model_id = 4;
+  TokenUsage usage = 5;
+  int64 completed_at = 6;
+}

@@ -1,0 +1,111 @@
+syntax = "proto3";
+
+package taas.billing.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/billing/v1;billingv1";
+
+// BillingService maintains the price matrix, performs funds holds and
+// settlements, and produces bills.
+service BillingService {
+  // SetPrice creates or updates a price entry of the model x accelerator
+  // matrix.
+  rpc SetPrice(SetPriceRequest) returns (SetPriceResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/billing/prices"
+      body: "*"
+    };
+  }
+
+  // ListPrices returns the price matrix.
+  rpc ListPrices(ListPricesRequest) returns (ListPricesResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/prices"
+    };
+  }
+
+  // GetBalance returns the prepaid balance or postpaid quota of an
+  // organization.
+  rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/balance"
+    };
+  }
+
+  // ListBills returns generated bills.
+  rpc ListBills(ListBillsRequest) returns (ListBillsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/billing/bills"
+    };
+  }
+}
+
+message SetPriceRequest {
+  string model_id = 1;
+  string accelerator_type = 2;
+  // input_price_per_million is the price of one million input tokens, in
+  // the platform's billing currency unit.
+  double input_price_per_million = 3;
+  double output_price_per_million = 4;
+  string currency = 5;
+}
+
+message SetPriceResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message ListPricesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string model_id = 2;
+}
+
+message ListPricesResponse {
+  taas.common.v1.Response response = 1;
+  repeated PriceEntry prices = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message PriceEntry {
+  string model_id = 1;
+  string accelerator_type = 2;
+  double input_price_per_million = 3;
+  double output_price_per_million = 4;
+  string currency = 5;
+  int64 updated_at = 6;
+}
+
+message GetBalanceRequest {
+  string organization_id = 1;
+}
+
+message GetBalanceResponse {
+  taas.common.v1.Response response = 1;
+  // mode is "prepaid" (balance) or "postpaid" (quota).
+  string mode = 2;
+  double balance = 3;
+  string currency = 4;
+}
+
+message ListBillsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string organization_id = 2;
+  int64 since = 3;
+  int64 until = 4;
+}
+
+message ListBillsResponse {
+  taas.common.v1.Response response = 1;
+  repeated BillSummary bills = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message BillSummary {
+  string bill_id = 1;
+  string organization_id = 2;
+  double amount = 3;
+  string currency = 4;
+  int64 period_start = 5;
+  int64 period_end = 6;
+}

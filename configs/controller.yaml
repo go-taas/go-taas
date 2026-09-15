@@ -1,0 +1,15 @@
+# Configuration for the controller binary. It only needs the message
+# queue and log settings; database and redis sections are ignored.
+
+log:
+  level: info
+  encoding: console
+
+mq:
+  driver: nats
+  url: nats://127.0.0.1:4222
+  namespace: taas-dev
+
+controller:
+  workers: 4
+  maxRetries: 5

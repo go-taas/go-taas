@@ -1,0 +1,136 @@
+syntax = "proto3";
+
+package taas.auth.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/auth/v1;authv1";
+
+// AuthService manages accounts, organizations, projects and API keys, and
+// verifies API keys for the data-plane gateway.
+service AuthService {
+  // CreateUser registers a local account.
+  rpc CreateUser(CreateUserRequest) returns (CreateUserResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/users"
+      body: "*"
+    };
+  }
+
+  // Login authenticates a local account and issues a session token.
+  rpc Login(LoginRequest) returns (LoginResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/login"
+      body: "*"
+    };
+  }
+
+  // ListAPIKeys returns the API keys of the caller's organization.
+  rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/auth/api-keys"
+    };
+  }
+
+  // CreateAPIKey issues a new API key. The plaintext key is returned
+  // exactly once; only its salted hash is stored.
+  rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/api-keys"
+      body: "*"
+    };
+  }
+
+  // RevokeAPIKey revokes an API key. Revocation takes effect after the
+  // gateway-side cache TTL expires.
+  rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/api-keys/{key_id}:revoke"
+      body: "*"
+    };
+  }
+
+  // VerifyAPIKey checks an API key on behalf of the data-plane gateway.
+  // It is called per request by the gateway's Wasm plugin and is backed
+  // by a Redis positive cache.
+  rpc VerifyAPIKey(VerifyAPIKeyRequest) returns (VerifyAPIKeyResponse);
+}
+
+message CreateUserRequest {
+  string username = 1;
+  string password = 2;
+  string email = 3;
+  string organization = 4;
+}
+
+message CreateUserResponse {
+  taas.common.v1.Response response = 1;
+  string user_id = 2;
+}
+
+message LoginRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message LoginResponse {
+  taas.common.v1.Response response = 1;
+  string session_token = 2;
+  int64 expires_at = 3;
+}
+
+message ListAPIKeysRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListAPIKeysResponse {
+  taas.common.v1.Response response = 1;
+  repeated APIKeySummary keys = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message APIKeySummary {
+  string key_id = 1;
+  string name = 2;
+  string prefix = 3;
+  int64 created_at = 4;
+  int64 expires_at = 5;
+  bool revoked = 6;
+}
+
+message CreateAPIKeyRequest {
+  string name = 1;
+  int64 expires_at = 2;
+}
+
+message CreateAPIKeyResponse {
+  taas.common.v1.Response response = 1;
+  // api_key carries the plaintext key. It is shown exactly once at
+  // creation time and never stored or returned again.
+  string api_key = 2;
+  string key_id = 3;
+}
+
+message RevokeAPIKeyRequest {
+  string key_id = 1;
+}
+
+message RevokeAPIKeyResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message VerifyAPIKeyRequest {
+  // key_digest is the salted hash digest of the API key, not the key
+  // itself: the gateway never forwards plaintext keys.
+  string key_digest = 1;
+  string model = 2;
+  string source_ip = 3;
+}
+
+message VerifyAPIKeyResponse {
+  taas.common.v1.Response response = 1;
+  string organization_id = 2;
+  string key_id = 3;
+  string role = 4;
+}

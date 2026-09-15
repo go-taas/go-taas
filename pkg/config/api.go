@@ -1,0 +1,131 @@
+// Package config provides configuration loading for all platform binaries.
+//
+// Configuration is merged from a glob of YAML files (e.g. configs/*.yaml),
+// with environment variables overriding any value: the key "db.master.host"
+// is overridden by CONFIG_DB_MASTER_HOST. After loading, GetConfig() returns
+// the process-wide configuration.
+package config
+
+import (
+	"time"
+)
+
+// DBConfig holds connection parameters for one PostgreSQL database.
+type DBConfig struct {
+	Host            string        `mapstructure:"host"`
+	Port            int           `mapstructure:"port"`
+	DBName          string        `mapstructure:"dbName"`
+	User            string        `mapstructure:"user"`
+	Password        string        `mapstructure:"password"`
+	SSLMode         string        `mapstructure:"sslMode"`
+	MaxOpenConns    int           `mapstructure:"maxOpenConns"`
+	MaxIdleConns    int           `mapstructure:"maxIdleConns"`
+	ConnMaxLifetime time.Duration `mapstructure:"connMaxLifetime"`
+	Debug           bool          `mapstructure:"debug"`
+}
+
+// Databases groups the database endpoints used by the platform.
+type Databases struct {
+	Master DBConfig `mapstructure:"master"`
+}
+
+// Redis holds connection parameters for the Redis-compatible cache
+// (Redis or Valkey).
+type Redis struct {
+	Host        string        `mapstructure:"host"`
+	Port        int           `mapstructure:"port"`
+	Password    string        `mapstructure:"password"`
+	DB          int           `mapstructure:"db"`
+	MaxIdle     int           `mapstructure:"maxIdle"`
+	MaxActive   int           `mapstructure:"maxActive"`
+	IdleTimeout time.Duration `mapstructure:"idleTimeout"`
+}
+
+// MQConfig holds connection parameters for the message queue. The platform
+// targets Kafka/NATS as brokers; the wire details are hidden behind the
+// pkg/mq abstraction.
+type MQConfig struct {
+	// Driver selects the broker implementation ("nats" / "kafka").
+	Driver string `mapstructure:"driver"`
+	// URL is the broker connection string.
+	URL string `mapstructure:"url"`
+	// Namespace prefixes all subjects/topics to isolate environments.
+	Namespace string `mapstructure:"namespace"`
+}
+
+// AuthConfig holds auth-module specific settings.
+type AuthConfig struct {
+	// SessionTTL bounds the lifetime of issued access tokens.
+	SessionTTL time.Duration `mapstructure:"sessionTTL"`
+	// APIKeyCacheTTL is the TTL of the positive API-key cache in Redis.
+	APIKeyCacheTTL time.Duration `mapstructure:"apiKeyCacheTTL"`
+	// LocalPasswordLogin enables/disables local password login alongside SSO.
+	LocalPasswordLogin bool `mapstructure:"localPasswordLogin"`
+	// AutoRegister enables JIT account provisioning on first SSO login.
+	AutoRegister bool `mapstructure:"autoRegister"`
+}
+
+// MeteringConfig holds metering-module specific settings.
+type MeteringConfig struct {
+	// BufferSize is the number of metering events buffered before flush.
+	BufferSize int `mapstructure:"bufferSize"`
+	// FlushInterval bounds how long events may wait in the buffer.
+	FlushInterval time.Duration `mapstructure:"flushInterval"`
+}
+
+// BillingConfig holds billing-module specific settings.
+type BillingConfig struct {
+	// SettlementInterval is the period between settlement runs.
+	SettlementInterval time.Duration `mapstructure:"settlementInterval"`
+}
+
+// ControllerConfig holds controller-specific settings.
+type ControllerConfig struct {
+	// Workers is the number of concurrent reconcile workers.
+	Workers int `mapstructure:"workers"`
+	// MaxRetries bounds retries for a failed reconcile task.
+	MaxRetries int `mapstructure:"maxRetries"`
+}
+
+// LogConfig holds logging settings loaded from configuration files.
+type LogConfig struct {
+	// Level is the minimum log level: debug, info, warn, error.
+	Level string `mapstructure:"level"`
+	// Encoding selects "console" or "json" output.
+	Encoding string `mapstructure:"encoding"`
+}
+
+// Configuration is the root of the merged configuration tree.
+type Configuration struct {
+	Databases  Databases        `mapstructure:"db"`
+	Redis      Redis            `mapstructure:"redis"`
+	MQ         MQConfig         `mapstructure:"mq"`
+	Auth       AuthConfig       `mapstructure:"auth"`
+	Metering   MeteringConfig   `mapstructure:"metering"`
+	Billing    BillingConfig    `mapstructure:"billing"`
+	Controller ControllerConfig `mapstructure:"controller"`
+	Log        LogConfig        `mapstructure:"log"`
+}
+
+// Validate checks semantic constraints that cannot be expressed as struct
+// tags. It returns an error describing the first violation found.
+func (c *Configuration) Validate() error {
+	if c.Databases.Master.MaxIdleConns > c.Databases.Master.MaxOpenConns {
+		return &FieldError{Field: "db.master.maxIdleConns", Reason: "must not exceed db.master.maxOpenConns"}
+	}
+	if c.Redis.MaxActive < 0 || c.Redis.MaxIdle < 0 {
+		return &FieldError{Field: "redis", Reason: "pool sizes must be non-negative"}
+	}
+	return nil
+}
+
+// FieldError describes a single invalid configuration field.
+type FieldError struct {
+	Field  string
+	Reason string
+}
+
+// Error implements the error interface.
+func (e *FieldError) Error() string {
+	return "invalid config: " + e.Field + ": " + e.Reason
+}
