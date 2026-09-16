@@ -23,6 +23,8 @@ var (
 	buildTime = "unknown"
 )
 
+var _, _, _ = version, commit, buildTime
+
 func main() {
 	args := (&config.Arguments{
 		ConfigPath: config.DefaultConfigPath(),

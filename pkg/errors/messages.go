@@ -1,6 +1,7 @@
 package errors
 
 // messages maps each business code to its canonical, client-safe message.
+//nolint:gosec // Canonical client-facing messages are static labels, not secrets.
 var messages = map[Code]string{
 	CodeOK: "OK",
 

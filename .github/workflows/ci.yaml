@@ -84,7 +84,7 @@ jobs:
       - name: Go lint
         uses: golangci/golangci-lint-action@v6
         with:
-          version: latest
+          version: v2.13.2
 
   unit-test:
     name: Unit tests
