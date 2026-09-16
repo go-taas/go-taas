@@ -21,7 +21,7 @@
 # from re-triggering on the release commit push.
 #
 # Required repository configuration (Settings -> Secrets and variables):
-#   Secrets:
+#   Secrets (only when publishing to a non-GHCR registry):
 #     REGISTRY_USER      registry login name
 #     REGISTRY_PASSWORD  registry login token
 #   Variables (optional):
@@ -144,10 +144,19 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
 
-      - name: Log in to container registry
+      - name: Log in to GitHub Container Registry
+        if: ${{ !vars.REGISTRY || vars.REGISTRY == 'ghcr.io' }}
         uses: docker/login-action@v4
         with:
-          registry: ${{ vars.REGISTRY || 'ghcr.io' }}
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Log in to container registry
+        if: ${{ vars.REGISTRY && vars.REGISTRY != 'ghcr.io' }}
+        uses: docker/login-action@v4
+        with:
+          registry: ${{ vars.REGISTRY }}
           username: ${{ secrets.REGISTRY_USER }}
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
