@@ -1,15 +1,16 @@
-# Continuous Integration: runs on every pull request and push to
-# feature branches. Gates merges on proto lint, Go lint, unit tests and
-# a plain build.
+# Continuous Integration: runs on every pull request. Gates merges on
+# commit message lint, proto lint, Go lint, unit tests and a plain
+# build.
+#
+# The commitlint gate keeps every commit in a pull request within the
+# Conventional Commits format that semantic-release parses on the
+# default branch, so a merged PR always produces a well-defined
+# version bump.
 name: CI
 
 on:
   pull_request:
     types: [opened, synchronize, reopened]
-  push:
-    branches-ignore:
-      - main
-      - "release/**"
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -19,6 +20,36 @@ permissions:
   contents: read
 
 jobs:
+  commitlint:
+    name: Commit message lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history: the range of commits introduced by the pull
+          # request must be compared against the base branch.
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Validate conventional commits
+        env:
+          # Base branch of the pull request (e.g. main).
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -euo pipefail
+          # Validate every commit between the base branch and HEAD.
+          # Merge commits are skipped automatically by commitlint's
+          # built-in ignore rules.
+          git fetch origin "${BASE_REF}"
+          exec npx --yes commitlint@19 \
+            --from "origin/${BASE_REF}" --to HEAD --verbose
+
   lint:
     name: Lint
     runs-on: ubuntu-latest

@@ -42,6 +42,9 @@ go.work.sum
 .DS_Store
 Thumbs.db
 
+# Node.js dependencies for local commitlint runs
+node_modules/
+
 # Logs
 logs/
 *.log
