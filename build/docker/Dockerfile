@@ -56,6 +56,7 @@ LABEL org.opencontainers.image.title="taas-server" \
       org.opencontainers.image.created="${BUILD_TIME}"
 COPY --from=builder /out/taas-server /usr/local/bin/taas-server
 COPY configs /etc/taas/configs
+WORKDIR /etc/taas
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/taas-server"]
 
@@ -70,5 +71,6 @@ LABEL org.opencontainers.image.title="controller" \
       org.opencontainers.image.created="${BUILD_TIME}"
 COPY --from=builder /out/controller /usr/local/bin/controller
 COPY configs /etc/taas/configs
+WORKDIR /etc/taas
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/controller"]

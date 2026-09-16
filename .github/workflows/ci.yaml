@@ -118,7 +118,10 @@ jobs:
           cache: true
 
       - name: Build all binaries
-        run: make build
+        run: |
+          set -euo pipefail
+          go build -trimpath -o apps/taas-server/taas-server ./apps/taas-server
+          go build -trimpath -o apps/controller/controller ./apps/controller
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
@@ -127,5 +130,5 @@ jobs:
           path: |
             apps/taas-server/taas-server
             apps/controller/controller
-          if-no-files-found: warn
+          if-no-files-found: error
           retention-days: 7

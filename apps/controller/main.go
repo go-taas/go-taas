@@ -17,6 +17,12 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 )
 
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+)
+
 func main() {
 	args := (&config.Arguments{
 		ConfigPath: config.DefaultConfigPath(),

@@ -17,6 +17,12 @@ import (
 	"github.com/go-taas/go-taas/services/model"
 )
 
+var (
+	version   = "dev"
+	commit    = "unknown"
+	buildTime = "unknown"
+)
+
 func main() {
 	args := (&config.Arguments{
 		ServicePort: 9090,
