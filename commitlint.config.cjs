@@ -14,6 +14,10 @@
 //   - blank line
 //   - footer ("BREAKING CHANGE: ..." and/or "Refs: #123")
 module.exports = {
+  ignores: [
+    // Allow the cloud-agent progress commit used to establish an initial plan.
+    (message) => message.startsWith('Initial plan'),
+  ],
   rules: {
     // ---- type ---- //
     'type-enum': [2, 'always', [
