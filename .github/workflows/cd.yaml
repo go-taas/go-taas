@@ -1,6 +1,24 @@
-# Continuous Delivery: builds and pushes multi-arch container images
-# when code lands on the default branch. Image tags are derived from the
-# short commit SHA; the "latest" tag follows the default branch.
+# Continuous Delivery: semantic-release version management followed by
+# multi-arch image publishing and release asset upload when code lands
+# on the default branch.
+#
+# Pipeline per push to main:
+#   1. release: semantic-release analyzes Conventional Commits since the
+#      last release. When feat/fix/breaking commits exist it bumps the
+#      semantic version, updates CHANGELOG.md, pushes a "chore(release)"
+#      commit (marked [skip ci]), creates the vX.Y.Z tag and a GitHub
+#      Release. Without release-worthy commits it is a no-op and the
+#      previous tag is reused for the images below.
+#   2. build-and-push: publishes multi-arch images tagged with the
+#      resolved version, the short SHA, and "latest".
+#   3. upload-release-assets: attaches static binaries to the GitHub
+#      Release created in step 1 (only when a new release happened).
+#
+# Note: tags pushed with GITHUB_TOKEN do not trigger other workflows
+# (GitHub recursion guard), so release assets are uploaded here instead
+# of a separate tag-triggered workflow. The [skip ci] marker in the
+# release commit plus the job-level guard below prevent this workflow
+# from re-triggering on the release commit push.
 #
 # Required repository configuration (Settings -> Secrets and variables):
 #   Secrets:
@@ -8,6 +26,10 @@
 #     REGISTRY_PASSWORD  registry login token
 #   Variables (optional):
 #     REGISTRY           registry host, defaults to ghcr.io
+#
+# semantic-release authenticates with the workflow's GITHUB_TOKEN; the
+# "contents: write" permission below lets it push the release commit,
+# the tag, and the GitHub Release.
 name: CD
 
 on:
@@ -21,12 +43,77 @@ concurrency:
   cancel-in-progress: false
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
+  release:
+    name: Semantic release (version + changelog + tag)
+    # Skip the release commit pushed by semantic-release itself to avoid
+    # an infinite build loop.
+    if: ${{ !contains(github.event.head_commit.message, '[skip ci]') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      released: ${{ steps.semantic.outputs.new_release_published }}
+      version: ${{ steps.resolve_version.outputs.version }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          # Full history and tags: semantic-release analyzes every
+          # commit since the previous release.
+          fetch-depth: 0
+          fetch-tags: true
+          # Keep the token in the local git config so semantic-release
+          # can push the release commit and tag.
+          persist-credentials: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Configure git identity for the release commit
+        run: |
+          git config user.name "semantic-release-bot"
+          git config user.email "semantic-release-bot@users.noreply.github.com"
+
+      - name: Run semantic-release
+        id: semantic
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          semantic_version: "24"
+          # changelog and git plugins are not bundled with
+          # semantic-release core; the github plugin is.
+          extra_plugins: |
+            @semantic-release/changelog@6
+            @semantic-release/git@10
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve version
+        id: resolve_version
+        run: |
+          set -euo pipefail
+          # Prefer the version semantic-release just published; fall
+          # back to the most recent tag so no-op pushes still produce
+          # correctly versioned images.
+          VERSION="${{ steps.semantic.outputs.new_release_version }}"
+          if [ -z "${VERSION}" ]; then
+            git fetch origin --tags --force
+            VERSION="$(git describe --tags --abbrev=0 2>/dev/null | sed 's/^v//' || true)"
+          fi
+          if [ -z "${VERSION}" ]; then
+            VERSION="0.0.0"
+            echo "::warning::No release tag found; falling back to ${VERSION}"
+          fi
+          echo "version=${VERSION}" >> "${GITHUB_OUTPUT}"
+          echo "Resolved version: ${VERSION}"
+
   build-and-push:
     name: Build and push images
+    needs: release
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -57,7 +144,11 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ vars.REGISTRY || 'ghcr.io' }}/${{ github.repository }}/${{ matrix.target }}
+          # Version tags come from semantic-release (e.g. v1.2.3); the
+          # short SHA keeps every build uniquely addressable and "latest"
+          # tracks the default branch.
           tags: |
+            type=raw,value=v${{ needs.release.outputs.version }}
             type=sha,prefix={{branch}}-
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -72,8 +163,56 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] || '0.0.0' }}
+            VERSION=v${{ needs.release.outputs.version }}
             COMMIT=${{ github.sha }}
             BUILD_TIME=${{ github.event.head_commit.timestamp }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+
+  upload-release-assets:
+    name: Attach binaries to GitHub release
+    needs: release
+    # Only when semantic-release actually published a new release.
+    if: needs.release.outputs.released == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - goos: linux
+            goarch: amd64
+          - goos: linux
+            goarch: arm64
+    steps:
+      - name: Checkout the release tag
+        uses: actions/checkout@v4
+        with:
+          ref: v${{ needs.release.outputs.version }}
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build static binaries
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          for bin in taas-server controller; do
+            CGO_ENABLED=0 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+              go build -trimpath \
+              -ldflags "-s -w \
+                -X main.version=v${{ needs.release.outputs.version }} \
+                -X main.commit=${{ github.sha }}" \
+              -o "dist/${bin}-${{ matrix.goos }}-${{ matrix.goarch }}" \
+              "./apps/${bin}"
+          done
+          sha256sum dist/* > dist/checksums-${{ matrix.goos }}-${{ matrix.goarch }}.txt
+
+      - name: Upload binaries to the GitHub release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload "v${{ needs.release.outputs.version }}" dist/* --clobber
