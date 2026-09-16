@@ -16,7 +16,7 @@
 module.exports = {
   ignores: [
     // Allow the cloud-agent progress commit used to establish an initial plan.
-    (message) => message.startsWith('Initial plan'),
+    (message) => message === 'Initial plan' || message.startsWith('Initial plan\n'),
   ],
   rules: {
     // ---- type ---- //
