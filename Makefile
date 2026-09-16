@@ -14,7 +14,18 @@
 
 GO ?= go
 
-.PHONY: all pbgen deps lint ut build test clean
+# ---- Docker image build variables -------------------------------------
+# Override on the command line, e.g.:
+#   make docker-build IMAGE_REPO=ghcr.io/go-taas/go-taas IMAGE_TAG=dev
+IMAGE_REPO ?= ghcr.io/go-taas/go-taas
+IMAGE_TAG  ?= dev
+DOCKERFILE ?= build/docker/Dockerfile
+
+# Binaries published as images; each maps to a Dockerfile build target.
+IMAGE_TARGETS ?= taas-server controller
+
+.PHONY: all pbgen deps lint ut build test clean \
+	docker-build docker-push docker-build-multi
 
 all: build
 
@@ -46,3 +57,37 @@ test:
 ## clean: remove build artifacts
 clean:
 	$(GO) clean
+
+## docker-build: build local container images for every binary target
+## (single-architecture, native arch)
+docker-build:
+	@for target in $(IMAGE_TARGETS); do \
+		echo ">> building $(IMAGE_REPO)/$${target}:$(IMAGE_TAG)"; \
+		docker build --target "$${target}" \
+			--build-arg VERSION=$(IMAGE_TAG) \
+			--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
+			--build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+			-f $(DOCKERFILE) -t "$(IMAGE_REPO)/$${target}:$(IMAGE_TAG)" . || exit 1; \
+	done
+
+## docker-push: push previously built images (requires docker-build and
+## a prior 'docker login')
+docker-push:
+	@for target in $(IMAGE_TARGETS); do \
+		echo ">> pushing $(IMAGE_REPO)/$${target}:$(IMAGE_TAG)"; \
+		docker push "$(IMAGE_REPO)/$${target}:$(IMAGE_TAG)" || exit 1; \
+	done
+
+## docker-build-multi: build and push multi-arch (amd64/arm64) images
+## using Docker Buildx (requires 'docker buildx create' once per host)
+docker-build-multi:
+	@for target in $(IMAGE_TARGETS); do \
+		echo ">> building+pushing $(IMAGE_REPO)/$${target}:$(IMAGE_TAG) (amd64/arm64)"; \
+		docker buildx build --target "$${target}" \
+			--platform linux/amd64,linux/arm64 \
+			--build-arg VERSION=$(IMAGE_TAG) \
+			--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
+			--build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+			-f $(DOCKERFILE) -t "$(IMAGE_REPO)/$${target}:$(IMAGE_TAG)" \
+			--push . || exit 1; \
+	done
