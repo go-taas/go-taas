@@ -6,6 +6,10 @@
 # Conventional Commits format that semantic-release parses on the
 # default branch, so a merged PR always produces a well-defined
 # version bump.
+#
+# Every action below runs on Node 24 (the Node 20 runtime is deprecated)
+# and therefore needs GitHub-hosted runners, or self-hosted runners at
+# v2.327.1 or newer.
 name: CI
 
 on:
@@ -26,14 +30,14 @@ jobs:
     timeout-minutes: 5
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Full history: the range of commits introduced by the pull
           # request must be compared against the base branch.
           fetch-depth: 0
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: "22"
 
@@ -56,10 +60,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -82,7 +86,10 @@ jobs:
           fi
 
       - name: Go lint
-        uses: golangci/golangci-lint-action@v6
+        # v9 is the first release running on Node 24 (v7 and v8 still
+        # use the deprecated Node 20), and it is the minimum major that
+        # supports the golangci-lint v2 line pinned below.
+        uses: golangci/golangci-lint-action@v9
         with:
           version: v2.13.2
 
@@ -92,10 +99,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -109,10 +116,10 @@ jobs:
     timeout-minutes: 15
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
@@ -124,7 +131,7 @@ jobs:
           go build -trimpath -o apps/controller/controller ./apps/controller
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: binaries
           path: |
