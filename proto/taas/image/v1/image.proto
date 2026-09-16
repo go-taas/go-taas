@@ -21,9 +21,7 @@ service ImageService {
   // ListImages returns registered images, optionally filtered by the
   // compatibility matrix.
   rpc ListImages(ListImagesRequest) returns (ListImagesResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/images"
-    };
+    option (google.api.http) = {get: "/api/v1/images"};
   }
 
   // TriggerWarmup enqueues a warmup task so the controller pre-pulls the

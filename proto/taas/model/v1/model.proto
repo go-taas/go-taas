@@ -20,23 +20,17 @@ service ModelService {
 
   // ListModels returns the models visible to the caller.
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/models"
-    };
+    option (google.api.http) = {get: "/api/v1/models"};
   }
 
   // GetModel returns one model with its versions.
   rpc GetModel(GetModelRequest) returns (GetModelResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/models/{model_id}"
-    };
+    option (google.api.http) = {get: "/api/v1/models/{model_id}"};
   }
 
   // DeleteModel removes a model registration.
   rpc DeleteModel(DeleteModelRequest) returns (DeleteModelResponse) {
-    option (google.api.http) = {
-      delete: "/api/v1/models/{model_id}"
-    };
+    option (google.api.http) = {delete: "/api/v1/models/{model_id}"};
   }
 }
 

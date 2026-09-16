@@ -28,9 +28,7 @@ service AuthService {
 
   // ListAPIKeys returns the API keys of the caller's organization.
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/auth/api-keys"
-    };
+    option (google.api.http) = {get: "/api/v1/auth/api-keys"};
   }
 
   // CreateAPIKey issues a new API key. The plaintext key is returned

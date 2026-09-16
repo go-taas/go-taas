@@ -24,16 +24,12 @@ service InferServiceService {
   // ListInferenceServices returns inference services of the caller's
   // organization.
   rpc ListInferenceServices(ListInferenceServicesRequest) returns (ListInferenceServicesResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/inference-services"
-    };
+    option (google.api.http) = {get: "/api/v1/inference-services"};
   }
 
   // GetInferenceService returns one inference service with its endpoints.
   rpc GetInferenceService(GetInferenceServiceRequest) returns (GetInferenceServiceResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/inference-services/{service_id}"
-    };
+    option (google.api.http) = {get: "/api/v1/inference-services/{service_id}"};
   }
 
   // ScaleInferenceService changes the replica count.
@@ -46,9 +42,7 @@ service InferServiceService {
 
   // DeleteInferenceService tears an inference service down.
   rpc DeleteInferenceService(DeleteInferenceServiceRequest) returns (DeleteInferenceServiceResponse) {
-    option (google.api.http) = {
-      delete: "/api/v1/inference-services/{service_id}"
-    };
+    option (google.api.http) = {delete: "/api/v1/inference-services/{service_id}"};
   }
 }
 

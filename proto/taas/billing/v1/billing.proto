@@ -21,24 +21,18 @@ service BillingService {
 
   // ListPrices returns the price matrix.
   rpc ListPrices(ListPricesRequest) returns (ListPricesResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/billing/prices"
-    };
+    option (google.api.http) = {get: "/api/v1/billing/prices"};
   }
 
   // GetBalance returns the prepaid balance or postpaid quota of an
   // organization.
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/billing/balance"
-    };
+    option (google.api.http) = {get: "/api/v1/billing/balance"};
   }
 
   // ListBills returns generated bills.
   rpc ListBills(ListBillsRequest) returns (ListBillsResponse) {
-    option (google.api.http) = {
-      get: "/api/v1/billing/bills"
-    };
+    option (google.api.http) = {get: "/api/v1/billing/bills"};
   }
 }
 
