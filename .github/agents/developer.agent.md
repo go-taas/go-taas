@@ -39,10 +39,13 @@ the Test agent.
 1. Test-driven development: write FVT test cases first when the task needs
    them, before implementing.
 2. After code changes `make lint`, `make ut`, fvt (if present) and
-   commitlint must pass.
+   commitlint must pass. Generated protobuf code (`*.pb.go`,
+   `*.pb.gw.go`, `docs/api/`) is never committed — only `*.proto`
+   files are tracked; regenerate locally with `make pbgen` before
+   building or testing after a proto change.
 3. Keep the code structure consistent with the existing code layout
    (`proto/taas/<domain>/v1`, `services/<domain>`, `pkg/*`, `internal/`,
-   `apps/*`).
+   `apps/*`, frontend in `web/`).
 4. Keep the logical layering consistent with the existing code
    (proto → grpc-gateway → service → repository; controller reconciles K8s
    resources via MQ).
@@ -69,6 +72,10 @@ the Test agent.
 17. A feature is complete only after local docker compose deployment
     verification (build images, bring up the compose stack, exercise the
     feature end-to-end, tear down).
+18. Every feature includes its frontend: implement the console pages in
+    `web/` (React + TypeScript) per the UI/UX design doc, wire them into
+    the navigation, and verify them in the compose stack. The frontend
+    lives in this repository — there is no separate frontend repo.
 
 ## Output format
 

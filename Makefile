@@ -30,32 +30,43 @@ IMAGE_TARGETS ?= taas-server controller
 all: build
 
 ## pbgen: update buf dependencies and regenerate protobuf code
+## Generated code (*.pb.go, *.pb.gw.go, docs/api/) is NOT committed;
+## only *.proto files are tracked. Regenerate after every proto change.
 pbgen:
 	buf dep update
 	buf generate
+
+# Generated protobuf code is required by every Go target. It is not
+# committed, so ensure it exists (regenerate only when missing).
+proto/taas/auth/v1/auth.pb.go:
+	buf dep update
+	buf generate
+
+.PHONY: pbgen-ensure
+pbgen-ensure: proto/taas/auth/v1/auth.pb.go
 
 ## deps: download go module dependencies
 deps:
 	$(GO) mod download
 
 ## lint: run golangci-lint over the repository
-lint:
+lint: pbgen-ensure
 	golangci-lint run
 
 ## ut: run unit tests
-ut:
+ut: pbgen-ensure
 	$(GO) test -count=1 ./...
 
 ## fvt: run full-verification tests (in-process full stack)
-fvt:
+fvt: pbgen-ensure
 	$(GO) test -count=1 ./test/fvt/...
 
 ## build: compile all binaries
-build:
+build: pbgen-ensure
 	$(GO) build ./...
 
 ## test: run unit tests with race detector
-test:
+test: pbgen-ensure
 	$(GO) test -race -count=1 ./...
 
 ## clean: remove build artifacts

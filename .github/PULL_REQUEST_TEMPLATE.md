@@ -14,7 +14,7 @@ Related issue: #
 - [ ] `make lint` passes
 - [ ] `make ut` passes
 - [ ] New code is covered by unit tests; critical paths (billing, protocol conversion) cover edge cases
-- [ ] Protobuf contract changes were regenerated with `make pbgen` and committed together
+- [ ] Protobuf contract changes are limited to `*.proto` files; generated code is **not** committed (regenerate locally with `make pbgen`)
 - [ ] Documentation updated on both language sides (English `docs/`, Chinese `*.zh-cn.md`), including Mermaid diagrams and terminology
 
 ## Additional notes

@@ -76,14 +76,10 @@ jobs:
       - name: Proto lint
         run: buf lint
 
-      - name: Verify generated code is up to date
-        run: |
-          buf generate
-          if ! git diff --exit-code -- proto/ docs/api/; then
-            echo "::error::Generated code is stale. Run 'make pbgen' and commit the result."
-            git diff --stat -- proto/ docs/api/
-            exit 1
-          fi
+      - name: Generate protobuf code
+        # Generated code is not committed (only *.proto is tracked), so it
+        # must be regenerated before any Go tooling runs.
+        run: buf generate
 
       - name: Go lint
         # v9 is the first release running on Node 24 (v7 and v8 still
@@ -107,6 +103,14 @@ jobs:
           go-version-file: go.mod
           cache: true
 
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Generate protobuf code
+        run: buf generate
+
       - name: Run unit tests
         run: make ut
 
@@ -123,6 +127,14 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up buf
+        uses: bufbuild/buf-action@v1
+        with:
+          setup_only: true
+
+      - name: Generate protobuf code
+        run: buf generate
 
       - name: Build all binaries
         run: |

@@ -58,7 +58,7 @@ make build   # build the binary
 - All code must pass `golangci-lint v2` checks; fix linter findings rather than suppressing them.
 - Follow standard Go conventions ([Effective Go](https://go.dev/doc/effective_go), `gofmt`/`goimports` formatting).
 - New code requires unit tests. Critical modules (billing, protocol conversion) must cover edge cases; the project targets at least 80% unit test coverage.
-- Protobuf contracts are the source of truth for APIs: change the `.proto` files first, then regenerate with `make pbgen`, and commit the generated code together with the contract change.
+- Protobuf contracts are the source of truth for APIs: change the `.proto` files first, then regenerate with `make pbgen`. Generated code (`*.pb.go`, `*.pb.gw.go`, `docs/api/`) is **not** committed — only `*.proto` files are tracked.
 
 ### Documentation
 
