@@ -24,8 +24,8 @@ DOCKERFILE ?= build/docker/Dockerfile
 # Binaries published as images; each maps to a Dockerfile build target.
 IMAGE_TARGETS ?= taas-server controller
 
-.PHONY: all pbgen deps lint ut build test clean \
-	docker-build docker-push docker-build-multi
+.PHONY: all pbgen deps lint ut fvt build test clean \
+	docker-build docker-push docker-build-multi compose-up compose-down
 
 all: build
 
@@ -45,6 +45,10 @@ lint:
 ## ut: run unit tests
 ut:
 	$(GO) test -count=1 ./...
+
+## fvt: run full-verification tests (in-process full stack)
+fvt:
+	$(GO) test -count=1 ./test/fvt/...
 
 ## build: compile all binaries
 build:
@@ -77,6 +81,20 @@ docker-push:
 		echo ">> pushing $(IMAGE_REPO)/$${target}:$(IMAGE_TAG)"; \
 		docker push "$(IMAGE_REPO)/$${target}:$(IMAGE_TAG)" || exit 1; \
 	done
+
+## compose-up: build the taas-server image and start the local
+## deployment-verification stack (PostgreSQL, Redis, NATS, taas-server)
+compose-up:
+	docker build --target taas-server \
+		--build-arg VERSION=$(IMAGE_TAG) \
+		--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
+		--build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
+		-f $(DOCKERFILE) -t "$(IMAGE_REPO)/taas-server:$(IMAGE_TAG)" .
+	docker compose -f deploy/compose/docker-compose.yaml up -d
+
+## compose-down: stop and remove the local verification stack
+compose-down:
+	docker compose -f deploy/compose/docker-compose.yaml down -v
 
 ## docker-build-multi: build and push multi-arch (amd64/arm64) images
 ## using Docker Buildx (requires 'docker buildx create' once per host)

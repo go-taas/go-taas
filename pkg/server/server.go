@@ -108,3 +108,13 @@ type MQComponent interface {
 type Collector interface {
 	Collectors() []prometheus.Collector
 }
+
+// Migrator is implemented by services that own database schema. Init
+// invokes Migrate for every registered service implementing it, right
+// after components initialization; an error aborts startup. The GORM
+// model is the single source of truth for the schema (AutoMigrate), so
+// no hand-written DDL is kept.
+type Migrator interface {
+	// Migrate brings the service's schema up to date.
+	Migrate(ctx context.Context) error
+}

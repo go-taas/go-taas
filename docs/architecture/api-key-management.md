@@ -163,7 +163,7 @@ After editing the proto, regenerate with `make pbgen` (which also refreshes the 
 
 ### 4.3 The Key Digest Contract
 
-```
+```text
 key_digest = lowercase hex( SHA-256( plaintext_key ) )   // 64 characters
 ```
 
@@ -184,7 +184,7 @@ Filtering: `?active_only=true` excludes revoked and expired keys server-side (`r
 
 Business errors travel as gRPC status errors whose code **is** the business code (see `pkg/grpcmiddleware`), and the gateway's error handler (delegating to `DefaultHTTPErrorHandler`) renders them as:
 
-```
+```text
 HTTP 500
 {"code": 10007, "message": "API key not found"}
 ```
@@ -374,7 +374,7 @@ Rules:
 - `GenerateAPIKey() (plaintext string, err error)` — 43 uniform base62 characters from `crypto/rand` via per-character rejection sampling, returned as `sk-` + 43 chars. Satisfies AC1 (`^sk-[A-Za-z0-9]{43}$`, ~256 bits of entropy, uniqueness by construction).
 - `KeyDigest(plaintext string) string` — `hex.EncodeToString(sha256(...))`, lowercase, 64 chars. **This is the contract shared with the Wasm plugin** (Section 4.3).
 - `NewSalt() (string, error)` — 16 `crypto/rand` bytes, base64 standard encoding.
-- `HashKey(digest, salt string, p Argon2Params) string` — `argon2.IDKey([]byte(digest), saltBytes, p.Time, p.MemoryMiB<<20, p.Parallelism)`, base64-encoded. The Argon2id input is the 64-char hex digest string's bytes (pinned to avoid a decode-step mismatch).
+- `HashKey(digest, salt string, p Argon2Params) string` — `argon2.IDKey([]byte(digest), saltBytes, p.Time, p.MemoryMiB*1024, p.Parallelism)`, converting MiB to the KiB unit required by the library, then base64-encoding the result. The Argon2id input is the 64-char hex digest string's bytes (pinned to avoid a decode-step mismatch).
 - `VerifyKeyHash(digest, salt, expected string, p Argon2Params) bool` — recompute, then `subtle.ConstantTimeCompare`.
 
 ### 10.3 Repository (`apikey_repository.go`)
@@ -419,6 +419,7 @@ func (APIKey) TableName() string { return "api_keys" }
 `resolveOrganizationID(ctx) (string, error)` — reads `x-organization-id` from incoming gRPC metadata (set by the gateway from the `X-Organization-Id` header). Missing or empty → `CodeUnauthorized`. Transitional; replaced by session-derived identity in #7 (Section 10.7).
 
 `CreateAPIKey(ctx, req)`:
+
 1. `name := strings.TrimSpace(req.GetName())`; require 1–64 chars → else `CodeAPIKeyInvalid`.
 2. Expiry: `req.GetExpiresAt() == 0` → nil; else must be strictly in the future → else `CodeAPIKeyInvalid` (AC7).
 3. Resolve the organization (step 0).
@@ -427,18 +428,21 @@ func (APIKey) TableName() string { return "api_keys" }
 6. Respond `{api_key: plaintext, key_id: id}`. **Never log the plaintext** (AC2).
 
 `ListAPIKeys(ctx, req)`:
+
 1. Resolve the organization.
 2. Normalize pagination: `offset = max(0, page.offset)`; `limit = 20` when unset or ≤ 0; capped at 100 (FR2.2).
 3. `rows, total := repo.ListByOrganization(..., req.GetActiveOnly(), now)`.
 4. Map to `APIKeySummary{key_id, name, prefix, created_at (unix), expires_at (unix, 0 = never), revoked, revoked_at (unix, 0 = never)}`. Never the secret or hash (AC3).
 
 `RevokeAPIKey(ctx, req)`:
+
 1. Resolve the organization; require a non-empty `key_id` → else `CodeAPIKeyInvalid`.
 2. `lookupHash := repo.RevokeByIDAndOrganization(...)` — not found / cross-org → `CodeAPIKeyNotFound`; already revoked → success (idempotent, AC6).
 3. `cache.Delete(cacheKey(lookupHash))` — on error, log a warning and **do not fail the revoke**; the bound degrades to the Redis TTL (Section 5.3).
 4. Respond OK.
 
 `VerifyAPIKey(ctx, req)`:
+
 1. `digest := req.GetKeyDigest()`; empty → `codes.InvalidArgument` (existing behavior); not matching `^[0-9a-f]{64}$` → `CodeAPIKeyInvalid`.
 2. Cache `Get` by digest — hit → return the cached verdict.
 3. Miss → `repo.FindByLookupHash` — unknown → `CodeAPIKeyNotFound`.

@@ -163,7 +163,7 @@ flowchart TD
 
 ### 4.3 Key 摘要契约
 
-```
+```text
 key_digest = lowercase hex( SHA-256( plaintext_key ) )   // 64 个字符
 ```
 
@@ -184,7 +184,7 @@ key_digest = lowercase hex( SHA-256( plaintext_key ) )   // 64 个字符
 
 业务错误以 gRPC status error 传输，其 code **就是**业务码（见 `pkg/grpcmiddleware`），网关错误处理器（委托 `DefaultHTTPErrorHandler`）渲染为：
 
-```
+```text
 HTTP 500
 {"code": 10007, "message": "API key not found"}
 ```
@@ -374,7 +374,7 @@ auth:
 - `GenerateAPIKey() (plaintext string, err error)`——用 `crypto/rand` 经逐字符拒绝采样生成 43 个均匀 base62 字符，返回 `sk-` + 43 字符。满足 AC1（`^sk-[A-Za-z0-9]{43}$`，约 256 位熵，构造上唯一）。
 - `KeyDigest(plaintext string) string`——`hex.EncodeToString(sha256(...))`，小写，64 字符。**这是与 Wasm 插件共享的契约**（第 4.3 节）。
 - `NewSalt() (string, error)`——16 个 `crypto/rand` 字节，标准 base64。
-- `HashKey(digest, salt string, p Argon2Params) string`——`argon2.IDKey([]byte(digest), saltBytes, p.Time, p.MemoryMiB<<20, p.Parallelism)`，base64 编码。Argon2id 的输入钉死为 64 字符十六进制摘要字符串的字节（避免解码步骤不一致）。
+- `HashKey(digest, salt string, p Argon2Params) string`——`argon2.IDKey([]byte(digest), saltBytes, p.Time, p.MemoryMiB*1024, p.Parallelism)`，先将 MiB 转换为该库要求的 KiB 单位，再对结果进行 base64 编码。Argon2id 的输入钉死为 64 字符十六进制摘要字符串的字节（避免解码步骤不一致）。
 - `VerifyKeyHash(digest, salt, expected string, p Argon2Params) bool`——重算后 `subtle.ConstantTimeCompare`。
 
 ### 10.3 仓储（`apikey_repository.go`）
@@ -419,6 +419,7 @@ func (APIKey) TableName() string { return "api_keys" }
 `resolveOrganizationID(ctx) (string, error)`——从 incoming gRPC metadata 读取 `x-organization-id`（由网关从 `X-Organization-Id` 头设置）。缺失或为空 → `CodeUnauthorized`。过渡期方案，#7 由会话派生身份取代（第 10.7 节）。
 
 `CreateAPIKey(ctx, req)`：
+
 1. `name := strings.TrimSpace(req.GetName())`，要求 1–64 字符，否则 `CodeAPIKeyInvalid`。
 2. 有效期：`req.GetExpiresAt() == 0` → nil，否则必须严格在未来，否则 `CodeAPIKeyInvalid`（AC7）。
 3. 解析组织（步骤 0）。
@@ -427,18 +428,21 @@ func (APIKey) TableName() string { return "api_keys" }
 6. 响应 `{api_key: plaintext, key_id: id}`。**绝不记录明文日志**（AC2）。
 
 `ListAPIKeys(ctx, req)`：
+
 1. 解析组织。
 2. 归一化分页：`offset = max(0, page.offset)`，`limit` 未设置或 ≤ 0 时取 20，上限 100（FR2.2）。
 3. `rows, total := repo.ListByOrganization(..., req.GetActiveOnly(), now)`。
 4. 映射为 `APIKeySummary{key_id, name, prefix, created_at (unix), expires_at (unix, 0 = 永不), revoked, revoked_at (unix, 0 = 永不)}`。绝不含密钥或哈希（AC3）。
 
 `RevokeAPIKey(ctx, req)`：
+
 1. 解析组织，要求 `key_id` 非空，否则 `CodeAPIKeyInvalid`。
 2. `lookupHash := repo.RevokeByIDAndOrganization(...)`——不存在 / 跨组织 → `CodeAPIKeyNotFound`，已吊销 → 成功（幂等，AC6）。
 3. `cache.Delete(cacheKey(lookupHash))`——出错时记警告且**不让吊销失败**，上界退化为 Redis TTL（第 5.3 节）。
 4. 响应 OK。
 
 `VerifyAPIKey(ctx, req)`：
+
 1. `digest := req.GetKeyDigest()`，为空 → `codes.InvalidArgument`（既有行为），不匹配 `^[0-9a-f]{64}$` → `CodeAPIKeyInvalid`。
 2. 按摘要 `Get` 缓存——命中 → 返回缓存判定。
 3. 未命中 → `repo.FindByLookupHash`——未知 → `CodeAPIKeyNotFound`。

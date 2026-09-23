@@ -1,0 +1,71 @@
+# Local deployment-verification stack for go-taas.
+#
+# Brings up the full control plane (taas-server) with its backing
+# services (PostgreSQL, Redis, NATS) so features can be verified against
+# a real deployment before they are handed downstream:
+#
+#   make compose-up     # build images and start the stack
+#   make compose-down   # stop and remove the stack
+#
+# The gateway listens on http://127.0.0.1:9091, gRPC on 9090 and the
+# monitor port (metrics/healthz) on 9092.
+
+name: go-taas
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: taas
+      POSTGRES_PASSWORD: taas
+      POSTGRES_DB: taas
+    # No host port binding: the stack is reached through taas-server's
+    # ports, and binding 5432 would conflict with a host PostgreSQL.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U taas -d taas"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  nats:
+    image: nats:2-alpine
+    command: ["-js"]
+    healthcheck:
+      test: ["CMD-SHELL", "echo PING | nc -w 2 127.0.0.1 4222 | grep -q PONG"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+
+  taas-server:
+    image: ghcr.io/go-taas/go-taas/taas-server:dev
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+    environment:
+      # Configuration overrides via the CONFIG_ env prefix (see
+      # configs/config.yaml); service discovery inside the compose
+      # network uses the service names.
+      CONFIG_DB_MASTER_HOST: postgres
+      CONFIG_REDIS_HOST: redis
+      CONFIG_MQ_URL: nats://nats:4222
+    ports:
+      - "9090:9090" # gRPC
+      - "9091:9091" # gateway (HTTP/JSON)
+      - "9092:9092" # monitor (metrics, healthz)
+
+volumes:
+  pgdata:

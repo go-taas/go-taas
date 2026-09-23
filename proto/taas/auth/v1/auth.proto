@@ -80,6 +80,10 @@ message LoginResponse {
 
 message ListAPIKeysRequest {
   taas.common.v1.PageRequest page = 1;
+  // active_only filters out revoked and expired keys server-side. The
+  // filter must be server-side: client-side filtering over server-side
+  // pagination is incorrect (a page may contain no active keys).
+  bool active_only = 2;
 }
 
 message ListAPIKeysResponse {
@@ -95,6 +99,9 @@ message APIKeySummary {
   int64 created_at = 4;
   int64 expires_at = 5;
   bool revoked = 6;
+  // revoked_at is the first revocation time (unix seconds); 0 = never
+  // revoked. Preserved by idempotent re-revoke for audit display.
+  int64 revoked_at = 7;
 }
 
 message CreateAPIKeyRequest {
@@ -119,8 +126,9 @@ message RevokeAPIKeyResponse {
 }
 
 message VerifyAPIKeyRequest {
-  // key_digest is the salted hash digest of the API key, not the key
-  // itself: the gateway never forwards plaintext keys.
+  // key_digest is the lowercase hex SHA-256 of the plaintext API key
+  // (64 characters), not the key itself: the gateway never forwards
+  // plaintext keys.
   string key_digest = 1;
   string model = 2;
   string source_ip = 3;

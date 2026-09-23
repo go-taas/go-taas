@@ -77,7 +77,12 @@ func NewServer(opts *Options) (Server, error) {
 	if opts.EnableGateway && opts.GatewayPort <= 0 {
 		return nil, fmt.Errorf("server: invalid gateway port %d", opts.GatewayPort)
 	}
-	return &commonServer{opts: *opts}, nil
+	// Create the components shell up front so Components() returns a
+	// usable interface even before Init: services constructed with
+	// srv.Components() before Init would otherwise capture a non-nil
+	// interface wrapping a nil pointer that panics on first use. Init
+	// populates the shell's fields in place.
+	return &commonServer{opts: *opts, components: &components{}}, nil
 }
 
 // RegisterService implements Server.
@@ -99,8 +104,29 @@ func (s *commonServer) Components() Components {
 func (s *commonServer) Init() {
 	cfg := config.GetConfig()
 
-	// Initialize shared components.
-	s.components = newComponents(cfg, s.opts)
+	// Initialize shared components. The shell was created in NewServer;
+	// populate its fields in place so references captured earlier stay
+	// valid.
+	initialized := newComponents(cfg, s.opts)
+	s.components.cfg = initialized.cfg
+	s.components.db = initialized.db
+	s.components.redis = initialized.redis
+	s.components.mq = initialized.mq
+
+	// Run schema migrations for services that implement Migrator, right
+	// after components initialization. A migration failure aborts
+	// startup: serving against a missing or drifted schema would
+	// silently corrupt state.
+	for _, svc := range s.services {
+		m, ok := svc.(Migrator)
+		if !ok {
+			continue
+		}
+		if err := m.Migrate(context.Background()); err != nil {
+			logger.S().Fatalw("service migration failed", "service", svc.ServiceName(), "err", err)
+		}
+		logger.S().Infow("service migrated", "service", svc.ServiceName())
+	}
 
 	// Build the gRPC server with the standard interceptor chain.
 	interceptors := append(
@@ -126,6 +152,7 @@ func (s *commonServer) Init() {
 	if s.opts.EnableGateway {
 		s.gatewayMux = runtime.NewServeMux(
 			runtime.WithErrorHandler(gatewayErrorHandler),
+			runtime.WithIncomingHeaderMatcher(incomingHeaderMatcher),
 		)
 		s.initGateway()
 	}

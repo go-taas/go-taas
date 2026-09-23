@@ -53,12 +53,49 @@ type MQConfig struct {
 	Namespace string `mapstructure:"namespace"`
 }
 
+// Argon2Params holds the parameters of the Argon2id KDF used for API-key
+// hashing. Zero values fall back to the shipped defaults at the use site
+// (WithDefaults), so custom configs that predate the section keep working.
+type Argon2Params struct {
+	// Algorithm selects the KDF: "argon2id" (bcrypt is reserved as a
+	// fallback for platforms without Argon2 support, not shipped).
+	Algorithm string `mapstructure:"algorithm"`
+	// Time is the number of Argon2id passes.
+	Time int `mapstructure:"time"`
+	// MemoryMiB is the Argon2id memory cost in MiB.
+	MemoryMiB int `mapstructure:"memoryMiB"`
+	// Parallelism is the Argon2id thread count.
+	Parallelism int `mapstructure:"parallelism"`
+}
+
+// WithDefaults returns a copy of p with zero values replaced by the
+// shipped defaults: argon2id, t=1, m=64 MiB, p=1.
+func (p Argon2Params) WithDefaults() Argon2Params {
+	if p.Algorithm == "" {
+		p.Algorithm = "argon2id"
+	}
+	if p.Time <= 0 {
+		p.Time = 1
+	}
+	if p.MemoryMiB <= 0 {
+		p.MemoryMiB = 64
+	}
+	if p.Parallelism <= 0 {
+		p.Parallelism = 1
+	}
+	return p
+}
+
 // AuthConfig holds auth-module specific settings.
 type AuthConfig struct {
 	// SessionTTL bounds the lifetime of issued access tokens.
 	SessionTTL time.Duration `mapstructure:"sessionTTL"`
 	// APIKeyCacheTTL is the TTL of the positive API-key cache in Redis.
+	// It must stay <= the Wasm local cache TTL so the revoke propagation
+	// bound holds even when the Redis delete fails.
 	APIKeyCacheTTL time.Duration `mapstructure:"apiKeyCacheTTL"`
+	// APIKeyHash holds the Argon2id parameters used for API-key hashing.
+	APIKeyHash Argon2Params `mapstructure:"apiKeyHash"`
 	// LocalPasswordLogin enables/disables local password login alongside SSO.
 	LocalPasswordLogin bool `mapstructure:"localPasswordLogin"`
 	// AutoRegister enables JIT account provisioning on first SSO login.
@@ -115,6 +152,12 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Redis.MaxActive < 0 || c.Redis.MaxIdle < 0 {
 		return &FieldError{Field: "redis", Reason: "pool sizes must be non-negative"}
+	}
+	if c.Auth.APIKeyCacheTTL < 0 {
+		return &FieldError{Field: "auth.apiKeyCacheTTL", Reason: "must not be negative"}
+	}
+	if c.Auth.APIKeyHash.Time < 0 || c.Auth.APIKeyHash.MemoryMiB < 0 || c.Auth.APIKeyHash.Parallelism < 0 {
+		return &FieldError{Field: "auth.apiKeyHash", Reason: "argon2 parameters must be non-negative"}
 	}
 	return nil
 }

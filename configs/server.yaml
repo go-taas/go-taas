@@ -34,7 +34,12 @@ mq:
 
 auth:
   sessionTTL: 24h
-  apiKeyCacheTTL: 60s
+  apiKeyCacheTTL: 30s
+  apiKeyHash:
+    algorithm: argon2id
+    time: 1
+    memoryMiB: 64
+    parallelism: 1
   localPasswordLogin: true
   autoRegister: true
 

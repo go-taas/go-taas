@@ -256,8 +256,12 @@ func (x *LoginResponse) GetExpiresAt() int64 {
 }
 
 type ListAPIKeysRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Page          *v1.PageRequest        `protobuf:"bytes,1,opt,name=page,proto3" json:"page,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	Page  *v1.PageRequest        `protobuf:"bytes,1,opt,name=page,proto3" json:"page,omitempty"`
+	// active_only filters out revoked and expired keys server-side. The
+	// filter must be server-side: client-side filtering over server-side
+	// pagination is incorrect (a page may contain no active keys).
+	ActiveOnly    bool `protobuf:"varint,2,opt,name=active_only,json=activeOnly,proto3" json:"active_only,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -297,6 +301,13 @@ func (x *ListAPIKeysRequest) GetPage() *v1.PageRequest {
 		return x.Page
 	}
 	return nil
+}
+
+func (x *ListAPIKeysRequest) GetActiveOnly() bool {
+	if x != nil {
+		return x.ActiveOnly
+	}
+	return false
 }
 
 type ListAPIKeysResponse struct {
@@ -360,13 +371,16 @@ func (x *ListAPIKeysResponse) GetPageMeta() *v1.PageMeta {
 }
 
 type APIKeySummary struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	KeyId         string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
-	Name          string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
-	Prefix        string                 `protobuf:"bytes,3,opt,name=prefix,proto3" json:"prefix,omitempty"`
-	CreatedAt     int64                  `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
-	ExpiresAt     int64                  `protobuf:"varint,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
-	Revoked       bool                   `protobuf:"varint,6,opt,name=revoked,proto3" json:"revoked,omitempty"`
+	state     protoimpl.MessageState `protogen:"open.v1"`
+	KeyId     string                 `protobuf:"bytes,1,opt,name=key_id,json=keyId,proto3" json:"key_id,omitempty"`
+	Name      string                 `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
+	Prefix    string                 `protobuf:"bytes,3,opt,name=prefix,proto3" json:"prefix,omitempty"`
+	CreatedAt int64                  `protobuf:"varint,4,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	ExpiresAt int64                  `protobuf:"varint,5,opt,name=expires_at,json=expiresAt,proto3" json:"expires_at,omitempty"`
+	Revoked   bool                   `protobuf:"varint,6,opt,name=revoked,proto3" json:"revoked,omitempty"`
+	// revoked_at is the first revocation time (unix seconds); 0 = never
+	// revoked. Preserved by idempotent re-revoke for audit display.
+	RevokedAt     int64 `protobuf:"varint,7,opt,name=revoked_at,json=revokedAt,proto3" json:"revoked_at,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -441,6 +455,13 @@ func (x *APIKeySummary) GetRevoked() bool {
 		return x.Revoked
 	}
 	return false
+}
+
+func (x *APIKeySummary) GetRevokedAt() int64 {
+	if x != nil {
+		return x.RevokedAt
+	}
+	return 0
 }
 
 type CreateAPIKeyRequest struct {
@@ -647,8 +668,9 @@ func (x *RevokeAPIKeyResponse) GetResponse() *v1.Response {
 
 type VerifyAPIKeyRequest struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
-	// key_digest is the salted hash digest of the API key, not the key
-	// itself: the gateway never forwards plaintext keys.
+	// key_digest is the lowercase hex SHA-256 of the plaintext API key
+	// (64 characters), not the key itself: the gateway never forwards
+	// plaintext keys.
 	KeyDigest     string `protobuf:"bytes,1,opt,name=key_digest,json=keyDigest,proto3" json:"key_digest,omitempty"`
 	Model         string `protobuf:"bytes,2,opt,name=model,proto3" json:"model,omitempty"`
 	SourceIp      string `protobuf:"bytes,3,opt,name=source_ip,json=sourceIp,proto3" json:"source_ip,omitempty"`
@@ -795,13 +817,15 @@ const file_taas_auth_v1_auth_proto_rawDesc = "" +
 	"\bresponse\x18\x01 \x01(\v2\x18.taas.common.v1.ResponseR\bresponse\x12#\n" +
 	"\rsession_token\x18\x02 \x01(\tR\fsessionToken\x12\x1d\n" +
 	"\n" +
-	"expires_at\x18\x03 \x01(\x03R\texpiresAt\"E\n" +
+	"expires_at\x18\x03 \x01(\x03R\texpiresAt\"f\n" +
 	"\x12ListAPIKeysRequest\x12/\n" +
-	"\x04page\x18\x01 \x01(\v2\x1b.taas.common.v1.PageRequestR\x04page\"\xb3\x01\n" +
+	"\x04page\x18\x01 \x01(\v2\x1b.taas.common.v1.PageRequestR\x04page\x12\x1f\n" +
+	"\vactive_only\x18\x02 \x01(\bR\n" +
+	"activeOnly\"\xb3\x01\n" +
 	"\x13ListAPIKeysResponse\x124\n" +
 	"\bresponse\x18\x01 \x01(\v2\x18.taas.common.v1.ResponseR\bresponse\x12/\n" +
 	"\x04keys\x18\x02 \x03(\v2\x1b.taas.auth.v1.APIKeySummaryR\x04keys\x125\n" +
-	"\tpage_meta\x18\x03 \x01(\v2\x18.taas.common.v1.PageMetaR\bpageMeta\"\xaa\x01\n" +
+	"\tpage_meta\x18\x03 \x01(\v2\x18.taas.common.v1.PageMetaR\bpageMeta\"\xc9\x01\n" +
 	"\rAPIKeySummary\x12\x15\n" +
 	"\x06key_id\x18\x01 \x01(\tR\x05keyId\x12\x12\n" +
 	"\x04name\x18\x02 \x01(\tR\x04name\x12\x16\n" +
@@ -810,7 +834,9 @@ const file_taas_auth_v1_auth_proto_rawDesc = "" +
 	"created_at\x18\x04 \x01(\x03R\tcreatedAt\x12\x1d\n" +
 	"\n" +
 	"expires_at\x18\x05 \x01(\x03R\texpiresAt\x12\x18\n" +
-	"\arevoked\x18\x06 \x01(\bR\arevoked\"H\n" +
+	"\arevoked\x18\x06 \x01(\bR\arevoked\x12\x1d\n" +
+	"\n" +
+	"revoked_at\x18\a \x01(\x03R\trevokedAt\"H\n" +
 	"\x13CreateAPIKeyRequest\x12\x12\n" +
 	"\x04name\x18\x01 \x01(\tR\x04name\x12\x1d\n" +
 	"\n" +
