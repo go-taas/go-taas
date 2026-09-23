@@ -41,7 +41,7 @@ export default function InferenceServicesPage() {
     setError('');
     try {
       const data = await api.get<ListResponse>(
-        `/api/v1/inference-services?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
+        `/api/v1/admin/inference-services?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
         orgId,
       );
       setServices(data.services || []);
@@ -99,7 +99,7 @@ export default function InferenceServicesPage() {
                   key={s.serviceId}
                   data-testid={`service-row-${s.name}`}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/inference-services/${s.serviceId}`)}
+                  onClick={() => navigate(`/admin/inference-services/${s.serviceId}`)}
                 >
                   <td>
                     <strong>{s.name}</strong>
@@ -195,7 +195,7 @@ function ScaleDialog({
     setError('');
     try {
       await api.post(
-        `/api/v1/inference-services/${service.serviceId}:scale`,
+        `/api/v1/admin/inference-services/${service.serviceId}:scale`,
         orgId,
         { replicas: String(r) },
       );
@@ -261,7 +261,7 @@ function DeleteDialog({
     setSubmitting(true);
     setError('');
     try {
-      await api.del(`/api/v1/inference-services/${service.serviceId}`, orgId);
+      await api.del(`/api/v1/admin/inference-services/${service.serviceId}`, orgId);
       onDeleted();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : 'failed to delete');

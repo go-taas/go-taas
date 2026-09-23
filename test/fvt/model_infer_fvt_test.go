@@ -201,27 +201,27 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	env := newModelInferEnv(t)
 
 	// AC1: register a model, then a new version of it.
-	code, body := env.call(t, http.MethodPost, "/api/v1/models", map[string]any{
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
 		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1", "description": "Qwen 3B",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	modelID, _ := body["modelId"].(string)
 	require.NotEmpty(t, modelID)
 
-	code, body = env.call(t, http.MethodPost, "/api/v1/models", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
 		"name": "qwen-3b", "version": "v2", "weightPath": "qwen/3b/v2",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Equal(t, modelID, body["modelId"])
 
 	// AC1: duplicate (model, version) is rejected.
-	code, body = env.call(t, http.MethodPost, "/api/v1/models", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
 		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
 	}, "org-fvt")
 	assert.NotEqual(t, http.StatusOK, code, "duplicate must be rejected: %v", body)
 
 	// AC2: detail lists versions newest first.
-	code, body = env.call(t, http.MethodGet, "/api/v1/models/"+modelID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/models/"+modelID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	versions, _ := body["versions"].([]any)
 	require.Len(t, versions, 2)
@@ -229,13 +229,13 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	assert.Equal(t, "v1", versions[1])
 
 	// List models.
-	code, body = env.call(t, http.MethodGet, "/api/v1/models", nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/models", nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	models, _ := body["models"].([]any)
 	require.Len(t, models, 1)
 
 	// Image catalog is served.
-	code, body = env.call(t, http.MethodGet, "/api/v1/images", nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/images", nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	images, _ := body["images"].([]any)
 	require.Len(t, images, 3)
@@ -244,7 +244,7 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	// only, no cluster wait).
 	env.mqBus.changes = nil
 	start := time.Now()
-	code, body = env.call(t, http.MethodPost, "/api/v1/inference-services", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name": "demo-svc", "modelId": modelID, "modelVersion": "v1",
 		"imageId": "img-vllm-nvidia", "replicas": "2", "accelerator": "nvidia",
 	}, "org-fvt")
@@ -264,7 +264,7 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 
 	// AC5: a validation failure publishes nothing.
 	before := len(env.mqBus.changes)
-	code, body = env.call(t, http.MethodPost, "/api/v1/inference-services", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name": "bad-svc", "modelId": modelID, "modelVersion": "v1",
 		"imageId": "img-vllm-nvidia", "replicas": "0", "accelerator": "nvidia",
 	}, "org-fvt")
@@ -273,7 +273,7 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 
 	// AC6: the fake controller drives pending → deploying → running.
 	env.reportStatus(t, serviceID, "deploying", nil, nil)
-	code, body = env.call(t, http.MethodGet, "/api/v1/inference-services/"+serviceID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	svc, _ := body["service"].(map[string]any)
 	require.NotNil(t, svc)
@@ -281,7 +281,7 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	assert.Empty(t, body["endpoints"], "endpoints hidden until running")
 
 	env.reportStatus(t, serviceID, "running", []string{"https://infer.example.com/demo/v1"}, nil)
-	code, body = env.call(t, http.MethodGet, "/api/v1/inference-services/"+serviceID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	svc, _ = body["service"].(map[string]any)
 	assert.Equal(t, "running", svc["state"])
@@ -290,14 +290,14 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	assert.Equal(t, "https://infer.example.com/demo/v1", endpoints[0])
 
 	// AC3: delete-model is blocked while the service references it.
-	code, body = env.call(t, http.MethodDelete, "/api/v1/models/"+modelID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodDelete, "/api/v1/admin/models/"+modelID, nil, "org-fvt")
 	assert.NotEqual(t, http.StatusOK, code, "delete must be blocked: %v", body)
 	errDetail := fmt.Sprint(body)
 	assert.Contains(t, errDetail, "demo-svc", "error names the blocking service (AC3)")
 
 	// AC8: scale changes replicas only.
 	env.mqBus.changes = nil
-	code, body = env.call(t, http.MethodPost, "/api/v1/inference-services/"+serviceID+":scale", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services/"+serviceID+":scale", map[string]any{
 		"replicas": "3",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
@@ -305,7 +305,7 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	require.NoError(t, json.Unmarshal(env.mqBus.changes[0].Body, &evt))
 	assert.EqualValues(t, float64(3), evt["replicas"])
 
-	code, body = env.call(t, http.MethodGet, "/api/v1/inference-services/"+serviceID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	svc, _ = body["service"].(map[string]any)
 	assert.EqualValues(t, "3", fmt.Sprint(svc["replicas"]))
@@ -314,31 +314,31 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	// AC7: fault injection reports failed with a reason.
 	reason := "image pull backoff"
 	env.reportStatus(t, serviceID, "failed", nil, &reason)
-	code, body = env.call(t, http.MethodGet, "/api/v1/inference-services/"+serviceID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	svc, _ = body["service"].(map[string]any)
 	assert.Equal(t, "failed", svc["state"])
 
 	// AC9: delete is idempotent; terminated services leave the list.
 	env.mqBus.changes = nil
-	code, body = env.call(t, http.MethodDelete, "/api/v1/inference-services/"+serviceID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodDelete, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	require.Len(t, env.mqBus.changes, 1, "one delete event")
 
-	code, body = env.call(t, http.MethodDelete, "/api/v1/inference-services/"+serviceID, nil, "org-fvt")
+	code, body = env.call(t, http.MethodDelete, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Len(t, env.mqBus.changes, 1, "second delete publishes nothing (AC9)")
 
-	code, body = env.call(t, http.MethodGet, "/api/v1/inference-services", nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services", nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	services, _ := body["services"].([]any)
 	assert.Empty(t, services, "terminated services are hidden (AC9)")
 
 	// AC3 (unblocked): with the service terminated, the model deletes.
-	code, _ = env.call(t, http.MethodDelete, "/api/v1/models/"+modelID, nil, "org-fvt")
+	code, _ = env.call(t, http.MethodDelete, "/api/v1/admin/models/"+modelID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code)
 
-	code, _ = env.call(t, http.MethodGet, "/api/v1/models/"+modelID, nil, "org-fvt")
+	code, _ = env.call(t, http.MethodGet, "/api/v1/admin/models/"+modelID, nil, "org-fvt")
 	assert.NotEqual(t, http.StatusOK, code, "deleted model is gone")
 }
 
@@ -347,13 +347,13 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 func TestFVTCrossOrgIsolation(t *testing.T) {
 	env := newModelInferEnv(t)
 
-	code, body := env.call(t, http.MethodPost, "/api/v1/models", map[string]any{
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
 		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
 	}, "org-a")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	modelID, _ := body["modelId"].(string)
 
-	code, body = env.call(t, http.MethodPost, "/api/v1/inference-services", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name": "org-a-svc", "modelId": modelID, "modelVersion": "v1",
 		"imageId": "img-vllm-nvidia", "replicas": "1", "accelerator": "nvidia",
 	}, "org-a")
@@ -361,17 +361,17 @@ func TestFVTCrossOrgIsolation(t *testing.T) {
 	serviceID, _ := body["serviceId"].(string)
 
 	// org-b sees neither the service in its list...
-	code, body = env.call(t, http.MethodGet, "/api/v1/inference-services", nil, "org-b")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services", nil, "org-b")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	services, _ := body["services"].([]any)
 	assert.Empty(t, services)
 
 	// ...nor by id.
-	code, _ = env.call(t, http.MethodGet, "/api/v1/inference-services/"+serviceID, nil, "org-b")
+	code, _ = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-b")
 	assert.NotEqual(t, http.StatusOK, code)
 
 	// The same name is available in another organization.
-	code, body = env.call(t, http.MethodPost, "/api/v1/inference-services", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name": "org-a-svc", "modelId": modelID, "modelVersion": "v1",
 		"imageId": "img-vllm-nvidia", "replicas": "1", "accelerator": "nvidia",
 	}, "org-b")

@@ -11,26 +11,30 @@ option go_package = "github.com/go-taas/go-taas/proto/taas/model/v1;modelv1";
 // weight paths in object storage and tenant-level authorization.
 service ModelService {
   // RegisterModel registers a new model with its first version.
+  // Admin-surface API: served under /api/v1/admin.
   rpc RegisterModel(RegisterModelRequest) returns (RegisterModelResponse) {
     option (google.api.http) = {
-      post: "/api/v1/models"
+      post: "/api/v1/admin/models"
       body: "*"
     };
   }
 
   // ListModels returns the models visible to the caller.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ListModels(ListModelsRequest) returns (ListModelsResponse) {
-    option (google.api.http) = {get: "/api/v1/models"};
+    option (google.api.http) = {get: "/api/v1/admin/models"};
   }
 
   // GetModel returns one model with its versions.
+  // Admin-surface API: served under /api/v1/admin.
   rpc GetModel(GetModelRequest) returns (GetModelResponse) {
-    option (google.api.http) = {get: "/api/v1/models/{model_id}"};
+    option (google.api.http) = {get: "/api/v1/admin/models/{model_id}"};
   }
 
   // DeleteModel removes a model registration.
+  // Admin-surface API: served under /api/v1/admin.
   rpc DeleteModel(DeleteModelRequest) returns (DeleteModelResponse) {
-    option (google.api.http) = {delete: "/api/v1/models/{model_id}"};
+    option (google.api.http) = {delete: "/api/v1/admin/models/{model_id}"};
   }
 }
 

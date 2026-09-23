@@ -54,7 +54,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name, version: 'v1', weightPath: `models/${name}/v1/`}
     }, (res) => {
@@ -64,7 +64,7 @@ module.exports = {
       // Same name+version again -> 10102 MODEL_EXISTS.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/models',
+        path: '/api/v1/admin/models',
         org,
         body: {name, version: 'v1', weightPath: `models/${name}/v1/`}
       }, (res2) => {
@@ -74,7 +74,7 @@ module.exports = {
       // New version of the same name appends and keeps the model id stable.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/models',
+        path: '/api/v1/admin/models',
         org,
         body: {name, version: 'v2', weightPath: `models/${name}/v2/`}
       }, (res3) => {
@@ -90,7 +90,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name, version: 'v1', weightPath: `models/${name}/v1/`}
     }, (res) => {
@@ -102,12 +102,12 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/models',
+        path: '/api/v1/admin/models',
         org,
         body: {name, version: 'v2', weightPath: `models/${name}/v2/`}
       }, () => {
         api.request(browser, {
-          path: `/api/v1/models/${created.modelId}`,
+          path: `/api/v1/admin/models/${created.modelId}`,
           org
         }, (res3) => {
           const body = api.assertOk(browser, res3, 'get model');
@@ -130,7 +130,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name, version: 'v1', weightPath: `models/${name}/v1/`}
     }, (res) => {
@@ -138,12 +138,12 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/models',
+        path: '/api/v1/admin/models',
         org,
         body: {name, version: 'v9', weightPath: `models/${name}/v9/`}
       }, () => {
         api.request(browser, {
-          path: '/api/v1/models?page.offset=0&page.limit=20',
+          path: '/api/v1/admin/models?page.offset=0&page.limit=20',
           org
         }, (res3) => {
           const body = api.assertOk(browser, res3, 'list models');
@@ -171,7 +171,7 @@ module.exports = {
     cases.forEach((c) => {
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/models',
+        path: '/api/v1/admin/models',
         org,
         body: {name: `e2e-badpath-${browser.globals.runId}`, version: 'v1', weightPath: c.weightPath}
       }, (res) => {
@@ -188,7 +188,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
     }, (res) => {
@@ -196,7 +196,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: {
           name,
@@ -218,7 +218,7 @@ module.exports = {
         // In compose there is no controller, so the service stays pending —
         // that is the expected steady state, and endpoints must stay empty.
         api.request(browser, {
-          path: `/api/v1/inference-services/${created.serviceId}`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
           org
         }, (res3) => {
           const body = api.assertOk(browser, res3, 'get service after create');
@@ -237,7 +237,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
     }, (res) => {
@@ -254,7 +254,7 @@ module.exports = {
       // Unknown model id -> 10101 MODEL_NOT_FOUND.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: Object.assign({}, base, {name: `${name}-unknown-model`, modelId: '00000000-0000-0000-0000-000000000000'})
       }, (res2) => {
@@ -264,7 +264,7 @@ module.exports = {
       // replicas 0 -> 10305 INFER_REPLICAS_INVALID.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: Object.assign({}, base, {name: `${name}-zero-replicas`, replicas: '0'})
       }, (res3) => {
@@ -274,7 +274,7 @@ module.exports = {
       // replicas 101 -> 10305 (upper bound).
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: Object.assign({}, base, {name: `${name}-too-many-replicas`, replicas: '101'})
       }, (res4) => {
@@ -284,7 +284,7 @@ module.exports = {
       // Unsupported accelerator -> 10306 INFER_ENGINE_UNSUPPORTED.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: Object.assign({}, base, {name: `${name}-tpu`, accelerator: 'tpu'})
       }, (res5) => {
@@ -294,7 +294,7 @@ module.exports = {
       // Image accelerator differs from request accelerator -> 10204 IMAGE_INCOMPATIBLE.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: Object.assign({}, base, {name: `${name}-mismatch`, imageId: ILUVATAR_IMAGE})
       }, (res6) => {
@@ -304,7 +304,7 @@ module.exports = {
       // Unknown image id -> 10201 IMAGE_NOT_FOUND.
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: Object.assign({}, base, {name: `${name}-unknown-image`, imageId: 'img-does-not-exist'})
       }, (res7) => {
@@ -319,7 +319,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
     }, (res) => {
@@ -327,7 +327,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: {
           name,
@@ -342,14 +342,14 @@ module.exports = {
 
         api.request(browser, {
           method: 'POST',
-          path: `/api/v1/inference-services/${created.serviceId}:scale`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}:scale`,
           org,
           body: {replicas: '5'}
         }, (res3) => {
           api.assertOk(browser, res3, 'scale to 5');
 
           api.request(browser, {
-            path: `/api/v1/inference-services/${created.serviceId}`,
+            path: `/api/v1/admin/inference-services/${created.serviceId}`,
             org
           }, (res4) => {
             const body = api.assertOk(browser, res4, 'get after scale');
@@ -362,7 +362,7 @@ module.exports = {
         // Scaling to 0 is rejected with the replicas-invalid code.
         api.request(browser, {
           method: 'POST',
-          path: `/api/v1/inference-services/${created.serviceId}:scale`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}:scale`,
           org,
           body: {replicas: '0'}
         }, (res5) => {
@@ -378,7 +378,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
     }, (res) => {
@@ -386,7 +386,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: {
           name,
@@ -402,7 +402,7 @@ module.exports = {
         // Delete model while referenced -> 10101 naming the blocking service.
         api.request(browser, {
           method: 'DELETE',
-          path: `/api/v1/models/${model.modelId}`,
+          path: `/api/v1/admin/models/${model.modelId}`,
           org
         }, (res3) => {
           const err = api.assertBusinessError(browser, res3, 10101, 'delete guarded model');
@@ -415,7 +415,7 @@ module.exports = {
         // Delete the service, then the model delete must succeed.
         api.request(browser, {
           method: 'DELETE',
-          path: `/api/v1/inference-services/${created.serviceId}`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
           org
         }, (res4) => {
           api.assertOk(browser, res4, 'delete service');
@@ -423,7 +423,7 @@ module.exports = {
           // Idempotent second delete (AC9).
           api.request(browser, {
             method: 'DELETE',
-            path: `/api/v1/inference-services/${created.serviceId}`,
+            path: `/api/v1/admin/inference-services/${created.serviceId}`,
             org
           }, (res5) => {
             api.assertOk(browser, res5, 'second service delete is idempotent');
@@ -431,7 +431,7 @@ module.exports = {
 
           // Terminated services disappear from the default list view (AC9).
           api.request(browser, {
-            path: '/api/v1/inference-services?page.offset=0&page.limit=20',
+            path: '/api/v1/admin/inference-services?page.offset=0&page.limit=20',
             org
           }, (res6) => {
             const body = api.assertOk(browser, res6, 'list after delete');
@@ -442,7 +442,7 @@ module.exports = {
           // Model delete now unblocked (FR6.3).
           api.request(browser, {
             method: 'DELETE',
-            path: `/api/v1/models/${model.modelId}`,
+            path: `/api/v1/admin/models/${model.modelId}`,
             org
           }, (res7) => {
             api.assertOk(browser, res7, 'model delete after service termination');
@@ -459,7 +459,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org: orgA,
       body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
     }, (res) => {
@@ -467,7 +467,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org: orgA,
         body: {
           name,
@@ -482,7 +482,7 @@ module.exports = {
 
         // Cross-org get -> 10301 INFER_SERVICE_NOT_FOUND.
         api.request(browser, {
-          path: `/api/v1/inference-services/${created.serviceId}`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
           org: orgB
         }, (res3) => {
           api.assertBusinessError(browser, res3, 10301, 'cross-org get');
@@ -490,7 +490,7 @@ module.exports = {
 
         // Cross-org list never leaks the service.
         api.request(browser, {
-          path: '/api/v1/inference-services?page.offset=0&page.limit=20',
+          path: '/api/v1/admin/inference-services?page.offset=0&page.limit=20',
           org: orgB
         }, (res4) => {
           const body = api.assertOk(browser, res4, 'cross-org list');
@@ -501,7 +501,7 @@ module.exports = {
         // Cross-org scale -> 10301.
         api.request(browser, {
           method: 'POST',
-          path: `/api/v1/inference-services/${created.serviceId}:scale`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}:scale`,
           org: orgB,
           body: {replicas: '3'}
         }, (res5) => {
@@ -511,7 +511,7 @@ module.exports = {
         // Cross-org delete -> 10301.
         api.request(browser, {
           method: 'DELETE',
-          path: `/api/v1/inference-services/${created.serviceId}`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
           org: orgB
         }, (res6) => {
           api.assertBusinessError(browser, res6, 10301, 'cross-org delete');
@@ -519,7 +519,7 @@ module.exports = {
 
         // The service is untouched in its owning org.
         api.request(browser, {
-          path: `/api/v1/inference-services/${created.serviceId}`,
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
           org: orgA
         }, (res7) => {
           const body = api.assertOk(browser, res7, 'owning-org get after cross-org attempts');
@@ -535,7 +535,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/models',
+      path: '/api/v1/admin/models',
       org,
       body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
     }, (res) => {
@@ -543,7 +543,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/inference-services',
+        path: '/api/v1/admin/inference-services',
         org,
         body: {
           name,
@@ -557,7 +557,7 @@ module.exports = {
         const created = api.assertOk(browser, res2, 'create service for list');
 
         api.request(browser, {
-          path: '/api/v1/inference-services?page.offset=0&page.limit=20',
+          path: '/api/v1/admin/inference-services?page.offset=0&page.limit=20',
           org
         }, (res3) => {
           const body = api.assertOk(browser, res3, 'list services');

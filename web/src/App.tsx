@@ -14,12 +14,13 @@ export default function App() {
       <Router>
         <Layout>
           <Routes>
-            <Route path="/" element={<NavigateToModels />} />
-            <Route path="/api-keys" element={<ApiKeysPage />} />
-            <Route path="/models" element={<ModelsPage />} />
-            <Route path="/models/:id" element={<ModelDetailPage />} />
-            <Route path="/inference-services" element={<InferenceServicesPage />} />
-            <Route path="/inference-services/:id" element={<ServiceDetailPage />} />
+            <Route path="/" element={<NavigateToAdmin />} />
+            <Route path="/admin" element={<NavigateToModels />} />
+            <Route path="/admin/api-keys" element={<ApiKeysPage />} />
+            <Route path="/admin/models" element={<ModelsPage />} />
+            <Route path="/admin/models/:id" element={<ModelDetailPage />} />
+            <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
+            <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>
@@ -28,10 +29,18 @@ export default function App() {
   );
 }
 
-// The entry route redirects to the models catalog (the console's home).
+// The entry route redirects into the admin console.
+function NavigateToAdmin() {
+  useEffect(() => {
+    navigate('/admin');
+  }, []);
+  return null;
+}
+
+// /admin redirects to the models catalog (the console's home).
 function NavigateToModels() {
   useEffect(() => {
-    navigate('/models');
+    navigate('/admin/models');
   }, []);
   return null;
 }
@@ -46,9 +55,9 @@ function Layout({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_ITEMS = [
-  { path: '/models', label: 'Models' },
-  { path: '/inference-services', label: 'Inference Services' },
-  { path: '/api-keys', label: 'API Keys' },
+  { path: '/admin/models', label: 'Models' },
+  { path: '/admin/inference-services', label: 'Inference Services' },
+  { path: '/admin/api-keys', label: 'API Keys' },
 ];
 
 function Sidebar() {

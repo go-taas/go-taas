@@ -176,8 +176,10 @@ make compose-logs  # 跟踪日志（或：make compose-logs SERVICE=taas-server�
 make compose-down  # 停止并删除环境
 ```
 
-管理控制台由 `taas-server` 提供，访问 `http://localhost:9091/`
-（与 API 同源，无需 CORS 配置）。网关端口：`9091`（HTTP/JSON + 控制台）、
+管理控制台由 `taas-server` 提供，访问 `http://localhost:9091/admin`
+（与 API 同源，无需 CORS 配置）。管理类 API 位于 `/api/v1/admin/*`；
+用户类 API（登录、注册）位于 `/api/v1/auth/*`。
+网关端口：`9091`（HTTP/JSON + 控制台）、
 `9090`（gRPC）、`9092`（指标/健康检查）。
 
 受限网络下可为镜像构建指定国内镜像源：

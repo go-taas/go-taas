@@ -27,24 +27,27 @@ service AuthService {
   }
 
   // ListAPIKeys returns the API keys of the caller's organization.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ListAPIKeys(ListAPIKeysRequest) returns (ListAPIKeysResponse) {
-    option (google.api.http) = {get: "/api/v1/auth/api-keys"};
+    option (google.api.http) = {get: "/api/v1/admin/auth/api-keys"};
   }
 
   // CreateAPIKey issues a new API key. The plaintext key is returned
   // exactly once; only its salted hash is stored.
+  // Admin-surface API: served under /api/v1/admin.
   rpc CreateAPIKey(CreateAPIKeyRequest) returns (CreateAPIKeyResponse) {
     option (google.api.http) = {
-      post: "/api/v1/auth/api-keys"
+      post: "/api/v1/admin/auth/api-keys"
       body: "*"
     };
   }
 
   // RevokeAPIKey revokes an API key. Revocation takes effect after the
   // gateway-side cache TTL expires.
+  // Admin-surface API: served under /api/v1/admin.
   rpc RevokeAPIKey(RevokeAPIKeyRequest) returns (RevokeAPIKeyResponse) {
     option (google.api.http) = {
-      post: "/api/v1/auth/api-keys/{key_id}:revoke"
+      post: "/api/v1/admin/auth/api-keys/{key_id}:revoke"
       body: "*"
     };
   }

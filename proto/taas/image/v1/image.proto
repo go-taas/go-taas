@@ -11,24 +11,27 @@ option go_package = "github.com/go-taas/go-taas/proto/taas/image/v1;imagev1";
 // the hardware/engine compatibility matrix and node-level warmup tasks.
 service ImageService {
   // RegisterImage registers an inference engine image.
+  // Admin-surface API: served under /api/v1/admin.
   rpc RegisterImage(RegisterImageRequest) returns (RegisterImageResponse) {
     option (google.api.http) = {
-      post: "/api/v1/images"
+      post: "/api/v1/admin/images"
       body: "*"
     };
   }
 
   // ListImages returns registered images, optionally filtered by the
   // compatibility matrix.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ListImages(ListImagesRequest) returns (ListImagesResponse) {
-    option (google.api.http) = {get: "/api/v1/images"};
+    option (google.api.http) = {get: "/api/v1/admin/images"};
   }
 
   // TriggerWarmup enqueues a warmup task so the controller pre-pulls the
   // image on compute nodes.
+  // Admin-surface API: served under /api/v1/admin.
   rpc TriggerWarmup(TriggerWarmupRequest) returns (TriggerWarmupResponse) {
     option (google.api.http) = {
-      post: "/api/v1/images/{image_id}:warmup"
+      post: "/api/v1/admin/images/{image_id}:warmup"
       body: "*"
     };
   }

@@ -237,7 +237,8 @@ flowchart TD
 - **Positioning**: the entry point for platform management APIs, serving only administrators and the console;
 - **Implementation**: `grpc-gateway` auto-generates the HTTP/JSON proxy and OpenAPI documents from the Protobuf contract; all business logic lives in the unified gRPC Server;
 - **Capabilities**: SSO federated login entry (authorization initiation and callback), model and image management, inference service orchestration, API Key and organization management, pricing and bill queries, and more;
-- **Carries no inference traffic**: fully separated from the inference data plane for independent releases and fault isolation.
+- **Carries no inference traffic**: fully separated from the inference data plane for independent releases and fault isolation;
+- **Admin/user surface separation**: management APIs consumed by the admin console are served under `/api/v1/admin/*` (model catalog, image management, inference service orchestration, API Key management, pricing and bills), while user-facing account APIs (login, signup) stay under `/api/v1/auth/*`. The admin web console is served under the `/admin` path prefix (`/admin/models`, `/admin/inference-services`, `/admin/api-keys`, …), keeping the regular-user surface (future user portal, feature #7) cleanly separated.
 
 ### 3.2 Data Plane (Inference) Gateway: Envoy + Wasm
 

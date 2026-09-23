@@ -27,7 +27,7 @@ export default function ModelDetailPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.get<ModelResponse>(`/api/v1/models/${id}`, orgId);
+      const data = await api.get<ModelResponse>(`/api/v1/admin/models/${id}`, orgId);
       setModel(data);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load model');
@@ -131,7 +131,7 @@ export default function ModelDetailPage() {
           onClose={() => setDeployVersion(null)}
           onDeployed={(serviceId) => {
             setDeployVersion(null);
-            navigate(`/inference-services/${serviceId}`);
+            navigate(`/admin/inference-services/${serviceId}`);
           }}
         />
       )}

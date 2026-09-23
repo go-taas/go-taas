@@ -176,9 +176,11 @@ make compose-logs  # follow logs (or: make compose-logs SERVICE=taas-server)
 make compose-down  # stop and remove the stack
 ```
 
-The admin console is served by `taas-server` at `http://localhost:9091/`
-(same origin as the API — no CORS setup needed). The gateway listens on
-`9091` (HTTP/JSON + console), `9090` (gRPC) and `9092` (metrics/healthz).
+The admin console is served by `taas-server` at `http://localhost:9091/admin`
+(same origin as the API — no CORS setup needed). Management APIs live under
+`/api/v1/admin/*`; user-facing APIs (login, signup) live under `/api/v1/auth/*`.
+The gateway listens on `9091` (HTTP/JSON + console), `9090` (gRPC) and `9092`
+(metrics/healthz).
 
 On restricted networks, point the image build at local mirrors:
 

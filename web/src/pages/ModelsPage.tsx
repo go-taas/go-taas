@@ -37,7 +37,7 @@ export default function ModelsPage() {
     setError('');
     try {
       const data = await api.get<ListResponse>(
-        `/api/v1/models?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
+        `/api/v1/admin/models?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
         orgId,
       );
       setModels(data.models || []);
@@ -113,7 +113,7 @@ export default function ModelsPage() {
                   key={m.modelId}
                   data-testid={`model-row-${m.name}`}
                   style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/models/${m.modelId}`)}
+                  onClick={() => navigate(`/admin/models/${m.modelId}`)}
                 >
                   <td>
                     <strong>{m.name}</strong>
@@ -171,7 +171,7 @@ export default function ModelsPage() {
           onClose={() => setDeployTarget(null)}
           onDeployed={(serviceId) => {
             setDeployTarget(null);
-            navigate(`/inference-services/${serviceId}`);
+            navigate(`/admin/inference-services/${serviceId}`);
           }}
         />
       )}
@@ -212,7 +212,7 @@ function RegisterDialog({
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/api/v1/models', orgId, {
+      await api.post('/api/v1/admin/models', orgId, {
         name: name.trim(),
         version: version.trim(),
         weightPath: weightPath.trim(),

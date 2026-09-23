@@ -30,7 +30,7 @@ export default function ServiceDetailPage() {
     setError('');
     try {
       const res = await api.get<ServiceResponse>(
-        `/api/v1/inference-services/${id}`,
+        `/api/v1/admin/inference-services/${id}`,
         orgId,
       );
       setData(res);
@@ -53,7 +53,7 @@ export default function ServiceDetailPage() {
   if (error)
     return (
       <div>
-        <BackLink to="/inference-services" label="Back to Inference Services" />
+        <BackLink to="/admin/inference-services" label="Back to Inference Services" />
         <ErrorBanner message={error} />
       </div>
     );
@@ -64,7 +64,7 @@ export default function ServiceDetailPage() {
 
   return (
     <div>
-      <BackLink to="/inference-services" label="Back to Inference Services" />
+      <BackLink to="/admin/inference-services" label="Back to Inference Services" />
       <div className="page-header">
         <div>
           <h1 data-testid="service-detail-name">{s.name}</h1>

@@ -237,7 +237,8 @@ flowchart TD
 - **定位**：平台管理 API 的入口，只服务管理员与控制台；
 - **实现**：`grpc-gateway` 从 Protobuf 契约自动生成 HTTP/JSON 代理与 OpenAPI 文档，业务逻辑完全在统一 gRPC Server 内；
 - **承载能力**：SSO 联邦登录入口（授权发起与回调）、模型与镜像管理、推理服务编排、API Key 与组织管理、定价与账单查询等；
-- **不承载推理流量**：与推理数据面完全分离，便于独立发布与故障隔离。
+- **不承载推理流量**：与推理数据面完全分离，便于独立发布与故障隔离；
+- **管理员/用户面分离**：管理控制台消费的管理类 API 位于 `/api/v1/admin/*`（模型目录、镜像管理、推理服务编排、API Key 管理、定价与账单），用户账户类 API（登录、注册）位于 `/api/v1/auth/*`。管理控制台 Web 页面位于 `/admin` 路径前缀（`/admin/models`、`/admin/inference-services`、`/admin/api-keys` 等），与普通用户面（未来的用户门户，特性 #7）清晰分离。
 
 ### 3.2 数据面（推理）Gateway：Envoy + Wasm
 

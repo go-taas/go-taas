@@ -55,7 +55,7 @@ export default function DeployDialog({
   useEffect(() => {
     // Load the image catalog once; the dropdown filters by accelerator.
     api
-      .get<ImagesResponse>('/api/v1/images', orgId)
+      .get<ImagesResponse>('/api/v1/admin/images', orgId)
       .then((data) => setImages(data.images || []))
       .catch(() => setImages([]));
   }, [orgId]);
@@ -88,7 +88,7 @@ export default function DeployDialog({
     setSubmitting(true);
     setError('');
     try {
-      const res = await api.post<CreateResponse>('/api/v1/inference-services', orgId, {
+      const res = await api.post<CreateResponse>('/api/v1/admin/inference-services', orgId, {
         name: name.trim(),
         modelId,
         modelVersion: version,

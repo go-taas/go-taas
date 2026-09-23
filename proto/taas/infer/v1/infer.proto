@@ -14,35 +14,40 @@ service InferServiceService {
   // CreateInferenceService deploys a model with the given image and
   // replicas. The change is published to the message queue and applied
   // by the controller.
+  // Admin-surface API: served under /api/v1/admin.
   rpc CreateInferenceService(CreateInferenceServiceRequest) returns (CreateInferenceServiceResponse) {
     option (google.api.http) = {
-      post: "/api/v1/inference-services"
+      post: "/api/v1/admin/inference-services"
       body: "*"
     };
   }
 
   // ListInferenceServices returns inference services of the caller's
   // organization.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ListInferenceServices(ListInferenceServicesRequest) returns (ListInferenceServicesResponse) {
-    option (google.api.http) = {get: "/api/v1/inference-services"};
+    option (google.api.http) = {get: "/api/v1/admin/inference-services"};
   }
 
   // GetInferenceService returns one inference service with its endpoints.
+  // Admin-surface API: served under /api/v1/admin.
   rpc GetInferenceService(GetInferenceServiceRequest) returns (GetInferenceServiceResponse) {
-    option (google.api.http) = {get: "/api/v1/inference-services/{service_id}"};
+    option (google.api.http) = {get: "/api/v1/admin/inference-services/{service_id}"};
   }
 
   // ScaleInferenceService changes the replica count.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ScaleInferenceService(ScaleInferenceServiceRequest) returns (ScaleInferenceServiceResponse) {
     option (google.api.http) = {
-      post: "/api/v1/inference-services/{service_id}:scale"
+      post: "/api/v1/admin/inference-services/{service_id}:scale"
       body: "*"
     };
   }
 
   // DeleteInferenceService tears an inference service down.
+  // Admin-surface API: served under /api/v1/admin.
   rpc DeleteInferenceService(DeleteInferenceServiceRequest) returns (DeleteInferenceServiceResponse) {
-    option (google.api.http) = {delete: "/api/v1/inference-services/{service_id}"};
+    option (google.api.http) = {delete: "/api/v1/admin/inference-services/{service_id}"};
   }
 }
 

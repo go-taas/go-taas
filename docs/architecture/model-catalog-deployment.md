@@ -189,15 +189,15 @@ All nine RPCs already exist in the protos; this feature implements them. No prot
 
 | Service | RPC | HTTP | Purpose |
 | --- | --- | --- | --- |
-| `taas.model.v1` | `RegisterModel` | `POST /api/v1/models` | Register a model version |
-| `taas.model.v1` | `ListModels` | `GET /api/v1/models` | Paginated catalog list |
-| `taas.model.v1` | `GetModel` | `GET /api/v1/models/{model_id}` | Detail with version list |
-| `taas.model.v1` | `DeleteModel` | `DELETE /api/v1/models/{model_id}` | Remove a catalog entry (reference-checked) |
-| `taas.infer.v1` | `CreateInferenceService` | `POST /api/v1/inference-services` | One-click deploy |
-| `taas.infer.v1` | `ListInferenceServices` | `GET /api/v1/inference-services` | Service list with states |
-| `taas.infer.v1` | `GetInferenceService` | `GET /api/v1/inference-services/{service_id}` | Detail with endpoints |
-| `taas.infer.v1` | `ScaleInferenceService` | `POST /api/v1/inference-services/{service_id}:scale` | Change replicas only |
-| `taas.infer.v1` | `DeleteInferenceService` | `DELETE /api/v1/inference-services/{service_id}` | Retire a service (idempotent) |
+| `taas.model.v1` | `RegisterModel` | `POST /api/v1/admin/models` | Register a model version |
+| `taas.model.v1` | `ListModels` | `GET /api/v1/admin/models` | Paginated catalog list |
+| `taas.model.v1` | `GetModel` | `GET /api/v1/admin/models/{model_id}` | Detail with version list |
+| `taas.model.v1` | `DeleteModel` | `DELETE /api/v1/admin/models/{model_id}` | Remove a catalog entry (reference-checked) |
+| `taas.infer.v1` | `CreateInferenceService` | `POST /api/v1/admin/inference-services` | One-click deploy |
+| `taas.infer.v1` | `ListInferenceServices` | `GET /api/v1/admin/inference-services` | Service list with states |
+| `taas.infer.v1` | `GetInferenceService` | `GET /api/v1/admin/inference-services/{service_id}` | Detail with endpoints |
+| `taas.infer.v1` | `ScaleInferenceService` | `POST /api/v1/admin/inference-services/{service_id}:scale` | Change replicas only |
+| `taas.infer.v1` | `DeleteInferenceService` | `DELETE /api/v1/admin/inference-services/{service_id}` | Retire a service (idempotent) |
 
 ### 4.2 Wire Format (established conventions)
 
@@ -306,7 +306,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: Deploy form (model, version, image, accelerator, replicas)
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService (X-Organization-Id)
     Infer->>DB: SELECT model + version, image, name uniqueness
     Infer->>DB: INSERT inference_services (state=pending)
@@ -321,7 +321,7 @@ sequenceDiagram
     CTRL->>MQ: Publish status running + endpoints
     MQ->>Infer: Consume status
     Infer->>DB: UPDATE state=running, endpoints
-    Console->>CGW: GET /api/v1/inference-services/{service_id}
+    Console->>CGW: GET /api/v1/admin/inference-services/{service_id}
     Infer-->>CGW: state=running, endpoints
     Console-->>Admin: Endpoints with copy + curl snippet
 ```
@@ -340,7 +340,7 @@ sequenceDiagram
     participant K8s as Kubernetes
 
     Admin->>Console: Deploy with a missing weight path
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService
     Infer->>Infer: Syntax checks pass (existence is the Controller's job)
     Infer->>MQ: Publish upsert
@@ -369,14 +369,14 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: Scale to 4 replicas
-    Console->>CGW: POST /api/v1/inference-services/{id}:scale
+    Console->>CGW: POST /api/v1/admin/inference-services/{id}:scale
     CGW->>Infer: ScaleInferenceService
     Infer->>DB: UPDATE replicas=4 (spec only, state untouched)
     Infer->>MQ: Publish upsert (replicas=4)
     Infer-->>CGW: OK
     MQ->>CTRL: Consume, scale Deployment
     Admin->>Console: Delete service (confirmed)
-    Console->>CGW: DELETE /api/v1/inference-services/{id}
+    Console->>CGW: DELETE /api/v1/admin/inference-services/{id}
     CGW->>Infer: DeleteInferenceService
     Infer->>DB: UPDATE state=terminated (idempotent)
     Infer->>MQ: Publish delete

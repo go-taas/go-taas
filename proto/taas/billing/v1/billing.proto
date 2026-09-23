@@ -12,27 +12,31 @@ option go_package = "github.com/go-taas/go-taas/proto/taas/billing/v1;billingv1"
 service BillingService {
   // SetPrice creates or updates a price entry of the model x accelerator
   // matrix.
+  // Admin-surface API: served under /api/v1/admin.
   rpc SetPrice(SetPriceRequest) returns (SetPriceResponse) {
     option (google.api.http) = {
-      put: "/api/v1/billing/prices"
+      put: "/api/v1/admin/billing/prices"
       body: "*"
     };
   }
 
   // ListPrices returns the price matrix.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ListPrices(ListPricesRequest) returns (ListPricesResponse) {
-    option (google.api.http) = {get: "/api/v1/billing/prices"};
+    option (google.api.http) = {get: "/api/v1/admin/billing/prices"};
   }
 
   // GetBalance returns the prepaid balance or postpaid quota of an
   // organization.
+  // Admin-surface API: served under /api/v1/admin.
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {
-    option (google.api.http) = {get: "/api/v1/billing/balance"};
+    option (google.api.http) = {get: "/api/v1/admin/billing/balance"};
   }
 
   // ListBills returns generated bills.
+  // Admin-surface API: served under /api/v1/admin.
   rpc ListBills(ListBillsRequest) returns (ListBillsResponse) {
-    option (google.api.http) = {get: "/api/v1/billing/bills"};
+    option (google.api.http) = {get: "/api/v1/admin/billing/bills"};
   }
 }
 

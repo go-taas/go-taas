@@ -148,9 +148,9 @@ All management APIs belong to `taas.auth.v1.AuthService` (proto: `proto/taas/aut
 
 | RPC | HTTP | Purpose |
 | --- | --- | --- |
-| `CreateAPIKey` | `POST /api/v1/auth/api-keys` | Create a key; the response carries `api_key` (plaintext, once) + `key_id` |
-| `ListAPIKeys` | `GET /api/v1/auth/api-keys` | Paginated list of the caller's organization's keys, masked summaries only |
-| `RevokeAPIKey` | `POST /api/v1/auth/api-keys/{key_id}:revoke` | Idempotent soft revoke, ownership-checked |
+| `CreateAPIKey` | `POST /api/v1/admin/auth/api-keys` | Create a key; the response carries `api_key` (plaintext, once) + `key_id` |
+| `ListAPIKeys` | `GET /api/v1/admin/auth/api-keys` | Paginated list of the caller's organization's keys, masked summaries only |
+| `RevokeAPIKey` | `POST /api/v1/admin/auth/api-keys/{key_id}:revoke` | Idempotent soft revoke, ownership-checked |
 | `VerifyAPIKey` | gRPC only (no HTTP mapping) | Data-plane verification for the Wasm plugin, backed by the Redis positive cache |
 
 ### 4.2 Proto Changes (All Backward Compatible)
@@ -207,7 +207,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: Create API Key (name, expiry)
-    Console->>CGW: POST /api/v1/auth/api-keys
+    Console->>CGW: POST /api/v1/admin/auth/api-keys
     CGW->>Auth: CreateAPIKey (X-Organization-Id)
     Auth->>Auth: Validate name and expiry
     Auth->>Auth: Generate sk-xxx, salt, Argon2id hash
@@ -259,7 +259,7 @@ sequenceDiagram
     participant W as Wasm plugin (local cache)
 
     Admin->>Console: Revoke key (confirmed in dialog)
-    Console->>CGW: POST /api/v1/auth/api-keys/{key_id}:revoke
+    Console->>CGW: POST /api/v1/admin/auth/api-keys/{key_id}:revoke
     CGW->>Auth: RevokeAPIKey (X-Organization-Id)
     Auth->>DB: SELECT key WHERE id AND organization_id
     alt Key not found or other organization

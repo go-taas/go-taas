@@ -148,9 +148,9 @@ flowchart TD
 
 | RPC | HTTP | 用途 |
 | --- | --- | --- |
-| `CreateAPIKey` | `POST /api/v1/auth/api-keys` | 创建 Key，响应携带 `api_key`（明文，仅一次）+ `key_id` |
-| `ListAPIKeys` | `GET /api/v1/auth/api-keys` | 分页列出调用方组织的 Key，仅掩码摘要 |
-| `RevokeAPIKey` | `POST /api/v1/auth/api-keys/{key_id}:revoke` | 幂等软吊销，校验归属 |
+| `CreateAPIKey` | `POST /api/v1/admin/auth/api-keys` | 创建 Key，响应携带 `api_key`（明文，仅一次）+ `key_id` |
+| `ListAPIKeys` | `GET /api/v1/admin/auth/api-keys` | 分页列出调用方组织的 Key，仅掩码摘要 |
+| `RevokeAPIKey` | `POST /api/v1/admin/auth/api-keys/{key_id}:revoke` | 幂等软吊销，校验归属 |
 | `VerifyAPIKey` | 仅 gRPC（无 HTTP 映射） | 供 Wasm 插件进行数据面校验，以 Redis 正缓存加速 |
 
 ### 4.2 Proto 变更（全部向后兼容）
@@ -207,7 +207,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: 创建 API Key（名称、有效期）
-    Console->>CGW: POST /api/v1/auth/api-keys
+    Console->>CGW: POST /api/v1/admin/auth/api-keys
     CGW->>Auth: CreateAPIKey（X-Organization-Id）
     Auth->>Auth: 校验名称与有效期
     Auth->>Auth: 生成 sk-xxx、盐、Argon2id 哈希
@@ -259,7 +259,7 @@ sequenceDiagram
     participant W as Wasm 插件（本地缓存）
 
     Admin->>Console: 吊销 Key（对话框确认）
-    Console->>CGW: POST /api/v1/auth/api-keys/{key_id}:revoke
+    Console->>CGW: POST /api/v1/admin/auth/api-keys/{key_id}:revoke
     CGW->>Auth: RevokeAPIKey（X-Organization-Id）
     Auth->>DB: SELECT key WHERE id AND organization_id
     alt Key 不存在或属于其他组织

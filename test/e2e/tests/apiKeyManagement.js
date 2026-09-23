@@ -49,7 +49,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name: `e2e-key-${browser.globals.runId}`}
     }, (res) => {
@@ -64,7 +64,7 @@ module.exports = {
     // A second create must never return the same plaintext (AC1).
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name: `e2e-key2-${browser.globals.runId}`}
     }, (res) => {
@@ -81,7 +81,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name: `e2e-list-${browser.globals.runId}`}
     }, (res) => {
@@ -90,7 +90,7 @@ module.exports = {
       const keyId = created.keyId;
 
       api.request(browser, {
-        path: '/api/v1/auth/api-keys?page.offset=0&page.limit=20',
+        path: '/api/v1/admin/auth/api-keys?page.offset=0&page.limit=20',
         org
       }, (res2) => {
         const body = api.assertOk(browser, res2, 'list keys');
@@ -129,7 +129,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name: `e2e-revoke-${browser.globals.runId}`}
     }, (res) => {
@@ -138,7 +138,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: `/api/v1/auth/api-keys/${keyId}:revoke`,
+        path: `/api/v1/admin/auth/api-keys/${keyId}:revoke`,
         org,
         body: {}
       }, (res2) => {
@@ -147,7 +147,7 @@ module.exports = {
         // Idempotent second revoke (AC6).
         api.request(browser, {
           method: 'POST',
-          path: `/api/v1/auth/api-keys/${keyId}:revoke`,
+          path: `/api/v1/admin/auth/api-keys/${keyId}:revoke`,
           org,
           body: {}
         }, (res3) => {
@@ -157,7 +157,7 @@ module.exports = {
         // Default list keeps the revoked row for audit (FR2.3) with
         // revoked=true and revoked_at set.
         api.request(browser, {
-          path: '/api/v1/auth/api-keys?page.offset=0&page.limit=20',
+          path: '/api/v1/admin/auth/api-keys?page.offset=0&page.limit=20',
           org
         }, (res4) => {
           const body = api.assertOk(browser, res4, 'list after revoke');
@@ -172,7 +172,7 @@ module.exports = {
 
         // activeOnly filters the revoked key out server-side.
         api.request(browser, {
-          path: '/api/v1/auth/api-keys?page.offset=0&page.limit=20&activeOnly=true',
+          path: '/api/v1/admin/auth/api-keys?page.offset=0&page.limit=20&activeOnly=true',
           org
         }, (res5) => {
           const body = api.assertOk(browser, res5, 'list activeOnly');
@@ -189,7 +189,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org: orgA,
       body: {name: `e2e-xorg-${browser.globals.runId}`}
     }, (res) => {
@@ -198,7 +198,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: `/api/v1/auth/api-keys/${keyId}:revoke`,
+        path: `/api/v1/admin/auth/api-keys/${keyId}:revoke`,
         org: orgB,
         body: {}
       }, (res2) => {
@@ -208,7 +208,7 @@ module.exports = {
 
       // The key is still intact in its owning org.
       api.request(browser, {
-        path: '/api/v1/auth/api-keys?page.offset=0&page.limit=20',
+        path: '/api/v1/admin/auth/api-keys?page.offset=0&page.limit=20',
         org: orgA
       }, (res3) => {
         const body = api.assertOk(browser, res3, 'list org A after cross-org revoke attempt');
@@ -219,7 +219,7 @@ module.exports = {
 
       // Org B's list never shows org A's keys.
       api.request(browser, {
-        path: '/api/v1/auth/api-keys?page.offset=0&page.limit=20',
+        path: '/api/v1/admin/auth/api-keys?page.offset=0&page.limit=20',
         org: orgB
       }, (res4) => {
         const body = api.assertOk(browser, res4, 'list org B');
@@ -235,7 +235,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name}
     }, (res) => {
@@ -243,7 +243,7 @@ module.exports = {
 
       api.request(browser, {
         method: 'POST',
-        path: '/api/v1/auth/api-keys',
+        path: '/api/v1/admin/auth/api-keys',
         org,
         body: {name}
       }, (res2) => {
@@ -260,7 +260,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name: `e2e-past-${browser.globals.runId}`, expiresAt: String(past)}
     }, (res) => {
@@ -270,7 +270,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org,
       body: {name: `e2e-future-${browser.globals.runId}`, expiresAt: String(future)}
     }, (res) => {
@@ -282,7 +282,7 @@ module.exports = {
   'validation: empty name is rejected; missing org header is unauthorized': function (browser) {
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       org: browser.globals.orgA,
       body: {name: ''}
     }, (res) => {
@@ -291,7 +291,7 @@ module.exports = {
 
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/auth/api-keys',
+      path: '/api/v1/admin/auth/api-keys',
       body: {name: 'no-org-header'}
     }, (res) => {
       // 10001 UNAUTHORIZED: the transitional org header is required.

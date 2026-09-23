@@ -189,15 +189,15 @@ flowchart TD
 
 | 服务 | RPC | HTTP | 用途 |
 | --- | --- | --- | --- |
-| `taas.model.v1` | `RegisterModel` | `POST /api/v1/models` | 注册模型版本 |
-| `taas.model.v1` | `ListModels` | `GET /api/v1/models` | 分页目录列表 |
-| `taas.model.v1` | `GetModel` | `GET /api/v1/models/{model_id}` | 含版本列表的详情 |
-| `taas.model.v1` | `DeleteModel` | `DELETE /api/v1/models/{model_id}` | 移除目录条目（引用检查） |
-| `taas.infer.v1` | `CreateInferenceService` | `POST /api/v1/inference-services` | 一键部署 |
-| `taas.infer.v1` | `ListInferenceServices` | `GET /api/v1/inference-services` | 含状态的服务列表 |
-| `taas.infer.v1` | `GetInferenceService` | `GET /api/v1/inference-services/{service_id}` | 含端点的详情 |
-| `taas.infer.v1` | `ScaleInferenceService` | `POST /api/v1/inference-services/{service_id}:scale` | 仅改副本数 |
-| `taas.infer.v1` | `DeleteInferenceService` | `DELETE /api/v1/inference-services/{service_id}` | 退役服务（幂等） |
+| `taas.model.v1` | `RegisterModel` | `POST /api/v1/admin/models` | 注册模型版本 |
+| `taas.model.v1` | `ListModels` | `GET /api/v1/admin/models` | 分页目录列表 |
+| `taas.model.v1` | `GetModel` | `GET /api/v1/admin/models/{model_id}` | 含版本列表的详情 |
+| `taas.model.v1` | `DeleteModel` | `DELETE /api/v1/admin/models/{model_id}` | 移除目录条目（引用检查） |
+| `taas.infer.v1` | `CreateInferenceService` | `POST /api/v1/admin/inference-services` | 一键部署 |
+| `taas.infer.v1` | `ListInferenceServices` | `GET /api/v1/admin/inference-services` | 含状态的服务列表 |
+| `taas.infer.v1` | `GetInferenceService` | `GET /api/v1/admin/inference-services/{service_id}` | 含端点的详情 |
+| `taas.infer.v1` | `ScaleInferenceService` | `POST /api/v1/admin/inference-services/{service_id}:scale` | 仅改副本数 |
+| `taas.infer.v1` | `DeleteInferenceService` | `DELETE /api/v1/admin/inference-services/{service_id}` | 退役服务（幂等） |
 
 ### 4.2 传输格式（沿用既有约定）
 
@@ -306,7 +306,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: 部署表单（模型、版本、镜像、加速器、副本数）
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService (X-Organization-Id)
     Infer->>DB: 查询模型 + 版本、镜像、名称唯一性
     Infer->>DB: INSERT inference_services (state=pending)
@@ -321,7 +321,7 @@ sequenceDiagram
     CTRL->>MQ: 发布状态 running + 端点
     MQ->>Infer: 消费状态
     Infer->>DB: UPDATE state=running, endpoints
-    Console->>CGW: GET /api/v1/inference-services/{service_id}
+    Console->>CGW: GET /api/v1/admin/inference-services/{service_id}
     Infer-->>CGW: state=running, endpoints
     Console-->>Admin: 端点 + 复制 + curl 片段
 ```
@@ -340,7 +340,7 @@ sequenceDiagram
     participant K8s as Kubernetes
 
     Admin->>Console: 以缺失的权重路径部署
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService
     Infer->>Infer: 语法检查通过（存在性归 Controller）
     Infer->>MQ: 发布 upsert
@@ -369,14 +369,14 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: 扩缩容至 4 副本
-    Console->>CGW: POST /api/v1/inference-services/{id}:scale
+    Console->>CGW: POST /api/v1/admin/inference-services/{id}:scale
     CGW->>Infer: ScaleInferenceService
     Infer->>DB: UPDATE replicas=4（仅规格，不动状态）
     Infer->>MQ: 发布 upsert（replicas=4）
     Infer-->>CGW: OK
     MQ->>CTRL: 消费，扩缩 Deployment
     Admin->>Console: 删除服务（已确认）
-    Console->>CGW: DELETE /api/v1/inference-services/{id}
+    Console->>CGW: DELETE /api/v1/admin/inference-services/{id}
     CGW->>Infer: DeleteInferenceService
     Infer->>DB: UPDATE state=terminated（幂等）
     Infer->>MQ: 发布 delete

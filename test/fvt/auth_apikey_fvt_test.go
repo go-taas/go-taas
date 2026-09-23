@@ -110,7 +110,7 @@ func TestFVTAPIKeyLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	// AC1: create returns a well-formed plaintext key exactly once.
-	code, body := env.call(t, http.MethodPost, "/api/v1/auth/api-keys", map[string]any{"name": "fvt key"}, "org-fvt")
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/auth/api-keys", map[string]any{"name": "fvt key"}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	plaintext, _ := body["apiKey"].(string)
 	require.Regexp(t, `^sk-[A-Za-z0-9]{43}$`, plaintext)
@@ -126,10 +126,10 @@ func TestFVTAPIKeyLifecycle(t *testing.T) {
 
 	// AC3: list shows masked summaries with correct pagination totals.
 	for _, name := range []string{"second", "third"} {
-		code, body = env.call(t, http.MethodPost, "/api/v1/auth/api-keys", map[string]any{"name": name}, "org-fvt")
+		code, body = env.call(t, http.MethodPost, "/api/v1/admin/auth/api-keys", map[string]any{"name": name}, "org-fvt")
 		require.Equal(t, http.StatusOK, code, "body: %v", body)
 	}
-	code, body = env.call(t, http.MethodGet, "/api/v1/auth/api-keys?page.offset=0&page.limit=2", nil, "org-fvt")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/auth/api-keys?page.offset=0&page.limit=2", nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	pageMeta, _ := body["pageMeta"].(map[string]any)
 	require.NotNil(t, pageMeta)
@@ -144,28 +144,28 @@ func TestFVTAPIKeyLifecycle(t *testing.T) {
 	}
 
 	// AC6: cross-org isolation — the other org sees none of these keys.
-	code, body = env.call(t, http.MethodGet, "/api/v1/auth/api-keys", nil, "org-other")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/auth/api-keys", nil, "org-other")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	pageMeta, _ = body["pageMeta"].(map[string]any)
 	assert.EqualValues(t, "0", fmt.Sprint(pageMeta["total"]))
 
 	// AC5: revoke evicts the cache and subsequent verify is rejected.
-	code, body = env.call(t, http.MethodPost, fmt.Sprintf("/api/v1/auth/api-keys/%s:revoke", keyID), map[string]any{}, "org-fvt")
+	code, body = env.call(t, http.MethodPost, fmt.Sprintf("/api/v1/admin/auth/api-keys/%s:revoke", keyID), map[string]any{}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 
 	_, err = env.authSvc.VerifyAPIKey(ctx, &authv1.VerifyAPIKeyRequest{KeyDigest: auth.KeyDigest(plaintext)})
 	require.Error(t, err)
 
 	// AC6: revoke is idempotent.
-	code, body = env.call(t, http.MethodPost, fmt.Sprintf("/api/v1/auth/api-keys/%s:revoke", keyID), map[string]any{}, "org-fvt")
+	code, body = env.call(t, http.MethodPost, fmt.Sprintf("/api/v1/admin/auth/api-keys/%s:revoke", keyID), map[string]any{}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 
 	// AC6: cross-org revoke is not found.
-	code, _ = env.call(t, http.MethodPost, "/api/v1/auth/api-keys/no-such-key:revoke", map[string]any{}, "org-other")
+	code, _ = env.call(t, http.MethodPost, "/api/v1/admin/auth/api-keys/no-such-key:revoke", map[string]any{}, "org-other")
 	assert.Equal(t, http.StatusInternalServerError, code) // business code in body; see architecture 4.5
 
 	// Expiry validation: past expiry is rejected at create time (AC7).
-	code, body = env.call(t, http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/auth/api-keys", map[string]any{
 		"name": "expired", "expiresAt": time.Now().Add(-time.Hour).Unix(),
 	}, "org-fvt")
 	assert.NotEqual(t, http.StatusOK, code, "past expiry must be rejected: %v", body)

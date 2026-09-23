@@ -53,7 +53,7 @@ export default function ApiKeysPage() {
     setError('');
     try {
       const data = await api.get<ListResponse>(
-        `/api/v1/auth/api-keys?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
+        `/api/v1/admin/auth/api-keys?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
         orgId,
       );
       setKeys(data.keys || []);
@@ -206,7 +206,7 @@ function CreateDialog({
         body.expiresAt = String(Math.floor(Date.now() / 1000) + days * 86400);
       }
       const res = await api.post<CreateResponse>(
-        '/api/v1/auth/api-keys',
+        '/api/v1/admin/auth/api-keys',
         orgId,
         body,
       );
@@ -332,7 +332,7 @@ function RevokeDialog({
     setSubmitting(true);
     setError('');
     try {
-      await api.post(`/api/v1/auth/api-keys/${apiKey.keyId}:revoke`, orgId);
+      await api.post(`/api/v1/admin/auth/api-keys/${apiKey.keyId}:revoke`, orgId);
       onRevoked();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : 'failed to revoke key');

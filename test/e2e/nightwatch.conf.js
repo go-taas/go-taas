@@ -25,8 +25,31 @@
 //                      `chromedriver` package bundled with this project)
 
 const path = require('path');
+const os = require('os');
+const fs = require('fs');
 
 const baseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:9091';
+
+// Snap-confined Chromium redirects --user-data-dir under /tmp into its
+// private ~/snap/chromium/common/chromium profile, so chromedriver can
+// never find the DevToolsActivePort file it expects next to the requested
+// directory. A profile directory inside the snap-writable home keeps the
+// file where chromedriver looks. Non-snap Chrome/Chromium ignores this
+// and works with any path, so the flag is harmless there.
+const snapWritableHome = path.join(os.homedir(), 'snap', 'chromium', 'common');
+let chromeArgs;
+if (fs.existsSync(snapWritableHome)) {
+  const profileDir = fs.mkdtempSync(path.join(snapWritableHome, 'e2e-profile-'));
+  chromeArgs = [
+    '--headless=new',
+    '--no-sandbox',
+    '--disable-gpu',
+    '--disable-dev-shm-usage',
+    `--user-data-dir=${profileDir}`
+  ];
+} else {
+  chromeArgs = ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage'];
+}
 
 let chromedriverPath;
 try {
@@ -68,7 +91,7 @@ module.exports = {
         browserName: 'chrome',
         'goog:chromeOptions': {
           w3c: true,
-          args: ['--headless=new', '--no-sandbox', '--disable-gpu', '--disable-dev-shm-usage']
+          args: chromeArgs
         }
       },
       screenshots: {
