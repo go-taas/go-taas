@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/fsnotify/fsnotify"
 	"github.com/spf13/viper"
@@ -103,6 +104,27 @@ func ParseConfigs(pathPattern string) {
 func (c *Configuration) applyDefaults() {
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2
+	}
+	if c.Metering.Settlement.Interval == 0 {
+		c.Metering.Settlement.Interval = 60 * time.Second
+	}
+	if c.Metering.Settlement.GracePeriod == 0 {
+		c.Metering.Settlement.GracePeriod = 5 * time.Minute
+	}
+	if c.Metering.Settlement.Workers == 0 {
+		c.Metering.Settlement.Workers = 2
+	}
+	if c.Metering.Retention.VoucherTTL == 0 {
+		c.Metering.Retention.VoucherTTL = 2160 * time.Hour
+	}
+	if c.Metering.Retention.BatchSize == 0 {
+		c.Metering.Retention.BatchSize = 1000
+	}
+	if c.Metering.Retention.Interval == 0 {
+		c.Metering.Retention.Interval = time.Hour
+	}
+	if c.Metering.EventConsumer.Workers == 0 {
+		c.Metering.EventConsumer.Workers = 2
 	}
 }
 

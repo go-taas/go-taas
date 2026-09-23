@@ -123,6 +123,52 @@ export interface WarmupTaskSummary {
   updatedAt: string;
 }
 
+// ---- metering ----
+
+export interface TokenUsage {
+  promptTokens: string;
+  completionTokens: string;
+  cachedTokens: string;
+  reasoningTokens: string;
+}
+
+export interface VoucherSummary {
+  voucherId: string;
+  requestId: string;
+  organizationId: string;
+  modelId: string;
+  usage?: TokenUsage;
+  completedAt: string;
+  apiKeyId: string;
+  serviceId: string;
+  settled: boolean;
+}
+
+export interface UsageSummaryRow {
+  groupKey: string;
+  promptTokens: string;
+  completionTokens: string;
+  cachedTokens: string;
+  reasoningTokens: string;
+  requestCount: string;
+  settledHours: string;
+  pendingHours: string;
+}
+
+export interface UsageRecordSummary {
+  usageRecordId: string;
+  organizationId: string;
+  apiKeyId: string;
+  periodStart: string;
+  periodEnd: string;
+  promptTokens: string;
+  completionTokens: string;
+  cachedTokens: string;
+  reasoningTokens: string;
+  requestCount: string;
+  settledAt: string;
+}
+
 export function formatTime(unixSeconds: string | number | undefined): string {
   if (unixSeconds === undefined || unixSeconds === null || unixSeconds === '0') return '—';
   const n = typeof unixSeconds === 'string' ? parseInt(unixSeconds, 10) : unixSeconds;

@@ -1,6 +1,7 @@
 package errors
 
 // messages maps each business code to its canonical, client-safe message.
+//
 //nolint:gosec // Canonical client-facing messages are static labels, not secrets.
 var messages = map[Code]string{
 	CodeOK: "OK",
@@ -44,8 +45,10 @@ var messages = map[Code]string{
 	CodeInferEngineUnsupported:   "inference engine unsupported",
 
 	// metering
-	CodeMeteringEventInvalid: "metering event invalid",
-	CodeMeteringVoucherError: "metering voucher error",
+	CodeMeteringEventInvalid:    "metering event invalid",
+	CodeMeteringVoucherError:    "metering voucher error",
+	CodeMeteringVoucherNotFound: "metering voucher not found",
+	CodeMeteringRangeInvalid:    "metering range invalid",
 
 	// billing
 	CodePriceNotFound:     "price not found",

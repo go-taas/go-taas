@@ -2,6 +2,7 @@ syntax = "proto3";
 
 package taas.metering.v1;
 
+import "google/api/annotations.proto";
 import "taas/common/v1/common.proto";
 
 option go_package = "github.com/go-taas/go-taas/proto/taas/metering/v1;meteringv1";
@@ -12,11 +13,36 @@ option go_package = "github.com/go-taas/go-taas/proto/taas/metering/v1;meteringv
 service MeteringService {
   // IngestMeteringEvent records one token-usage event. It is called by
   // the gateway's Wasm plugin through the message queue (or directly in
-  // tests).
+  // tests); it has no HTTP binding (cluster-internal surface).
   rpc IngestMeteringEvent(IngestMeteringEventRequest) returns (IngestMeteringEventResponse);
 
-  // ListVouchers returns metering vouchers for auditing.
-  rpc ListVouchers(ListVouchersRequest) returns (ListVouchersResponse);
+  // ListVouchers returns metering vouchers for auditing, filtered by
+  // API key, model and time range.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListVouchers(ListVouchersRequest) returns (ListVouchersResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/metering/vouchers"};
+  }
+
+  // GetVoucher returns one metering voucher for audit drill-down.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetVoucher(GetVoucherRequest) returns (GetVoucherResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/metering/vouchers/{voucher_id}"};
+  }
+
+  // GetUsageSummary returns per-key (default) or per-model usage
+  // aggregates for the organization and time range, split into settled
+  // and pending hours.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetUsageSummary(GetUsageSummaryRequest) returns (GetUsageSummaryResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/metering/usage-summary"};
+  }
+
+  // ListUsageRecords returns settled usage records (the billing
+  // evidence view), filtered by API key and time range.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListUsageRecords(ListUsageRecordsRequest) returns (ListUsageRecordsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/metering/usage-records"};
+  }
 }
 
 message IngestMeteringEventRequest {
@@ -28,6 +54,9 @@ message IngestMeteringEventRequest {
   // token_usage carries the per-part token counts.
   TokenUsage usage = 5;
   int64 completed_at = 6;
+  // service_id optionally names the inference service that served the
+  // request.
+  string service_id = 7;
 }
 
 message TokenUsage {
@@ -47,6 +76,10 @@ message ListVouchersRequest {
   string organization_id = 2;
   int64 since = 3;
   int64 until = 4;
+  // api_key_id filters the list to one API key.
+  string api_key_id = 5;
+  // model_id filters the list to one model.
+  string model_id = 6;
 }
 
 message ListVouchersResponse {
@@ -62,4 +95,81 @@ message VoucherSummary {
   string model_id = 4;
   TokenUsage usage = 5;
   int64 completed_at = 6;
+  // api_key_id is the API Key that made the request.
+  string api_key_id = 7;
+  // service_id names the inference service when known.
+  string service_id = 8;
+  // settled reports whether the settlement runner has linked this
+  // voucher to a usage record.
+  bool settled = 9;
+}
+
+message GetVoucherRequest {
+  string voucher_id = 1;
+}
+
+message GetVoucherResponse {
+  taas.common.v1.Response response = 1;
+  VoucherSummary voucher = 2;
+}
+
+message GetUsageSummaryRequest {
+  // organization_id is derived from the X-Organization-Id header by the
+  // gateway; the field exists for gRPC-direct callers.
+  string organization_id = 1;
+  // since/until bound the range, unix seconds. Defaults: until = now,
+  // since = until - 24h. A range > 92 days is rejected.
+  int64 since = 2;
+  int64 until = 3;
+  // group_by selects the aggregation key: "api_key" (default) or
+  // "model".
+  string group_by = 4;
+}
+
+message UsageSummaryRow {
+  // group_key is the api_key_id or model_id the row aggregates over.
+  string group_key = 1;
+  int64 prompt_tokens = 2;
+  int64 completion_tokens = 3;
+  int64 cached_tokens = 4;
+  int64 reasoning_tokens = 5;
+  int64 request_count = 6;
+  // settled_hours/pending_hours count the distinct hour buckets that
+  // are fully settled vs still pending for this group.
+  int64 settled_hours = 7;
+  int64 pending_hours = 8;
+}
+
+message GetUsageSummaryResponse {
+  taas.common.v1.Response response = 1;
+  repeated UsageSummaryRow rows = 2;
+}
+
+message ListUsageRecordsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string organization_id = 2;
+  int64 since = 3;
+  int64 until = 4;
+  // api_key_id filters the records to one API key.
+  string api_key_id = 5;
+}
+
+message UsageRecordSummary {
+  string usage_record_id = 1;
+  string organization_id = 2;
+  string api_key_id = 3;
+  int64 period_start = 4;
+  int64 period_end = 5;
+  int64 prompt_tokens = 6;
+  int64 completion_tokens = 7;
+  int64 cached_tokens = 8;
+  int64 reasoning_tokens = 9;
+  int64 request_count = 10;
+  int64 settled_at = 11;
+}
+
+message ListUsageRecordsResponse {
+  taas.common.v1.Response response = 1;
+  repeated UsageRecordSummary records = 2;
+  taas.common.v1.PageMeta page_meta = 3;
 }

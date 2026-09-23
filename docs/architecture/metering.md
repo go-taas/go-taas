@@ -398,7 +398,7 @@ The existing `metering` config section (currently `bufferSize` / `flushInterval`
 
 Rules:
 
-- `Configuration.applyDefaults` fills the defaults above when unset (the `image.warmupStatusConsumer` pattern); `Validate` gains: settlement/retention intervals and grace non-negative, workers non-negative, `voucherTTL` non-negative, `batchSize` > 0.
+- `Configuration.applyDefaults` fills the defaults above when unset (the `image.warmupStatusConsumer` pattern); `Validate` gains: settlement/retention intervals and grace non-negative, workers non-negative, `voucherTTL` non-negative, `batchSize` non-negative (0 falls back to the default via `applyDefaults`).
 - `configs/server.yaml` and `configs/config.yaml` gain the two subsections with the default values, documented inline.
 - The existing `metering.bufferSize` / `flushInterval` keys stay (unused, documented as reserved for the future Redis buffer) — removing them would break existing deployments' config files for no gain.
 

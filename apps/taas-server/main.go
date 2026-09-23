@@ -88,6 +88,15 @@ func main() {
 	if runner := image.NewWarmupStatusConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
+	if runner := metering.NewEventConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := metering.NewSettlementRunnerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := metering.NewRetentionRunnerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
 
 	srv.Serve()
 }

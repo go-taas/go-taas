@@ -105,9 +105,55 @@ type AuthConfig struct {
 // MeteringConfig holds metering-module specific settings.
 type MeteringConfig struct {
 	// BufferSize is the number of metering events buffered before flush.
+	// Reserved for the future Redis metering buffer (deferred; unused at
+	// v1 — the MQ + DB path is sufficient at current scale).
 	BufferSize int `mapstructure:"bufferSize"`
 	// FlushInterval bounds how long events may wait in the buffer.
+	// Reserved for the future Redis metering buffer (deferred).
 	FlushInterval time.Duration `mapstructure:"flushInterval"`
+	// Settlement configures the hourly settlement runner.
+	Settlement MeteringSettlementConfig `mapstructure:"settlement"`
+	// Retention configures the voucher retention cleanup runner.
+	Retention MeteringRetentionConfig `mapstructure:"retention"`
+	// EventConsumer configures the metering.events MQ consumer.
+	EventConsumer MeteringEventConsumerConfig `mapstructure:"eventConsumer"`
+}
+
+// MeteringSettlementConfig holds the hourly settlement runner settings.
+type MeteringSettlementConfig struct {
+	// Enabled turns the settlement runner on or off (incident-triage
+	// kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Interval is the ticker period between settlement passes.
+	Interval time.Duration `mapstructure:"interval"`
+	// GracePeriod is the extra wait after an hour closes before it is
+	// settlement-eligible (the late-arrival window).
+	GracePeriod time.Duration `mapstructure:"gracePeriod"`
+	// Workers is the number of concurrent bucket settlement workers.
+	Workers int `mapstructure:"workers"`
+}
+
+// MeteringRetentionConfig holds the voucher retention runner settings.
+type MeteringRetentionConfig struct {
+	// Enabled turns the retention runner on or off (incident-triage
+	// kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// VoucherTTL is how long settled vouchers are kept before deletion.
+	VoucherTTL time.Duration `mapstructure:"voucherTTL"`
+	// BatchSize is the number of rows deleted per retention pass.
+	BatchSize int `mapstructure:"batchSize"`
+	// Interval is the ticker period between retention passes.
+	Interval time.Duration `mapstructure:"interval"`
+}
+
+// MeteringEventConsumerConfig holds the metering.events consumer
+// Runner settings, mirroring infer.statusConsumer.
+type MeteringEventConsumerConfig struct {
+	// Enabled turns the event consumer Runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent event handlers.
+	Workers int `mapstructure:"workers"`
 }
 
 // BillingConfig holds billing-module specific settings.
@@ -223,6 +269,27 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Image.WarmupStatusConsumer.Workers < 0 {
 		return &FieldError{Field: "image.warmupStatusConsumer.workers", Reason: "must not be negative"}
+	}
+	if c.Metering.Settlement.Interval < 0 {
+		return &FieldError{Field: "metering.settlement.interval", Reason: "must not be negative"}
+	}
+	if c.Metering.Settlement.GracePeriod < 0 {
+		return &FieldError{Field: "metering.settlement.gracePeriod", Reason: "must not be negative"}
+	}
+	if c.Metering.Settlement.Workers < 0 {
+		return &FieldError{Field: "metering.settlement.workers", Reason: "must be non-negative"}
+	}
+	if c.Metering.Retention.VoucherTTL < 0 {
+		return &FieldError{Field: "metering.retention.voucherTTL", Reason: "must not be negative"}
+	}
+	if c.Metering.Retention.BatchSize < 0 {
+		return &FieldError{Field: "metering.retention.batchSize", Reason: "must not be negative"}
+	}
+	if c.Metering.Retention.Interval < 0 {
+		return &FieldError{Field: "metering.retention.interval", Reason: "must not be negative"}
+	}
+	if c.Metering.EventConsumer.Workers < 0 {
+		return &FieldError{Field: "metering.eventConsumer.workers", Reason: "must be non-negative"}
 	}
 	return nil
 }

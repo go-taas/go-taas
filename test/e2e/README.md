@@ -9,6 +9,8 @@ against the local docker compose stack.
 | --- | --- | --- |
 | API key lifecycle | feature-01 `api-key-management` | `tests/apiKeyManagement.js` |
 | Model catalog & one-click deployment | feature-02 `model-catalog-deployment` | `tests/modelCatalogDeployment.js` |
+| Engine image management | feature-03 `image-management` | `tests/imageManagement.js` |
+| Token metering & usage | feature-04 `metering` | `tests/usageMetering.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md` and

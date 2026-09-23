@@ -47,8 +47,29 @@ auth:
   autoRegister: true
 
 metering:
+  # bufferSize/flushInterval are reserved for the future Redis metering
+  # buffer (deferred; the MQ + DB path is used at v1).
   bufferSize: 1024
   flushInterval: 5s
+  # settlement aggregates complete past hours into usage_records and
+  # publishes settlement events to billing.settlements.
+  settlement:
+    enabled: true
+    interval: 60s
+    gracePeriod: 5m
+    workers: 2
+  # retention deletes settled vouchers older than voucherTTL, in
+  # batches; usage records are never deleted.
+  retention:
+    enabled: true
+    voucherTTL: 2160h
+    batchSize: 1000
+    interval: 1h
+  # eventConsumer consumes metering.events from the data-plane
+  # gateway and writes vouchers.
+  eventConsumer:
+    enabled: true
+    workers: 2
 
 billing:
   settlementInterval: 1h

@@ -50,11 +50,14 @@ type modelInferEnv struct {
 // delivers them to registered subscribers: the fake controller on the
 // changes subject, the real status consumer on the status subject.
 type recordingBus struct {
-	mu      sync.Mutex
-	changes []mq.Message
-	status  []mq.Message
-	warmups []mq.Message
-	subs    map[string][]mq.Handler
+	mu       sync.Mutex
+	changes  []mq.Message
+	status   []mq.Message
+	warmups  []mq.Message
+	meter    []mq.Message
+	settle   []mq.Message
+	inFlight int
+	subs     map[string][]mq.Handler
 }
 
 func newRecordingBus() *recordingBus {
@@ -64,6 +67,7 @@ func newRecordingBus() *recordingBus {
 func (b *recordingBus) Publish(_ context.Context, subject string, body []byte, headers map[string]string) error {
 	msg := mq.Message{Subject: subject, Body: body, Headers: headers, Timestamp: time.Now()}
 	b.mu.Lock()
+	b.inFlight++
 	switch subject {
 	case mq.DefaultSubjects().InferServiceChanges:
 		b.changes = append(b.changes, msg)
@@ -71,9 +75,18 @@ func (b *recordingBus) Publish(_ context.Context, subject string, body []byte, h
 		b.status = append(b.status, msg)
 	case mq.DefaultSubjects().ImageWarmups, mq.DefaultSubjects().ImageWarmupStatus:
 		b.warmups = append(b.warmups, msg)
+	case mq.DefaultSubjects().MeteringEvents:
+		b.meter = append(b.meter, msg)
+	case mq.DefaultSubjects().Settlements:
+		b.settle = append(b.settle, msg)
 	}
 	handlers := append([]mq.Handler(nil), b.subs[subject]...)
 	b.mu.Unlock()
+	defer func() {
+		b.mu.Lock()
+		b.inFlight--
+		b.mu.Unlock()
+	}()
 	for _, h := range handlers {
 		if err := h(msg); err != nil {
 			return err

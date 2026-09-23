@@ -399,7 +399,7 @@ sequenceDiagram
 
 规则：
 
-- `Configuration.applyDefaults` 在未设置时填充上述默认值（`image.warmupStatusConsumer` 模式）；`Validate` 增加：settlement/retention 的 interval 与 grace 非负、workers 非负、`voucherTTL` 非负、`batchSize` > 0。
+- `Configuration.applyDefaults` 在未设置时填充上述默认值（`image.warmupStatusConsumer` 模式）；`Validate` 增加：settlement/retention 的 interval 与 grace 非负、workers 非负、`voucherTTL` 非负、`batchSize` 非负（0 由 `applyDefaults` 回填默认值）。
 - `configs/server.yaml` 与 `configs/config.yaml` 增加两个子节及默认值，行内注释说明。
 - 既有 `metering.bufferSize` / `flushInterval` 键保留（未使用，文档标注为未来 Redis 缓冲预留）—— 删除它们只会破坏既有部署的配置文件。
 

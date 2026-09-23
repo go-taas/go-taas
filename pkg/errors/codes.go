@@ -74,8 +74,10 @@ const (
 
 // metering module error codes.
 const (
-	CodeMeteringEventInvalid Code = 10401 // METERING_EVENT_INVALID
-	CodeMeteringVoucherError Code = 10402 // METERING_VOUCHER_ERROR
+	CodeMeteringEventInvalid    Code = 10401 // METERING_EVENT_INVALID
+	CodeMeteringVoucherError    Code = 10402 // METERING_VOUCHER_ERROR
+	CodeMeteringVoucherNotFound Code = 10403 // METERING_VOUCHER_NOT_FOUND
+	CodeMeteringRangeInvalid    Code = 10404 // METERING_RANGE_INVALID
 )
 
 // billing module error codes.

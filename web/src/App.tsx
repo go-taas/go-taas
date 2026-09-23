@@ -8,6 +8,7 @@ import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import ImagesPage from './pages/ImagesPage';
 import ImageDetailPage from './pages/ImageDetailPage';
+import UsagePage from './pages/UsagePage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -25,6 +26,7 @@ export default function App() {
             <Route path="/admin/images/:id" element={<ImageDetailPage />} />
             <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
             <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />
+            <Route path="/admin/usage" element={<UsagePage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>
@@ -63,6 +65,7 @@ const NAV_ITEMS = [
   { path: '/admin/inference-services', label: 'Inference Services' },
   { path: '/admin/images', label: 'Images' },
   { path: '/admin/api-keys', label: 'API Keys' },
+  { path: '/admin/usage', label: 'Usage' },
 ];
 
 function Sidebar() {
