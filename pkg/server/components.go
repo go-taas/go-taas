@@ -123,3 +123,6 @@ type mqComponent struct {
 func (m *mqComponent) Publish(ctx context.Context, subject string, body []byte, headers map[string]string) error {
 	return m.client.Publish(ctx, subject, body, headers)
 }
+
+// Client implements MQComponent.
+func (m *mqComponent) Client() any { return m.client }

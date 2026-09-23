@@ -10,6 +10,12 @@ mq:
   url: nats://127.0.0.1:4222
   namespace: taas-dev
 
+infer:
+  # endpointBaseURL composes the endpoint URL reported for running
+  # services. Empty means the controller falls back to the in-cluster
+  # Service DNS name.
+  endpointBaseURL: ""
+
 controller:
   workers: 4
   maxRetries: 5

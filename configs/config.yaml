@@ -53,6 +53,35 @@ metering:
 billing:
   settlementInterval: 1h
 
+infer:
+  # endpointBaseURL composes the endpoint URL reported for running
+  # services. Empty means the controller falls back to the in-cluster
+  # Service DNS name.
+  endpointBaseURL: ""
+  statusConsumer:
+    enabled: true
+    workers: 2
+
+image:
+  # registry is the static image catalog (feature #2 scope: config
+  # driven; a real registry integration arrives with feature #3).
+  registry:
+    - imageId: "img-vllm-nvidia-v063"
+      name: "ghcr.io/go-taas/vllm"
+      tag: "v0.6.3"
+      accelerator: "nvidia"
+      engine: "vllm"
+    - imageId: "img-vllm-iluvatar-v063"
+      name: "ghcr.io/go-taas/vllm-iluvatar"
+      tag: "v0.6.3"
+      accelerator: "iluvatar"
+      engine: "vllm"
+    - imageId: "img-sglang-metax-v014"
+      name: "ghcr.io/go-taas/sglang"
+      tag: "v0.1.4"
+      accelerator: "metax"
+      engine: "sglang"
+
 controller:
   workers: 4
   maxRetries: 5

@@ -101,6 +101,9 @@ type RedisComponent interface {
 type MQComponent interface {
 	// Publish sends a message to a subject.
 	Publish(ctx context.Context, subject string, body []byte, headers map[string]string) error
+	// Client returns the underlying mq.Client for services that also
+	// need to subscribe (e.g. the infer status consumer).
+	Client() any
 }
 
 // Collector is implemented by services that export custom Prometheus

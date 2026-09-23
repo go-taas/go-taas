@@ -7,8 +7,6 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/go-taas/go-taas/pkg/k8s"
-	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 )
 
@@ -67,35 +65,4 @@ func (c *Controller) Run(ctx context.Context) error {
 	case err := <-errCh:
 		return fmt.Errorf("controller: subscription failed: %w", err)
 	}
-}
-
-// k8sReconciler is the default Reconciler backed by the Kubernetes
-// clients.
-type k8sReconciler struct {
-	client *k8s.Client
-}
-
-// NewK8sReconciler builds the default Kubernetes-backed reconciler.
-func NewK8sReconciler(client *k8s.Client) Reconciler {
-	return &k8sReconciler{client: client}
-}
-
-// ApplyInferServiceChange implements Reconciler.
-func (r *k8sReconciler) ApplyInferServiceChange(_ context.Context, msg mq.Message) error {
-	logger.S().Infow("applying inference service change",
-		"subject", msg.Subject, "body_bytes", len(msg.Body))
-	// TODO: decode the desired state (workload spec, replicas, image,
-	// model mount) from msg.Body and create/update/delete the
-	// corresponding Deployment and Service through r.client.
-	return nil
-}
-
-// ApplyImageWarmup implements Reconciler.
-func (r *k8sReconciler) ApplyImageWarmup(_ context.Context, msg mq.Message) error {
-	logger.S().Infow("applying image warmup",
-		"subject", msg.Subject, "body_bytes", len(msg.Body))
-	// TODO: decode the pre-pull task (image reference, node selector)
-	// from msg.Body and create a DaemonSet job / pre-pull pod on the
-	// matching nodes through r.client.
-	return nil
 }

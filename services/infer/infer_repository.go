@@ -1,0 +1,222 @@
+package infer
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
+
+	"github.com/go-taas/go-taas/pkg/database"
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
+)
+
+// InferenceServiceRepository persists inference services on top of the
+// generic repository base. All reads and writes join an open transaction
+// via the context.
+type InferenceServiceRepository struct {
+	*database.BaseRepository[InferenceService]
+	db *database.Manager
+}
+
+// NewInferenceServiceRepository constructs an InferenceServiceRepository
+// bound to a database Manager.
+func NewInferenceServiceRepository(db *gorm.DB) *InferenceServiceRepository {
+	mgr := database.NewManager(db)
+	return &InferenceServiceRepository{
+		BaseRepository: database.NewBaseRepository[InferenceService](mgr),
+		db:             mgr,
+	}
+}
+
+// Create inserts a new inference service row. A unique violation on
+// (organization_id, name) maps to CodeInferServiceExists.
+func (r *InferenceServiceRepository) Create(ctx context.Context, svc *InferenceService) error {
+	if err := r.BaseRepository.Create(ctx, svc); err != nil {
+		if isUniqueViolation(err) {
+			return apierrors.New(apierrors.CodeInferServiceExists)
+		}
+		return err
+	}
+	return nil
+}
+
+// FindByIDAndOrganization returns the service owned by orgID. A miss
+// (including a service of another organization) maps to
+// CodeInferServiceNotFound — no cross-org existence leak.
+func (r *InferenceServiceRepository) FindByIDAndOrganization(ctx context.Context, orgID, serviceID string) (*InferenceService, error) {
+	var row InferenceService
+	err := r.DB(ctx).
+		Where("id = ? AND organization_id = ?", serviceID, orgID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// ListByOrganization returns one page of the organization's services
+// ordered by updated_at DESC (newest first) and the total count. The
+// default view excludes terminated services (AC9).
+func (r *InferenceServiceRepository) ListByOrganization(ctx context.Context, orgID string, offset, limit int, includeTerminated bool) ([]*InferenceService, int64, error) {
+	conds := []any{"organization_id = ?", orgID}
+	if !includeTerminated {
+		conds = []any{"organization_id = ? AND state != ?", orgID, StateTerminated}
+	}
+	return r.Paginate(ctx, offset, limit, conds, "updated_at DESC", "id DESC")
+}
+
+// UpdateReplicas applies a spec-only replica update (state untouched).
+func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, serviceID string, replicas int) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		res := r.DB(ctx).
+			Model(&InferenceService{}).
+			Where("id = ? AND organization_id = ?", serviceID, orgID).
+			Update("replicas", replicas)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apierrors.New(apierrors.CodeInferServiceNotFound)
+		}
+		return nil
+	})
+}
+
+// MarkTerminated sets state=terminated. It is idempotent: an
+// already-terminated service is a no-op success (AC9).
+func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, orgID, serviceID string) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		res := r.DB(ctx).
+			Model(&InferenceService{}).
+			Where("id = ? AND organization_id = ?", serviceID, orgID).
+			Updates(map[string]any{
+				"state":      StateTerminated,
+				"updated_at": time.Now().UTC(),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apierrors.New(apierrors.CodeInferServiceNotFound)
+		}
+		return nil
+	})
+}
+
+// ApplyStatus applies a controller status report: state, endpoints and
+// failure_reason. Last-write-wins is acceptable (the controller is the
+// only publisher). failure_reason is cleared on any non-failed state.
+func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string) error {
+	if endpoints == nil {
+		endpoints = []string{}
+	}
+	// Map-based Updates bypasses the field serializer, so the endpoints
+	// slice is encoded to JSON explicitly.
+	endpointsJSON, err := json.Marshal(endpoints)
+	if err != nil {
+		return err
+	}
+	fields := map[string]any{
+		"state":      state,
+		"endpoints":  string(endpointsJSON),
+		"updated_at": time.Now().UTC(),
+	}
+	if state == StateFailed && failureReason != nil {
+		fields["failure_reason"] = *failureReason
+	} else if state != StateFailed {
+		fields["failure_reason"] = nil
+	}
+	res := r.DB(ctx).
+		Model(&InferenceService{}).
+		Where("id = ?", serviceID).
+		Updates(fields)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		// Unknown service id: a deleted service's late report. The
+		// caller decides whether to log-and-skip; the repository
+		// surfaces it as not-found.
+		return apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	return nil
+}
+
+// CountByModelID counts the inference services referencing the model.
+// With excludeTerminated, terminated services do not block a model
+// delete (AC3).
+func (r *InferenceServiceRepository) CountByModelID(ctx context.Context, modelID string, excludeTerminated bool) (int64, error) {
+	conds := []any{"model_id = ?", modelID}
+	if excludeTerminated {
+		conds = []any{"model_id = ? AND state != ?", modelID, StateTerminated}
+	}
+	return r.Count(ctx, conds...)
+}
+
+// FindBlockingServiceByModel returns the first non-terminated service
+// referencing the model, for the delete-model error detail (AC3). It
+// returns nil when none exists.
+func (r *InferenceServiceRepository) FindBlockingServiceByModel(ctx context.Context, modelID string) (*InferenceService, error) {
+	var row InferenceService
+	err := r.DB(ctx).
+		Where("model_id = ? AND state != ?", modelID, StateTerminated).
+		Order("updated_at DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// NewServiceID returns a fresh UUID v4 for a new inference service.
+func NewServiceID() string { return uuid.NewString() }
+
+// NewDeleteModelGuard builds the model-module delete guard (AC3): it
+// blocks deleting a model while a non-terminated inference service
+// references it, returning 10101 with a detail naming the blocking
+// service. The guard is injected into the model service at wiring time
+// (apps/taas-server), keeping the model module free of an infer
+// dependency.
+func NewDeleteModelGuard(db *gorm.DB) func(ctx context.Context, modelID string) error {
+	repo := NewInferenceServiceRepository(db)
+	return func(ctx context.Context, modelID string) error {
+		count, err := repo.CountByModelID(ctx, modelID, true)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		}
+		blocking, err := repo.FindBlockingServiceByModel(ctx, modelID)
+		if err != nil {
+			return err
+		}
+		detail := "referenced by inference service"
+		if blocking != nil {
+			detail = fmt.Sprintf("referenced by inference service %s", blocking.Name)
+		}
+		return apierrors.Newf(apierrors.CodeModelNotFound, "%s", detail)
+	}
+}
+
+// isUniqueViolation reports whether err is a unique-constraint violation
+// across the supported dialects (PostgreSQL 23505, SQLite generic message).
+func isUniqueViolation(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "23505") ||
+		strings.Contains(msg, "UNIQUE constraint failed")
+}

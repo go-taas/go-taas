@@ -50,7 +50,7 @@ func main() {
 		logger.S().Fatalw("init kubernetes client failed", "err", err)
 	}
 
-	ctrl := controller.New(mqClient, controller.NewK8sReconciler(k8sClient))
+	ctrl := controller.New(mqClient, controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -464,7 +464,7 @@ infer:
 
 | 模块 | 文件 | 内容 |
 | --- | --- | --- |
-| `services/model` | `model_model.go` | GORM 模型 `Model`、`ModelVersion` + `TableName` |
+| `services/model` | `model_model.go` | GORM 模型 `Model`、`Version` + `TableName` |
 | | `model_repository.go` | `ModelRepository` |
 | | `service.go` | RPC 实现 |
 | `services/infer` | `infer_model.go` | GORM 模型 `InferenceService` + `TableName` |
@@ -490,7 +490,7 @@ type Model struct {
     UpdatedAt   time.Time
 }
 
-type ModelVersion struct {
+type Version struct {
     ID         string    `gorm:"primaryKey;type:uuid"`
     ModelID    string    `gorm:"type:uuid;not null;uniqueIndex:idx_model_versions_model_version,priority:1"`
     Version    string    `gorm:"size:64;not null;uniqueIndex:idx_model_versions_model_version,priority:2;index:idx_model_versions_model_created,priority:2,sort:DESC"`
@@ -505,9 +505,9 @@ type ModelVersion struct {
 - `FindByName(ctx, name string) (*Model, error)` —— 未命中 → `CodeModelNotFound`。
 - `ListModels(ctx, offset, limit int) ([]*Model, int64, error)` —— 分页，`created_at DESC`；总数供 `page_meta`。
 - `GetModel(ctx, id string) (*Model, error)` —— 未命中 → `CodeModelNotFound`。
-- `CreateVersion(ctx, v *ModelVersion) error` —— 插入；`(model_id, version)` 唯一冲突映射为 `CodeModelExists`（AC1）。
-- `ListVersionsByModel(ctx, modelID string) ([]*ModelVersion, error)` —— `created_at DESC, version DESC`（AC2）。
-- `FindVersion(ctx, modelID, version string) (*ModelVersion, error)` —— 未命中 → `CodeModelVersionNotFound`；供 `infer` 校验使用。
+- `CreateVersion(ctx, v *Version) error` —— 插入；`(model_id, version)` 唯一冲突映射为 `CodeModelExists`（AC1）。
+- `ListVersionsByModel(ctx, modelID string) ([]*Version, error)` —— `created_at DESC, version DESC`（AC2）。
+- `FindVersion(ctx, modelID, version string) (*Version, error)` —— 未命中 → `CodeModelVersionNotFound`；供 `infer` 校验使用。
 - `DeleteModel(ctx, id string) error` —— 硬删模型行（版本经 FK `ON DELETE CASCADE` 级联）。
 
 服务 RPC（`service.go`）：
@@ -554,7 +554,7 @@ type InferenceService struct {
 
 `change_publisher.go`：
 
-- `buildChangeEvent(svc *InferenceService, model *model.ModelVersion, image *image.Summary, eventType string) []byte` —— 第 4.5.1 节的 JSON。
+- `buildChangeEvent(svc *InferenceService, model *model.Version, image *image.Summary, eventType string) []byte` —— 第 4.5.1 节的 JSON。
 - `publishChange(ctx, svc mq.Client, evt changeEvent) error` —— `Publish(ctx, subjects.InferServiceChanges, body, headers)`；出错时 RPC 在**回滚期望状态插入之后**返回 `CodeInternal`（先发布后提交 + 补偿删除，保持「已发布 ⇒ 已持久化」不变式；更简单的替代 —— 在数据库事务内发布 —— 被否决，因为提交失败会留下无支撑的消息）。
 
 `status_consumer.go`：

@@ -5,6 +5,8 @@
 package main
 
 import (
+	"gorm.io/gorm"
+
 	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
@@ -59,12 +61,26 @@ func main() {
 	}
 
 	srv.RegisterService(auth.New(srv.Components()))
-	srv.RegisterService(model.New(srv.Components()))
+	modelSvc := model.New(srv.Components())
+	srv.RegisterService(modelSvc)
 	srv.RegisterService(image.New(srv.Components()))
 	srv.RegisterService(infer.New(srv.Components()))
 	srv.RegisterService(metering.New(srv.Components()))
 	srv.RegisterService(billing.New(srv.Components()))
 
+	// The delete-model reference guard needs the infer repository; wire
+	// it after both services are registered (AC3). The components are
+	// only available after Init, so both wirings happen there.
 	srv.Init()
+
+	if dbComponent := srv.Components().DB(); dbComponent != nil {
+		if gormDB, ok := dbComponent.GormDB().(*gorm.DB); ok {
+			modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(gormDB))
+		}
+	}
+	if runner := infer.NewStatusConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+
 	srv.Serve()
 }

@@ -69,6 +69,9 @@ type Client interface {
 type Subjects struct {
 	// InferServiceChanges carries inference-service desired-state changes.
 	InferServiceChanges string
+	// InferServiceStatus carries observed-state reports from the
+	// controller back to the infer module (state, endpoints, failures).
+	InferServiceStatus string
 	// ImageWarmups carries image warmup tasks.
 	ImageWarmups string
 	// MeteringEvents carries token usage events from the data-plane gateway.
@@ -81,6 +84,7 @@ type Subjects struct {
 func DefaultSubjects() Subjects {
 	return Subjects{
 		InferServiceChanges: "infer.services.changes",
+		InferServiceStatus:  "infer.services.status",
 		ImageWarmups:        "image.warmups",
 		MeteringEvents:      "metering.events",
 		Settlements:         "billing.settlements",

@@ -49,3 +49,27 @@ metering:
 
 billing:
   settlementInterval: 1h
+
+infer:
+  endpointBaseURL: ""
+  statusConsumer:
+    enabled: true
+    workers: 2
+
+image:
+  registry:
+    - imageId: "img-vllm-nvidia-v063"
+      name: "ghcr.io/go-taas/vllm"
+      tag: "v0.6.3"
+      accelerator: "nvidia"
+      engine: "vllm"
+    - imageId: "img-vllm-iluvatar-v063"
+      name: "ghcr.io/go-taas/vllm-iluvatar"
+      tag: "v0.6.3"
+      accelerator: "iluvatar"
+      engine: "vllm"
+    - imageId: "img-sglang-metax-v014"
+      name: "ghcr.io/go-taas/sglang"
+      tag: "v0.1.4"
+      accelerator: "metax"
+      engine: "sglang"

@@ -124,6 +124,49 @@ type ControllerConfig struct {
 	MaxRetries int `mapstructure:"maxRetries"`
 }
 
+// InferConfig holds infer-module specific settings.
+type InferConfig struct {
+	// EndpointBaseURL is the base URL the controller uses to compose
+	// inference endpoint URLs ("<base>/v1"). Empty means the controller
+	// records the in-cluster Service DNS name instead.
+	EndpointBaseURL string `mapstructure:"endpointBaseURL"`
+	// StatusConsumer controls the infer module's status-subject consumer.
+	StatusConsumer StatusConsumerConfig `mapstructure:"statusConsumer"`
+}
+
+// StatusConsumerConfig holds the kill switch and worker count of the
+// infer status consumer.
+type StatusConsumerConfig struct {
+	// Enabled turns the status consumer Runner on or off (incident-triage
+	// kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent status handlers.
+	Workers int `mapstructure:"workers"`
+}
+
+// ImageRegistryEntry is one transitional image-registry seed row. The
+// images table ships with feature #3; until then the image module serves
+// lookups from this configuration-seeded in-memory registry.
+type ImageRegistryEntry struct {
+	// ImageID is the stable image identifier used by deploy requests.
+	ImageID string `mapstructure:"imageId"`
+	// Name is the image repository name (without tag).
+	Name string `mapstructure:"name"`
+	// Tag is the image tag.
+	Tag string `mapstructure:"tag"`
+	// Accelerator names the hardware platform the image runs on
+	// (nvidia, iluvatar, metax).
+	Accelerator string `mapstructure:"accelerator"`
+	// Engine names the inference engine (vllm, sglang, ...).
+	Engine string `mapstructure:"engine"`
+}
+
+// ImageRegistryConfig holds the transitional image registry seed.
+type ImageRegistryConfig struct {
+	// Registry is the seed list of engine images.
+	Registry []ImageRegistryEntry `mapstructure:"registry"`
+}
+
 // LogConfig holds logging settings loaded from configuration files.
 type LogConfig struct {
 	// Level is the minimum log level: debug, info, warn, error.
@@ -134,15 +177,16 @@ type LogConfig struct {
 
 // Configuration is the root of the merged configuration tree.
 type Configuration struct {
-	Databases  Databases        `mapstructure:"db"`
-	Redis      Redis            `mapstructure:"redis"`
-	MQ         MQConfig         `mapstructure:"mq"`
-	Auth       AuthConfig       `mapstructure:"auth"`
-	Metering   MeteringConfig   `mapstructure:"metering"`
-	Billing    BillingConfig    `mapstructure:"billing"`
-	Controller ControllerConfig `mapstructure:"controller"`
-	Log        LogConfig        `mapstructure:"log"`
-}
+	Databases  Databases           `mapstructure:"db"`
+	Redis      Redis               `mapstructure:"redis"`
+	MQ         MQConfig            `mapstructure:"mq"`
+	Auth       AuthConfig          `mapstructure:"auth"`
+	Metering   MeteringConfig      `mapstructure:"metering"`
+	Billing    BillingConfig       `mapstructure:"billing"`
+	Controller ControllerConfig    `mapstructure:"controller"`
+	Infer      InferConfig         `mapstructure:"infer"`
+	Image      ImageRegistryConfig `mapstructure:"image"`
+	Log        LogConfig           `mapstructure:"log"`}
 
 // Validate checks semantic constraints that cannot be expressed as struct
 // tags. It returns an error describing the first violation found.
@@ -158,6 +202,9 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Auth.APIKeyHash.Time < 0 || c.Auth.APIKeyHash.MemoryMiB < 0 || c.Auth.APIKeyHash.Parallelism < 0 {
 		return &FieldError{Field: "auth.apiKeyHash", Reason: "argon2 parameters must be non-negative"}
+	}
+	if c.Infer.StatusConsumer.Workers < 0 {
+		return &FieldError{Field: "infer.statusConsumer.workers", Reason: "must not be negative"}
 	}
 	return nil
 }

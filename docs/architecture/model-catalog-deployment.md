@@ -464,7 +464,7 @@ Rules (same as the API Key feature):
 
 | Module | File | Contents |
 | --- | --- | --- |
-| `services/model` | `model_model.go` | GORM models `Model`, `ModelVersion` + `TableName` |
+| `services/model` | `model_model.go` | GORM models `Model`, `Version` + `TableName` |
 | | `model_repository.go` | `ModelRepository` |
 | | `service.go` | RPC implementations |
 | `services/infer` | `infer_model.go` | GORM model `InferenceService` + `TableName` |
@@ -490,7 +490,7 @@ type Model struct {
     UpdatedAt   time.Time
 }
 
-type ModelVersion struct {
+type Version struct {
     ID         string    `gorm:"primaryKey;type:uuid"`
     ModelID    string    `gorm:"type:uuid;not null;uniqueIndex:idx_model_versions_model_version,priority:1"`
     Version    string    `gorm:"size:64;not null;uniqueIndex:idx_model_versions_model_version,priority:2;index:idx_model_versions_model_created,priority:2,sort:DESC"`
@@ -505,9 +505,9 @@ type ModelVersion struct {
 - `FindByName(ctx, name string) (*Model, error)` — miss → `CodeModelNotFound`.
 - `ListModels(ctx, offset, limit int) ([]*Model, int64, error)` — paginated, `created_at DESC`; total count for `page_meta`.
 - `GetModel(ctx, id string) (*Model, error)` — miss → `CodeModelNotFound`.
-- `CreateVersion(ctx, v *ModelVersion) error` — insert; unique-violation on `(model_id, version)` maps to `CodeModelExists` (AC1).
-- `ListVersionsByModel(ctx, modelID string) ([]*ModelVersion, error)` — `created_at DESC, version DESC` (AC2).
-- `FindVersion(ctx, modelID, version string) (*ModelVersion, error)` — miss → `CodeModelVersionNotFound`; used by `infer`'s validation.
+- `CreateVersion(ctx, v *Version) error` — insert; unique-violation on `(model_id, version)` maps to `CodeModelExists` (AC1).
+- `ListVersionsByModel(ctx, modelID string) ([]*Version, error)` — `created_at DESC, version DESC` (AC2).
+- `FindVersion(ctx, modelID, version string) (*Version, error)` — miss → `CodeModelVersionNotFound`; used by `infer`'s validation.
 - `DeleteModel(ctx, id string) error` — hard delete of the model row (versions cascade via FK `ON DELETE CASCADE`).
 
 Service RPCs (`service.go`):
@@ -554,7 +554,7 @@ type InferenceService struct {
 
 `change_publisher.go`:
 
-- `buildChangeEvent(svc *InferenceService, model *model.ModelVersion, image *image.Summary, eventType string) []byte` — the JSON from Section 4.5.1.
+- `buildChangeEvent(svc *InferenceService, model *model.Version, image *image.Summary, eventType string) []byte` — the JSON from Section 4.5.1.
 - `publishChange(ctx, svc mq.Client, evt changeEvent) error` — `Publish(ctx, subjects.InferServiceChanges, body, headers)`; on error the RPC returns `CodeInternal` **after rolling back the desired-state insert** (publish-after-commit with compensating delete keeps the invariant "published ⇒ durable"; the simpler alternative — publish inside the DB transaction — is rejected because a commit failure would strand an unbacked message).
 
 `status_consumer.go`:
