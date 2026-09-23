@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
 
-	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
+	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
@@ -169,7 +169,7 @@ func TestServiceDeleteModelGuardBlocks(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-		svc.SetDeleteGuard(func(_ context.Context, _ string) error {
+	svc.SetDeleteGuard(func(_ context.Context, _ string) error {
 		return apierrors.Newf(apierrors.CodeModelNotFound,
 			"referenced by inference service %s", "blocked-svc")
 	})

@@ -48,7 +48,7 @@ func (c *recordingClient) Publish(_ context.Context, _ string, body []byte, head
 }
 
 func (c *recordingClient) Subscribe(context.Context, string, mq.Handler) error { return nil }
-func (c *recordingClient) Close() error                                       { return nil }
+func (c *recordingClient) Close() error                                        { return nil }
 
 func newInferTestService(t *testing.T) (*Service, *recordingClient, *gorm.DB) {
 	t.Helper()
@@ -74,7 +74,7 @@ func seedService(t *testing.T, repo *InferenceServiceRepository, org, name, stat
 		OrganizationID: org,
 		Name:           name,
 		ModelID:        "model-1",
-		ModelVersion: "v1",
+		ModelVersion:   "v1",
 		ImageID:        "img-1",
 		Replicas:       1,
 		Accelerator:    "nvidia",

@@ -27,11 +27,11 @@ const reconcileNamespace = "taas-infer"
 // changeEvent mirrors the desired-state change published by the infer
 // module (architecture Section 4.5.1).
 type changeEvent struct {
-	EventType       string `json:"event_type"`
-	ServiceID       string `json:"service_id"`
-	OrganizationID  string `json:"organization_id"`
-	Name            string `json:"name"`
-	Model           struct {
+	EventType      string `json:"event_type"`
+	ServiceID      string `json:"service_id"`
+	OrganizationID string `json:"organization_id"`
+	Name           string `json:"name"`
+	Model          struct {
 		ModelID    string `json:"model_id"`
 		Version    string `json:"version"`
 		WeightPath string `json:"weight_path"`
@@ -311,9 +311,9 @@ func buildService(evt changeEvent) *corev1.Service {
 // Service for one inference service.
 func resourceLabels(evt changeEvent) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/managed-by": "taas-controller",
+		"app.kubernetes.io/managed-by":      "taas-controller",
 		"taas.go-taas.github.io/service-id": evt.ServiceID,
-		"app": evt.Name,
+		"app":                               evt.Name,
 	}
 }
 

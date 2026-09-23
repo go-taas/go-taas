@@ -1,0 +1,17 @@
+{
+  "name": "@go-taas/e2e",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Nightwatch end-to-end suites for the go-taas control-plane gateway (compose stack).",
+  "scripts": {
+    "test": "nightwatch",
+    "test:auth": "nightwatch --tag auth",
+    "test:model": "nightwatch --tag model",
+    "test:infer": "nightwatch --tag infer"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "chromedriver": "^153.0.3",
+    "nightwatch": "^3.16.0"
+  }
+}

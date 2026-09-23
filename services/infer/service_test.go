@@ -39,12 +39,12 @@ func TestCreateInferenceServiceHappyPath(t *testing.T) {
 	modelID := seedModel(t, db, "qwen-3b", "v1")
 
 	resp, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
-		Name:          "demo-svc",
-		ModelId:       modelID,
+		Name:         "demo-svc",
+		ModelId:      modelID,
 		ModelVersion: "v1",
-		ImageId:       "img-vllm-nvidia",
-		Replicas:      2,
-		Accelerator:   "nvidia",
+		ImageId:      "img-vllm-nvidia",
+		Replicas:     2,
+		Accelerator:  "nvidia",
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.GetServiceId())

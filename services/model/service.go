@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc"
 	"gorm.io/gorm"
 
-	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
+	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"

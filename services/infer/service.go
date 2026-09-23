@@ -14,8 +14,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"gorm.io/gorm"
 
-	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
+	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"

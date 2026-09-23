@@ -186,7 +186,8 @@ type Configuration struct {
 	Controller ControllerConfig    `mapstructure:"controller"`
 	Infer      InferConfig         `mapstructure:"infer"`
 	Image      ImageRegistryConfig `mapstructure:"image"`
-	Log        LogConfig           `mapstructure:"log"`}
+	Log        LogConfig           `mapstructure:"log"`
+}
 
 // Validate checks semantic constraints that cannot be expressed as struct
 // tags. It returns an error describing the first violation found.

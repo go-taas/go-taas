@@ -20,12 +20,12 @@ import (
 
 func testChangeEvent(eventType, name string) changeEvent {
 	evt := changeEvent{
-		EventType:      eventType,
-		ServiceID:      "svc-1",
-		OrganizationID: "org-1",
-		Name:           name,
-		Replicas:       2,
-		Accelerator:    "nvidia",
+		EventType:       eventType,
+		ServiceID:       "svc-1",
+		OrganizationID:  "org-1",
+		Name:            name,
+		Replicas:        2,
+		Accelerator:     "nvidia",
 		AcceleratorType: "A100",
 	}
 	evt.Model.ModelID = "model-1"
@@ -76,9 +76,9 @@ func TestBuildService(t *testing.T) {
 // evt2Labels mirrors resourceLabels for the test event.
 func evt2Labels(evt changeEvent) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/managed-by":          "taas-controller",
-		"taas.go-taas.github.io/service-id":      evt.ServiceID,
-		"app": evt.Name,
+		"app.kubernetes.io/managed-by":      "taas-controller",
+		"taas.go-taas.github.io/service-id": evt.ServiceID,
+		"app":                               evt.Name,
 	}
 }
 

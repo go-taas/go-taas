@@ -30,11 +30,11 @@ import (
 // fvtEnv is a fully wired in-process stack: gRPC server on a real
 // listener, gateway mux in front of it, and a shared SQLite database.
 type fvtEnv struct {
-	db        *gorm.DB
-	gwSrv     *httptest.Server
-	grpcLn    net.Listener
-	grpcSrv   *grpc.Server
-	authSvc   *auth.Service
+	db      *gorm.DB
+	gwSrv   *httptest.Server
+	grpcLn  net.Listener
+	grpcSrv *grpc.Server
+	authSvc *auth.Service
 }
 
 func newFVTEnv(t *testing.T) *fvtEnv {
