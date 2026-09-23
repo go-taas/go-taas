@@ -68,7 +68,13 @@ func (r *Repository) FindByRequestID(ctx context.Context, requestID string) (*Vo
 }
 
 // FindByID returns the voucher with the given id. A miss maps to 10403.
+// Malformed (non-UUID) ids also map to 10403: they can never match a
+// stored voucher, and surfacing the storage type-cast error as an
+// internal error would leak nothing useful (D9).
 func (r *Repository) FindByID(ctx context.Context, id string) (*Voucher, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, apierrors.New(apierrors.CodeMeteringVoucherNotFound)
+	}
 	var row Voucher
 	err := r.DB(ctx).First(&row, "id = ?", id).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
