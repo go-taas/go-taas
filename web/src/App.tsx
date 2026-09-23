@@ -9,6 +9,8 @@ import ServiceDetailPage from './pages/ServiceDetailPage';
 import ImagesPage from './pages/ImagesPage';
 import ImageDetailPage from './pages/ImageDetailPage';
 import UsagePage from './pages/UsagePage';
+import PricingPage from './pages/PricingPage';
+import BillsPage from './pages/BillsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -27,6 +29,8 @@ export default function App() {
             <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
             <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />
             <Route path="/admin/usage" element={<UsagePage />} />
+            <Route path="/admin/pricing" element={<PricingPage />} />
+            <Route path="/admin/billing" element={<BillsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>
@@ -66,6 +70,8 @@ const NAV_ITEMS = [
   { path: '/admin/images', label: 'Images' },
   { path: '/admin/api-keys', label: 'API Keys' },
   { path: '/admin/usage', label: 'Usage' },
+  { path: '/admin/pricing', label: 'Pricing' },
+  { path: '/admin/billing', label: 'Bills' },
 ];
 
 function Sidebar() {

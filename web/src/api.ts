@@ -169,6 +169,59 @@ export interface UsageRecordSummary {
   settledAt: string;
 }
 
+// ---- billing ----
+
+export interface PriceTier {
+  upToTokens: string;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+}
+
+export interface PriceEntry {
+  priceId: string;
+  modelId: string;
+  acceleratorType: string;
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  cachedPricePerMillion: number;
+  currency: string;
+  effectiveFrom: string;
+  tiers: PriceTier[];
+  updatedAt: string;
+}
+
+export interface ChargeRecordSummary {
+  chargeId: string;
+  organizationId: string;
+  apiKeyId: string;
+  modelId: string;
+  acceleratorType: string;
+  periodStart: string;
+  periodEnd: string;
+  promptTokens: string;
+  completionTokens: string;
+  cachedTokens: string;
+  reasoningTokens: string;
+  requestCount: string;
+  amount: number;
+  currency: string;
+  priceId: string;
+  tierIndex: number;
+  priced: boolean;
+  chargedAt: string;
+}
+
+export interface BillSummary {
+  billId: string;
+  organizationId: string;
+  amount: number;
+  currency: string;
+  periodStart: string;
+  periodEnd: string;
+  chargeCount: string;
+  unpricedCount: string;
+}
+
 export function formatTime(unixSeconds: string | number | undefined): string {
   if (unixSeconds === undefined || unixSeconds === null || unixSeconds === '0') return '—';
   const n = typeof unixSeconds === 'string' ? parseInt(unixSeconds, 10) : unixSeconds;

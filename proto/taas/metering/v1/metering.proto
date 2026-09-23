@@ -57,6 +57,9 @@ message IngestMeteringEventRequest {
   // service_id optionally names the inference service that served the
   // request.
   string service_id = 7;
+  // accelerator_type optionally names the card type that served the
+  // request; billing resolves it on its own usage lines (feature #5).
+  string accelerator_type = 8;
 }
 
 message TokenUsage {

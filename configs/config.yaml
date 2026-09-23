@@ -72,7 +72,26 @@ metering:
     workers: 2
 
 billing:
-  settlementInterval: 1h
+  # currency is the single platform billing currency (D4); price
+  # entries, charge records and bills carry it.
+  currency: "USD"
+  # eventConsumer consumes metering.events and writes billing usage
+  # lines (feature #5).
+  eventConsumer:
+    enabled: true
+    workers: 2
+  # settlementsConsumer consumes billing.settlements and charges each
+  # settled key-hour.
+  settlementsConsumer:
+    enabled: true
+    workers: 2
+  # reconciliation is the charging safety net: it prices uncharged
+  # hours even when settlement events are lost.
+  reconciliation:
+    enabled: true
+    interval: 60s
+    gracePeriod: 5m
+    workers: 2
 
 infer:
   # endpointBaseURL composes the endpoint URL reported for running

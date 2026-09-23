@@ -126,6 +126,24 @@ func (c *Configuration) applyDefaults() {
 	if c.Metering.EventConsumer.Workers == 0 {
 		c.Metering.EventConsumer.Workers = 2
 	}
+	if c.Billing.Currency == "" {
+		c.Billing.Currency = "USD"
+	}
+	if c.Billing.EventConsumer.Workers == 0 {
+		c.Billing.EventConsumer.Workers = 2
+	}
+	if c.Billing.SettlementsConsumer.Workers == 0 {
+		c.Billing.SettlementsConsumer.Workers = 2
+	}
+	if c.Billing.Reconciliation.Interval == 0 {
+		c.Billing.Reconciliation.Interval = 60 * time.Second
+	}
+	if c.Billing.Reconciliation.GracePeriod == 0 {
+		c.Billing.Reconciliation.GracePeriod = 5 * time.Minute
+	}
+	if c.Billing.Reconciliation.Workers == 0 {
+		c.Billing.Reconciliation.Workers = 2
+	}
 }
 
 // String returns a string representation of the configuration for logging.

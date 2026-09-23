@@ -160,6 +160,42 @@ type MeteringEventConsumerConfig struct {
 type BillingConfig struct {
 	// SettlementInterval is the period between settlement runs.
 	SettlementInterval time.Duration `mapstructure:"settlementInterval"`
+	// Currency is the single platform billing currency (D4); price
+	// entries, charge records and bills carry it.
+	Currency string `mapstructure:"currency"`
+	// EventConsumer configures the billing metering.events consumer
+	// (usage-line ingestion).
+	EventConsumer BillingConsumerConfig `mapstructure:"eventConsumer"`
+	// SettlementsConsumer configures the billing.settlements consumer
+	// (the charge trigger).
+	SettlementsConsumer BillingConsumerConfig `mapstructure:"settlementsConsumer"`
+	// Reconciliation configures the charging safety-net runner.
+	Reconciliation BillingReconciliationConfig `mapstructure:"reconciliation"`
+}
+
+// BillingConsumerConfig holds the kill switch and worker count of a
+// billing MQ consumer Runner.
+type BillingConsumerConfig struct {
+	// Enabled turns the consumer Runner on or off (incident-triage
+	// kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent event handlers.
+	Workers int `mapstructure:"workers"`
+}
+
+// BillingReconciliationConfig holds the charging reconciliation runner
+// settings.
+type BillingReconciliationConfig struct {
+	// Enabled turns the reconciliation runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Interval is the ticker period between reconciliation passes.
+	Interval time.Duration `mapstructure:"interval"`
+	// GracePeriod is the extra wait after an hour closes before it is
+	// charge-eligible (mirrors metering settlement).
+	GracePeriod time.Duration `mapstructure:"gracePeriod"`
+	// Workers is the number of concurrent bucket pricing workers.
+	Workers int `mapstructure:"workers"`
 }
 
 // ControllerConfig holds controller-specific settings.
@@ -290,6 +326,27 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Metering.EventConsumer.Workers < 0 {
 		return &FieldError{Field: "metering.eventConsumer.workers", Reason: "must be non-negative"}
+	}
+	if c.Billing.Currency == "" {
+		return &FieldError{Field: "billing.currency", Reason: "must not be empty"}
+	}
+	if len(c.Billing.Currency) > 8 {
+		return &FieldError{Field: "billing.currency", Reason: "must not exceed 8 characters"}
+	}
+	if c.Billing.EventConsumer.Workers < 0 {
+		return &FieldError{Field: "billing.eventConsumer.workers", Reason: "must be non-negative"}
+	}
+	if c.Billing.SettlementsConsumer.Workers < 0 {
+		return &FieldError{Field: "billing.settlementsConsumer.workers", Reason: "must be non-negative"}
+	}
+	if c.Billing.Reconciliation.Interval < 0 {
+		return &FieldError{Field: "billing.reconciliation.interval", Reason: "must be non-negative"}
+	}
+	if c.Billing.Reconciliation.GracePeriod < 0 {
+		return &FieldError{Field: "billing.reconciliation.gracePeriod", Reason: "must be non-negative"}
+	}
+	if c.Billing.Reconciliation.Workers < 0 {
+		return &FieldError{Field: "billing.reconciliation.workers", Reason: "must be non-negative"}
 	}
 	return nil
 }

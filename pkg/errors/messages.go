@@ -51,12 +51,14 @@ var messages = map[Code]string{
 	CodeMeteringRangeInvalid:    "metering range invalid",
 
 	// billing
-	CodePriceNotFound:     "price not found",
-	CodeInsufficientFunds: "insufficient funds",
-	CodeAccountNotFound:   "account not found",
-	CodeBillNotFound:      "bill not found",
-	CodeSettlementFailed:  "settlement failed",
-	CodeHoldFailed:        "funds hold failed",
+	CodePriceNotFound:       "price not found",
+	CodeInsufficientFunds:   "insufficient funds",
+	CodeAccountNotFound:     "account not found",
+	CodeBillNotFound:        "bill not found",
+	CodeSettlementFailed:    "settlement failed",
+	CodeHoldFailed:          "funds hold failed",
+	CodePriceInvalid:        "price invalid",
+	CodeBillingRangeInvalid: "billing range invalid",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

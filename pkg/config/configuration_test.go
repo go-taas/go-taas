@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func writeTempConfig(t *testing.T, content string) string {
@@ -84,6 +85,7 @@ func TestParseConfigsSkipsHiddenFiles(t *testing.T) {
 
 func TestValidate(t *testing.T) {
 	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
 	cfg.Databases.Master.MaxOpenConns = 5
 	cfg.Databases.Master.MaxIdleConns = 6
 	if err := cfg.Validate(); err == nil {
@@ -96,6 +98,15 @@ func TestValidate(t *testing.T) {
 	cfg.Redis.MaxActive = -1
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("negative pool size should fail validation")
+	}
+	cfg = &Configuration{}
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("empty billing currency should fail validation")
+	}
+	cfg.Billing.Currency = "USD"
+	cfg.Billing.Reconciliation.Interval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative reconciliation interval should fail validation")
 	}
 }
 

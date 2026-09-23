@@ -52,6 +52,7 @@ func TestValidateAuthNegativeValues(t *testing.T) {
 	}
 	// Valid config passes.
 	cfg = &Configuration{}
+	cfg.Billing.Currency = "USD"
 	cfg.Auth.APIKeyHash = Argon2Params{Algorithm: "argon2id", Time: 1, MemoryMiB: 64, Parallelism: 1}
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("valid auth config rejected: %v", err)

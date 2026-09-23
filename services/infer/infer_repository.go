@@ -46,6 +46,34 @@ func (r *InferenceServiceRepository) Create(ctx context.Context, svc *InferenceS
 	return nil
 }
 
+// AcceleratorTypesByServiceIDs returns the accelerator type of the
+// given inference service ids. Missing ids are simply absent from the
+// result (terminated services resolve to the "default" sentinel
+// downstream). Read-only helper consumed by billing's usage-line
+// ingestion (feature #5, architecture Section 3.4).
+func (r *InferenceServiceRepository) AcceleratorTypesByServiceIDs(ctx context.Context, ids []string) (map[string]string, error) {
+	if len(ids) == 0 {
+		return map[string]string{}, nil
+	}
+	var rows []struct {
+		ID              string
+		AcceleratorType string
+	}
+	err := r.DB(ctx).
+		Model(&InferenceService{}).
+		Select("id, accelerator_type").
+		Where("id IN ?", ids).
+		Scan(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]string, len(rows))
+	for _, row := range rows {
+		out[row.ID] = row.AcceleratorType
+	}
+	return out, nil
+}
+
 // FindByIDAndOrganization returns the service owned by orgID. A miss
 // (including a service of another organization) maps to
 // CodeInferServiceNotFound — no cross-org existence leak.

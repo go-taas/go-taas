@@ -38,6 +38,13 @@ service BillingService {
   rpc ListBills(ListBillsRequest) returns (ListBillsResponse) {
     option (google.api.http) = {get: "/api/v1/admin/billing/bills"};
   }
+
+  // ListCharges returns charge records (the billing evidence view),
+  // filtered by API key, model and time range.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListCharges(ListChargesRequest) returns (ListChargesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/billing/charges"};
+  }
 }
 
 message SetPriceRequest {
@@ -48,15 +55,30 @@ message SetPriceRequest {
   double input_price_per_million = 3;
   double output_price_per_million = 4;
   string currency = 5;
+  // cached_price_per_million is the price of one million cache-hit
+  // tokens (default 0).
+  double cached_price_per_million = 6;
+  // effective_from is the version's start of validity, unix seconds;
+  // 0 means now.
+  int64 effective_from = 7;
+  // tiers is the optional ordered volume-tier list; empty means flat.
+  repeated PriceTier tiers = 8;
 }
 
 message SetPriceResponse {
   taas.common.v1.Response response = 1;
+  // price_id identifies the stored version (idempotent on the cell
+  // version key).
+  string price_id = 2;
 }
 
 message ListPricesRequest {
   taas.common.v1.PageRequest page = 1;
   string model_id = 2;
+  // accelerator_type filters the matrix to one card type.
+  string accelerator_type = 3;
+  // include_history returns every version instead of the current view.
+  bool include_history = 4;
 }
 
 message ListPricesResponse {
@@ -72,6 +94,26 @@ message PriceEntry {
   double output_price_per_million = 4;
   string currency = 5;
   int64 updated_at = 6;
+  // price_id identifies the stored version.
+  string price_id = 7;
+  // cached_price_per_million is the cache-hit token rate.
+  double cached_price_per_million = 8;
+  // effective_from is the version's start of validity, unix seconds.
+  int64 effective_from = 9;
+  // tiers is the ordered volume-tier list; empty means flat.
+  repeated PriceTier tiers = 10;
+}
+
+// PriceTier is one volume tier: rates apply once the organization's
+// month-to-date cumulative token volume for (model, card) exceeds the
+// previous tiers' bounds. The last tier has up_to_tokens = 0
+// (unbounded).
+message PriceTier {
+  // up_to_tokens is the exclusive upper bound of the tier, in
+  // cumulative monthly tokens; 0 on the last tier means unbounded.
+  int64 up_to_tokens = 1;
+  double input_price_per_million = 2;
+  double output_price_per_million = 3;
 }
 
 message GetBalanceRequest {
@@ -106,4 +148,50 @@ message BillSummary {
   string currency = 4;
   int64 period_start = 5;
   int64 period_end = 6;
+  // charge_count is the number of charge records in the month.
+  int64 charge_count = 7;
+  // unpriced_count is the number of unpriced charge records (amount 0).
+  int64 unpriced_count = 8;
+}
+
+message ListChargesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string organization_id = 2;
+  int64 since = 3;
+  int64 until = 4;
+  // api_key_id filters the list to one API key.
+  string api_key_id = 5;
+  // model_id filters the list to one model.
+  string model_id = 6;
+}
+
+message ListChargesResponse {
+  taas.common.v1.Response response = 1;
+  repeated ChargeRecordSummary charges = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+// ChargeRecordSummary is one (api_key, model, card, hour) charge group.
+message ChargeRecordSummary {
+  string charge_id = 1;
+  string organization_id = 2;
+  string api_key_id = 3;
+  string model_id = 4;
+  string accelerator_type = 5;
+  int64 period_start = 6;
+  int64 period_end = 7;
+  int64 prompt_tokens = 8;
+  int64 completion_tokens = 9;
+  int64 cached_tokens = 10;
+  int64 reasoning_tokens = 11;
+  int64 request_count = 12;
+  double amount = 13;
+  string currency = 14;
+  // price_id names the applied price version; empty when unpriced.
+  string price_id = 15;
+  // tier_index is the applied tier; -1 means flat rate.
+  int32 tier_index = 16;
+  // priced reports whether a price applied (false means amount 0).
+  bool priced = 17;
+  int64 charged_at = 18;
 }

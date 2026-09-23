@@ -97,6 +97,15 @@ func main() {
 	if runner := metering.NewRetentionRunnerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
+	if runner := billing.NewEventConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := billing.NewSettlementsConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := billing.NewReconciliationRunnerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
 
 	srv.Serve()
 }
