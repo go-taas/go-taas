@@ -14,15 +14,22 @@ ARG BUILD_TIME=unknown
 # Module proxy; override for restricted networks, e.g.
 #   --build-arg GOPROXY=https://goproxy.cn,direct
 ARG GOPROXY=https://proxy.golang.org,direct
+# npm registry mirror for the console build; override for restricted
+# networks, e.g. --build-arg NPM_REGISTRY=https://registry.npmmirror.com
+ARG NPM_REGISTRY=https://registry.npmjs.org
 
 # ---- Console (web/) build stage ---------------------------------------
 # Node 20 matches the documented minimum (README: "Node.js 20+").
 FROM node:20-alpine AS console-builder
 WORKDIR /web
 
-# Cache npm downloads: copy manifests first.
+# Cache npm downloads: copy manifests first. The registry is only
+# overridden when NPM_REGISTRY is set to a mirror.
 COPY web/package.json web/package-lock.json ./
-RUN npm ci --no-audit --no-fund
+RUN if [ "$NPM_REGISTRY" != "https://registry.npmjs.org" ]; then \
+      npm config set registry "$NPM_REGISTRY"; \
+    fi && \
+    npm ci --no-audit --no-fund
 
 COPY web/ .
 RUN npm run build

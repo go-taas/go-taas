@@ -2,7 +2,13 @@
 // by the gateway, which falls back to index.html for unknown paths, so
 // history-based routing works without server-side route tables.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  type ReactNode,
+} from 'react';
 
 type Listener = () => void;
 const listeners = new Set<Listener>();
@@ -12,6 +18,7 @@ function emit() {
 }
 
 export function navigate(path: string) {
+  if (window.location.pathname === path) return;
   window.history.pushState({}, '', path);
   emit();
 }
@@ -43,23 +50,43 @@ Router.subscribe = function (listener: Listener): () => void {
   };
 };
 
-// Route matches an exact path or a path with a single :param segment.
-// On match it renders element with the param injected via context.
-import { createContext, useContext } from 'react';
-
 const ParamContext = createContext<Record<string, string>>({});
 
+// Routes renders the first matching child <Route>; a path="*" child acts
+// as the fallback. Matching is reactive: the current location is read via
+// useRoute(), so navigation re-renders the route table.
+export function Routes({ children }: { children: ReactNode }) {
+  const current = useRoute();
+  const routes = Array.isArray(children) ? children : [children];
+  let matched: { params: Record<string, string>; element: ReactNode } | null =
+    null;
+  for (const route of routes) {
+    if (!route) continue;
+    const props = route.props as { path: string; element: ReactNode };
+    const params = matchPath(props.path, current);
+    if (params !== null) {
+      matched = { params, element: props.element };
+      break;
+    }
+  }
+  if (!matched) return null;
+  return (
+    <ParamContext.Provider value={matched.params}>
+      {matched.element}
+    </ParamContext.Provider>
+  );
+}
+
+// Route is a declarative marker consumed by <Routes>; it renders nothing
+// on its own so sibling routes never double-render.
 export function Route({
-  path,
   element,
 }: {
   path: string;
   element: ReactNode;
 }) {
-  const current = window.location.pathname;
-  const params = matchPath(path, current);
-  if (params === null) return null;
-  return <ParamContext.Provider value={params}>{element}</ParamContext.Provider>;
+  void element;
+  return null;
 }
 
 export function useParams(): Record<string, string> {

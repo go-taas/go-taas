@@ -170,10 +170,21 @@ make build   # 构建二进制
 一键体验环境：控制面（含控制台）+ PostgreSQL + Redis + 消息队列。
 
 ```bash
-make compose-up   # 构建镜像并启动本地环境
+make compose-up    # 构建镜像（含控制台）并启动本地环境
+make compose-ps    # 查看环境状态
+make compose-logs  # 跟踪日志（或：make compose-logs SERVICE=taas-server）
+make compose-down  # 停止并删除环境
 ```
 
-控制台由 `taas-server` 提供服务，访问地址 `http://localhost:9091/`。
+管理控制台由 `taas-server` 提供，访问 `http://localhost:9091/`
+（与 API 同源，无需 CORS 配置）。网关端口：`9091`（HTTP/JSON + 控制台）、
+`9090`（gRPC）、`9092`（指标/健康检查）。
+
+受限网络下可为镜像构建指定国内镜像源：
+
+```bash
+make compose-up GOPROXY=https://goproxy.cn,direct NPM_REGISTRY=https://registry.npmmirror.com
+```
 
 ### 生产部署（规划中）
 

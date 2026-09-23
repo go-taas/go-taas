@@ -170,10 +170,21 @@ make build   # build the binary
 A one-command experience environment: control plane (with console), PostgreSQL, Redis, and the message queue.
 
 ```bash
-make compose-up   # build images and start the local stack
+make compose-up    # build images (console included) and start the local stack
+make compose-ps    # show stack status
+make compose-logs  # follow logs (or: make compose-logs SERVICE=taas-server)
+make compose-down  # stop and remove the stack
 ```
 
-The console is served by `taas-server` at `http://localhost:9091/`.
+The admin console is served by `taas-server` at `http://localhost:9091/`
+(same origin as the API — no CORS setup needed). The gateway listens on
+`9091` (HTTP/JSON + console), `9090` (gRPC) and `9092` (metrics/healthz).
+
+On restricted networks, point the image build at local mirrors:
+
+```bash
+make compose-up GOPROXY=https://goproxy.cn,direct NPM_REGISTRY=https://registry.npmmirror.com
+```
 
 ### Production Deployment (planned)
 

@@ -14,7 +14,7 @@ import {
 
 interface ListResponse {
   response: { code: number; message: string };
-  apiKeys: ApiKeySummary[];
+  keys: ApiKeySummary[];
   pageMeta?: PageMeta;
 }
 
@@ -25,6 +25,15 @@ interface CreateResponse {
 }
 
 const PAGE_SIZE = 20;
+
+// Derive the display status from the raw fields: revoked wins, then
+// expiry, else active.
+function keyStatus(k: ApiKeySummary): string {
+  if (k.revoked) return 'revoked';
+  const exp = parseInt(k.expiresAt || '0', 10);
+  if (exp > 0 && exp * 1000 < Date.now()) return 'expired';
+  return 'active';
+}
 
 export default function ApiKeysPage() {
   const { orgId } = useOrg();
@@ -47,7 +56,7 @@ export default function ApiKeysPage() {
         `/api/v1/auth/api-keys?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
         orgId,
       );
-      setKeys(data.apiKeys || []);
+      setKeys(data.keys || []);
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'failed to load API keys');
@@ -100,14 +109,14 @@ export default function ApiKeysPage() {
               {keys.map((k) => (
                 <tr key={k.keyId} data-testid={`api-key-row-${k.keyId}`}>
                   <td>{k.name}</td>
-                  <td className="mono">{k.maskedKey}</td>
+                  <td className="mono">{k.prefix}…</td>
                   <td>
-                    <StateBadge state={k.status.toLowerCase()} />
+                    <StateBadge state={keyStatus(k)} />
                   </td>
                   <td>{formatTime(k.createdAt)}</td>
                   <td>{k.expiresAt && k.expiresAt !== '0' ? formatTime(k.expiresAt) : 'Never'}</td>
                   <td>
-                    {k.status.toLowerCase() === 'active' && (
+                    {!k.revoked && (
                       <button
                         className="link danger"
                         data-testid={`revoke-${k.keyId}`}
@@ -335,7 +344,7 @@ function RevokeDialog({
   return (
     <Dialog title="Revoke API Key" onClose={onClose} testId="revoke-dialog">
       <p>
-        Revoke <strong>{apiKey.name}</strong> ({apiKey.maskedKey})?
+        Revoke <strong>{apiKey.name}</strong> ({apiKey.prefix}…)?
       </p>
       <div className="error-banner">
         Agents using this key will immediately receive 401 errors (within the

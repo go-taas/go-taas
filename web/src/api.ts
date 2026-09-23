@@ -59,10 +59,11 @@ export interface PageMeta {
 export interface ApiKeySummary {
   keyId: string;
   name: string;
-  maskedKey: string;
-  status: string;
+  prefix: string;
   createdAt: string;
   expiresAt: string;
+  revoked: boolean;
+  revokedAt: string;
 }
 
 export interface ModelSummary {

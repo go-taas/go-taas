@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Router, navigate, Route } from './router';
+import { Router, Routes, Route, navigate } from './router';
 import { OrgProvider, OrgSwitcher } from './org';
 import ApiKeysPage from './pages/ApiKeysPage';
 import ModelsPage from './pages/ModelsPage';
@@ -13,13 +13,15 @@ export default function App() {
     <OrgProvider>
       <Router>
         <Layout>
-          <Route path="/" element={<NavigateToModels />} />
-          <Route path="/api-keys" element={<ApiKeysPage />} />
-          <Route path="/models" element={<ModelsPage />} />
-          <Route path="/models/:id" element={<ModelDetailPage />} />
-          <Route path="/inference-services" element={<InferenceServicesPage />} />
-          <Route path="/inference-services/:id" element={<ServiceDetailPage />} />
-          <Route path="*" element={<NotFoundPage />} />
+          <Routes>
+            <Route path="/" element={<NavigateToModels />} />
+            <Route path="/api-keys" element={<ApiKeysPage />} />
+            <Route path="/models" element={<ModelsPage />} />
+            <Route path="/models/:id" element={<ModelDetailPage />} />
+            <Route path="/inference-services" element={<InferenceServicesPage />} />
+            <Route path="/inference-services/:id" element={<ServiceDetailPage />} />
+            <Route path="*" element={<NotFoundPage />} />
+          </Routes>
         </Layout>
       </Router>
     </OrgProvider>

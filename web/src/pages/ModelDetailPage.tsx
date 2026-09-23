@@ -2,6 +2,7 @@
 // Implements docs/design/model-catalog-deployment.md FR2.3, AC2.
 
 import { useCallback, useEffect, useState } from 'react';
+import { navigate } from '../router';
 import { api, formatTime, type ModelSummary } from '../api';
 import { useOrg } from '../org';
 import { usePolling } from '../components';
@@ -128,7 +129,10 @@ export default function ModelDetailPage() {
           modelName={model.model.name}
           initialVersion={deployVersion}
           onClose={() => setDeployVersion(null)}
-          onDeployed={() => setDeployVersion(null)}
+          onDeployed={(serviceId) => {
+            setDeployVersion(null);
+            navigate(`/inference-services/${serviceId}`);
+          }}
         />
       )}
     </div>
