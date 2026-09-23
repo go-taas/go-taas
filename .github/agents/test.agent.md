@@ -25,7 +25,10 @@ re-run the failing cases.
 2. **Design e2e cases** from the feature's UI/UX design doc (acceptance
    criteria) and architecture doc. Place cases in `test/e2e/` following a
    Go test layout consistent with the repo (package `e2e`, build tag or
-   `_test.go` files; reuse `pkg/` helpers where appropriate).
+   `_test.go` files; reuse `pkg/` helpers where appropriate). Every
+   feature with console pages also gets Nightwatch browser e2e cases
+   (in `test/e2e/`, tagged per feature) driving the real UI served by
+   the compose stack.
 3. **Execute**: bring up the local docker compose stack (or reuse a running
    one), run the e2e cases against it, capture results. Cases must cover
    the acceptance criteria, API happy paths and key error paths.

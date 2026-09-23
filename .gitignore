@@ -59,3 +59,6 @@ proto/**/*.pb.gw.go
 
 # Multi-agent orchestration bus (runtime state, not source)
 .agent-state/
+
+# TypeScript incremental build cache
+*.tsbuildinfo

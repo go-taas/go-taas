@@ -138,7 +138,7 @@ See the [Architecture Design](./docs/design/architecture.md) for component respo
 | Network | Standard Ethernet for the control plane; RDMA (RoCE / InfiniBand) optional for inference |
 | Orchestration | Kubernetes + client-go |
 | Inference engines | NVIDIA: vLLM / SGLang / TensorRT-LLM; Iluvatar CoreX; MetaX |
-| Frontend (separate repo) | React + TypeScript + Tailwind CSS + shadcn/ui + Framer Motion |
+| Frontend (`web/`) | React + TypeScript + Tailwind CSS + shadcn/ui + Framer Motion |
 
 ## Getting Started
 
@@ -149,6 +149,7 @@ See the [Architecture Design](./docs/design/architecture.md) for component respo
 - Go 1.25+
 - golangci-lint v2
 - buf
+- Node.js 20+ (frontend, `web/`)
 - Git
 
 ### Build from Source
@@ -164,9 +165,15 @@ make ut      # unit tests
 make build   # build the binary
 ```
 
-### Docker Compose (planned)
+### Docker Compose
 
-A one-command experience environment: control plane with both gateways, PostgreSQL, Redis, MinIO, and the message queue. Deployment manifests will live in a separate repository.
+A one-command experience environment: control plane (with console), PostgreSQL, Redis, and the message queue.
+
+```bash
+make compose-up   # build images and start the local stack
+```
+
+The console is served by `taas-server` at `http://localhost:9091/`.
 
 ### Production Deployment (planned)
 

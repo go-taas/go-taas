@@ -138,7 +138,7 @@ flowchart TD
 | 网络 | 控制面走常规以太网；推理可选 RDMA（RoCE / InfiniBand） |
 | 编排 | Kubernetes + client-go |
 | 推理引擎 | NVIDIA：vLLM / SGLang / TensorRT-LLM；天数智芯 CoreX；沐曦 MetaX |
-| 前端（独立仓库） | React + TypeScript + Tailwind CSS + shadcn/ui + Framer Motion |
+| 前端（`web/`） | React + TypeScript + Tailwind CSS + shadcn/ui + Framer Motion |
 
 ## 快速开始
 
@@ -149,6 +149,7 @@ flowchart TD
 - Go 1.25+
 - golangci-lint v2
 - buf
+- Node.js 20+（前端，`web/`）
 - Git
 
 ### 从源码构建
@@ -164,9 +165,15 @@ make ut      # 单元测试
 make build   # 构建二进制
 ```
 
-### Docker Compose 体验（规划中）
+### Docker Compose 体验
 
-一键体验环境：控制面（含两个网关）+ PostgreSQL + Redis + MinIO + 消息队列。部署清单将放在独立仓库。
+一键体验环境：控制面（含控制台）+ PostgreSQL + Redis + 消息队列。
+
+```bash
+make compose-up   # 构建镜像并启动本地环境
+```
+
+控制台由 `taas-server` 提供服务，访问地址 `http://localhost:9091/`。
 
 ### 生产部署（规划中）
 

@@ -39,7 +39,7 @@ The product name, wordmark, and preview labels are uniformly **Go TaaS**, with G
 
 ## Product Integration
 
-Place the needed assets in the frontend's static resource directory; this project's frontend lives in a separate repository, so no frontend engineering dependency is introduced here.
+Place the needed assets in the frontend's static resource directory (`web/public/`); the console build copies them into the served bundle.
 
 ```html
 <img src="/brand/logo.svg" width="32" height="32" alt="Go TaaS" />

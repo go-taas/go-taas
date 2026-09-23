@@ -235,7 +235,7 @@ func (s *commonServer) Serve() {
 		group.Go(func() error {
 			server := &http.Server{
 				Addr:              fmt.Sprintf("%s:%d", s.opts.BindingHostOrDefault(), s.opts.GatewayPort),
-				Handler:           s.gatewayMux,
+				Handler:           withConsole(s.gatewayMux),
 				ReadHeaderTimeout: 10 * time.Second,
 			}
 			logger.S().Infow("gateway listening", "addr", server.Addr)

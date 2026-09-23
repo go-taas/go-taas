@@ -1,0 +1,18 @@
+<!doctype html>
+<!-- Placeholder console bundle. The real bundle is built from web/ and
+     overlaid at image-build time (build/docker/Dockerfile copies
+     web/dist over this directory). Serving this placeholder keeps the
+     gateway functional in a source checkout without Node.js. -->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>go-taas Console</title>
+  </head>
+  <body>
+    <p>
+      The admin console bundle is not built in this environment. Build it
+      with <code>cd web &amp;&amp; npm ci &amp;&amp; npm run build</code>, or
+      use the Docker image where it is built automatically.
+    </p>
+  </body>
+</html>
