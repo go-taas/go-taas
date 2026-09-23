@@ -63,22 +63,29 @@ func main() {
 	srv.RegisterService(auth.New(srv.Components()))
 	modelSvc := model.New(srv.Components())
 	srv.RegisterService(modelSvc)
-	srv.RegisterService(image.New(srv.Components()))
+	imageSvc := image.New(srv.Components())
+	srv.RegisterService(imageSvc)
 	srv.RegisterService(infer.New(srv.Components()))
 	srv.RegisterService(metering.New(srv.Components()))
 	srv.RegisterService(billing.New(srv.Components()))
 
-	// The delete-model reference guard needs the infer repository; wire
-	// it after both services are registered (AC3). The components are
-	// only available after Init, so both wirings happen there.
+	// The delete-model and delete-image reference guards need the infer
+	// repository; wire them after both services are registered (AC3,
+	// feature #3 D7). The components are only available after Init, so
+	// both wirings happen there.
 	srv.Init()
 
 	if dbComponent := srv.Components().DB(); dbComponent != nil {
 		if gormDB, ok := dbComponent.GormDB().(*gorm.DB); ok {
 			modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(gormDB))
+			imageSvc.SetDeleteGuard(infer.NewDeleteImageGuard(gormDB))
+			imageSvc.SetInUseProvider(infer.NewImageInUseProvider(gormDB))
 		}
 	}
 	if runner := infer.NewStatusConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := image.NewWarmupStatusConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 

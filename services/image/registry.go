@@ -1,16 +1,19 @@
 package image
 
 import (
+	"context"
 	"strings"
-	"sync"
 
-	"github.com/go-taas/go-taas/pkg/config"
+	"gorm.io/gorm"
+
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
-// Summary is the read model served by the transitional in-memory
-// registry. It carries everything the infer module needs to validate a
-// deploy request and to compose the change event.
+// Summary is the read model served by the DB-backed registry. It
+// carries everything the infer module needs to validate a deploy
+// request and to compose the change event. The struct is unchanged
+// from the transitional in-memory registry so the infer module does
+// not change (D1).
 type Summary struct {
 	// ImageID is the stable image identifier used by deploy requests.
 	ImageID string
@@ -29,88 +32,73 @@ func (s *Summary) Reference() string {
 	return s.Name + ":" + s.Tag
 }
 
-// registry is the transitional in-memory image registry seeded from
-// configuration. It is replaced by the images table in feature #3; the
-// Lookup interface stays stable so the infer module does not change.
-type registry struct {
-	mu      sync.RWMutex
-	entries map[string]*Summary
+// lookupDB is the database backing the package-level Lookup/List
+// helpers. It is wired by wireRegistry at service construction (the
+// database component is initialized by server Init, which runs after
+// service construction).
+var lookupDB *gorm.DB
+
+// wireRegistry binds the package-level Lookup/List helpers to a
+// database. Called by the image service when it resolves its
+// repositories; tests call it with a disposable database.
+func wireRegistry(db *gorm.DB) {
+	lookupDB = db
 }
 
-// imageRegistry is the singleton registry instance. It is seeded once
-// from the process configuration on first use.
-var imageRegistry = &registry{entries: map[string]*Summary{}}
-
-var seedOnce sync.Once
-
-// seedFromConfig loads the image.registry section of the process
-// configuration into the singleton registry. It is idempotent.
-func seedFromConfig() {
-	seedOnce.Do(func() {
-		cfg := config.GetConfig()
-		if cfg == nil {
-			return
-		}
-		for _, e := range cfg.Image.Registry {
-			imageRegistry.entries[e.ImageID] = &Summary{
-				ImageID:     e.ImageID,
-				Name:        e.Name,
-				Tag:         e.Tag,
-				Accelerator: e.Accelerator,
-				Engine:      e.Engine,
-			}
-		}
-	})
+// WireRegistryForTest binds the package-level Lookup/List helpers to a
+// caller-provided database. It exists for cross-module tests (infer)
+// that seed a disposable registry without constructing the image
+// service.
+func WireRegistryForTest(db *gorm.DB) {
+	wireRegistry(db)
 }
 
 // Lookup returns the image summary for imageID. A miss maps to
-// CodeImageNotFound.
+// CodeImageNotFound. The signature is unchanged from the transitional
+// in-memory registry (D1).
 func Lookup(imageID string) (*Summary, error) {
-	seedFromConfig()
-	imageRegistry.mu.RLock()
-	defer imageRegistry.mu.RUnlock()
-	s, ok := imageRegistry.entries[imageID]
-	if !ok {
-		return nil, apierrors.New(apierrors.CodeImageNotFound)
+	if lookupDB == nil {
+		return nil, apierrors.Newf(apierrors.CodeInternal, "image: registry not wired")
 	}
-	return s, nil
+	repo := NewRepository(lookupDB)
+	img, err := repo.FindByID(context.Background(), imageID)
+	if err != nil {
+		return nil, err
+	}
+	return imageToSummary(img), nil
 }
 
-// List returns all registered images, optionally filtered by accelerator
-// and engine (empty filter values match everything).
+// List returns registered images, optionally filtered by accelerator
+// and engine (empty filter values match everything). The signature is
+// unchanged from the transitional in-memory registry (D1).
 func List(accelerator, engine string) []*Summary {
-	seedFromConfig()
-	imageRegistry.mu.RLock()
-	defer imageRegistry.mu.RUnlock()
-
-	out := make([]*Summary, 0, len(imageRegistry.entries))
-	for _, s := range imageRegistry.entries {
-		if accelerator != "" && s.Accelerator != accelerator {
-			continue
-		}
-		if engine != "" && s.Engine != engine {
-			continue
-		}
-		out = append(out, s)
+	if lookupDB == nil {
+		return []*Summary{}
+	}
+	repo := NewRepository(lookupDB)
+	rows, _, err := repo.ListImages(context.Background(), accelerator, engine, 0, maxListAll)
+	if err != nil {
+		return []*Summary{}
+	}
+	out := make([]*Summary, 0, len(rows))
+	for _, img := range rows {
+		out = append(out, imageToSummary(img))
 	}
 	return out
 }
 
-// ResetForTest replaces the registry contents and returns a restore
-// function. Test-only: it exists so unit tests can seed the registry
-// without touching the process configuration.
-func ResetForTest(entries []*Summary) func() {
-	imageRegistry.mu.Lock()
-	saved := imageRegistry.entries
-	imageRegistry.entries = map[string]*Summary{}
-	for _, e := range entries {
-		imageRegistry.entries[e.ImageID] = e
-	}
-	imageRegistry.mu.Unlock()
-	return func() {
-		imageRegistry.mu.Lock()
-		imageRegistry.entries = saved
-		imageRegistry.mu.Unlock()
+// maxListAll bounds the unpaginated List helper. The catalog is small;
+// the bound is a safety valve, not an expected limit.
+const maxListAll = 10000
+
+// imageToSummary maps a DB row to the infer-facing read model.
+func imageToSummary(img *Image) *Summary {
+	return &Summary{
+		ImageID:     img.ID,
+		Name:        img.Name,
+		Tag:         img.Tag,
+		Accelerator: img.Accelerator,
+		Engine:      img.Engine,
 	}
 }
 

@@ -20,6 +20,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/go-taas/go-taas/pkg/grpcmiddleware"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
 	imagev1 "github.com/go-taas/go-taas/proto/taas/image/v1"
@@ -52,6 +53,7 @@ type recordingBus struct {
 	mu      sync.Mutex
 	changes []mq.Message
 	status  []mq.Message
+	warmups []mq.Message
 	subs    map[string][]mq.Handler
 }
 
@@ -67,6 +69,8 @@ func (b *recordingBus) Publish(_ context.Context, subject string, body []byte, h
 		b.changes = append(b.changes, msg)
 	case mq.DefaultSubjects().InferServiceStatus:
 		b.status = append(b.status, msg)
+	case mq.DefaultSubjects().ImageWarmups, mq.DefaultSubjects().ImageWarmupStatus:
+		b.warmups = append(b.warmups, msg)
 	}
 	handlers := append([]mq.Handler(nil), b.subs[subject]...)
 	b.mu.Unlock()
@@ -99,25 +103,34 @@ func newModelInferEnv(t *testing.T) *modelInferEnv {
 		_ = sqlDB.Close()
 	})
 
-	// Seed the image registry with the three catalog images.
-	restore := image.ResetForTest([]*image.Summary{
+	// Seed the image registry with the three catalog images (DB-backed
+	// since feature #3).
+	require.NoError(t, image.MigrateSchemaForFVT(db))
+	imageRepo := image.NewRepository(db)
+	for _, s := range []*image.Summary{
 		{ImageID: "img-vllm-nvidia", Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3", Accelerator: "nvidia", Engine: "vllm"},
 		{ImageID: "img-vllm-iluvatar", Name: "ghcr.io/go-taas/vllm-iluvatar", Tag: "v0.6.3", Accelerator: "iluvatar", Engine: "vllm"},
 		{ImageID: "img-sglang-metax", Name: "ghcr.io/go-taas/sglang", Tag: "v0.1.4", Accelerator: "metax", Engine: "sglang"},
-	})
-	t.Cleanup(restore)
+	} {
+		require.NoError(t, imageRepo.CreateImage(context.Background(), &image.Image{
+			ID: s.ImageID, Name: s.Name, Tag: s.Tag, Accelerator: s.Accelerator, Engine: s.Engine,
+		}))
+	}
+	image.WireRegistryForTest(db)
 
 	// Real gRPC server on an ephemeral port.
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	grpcSrv := grpc.NewServer()
+	// The production interceptor chain normalizes business errors into
+	// gRPC status errors so the gateway renders the unified envelope.
+	grpcSrv := grpc.NewServer(grpc.ChainUnaryInterceptor(grpcmiddleware.UnaryServerInterceptor()))
 	t.Cleanup(grpcSrv.Stop)
 
 	bus := newRecordingBus()
 	modelSvc := model.NewForFVT(db)
 	modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(db))
 	inferSvc := infer.NewForFVT(db, bus)
-	imageSvc := image.New(nil)
+	imageSvc := image.NewForFVT(db, bus)
 
 	// The real status consumer runs against the bus, so controller
 	// reports flow through the production path.

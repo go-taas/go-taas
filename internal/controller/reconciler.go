@@ -104,12 +104,263 @@ func (r *k8sReconciler) ApplyInferServiceChange(ctx context.Context, msg mq.Mess
 	}
 }
 
-// ApplyImageWarmup implements Reconciler. Image pre-pull is feature #3;
-// the event is acknowledged and logged until then.
-func (r *k8sReconciler) ApplyImageWarmup(_ context.Context, msg mq.Message) error {
-	logger.S().Infow("controller: image warmup not implemented (feature #3)",
-		"subject", msg.Subject, "body_bytes", len(msg.Body))
+// warmupTask mirrors the warmup task dispatch published by the image
+// module (architecture Section 4.5.1).
+type warmupTask struct {
+	TaskID       string            `json:"task_id"`
+	ImageID      string            `json:"image_id"`
+	Reference    string            `json:"reference"`
+	NodeSelector map[string]string `json:"node_selector"`
+	PublishedAt  time.Time         `json:"published_at"`
+}
+
+// warmupNodeResult is one node's pull outcome.
+type warmupNodeResult struct {
+	Node    string `json:"node"`
+	State   string `json:"state"`
+	Message string `json:"message"`
+}
+
+// warmupStatus is the observed-state report published on the warmup
+// status subject (architecture Section 4.5.2).
+type warmupStatus struct {
+	TaskID        string             `json:"task_id"`
+	State         string             `json:"state"`
+	NodeResults   []warmupNodeResult `json:"node_results"`
+	FailureReason *string            `json:"failure_reason"`
+	ReportedAt    string             `json:"reported_at"`
+}
+
+// ApplyImageWarmup implements Reconciler: it decodes the task, reports
+// running, lists the nodes matching the selector, runs a one-shot
+// helper pod per node (imagePullPolicy=Always, spec.nodeName pinning)
+// and reports the aggregated outcome (architecture Section 10.4).
+func (r *k8sReconciler) ApplyImageWarmup(ctx context.Context, msg mq.Message) error {
+	var task warmupTask
+	if err := json.Unmarshal(msg.Body, &task); err != nil {
+		logger.S().Warnw("controller: malformed warmup task, rejecting",
+			"subject", msg.Subject, "err", err)
+		return mq.Permanent(fmt.Errorf("controller: malformed warmup task: %w", err))
+	}
+	if task.TaskID == "" || task.Reference == "" {
+		return mq.Permanent(fmt.Errorf("controller: warmup task missing task_id or reference"))
+	}
+
+	if err := r.publishWarmupStatus(ctx, task.TaskID, "running", nil, nil); err != nil {
+		logger.S().Warnw("controller: publish warmup running status failed",
+			"task_id", task.TaskID, "err", err)
+	}
+
+	nodes, err := r.listNodes(ctx, task.NodeSelector)
+	if err != nil {
+		return r.reportWarmupFailure(ctx, task, err)
+	}
+	if len(nodes) == 0 {
+		return r.reportWarmupFailure(ctx, task,
+			fmt.Errorf("controller: no node matches the selector %v", task.NodeSelector))
+	}
+
+	results := make([]warmupNodeResult, 0, len(nodes))
+	failed := false
+	for _, node := range nodes {
+		result := r.warmupNode(ctx, task, node)
+		results = append(results, result)
+		if result.State != "succeeded" {
+			failed = true
+		}
+	}
+
+	if failed {
+		reason := "one or more nodes failed to pull the image"
+		return r.reportWarmupFailureWithResults(ctx, task, reason, results)
+	}
+	if err := r.publishWarmupStatus(ctx, task.TaskID, "succeeded", results, nil); err != nil {
+		logger.S().Warnw("controller: publish warmup succeeded status failed",
+			"task_id", task.TaskID, "err", err)
+	}
+	logger.S().Infow("controller: image warmup succeeded",
+		"task_id", task.TaskID, "reference", task.Reference, "nodes", len(nodes))
 	return nil
+}
+
+// warmupNode runs the one-shot helper pod on one node and returns its
+// result. The pod name is deterministic per (task, node) so a retry is
+// idempotent; a leftover pod from a crashed attempt is deleted first.
+func (r *k8sReconciler) warmupNode(ctx context.Context, task warmupTask, node string) warmupNodeResult {
+	podName := warmupPodName(task.TaskID, node)
+	// Best-effort cleanup of a leftover pod from a crashed attempt.
+	if err := r.clientset.CoreV1().Pods(reconcileNamespace).
+		Delete(ctx, podName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return warmupNodeResult{Node: node, State: "failed",
+			Message: fmt.Sprintf("delete leftover pod: %v", err)}
+	}
+
+	pod := buildWarmupPod(task, podName, node)
+	if _, err := r.clientset.CoreV1().Pods(reconcileNamespace).
+		Create(ctx, pod, metav1.CreateOptions{}); err != nil {
+		return warmupNodeResult{Node: node, State: "failed",
+			Message: fmt.Sprintf("create pod: %v", err)}
+	}
+
+	phase, message, err := r.awaitPodTerminal(ctx, podName)
+	if err != nil {
+		return warmupNodeResult{Node: node, State: "failed", Message: err.Error()}
+	}
+	// Pod phase Running/Succeeded means the image pull succeeded: the
+	// kubelet only starts the container once the pull completed.
+	if phase == corev1.PodRunning || phase == corev1.PodSucceeded {
+		return warmupNodeResult{Node: node, State: "succeeded", Message: message}
+	}
+	return warmupNodeResult{Node: node, State: "failed", Message: message}
+}
+
+// awaitPodTerminal polls the pod until it reaches a terminal phase
+// (Succeeded/Failed) or a Running phase (pull done, container started).
+func (r *k8sReconciler) awaitPodTerminal(ctx context.Context, podName string) (corev1.PodPhase, string, error) {
+	ticker := time.NewTicker(2 * time.Second)
+	defer ticker.Stop()
+	for {
+		pod, err := r.clientset.CoreV1().Pods(reconcileNamespace).
+			Get(ctx, podName, metav1.GetOptions{})
+		if err != nil {
+			return "", "", fmt.Errorf("controller: get pod %s: %w", podName, err)
+		}
+		switch pod.Status.Phase {
+		case corev1.PodSucceeded:
+			return pod.Status.Phase, "pull completed", nil
+		case corev1.PodFailed:
+			return pod.Status.Phase, podFailureMessage(pod), nil
+		case corev1.PodRunning:
+			return pod.Status.Phase, "pull completed, container started", nil
+		}
+		select {
+		case <-ctx.Done():
+			return "", "", fmt.Errorf("controller: pod %s not terminal before shutdown: %w", podName, ctx.Err())
+		case <-ticker.C:
+			// keep polling
+		}
+	}
+}
+
+// podFailureMessage extracts a human-readable failure reason from the
+// pod status (container wait reasons carry pull errors).
+func podFailureMessage(pod *corev1.Pod) string {
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			return cs.State.Waiting.Reason + ": " + cs.State.Waiting.Message
+		}
+		if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" {
+			return cs.State.Terminated.Reason + ": " + cs.State.Terminated.Message
+		}
+	}
+	return "pod failed"
+}
+
+// listNodes lists cluster nodes filtered by the task's node selector.
+func (r *k8sReconciler) listNodes(ctx context.Context, selector map[string]string) ([]string, error) {
+	listOpts := metav1.ListOptions{}
+	if len(selector) > 0 {
+		// Selector ANDs all key=value pairs.
+		pairs := make([]string, 0, len(selector))
+		for k, v := range selector {
+			pairs = append(pairs, k+"="+v)
+		}
+		listOpts.LabelSelector = strings.Join(pairs, ",")
+	}
+	nodeList, err := r.clientset.CoreV1().Nodes().List(ctx, listOpts)
+	if err != nil {
+		return nil, fmt.Errorf("controller: list nodes: %w", err)
+	}
+	names := make([]string, 0, len(nodeList.Items))
+	for _, node := range nodeList.Items {
+		names = append(names, node.Name)
+	}
+	return names, nil
+}
+
+// buildWarmupPod composes the one-shot helper pod pinned to a node:
+// imagePullPolicy=Always forces a real pull even when the image is
+// already present on the node (a cached image would otherwise mask a
+// registry outage).
+func buildWarmupPod(task warmupTask, podName, node string) *corev1.Pod {
+	return &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      podName,
+			Namespace: reconcileNamespace,
+			Labels: map[string]string{
+				"app.kubernetes.io/managed-by":     "taas-controller",
+				"taas.go-taas.github.io/task-type": "image-warmup",
+				"taas.go-taas.github.io/task-id":   task.TaskID,
+			},
+		},
+		Spec: corev1.PodSpec{
+			RestartPolicy: corev1.RestartPolicyNever,
+			NodeName:      node,
+			Containers: []corev1.Container{{
+				Name:            "warmup",
+				Image:           task.Reference,
+				ImagePullPolicy: corev1.PullAlways,
+				// The engine image's real entrypoint may need GPUs or
+				// weights; override it with a trivially succeeding
+				// command so the pull is the only thing being tested.
+				Command: []string{"/bin/sh", "-c", "exit 0"},
+			}},
+		},
+	}
+}
+
+// warmupPodName is the deterministic helper pod name for a (task, node)
+// pair. Kubernetes resource names are lowercase; the UUID task id is
+// already lowercase.
+func warmupPodName(taskID, node string) string {
+	sanitized := strings.ToLower(strings.ReplaceAll(taskID, "-", ""))
+	if len(sanitized) > 40 {
+		sanitized = sanitized[:40]
+	}
+	return "warmup-" + sanitized + "-" + node
+}
+
+// reportWarmupFailure publishes the failed warmup status with the
+// reason and returns the wrapped error.
+func (r *k8sReconciler) reportWarmupFailure(ctx context.Context, task warmupTask, cause error) error {
+	reason := cause.Error()
+	if len(reason) > 512 {
+		reason = reason[:512]
+	}
+	return r.reportWarmupFailureWithResults(ctx, task, reason, nil)
+}
+
+// reportWarmupFailureWithResults publishes the failed warmup status
+// with per-node results and returns the wrapped error.
+func (r *k8sReconciler) reportWarmupFailureWithResults(ctx context.Context, task warmupTask, reason string, results []warmupNodeResult) error {
+	if len(reason) > 512 {
+		reason = reason[:512]
+	}
+	if err := r.publishWarmupStatus(ctx, task.TaskID, "failed", results, &reason); err != nil {
+		logger.S().Errorw("controller: publish warmup failed status failed",
+			"task_id", task.TaskID, "err", err)
+	}
+	return fmt.Errorf("controller: warmup %s failed: %s", task.TaskID, reason)
+}
+
+// publishWarmupStatus publishes a warmup observed-state report on the
+// warmup status subject.
+func (r *k8sReconciler) publishWarmupStatus(ctx context.Context, taskID, state string, results []warmupNodeResult, failureReason *string) error {
+	if r.statusPublisher == nil {
+		return nil
+	}
+	report := warmupStatus{
+		TaskID:        taskID,
+		State:         state,
+		NodeResults:   results,
+		FailureReason: failureReason,
+		ReportedAt:    time.Now().UTC().Format(time.RFC3339),
+	}
+	body, err := json.Marshal(report)
+	if err != nil {
+		return err
+	}
+	return r.statusPublisher.Publish(ctx, mq.DefaultSubjects().ImageWarmupStatus, body, nil)
 }
 
 // applyDelete tears down the Deployment and Service, ignoring

@@ -26,6 +26,30 @@ service ImageService {
     option (google.api.http) = {get: "/api/v1/admin/images"};
   }
 
+  // GetImage returns one image with the non-terminated inference
+  // services referencing it.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetImage(GetImageRequest) returns (GetImageResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/images/{image_id}"};
+  }
+
+  // UpdateImage edits the image description. Identity and compatibility
+  // fields are immutable (register a new image to change them).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateImage(UpdateImageRequest) returns (UpdateImageResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/images/{image_id}"
+      body: "*"
+    };
+  }
+
+  // DeleteImage removes a catalog entry, guarded while non-terminated
+  // inference services reference the image.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc DeleteImage(DeleteImageRequest) returns (DeleteImageResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/images/{image_id}"};
+  }
+
   // TriggerWarmup enqueues a warmup task so the controller pre-pulls the
   // image on compute nodes.
   // Admin-surface API: served under /api/v1/admin.
@@ -34,6 +58,20 @@ service ImageService {
       post: "/api/v1/admin/images/{image_id}:warmup"
       body: "*"
     };
+  }
+
+  // ListWarmupTasks returns the warmup task history of one image,
+  // newest first.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListWarmupTasks(ListWarmupTasksRequest) returns (ListWarmupTasksResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/images/{image_id}/warmup-tasks"};
+  }
+
+  // GetWarmupTask returns one warmup task with per-node results. The
+  // flat path works because task ids are globally unique.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetWarmupTask(GetWarmupTaskRequest) returns (GetWarmupTaskResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/warmup-tasks/{task_id}"};
   }
 }
 
@@ -45,6 +83,8 @@ message RegisterImageRequest {
   string accelerator = 4;
   // engine names the inference engine (vllm, sglang, ...).
   string engine = 5;
+  // description is free-text build notes (<= 1024 chars).
+  string description = 6;
 }
 
 message RegisterImageResponse {
@@ -72,6 +112,52 @@ message ImageSummary {
   string accelerator = 5;
   string engine = 6;
   int64 created_at = 7;
+  // description is free-text build notes.
+  string description = 8;
+  // in_use_count is the number of non-terminated inference services
+  // referencing the image.
+  int64 in_use_count = 9;
+  // last_warmup_state is the state of the newest warmup task (empty
+  // when the image was never warmed up).
+  string last_warmup_state = 10;
+  // last_warmup_at is the update time of the newest warmup task
+  // (unix seconds, 0 when never warmed up).
+  int64 last_warmup_at = 11;
+}
+
+message GetImageRequest {
+  string image_id = 1;
+}
+
+message InUseService {
+  string service_id = 1;
+  string name = 2;
+  string state = 3;
+}
+
+message GetImageResponse {
+  taas.common.v1.Response response = 1;
+  ImageSummary image = 2;
+  repeated InUseService in_use_services = 3;
+}
+
+message UpdateImageRequest {
+  string image_id = 1;
+  // description is the only editable field; identity and compatibility
+  // fields are immutable by contract.
+  string description = 2;
+}
+
+message UpdateImageResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message DeleteImageRequest {
+  string image_id = 1;
+}
+
+message DeleteImageResponse {
+  taas.common.v1.Response response = 1;
 }
 
 message TriggerWarmupRequest {
@@ -83,4 +169,40 @@ message TriggerWarmupRequest {
 message TriggerWarmupResponse {
   taas.common.v1.Response response = 1;
   string task_id = 2;
+}
+
+message ListWarmupTasksRequest {
+  string image_id = 1;
+  taas.common.v1.PageRequest page = 2;
+}
+
+message NodeResult {
+  string node = 1;
+  string state = 2;
+  string message = 3;
+}
+
+message WarmupTaskSummary {
+  string task_id = 1;
+  string image_id = 2;
+  string state = 3;
+  repeated NodeResult node_results = 4;
+  string failure_reason = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
+
+message ListWarmupTasksResponse {
+  taas.common.v1.Response response = 1;
+  repeated WarmupTaskSummary tasks = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetWarmupTaskRequest {
+  string task_id = 1;
+}
+
+message GetWarmupTaskResponse {
+  taas.common.v1.Response response = 1;
+  WarmupTaskSummary task = 2;
 }

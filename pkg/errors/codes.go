@@ -53,11 +53,13 @@ const (
 
 // image module error codes.
 const (
-	CodeImageNotFound      Code = 10201 // IMAGE_NOT_FOUND
-	CodeImageExists        Code = 10202 // IMAGE_EXISTS
-	CodeImageDigestInvalid Code = 10203 // IMAGE_DIGEST_INVALID
-	CodeImageIncompatible  Code = 10204 // IMAGE_INCOMPATIBLE
-	CodeImageWarmupFailed  Code = 10205 // IMAGE_WARMUP_FAILED
+	CodeImageNotFound         Code = 10201 // IMAGE_NOT_FOUND
+	CodeImageExists           Code = 10202 // IMAGE_EXISTS
+	CodeImageDigestInvalid    Code = 10203 // IMAGE_DIGEST_INVALID
+	CodeImageIncompatible     Code = 10204 // IMAGE_INCOMPATIBLE
+	CodeImageWarmupFailed     Code = 10205 // IMAGE_WARMUP_FAILED
+	CodeImageInUse            Code = 10206 // IMAGE_IN_USE
+	CodeImageReferenceInvalid Code = 10207 // IMAGE_REFERENCE_INVALID
 )
 
 // infer module error codes.

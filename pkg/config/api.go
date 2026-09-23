@@ -144,9 +144,10 @@ type StatusConsumerConfig struct {
 	Workers int `mapstructure:"workers"`
 }
 
-// ImageRegistryEntry is one transitional image-registry seed row. The
-// images table ships with feature #3; until then the image module serves
-// lookups from this configuration-seeded in-memory registry.
+// ImageRegistryEntry is one image-registry seed row. Since feature #3
+// the images table is the single source of truth; this seed is a
+// deprecated bootstrap default read only when the table is empty at
+// startup (first-boot, insert-only).
 type ImageRegistryEntry struct {
 	// ImageID is the stable image identifier used by deploy requests.
 	ImageID string `mapstructure:"imageId"`
@@ -161,10 +162,23 @@ type ImageRegistryEntry struct {
 	Engine string `mapstructure:"engine"`
 }
 
-// ImageRegistryConfig holds the transitional image registry seed.
-type ImageRegistryConfig struct {
-	// Registry is the seed list of engine images.
+// ImageWarmupStatusConsumerConfig holds the warmup status consumer
+// Runner settings, mirroring infer.statusConsumer.
+type ImageWarmupStatusConsumerConfig struct {
+	// Enabled turns the warmup status consumer Runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent status handlers.
+	Workers int `mapstructure:"workers"`
+}
+
+// ImageConfig holds the image module settings: the deprecated
+// first-boot registry seed and the warmup status consumer.
+type ImageConfig struct {
+	// Registry is the seed list of engine images (first-boot only).
 	Registry []ImageRegistryEntry `mapstructure:"registry"`
+	// WarmupStatusConsumer configures the warmup status Runner.
+	WarmupStatusConsumer ImageWarmupStatusConsumerConfig `mapstructure:"warmupStatusConsumer"`
 }
 
 // LogConfig holds logging settings loaded from configuration files.
@@ -177,16 +191,16 @@ type LogConfig struct {
 
 // Configuration is the root of the merged configuration tree.
 type Configuration struct {
-	Databases  Databases           `mapstructure:"db"`
-	Redis      Redis               `mapstructure:"redis"`
-	MQ         MQConfig            `mapstructure:"mq"`
-	Auth       AuthConfig          `mapstructure:"auth"`
-	Metering   MeteringConfig      `mapstructure:"metering"`
-	Billing    BillingConfig       `mapstructure:"billing"`
-	Controller ControllerConfig    `mapstructure:"controller"`
-	Infer      InferConfig         `mapstructure:"infer"`
-	Image      ImageRegistryConfig `mapstructure:"image"`
-	Log        LogConfig           `mapstructure:"log"`
+	Databases  Databases        `mapstructure:"db"`
+	Redis      Redis            `mapstructure:"redis"`
+	MQ         MQConfig         `mapstructure:"mq"`
+	Auth       AuthConfig       `mapstructure:"auth"`
+	Metering   MeteringConfig   `mapstructure:"metering"`
+	Billing    BillingConfig    `mapstructure:"billing"`
+	Controller ControllerConfig `mapstructure:"controller"`
+	Infer      InferConfig      `mapstructure:"infer"`
+	Image      ImageConfig      `mapstructure:"image"`
+	Log        LogConfig        `mapstructure:"log"`
 }
 
 // Validate checks semantic constraints that cannot be expressed as struct
@@ -206,6 +220,9 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Infer.StatusConsumer.Workers < 0 {
 		return &FieldError{Field: "infer.statusConsumer.workers", Reason: "must not be negative"}
+	}
+	if c.Image.WarmupStatusConsumer.Workers < 0 {
+		return &FieldError{Field: "image.warmupStatusConsumer.workers", Reason: "must not be negative"}
 	}
 	return nil
 }

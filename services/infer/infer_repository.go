@@ -13,6 +13,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/database"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	imagev1 "github.com/go-taas/go-taas/proto/taas/image/v1"
 )
 
 // InferenceServiceRepository persists inference services on top of the
@@ -207,6 +208,102 @@ func NewDeleteModelGuard(db *gorm.DB) func(ctx context.Context, modelID string) 
 			detail = fmt.Sprintf("referenced by inference service %s", blocking.Name)
 		}
 		return apierrors.Newf(apierrors.CodeModelNotFound, "%s", detail)
+	}
+}
+
+// CountByImageID counts the inference services referencing the image.
+// With excludeTerminated, terminated services do not block an image
+// delete (feature #3 D7).
+func (r *InferenceServiceRepository) CountByImageID(ctx context.Context, imageID string, excludeTerminated bool) (int64, error) {
+	conds := []any{"image_id = ?", imageID}
+	if excludeTerminated {
+		conds = []any{"image_id = ? AND state != ?", imageID, StateTerminated}
+	}
+	return r.Count(ctx, conds...)
+}
+
+// ListActiveByImageID returns the non-terminated inference services
+// referencing the image, newest update first (feature #3 GetImage
+// in_use_services and the list in_use_count).
+func (r *InferenceServiceRepository) ListActiveByImageID(ctx context.Context, imageID string) ([]*InferenceService, error) {
+	var rows []*InferenceService
+	err := r.DB(ctx).
+		Where("image_id = ? AND state != ?", imageID, StateTerminated).
+		Order("updated_at DESC").
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// NewDeleteImageGuard builds the image-module delete guard (feature #3
+// D7): it blocks deleting an image while a non-terminated inference
+// service references it, returning 10206 with a detail naming the
+// blocking service. The guard is injected into the image service at
+// wiring time (apps/taas-server), keeping the image module free of an
+// infer dependency.
+func NewDeleteImageGuard(db *gorm.DB) func(ctx context.Context, imageID string) error {
+	repo := NewInferenceServiceRepository(db)
+	return func(ctx context.Context, imageID string) error {
+		count, err := repo.CountByImageID(ctx, imageID, true)
+		if err != nil {
+			return err
+		}
+		if count == 0 {
+			return nil
+		}
+		blocking, err := repo.FindBlockingServiceByImage(ctx, imageID)
+		if err != nil {
+			return err
+		}
+		detail := "referenced by inference service"
+		if blocking != nil {
+			detail = fmt.Sprintf("referenced by inference service %s", blocking.Name)
+		}
+		return apierrors.Newf(apierrors.CodeImageInUse, "%s", detail)
+	}
+}
+
+// FindBlockingServiceByImage returns the first non-terminated service
+// referencing the image, for the delete-image error detail (feature #3
+// D7). It returns nil when none exists.
+func (r *InferenceServiceRepository) FindBlockingServiceByImage(ctx context.Context, imageID string) (*InferenceService, error) {
+	var row InferenceService
+	err := r.DB(ctx).
+		Where("image_id = ? AND state != ?", imageID, StateTerminated).
+		Order("updated_at DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// NewImageInUseProvider builds the image-module in-use provider (feature
+// #3 GetImage in_use_services and the list in_use_count): it lists the
+// non-terminated inference services referencing the image. The provider
+// is injected into the image service at wiring time (apps/taas-server),
+// keeping the image module free of an infer dependency.
+func NewImageInUseProvider(db *gorm.DB) func(ctx context.Context, imageID string) ([]*imagev1.InUseService, error) {
+	repo := NewInferenceServiceRepository(db)
+	return func(ctx context.Context, imageID string) ([]*imagev1.InUseService, error) {
+		rows, err := repo.ListActiveByImageID(ctx, imageID)
+		if err != nil {
+			return nil, err
+		}
+		out := make([]*imagev1.InUseService, 0, len(rows))
+		for _, row := range rows {
+			out = append(out, &imagev1.InUseService{
+				ServiceId: row.ID,
+				Name:      row.Name,
+				State:     row.State,
+			})
+		}
+		return out, nil
 	}
 }
 

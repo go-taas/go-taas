@@ -3,12 +3,15 @@ package infer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 
@@ -26,11 +29,25 @@ func orgContext(org string) context.Context {
 
 func seedImageRegistry(t *testing.T) {
 	t.Helper()
-	restore := image.ResetForTest([]*image.Summary{
+	// Seed a disposable DB-backed registry and bind the package-level
+	// Lookup/List helpers to it.
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&image.Image{}, &image.WarmupTask{}))
+	repo := image.NewRepository(db)
+	for _, s := range []*image.Summary{
 		{ImageID: "img-vllm-nvidia", Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3", Accelerator: "nvidia", Engine: "vllm"},
 		{ImageID: "img-vllm-iluvatar", Name: "ghcr.io/go-taas/vllm-iluvatar", Tag: "v0.6.3", Accelerator: "iluvatar", Engine: "vllm"},
+	} {
+		require.NoError(t, repo.CreateImage(context.Background(), &image.Image{
+			ID: s.ImageID, Name: s.Name, Tag: s.Tag, Accelerator: s.Accelerator, Engine: s.Engine,
+		}))
+	}
+	image.WireRegistryForTest(db)
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		_ = sqlDB.Close()
 	})
-	t.Cleanup(restore)
 }
 
 func TestCreateInferenceServiceHappyPath(t *testing.T) {

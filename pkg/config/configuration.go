@@ -29,6 +29,15 @@ func GetConfig() *Configuration {
 	return configInstance.configuration
 }
 
+// SetConfigForTest installs cfg as the process-wide configuration. It
+// exists for tests that exercise config-dependent code paths without
+// loading files; production code must use ParseConfigs.
+func SetConfigForTest(cfg *Configuration) {
+	configInstance.Lock()
+	defer configInstance.Unlock()
+	configInstance.configuration = cfg
+}
+
 // ParseConfigs reads the group of YAML files matched by pathPattern, merges
 // them, applies environment overrides and publishes the result via
 // GetConfig. It panics on malformed configuration because a broken config
@@ -76,6 +85,7 @@ func ParseConfigs(pathPattern string) {
 	if err := v.Unmarshal(cfg); err != nil {
 		logger.S().Panicf("ParseConfigs - parse merged config failed: %v", err)
 	}
+	cfg.applyDefaults()
 	if err := cfg.Validate(); err != nil {
 		logger.S().Panicf("ParseConfigs - config validate failed: %v", err)
 	}
@@ -83,6 +93,17 @@ func ParseConfigs(pathPattern string) {
 	configInstance.Lock()
 	configInstance.configuration = cfg
 	configInstance.Unlock()
+}
+
+// applyDefaults fills in the defaults for fields that may be omitted
+// from configuration files. Explicit zero values that are meaningful
+// (enabled=false) are preserved by only defaulting the worker count
+// when unset and the enabled flag through the file presence; the
+// consumer Runner treats workers<=0 as 1.
+func (c *Configuration) applyDefaults() {
+	if c.Image.WarmupStatusConsumer.Workers == 0 {
+		c.Image.WarmupStatusConsumer.Workers = 2
+	}
 }
 
 // String returns a string representation of the configuration for logging.

@@ -74,6 +74,9 @@ type Subjects struct {
 	InferServiceStatus string
 	// ImageWarmups carries image warmup tasks.
 	ImageWarmups string
+	// ImageWarmupStatus carries warmup task status reports from the
+	// controller back to the image module (state, node results).
+	ImageWarmupStatus string
 	// MeteringEvents carries token usage events from the data-plane gateway.
 	MeteringEvents string
 	// Settlements carries settlement events from metering to billing.
@@ -86,6 +89,7 @@ func DefaultSubjects() Subjects {
 		InferServiceChanges: "infer.services.changes",
 		InferServiceStatus:  "infer.services.status",
 		ImageWarmups:        "image.warmups",
+		ImageWarmupStatus:   "image.warmup.status",
 		MeteringEvents:      "metering.events",
 		Settlements:         "billing.settlements",
 	}

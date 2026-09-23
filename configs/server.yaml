@@ -73,3 +73,6 @@ image:
       tag: "v0.1.4"
       accelerator: "metax"
       engine: "sglang"
+  warmupStatusConsumer:
+    enabled: true
+    workers: 2

@@ -63,8 +63,9 @@ infer:
     workers: 2
 
 image:
-  # registry is the static image catalog (feature #2 scope: config
-  # driven; a real registry integration arrives with feature #3).
+  # registry is the first-boot seed of the images table (feature #3:
+  # the table is the source of truth; this seed is read only when the
+  # table is empty at startup, insert-only, preserving imageId values).
   registry:
     - imageId: "img-vllm-nvidia-v063"
       name: "ghcr.io/go-taas/vllm"
@@ -81,6 +82,11 @@ image:
       tag: "v0.1.4"
       accelerator: "metax"
       engine: "sglang"
+  # warmupStatusConsumer applies controller-reported warmup task
+  # outcomes to the warmup_tasks table.
+  warmupStatusConsumer:
+    enabled: true
+    workers: 2
 
 controller:
   workers: 4

@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -153,25 +154,34 @@ func TestChangeEventDecodeRoundTrip(t *testing.T) {
 // recordingPublisher records status reports published by the reconciler.
 type recordingPublisher struct {
 	mq.Client
-	reports []statusReport
+	reports       []statusReport
+	warmupReports []warmupStatus
 }
 
 func (p *recordingPublisher) Publish(_ context.Context, subject string, body []byte, _ map[string]string) error {
-	if subject != mq.DefaultSubjects().InferServiceStatus {
-		return nil
+	switch subject {
+	case mq.DefaultSubjects().InferServiceStatus:
+		var report statusReport
+		if err := json.Unmarshal(body, &report); err != nil {
+			return err
+		}
+		p.reports = append(p.reports, report)
+	case mq.DefaultSubjects().ImageWarmupStatus:
+		var report warmupStatus
+		if err := json.Unmarshal(body, &report); err != nil {
+			return err
+		}
+		p.warmupReports = append(p.warmupReports, report)
 	}
-	var report statusReport
-	if err := json.Unmarshal(body, &report); err != nil {
-		return err
-	}
-	p.reports = append(p.reports, report)
 	return nil
 }
 
 // newFakeReconciler builds a reconciler over the fake clientset. A
 // get-reactor reports every Deployment's desired replicas as ready, so
 // awaitReadiness returns without waiting on the 2s poll ticker — for
-// both the create and the patch (idempotent re-apply) paths.
+// both the create and the patch (idempotent re-apply) paths. A second
+// get-reactor reports every warmup helper pod as Running, so
+// awaitPodTerminal returns immediately.
 func newFakeReconciler(publisher mq.Client) (Reconciler, *fake.Clientset) {
 	clientset := fake.NewSimpleClientset()
 	clientset.PrependReactor("get", "deployments", func(action k8stesting.Action) (bool, runtime.Object, error) {
@@ -191,6 +201,22 @@ func newFakeReconciler(publisher mq.Client) (Reconciler, *fake.Clientset) {
 			dep.Status.ReadyReplicas = *dep.Spec.Replicas
 		}
 		return true, dep, nil
+	})
+	clientset.PrependReactor("get", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		getAction, ok := action.(k8stesting.GetAction)
+		if !ok {
+			return false, nil, nil
+		}
+		obj, err := clientset.Tracker().Get(action.GetResource(), action.GetNamespace(), getAction.GetName())
+		if err != nil {
+			return true, nil, err
+		}
+		pod, ok := obj.(*corev1.Pod)
+		if !ok {
+			return false, nil, nil
+		}
+		pod.Status.Phase = corev1.PodRunning
+		return true, pod, nil
 	})
 	return newReconcilerWithClientset(clientset, publisher, "https://infer.example.com/"), clientset
 }
@@ -296,13 +322,63 @@ func TestApplyDelete(t *testing.T) {
 
 func TestApplyImageWarmup(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
+	reconciler, clientset := newFakeReconciler(publisher)
+
+	// One node labeled nvidia; the task selector matches it.
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a", Labels: map[string]string{"taas.go-taas.github.io/accelerator": "nvidia"}}}
+	_, err := clientset.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	task := `{"task_id":"11111111-2222-3333-4444-555555555555","image_id":"img-1","reference":"ghcr.io/go-taas/vllm:v0.6.3","node_selector":{"taas.go-taas.github.io/accelerator":"nvidia"}}`
+	err = reconciler.ApplyImageWarmup(context.Background(), mq.Message{
+		Subject: mq.DefaultSubjects().ImageWarmups,
+		Body:    []byte(task),
+	})
+	require.NoError(t, err)
+
+	// The helper pod was created on the node with imagePullPolicy=Always.
+	pods, err := clientset.CoreV1().Pods(reconcileNamespace).List(context.Background(), metav1.ListOptions{})
+	require.NoError(t, err)
+	require.Len(t, pods.Items, 1)
+	pod := pods.Items[0]
+	assert.Equal(t, "node-a", pod.Spec.NodeName)
+	assert.Equal(t, corev1.PullAlways, pod.Spec.Containers[0].ImagePullPolicy)
+	assert.Equal(t, "ghcr.io/go-taas/vllm:v0.6.3", pod.Spec.Containers[0].Image)
+
+	// The running status was published.
+	require.NotEmpty(t, publisher.warmupReports)
+	assert.Equal(t, "running", publisher.warmupReports[0].State)
+}
+
+func TestApplyImageWarmupNoMatchingNode(t *testing.T) {
+	publisher := &recordingPublisher{Client: mq.NewFake()}
+	reconciler, _ := newFakeReconciler(publisher)
+
+	task := `{"task_id":"11111111-2222-3333-4444-555555555555","image_id":"img-1","reference":"ghcr.io/go-taas/vllm:v0.6.3","node_selector":{"taas.go-taas.github.io/accelerator":"metax"}}`
+	err := reconciler.ApplyImageWarmup(context.Background(), mq.Message{
+		Subject: mq.DefaultSubjects().ImageWarmups,
+		Body:    []byte(task),
+	})
+	require.Error(t, err)
+
+	// The failure was reported with a reason.
+	require.NotEmpty(t, publisher.warmupReports)
+	last := publisher.warmupReports[len(publisher.warmupReports)-1]
+	assert.Equal(t, "failed", last.State)
+	require.NotNil(t, last.FailureReason)
+	assert.Contains(t, *last.FailureReason, "no node matches")
+}
+
+func TestApplyImageWarmupMalformed(t *testing.T) {
+	publisher := &recordingPublisher{Client: mq.NewFake()}
 	reconciler, _ := newFakeReconciler(publisher)
 
 	err := reconciler.ApplyImageWarmup(context.Background(), mq.Message{
 		Subject: mq.DefaultSubjects().ImageWarmups,
-		Body:    []byte(`{"image_id":"img-1"}`),
+		Body:    []byte(`{not json`),
 	})
-	assert.NoError(t, err)
+	require.Error(t, err)
+	assert.True(t, mq.IsPermanent(err))
 }
 
 func TestAwaitReadinessPolls(t *testing.T) {

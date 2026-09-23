@@ -6,6 +6,8 @@ import ModelsPage from './pages/ModelsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
+import ImagesPage from './pages/ImagesPage';
+import ImageDetailPage from './pages/ImageDetailPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -19,6 +21,8 @@ export default function App() {
             <Route path="/admin/api-keys" element={<ApiKeysPage />} />
             <Route path="/admin/models" element={<ModelsPage />} />
             <Route path="/admin/models/:id" element={<ModelDetailPage />} />
+            <Route path="/admin/images" element={<ImagesPage />} />
+            <Route path="/admin/images/:id" element={<ImageDetailPage />} />
             <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
             <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />
             <Route path="*" element={<NotFoundPage />} />
@@ -57,6 +61,7 @@ function Layout({ children }: { children: React.ReactNode }) {
 const NAV_ITEMS = [
   { path: '/admin/models', label: 'Models' },
   { path: '/admin/inference-services', label: 'Inference Services' },
+  { path: '/admin/images', label: 'Images' },
   { path: '/admin/api-keys', label: 'API Keys' },
 ];
 

@@ -46,6 +46,8 @@ export const api = {
   put: <T>(path: string, orgId: string, body?: unknown) =>
     request<T>('PUT', path, orgId, body),
   del: <T>(path: string, orgId: string) => request<T>('DELETE', path, orgId),
+  patch: <T>(path: string, orgId: string, body?: unknown) =>
+    request<T>('PATCH', path, orgId, body),
 };
 
 // ---- shared API shapes ----
@@ -82,6 +84,42 @@ export interface InferenceServiceSummary {
   imageId: string;
   replicas: number;
   state: string;
+  updatedAt: string;
+}
+
+export interface ImageSummary {
+  imageId: string;
+  name: string;
+  tag: string;
+  accelerator: string;
+  engine: string;
+  description?: string;
+  inUseCount: string;
+  lastWarmupState?: string;
+  lastWarmupAt?: string;
+  createdAt: string;
+}
+
+export interface InUseService {
+  serviceId: string;
+  name: string;
+  state: string;
+}
+
+export interface WarmupNodeResult {
+  node: string;
+  state: string;
+  message?: string;
+}
+
+export interface WarmupTaskSummary {
+  taskId: string;
+  imageId: string;
+  state: string;
+  nodeSelector?: Record<string, string>;
+  nodeResults?: WarmupNodeResult[];
+  failureReason?: string;
+  createdAt: string;
   updatedAt: string;
 }
 
