@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Go TaaS — Token as a Service</title>
+  <meta name="description" content="Go TaaS is an open-source LLM inference and metering/billing platform for AI agents and SDKs, built on Kubernetes." />
+  <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-decor" aria-hidden="true"></div>
+
+  <header class="site-header">
+    <div class="container header-inner">
+      <a class="brand" href="#top">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="32" height="32" />
+        <span class="brand-name">Go TaaS</span>
+      </a>
+      <nav class="nav" aria-label="Primary">
+        <a href="#features" data-i18n="nav.features">Features</a>
+        <a href="#architecture" data-i18n="nav.architecture">Architecture</a>
+        <a href="#quickstart" data-i18n="nav.quickstart">Quick Start</a>
+        <a href="#usage" data-i18n="nav.usage">Usage</a>
+        <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
+      </nav>
+      <div class="header-actions">
+        <button id="lang-toggle" class="lang-toggle" type="button" aria-label="Switch language">中文</button>
+        <a class="btn btn-primary btn-sm" href="https://github.com/go-taas/go-taas" target="_blank" rel="noopener">
+          <svg class="icon" viewBox="0 0 16 16" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8Z"/></svg>
+          <span>GitHub</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <main id="top">
+    <!-- Hero -->
+    <section class="hero">
+      <div class="container hero-inner">
+        <div class="hero-badges">
+          <span class="badge badge-status"><span class="dot"></span><span data-i18n="hero.badge">Early development · Design finalized</span></span>
+          <span class="badge">Apache-2.0</span>
+          <span class="badge">Go 1.25+</span>
+        </div>
+        <h1 class="hero-title">
+          <span data-i18n="hero.title1">Token as a Service</span><br />
+          <span class="grad" data-i18n="hero.title2">for AI Agents &amp; SDKs</span>
+        </h1>
+        <p class="hero-sub" data-i18n="hero.subtitle">
+          An open-source LLM inference and metering/billing platform built on Kubernetes.
+          Deploy Qwen, DeepSeek, LLaMA and more on heterogeneous accelerators, expose an
+          OpenAI-compatible API, meter per token, and settle per API Key.
+        </p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="#quickstart" data-i18n="hero.cta1">Get Started</a>
+          <a class="btn btn-ghost" href="https://github.com/go-taas/go-taas" target="_blank" rel="noopener" data-i18n="hero.cta2">View on GitHub</a>
+        </div>
+        <div class="hero-meta">
+          <a href="https://github.com/go-taas/go-taas/stargazers" target="_blank" rel="noopener"><img alt="GitHub stars" src="https://img.shields.io/github/stars/go-taas/go-taas?style=flat-square&color=%23007F86" /></a>
+          <a href="https://github.com/go-taas/go-taas/releases" target="_blank" rel="noopener"><img alt="Latest release" src="https://img.shields.io/github/v/release/go-taas/go-taas?style=flat-square&color=%23F06445" /></a>
+          <a href="./LICENSE" target="_blank" rel="noopener"><img alt="License" src="https://img.shields.io/badge/license-Apache--2.0-007F86?style=flat-square" /></a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features -->
+    <section id="features" class="section">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="features.title">Features</h2>
+          <p data-i18n="features.subtitle">Everything an AI platform team needs to serve, meter, and bill LLM traffic.</p>
+        </div>
+        <div class="grid features-grid">
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
+            </div>
+            <h3 data-i18n="features.f1.t">Heterogeneous Compute</h3>
+            <p data-i18n="features.f1.d">Unified support for NVIDIA GPU, Iluvatar CoreX, and MetaX. Node labeling, Device Plugins, and driver deployment are handled by each vendor's GPU Operator.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
+            </div>
+            <h3 data-i18n="features.f2.t">Control / Data Plane Split</h3>
+            <p data-i18n="features.f2.d">Management APIs and inference APIs are served by separate gateways, so platform operations stay available while the inference path scales, upgrades, or degrades.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
+            </div>
+            <h3 data-i18n="features.f3.t">One-click Model Deployment</h3>
+            <p data-i18n="features.f3.d">Deploy models from the console or API. The platform provisions inference workloads through a message queue and a Kubernetes controller — no hand-written YAML.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+            </div>
+            <h3 data-i18n="features.f4.t">Inference Image Management</h3>
+            <p data-i18n="features.f4.d">Register, version, and map engine images across NVIDIA / CoreX / MetaX, with node-level pre-pulling to shorten cold starts.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18h6"/><path d="M8 18h6"/><path d="M16 12h6"/><path d="M8 12h6"/><path d="M16 6h6"/><path d="M8 6h6"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+            </div>
+            <h3 data-i18n="features.f5.t">OpenAI-compatible API</h3>
+            <p data-i18n="features.f5.d">/v1/chat/completions, /v1/completions, and /v1/embeddings served by an Envoy-based gateway. Auth, metering, and routing run in Wasm plugins — inference traffic never passes through business processes.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 3 5-8"/></svg>
+            </div>
+            <h3 data-i18n="features.f6.t">Token Metering &amp; Billing</h3>
+            <p data-i18n="features.f6.d">Token usage (prompt / completion / cached / reasoning) is metered at the gateway, recorded as tamper-proof vouchers, and settled asynchronously per API Key.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+            </div>
+            <h3 data-i18n="features.f7.t">Flexible Pricing</h3>
+            <p data-i18n="features.f7.d">A model × card-type price matrix with separate input/output token rates, tiered pricing, and packages; balance (prepaid) and quota (postpaid) account modes.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M24 0v24H0V0Z" fill="none" stroke="none"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+            </div>
+            <h3 data-i18n="features.f8.t">Multi-tenancy</h3>
+            <p data-i18n="features.f8.d">Organization/project isolation with full API Key lifecycle management. Keys are stored only as salted hashes.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3 data-i18n="features.f9.t">SSO Federation</h3>
+            <p data-i18n="features.f9.d">Pluggable identity providers — LDAP/LDAPS, OIDC/OAuth 2.0 (GitHub, Google, GitLab), SAML 2.0, and WeChat — with account binding, JIT provisioning, and attribute-to-role mapping.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- Architecture -->
+    <section id="architecture" class="section section-alt">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="arch.title">Architecture</h2>
+          <p data-i18n="arch.subtitle">Control plane and data plane, separated by audience and network.</p>
+        </div>
+        <div class="arch-layout">
+          <div class="arch-diagram" aria-label="Go TaaS architecture diagram">
+            <div class="arch-box arch-external">
+              <div class="arch-node arch-consumer"><span data-i18n="arch.agents">Agents / SDK</span></div>
+              <div class="arch-node arch-consumer"><span data-i18n="arch.admin">Admin Console / CLI</span></div>
+            </div>
+            <div class="arch-arrow" aria-hidden="true">↓</div>
+            <div class="arch-box arch-k8s">
+              <div class="arch-label" data-i18n="arch.k8s">Kubernetes Cluster</div>
+              <div class="arch-row">
+                <div class="arch-zone arch-cp">
+                  <div class="arch-label" data-i18n="arch.cp">Control Plane · standard network</div>
+                  <div class="arch-node arch-edge"><span data-i18n="arch.cgw">Control Gateway (HTTP)</span></div>
+                  <div class="arch-node arch-core"><span data-i18n="arch.grpc">gRPC Server — auth · model · image · infer · billing · metering</span></div>
+                  <div class="arch-node arch-svc"><span data-i18n="arch.mq">Message Queue (Kafka / NATS)</span></div>
+                  <div class="arch-node arch-svc"><span data-i18n="arch.ctrl">Controller (K8s reconciliation)</span></div>
+                </div>
+                <div class="arch-zone arch-dp">
+                  <div class="arch-label" data-i18n="arch.dp">Data Plane · RDMA network</div>
+                  <div class="arch-node arch-dpg"><span data-i18n="arch.dgw">Inference Gateway — Envoy + Wasm</span></div>
+                  <div class="arch-node arch-gpu"><span data-i18n="arch.engines">Inference Services — vLLM / SGLang / CoreX / MetaX</span></div>
+                </div>
+              </div>
+              <div class="arch-zone arch-store">
+                <div class="arch-label" data-i18n="arch.store">Storage &amp; Stateful Components</div>
+                <div class="arch-row arch-store-row">
+                  <div class="arch-node">Longhorn</div>
+                  <div class="arch-node">PostgreSQL</div>
+                  <div class="arch-node">Redis</div>
+                  <div class="arch-node">MinIO</div>
+                  <div class="arch-node">JuiceFS</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <ul class="arch-points">
+            <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm).</li>
+            <li data-i18n="arch.p2">The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.</li>
+            <li data-i18n="arch.p3">All microservice gRPC servers run in a single Deployment and hand work to the Controller through a message queue (Kafka / NATS), decoupling API serving from Kubernetes reconciliation.</li>
+            <li data-i18n="arch.p4">Authentication, metering, and routing run in Wasm plugins at the Inference Gateway, so inference traffic never passes through business processes.</li>
+            <li data-i18n="arch.p5">The Inference Gateway verifies every API Key by calling the auth module over gRPC, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or auth unavailability it fails closed.</li>
+            <li data-i18n="arch.p6">Inference services and the control plane share one Kubernetes cluster, isolated through Namespaces, node labels, and taints/tolerations.</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quick Start -->
+    <section id="quickstart" class="section">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="qs.title">Quick Start</h2>
+          <p data-i18n="qs.subtitle">A one-command experience environment with Docker Compose.</p>
+        </div>
+        <div class="qs-grid">
+          <div class="qs-steps">
+            <div class="qs-step">
+              <div class="qs-num">1</div>
+              <div>
+                <h3 data-i18n="qs.s1t">Clone the repository</h3>
+                <pre class="code-block"><code>git clone https://github.com/go-taas/go-taas.git
+cd go-taas</code></pre>
+              </div>
+            </div>
+            <div class="qs-step">
+              <div class="qs-num">2</div>
+              <div>
+                <h3 data-i18n="qs.s2t">Start the local stack</h3>
+                <pre class="code-block"><code>make compose-up</code></pre>
+                <p class="qs-note" data-i18n="qs.s2d">Builds the images (console included) and starts the control plane, PostgreSQL, Redis, and the message queue.</p>
+              </div>
+            </div>
+            <div class="qs-step">
+              <div class="qs-num">3</div>
+              <div>
+                <h3 data-i18n="qs.s3t">Open the console</h3>
+                <pre class="code-block"><code>http://localhost:9091/admin</code></pre>
+                <p class="qs-note" data-i18n="qs.s3d">Management APIs live under /api/v1/admin/*; user-facing APIs (login, signup) live under /api/v1/auth/*.</p>
+              </div>
+            </div>
+          </div>
+          <div class="qs-aside card">
+            <h3 data-i18n="qs.ports">Ports</h3>
+            <ul class="port-list">
+              <li><code>9091</code> — <span data-i18n="qs.port1">HTTP/JSON + console</span></li>
+              <li><code>9090</code> — <span data-i18n="qs.port2">gRPC</span></li>
+              <li><code>9092</code> — <span data-i18n="qs.port3">metrics / healthz</span></li>
+            </ul>
+            <h3 data-i18n="qs.more">More commands</h3>
+            <pre class="code-block"><code>make compose-ps    # stack status
+make compose-logs  # follow logs
+make compose-down  # stop &amp; remove</code></pre>
+            <p class="qs-note" data-i18n="qs.mirror">On restricted networks, point the build at local mirrors: make compose-up GOPROXY=… NPM_REGISTRY=…</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Usage -->
+    <section id="usage" class="section section-alt">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="usage.title">Usage</h2>
+          <p data-i18n="usage.subtitle">Any OpenAI SDK works out of the box — just point it at your TaaS host.</p>
+        </div>
+        <div class="usage-grid">
+          <div>
+            <h3 class="usage-lang">Python · OpenAI SDK</h3>
+            <pre class="code-block"><code>from openai import OpenAI
+
+client = OpenAI(
+    base_url="https://&lt;your-taas-host&gt;/v1",
+    api_key="sk-xxxxxxxx",
+)
+
+resp = client.chat.completions.create(
+    model="qwen2.5-7b",
+    messages=[{"role": "user", "content": "Hello!"}],
+)
+print(resp.choices[0].message.content)</code></pre>
+          </div>
+          <div>
+            <h3 class="usage-lang">cURL</h3>
+            <pre class="code-block"><code>curl https://&lt;your-taas-host&gt;/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer sk-xxxxxxxx" \
+  -d '{
+    "model": "qwen2.5-7b",
+    "messages": [{"role": "user", "content": "Hello!"}]
+  }'</code></pre>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Roadmap -->
+    <section id="roadmap" class="section">
+      <div class="container">
+        <div class="section-head">
+          <h2 data-i18n="roadmap.title">Roadmap</h2>
+          <p data-i18n="roadmap.subtitle">From single-cluster MVP to production-grade heterogeneous platform.</p>
+        </div>
+        <ol class="timeline">
+          <li class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-body">
+              <h3 data-i18n="roadmap.p1t">Phase 1 — MVP</h3>
+              <p data-i18n="roadmap.p1d">Single-cluster NVIDIA: model CRUD, API Keys, control/inference gateway split, vLLM deployment, gateway-side auth and metering.</p>
+            </div>
+          </li>
+          <li class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-body">
+              <h3 data-i18n="roadmap.p2t">Phase 2 — Billing &amp; Multi-tenancy</h3>
+              <p data-i18n="roadmap.p2d">Pricing, balance/quota, tiered pricing, asynchronous settlement, audit, operations dashboard.</p>
+            </div>
+          </li>
+          <li class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-body">
+              <h3 data-i18n="roadmap.p3t">Phase 3 — Heterogeneous Accelerators</h3>
+              <p data-i18n="roadmap.p3d">GPU Operator integration, Iluvatar / MetaX engine and image adaptation, compatibility matrix.</p>
+            </div>
+          </li>
+          <li class="timeline-item">
+            <div class="timeline-dot"></div>
+            <div class="timeline-body">
+              <h3 data-i18n="roadmap.p4t">Phase 4 — Productionization</h3>
+              <p data-i18n="roadmap.p4d">Helm one-click install, autoscaling, RDMA networking, load testing, SDK, community operations.</p>
+            </div>
+          </li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- CTA -->
+    <section class="section cta-section">
+      <div class="container cta-inner">
+        <h2 data-i18n="cta.title">Build the open token infrastructure with us</h2>
+        <p data-i18n="cta.subtitle">Contributions of all kinds are welcome — code, documentation, bug reports, and feature ideas.</p>
+        <div class="hero-cta">
+          <a class="btn btn-primary" href="https://github.com/go-taas/go-taas" target="_blank" rel="noopener" data-i18n="cta.btn1">Star on GitHub</a>
+          <a class="btn btn-ghost" href="https://github.com/go-taas/go-taas/discussions" target="_blank" rel="noopener" data-i18n="cta.btn2">Join Discussions</a>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    <div class="container footer-inner">
+      <div class="footer-brand">
+        <img class="brand-logo" src="assets/logo.svg" alt="" width="24" height="24" />
+        <span>Go TaaS</span>
+      </div>
+      <nav class="footer-nav" aria-label="Footer">
+        <a href="https://github.com/go-taas/go-taas/blob/main/README.md" target="_blank" rel="noopener">README</a>
+        <a href="https://github.com/go-taas/go-taas/blob/main/docs/design/architecture.md" target="_blank" rel="noopener" data-i18n="footer.arch">Architecture</a>
+        <a href="https://github.com/go-taas/go-taas/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" data-i18n="footer.contributing">Contributing</a>
+        <a href="https://github.com/go-taas/go-taas/blob/main/LICENSE" target="_blank" rel="noopener">Apache-2.0</a>
+      </nav>
+      <p class="footer-copy">© 2026 Go TaaS · <span data-i18n="footer.made">Built with Go and Kubernetes</span></p>
+    </div>
+  </footer>
+
+  <script src="i18n.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

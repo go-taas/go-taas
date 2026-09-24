@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256" fill="none" role="img" aria-labelledby="logo-title logo-desc">
+  <title id="logo-title">Go TaaS</title>
+  <desc id="logo-desc">A teal T with a forward-cut stem and a separate vermilion token in its top bar.</desc>
+  <path fill="#007F86" d="M36 48H164L148 88H132V176L92 208V88H36Z"/>
+  <path fill="#F06445" d="M180 48H220L204 88H164Z"/>
+</svg>
