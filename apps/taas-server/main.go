@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-taas/go-taas/services/auth"
 	"github.com/go-taas/go-taas/services/billing"
+	"github.com/go-taas/go-taas/services/billing/nano"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/metering"
@@ -135,6 +136,9 @@ func main() {
 		srv.AddRunner(runner)
 	}
 	if runner := billing.NewCycleResetRunnerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := nano.NewNanoSettlementsConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 

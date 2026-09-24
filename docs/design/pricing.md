@@ -64,6 +64,34 @@ Pitfalls to avoid:
 
 ### 1.4 Scope Boundary
 
+#### 1.4.1 Feeless exact-settlement leg (issue #7) — additive
+
+Beside the prepaid-balance and quota (postpaid) account modes (feature
+#8), the platform may settle a metered key-hour directly on a **feeless
+exact-settlement rail (Nano / XNO)**. This leg does not replace charging:
+the existing `billing.settlements` consumer continues to price the hour
+through `PriceOnce` into `charge_records`; a separate, purely additive
+Nano consumer reads the *same* settlement events, resolves the priced
+amount for the key-hour, and settles it at **raw precision (30
+decimals)** — so a sub-cent charge (e.g. $0.0005 for a cheap cached
+completion) is represented and settled exactly, removing the card
+fee-floor the platform would otherwise batch or write off.
+
+Contract decisions (issue #7, confirmed by the maintainer):
+
+| # | Decision | Rationale |
+| --- | --- | --- |
+| N1 | The Nano leg is an **additional settlement consumer** on `billing.settlements`, additive to the existing consumer; it never modifies metering, the price matrix, the balance layer or the `charge_records` shape | A new settlement consumer alongside the planned account modes, wired behind the existing async settlement contract — no change to the voucher/usage pipeline (pricing.md D7) |
+| N2 | The amount is **constructed at the boundary** from the priced charge value, converted to an exact XNO raw integer (`10^30 raw = 1 XNO`) with no second rounding; the USD→XNO rate is a config constant at the boundary | Maintains a single internal representation end-to-end and expresses a $0.0005 call exactly (30 decimals) |
+| N3 | The raw amount is handed to a feeless Nano node as a decimal string; a live node submit is a follow-on once the consumer shape is agreed | Keeps the draft reviewable: the exact-amount boundary and its tests ship first, the RPC wiring lands after |
+| N4 | An unpriced key-hour (no matrix entry, D8) settles nothing | Mirrors `priced = false` / `amount = 0`: an operator gap to surface, never a pipeline fault |
+
+The settlement semantics: idempotency and error handling are inherited
+from the `billing.settlements` contract (malformed events skipped,
+transient failures retried by the broker, a redelivered event is a
+no-op) — the Nano consumer registers as a settlement consumer and does
+not reimplement charging or idempotency.
+
 **In scope**: price matrix CRUD with effective dating and tier validation (`SetPrice`/`ListPrices`), the metering-events consumer building per-request `usage_lines` with the accelerator-type resolution chain, the charging engine (settlements consumer + reconciliation runner, shared `PriceOnce`, tier evaluation, default-card fallback, unpriced flagging), charge and bill queries (`ListCharges`, `ListBills`), the additive `accelerator_type` field on the metering event contract, the console Pricing and Bills pages, and the `billing` config section.
 
 **Out of scope** (tracked elsewhere): balance/quota account modes, funds holds, and insufficient-funds rejection (#8), payments, invoices and receipts (future, after #8), end-user (tenant) bill visibility (#6/#7), FX/multi-currency (future), packages/bundles (future, D12), mid-record tier splitting and period-end true-up (future refinement of D3), retroactive repricing of charged records (never in v1), and the Envoy Wasm plugin that emits real gateway events (separate data-plane track; verification uses synthetic events).

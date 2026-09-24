@@ -1,0 +1,183 @@
+{
+ "goal": "Add Nano feeless exact-settlement leg for go-taas",
+ "repo": "/root/work/go-taas",
+ "created": "2026-09-24T12:55:29+00:00",
+ "base_commit": "c5a62a3aee5028308d9ee0f95e8e8654f1ff6617",
+ "ledger_id": "292ddf271e07b7d8",
+ "laws": [
+  {
+   "id": "L0",
+   "block": 1.0,
+   "statement": "Nano consumer subscribes to billing.settlements and processes settlement events",
+   "test": "go test ./services/billing/nano/... -run TestNanoConsumer",
+   "scope": [],
+   "oracle": null,
+   "expect": null,
+   "source": "https://github.com/go-taas/go-taas/issues/7",
+   "grounding": "source",
+   "version": 1,
+   "minted": "2026-09-24T12:57:07+00:00"
+  },
+  {
+   "id": "L1",
+   "block": 1.0,
+   "statement": "XNO raw amount construction uses 30 decimal precision for sub-cent accuracy",
+   "test": "go test ./services/billing/nano/... -run TestAmountPrecision",
+   "scope": [],
+   "oracle": null,
+   "expect": null,
+   "source": "https://nano.org",
+   "grounding": "source",
+   "version": 1,
+   "minted": "2026-09-24T12:57:08+00:00"
+  },
+  {
+   "id": "L2",
+   "block": 2.0,
+   "statement": "Sub-cent USD amounts (e.g. 0.0005) produce valid non-zero XNO raw amounts",
+   "test": "go test ./services/billing/nano/... -run TestSubCentAmounts",
+   "scope": [],
+   "oracle": null,
+   "expect": null,
+   "source": "issue #7 design requirement",
+   "grounding": "source",
+   "version": 1,
+   "minted": "2026-09-24T12:57:08+00:00"
+  },
+  {
+   "id": "L3",
+   "block": 2.0,
+   "statement": "Nano consumer is additive and does not modify existing billing or metering paths",
+   "test": "git diff main -- services/billing/ | grep -c '^--- /dev/null' > /dev/null 2>&1; echo \\$?",
+   "scope": [],
+   "oracle": null,
+   "expect": null,
+   "source": "self-review",
+   "grounding": "source",
+   "version": 1,
+   "minted": "2026-09-24T12:57:08+00:00"
+  },
+  {
+   "id": "L4",
+   "block": 3.0,
+   "statement": "Unit tests cover exact decimal-string edge cases for zero sub-cent and rounding boundaries",
+   "test": "go test ./services/billing/nano/... -v -count=1",
+   "scope": [],
+   "oracle": null,
+   "expect": null,
+   "source": "code",
+   "grounding": "source",
+   "version": 1,
+   "minted": "2026-09-24T12:57:08+00:00"
+  },
+  {
+   "id": "L5",
+   "block": 3.0,
+   "statement": "Config wiring and main.go runner registration follow the existing consumer pattern",
+   "test": "go build ./...",
+   "scope": [],
+   "oracle": null,
+   "expect": null,
+   "source": "follows existing SettlementsConsumer pattern",
+   "grounding": "source",
+   "version": 1,
+   "minted": "2026-09-24T12:57:08+00:00"
+  }
+ ],
+ "blocks": {
+  "1": {
+   "status": "pending",
+   "attempts": []
+  },
+  "2": {
+   "status": "pending",
+   "attempts": []
+  },
+  "3": {
+   "status": "pending",
+   "attempts": []
+  }
+ },
+ "deltas": [],
+ "waivers": [],
+ "contested": [],
+ "probe": null,
+ "events": [
+  {
+   "kind": "init",
+   "payload": {
+    "goal": "Add Nano feeless exact-settlement leg for go-taas",
+    "spec": null
+   },
+   "at": "2026-09-24T12:55:29+00:00",
+   "prev": "genesis",
+   "receipt": "28571f82e4ac5d751007ef7d8935bcc82f889a59edf578e812c193a8d04a8b79"
+  },
+  {
+   "kind": "mint",
+   "payload": {
+    "id": "L0",
+    "block": "1",
+    "statement_sha": "5dcf878ad6915d2f915c88ec4b2d975e415885c7c4b6b6ed423c19afba8f1595"
+   },
+   "at": "2026-09-24T12:57:07+00:00",
+   "prev": "28571f82e4ac5d751007ef7d8935bcc82f889a59edf578e812c193a8d04a8b79",
+   "receipt": "d974bf3c7565ed7748fc43dea47d1c453963490006f1f3367574fe46eb0772ea"
+  },
+  {
+   "kind": "mint",
+   "payload": {
+    "id": "L1",
+    "block": "1",
+    "statement_sha": "429fe618c26b7f06c229a312d51ccf0f13d5354bbf5ff0ea54687f91280b67c6"
+   },
+   "at": "2026-09-24T12:57:08+00:00",
+   "prev": "d974bf3c7565ed7748fc43dea47d1c453963490006f1f3367574fe46eb0772ea",
+   "receipt": "0b7fcd7d912e742817adc56914df9d8a82025f190548f81e632b8e36e508f8a0"
+  },
+  {
+   "kind": "mint",
+   "payload": {
+    "id": "L2",
+    "block": "2",
+    "statement_sha": "7e796c8a9a5f43592fb049442aa82b519e6f728f815f7133dc031a6bab1b989a"
+   },
+   "at": "2026-09-24T12:57:08+00:00",
+   "prev": "0b7fcd7d912e742817adc56914df9d8a82025f190548f81e632b8e36e508f8a0",
+   "receipt": "eb511228154e791b9c0e3030adc11edf5f1a8a541245a51709264bc5deacf29c"
+  },
+  {
+   "kind": "mint",
+   "payload": {
+    "id": "L3",
+    "block": "2",
+    "statement_sha": "c5dd02c2ac297d8a13a7a8699b6514ff494d22236906be71ee050cbd7a742622"
+   },
+   "at": "2026-09-24T12:57:08+00:00",
+   "prev": "eb511228154e791b9c0e3030adc11edf5f1a8a541245a51709264bc5deacf29c",
+   "receipt": "0e2f0ff30b94f8dbc5c9646e94b4c58578335e618cb4e27ae8400ba9d7a750f7"
+  },
+  {
+   "kind": "mint",
+   "payload": {
+    "id": "L4",
+    "block": "3",
+    "statement_sha": "1e6ece1fd82181f9e3731d0f7d1b4c028cbd9609951d923c24c727df7b7ec81c"
+   },
+   "at": "2026-09-24T12:57:08+00:00",
+   "prev": "0e2f0ff30b94f8dbc5c9646e94b4c58578335e618cb4e27ae8400ba9d7a750f7",
+   "receipt": "77d0acee640f6c20f7da8ef452fedc5b4a73a6cb5095c1f026b78bff0b44f0f2"
+  },
+  {
+   "kind": "mint",
+   "payload": {
+    "id": "L5",
+    "block": "3",
+    "statement_sha": "b4d3ebd53fb96c89305b1a718ad472c3a63736739399502284463cd4ec875cf8"
+   },
+   "at": "2026-09-24T12:57:08+00:00",
+   "prev": "77d0acee640f6c20f7da8ef452fedc5b4a73a6cb5095c1f026b78bff0b44f0f2",
+   "receipt": "f0dd8a154ce6b9feb2c108f00c5af7278820a65dcdb18f7e751ef2dd4b885864"
+  }
+ ]
+}

@@ -187,6 +187,9 @@ type BillingConfig struct {
 	// CycleReset configures the postpaid monthly cycle-reset runner
 	// (feature #8, AD6).
 	CycleReset BillingCycleResetConfig `mapstructure:"cycleReset"`
+	// NanoConsumer configures the feeless Nano exact-settlement
+	// consumer (issue #7).
+	NanoConsumer NanoConsumerConfig `mapstructure:"nanoConsumer"`
 }
 
 // BillingCycleResetConfig holds the postpaid cycle-reset runner
@@ -208,6 +211,25 @@ type BillingConsumerConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	// Workers is the number of concurrent event handlers.
 	Workers int `mapstructure:"workers"`
+}
+
+// NanoConsumerConfig holds the feeless Nano exact-settlement
+// consumer settings (issue #7).
+type NanoConsumerConfig struct {
+	// Enabled turns the Nano consumer Runner on or off.
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent event handlers.
+	Workers int `mapstructure:"workers"`
+	// NodeRPCURL is the Nano node RPC endpoint for settlement
+	// submissions (e.g. "https://rpc.nano.to"). Empty means log
+	// only (dry-run mode for the additive shape).
+	NodeRPCURL string `mapstructure:"nodeRpcUrl"`
+	// Account is the Nano account that receives settlement amounts.
+	// Empty means the consumer logs the raw amount without submitting.
+	Account string `mapstructure:"account"`
+	// XNORate is the USD→XNO rate at settlement, in XNO per USD unit
+	// (e.g. "1" for a 1:1 boundary). Empty defaults to "1".
+	XNORate string `mapstructure:"xnoRate"`
 }
 
 // BillingReconciliationConfig holds the charging reconciliation runner
