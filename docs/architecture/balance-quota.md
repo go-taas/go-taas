@@ -12,7 +12,6 @@
 
 ## 1. Overview and Goals
 
-
 Features #1–#7 shipped the accounting spine: keys identify callers, usage meters and settles hourly, pricing turns settled usage into charge records and bills, and organizations own every resource — but nothing answers "may this call proceed". This feature closes the money loop with a **per-organization billing account** in one of two modes — **prepaid** (recharge a balance; settlement deductions draw it down; exhaustion blocks inference) or **postpaid** (a monthly quota; the overdraw policy decides what happens at the cap) — plus an append-only, idempotent transaction ledger that makes every cent traceable.
 
 **Goals**: the account field set with admin CRUD (`CreateAccount`/`GetAccount`/`UpdateAccount`/`ListAccounts`), `Recharge`/`Refund` with caller-supplied idempotency keys, settlement-time deduction inside the feature-#5 charge transaction, gateway enforcement via the internal `CheckFunds` RPC (10502 → HTTP 402), monthly UTC cycle reset, `ListTransactions` ledger queries, `GetBalance` implemented, console Accounts pages, and activation of the reserved billing error codes (AC1–AC12).
@@ -53,10 +52,7 @@ flowchart TD
         CGW --> BILL
         BILL --> PG
     end
-    subgraph ops["Operations"]
-        direction LR
-        ADMIN["Admin Console<br/>Accounts pages"]
-    end
+    ADMIN["Admin Console<br/>Accounts pages"]
     DGW -.->|CheckFunds gRPC, cached 5 s| BILL
     ADMIN --> CGW
 ```
@@ -103,7 +99,6 @@ Nav: the Billing group (Pricing, Bills) gains **Accounts** (`/admin/billing/acco
 - **Rollout**: two new tables via AutoMigrate (additive); deploy `taas-server` alone — the runner idles until the first month boundary, queries return 10503/empty until accounts exist, and inference is ungated (AD4). The pricing charge path changes only additively: orgs without accounts charge exactly as before.
 
 ## 4. Data Model
-
 
 
 ### 4.1 The `accounts` Table
@@ -176,7 +171,6 @@ message CheckFundsResponse {
 ```
 
 `GetBalanceResponse` gains `balance_cents` (5), `monthly_quota_cents` (6), `used_this_cycle_cents` (7).
-
 ### 5.1 Validation Matrices (synchronous, first failure returns, nothing written)
 
 `CreateAccount` / `UpdateAccount` — every failure is **10509**, nothing written: `mode` ∈ {`prepaid`, `postpaid`}; `monthly_quota_cents` ≥ 0; `overdraw_policy` ∈ {`block`, `warn`}; `initial_balance_cents` ≥ 0 (create only); org already has an account (create only — the unique index backstops).
@@ -202,16 +196,12 @@ sequenceDiagram
     Console->>CGW: POST /accounts/{id}/recharge (idempotency key)
     CGW->>S: Recharge
     S->>S: validation matrix (Section 5.1)
-    alt invalid
-        S-->>Console: 10503/10510 inline (AC3)
+    alt invalid (10503/10510) or key reuse with different amount (10510)
+        S-->>Console: inline error, nothing written (AC3)
     else valid
         S->>R: Recharge(account, amount, key, note)
         R->>DB: one tx: key lookup, INSERT transaction,<br/>version-guarded balance UPDATE
-        alt key reused with different amount
-            S-->>Console: 10510 (AC3)
-        else committed
-            S-->>Console: Account with new balance (AC2)
-        end
+        S-->>Console: Account with new balance (AC2)
     end
 ```
 
@@ -265,7 +255,6 @@ sequenceDiagram
     end
     Note over DGW,BILL: billing unavailable → fail open (log + allow, AD4)
 ```
-
 ### 6.4 Monthly Cycle Reset
 
 ```mermaid
@@ -277,11 +266,7 @@ sequenceDiagram
     Note over RUN: ticker (billing.cycleReset.interval, default 1m)
     RUN->>R: ResetCycle(monthStartOf(now UTC))
     R->>DB: UPDATE accounts SET used_this_cycle_cents = 0,<br/>cycle_started_at = monthStart, version = version + 1<br/>WHERE mode = postpaid AND cycle_started_at < monthStart
-    alt rows affected
-        RUN->>RUN: log count (AC8)
-    else zero rows
-        RUN->>RUN: idempotent no-op (retries safe, AC8)
-    end
+    Note over RUN,DB: rows affected → log count · zero rows → idempotent no-op (AC8)
 ```
 ## 7. Error Handling
 
