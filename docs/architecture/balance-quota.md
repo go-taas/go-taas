@@ -35,7 +35,6 @@ Features #1–#7 shipped the accounting spine: keys identify callers, usage mete
 | AD11 | **Optimistic locking via a `version` column on every account mutation** (recharge, refund, deduction, update, cycle reset): `UPDATE ... WHERE id = ? AND version = ?`. `SELECT FOR UPDATE` was rejected — it is a no-op on sqlite, which backs the FVT suite. Conflicts: admin paths retry in process (bounded, 3 attempts — the idempotency key keeps retries safe); deduction rolls back the whole charge transaction and converges on the next pass | Uniform, dialect-free, crash-safe |
 | AD12 | **`SetQuota` is folded into `UpdateAccount`** (one admin update path for mode/quota/policy — the console's set-quota dialog calls it), and **cycle reset is a runner, not an RPC** (condition-based, no manual trigger needed) | Fewer RPCs, one validation matrix; the reset needs no operator input |
 
-
 ## 3. Component Design
 
 ```mermaid
@@ -99,7 +98,6 @@ Nav: the Billing group (Pricing, Bills) gains **Accounts** (`/admin/billing/acco
 - **Rollout**: two new tables via AutoMigrate (additive); deploy `taas-server` alone — the runner idles until the first month boundary, queries return 10503/empty until accounts exist, and inference is ungated (AD4). The pricing charge path changes only additively: orgs without accounts charge exactly as before.
 
 ## 4. Data Model
-
 
 ### 4.1 The `accounts` Table
 
@@ -286,7 +284,6 @@ Runner-side failures are not RPC errors: a deduction version conflict rolls back
 
 ## 8. Testing Strategy
 
-
 - **Unit** (`services/billing`, sqlite in-memory): `account_repository_test.go` — org uniqueness (AC1), recharge idempotency and key-reuse rejection (AC2/AC3), in-transaction deduction with the version guard, postpaid usage increment with balance untouched (AC5), cycle-reset idempotence (AC8), redelivery never double-deducts (AC4). `account_service_test.go` — the validation matrices, the `CheckFunds` truth table (prepaid drained, postpaid block/warn, no account — AC6/AC7/AC12), org scoping (AC10). Coverage ≥ 80% on the new files.
 - **FVT** (`test/fvt/balance_quota_fvt_test.go`, the pricing FVT pattern: file-backed sqlite + `MigrateSchemaForFVT` + `NewForFVT` + gRPC server with the production interceptor + gateway mux with `FVTHeaderMatcher`): create and recharge through the gateway (AC1/AC2), 10509/10510 inline (AC3), settlement end-to-end — seed price + usage lines, run `PriceOnce`, assert the balance decreased by the charged cents with exactly one `deduction` transaction per charge record, then redeliver and assert no double-deduct (AC4/AC5), `CheckFunds` over gRPC for every gating branch (AC6/AC7/AC12), a second org never sees the first org's account or transactions (AC10), cycle reset via `ResetOnce` (AC8), refund + ledger filters (AC9).
 - **E2E** (`test/e2e/tests/balanceQuota.js`, the `pricingBills.js` pattern): against the compose stack — the Accounts page renders `account-row-{id}`, the recharge dialog credits and refreshes the balance inline, the set-quota dialog updates, 10509/10510 surface inline (AC11). Gating is FVT-verified (the data-plane gateway is out of repository scope — the established pattern).
@@ -301,4 +298,3 @@ Runner-side failures are not RPC errors: a deduction version conflict rolls back
 | Per-request holds to close the settlement-lag overdraw window (AD3) | Defer; 10506 stays reserved until holds are designed |
 | Platform-wide operator view of all orgs' accounts | With real tenancy (#6/#7 session context); today AC10 mandates org scoping |
 | Quota edits mid-cycle vs next cycle | Mid-cycle (immediate) in v1; `used_this_cycle_cents` keeps both computable |
-
