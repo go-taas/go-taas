@@ -13,8 +13,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"gorm.io/gorm"
 
-	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
+	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
@@ -420,24 +420,24 @@ func summarizeCharge(c *ChargeRecord) *billingv1.ChargeRecordSummary {
 		priceID = *c.PriceID
 	}
 	return &billingv1.ChargeRecordSummary{
-		ChargeId:        c.ID,
-		OrganizationId:  c.OrganizationID,
-		ApiKeyId:        c.APIKeyID,
-		ModelId:         c.ModelID,
-		AcceleratorType: c.AcceleratorType,
-		PeriodStart:     c.PeriodStart,
-		PeriodEnd:       c.PeriodEnd,
-		PromptTokens:    c.PromptTokens,
+		ChargeId:         c.ID,
+		OrganizationId:   c.OrganizationID,
+		ApiKeyId:         c.APIKeyID,
+		ModelId:          c.ModelID,
+		AcceleratorType:  c.AcceleratorType,
+		PeriodStart:      c.PeriodStart,
+		PeriodEnd:        c.PeriodEnd,
+		PromptTokens:     c.PromptTokens,
 		CompletionTokens: c.CompletionTokens,
-		CachedTokens:    c.CachedTokens,
-		ReasoningTokens: c.ReasoningTokens,
-		RequestCount:    c.RequestCount,
-		Amount:          c.Amount,
-		Currency:        c.Currency,
-		PriceId:         priceID,
-		TierIndex:       clampTierIndex(c.TierIndex),
-		Priced:          c.Priced,
-		ChargedAt:       c.ChargedAt.Unix(),
+		CachedTokens:     c.CachedTokens,
+		ReasoningTokens:  c.ReasoningTokens,
+		RequestCount:     c.RequestCount,
+		Amount:           c.Amount,
+		Currency:         c.Currency,
+		PriceId:          priceID,
+		TierIndex:        clampTierIndex(c.TierIndex),
+		Priced:           c.Priced,
+		ChargedAt:        c.ChargedAt.Unix(),
 	}
 }
 

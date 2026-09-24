@@ -17,11 +17,11 @@ import (
 // contract, consumed verbatim — Section 4.5.2). The event names the
 // (api_key_id, period) to price; the usage lines are the token source.
 type settlementEvent struct {
-	UsageRecordID string `json:"usage_record_id"`
-	APIKeyID      string `json:"api_key_id"`
+	UsageRecordID  string `json:"usage_record_id"`
+	APIKeyID       string `json:"api_key_id"`
 	OrganizationID string `json:"organization_id"`
-	PeriodStart   int64  `json:"period_start"`
-	PeriodEnd     int64  `json:"period_end"`
+	PeriodStart    int64  `json:"period_start"`
+	PeriodEnd      int64  `json:"period_end"`
 }
 
 // SettlementsConsumer subscribes to the billing.settlements subject and

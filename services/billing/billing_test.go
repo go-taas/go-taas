@@ -11,8 +11,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/config"
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
 func newBillingTestDB(t *testing.T) *gorm.DB {
@@ -42,14 +42,14 @@ func newBillingTestService(t *testing.T) *Service {
 func seedLine(t *testing.T, db *gorm.DB, requestID, orgID, keyID, modelID, card string, completedAt time.Time, prompt, completion int64) *UsageLine {
 	t.Helper()
 	line := &UsageLine{
-		RequestID:       requestID,
-		OrganizationID:  orgID,
-		APIKeyID:        keyID,
-		ModelID:         modelID,
-		AcceleratorType: card,
-		PromptTokens:    prompt,
+		RequestID:        requestID,
+		OrganizationID:   orgID,
+		APIKeyID:         keyID,
+		ModelID:          modelID,
+		AcceleratorType:  card,
+		PromptTokens:     prompt,
 		CompletionTokens: completion,
-		CompletedAt:     completedAt,
+		CompletedAt:      completedAt,
 	}
 	stored, err := NewRepository(db).IngestUsageLine(context.Background(), line)
 	require.NoError(t, err)
@@ -521,7 +521,7 @@ func TestHandleMeteringEventCardResolution(t *testing.T) {
 	_, err := svc.handleMeteringEvent(ctx, &meteringEvent{
 		RequestID: "r1", OrganizationID: "org-1", APIKeyID: "key-1",
 		ModelID: "m", AcceleratorType: "A800",
-		Usage:    tokenUsage{PromptTokens: 1},
+		Usage:       tokenUsage{PromptTokens: 1},
 		CompletedAt: time.Now().Add(-time.Hour).Unix(),
 	})
 	require.NoError(t, err)
@@ -532,8 +532,8 @@ func TestHandleMeteringEventCardResolution(t *testing.T) {
 	// No field, no service: default sentinel.
 	_, err = svc.handleMeteringEvent(ctx, &meteringEvent{
 		RequestID: "r2", OrganizationID: "org-1", APIKeyID: "key-1",
-		ModelID: "m",
-		Usage:    tokenUsage{PromptTokens: 1},
+		ModelID:     "m",
+		Usage:       tokenUsage{PromptTokens: 1},
 		CompletedAt: time.Now().Add(-time.Hour).Unix(),
 	})
 	require.NoError(t, err)
@@ -546,7 +546,7 @@ func TestHandleMeteringEventCardResolution(t *testing.T) {
 	// Invalid event: 10401-equivalent, nothing written.
 	_, err = svc.handleMeteringEvent(ctx, &meteringEvent{
 		RequestID: "", OrganizationID: "org-1", APIKeyID: "key-1",
-		ModelID: "m",
+		ModelID:     "m",
 		CompletedAt: time.Now().Add(-time.Hour).Unix(),
 	})
 	require.Error(t, err)

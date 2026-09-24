@@ -37,8 +37,8 @@ type billingEnv struct {
 	gwSrv *httptest.Server
 	mqBus *recordingBus
 
-	svc      *billing.Service
-	recon    *billing.ReconciliationRunner
+	svc   *billing.Service
+	recon *billing.ReconciliationRunner
 }
 
 func newBillingEnv(t *testing.T) *billingEnv {
@@ -134,12 +134,12 @@ func (e *billingEnv) call(t *testing.T, method, path string, body any, org strin
 func (e *billingEnv) publishMeteringEvent(t *testing.T, requestID, orgID, keyID, modelID, card string, completedAt time.Time, prompt, completion int64) {
 	t.Helper()
 	body, err := json.Marshal(map[string]any{
-		"request_id":      requestID,
-		"organization_id": orgID,
-		"api_key_id":      keyID,
-		"model_id":        modelID,
+		"request_id":       requestID,
+		"organization_id":  orgID,
+		"api_key_id":       keyID,
+		"model_id":         modelID,
 		"accelerator_type": card,
-		"completed_at":    completedAt.Unix(),
+		"completed_at":     completedAt.Unix(),
 		"usage": map[string]any{
 			"prompt_tokens":     prompt,
 			"completion_tokens": completion,

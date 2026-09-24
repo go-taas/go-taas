@@ -9,8 +9,8 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc/metadata"
 
-	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
+	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
@@ -251,7 +251,7 @@ func TestListChargesOrgScoping(t *testing.T) {
 		ModelID: "m2", AcceleratorType: "A800",
 		PeriodStart: now.Add(-2 * time.Hour).Truncate(time.Hour).Unix(),
 		PeriodEnd:   now.Add(-2 * time.Hour).Truncate(time.Hour).Add(time.Hour).Unix(),
-		Amount: 2, Currency: "USD", Priced: true,
+		Amount:      2, Currency: "USD", Priced: true,
 	}).Error)
 
 	resp, err = svc.ListCharges(withOrg("org-1"), &billingv1.ListChargesRequest{ApiKeyId: "k2"})
@@ -274,23 +274,23 @@ func TestListBillsSummaries(t *testing.T) {
 	require.NoError(t, db.Create(&ChargeRecord{
 		ID: "c1", OrganizationID: "org-1", APIKeyID: "k", ModelID: "m",
 		AcceleratorType: "A800",
-		PeriodStart: monthA.Add(14 * 24 * time.Hour).Unix(),
-		PeriodEnd:   monthA.Add(14*24*time.Hour + time.Hour).Unix(),
-		Amount: 1.5, Currency: "USD", Priced: true,
+		PeriodStart:     monthA.Add(14 * 24 * time.Hour).Unix(),
+		PeriodEnd:       monthA.Add(14*24*time.Hour + time.Hour).Unix(),
+		Amount:          1.5, Currency: "USD", Priced: true,
 	}).Error)
 	require.NoError(t, db.Create(&ChargeRecord{
 		ID: "c2", OrganizationID: "org-1", APIKeyID: "k", ModelID: "m",
 		AcceleratorType: "A800",
-		PeriodStart: monthA.Add(15 * 24 * time.Hour).Unix(),
-		PeriodEnd:   monthA.Add(15*24*time.Hour + time.Hour).Unix(),
-		Amount: 2.5, Currency: "USD", Priced: false,
+		PeriodStart:     monthA.Add(15 * 24 * time.Hour).Unix(),
+		PeriodEnd:       monthA.Add(15*24*time.Hour + time.Hour).Unix(),
+		Amount:          2.5, Currency: "USD", Priced: false,
 	}).Error)
 	require.NoError(t, db.Create(&ChargeRecord{
 		ID: "c3", OrganizationID: "org-1", APIKeyID: "k", ModelID: "m",
 		AcceleratorType: "A800",
-		PeriodStart: monthB.Add(10 * 24 * time.Hour).Unix(),
-		PeriodEnd:   monthB.Add(10*24*time.Hour + time.Hour).Unix(),
-		Amount: 4.0, Currency: "USD", Priced: true,
+		PeriodStart:     monthB.Add(10 * 24 * time.Hour).Unix(),
+		PeriodEnd:       monthB.Add(10*24*time.Hour + time.Hour).Unix(),
+		Amount:          4.0, Currency: "USD", Priced: true,
 	}).Error)
 
 	resp, err := svc.ListBills(withOrg("org-1"), &billingv1.ListBillsRequest{
@@ -334,11 +334,11 @@ func TestPaginationClamping(t *testing.T) {
 
 	for i := 0; i < 3; i++ {
 		require.NoError(t, db.Create(&ChargeRecord{
-			ID: string(rune('a'+i)), OrganizationID: "org-1", APIKeyID: "k",
+			ID: string(rune('a' + i)), OrganizationID: "org-1", APIKeyID: "k",
 			ModelID: "m", AcceleratorType: "A800",
 			PeriodStart: now.Add(-time.Duration(i+1) * time.Hour).Truncate(time.Hour).Unix(),
 			PeriodEnd:   now.Add(-time.Duration(i+1) * time.Hour).Truncate(time.Hour).Add(time.Hour).Unix(),
-			Amount: float64(i), Currency: "USD", Priced: true,
+			Amount:      float64(i), Currency: "USD", Priced: true,
 		}).Error)
 	}
 

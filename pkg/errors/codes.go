@@ -82,12 +82,12 @@ const (
 
 // billing module error codes.
 const (
-	CodePriceNotFound     Code = 10501 // PRICE_NOT_FOUND
-	CodeInsufficientFunds Code = 10502 // INSUFFICIENT_FUNDS
-	CodeAccountNotFound   Code = 10503 // ACCOUNT_NOT_FOUND
-	CodeBillNotFound      Code = 10504 // BILL_NOT_FOUND
-	CodeSettlementFailed  Code = 10505 // SETTLEMENT_FAILED
-	CodeHoldFailed        Code = 10506 // HOLD_FAILED
-	CodePriceInvalid      Code = 10507 // PRICE_INVALID
+	CodePriceNotFound       Code = 10501 // PRICE_NOT_FOUND
+	CodeInsufficientFunds   Code = 10502 // INSUFFICIENT_FUNDS
+	CodeAccountNotFound     Code = 10503 // ACCOUNT_NOT_FOUND
+	CodeBillNotFound        Code = 10504 // BILL_NOT_FOUND
+	CodeSettlementFailed    Code = 10505 // SETTLEMENT_FAILED
+	CodeHoldFailed          Code = 10506 // HOLD_FAILED
+	CodePriceInvalid        Code = 10507 // PRICE_INVALID
 	CodeBillingRangeInvalid Code = 10508 // BILLING_RANGE_INVALID
 )
