@@ -17,6 +17,7 @@ import ImageDetailPage from './pages/ImageDetailPage';
 import UsagePage from './pages/UsagePage';
 import PricingPage from './pages/PricingPage';
 import BillsPage from './pages/BillsPage';
+import AccountsPage from './pages/AccountsPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -42,6 +43,7 @@ export default function App() {
             <Route path="/admin/usage" element={<UsagePage />} />
             <Route path="/admin/pricing" element={<PricingPage />} />
             <Route path="/admin/billing" element={<BillsPage />} />
+            <Route path="/admin/billing/accounts" element={<AccountsPage />} />
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
         </Layout>
@@ -51,6 +53,13 @@ export default function App() {
 }
 
 // The entry route redirects into the admin console.
+// isActive reports whether a nav item covers the current path: an
+// exact match or a path-segment prefix (so /admin/billing/accounts
+// highlights Accounts but not Bills).
+function isActive(path: string, current: string): boolean {
+  return current === path || current.startsWith(`${path}/`);
+}
+
 function NavigateToAdmin() {
   useEffect(() => {
     navigate('/admin');
@@ -87,6 +96,7 @@ const NAV_ITEMS = [
   { path: '/admin/usage', label: 'Usage' },
   { path: '/admin/pricing', label: 'Pricing' },
   { path: '/admin/billing', label: 'Bills' },
+  { path: '/admin/billing/accounts', label: 'Accounts' },
 ];
 
 function Sidebar() {
@@ -111,7 +121,7 @@ function Sidebar() {
           <a
             key={item.path}
             href={item.path}
-            className={path.startsWith(item.path) ? 'nav-item active' : 'nav-item'}
+            className={isActive(item.path, path) ? 'nav-item active' : 'nav-item'}
             data-testid={`nav-${item.label.toLowerCase().replace(/\s+/g, '-')}`}
             onClick={(e) => {
               e.preventDefault();

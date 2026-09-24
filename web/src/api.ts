@@ -312,6 +312,44 @@ export interface BillSummary {
   unpricedCount: string;
 }
 
+// ---- billing accounts (feature #8) ----
+// int64 cents fields serialize as JSON strings.
+
+export interface BillingAccount {
+  accountId: string;
+  organizationId: string;
+  mode: string; // prepaid | postpaid
+  balanceCents: string;
+  monthlyQuotaCents: string;
+  usedThisCycleCents: string;
+  cycleStartedAt: string;
+  overdrawPolicy: string; // block | warn
+  currency: string;
+  remainingCents: string;
+  quotaUsagePercent: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BillingTransaction {
+  transactionId: string;
+  accountId: string;
+  type: string; // recharge | deduction | refund
+  amountCents: string;
+  balanceAfterCents: string;
+  idempotencyKey: string;
+  reference: string;
+  createdAt: string;
+}
+
+// formatCents renders an int64-cents string as a major-unit amount.
+export function formatCents(cents: string | number | undefined): string {
+  if (cents === undefined || cents === null || cents === '') return '0.00';
+  const n = typeof cents === 'string' ? parseInt(cents, 10) : cents;
+  if (!isFinite(n)) return '0.00';
+  return (n / 100).toFixed(2);
+}
+
 export function formatTime(unixSeconds: string | number | undefined): string {
   if (unixSeconds === undefined || unixSeconds === null || unixSeconds === '0') return '—';
   const n = typeof unixSeconds === 'string' ? parseInt(unixSeconds, 10) : unixSeconds;
