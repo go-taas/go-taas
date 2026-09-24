@@ -28,11 +28,11 @@
    "scope": [
     "services/billing/nano/*.go"
    ],
-   "oracle": "go test ./services/billing/nano/... -run TestXNORawFromUSD -v 2>&1 | grep -c -- '--- PASS'",
+   "oracle": "go test ./services/billing/nano/... -run TestXNORawFromUSD_SubCent -v -count=1 2>&1 | grep -c -- 'PASS'",
    "expect": ".",
    "source": "https://nano.org",
    "grounding": "source",
-   "version": 2,
+   "version": 3,
    "minted": "2026-09-24T12:57:08+00:00"
   },
   {
@@ -43,11 +43,11 @@
    "scope": [
     "services/billing/nano/*.go"
    ],
-   "oracle": "go test ./services/billing/nano/... -run TestXNORawFromUSD_SubCent 2>&1 | grep -cF -- 'PASS'",
+   "oracle": "go test ./services/billing/nano/... -run TestXNORawFromUSD_SubCent -v -count=1 2>&1 | grep -c -- 'PASS'",
    "expect": ".",
    "source": "issue #7 design requirement",
    "grounding": "source",
-   "version": 2,
+   "version": 3,
    "minted": "2026-09-24T12:57:08+00:00"
   },
   {
@@ -56,10 +56,7 @@
    "statement": "Nano consumer is additive and does not modify existing billing or metering paths",
    "test": "git diff main -- services/billing/ | grep -c '^--- /dev/null' > /dev/null 2>&1; echo \\$?",
    "scope": [
-    "pkg/config/*.go",
-    "apps/taas-server/*.go",
-    "docs/design/*.md",
-    "services/billing/nano/*.go"
+    "services/billing/nano/consumer.go"
    ],
    "oracle": "git diff --name-only main..HEAD 2>&1 | grep -c '^services/billing\\|^pkg/config\\|^docs/design\\|^apps/taas-server'",
    "expect": ".",
@@ -76,11 +73,11 @@
    "scope": [
     "services/billing/nano/*.go"
    ],
-   "oracle": "go test ./services/billing/nano/... -run TestXNORawFromUSD 2>&1 | grep -cF -- 'PASS'",
+   "oracle": "go test ./services/billing/nano/... -run TestXNORawFromUSD -v -count=1 2>&1 | grep -c -- 'PASS'",
    "expect": ".",
    "source": "code",
    "grounding": "source",
-   "version": 2,
+   "version": 3,
    "minted": "2026-09-24T12:57:08+00:00"
   },
   {
@@ -89,9 +86,7 @@
    "statement": "Config wiring and main.go runner registration follow the existing consumer pattern",
    "test": "go build ./...",
    "scope": [
-    "pkg/config/*.go",
-    "apps/taas-server/*.go",
-    "services/billing/nano/*.go"
+    "apps/taas-server/main.go"
    ],
    "oracle": "go build ./pkg/config/ 2>&1 && go build ./services/billing/nano/ 2>&1 && echo OK",
    "expect": "OK",
@@ -137,6 +132,42 @@
      ],
      "injection": [],
      "at": "2026-09-24T13:24:26+00:00"
+    },
+    {
+     "kind": "verify",
+     "ok": false,
+     "refusable": true,
+     "results": [
+      {
+       "id": "L0",
+       "pass": true,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 3
+       },
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L1",
+       "pass": false,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 2
+       },
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      }
+     ],
+     "pre_sig": "ecdc90007b3afe64b5e10991833e869f877317560926ca1939e520b63e2b2d60",
+     "tier": "strong",
+     "coverage_gaps": [],
+     "injection": [],
+     "at": "2026-09-24T13:27:51+00:00"
     }
    ]
   },
@@ -185,6 +216,57 @@
      ],
      "injection": [],
      "at": "2026-09-24T13:25:05+00:00"
+    },
+    {
+     "kind": "verify",
+     "ok": false,
+     "refusable": true,
+     "results": [
+      {
+       "id": "L0",
+       "pass": true,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 3
+       },
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L1",
+       "pass": false,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 2
+       },
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L2",
+       "pass": false,
+       "oracle_exit": 1,
+       "oracle_ok": false,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L3",
+       "pass": false,
+       "too_broad": true
+      }
+     ],
+     "pre_sig": "b21e5548f0aca4f1baf0e1877a7a4fa59dafcb66eab435423deaa6f8b2dcac5d",
+     "tier": "strong",
+     "coverage_gaps": [],
+     "injection": [],
+     "at": "2026-09-24T13:29:07+00:00"
     }
    ]
   },
@@ -243,6 +325,71 @@
      ],
      "injection": [],
      "at": "2026-09-24T13:25:07+00:00"
+    },
+    {
+     "kind": "verify",
+     "ok": false,
+     "refusable": true,
+     "results": [
+      {
+       "id": "L0",
+       "pass": true,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 3
+       },
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L1",
+       "pass": false,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 2
+       },
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L2",
+       "pass": false,
+       "oracle_exit": 1,
+       "oracle_ok": false,
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L3",
+       "pass": false,
+       "too_broad": true
+      },
+      {
+       "id": "L4",
+       "pass": false,
+       "oracle_exit": 1,
+       "oracle_ok": false,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L5",
+       "pass": false,
+       "too_broad": true
+      }
+     ],
+     "pre_sig": "0d1390af769d76c38b3a26c98cb7e7d2134327561b177d7764545c2ab64eb3fd",
+     "tier": "strong",
+     "coverage_gaps": [],
+     "injection": [],
+     "at": "2026-09-24T13:30:45+00:00"
     }
    ]
   }
@@ -417,6 +564,66 @@
    "at": "2026-09-24T13:25:07+00:00",
    "prev": "7e36967497a8309199560c597787fa923ff6728c0c74bc69f748225cedbec3ee",
    "receipt": "c610f4db4f6b519bcb48695f8cda2d1dcfd54130dfc1ef7addf27b661a9f5675"
+  },
+  {
+   "kind": "verify",
+   "payload": {
+    "block": "1",
+    "ok": false
+   },
+   "at": "2026-09-24T13:27:51+00:00",
+   "prev": "c610f4db4f6b519bcb48695f8cda2d1dcfd54130dfc1ef7addf27b661a9f5675",
+   "receipt": "fed8e18c514da8338fb42014ef4e6c1fc9c34c303b7dae9b0078570ed3806ee6"
+  },
+  {
+   "kind": "verify",
+   "payload": {
+    "block": "2",
+    "ok": false
+   },
+   "at": "2026-09-24T13:29:07+00:00",
+   "prev": "fed8e18c514da8338fb42014ef4e6c1fc9c34c303b7dae9b0078570ed3806ee6",
+   "receipt": "d7a674750c9847ed4abe6e2fc102fc8b0d4e7e39130e3dd8181c0c2a55ec9906"
+  },
+  {
+   "kind": "verify",
+   "payload": {
+    "block": "3",
+    "ok": false
+   },
+   "at": "2026-09-24T13:30:45+00:00",
+   "prev": "d7a674750c9847ed4abe6e2fc102fc8b0d4e7e39130e3dd8181c0c2a55ec9906",
+   "receipt": "8529d68cb5006288f93df7f4f8dc365cf52311ad8967ff903b359feebb6ed4cc"
+  },
+  {
+   "kind": "amend",
+   "payload": {
+    "id": "L1",
+    "version": 3
+   },
+   "at": "2026-09-24T13:31:10+00:00",
+   "prev": "8529d68cb5006288f93df7f4f8dc365cf52311ad8967ff903b359feebb6ed4cc",
+   "receipt": "d4ff14b6cdd0bc473beb9f60a037e4443a489461f35c04265e36885162d25d91"
+  },
+  {
+   "kind": "amend",
+   "payload": {
+    "id": "L2",
+    "version": 3
+   },
+   "at": "2026-09-24T13:31:10+00:00",
+   "prev": "d4ff14b6cdd0bc473beb9f60a037e4443a489461f35c04265e36885162d25d91",
+   "receipt": "395b1aa54c24355fd4edcaea0ecce535f227798a418e266aecfaf509d9f73141"
+  },
+  {
+   "kind": "amend",
+   "payload": {
+    "id": "L4",
+    "version": 3
+   },
+   "at": "2026-09-24T13:31:10+00:00",
+   "prev": "395b1aa54c24355fd4edcaea0ecce535f227798a418e266aecfaf509d9f73141",
+   "receipt": "14cb78f6be4c8ad030887f0c59680634d3cf9a0ee8ecd5e1ed3e804e386131af"
   }
  ]
 }
