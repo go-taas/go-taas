@@ -29,6 +29,7 @@ import (
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/model"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // modelInferEnv is the in-process stack for the model catalog and
@@ -111,6 +112,14 @@ func newModelInferEnv(t *testing.T) *modelInferEnv {
 	require.NoError(t, err)
 	require.NoError(t, model.MigrateSchemaForFVT(db))
 	require.NoError(t, infer.MigrateSchemaForFVT(db))
+	// Feature #6: the org context is validated against the
+	// organizations table.
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	for _, orgID := range []string{"org-fvt", "org-a", "org-b"} {
+		require.NoError(t, db.Create(&tenancy.Organization{
+			ID: orgID, DisplayName: orgID, State: tenancy.StateActive,
+		}).Error)
+	}
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -143,6 +152,7 @@ func newModelInferEnv(t *testing.T) *modelInferEnv {
 	modelSvc := model.NewForFVT(db)
 	modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(db))
 	inferSvc := infer.NewForFVT(db, bus)
+	inferSvc.SetOrgGuard(tenancy.NewOrgGuard(db))
 	imageSvc := image.NewForFVT(db, bus)
 
 	// The real status consumer runs against the bus, so controller

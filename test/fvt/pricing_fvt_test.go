@@ -26,6 +26,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
 	"github.com/go-taas/go-taas/services/billing"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // billingEnv is the in-process stack for the pricing feature: the
@@ -57,6 +58,14 @@ func newBillingEnv(t *testing.T) *billingEnv {
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, billing.MigrateSchemaForFVT(db))
+	// Feature #6: the org context is validated against the
+	// organizations table.
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	for _, orgID := range []string{"org-fvt", "org-a", "org-b"} {
+		require.NoError(t, db.Create(&tenancy.Organization{
+			ID: orgID, DisplayName: orgID, State: tenancy.StateActive,
+		}).Error)
+	}
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })
@@ -70,6 +79,7 @@ func newBillingEnv(t *testing.T) *billingEnv {
 
 	bus := newRecordingBus()
 	svc := billing.NewForFVT(db, bus)
+	svc.SetOrgGuard(tenancy.NewOrgGuard(db))
 
 	// The real consumers run against the bus, so metering.events and
 	// billing.settlements flow through the production path.

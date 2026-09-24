@@ -101,6 +101,28 @@ const api = {
     );
     browser.assert.equal(res.body.code, expectedCode, `${label}: business code ${expectedCode}`);
     return res.body;
+  },
+
+  /**
+   * Ensure an organization exists (feature #6). The org-scoped APIs
+   * validate the X-Organization-Id header against the organizations
+   * table, so every suite must create its org ids before use. Creating
+   * an existing org returns 10015, which is tolerated (idempotent).
+   */
+  ensureOrg(browser, orgId) {
+    this.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/tenancy/organizations',
+      org: orgId,
+      body: {organizationId: orgId, displayName: `e2e org ${orgId}`}
+    }, (res) => {
+      if (res.body && res.body.code === 10015) {
+        // Already exists: fine.
+        return;
+      }
+      this.assertOk(browser, res, `ensureOrg ${orgId}`);
+    });
+    return this;
   }
 };
 

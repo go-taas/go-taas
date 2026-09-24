@@ -25,6 +25,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 	meteringv1 "github.com/go-taas/go-taas/proto/taas/metering/v1"
 	"github.com/go-taas/go-taas/services/metering"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // meteringEnv is the in-process stack for the metering feature: the
@@ -57,6 +58,14 @@ func newMeteringEnv(t *testing.T) *meteringEnv {
 	db, err := gorm.Open(sqlite.Open(dbPath+"?_busy_timeout=10000&_txlock=immediate&_journal_mode=WAL"), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, metering.MigrateSchemaForFVT(db))
+	// Feature #6: the org context is validated against the
+	// organizations table.
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	for _, orgID := range []string{"org-fvt", "org-a", "org-b"} {
+		require.NoError(t, db.Create(&tenancy.Organization{
+			ID: orgID, DisplayName: orgID, State: tenancy.StateActive,
+		}).Error)
+	}
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -72,6 +81,7 @@ func newMeteringEnv(t *testing.T) *meteringEnv {
 
 	bus := newRecordingBus()
 	svc := metering.NewForFVT(db, bus)
+	svc.SetOrgGuard(tenancy.NewOrgGuard(db))
 
 	// The real event consumer runs against the bus, so metering.events
 	// flow through the production path.

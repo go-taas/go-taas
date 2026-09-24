@@ -38,6 +38,10 @@ module.exports = {
     browser.url(browser.globals.baseUrl + '/');
     browser.globals.orgA = `org-e2e-${browser.globals.runId}`;
     browser.globals.orgB = `org-other-${browser.globals.runId}`;
+    // Feature #6: the org-scoped APIs validate the org header against the
+    // organizations table, so the org ids must exist first.
+    api.ensureOrg(browser, browser.globals.orgA);
+    api.ensureOrg(browser, browser.globals.orgB);
   },
 
   afterEach(browser) {

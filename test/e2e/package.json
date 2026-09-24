@@ -9,7 +9,8 @@
     "test:model": "nightwatch --tag model",
     "test:infer": "nightwatch --tag infer",
     "test:metering": "nightwatch --tag metering",
-    "test:pricing": "nightwatch --tag pricing"
+    "test:pricing": "nightwatch --tag pricing",
+    "test:tenancy": "nightwatch --tag tenancy"
   },
   "license": "Apache-2.0",
   "devDependencies": {

@@ -36,6 +36,9 @@ module.exports = {
     // Land on the gateway origin so in-page fetch() calls are same-origin.
     browser.url(browser.globals.baseUrl + '/');
     browser.globals.orgA = `org-e2e-${browser.globals.runId}`;
+    // Feature #6: the org-scoped APIs validate the org header against the
+    // organizations table, so the org id must exist first.
+    api.ensureOrg(browser, browser.globals.orgA);
   },
 
   afterEach(browser) {

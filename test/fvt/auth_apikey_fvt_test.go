@@ -25,6 +25,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
 	"github.com/go-taas/go-taas/services/auth"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // fvtEnv is a fully wired in-process stack: gRPC server on a real
@@ -43,6 +44,15 @@ func newFVTEnv(t *testing.T) *fvtEnv {
 	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, auth.MigrateSchemaForFVT(db))
+	// Feature #6: the org context is validated against the
+	// organizations table, so the schema and the fixture rows must
+	// exist and the guard must be wired.
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	for _, orgID := range []string{"org-fvt", "org-a", "org-b", "org-other"} {
+		require.NoError(t, db.Create(&tenancy.Organization{
+			ID: orgID, DisplayName: orgID, State: tenancy.StateActive,
+		}).Error)
+	}
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -57,6 +67,7 @@ func newFVTEnv(t *testing.T) *fvtEnv {
 	// Auth service bound to the shared database through the injection
 	// constructor; the verdict cache is the in-memory fake.
 	svc := auth.NewForFVT(db)
+	svc.SetOrgGuard(tenancy.NewOrgGuard(db))
 	authv1.RegisterAuthServiceServer(grpcSrv, svc)
 	go func() { _ = grpcSrv.Serve(ln) }()
 

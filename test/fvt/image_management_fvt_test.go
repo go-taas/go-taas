@@ -28,6 +28,7 @@ import (
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/model"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // imageEnv is the in-process stack for the image management feature:
@@ -52,6 +53,14 @@ func newImageEnv(t *testing.T) *imageEnv {
 	require.NoError(t, model.MigrateSchemaForFVT(db))
 	require.NoError(t, infer.MigrateSchemaForFVT(db))
 	require.NoError(t, image.MigrateSchemaForFVT(db))
+	// Feature #6: the org context is validated against the
+	// organizations table.
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	for _, orgID := range []string{"org-fvt", "org-a", "org-b"} {
+		require.NoError(t, db.Create(&tenancy.Organization{
+			ID: orgID, DisplayName: orgID, State: tenancy.StateActive,
+		}).Error)
+	}
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -68,6 +77,7 @@ func newImageEnv(t *testing.T) *imageEnv {
 	modelSvc := model.NewForFVT(db)
 	modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(db))
 	inferSvc := infer.NewForFVT(db, bus)
+	inferSvc.SetOrgGuard(tenancy.NewOrgGuard(db))
 	imageSvc := image.NewForFVT(db, bus)
 	imageSvc.SetDeleteGuard(infer.NewDeleteImageGuard(db))
 	imageSvc.SetInUseProvider(infer.NewImageInUseProvider(db))
