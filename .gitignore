@@ -62,3 +62,6 @@ proto/**/*.pb.gw.go
 
 # TypeScript incremental build cache
 *.tsbuildinfo
+.ledger/.lock
+.ledger/cache.json
+.ledger/tmp/

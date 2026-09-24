@@ -213,6 +213,49 @@
      ],
      "injection": [],
      "at": "2026-09-24T13:33:17+00:00"
+    },
+    {
+     "kind": "verify",
+     "ok": false,
+     "refusable": true,
+     "results": [
+      {
+       "id": "L0",
+       "pass": false,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 3
+       },
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L1",
+       "pass": true,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 2
+       },
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      }
+     ],
+     "pre_sig": "5db3b70b6e5166b5728606b81c58cd0ddc1d18470c229605339baf73feb84437",
+     "tier": "strong",
+     "coverage_gaps": [
+      "docs/design/metering.md",
+      "docs/design/metering.zh-cn.md",
+      "docs/design/pricing.md",
+      "docs/design/pricing.zh-cn.md",
+      "pkg/config/api.go",
+      "pkg/config/configuration.go"
+     ],
+     "injection": [],
+     "at": "2026-09-24T13:50:17+00:00"
     }
    ]
   },
@@ -742,6 +785,16 @@
    "at": "2026-09-24T13:34:51+00:00",
    "prev": "82406cc61a148fa889d3fea60d8b8b70da43a8f309e916fdab6a79fca5ec9202",
    "receipt": "2c2b9da69671d89957dfa61ccfc99384602efb05b912b7e2ba5d77ef18cd2194"
+  },
+  {
+   "kind": "verify",
+   "payload": {
+    "block": "1",
+    "ok": false
+   },
+   "at": "2026-09-24T13:50:17+00:00",
+   "prev": "2c2b9da69671d89957dfa61ccfc99384602efb05b912b7e2ba5d77ef18cd2194",
+   "receipt": "045ec075b4d985189c9f0303bc431aa49d15ebe27954086e934414fa7d0f7e5d"
   }
  ]
 }
