@@ -184,6 +184,20 @@ type BillingConfig struct {
 	SettlementsConsumer BillingConsumerConfig `mapstructure:"settlementsConsumer"`
 	// Reconciliation configures the charging safety-net runner.
 	Reconciliation BillingReconciliationConfig `mapstructure:"reconciliation"`
+	// CycleReset configures the postpaid monthly cycle-reset runner
+	// (feature #8, AD6).
+	CycleReset BillingCycleResetConfig `mapstructure:"cycleReset"`
+}
+
+// BillingCycleResetConfig holds the postpaid cycle-reset runner
+// settings.
+type BillingCycleResetConfig struct {
+	// Enabled turns the cycle-reset runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Interval is the ticker period between reset checks (the reset
+	// itself is condition-based, so short intervals are cheap).
+	Interval time.Duration `mapstructure:"interval"`
 }
 
 // BillingConsumerConfig holds the kill switch and worker count of a
@@ -387,6 +401,9 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Billing.Reconciliation.Workers < 0 {
 		return &FieldError{Field: "billing.reconciliation.workers", Reason: "must be non-negative"}
+	}
+	if c.Billing.CycleReset.Interval < 0 {
+		return &FieldError{Field: "billing.cycleReset.interval", Reason: "must be non-negative"}
 	}
 	return nil
 }

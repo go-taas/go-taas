@@ -110,4 +110,6 @@ const (
 	CodeHoldFailed          Code = 10506 // HOLD_FAILED
 	CodePriceInvalid        Code = 10507 // PRICE_INVALID
 	CodeBillingRangeInvalid Code = 10508 // BILLING_RANGE_INVALID
+	CodeAccountInvalid      Code = 10509 // ACCOUNT_INVALID
+	CodeTransactionInvalid  Code = 10510 // TRANSACTION_INVALID
 )

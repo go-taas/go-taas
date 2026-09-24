@@ -100,10 +100,10 @@ func NewForFVT(db *gorm.DB, publisher mq.Client) *Service {
 }
 
 // MigrateSchemaForFVT applies the billing schema (price_entries,
-// usage_lines, charge_records) onto a caller-provided database for
-// full-verification tests.
+// usage_lines, charge_records, accounts, transactions) onto a
+// caller-provided database for full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&PriceEntry{}, &UsageLine{}, &ChargeRecord{})
+	return db.AutoMigrate(&PriceEntry{}, &UsageLine{}, &ChargeRecord{}, &Account{}, &Transaction{})
 }
 
 // AttachToServer implements server.Service.
@@ -120,14 +120,14 @@ func (s *Service) GetServiceHandlerRegisterFn() server.ServiceHandlerRegisterFn 
 }
 
 // Migrate implements server.Migrator: it creates/updates the
-// price_entries, usage_lines and charge_records tables via GORM
-// AutoMigrate. There is nothing to seed.
+// price_entries, usage_lines, charge_records, accounts and
+// transactions tables via GORM AutoMigrate. There is nothing to seed.
 func (s *Service) Migrate(ctx context.Context) error {
 	db, err := s.gormDB()
 	if err != nil {
 		return err
 	}
-	return db.WithContext(ctx).AutoMigrate(&PriceEntry{}, &UsageLine{}, &ChargeRecord{})
+	return db.WithContext(ctx).AutoMigrate(&PriceEntry{}, &UsageLine{}, &ChargeRecord{}, &Account{}, &Transaction{})
 }
 
 // gormDB resolves the *gorm.DB from the wired repository or the shared
@@ -389,12 +389,6 @@ func summarizePrice(p *PriceEntry) *billingv1.PriceEntry {
 		Tiers:                 protoTiers,
 		UpdatedAt:             p.UpdatedAt.Unix(),
 	}
-}
-
-// GetBalance returns the prepaid balance or postpaid quota of an
-// organization. Stub until feature #8 (10503).
-func (s *Service) GetBalance(_ context.Context, _ *billingv1.GetBalanceRequest) (*billingv1.GetBalanceResponse, error) {
-	return nil, apierrors.New(apierrors.CodeAccountNotFound)
 }
 
 // ListCharges returns charge records filtered by api key, model and

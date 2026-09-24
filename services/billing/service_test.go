@@ -316,12 +316,19 @@ func TestListBillsSummaries(t *testing.T) {
 	assert.Equal(t, int64(1), bill.GetUnpricedCount())
 }
 
-// GetBalance is a stub until feature #8.
+// GetBalance requires the org header; an org without an account is
+// 10503 (feature #8).
 func TestGetBalanceStub(t *testing.T) {
 	svc := newBillingTestService(t)
 	_, err := svc.GetBalance(context.Background(), &billingv1.GetBalanceRequest{})
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeUnauthorized, ae.Code)
+
+	_, err = svc.GetBalance(withOrg("org-none"), &billingv1.GetBalanceRequest{})
+	require.Error(t, err)
+	ae, ok = apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeAccountNotFound, ae.Code)
 }

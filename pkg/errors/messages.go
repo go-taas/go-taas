@@ -77,6 +77,8 @@ var messages = map[Code]string{
 	CodeHoldFailed:          "funds hold failed",
 	CodePriceInvalid:        "price invalid",
 	CodeBillingRangeInvalid: "billing range invalid",
+	CodeAccountInvalid:      "account invalid",
+	CodeTransactionInvalid:  "transaction invalid",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

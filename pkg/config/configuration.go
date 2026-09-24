@@ -153,6 +153,9 @@ func (c *Configuration) applyDefaults() {
 	if c.Billing.Reconciliation.Workers == 0 {
 		c.Billing.Reconciliation.Workers = 2
 	}
+	if c.Billing.CycleReset.Interval == 0 {
+		c.Billing.CycleReset.Interval = time.Minute
+	}
 }
 
 // String returns a string representation of the configuration for logging.

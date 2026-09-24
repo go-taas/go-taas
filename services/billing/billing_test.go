@@ -20,7 +20,7 @@ func newBillingTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&PriceEntry{}, &UsageLine{}, &ChargeRecord{}))
+	require.NoError(t, db.AutoMigrate(&PriceEntry{}, &UsageLine{}, &ChargeRecord{}, &Account{}, &Transaction{}))
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -206,13 +206,13 @@ func TestRepositoryChargeGroupIdempotent(t *testing.T) {
 		PromptTokens: 100, CompletionTokens: 40, RequestCount: 1,
 		Amount: 0.5, Currency: "USD", Priced: true,
 	}
-	require.NoError(t, repo.ChargeGroup(ctx, group, record))
+	require.NoError(t, repo.ChargeGroup(ctx, group, record, nil))
 
 	// A re-run with a fresh record converges on the existing row.
 	dup := &ChargeRecord{ID: "charge-2", OrganizationID: "org-1", APIKeyID: "key-1",
 		ModelID: "model-a", AcceleratorType: "A800",
 		PeriodStart: hour.Unix(), PeriodEnd: hour.Unix() + 3600}
-	require.NoError(t, repo.ChargeGroup(ctx, group, dup))
+	require.NoError(t, repo.ChargeGroup(ctx, group, dup, nil))
 
 	var count int64
 	require.NoError(t, db.Model(&ChargeRecord{}).Count(&count).Error)

@@ -45,6 +45,70 @@ service BillingService {
   rpc ListCharges(ListChargesRequest) returns (ListChargesResponse) {
     option (google.api.http) = {get: "/api/v1/admin/billing/charges"};
   }
+
+  // CreateAccount creates the organization's single billing account
+  // (prepaid or postpaid), optionally crediting an opening balance.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc CreateAccount(CreateAccountRequest) returns (CreateAccountResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/billing/accounts"
+      body: "*"
+    };
+  }
+
+  // ListAccounts returns the billing accounts of the caller's
+  // organization (zero or one today).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListAccounts(ListAccountsRequest) returns (ListAccountsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/billing/accounts"};
+  }
+
+  // GetAccount returns one billing account with computed remaining
+  // funds and quota usage.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetAccount(GetAccountRequest) returns (GetAccountResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/billing/accounts/{account_id}"};
+  }
+
+  // UpdateAccount replaces the mode, monthly quota and overdraw policy
+  // of one account.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateAccount(UpdateAccountRequest) returns (UpdateAccountResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/billing/accounts/{account_id}"
+      body: "*"
+    };
+  }
+
+  // Recharge credits a prepaid balance (idempotent on the
+  // idempotency key).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc Recharge(RechargeRequest) returns (RechargeResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/billing/accounts/{account_id}/recharge"
+      body: "*"
+    };
+  }
+
+  // Refund returns credit from a prepaid balance (admin-initiated).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc Refund(RefundRequest) returns (RefundResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/billing/accounts/{account_id}/refund"
+      body: "*"
+    };
+  }
+
+  // ListTransactions returns the account ledger filtered by account,
+  // type and time range, paginated newest-first.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListTransactions(ListTransactionsRequest) returns (ListTransactionsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/billing/transactions"};
+  }
+
+  // CheckFunds is the internal gateway gating check: may the
+  // organization's requests proceed (AD4). No HTTP binding.
+  rpc CheckFunds(CheckFundsRequest) returns (CheckFundsResponse);
 }
 
 message SetPriceRequest {
@@ -124,8 +188,15 @@ message GetBalanceResponse {
   taas.common.v1.Response response = 1;
   // mode is "prepaid" (balance) or "postpaid" (quota).
   string mode = 2;
+  // balance is deprecated: balance_cents / 100 for one release.
   double balance = 3;
   string currency = 4;
+  // balance_cents is the prepaid funds in minor units.
+  int64 balance_cents = 5;
+  // monthly_quota_cents is the postpaid cap; 0 = unlimited.
+  int64 monthly_quota_cents = 6;
+  // used_this_cycle_cents is the postpaid usage within the cycle.
+  int64 used_this_cycle_cents = 7;
 }
 
 message ListBillsRequest {
@@ -194,4 +265,163 @@ message ChargeRecordSummary {
   // priced reports whether a price applied (false means amount 0).
   bool priced = 17;
   int64 charged_at = 18;
+}
+
+message CreateAccountRequest {
+  // mode is "prepaid" or "postpaid".
+  string mode = 1;
+  // monthly_quota_cents is the postpaid monthly cap; 0 = unlimited.
+  int64 monthly_quota_cents = 2;
+  // overdraw_policy is "block" or "warn" (postpaid enforcement).
+  string overdraw_policy = 3;
+  // initial_balance_cents is the optional opening balance credited as
+  // a recharge transaction (prepaid only).
+  int64 initial_balance_cents = 4;
+}
+
+message CreateAccountResponse {
+  taas.common.v1.Response response = 1;
+  Account account = 2;
+}
+
+message ListAccountsRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListAccountsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Account accounts = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetAccountRequest {
+  string account_id = 1;
+}
+
+message GetAccountResponse {
+  taas.common.v1.Response response = 1;
+  Account account = 2;
+}
+
+message UpdateAccountRequest {
+  string account_id = 1;
+  // mode is "prepaid" or "postpaid".
+  string mode = 2;
+  // monthly_quota_cents is the postpaid monthly cap; 0 = unlimited.
+  int64 monthly_quota_cents = 3;
+  // overdraw_policy is "block" or "warn".
+  string overdraw_policy = 4;
+}
+
+message UpdateAccountResponse {
+  taas.common.v1.Response response = 1;
+  Account account = 2;
+}
+
+message RechargeRequest {
+  string account_id = 1;
+  // amount_cents is the credit amount, positive.
+  int64 amount_cents = 2;
+  // idempotency_key deduplicates retries; required, <= 128 chars.
+  string idempotency_key = 3;
+  // note is a free-text reference stored on the transaction.
+  string note = 4;
+}
+
+message RechargeResponse {
+  taas.common.v1.Response response = 1;
+  Account account = 2;
+  Transaction transaction = 3;
+}
+
+message RefundRequest {
+  string account_id = 1;
+  // amount_cents is the refund amount, positive.
+  int64 amount_cents = 2;
+  // idempotency_key deduplicates retries; required, <= 128 chars.
+  string idempotency_key = 3;
+  // note is a free-text reference stored on the transaction.
+  string note = 4;
+}
+
+message RefundResponse {
+  taas.common.v1.Response response = 1;
+  Account account = 2;
+  Transaction transaction = 3;
+}
+
+message ListTransactionsRequest {
+  taas.common.v1.PageRequest page = 1;
+  // account_id filters the ledger to one account.
+  string account_id = 2;
+  // type filters by transaction type: recharge / deduction / refund.
+  string type = 3;
+  int64 since = 4;
+  int64 until = 5;
+}
+
+message ListTransactionsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Transaction transactions = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+// Account is the per-organization billing account (AD1).
+message Account {
+  string account_id = 1;
+  string organization_id = 2;
+  // mode is "prepaid" or "postpaid".
+  string mode = 3;
+  // balance_cents is the prepaid funds in minor units.
+  int64 balance_cents = 4;
+  // monthly_quota_cents is the postpaid cap; 0 = unlimited.
+  int64 monthly_quota_cents = 5;
+  // used_this_cycle_cents is the postpaid usage within the cycle.
+  int64 used_this_cycle_cents = 6;
+  // cycle_started_at is the UTC month start the cycle covers, unix
+  // seconds.
+  int64 cycle_started_at = 7;
+  // overdraw_policy is "block" or "warn".
+  string overdraw_policy = 8;
+  string currency = 9;
+  // remaining_cents: prepaid = balance; postpaid = quota - used (0
+  // when unlimited).
+  int64 remaining_cents = 10;
+  // quota_usage_percent is the postpaid usage ratio; 0 when unlimited.
+  int32 quota_usage_percent = 11;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+}
+
+// Transaction is one append-only ledger row (AD7).
+message Transaction {
+  string transaction_id = 1;
+  string account_id = 2;
+  // type is "recharge", "deduction" or "refund".
+  string type = 3;
+  // amount_cents is positive; the direction is implied by type.
+  int64 amount_cents = 4;
+  // balance_after_cents is the account balance after the write.
+  int64 balance_after_cents = 5;
+  string idempotency_key = 6;
+  // reference is the charge_id for deductions, free text otherwise.
+  string reference = 7;
+  int64 created_at = 8;
+}
+
+message CheckFundsRequest {
+  string organization_id = 1;
+}
+
+message CheckFundsResponse {
+  taas.common.v1.Response response = 1;
+  // allowed reports whether requests may proceed.
+  bool allowed = 2;
+  // reason is "" or "insufficient_funds".
+  string reason = 3;
+  // mode is "prepaid" / "postpaid" / "" (no account).
+  string mode = 4;
+  int64 balance_cents = 5;
+  int64 monthly_quota_cents = 6;
+  int64 used_this_cycle_cents = 7;
 }

@@ -134,6 +134,9 @@ func main() {
 	if runner := billing.NewReconciliationRunnerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
+	if runner := billing.NewCycleResetRunnerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
 
 	srv.Serve()
 }

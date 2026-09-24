@@ -9,8 +9,13 @@ import (
 	"gorm.io/gorm/clause"
 )
 
-// txKey is the context key carrying the active *gorm.DB transaction handle.
-type txKey struct{}
+// TxKey is the context key carrying the active *gorm.DB transaction
+// handle. It is exported so module repositories outside this package
+// can join transactions opened by Manager.WithinTx.
+type TxKey struct{}
+
+// txKey is the shared TxKey instance used by Manager.
+var txKey = TxKey{}
 
 // ErrNoTx is returned by Manager.WithinTx when called outside a
 // transaction-capable context.
@@ -31,7 +36,7 @@ func NewManager(db *gorm.DB) *Manager {
 // DB returns the *gorm.DB to use for the given context: the active
 // transaction when present, the raw connection otherwise.
 func (m *Manager) DB(ctx context.Context) *gorm.DB {
-	if tx, ok := ctx.Value(txKey{}).(*gorm.DB); ok && tx != nil {
+	if tx, ok := ctx.Value(txKey).(*gorm.DB); ok && tx != nil {
 		return tx
 	}
 	return m.db
@@ -42,13 +47,13 @@ func (m *Manager) DB(ctx context.Context) *gorm.DB {
 // another one. The transaction commits when fn returns nil and rolls back
 // on any error or panic.
 func (m *Manager) WithinTx(ctx context.Context, fn func(ctx context.Context) error) error {
-	if _, ok := ctx.Value(txKey{}).(*gorm.DB); ok {
+	if _, ok := ctx.Value(txKey).(*gorm.DB); ok {
 		// Already inside a transaction: join it.
 		return fn(ctx)
 	}
 
 	return m.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return fn(context.WithValue(ctx, txKey{}, tx))
+		return fn(context.WithValue(ctx, txKey, tx))
 	})
 }
 

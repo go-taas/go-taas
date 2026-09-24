@@ -19,7 +19,9 @@ const defaultCardType = "default"
 // (api_key, hour) bucket — the single charging entry point shared by
 // the settlements consumer and the reconciliation runner (D7). Groups
 // are processed independently: one group's failure does not abort the
-// others (logged, retried next pass, FR4.5).
+// others (logged, retried next pass, FR4.5). When the org has a
+// billing account, each new charge also deducts from it inside the
+// same transaction (feature #8, AD3).
 func (s *Service) PriceOnce(ctx context.Context, apiKeyID string, periodStart int64) error {
 	repo, err := s.repository()
 	if err != nil {
@@ -30,8 +32,17 @@ func (s *Service) PriceOnce(ctx context.Context, apiKeyID string, periodStart in
 	if err != nil {
 		return err
 	}
+	// Resolve the org's account once per pass (AD3); nil means the org
+	// is ungated (AC12).
+	var account *Account
 	for i := range groups {
-		if err := s.chargeGroup(ctx, repo, &groups[i]); err != nil {
+		if account == nil || account.OrganizationID != groups[i].OrganizationID {
+			account, err = repo.Accounts().FindByOrg(ctx, groups[i].OrganizationID)
+			if err != nil {
+				return err
+			}
+		}
+		if err := s.chargeGroup(ctx, repo, &groups[i], account); err != nil {
 			logger.S().Warnw("billing: group charge failed, will retry next pass",
 				"api_key_id", groups[i].APIKeyID,
 				"model_id", groups[i].ModelID,
@@ -46,7 +57,8 @@ func (s *Service) PriceOnce(ctx context.Context, apiKeyID string, periodStart in
 // chargeGroup prices and commits one usage group: price lookup with the
 // D6 fallback chain, month-to-date volume, tier selection, the D2
 // amount formula, and the ChargeGroup transaction (FR4, AC6-AC11).
-func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *UsageGroup) error {
+// When account is non-nil the charge also deducts from it (AD3).
+func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *UsageGroup, account *Account) error {
 	now := time.Now().UTC()
 	currency := config.GetConfig().Billing.Currency
 
@@ -109,7 +121,26 @@ func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *Usag
 		record.PriceID = &priceID
 	}
 
-	return repo.ChargeGroup(ctx, *group, record)
+	// Feature #8: an org with an account deducts the charged cents
+	// inside the charge transaction (AD3); 0-amount charges still
+	// deduct 0 (FR3.2), orgs without an account skip the deduction
+	// (AC12).
+	var deduction *DeductionSpec
+	if account != nil {
+		deduction = &DeductionSpec{
+			AccountID:   account.ID,
+			ChargeID:    record.ID,
+			AmountCents: centsFromAmount(record.Amount),
+		}
+	}
+
+	return repo.ChargeGroup(ctx, *group, record, deduction)
+}
+
+// centsFromAmount converts a 2-decimal amount into integer minor units
+// (AD2).
+func centsFromAmount(amount float64) int64 {
+	return int64(math.Round(amount * 100))
 }
 
 // computeAmount applies the D2 formula: per-1M rates times token

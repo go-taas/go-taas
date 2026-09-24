@@ -19,6 +19,8 @@ import (
 type Repository struct {
 	*database.BaseRepository[PriceEntry]
 	db *database.Manager
+	// accounts is the feature-#8 account/ledger repository.
+	accounts *AccountRepository
 }
 
 // NewRepository constructs a Repository bound to a database Manager.
@@ -27,8 +29,12 @@ func NewRepository(db *gorm.DB) *Repository {
 	return &Repository{
 		BaseRepository: database.NewBaseRepository[PriceEntry](mgr),
 		db:             mgr,
+		accounts:       NewAccountRepository(db),
 	}
 }
+
+// Accounts exposes the account/ledger repository (feature #8).
+func (r *Repository) Accounts() *AccountRepository { return r.accounts }
 
 // UpsertPrice inserts or updates one price cell version in place: ON
 // CONFLICT (model_id, accelerator_type, effective_from) DO UPDATE of
@@ -208,9 +214,11 @@ func (r *Repository) UnchargedHourBuckets(ctx context.Context, eligibleBefore ti
 
 // ChargeGroup commits one charge in a single transaction: INSERT the
 // charge record with ON CONFLICT DO NOTHING on the group-period unique
-// index (a no-op when it exists — re-run safety, AC10), then mark the
-// contributing usage lines inside the same transaction.
-func (r *Repository) ChargeGroup(ctx context.Context, group UsageGroup, record *ChargeRecord) error {
+// index (a no-op when it exists — re-run safety, AC10), apply the
+// feature-#8 account deduction when the charge is new and a spec is
+// supplied (AD3), then mark the contributing usage lines inside the
+// same transaction.
+func (r *Repository) ChargeGroup(ctx context.Context, group UsageGroup, record *ChargeRecord, deduction *DeductionSpec) error {
 	return r.db.WithinTx(ctx, func(txCtx context.Context) error {
 		result := r.DB(txCtx).Clauses(clause.OnConflict{DoNothing: true}).Create(record)
 		if result.Error != nil {
@@ -227,6 +235,13 @@ func (r *Repository) ChargeGroup(ctx context.Context, group UsageGroup, record *
 				return err
 			}
 			record = &existing
+		} else if deduction != nil && r.accounts != nil {
+			// New charge with an account: deduct inside this
+			// transaction (AD3). A replayed charge skips the
+			// deduction (idempotent, AC4).
+			if err := r.accounts.ApplyDeduction(txCtx, *deduction); err != nil {
+				return err
+			}
 		}
 		return r.DB(txCtx).Model(&UsageLine{}).
 			Where("api_key_id = ? AND model_id = ? AND accelerator_type = ? AND completed_at >= ? AND completed_at < ? AND charged_charge_id IS NULL",
