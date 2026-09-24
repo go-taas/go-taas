@@ -485,15 +485,15 @@ func (s *Service) summarizeOrganization(ctx context.Context, repo *Repository, o
 		return nil, err
 	}
 	return &tenancyv1.OrganizationSummary{
-		OrganizationId:         org.ID,
-		DisplayName:            org.DisplayName,
-		Description:            org.Description,
-		State:                  org.State,
-		ApiKeyCount:            keyCount,
-		InferenceServiceCount:  svcCount,
-		ProjectCount:           projectCount,
-		CreatedAt:              org.CreatedAt.Unix(),
-		UpdatedAt:              org.UpdatedAt.Unix(),
+		OrganizationId:        org.ID,
+		DisplayName:           org.DisplayName,
+		Description:           org.Description,
+		State:                 org.State,
+		ApiKeyCount:           keyCount,
+		InferenceServiceCount: svcCount,
+		ProjectCount:          projectCount,
+		CreatedAt:             org.CreatedAt.Unix(),
+		UpdatedAt:             org.UpdatedAt.Unix(),
 	}, nil
 }
 

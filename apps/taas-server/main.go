@@ -5,6 +5,7 @@
 package main
 
 import (
+	goredis "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
 	"github.com/go-taas/go-taas/pkg/config"
@@ -99,6 +100,14 @@ func main() {
 			modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(gormDB))
 			imageSvc.SetDeleteGuard(infer.NewDeleteImageGuard(gormDB))
 			imageSvc.SetInUseProvider(infer.NewImageInUseProvider(gormDB))
+		}
+	}
+	// The SSO session store is Redis-backed (feature #7). Wire it from
+	// the Redis component so the auth service can issue and resolve
+	// sessions.
+	if redisComponent := srv.Components().Redis(); redisComponent != nil {
+		if client, ok := redisComponent.Client().(*goredis.Client); ok {
+			authSvc.SetSessionStore(auth.NewSessionStore(client, cfg.Auth.SessionTTL))
 		}
 	}
 	if runner := infer.NewStatusConsumerRunner(srv.Components()); runner != nil {

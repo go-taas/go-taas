@@ -49,6 +49,17 @@ const (
 	CodeOrganizationDisabled Code = 10017 // ORGANIZATION_DISABLED
 	CodeProjectDisabled      Code = 10018 // PROJECT_DISABLED (reserved: no v1 write path gates on project state)
 	CodeTenancyInvalid       Code = 10019 // TENANCY_INVALID
+
+	// SSO federation error codes (feature #7).
+	CodeSSOProviderExists     Code = 10020 // SSO_PROVIDER_EXISTS
+	CodeSSOProviderNotFound   Code = 10021 // SSO_PROVIDER_NOT_FOUND
+	CodeSSOProviderDisabled   Code = 10022 // SSO_PROVIDER_DISABLED
+	CodeSSOInvalidState       Code = 10023 // SSO_INVALID_STATE
+	CodeSSOAuthFailed         Code = 10024 // SSO_AUTH_FAILED
+	CodeSSONoAccount          Code = 10025 // SSO_NO_ACCOUNT
+	CodeIdentityBindingExists Code = 10026 // IDENTITY_BINDING_EXISTS
+	CodeSessionInvalid        Code = 10027 // SESSION_INVALID
+	CodeSSOProviderInvalid    Code = 10028 // SSO_PROVIDER_INVALID
 )
 
 // model module error codes.

@@ -102,6 +102,9 @@ func ParseConfigs(pathPattern string) {
 // when unset and the enabled flag through the file presence; the
 // consumer Runner treats workers<=0 as 1.
 func (c *Configuration) applyDefaults() {
+	if c.Auth.SessionTTL == 0 {
+		c.Auth.SessionTTL = 24 * time.Hour
+	}
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2
 	}

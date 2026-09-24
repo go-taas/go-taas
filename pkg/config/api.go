@@ -322,6 +322,12 @@ func (c *Configuration) Validate() error {
 	if c.Auth.APIKeyCacheTTL < 0 {
 		return &FieldError{Field: "auth.apiKeyCacheTTL", Reason: "must not be negative"}
 	}
+	// The session TTL is defaulted by applyDefaults before Validate in the
+	// production path; a raw zero-value config (as built by tests) is
+	// allowed through so the empty default is not rejected.
+	if c.Auth.SessionTTL < 0 {
+		return &FieldError{Field: "auth.sessionTTL", Reason: "must not be negative"}
+	}
 	if c.Auth.APIKeyHash.Time < 0 || c.Auth.APIKeyHash.MemoryMiB < 0 || c.Auth.APIKeyHash.Parallelism < 0 {
 		return &FieldError{Field: "auth.apiKeyHash", Reason: "argon2 parameters must be non-negative"}
 	}

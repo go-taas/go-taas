@@ -56,6 +56,105 @@ service AuthService {
   // It is called per request by the gateway's Wasm plugin and is backed
   // by a Redis positive cache.
   rpc VerifyAPIKey(VerifyAPIKeyRequest) returns (VerifyAPIKeyResponse);
+
+  // ---- SSO federation (feature #7) ----
+
+  // CreateSSOProvider creates an SSO identity provider (admin surface).
+  rpc CreateSSOProvider(CreateSSOProviderRequest) returns (CreateSSOProviderResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/sso/providers"
+      body: "*"
+    };
+  }
+
+  // ListSSOProviders returns the SSO provider directory (admin surface).
+  rpc ListSSOProviders(ListSSOProvidersRequest) returns (ListSSOProvidersResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/auth/sso/providers"};
+  }
+
+  // GetSSOProvider returns one SSO provider (admin surface).
+  rpc GetSSOProvider(GetSSOProviderRequest) returns (GetSSOProviderResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/auth/sso/providers/{provider_id}"};
+  }
+
+  // UpdateSSOProvider edits a provider's mutable fields (admin surface).
+  rpc UpdateSSOProvider(UpdateSSOProviderRequest) returns (UpdateSSOProviderResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/auth/sso/providers/{provider_id}"
+      body: "*"
+    };
+  }
+
+  // EnableSSOProvider activates a provider (admin surface).
+  rpc EnableSSOProvider(EnableSSOProviderRequest) returns (EnableSSOProviderResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/sso/providers/{provider_id}:enable"
+      body: "*"
+    };
+  }
+
+  // DisableSSOProvider pauses a provider (admin surface).
+  rpc DisableSSOProvider(DisableSSOProviderRequest) returns (DisableSSOProviderResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/sso/providers/{provider_id}:disable"
+      body: "*"
+    };
+  }
+
+  // DeleteSSOProvider removes a provider with no identity bindings
+  // (admin surface).
+  rpc DeleteSSOProvider(DeleteSSOProviderRequest) returns (DeleteSSOProviderResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/auth/sso/providers/{provider_id}"};
+  }
+
+  // SSOAuthorize initiates an SSO login for a provider (user surface).
+  rpc SSOAuthorize(SSOAuthorizeRequest) returns (SSOAuthorizeResponse) {
+    option (google.api.http) = {get: "/api/v1/auth/sso/{provider_id}/authorize"};
+  }
+
+  // SSOCallback completes an SSO login (user surface).
+  rpc SSOCallback(SSOCallbackRequest) returns (SSOCallbackResponse) {
+    option (google.api.http) = {get: "/api/v1/auth/sso/{provider_id}/callback"};
+  }
+
+  // GetSession returns the current session (user surface).
+  rpc GetSession(GetSessionRequest) returns (GetSessionResponse) {
+    option (google.api.http) = {get: "/api/v1/auth/session"};
+  }
+
+  // UpdateSessionOrg switches the session's active org (user surface).
+  rpc UpdateSessionOrg(UpdateSessionOrgRequest) returns (UpdateSessionOrgResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/session/org"
+      body: "*"
+    };
+  }
+
+  // Logout revokes the current session (user surface).
+  rpc Logout(LogoutRequest) returns (LogoutResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/logout"
+      body: "*"
+    };
+  }
+
+  // CreateIdentityBinding pre-assigns an identity binding (admin surface).
+  rpc CreateIdentityBinding(CreateIdentityBindingRequest) returns (CreateIdentityBindingResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/identity-bindings"
+      body: "*"
+    };
+  }
+
+  // ListIdentityBindings returns the identity binding directory (admin surface).
+  rpc ListIdentityBindings(ListIdentityBindingsRequest) returns (ListIdentityBindingsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/auth/identity-bindings"};
+  }
+
+  // DeleteIdentityBinding severs an identity binding (admin surface).
+  rpc DeleteIdentityBinding(DeleteIdentityBindingRequest) returns (DeleteIdentityBindingResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/auth/identity-bindings/{binding_id}"};
+  }
 }
 
 message CreateUserRequest {
@@ -142,4 +241,166 @@ message VerifyAPIKeyResponse {
   string organization_id = 2;
   string key_id = 3;
   string role = 4;
+}
+
+// ---- SSO federation (feature #7) ----
+
+// SSOProvider is an SSO identity provider configuration row.
+message SSOProvider {
+  string provider_id = 1;
+  string type = 2; // oidc | saml | ldap
+  string display_name = 3;
+  // Protocol params (type-specific; secrets masked on read).
+  string issuer = 4;
+  string client_id = 5;
+  string client_secret = 6; // write-only; masked on read
+  string redirect_uri = 7;
+  string scopes = 8;
+  string metadata_url = 9;
+  string entity_id = 10;
+  string acs_url = 11;
+  string host = 12;
+  int32 port = 13;
+  string bind_dn = 14; // write-only; masked on read
+  string base_dn = 15;
+  string user_filter = 16;
+  bool enabled = 17;
+  string default_org = 18;
+  bool allow_auto_provision = 19;
+  string attribute_mapping = 20; // JSON string
+  int64 created_at = 21;
+  int64 updated_at = 22;
+}
+
+message CreateSSOProviderRequest {
+  SSOProvider provider = 1;
+}
+message CreateSSOProviderResponse {
+  taas.common.v1.Response response = 1;
+  SSOProvider provider = 2;
+}
+message ListSSOProvidersRequest {
+  taas.common.v1.PageRequest page = 1;
+  string type = 2;
+  bool enabled = 3;
+}
+message ListSSOProvidersResponse {
+  taas.common.v1.Response response = 1;
+  repeated SSOProvider providers = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+message GetSSOProviderRequest {
+  string provider_id = 1;
+}
+message GetSSOProviderResponse {
+  taas.common.v1.Response response = 1;
+  SSOProvider provider = 2;
+}
+message UpdateSSOProviderRequest {
+  string provider_id = 1;
+  SSOProvider provider = 2;
+}
+message UpdateSSOProviderResponse {
+  taas.common.v1.Response response = 1;
+  SSOProvider provider = 2;
+}
+message EnableSSOProviderRequest {
+  string provider_id = 1;
+}
+message EnableSSOProviderResponse {
+  taas.common.v1.Response response = 1;
+  SSOProvider provider = 2;
+}
+message DisableSSOProviderRequest {
+  string provider_id = 1;
+}
+message DisableSSOProviderResponse {
+  taas.common.v1.Response response = 1;
+  SSOProvider provider = 2;
+}
+message DeleteSSOProviderRequest {
+  string provider_id = 1;
+}
+message DeleteSSOProviderResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// SSO login flow (user surface).
+message SSOAuthorizeRequest {
+  string provider_id = 1;
+}
+message SSOAuthorizeResponse {
+  taas.common.v1.Response response = 1;
+  string redirect_url = 2;
+  string bind_form = 3;
+}
+message SSOCallbackRequest {
+  string provider_id = 1;
+  string code = 2;
+  string state = 3;
+  string username = 4;
+  string password = 5;
+}
+message SSOCallbackResponse {
+  taas.common.v1.Response response = 1;
+  string session_token = 2;
+  string access_token = 3;
+  int64 expires_at = 4;
+}
+
+// Session (user surface).
+message GetSessionRequest {}
+message GetSessionResponse {
+  taas.common.v1.Response response = 1;
+  string user_id = 2;
+  string username = 3;
+  repeated string roles = 4;
+  repeated string accessible_orgs = 5;
+  string active_org = 6;
+  int64 expires_at = 7;
+}
+message UpdateSessionOrgRequest {
+  string organization_id = 1;
+}
+message UpdateSessionOrgResponse {
+  taas.common.v1.Response response = 1;
+  string active_org = 2;
+}
+message LogoutRequest {}
+message LogoutResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// Identity bindings (admin surface).
+message IdentityBinding {
+  string binding_id = 1;
+  string provider_id = 2;
+  string external_subject = 3;
+  string user_id = 4;
+  int64 created_at = 5;
+}
+message CreateIdentityBindingRequest {
+  string provider_id = 1;
+  string external_subject = 2;
+  string user_id = 3;
+}
+message CreateIdentityBindingResponse {
+  taas.common.v1.Response response = 1;
+  IdentityBinding binding = 2;
+}
+message ListIdentityBindingsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string provider_id = 2;
+  string user_id = 3;
+}
+message ListIdentityBindingsResponse {
+  taas.common.v1.Response response = 1;
+  repeated IdentityBinding bindings = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+message DeleteIdentityBindingRequest {
+  string binding_id = 1;
+}
+message DeleteIdentityBindingResponse {
+  taas.common.v1.Response response = 1;
 }

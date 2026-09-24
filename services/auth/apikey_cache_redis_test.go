@@ -22,8 +22,9 @@ import (
 )
 
 // fakeRedisServer is a minimal RESP server implementing the subset of
-// commands used by redisVerdictCache: GET, SET (with EX), DEL and PING.
-// It lets the cache layer be tested without a live Redis or a new test
+// commands used by redisVerdictCache and SessionStore: GET, SET (with
+// EX), DEL, PING, HSET, HGETALL, EXPIRE, EXISTS. It lets the cache and
+// session layers be tested without a live Redis or a new test
 // dependency.
 type fakeRedisServer struct {
 	t    *testing.T
@@ -32,6 +33,7 @@ type fakeRedisServer struct {
 	mu      sync.Mutex
 	entries map[string]string
 	ttls    map[string]time.Duration
+	hashes  map[string]map[string]string
 
 	ln net.Listener
 }
@@ -45,6 +47,7 @@ func newFakeRedisServer(t *testing.T) *fakeRedisServer {
 		addr:    ln.Addr().String(),
 		entries: map[string]string{},
 		ttls:    map[string]time.Duration{},
+		hashes:  map[string]map[string]string{},
 		ln:      ln,
 	}
 	go s.serve()
@@ -102,8 +105,50 @@ func (s *fakeRedisServer) handle(conn net.Conn) {
 			s.mu.Lock()
 			delete(s.entries, args[1])
 			delete(s.ttls, args[1])
+			delete(s.hashes, args[1])
 			s.mu.Unlock()
 			_, _ = w.WriteString(":1\r\n")
+		case "EXISTS":
+			s.mu.Lock()
+			_, ok1 := s.entries[args[1]]
+			_, ok2 := s.hashes[args[1]]
+			s.mu.Unlock()
+			if ok1 || ok2 {
+				_, _ = w.WriteString(":1\r\n")
+			} else {
+				_, _ = w.WriteString(":0\r\n")
+			}
+		case "EXPIRE":
+			s.mu.Lock()
+			if _, ok := s.entries[args[1]]; ok {
+				secs, _ := strconv.Atoi(args[2])
+				s.ttls[args[1]] = time.Duration(secs) * time.Second
+			}
+			s.mu.Unlock()
+			_, _ = w.WriteString(":1\r\n")
+		case "HSET":
+			s.mu.Lock()
+			if s.hashes[args[1]] == nil {
+				s.hashes[args[1]] = map[string]string{}
+			}
+			for i := 2; i+1 < len(args); i += 2 {
+				s.hashes[args[1]][args[i]] = args[i+1]
+			}
+			s.mu.Unlock()
+			_, _ = w.WriteString(":1\r\n")
+		case "HGETALL":
+			s.mu.Lock()
+			h := s.hashes[args[1]]
+			s.mu.Unlock()
+			if len(h) == 0 {
+				_, _ = w.WriteString("*0\r\n")
+			} else {
+				_, _ = fmt.Fprintf(w, "*%d\r\n", len(h)*2)
+				for k, v := range h {
+					_, _ = fmt.Fprintf(w, "$%d\r\n%s\r\n", len(k), k)
+					_, _ = fmt.Fprintf(w, "$%d\r\n%s\r\n", len(v), v)
+				}
+			}
 		default:
 			_, _ = w.WriteString("-ERR unknown command\r\n")
 		}

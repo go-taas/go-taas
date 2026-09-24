@@ -276,9 +276,9 @@ type fakeComponents struct {
 	db *gorm.DB
 }
 
-func (f *fakeComponents) DB() server.DBComponent { return &fakeDBComponent{db: f.db} }
+func (f *fakeComponents) DB() server.DBComponent       { return &fakeDBComponent{db: f.db} }
 func (f *fakeComponents) Redis() server.RedisComponent { return nil }
-func (f *fakeComponents) MQ() server.MQComponent        { return nil }
+func (f *fakeComponents) MQ() server.MQComponent       { return nil }
 
 type fakeDBComponent struct{ db *gorm.DB }
 

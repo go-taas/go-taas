@@ -29,6 +29,17 @@ var messages = map[Code]string{
 	CodeProjectDisabled:      "project disabled",
 	CodeTenancyInvalid:       "tenancy invalid",
 
+	// sso federation
+	CodeSSOProviderExists:     "sso provider already exists",
+	CodeSSOProviderNotFound:   "sso provider not found",
+	CodeSSOProviderDisabled:   "sso provider disabled",
+	CodeSSOInvalidState:       "sso invalid state",
+	CodeSSOAuthFailed:         "sso authentication failed",
+	CodeSSONoAccount:          "no account for this identity",
+	CodeIdentityBindingExists: "identity binding already exists",
+	CodeSessionInvalid:        "session invalid",
+	CodeSSOProviderInvalid:    "sso provider invalid",
+
 	// model
 	CodeModelNotFound:        "model not found",
 	CodeModelExists:          "model already exists",

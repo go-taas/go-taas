@@ -59,6 +59,18 @@ type Service struct {
 	// the organizations table (feature #6). Nil until wired: unit tests
 	// skip validation; main.go and FVT always wire it.
 	orgGuard *tenancy.OrgGuard
+
+	// ssoRepo persists SSO providers, identity bindings, and users
+	// (feature #7). Wired lazily from the shared components.
+	ssoRepo *SSORepository
+
+	// sessionStore is the Redis-backed session store (feature #7). Nil
+	// until wired: session RPCs return 10027; main.go and FVT wire it.
+	sessionStore *SessionStore
+
+	// pluginFactory builds the IdP plugin for a provider type. It is
+	// the injection point for tests to substitute a fake plugin.
+	pluginFactory func(string) (IDPPlugin, error)
 }
 
 // New constructs the auth service. The repository and cache are wired
@@ -83,16 +95,19 @@ func NewWithRepositoryAndCache(repo *APIKeyRepository, cache verdictCache, hashP
 func NewForFVT(db *gorm.DB) *Service {
 	repo := NewAPIKeyRepository(db)
 	return &Service{
-		repo:       repo,
-		cache:      newFakeVerdictCache(),
-		hashParams: config.Argon2Params{Algorithm: "argon2id", Time: 1, MemoryMiB: 16, Parallelism: 1},
+		repo:          repo,
+		cache:         newFakeVerdictCache(),
+		hashParams:    config.Argon2Params{Algorithm: "argon2id", Time: 1, MemoryMiB: 16, Parallelism: 1},
+		ssoRepo:       NewSSORepository(db),
+		pluginFactory: NewPlugin,
 	}
 }
 
-// MigrateSchemaForFVT applies the auth schema (api_keys) onto a
-// caller-provided database for full-verification tests.
+// MigrateSchemaForFVT applies the auth schema (api_keys, sso_providers,
+// identity_bindings, users) onto a caller-provided database for
+// full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&APIKey{})
+	return db.AutoMigrate(&APIKey{}, &SSOProvider{}, &IdentityBinding{}, &User{})
 }
 
 // AttachToServer implements server.Service.
@@ -108,15 +123,16 @@ func (s *Service) GetServiceHandlerRegisterFn() server.ServiceHandlerRegisterFn 
 	return authv1.RegisterAuthServiceHandler
 }
 
-// Migrate implements server.Migrator: it creates/updates the api_keys
-// table via GORM AutoMigrate. The GORM model is the single source of
-// truth for the schema.
+// Migrate implements server.Migrator: it creates/updates the api_keys,
+// sso_providers, identity_bindings, and users tables via GORM
+// AutoMigrate. The GORM model is the single source of truth for the
+// schema.
 func (s *Service) Migrate(ctx context.Context) error {
 	db, err := s.gormDB()
 	if err != nil {
 		return err
 	}
-	return db.WithContext(ctx).AutoMigrate(&APIKey{})
+	return db.WithContext(ctx).AutoMigrate(&APIKey{}, &SSOProvider{}, &IdentityBinding{}, &User{})
 }
 
 // gormDB resolves the *gorm.DB from the wired repository or the shared
@@ -220,6 +236,20 @@ func (s *Service) Login(_ context.Context, _ *authv1.LoginRequest) (*authv1.Logi
 // pattern). Production and FVT wire it; unit tests leave it nil so
 // checkOrg no-ops.
 func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
+
+// SetSessionStore injects the Redis-backed session store (feature #7).
+// Production and FVT wire it; unit tests leave it nil so session RPCs
+// return 10027.
+func (s *Service) SetSessionStore(st *SessionStore) { s.sessionStore = st }
+
+// CreateSessionForTest creates a session in the store directly. It is
+// used by FVT to seed a session without going through the SSO flow.
+func (s *Service) CreateSessionForTest(ctx context.Context, sess *Session, accessToken string) error {
+	if s.sessionStore == nil {
+		return apierrors.New(apierrors.CodeSessionInvalid)
+	}
+	return s.sessionStore.Create(ctx, sess, accessToken)
+}
 
 // checkOrg validates the org context: existence on reads, active
 // state on gated writes. No-op when the guard is not wired.
