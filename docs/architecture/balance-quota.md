@@ -12,6 +12,7 @@
 
 ## 1. Overview and Goals
 
+
 Features #1–#7 shipped the accounting spine: keys identify callers, usage meters and settles hourly, pricing turns settled usage into charge records and bills, and organizations own every resource — but nothing answers "may this call proceed". This feature closes the money loop with a **per-organization billing account** in one of two modes — **prepaid** (recharge a balance; settlement deductions draw it down; exhaustion blocks inference) or **postpaid** (a monthly quota; the overdraw policy decides what happens at the cap) — plus an append-only, idempotent transaction ledger that makes every cent traceable.
 
 **Goals**: the account field set with admin CRUD (`CreateAccount`/`GetAccount`/`UpdateAccount`/`ListAccounts`), `Recharge`/`Refund` with caller-supplied idempotency keys, settlement-time deduction inside the feature-#5 charge transaction, gateway enforcement via the internal `CheckFunds` RPC (10502 → HTTP 402), monthly UTC cycle reset, `ListTransactions` ledger queries, `GetBalance` implemented, console Accounts pages, and activation of the reserved billing error codes (AC1–AC12).
@@ -102,6 +103,7 @@ Nav: the Billing group (Pricing, Bills) gains **Accounts** (`/admin/billing/acco
 - **Rollout**: two new tables via AutoMigrate (additive); deploy `taas-server` alone — the runner idles until the first month boundary, queries return 10503/empty until accounts exist, and inference is ungated (AD4). The pricing charge path changes only additively: orgs without accounts charge exactly as before.
 
 ## 4. Data Model
+
 
 
 ### 4.1 The `accounts` Table
@@ -263,6 +265,7 @@ sequenceDiagram
     end
     Note over DGW,BILL: billing unavailable → fail open (log + allow, AD4)
 ```
+
 ### 6.4 Monthly Cycle Reset
 
 ```mermaid
