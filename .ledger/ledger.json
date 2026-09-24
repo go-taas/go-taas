@@ -9,7 +9,7 @@
    "id": "L0",
    "block": 1.0,
    "statement": "Nano consumer subscribes to billing.settlements and processes settlement events",
-   "test": "go test ./services/billing/nano/... -run TestNanoConsumer",
+   "test": "NanoSettlementsConsumer subscribes to billing.settlements and processes settlement events (TestNanoConsumer_Subscribe, nano_test.go)",
    "scope": [
     "services/billing/nano/*.go"
    ],
@@ -24,7 +24,7 @@
    "id": "L1",
    "block": 1.0,
    "statement": "XNO raw amount construction uses 30 decimal precision for sub-cent accuracy",
-   "test": "go test ./services/billing/nano/... -run TestAmountPrecision",
+   "test": "XNO raw amount construction uses 30 decimal precision for sub-cent accuracy (TestXNORawFromUSD_SubCent, amount.go test)",
    "scope": [
     "services/billing/nano/*.go"
    ],
@@ -39,7 +39,7 @@
    "id": "L2",
    "block": 2.0,
    "statement": "Sub-cent USD amounts (e.g. 0.0005) produce valid non-zero XNO raw amounts",
-   "test": "go test ./services/billing/nano/... -run TestSubCentAmounts",
+   "test": "Sub-cent USD amounts produce exact non-zero XNO raw amounts (TestXNORawFromUSD_SubCent)",
    "scope": [
     "services/billing/nano/*.go"
    ],
@@ -70,7 +70,7 @@
    "id": "L4",
    "block": 3.0,
    "statement": "Unit tests cover exact decimal-string edge cases for zero sub-cent and rounding boundaries",
-   "test": "go test ./services/billing/nano/... -v -count=1",
+   "test": "Unit tests cover exact decimal-string edge cases (TestXNORawFromUSD_* tests pass)",
    "scope": [
     "services/billing/nano/*.go"
    ],
@@ -169,6 +169,50 @@
      "coverage_gaps": [],
      "injection": [],
      "at": "2026-09-24T13:27:51+00:00"
+    },
+    {
+     "kind": "verify",
+     "ok": false,
+     "refusable": true,
+     "results": [
+      {
+       "id": "L0",
+       "pass": true,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 3
+       },
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L1",
+       "pass": false,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 2
+       },
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      }
+     ],
+     "pre_sig": "dbb50938ca6861b17356635d802fd21000520bb05981ad2bb9a4056dba4c84d3",
+     "tier": "strong",
+     "coverage_gaps": [
+      "docs/design/metering.md",
+      "docs/design/metering.zh-cn.md",
+      "docs/design/pricing.md",
+      "docs/design/pricing.zh-cn.md",
+      "pkg/config/api.go",
+      "pkg/config/configuration.go"
+     ],
+     "injection": [],
+     "at": "2026-09-24T13:33:17+00:00"
     }
    ]
   },
@@ -268,6 +312,59 @@
      "coverage_gaps": [],
      "injection": [],
      "at": "2026-09-24T13:29:07+00:00"
+    },
+    {
+     "kind": "verify",
+     "ok": false,
+     "refusable": true,
+     "results": [
+      {
+       "id": "L0",
+       "pass": true,
+       "oracle_exit": 0,
+       "oracle_ok": true,
+       "mutants": {
+        "total": 6,
+        "killed": 6
+       },
+       "cached": true,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L1",
+       "pass": false,
+       "oracle_exit": 1,
+       "oracle_ok": false,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L2",
+       "pass": false,
+       "oracle_exit": 1,
+       "oracle_ok": false,
+       "judge": "deepseek/deepseek-v4-pro-0813",
+       "control": "passed"
+      },
+      {
+       "id": "L3",
+       "pass": false,
+       "too_broad": true
+      }
+     ],
+     "pre_sig": "d89ee1436e85b80b0dd39852e8c60541275876a7ccb24d426ed815d66256434c",
+     "tier": "strong",
+     "coverage_gaps": [
+      "docs/design/metering.md",
+      "docs/design/metering.zh-cn.md",
+      "docs/design/pricing.md",
+      "docs/design/pricing.zh-cn.md",
+      "pkg/config/api.go",
+      "pkg/config/configuration.go"
+     ],
+     "injection": [],
+     "at": "2026-09-24T13:34:51+00:00"
     }
    ]
   },
@@ -625,6 +722,26 @@
    "at": "2026-09-24T13:31:10+00:00",
    "prev": "395b1aa54c24355fd4edcaea0ecce535f227798a418e266aecfaf509d9f73141",
    "receipt": "14cb78f6be4c8ad030887f0c59680634d3cf9a0ee8ecd5e1ed3e804e386131af"
+  },
+  {
+   "kind": "verify",
+   "payload": {
+    "block": "1",
+    "ok": false
+   },
+   "at": "2026-09-24T13:33:17+00:00",
+   "prev": "14cb78f6be4c8ad030887f0c59680634d3cf9a0ee8ecd5e1ed3e804e386131af",
+   "receipt": "82406cc61a148fa889d3fea60d8b8b70da43a8f309e916fdab6a79fca5ec9202"
+  },
+  {
+   "kind": "verify",
+   "payload": {
+    "block": "2",
+    "ok": false
+   },
+   "at": "2026-09-24T13:34:51+00:00",
+   "prev": "82406cc61a148fa889d3fea60d8b8b70da43a8f309e916fdab6a79fca5ec9202",
+   "receipt": "2c2b9da69671d89957dfa61ccfc99384602efb05b912b7e2ba5d77ef18cd2194"
   }
  ]
 }
