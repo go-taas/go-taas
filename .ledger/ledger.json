@@ -56,10 +56,11 @@
    "statement": "Nano consumer is additive and does not modify existing billing or metering paths",
    "test": "git diff main -- services/billing/ | grep -c '^--- /dev/null' > /dev/null 2>&1; echo \\$?",
    "scope": [
-    "services/billing/nano/consumer.go"
+    "services/billing/nano/*.go",
+    "services/billing/*.go"
    ],
-   "oracle": "git diff --name-only main..HEAD 2>&1 | grep -c '^services/billing\\|^pkg/config\\|^docs/design\\|^apps/taas-server'",
-   "expect": ".",
+   "oracle": "git diff --name-only main..HEAD 2>&1 | grep -E '^services/billing/' | grep -v '^services/billing/nano/' | wc -l | grep -q '^0$' && echo ADDITIVE",
+   "expect": "ADDITIVE",
    "source": "self-review",
    "grounding": "source",
    "version": 2,
