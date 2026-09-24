@@ -10,6 +10,7 @@
     "test:infer": "nightwatch --tag infer",
     "test:metering": "nightwatch --tag metering",
     "test:pricing": "nightwatch --tag pricing",
+    "test:balance-quota": "nightwatch --tag balance-quota",
     "test:tenancy": "nightwatch --tag tenancy",
     "test:sso": "nightwatch --tag sso"
   },
