@@ -102,6 +102,12 @@ infer:
     enabled: true
     workers: 2
 
+tenancy:
+  # The organization seeded on first boot (when the organizations table
+  # is empty at startup, insert-only, never re-seeded).
+  defaultOrgId: "org-default"
+  defaultOrgDisplayName: "Default Organization"
+
 image:
   # registry is the first-boot seed of the images table (feature #3:
   # the table is the source of truth; this seed is read only when the

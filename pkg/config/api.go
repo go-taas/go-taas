@@ -7,8 +7,21 @@
 package config
 
 import (
+	"regexp"
+	"strings"
 	"time"
 )
+
+// tenancyIDRegex is the shared id syntax for organizations and projects:
+// 3-64 chars, lowercase alphanumeric with internal hyphens, starting
+// with a lowercase letter or digit.
+var tenancyIDRegex = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{2,63}$`)
+
+// TenancyIDRegex returns the id syntax shared by organizations and
+// projects. Services use it to validate caller-supplied ids.
+func TenancyIDRegex() *regexp.Regexp {
+	return tenancyIDRegex
+}
 
 // DBConfig holds connection parameters for one PostgreSQL database.
 type DBConfig struct {
@@ -271,6 +284,17 @@ type LogConfig struct {
 	Encoding string `mapstructure:"encoding"`
 }
 
+// TenancyConfig holds the tenancy-module settings: the first-boot
+// default-organization seed.
+type TenancyConfig struct {
+	// DefaultOrgID is the organization id seeded on first boot (when the
+	// organizations table is empty). It must match the org-id regex
+	// ^[a-z0-9][a-z0-9-]{2,63}$.
+	DefaultOrgID string `mapstructure:"defaultOrgId"`
+	// DefaultOrgDisplayName is the seeded organization's display name.
+	DefaultOrgDisplayName string `mapstructure:"defaultOrgDisplayName"`
+}
+
 // Configuration is the root of the merged configuration tree.
 type Configuration struct {
 	Databases  Databases        `mapstructure:"db"`
@@ -282,6 +306,7 @@ type Configuration struct {
 	Controller ControllerConfig `mapstructure:"controller"`
 	Infer      InferConfig      `mapstructure:"infer"`
 	Image      ImageConfig      `mapstructure:"image"`
+	Tenancy    TenancyConfig    `mapstructure:"tenancy"`
 	Log        LogConfig        `mapstructure:"log"`
 }
 
@@ -305,6 +330,15 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Image.WarmupStatusConsumer.Workers < 0 {
 		return &FieldError{Field: "image.warmupStatusConsumer.workers", Reason: "must not be negative"}
+	}
+	// The tenancy defaults are filled by applyDefaults before Validate
+	// in the production path; a raw zero-value config (as built by
+	// tests) is allowed through so the empty default is not rejected.
+	if c.Tenancy.DefaultOrgID != "" && !tenancyIDRegex.MatchString(c.Tenancy.DefaultOrgID) {
+		return &FieldError{Field: "tenancy.defaultOrgId", Reason: "must match ^[a-z0-9][a-z0-9-]{2,63}$"}
+	}
+	if l := len(strings.TrimSpace(c.Tenancy.DefaultOrgDisplayName)); l > 128 {
+		return &FieldError{Field: "tenancy.defaultOrgDisplayName", Reason: "must be 1-128 characters"}
 	}
 	if c.Metering.Settlement.Interval < 0 {
 		return &FieldError{Field: "metering.settlement.interval", Reason: "must not be negative"}

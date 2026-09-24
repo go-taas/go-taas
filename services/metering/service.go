@@ -19,6 +19,7 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ServiceName is the unique name of this service.
@@ -56,6 +57,11 @@ type Service struct {
 	// FVT; production resolves them lazily from the shared components.
 	repo      *Repository
 	publisher mq.Client
+
+	// orgGuard validates the transitional organization context against
+	// the organizations table (feature #6). Nil until wired: unit tests
+	// skip validation; main.go and FVT always wire it.
+	orgGuard *tenancy.OrgGuard
 }
 
 // New constructs the metering service. The repository is wired lazily
@@ -63,6 +69,23 @@ type Service struct {
 // initialized by server Init, which runs after service construction).
 func New(components server.Components) *Service {
 	return &Service{components: components}
+}
+
+// SetOrgGuard injects the tenancy read guard (the SetDeleteModelGuard
+// pattern). Production and FVT wire it; unit tests leave it nil so
+// checkOrg no-ops.
+func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
+
+// checkOrg validates the org context: existence on reads, active
+// state on gated writes. No-op when the guard is not wired.
+func (s *Service) checkOrg(ctx context.Context, orgID string, requireActive bool) error {
+	if s.orgGuard == nil {
+		return nil
+	}
+	if requireActive {
+		return s.orgGuard.RequireActive(ctx, orgID)
+	}
+	return s.orgGuard.RequireExists(ctx, orgID)
 }
 
 // NewForFVT constructs a metering service bound to a caller-provided
@@ -296,6 +319,9 @@ func (s *Service) ListVouchers(ctx context.Context, req *meteringv1.ListVouchers
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
 	since, until, err := validateRange(req.GetSince(), req.GetUntil())
 	if err != nil {
 		return nil, err
@@ -330,7 +356,11 @@ func (s *Service) ListVouchers(ctx context.Context, req *meteringv1.ListVouchers
 
 // GetVoucher returns one voucher; unknown ids return 10403 (FR4.3).
 func (s *Service) GetVoucher(ctx context.Context, req *meteringv1.GetVoucherRequest) (*meteringv1.GetVoucherResponse, error) {
-	if _, err := resolveOrganizationID(ctx); err != nil {
+	orgID, err := resolveOrganizationID(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	repo, err := s.repository()
@@ -352,6 +382,9 @@ func (s *Service) GetVoucher(ctx context.Context, req *meteringv1.GetVoucherRequ
 func (s *Service) GetUsageSummary(ctx context.Context, req *meteringv1.GetUsageSummaryRequest) (*meteringv1.GetUsageSummaryResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	since, until, err := validateRange(req.GetSince(), req.GetUntil())
@@ -394,6 +427,9 @@ func (s *Service) GetUsageSummary(ctx context.Context, req *meteringv1.GetUsageS
 func (s *Service) ListUsageRecords(ctx context.Context, req *meteringv1.ListUsageRecordsRequest) (*meteringv1.ListUsageRecordsResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	since, until, err := validateRange(req.GetSince(), req.GetUntil())

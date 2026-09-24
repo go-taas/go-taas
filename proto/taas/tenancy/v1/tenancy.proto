@@ -1,0 +1,269 @@
+syntax = "proto3";
+
+package taas.tenancy.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/tenancy/v1;tenancyv1";
+
+// TenancyService manages the platform's organizations and projects.
+// It is platform-global: no X-Organization-Id header is required or
+// consumed. Admin-surface API: served under /api/v1/admin.
+service TenancyService {
+  // CreateOrganization creates a tenant with a caller-supplied id.
+  rpc CreateOrganization(CreateOrganizationRequest) returns (CreateOrganizationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/organizations"
+      body: "*"
+    };
+  }
+
+  // ListOrganizations returns the organization directory, newest first,
+  // with per-organization resource counts.
+  rpc ListOrganizations(ListOrganizationsRequest) returns (ListOrganizationsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/organizations"};
+  }
+
+  // GetOrganization returns one organization.
+  rpc GetOrganization(GetOrganizationRequest) returns (GetOrganizationResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/organizations/{organization_id}"};
+  }
+
+  // UpdateOrganization edits the display name and description. The id
+  // and state are immutable.
+  rpc UpdateOrganization(UpdateOrganizationRequest) returns (UpdateOrganizationResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/tenancy/organizations/{organization_id}"
+      body: "*"
+    };
+  }
+
+  // DisableOrganization moves an active organization to disabled. It is
+  // idempotent. A disabled organization cannot accrue new API keys or
+  // inference services, but all history stays readable.
+  rpc DisableOrganization(DisableOrganizationRequest) returns (DisableOrganizationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/organizations/{organization_id}:disable"
+      body: "*"
+    };
+  }
+
+  // EnableOrganization moves a disabled organization back to active. It
+  // is idempotent.
+  rpc EnableOrganization(EnableOrganizationRequest) returns (EnableOrganizationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/organizations/{organization_id}:enable"
+      body: "*"
+    };
+  }
+
+  // CreateProject creates a project under an organization. The
+  // organization must exist and be active.
+  rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/projects"
+      body: "*"
+    };
+  }
+
+  // ListProjects returns the project directory, newest first, with
+  // organization and state filters.
+  rpc ListProjects(ListProjectsRequest) returns (ListProjectsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/projects"};
+  }
+
+  // GetProject returns one project.
+  rpc GetProject(GetProjectRequest) returns (GetProjectResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}"};
+  }
+
+  // UpdateProject edits the display name and description. The id, the
+  // owning organization, and the state are immutable.
+  rpc UpdateProject(UpdateProjectRequest) returns (UpdateProjectResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/tenancy/projects/{project_id}"
+      body: "*"
+    };
+  }
+
+  // DisableProject moves an active project to disabled. It is
+  // idempotent.
+  rpc DisableProject(DisableProjectRequest) returns (DisableProjectResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/projects/{project_id}:disable"
+      body: "*"
+    };
+  }
+
+  // EnableProject moves a disabled project back to active. It is
+  // blocked while the owning organization is disabled.
+  rpc EnableProject(EnableProjectRequest) returns (EnableProjectResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/projects/{project_id}:enable"
+      body: "*"
+    };
+  }
+}
+
+message CreateOrganizationRequest {
+  string organization_id = 1;
+  string display_name = 2;
+  string description = 3;
+}
+
+message CreateOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationSummary organization = 2;
+}
+
+message ListOrganizationsRequest {
+  taas.common.v1.PageRequest page = 1;
+  // state filters by lifecycle state: "active" or "disabled". An
+  // unknown value is rejected with 10019.
+  string state = 2;
+}
+
+message ListOrganizationsResponse {
+  taas.common.v1.Response response = 1;
+  repeated OrganizationSummary organizations = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetOrganizationRequest {
+  string organization_id = 1;
+}
+
+message GetOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationSummary organization = 2;
+}
+
+message UpdateOrganizationRequest {
+  string organization_id = 1;
+  string display_name = 2;
+  // description replaces the stored description; an empty value clears
+  // it. The console's edit dialog always sends both fields.
+  string description = 3;
+}
+
+message UpdateOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationSummary organization = 2;
+}
+
+message DisableOrganizationRequest {
+  string organization_id = 1;
+}
+
+message DisableOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationSummary organization = 2;
+}
+
+message EnableOrganizationRequest {
+  string organization_id = 1;
+}
+
+message EnableOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationSummary organization = 2;
+}
+
+message CreateProjectRequest {
+  string project_id = 1;
+  string organization_id = 2;
+  string display_name = 3;
+  string description = 4;
+}
+
+message CreateProjectResponse {
+  taas.common.v1.Response response = 1;
+  ProjectSummary project = 2;
+}
+
+message ListProjectsRequest {
+  taas.common.v1.PageRequest page = 1;
+  // organization_id filters by owning organization.
+  string organization_id = 2;
+  // state filters by lifecycle state: "active" or "disabled". An
+  // unknown value is rejected with 10019.
+  string state = 3;
+}
+
+message ListProjectsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ProjectSummary projects = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetProjectRequest {
+  string project_id = 1;
+}
+
+message GetProjectResponse {
+  taas.common.v1.Response response = 1;
+  ProjectSummary project = 2;
+}
+
+message UpdateProjectRequest {
+  string project_id = 1;
+  string display_name = 2;
+  // description replaces the stored description; an empty value clears
+  // it.
+  string description = 3;
+}
+
+message UpdateProjectResponse {
+  taas.common.v1.Response response = 1;
+  ProjectSummary project = 2;
+}
+
+message DisableProjectRequest {
+  string project_id = 1;
+}
+
+message DisableProjectResponse {
+  taas.common.v1.Response response = 1;
+  ProjectSummary project = 2;
+}
+
+message EnableProjectRequest {
+  string project_id = 1;
+}
+
+message EnableProjectResponse {
+  taas.common.v1.Response response = 1;
+  ProjectSummary project = 2;
+}
+
+// OrganizationSummary describes one organization row of the directory.
+// All int64 fields serialize as JSON strings.
+message OrganizationSummary {
+  string organization_id = 1;
+  string display_name = 2;
+  string description = 3;
+  // state is "active" or "disabled".
+  string state = 4;
+  // api_key_count is the number of non-revoked API keys.
+  int64 api_key_count = 5;
+  // inference_service_count is the number of non-terminated inference
+  // services.
+  int64 inference_service_count = 6;
+  int64 project_count = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+// ProjectSummary describes one project row of the directory. All int64
+// fields serialize as JSON strings.
+message ProjectSummary {
+  string project_id = 1;
+  string organization_id = 2;
+  string display_name = 3;
+  string description = 4;
+  // state is "active" or "disabled".
+  string state = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}

@@ -22,6 +22,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 
 	"github.com/go-taas/go-taas/services/infer"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ServiceName is the unique name of this service.
@@ -60,6 +61,11 @@ type Service struct {
 	// inferRepo is the read-only infer repository used for card
 	// resolution at ingestion time (Section 3.4).
 	inferRepo *infer.InferenceServiceRepository
+
+	// orgGuard validates the transitional organization context against
+	// the organizations table (feature #6). Nil until wired: unit tests
+	// skip validation; main.go and FVT always wire it.
+	orgGuard *tenancy.OrgGuard
 }
 
 // New constructs the billing service. The repository is wired lazily
@@ -67,6 +73,23 @@ type Service struct {
 // initialized by server Init, which runs after service construction).
 func New(components server.Components) *Service {
 	return &Service{components: components}
+}
+
+// SetOrgGuard injects the tenancy read guard (the SetDeleteModelGuard
+// pattern). Production and FVT wire it; unit tests leave it nil so
+// checkOrg no-ops.
+func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
+
+// checkOrg validates the org context: existence on reads, active
+// state on gated writes. No-op when the guard is not wired.
+func (s *Service) checkOrg(ctx context.Context, orgID string, requireActive bool) error {
+	if s.orgGuard == nil {
+		return nil
+	}
+	if requireActive {
+		return s.orgGuard.RequireActive(ctx, orgID)
+	}
+	return s.orgGuard.RequireExists(ctx, orgID)
 }
 
 // NewForFVT constructs a billing service bound to a caller-provided
@@ -381,6 +404,9 @@ func (s *Service) ListCharges(ctx context.Context, req *billingv1.ListChargesReq
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
 	since, until, err := validateBillingRange(req.GetSince(), req.GetUntil())
 	if err != nil {
 		return nil, err
@@ -446,6 +472,9 @@ func summarizeCharge(c *ChargeRecord) *billingv1.ChargeRecordSummary {
 func (s *Service) ListBills(ctx context.Context, req *billingv1.ListBillsRequest) (*billingv1.ListBillsResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	since, until, err := validateBillingRange(req.GetSince(), req.GetUntil())

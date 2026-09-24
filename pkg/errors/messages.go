@@ -22,6 +22,13 @@ var messages = map[Code]string{
 	CodeIdentityNotBound:     "external identity not bound",
 	CodePasswordPolicy:       "password policy violation",
 
+	// tenancy
+	CodeOrganizationExists:   "organization already exists",
+	CodeProjectExists:        "project already exists",
+	CodeOrganizationDisabled: "organization disabled",
+	CodeProjectDisabled:      "project disabled",
+	CodeTenancyInvalid:       "tenancy invalid",
+
 	// model
 	CodeModelNotFound:        "model not found",
 	CodeModelExists:          "model already exists",

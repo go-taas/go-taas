@@ -96,6 +96,12 @@ infer:
     enabled: true
     workers: 2
 
+tenancy:
+  # The organization seeded on first boot (when the organizations table
+  # is empty). Must match ^[a-z0-9][a-z0-9-]{2,63}$.
+  defaultOrgId: "org-default"
+  defaultOrgDisplayName: "Default Organization"
+
 image:
   registry:
     - imageId: "img-vllm-nvidia-v063"

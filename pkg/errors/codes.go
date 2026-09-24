@@ -40,6 +40,15 @@ const (
 	CodeIDPAuthFailed        Code = 10012 // IDP_AUTH_FAILED
 	CodeIdentityNotBound     Code = 10013 // IDENTITY_NOT_BOUND
 	CodePasswordPolicy       Code = 10014 // PASSWORD_POLICY_VIOLATION
+
+	// Tenancy error codes (organizations and projects). Allocated in
+	// the auth block because tenancy refines the org/project context
+	// that auth introduced (10005/10006).
+	CodeOrganizationExists   Code = 10015 // ORGANIZATION_EXISTS
+	CodeProjectExists        Code = 10016 // PROJECT_EXISTS
+	CodeOrganizationDisabled Code = 10017 // ORGANIZATION_DISABLED
+	CodeProjectDisabled      Code = 10018 // PROJECT_DISABLED (reserved: no v1 write path gates on project state)
+	CodeTenancyInvalid       Code = 10019 // TENANCY_INVALID
 )
 
 // model module error codes.

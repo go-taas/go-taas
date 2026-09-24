@@ -105,6 +105,12 @@ func (c *Configuration) applyDefaults() {
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2
 	}
+	if c.Tenancy.DefaultOrgID == "" {
+		c.Tenancy.DefaultOrgID = "org-default"
+	}
+	if c.Tenancy.DefaultOrgDisplayName == "" {
+		c.Tenancy.DefaultOrgDisplayName = "Default Organization"
+	}
 	if c.Metering.Settlement.Interval == 0 {
 		c.Metering.Settlement.Interval = 60 * time.Second
 	}

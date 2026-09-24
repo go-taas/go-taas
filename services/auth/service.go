@@ -24,6 +24,7 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ServiceName is the unique name of this service.
@@ -53,6 +54,11 @@ type Service struct {
 	repo       *APIKeyRepository
 	cache      verdictCache
 	hashParams config.Argon2Params
+
+	// orgGuard validates the transitional organization context against
+	// the organizations table (feature #6). Nil until wired: unit tests
+	// skip validation; main.go and FVT always wire it.
+	orgGuard *tenancy.OrgGuard
 }
 
 // New constructs the auth service. The repository and cache are wired
@@ -210,10 +216,30 @@ func (s *Service) Login(_ context.Context, _ *authv1.LoginRequest) (*authv1.Logi
 	return nil, apierrors.Newf(apierrors.CodeUnauthorized, "auth: not implemented")
 }
 
+// SetOrgGuard injects the tenancy read guard (the SetDeleteModelGuard
+// pattern). Production and FVT wire it; unit tests leave it nil so
+// checkOrg no-ops.
+func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
+
+// checkOrg validates the org context: existence on reads, active
+// state on gated writes. No-op when the guard is not wired.
+func (s *Service) checkOrg(ctx context.Context, orgID string, requireActive bool) error {
+	if s.orgGuard == nil {
+		return nil
+	}
+	if requireActive {
+		return s.orgGuard.RequireActive(ctx, orgID)
+	}
+	return s.orgGuard.RequireExists(ctx, orgID)
+}
+
 // ListAPIKeys returns the API keys of the caller's organization.
 func (s *Service) ListAPIKeys(ctx context.Context, req *authv1.ListAPIKeysRequest) (*authv1.ListAPIKeysResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	repo, err := s.repository()
@@ -293,6 +319,10 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 	if err != nil {
 		return nil, err
 	}
+	// A disabled organization cannot accrue new keys (FR3.2, 10017).
+	if err := s.checkOrg(ctx, orgID, true); err != nil {
+		return nil, err
+	}
 
 	// Validate the name: 1-64 characters after trimming.
 	name := strings.TrimSpace(req.GetName())
@@ -356,6 +386,11 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 func (s *Service) RevokeAPIKey(ctx context.Context, req *authv1.RevokeAPIKeyRequest) (*authv1.RevokeAPIKeyResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	// Revocation stays allowed under a disabled organization: it
+	// reduces risk, it never accrues spend.
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	if req.GetKeyId() == "" {

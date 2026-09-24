@@ -17,6 +17,7 @@ import (
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/metering"
 	"github.com/go-taas/go-taas/services/model"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 var (
@@ -60,14 +61,23 @@ func main() {
 		logger.S().Fatalw("build server failed", "err", err)
 	}
 
-	srv.RegisterService(auth.New(srv.Components()))
+	// The tenancy service is registered first so its Migrate (which
+	// creates the organizations/projects tables and seeds the default
+	// organization) runs before the consumers' migrates — order is only
+	// tidy, not functionally required (feature #6).
+	srv.RegisterService(tenancy.New(srv.Components()))
+	authSvc := auth.New(srv.Components())
+	srv.RegisterService(authSvc)
 	modelSvc := model.New(srv.Components())
 	srv.RegisterService(modelSvc)
 	imageSvc := image.New(srv.Components())
 	srv.RegisterService(imageSvc)
-	srv.RegisterService(infer.New(srv.Components()))
-	srv.RegisterService(metering.New(srv.Components()))
-	srv.RegisterService(billing.New(srv.Components()))
+	inferSvc := infer.New(srv.Components())
+	srv.RegisterService(inferSvc)
+	meteringSvc := metering.New(srv.Components())
+	srv.RegisterService(meteringSvc)
+	billingSvc := billing.New(srv.Components())
+	srv.RegisterService(billingSvc)
 
 	// The delete-model and delete-image reference guards need the infer
 	// repository; wire them after both services are registered (AC3,
@@ -77,6 +87,15 @@ func main() {
 
 	if dbComponent := srv.Components().DB(); dbComponent != nil {
 		if gormDB, ok := dbComponent.GormDB().(*gorm.DB); ok {
+			// The tenancy OrgGuard validates the transitional organization
+			// context of the org-scoped APIs (feature #6, FR3).
+			orgGuard := tenancy.NewOrgGuard(gormDB)
+			authSvc.SetOrgGuard(orgGuard)
+			inferSvc.SetOrgGuard(orgGuard)
+			meteringSvc.SetOrgGuard(orgGuard)
+			billingSvc.SetOrgGuard(orgGuard)
+			// The delete-model and delete-image reference guards need the
+			// infer repository (AC3, feature #3 D7).
 			modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(gormDB))
 			imageSvc.SetDeleteGuard(infer.NewDeleteImageGuard(gormDB))
 			imageSvc.SetInUseProvider(infer.NewImageInUseProvider(gormDB))

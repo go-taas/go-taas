@@ -23,6 +23,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/model"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ServiceName is the unique name of this service.
@@ -53,12 +54,34 @@ type Service struct {
 	repo       *InferenceServiceRepository
 	modelRepo  *model.Repository
 	mqClient   mq.Client
+
+	// orgGuard validates the transitional organization context against
+	// the organizations table (feature #6). Nil until wired: unit tests
+	// skip validation; main.go and FVT always wire it.
+	orgGuard *tenancy.OrgGuard
 }
 
 // New constructs the inference service from the shared server
 // components.
 func New(components server.Components) *Service {
 	return &Service{components: components}
+}
+
+// SetOrgGuard injects the tenancy read guard (the SetDeleteModelGuard
+// pattern). Production and FVT wire it; unit tests leave it nil so
+// checkOrg no-ops.
+func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
+
+// checkOrg validates the org context: existence on reads, active
+// state on gated writes. No-op when the guard is not wired.
+func (s *Service) checkOrg(ctx context.Context, orgID string, requireActive bool) error {
+	if s.orgGuard == nil {
+		return nil
+	}
+	if requireActive {
+		return s.orgGuard.RequireActive(ctx, orgID)
+	}
+	return s.orgGuard.RequireExists(ctx, orgID)
 }
 
 // NewWithDependencies constructs a Service with explicit dependencies
@@ -172,6 +195,11 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
+	// A disabled organization cannot deploy new services (FR3.2,
+	// 10017).
+	if err := s.checkOrg(ctx, orgID, true); err != nil {
+		return nil, err
+	}
 
 	// Validation order per architecture 4.3: name, replicas,
 	// accelerator, model, version, image, compatibility. Nothing is
@@ -254,6 +282,9 @@ func (s *Service) ListInferenceServices(ctx context.Context, req *inferv1.ListIn
 	if err != nil {
 		return nil, err
 	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -280,6 +311,9 @@ func (s *Service) ListInferenceServices(ctx context.Context, req *inferv1.ListIn
 func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInferenceServiceRequest) (*inferv1.GetInferenceServiceResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	repo, err := s.repository()
@@ -309,6 +343,9 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleInferenceServiceRequest) (*inferv1.ScaleInferenceServiceResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	replicas := int(req.GetReplicas())
@@ -368,6 +405,9 @@ func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleI
 func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.DeleteInferenceServiceRequest) (*inferv1.DeleteInferenceServiceResponse, error) {
 	orgID, err := resolveOrganizationID(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}
 	repo, err := s.repository()
