@@ -169,6 +169,30 @@ export interface UsageRecordSummary {
   settledAt: string;
 }
 
+// ---- tenancy ----
+
+export interface OrganizationSummary {
+  organizationId: string;
+  displayName: string;
+  description: string;
+  state: string;
+  apiKeyCount: string;
+  inferenceServiceCount: string;
+  projectCount: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectSummary {
+  projectId: string;
+  organizationId: string;
+  displayName: string;
+  description: string;
+  state: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- billing ----
 
 export interface PriceTier {
@@ -176,7 +200,6 @@ export interface PriceTier {
   inputPricePerMillion: number;
   outputPricePerMillion: number;
 }
-
 export interface PriceEntry {
   priceId: string;
   modelId: string;

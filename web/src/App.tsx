@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Router, Routes, Route, navigate } from './router';
 import { OrgProvider, OrgSwitcher } from './org';
+import OrganizationsPage from './pages/OrganizationsPage';
+import ProjectsPage from './pages/ProjectsPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import ModelsPage from './pages/ModelsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
@@ -21,6 +23,8 @@ export default function App() {
           <Routes>
             <Route path="/" element={<NavigateToAdmin />} />
             <Route path="/admin" element={<NavigateToModels />} />
+            <Route path="/admin/organizations" element={<OrganizationsPage />} />
+            <Route path="/admin/projects" element={<ProjectsPage />} />
             <Route path="/admin/api-keys" element={<ApiKeysPage />} />
             <Route path="/admin/models" element={<ModelsPage />} />
             <Route path="/admin/models/:id" element={<ModelDetailPage />} />
@@ -65,6 +69,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 }
 
 const NAV_ITEMS = [
+  { path: '/admin/organizations', label: 'Organizations' },
+  { path: '/admin/projects', label: 'Projects' },
   { path: '/admin/models', label: 'Models' },
   { path: '/admin/inference-services', label: 'Inference Services' },
   { path: '/admin/images', label: 'Images' },
