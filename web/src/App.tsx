@@ -1,8 +1,12 @@
 import { useEffect, useState } from 'react';
 import { Router, Routes, Route, navigate } from './router';
 import { OrgProvider, OrgSwitcher } from './org';
+import { api, getSessionToken, setSessionToken } from './api';
+import LoginPage from './pages/LoginPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import ProjectsPage from './pages/ProjectsPage';
+import SSOProvidersPage from './pages/SSOProvidersPage';
+import IdentityBindingsPage from './pages/IdentityBindingsPage';
 import ApiKeysPage from './pages/ApiKeysPage';
 import ModelsPage from './pages/ModelsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
@@ -22,9 +26,12 @@ export default function App() {
         <Layout>
           <Routes>
             <Route path="/" element={<NavigateToAdmin />} />
+            <Route path="/admin/login" element={<LoginPage />} />
             <Route path="/admin" element={<NavigateToModels />} />
             <Route path="/admin/organizations" element={<OrganizationsPage />} />
             <Route path="/admin/projects" element={<ProjectsPage />} />
+            <Route path="/admin/sso" element={<SSOProvidersPage />} />
+            <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
             <Route path="/admin/api-keys" element={<ApiKeysPage />} />
             <Route path="/admin/models" element={<ModelsPage />} />
             <Route path="/admin/models/:id" element={<ModelDetailPage />} />
@@ -71,6 +78,8 @@ function Layout({ children }: { children: React.ReactNode }) {
 const NAV_ITEMS = [
   { path: '/admin/organizations', label: 'Organizations' },
   { path: '/admin/projects', label: 'Projects' },
+  { path: '/admin/sso', label: 'SSO Providers' },
+  { path: '/admin/identity-bindings', label: 'Identity Bindings' },
   { path: '/admin/models', label: 'Models' },
   { path: '/admin/inference-services', label: 'Inference Services' },
   { path: '/admin/images', label: 'Images' },
@@ -85,6 +94,15 @@ function Sidebar() {
   useEffect(() => {
     return Router.subscribe(() => setPath(window.location.pathname));
   }, []);
+  const logout = async () => {
+    try {
+      await api.post('/api/v1/auth/logout', '', {});
+    } catch {
+      // Ignore logout errors; clear the session regardless.
+    }
+    setSessionToken('');
+    navigate('/admin/login');
+  };
   return (
     <aside className="sidebar" data-testid="sidebar">
       <div className="brand">go-taas</div>
@@ -105,6 +123,15 @@ function Sidebar() {
         ))}
       </nav>
       <OrgSwitcher />
+      {getSessionToken() && (
+        <button
+          className="link"
+          data-testid="user-menu-logout"
+          onClick={() => void logout()}
+        >
+          Sign out
+        </button>
+      )}
     </aside>
   );
 }

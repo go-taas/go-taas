@@ -15,18 +15,41 @@ export class ApiError extends Error {
   }
 }
 
+// Session token storage (feature #7). The console stores the SSO session
+// token and sends it as Authorization: Bearer; when no session exists it
+// falls back to the transitional X-Organization-Id header.
+const SESSION_KEY = 'go-taas.session-token';
+
+export function getSessionToken(): string {
+  return localStorage.getItem(SESSION_KEY) || '';
+}
+
+export function setSessionToken(token: string): void {
+  if (token) {
+    localStorage.setItem(SESSION_KEY, token);
+  } else {
+    localStorage.removeItem(SESSION_KEY);
+  }
+}
+
 async function request<T>(
   method: string,
   path: string,
   orgId: string,
   body?: unknown,
 ): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const sessionToken = getSessionToken();
+  if (sessionToken) {
+    // Session present: the session's active org is authoritative (D6).
+    headers['Authorization'] = `Bearer ${sessionToken}`;
+  } else {
+    // No session: transitional header for CLI/transitional access.
+    headers['X-Organization-Id'] = orgId;
+  }
   const res = await fetch(path, {
     method,
-    headers: {
-      'Content-Type': 'application/json',
-      'X-Organization-Id': orgId,
-    },
+    headers,
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
@@ -191,6 +214,50 @@ export interface ProjectSummary {
   state: string;
   createdAt: string;
   updatedAt: string;
+}
+
+// ---- sso federation (feature #7) ----
+
+export interface SSOProvider {
+  providerId: string;
+  type: string; // oidc | saml | ldap
+  displayName: string;
+  issuer?: string;
+  clientId?: string;
+  clientSecret?: string;
+  redirectUri?: string;
+  scopes?: string;
+  metadataUrl?: string;
+  entityId?: string;
+  acsUrl?: string;
+  host?: string;
+  port?: number;
+  bindDn?: string;
+  baseDn?: string;
+  userFilter?: string;
+  enabled: boolean;
+  defaultOrg?: string;
+  allowAutoProvision: boolean;
+  attributeMapping?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface IdentityBinding {
+  bindingId: string;
+  providerId: string;
+  externalSubject: string;
+  userId: string;
+  createdAt: string;
+}
+
+export interface SessionInfo {
+  userId: string;
+  username: string;
+  roles: string[];
+  accessibleOrgs: string[];
+  activeOrg: string;
+  expiresAt: string;
 }
 
 // ---- billing ----

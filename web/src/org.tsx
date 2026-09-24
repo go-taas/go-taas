@@ -1,10 +1,11 @@
 // Transitional organization context: the platform has no login yet (SSO is
 // feature #7), so the console keeps the organization id in localStorage and
 // sends it as X-Organization-Id on every request, exactly like the API
-// design specifies for the transitional period.
+// design specifies for the transitional period. When an SSO session is
+// present, the org context comes from the session's active org.
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { api, type OrganizationSummary } from './api';
+import { api, getSessionToken, type OrganizationSummary, type SessionInfo } from './api';
 
 const STORAGE_KEY = 'go-taas.org-id';
 const DEFAULT_ORG = 'org-default';
@@ -37,20 +38,40 @@ export function useOrg() {
   return useContext(OrgContext);
 }
 
-// OrgSwitcher is the transitional organization selector rendered in the
-// sidebar until SSO lands (feature #7). It lists the real organizations
-// from the tenancy API; the stored organization wins, otherwise the first
-// organization is selected and a notice explains the fallback.
+// OrgSwitcher is the organization selector rendered in the sidebar. When
+// an SSO session is present it lists the session's accessible orgs and
+// switching calls UpdateSessionOrg (feature #7, FR5.5). When no session
+// exists it falls back to the tenancy API list (transitional mode).
 export function OrgSwitcher() {
   const { orgId, setOrgId } = useOrg();
   const [orgs, setOrgs] = useState<OrganizationSummary[]>([]);
   const [notice, setNotice] = useState('');
   const [loaded, setLoaded] = useState(false);
+  const [session, setSession] = useState<SessionInfo | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
       try {
+        // If a session exists, resolve the org context from it.
+        if (getSessionToken()) {
+          const sess = await api.get<SessionInfo>('/api/v1/auth/session', '');
+          if (cancelled) return;
+          setSession(sess);
+          const list = (sess.accessibleOrgs || []).map((id) => ({
+            organizationId: id,
+            displayName: id,
+            state: 'active',
+          } as OrganizationSummary));
+          setOrgs(list);
+          if (sess.activeOrg) {
+            setOrgId(sess.activeOrg);
+          } else if (list.length > 0) {
+            setOrgId(list[0].organizationId);
+          }
+          return;
+        }
+        // No session: transitional tenancy API list.
         const data = await api.get<{
           organizations: OrganizationSummary[];
         }>('/api/v1/admin/tenancy/organizations?page.limit=100', orgId);
@@ -60,9 +81,7 @@ export function OrgSwitcher() {
         const stored = localStorage.getItem(STORAGE_KEY);
         if (list.length > 0) {
           const match = list.find((o) => o.organizationId === stored);
-          if (match) {
-            // Stored organization still exists: keep it.
-          } else {
+          if (!match) {
             setOrgId(list[0].organizationId);
             setNotice(
               `Previous organization "${stored || DEFAULT_ORG}" no longer exists; switched to the first available one.`,
@@ -70,8 +89,7 @@ export function OrgSwitcher() {
           }
         }
       } catch {
-        // The tenancy API is unavailable (e.g. older deployment): keep the
-        // free-text fallback below.
+        // The tenancy/session API is unavailable: keep the fallback below.
       } finally {
         if (!cancelled) setLoaded(true);
       }
@@ -84,11 +102,21 @@ export function OrgSwitcher() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const switchOrg = async (id: string) => {
+    setOrgId(id);
+    if (session) {
+      try {
+        await api.post('/api/v1/auth/session/org', '', { organizationId: id });
+      } catch {
+        // The switch failed server-side; the local org id is still set.
+      }
+    }
+  };
+
   if (!loaded && orgs.length === 0) {
-    // Still loading: render the plain selector without options.
     return (
       <div className="org-switcher">
-        <label htmlFor="org-switcher-select">Organization (transitional)</label>
+        <label htmlFor="org-switcher-select">Organization</label>
         <select id="org-switcher-select" data-testid="org-switcher-select" value={orgId} disabled>
           <option value={orgId}>{orgId}</option>
         </select>
@@ -97,18 +125,17 @@ export function OrgSwitcher() {
   }
 
   if (orgs.length === 0) {
-    // Tenancy API unavailable: free-text fallback (pre-feature-#6 behavior).
     return <OrgSwitcherFallback orgId={orgId} setOrgId={setOrgId} />;
   }
 
   return (
     <div className="org-switcher">
-      <label htmlFor="org-switcher-select">Organization (transitional)</label>
+      <label htmlFor="org-switcher-select">Organization</label>
       <select
         id="org-switcher-select"
         data-testid="org-switcher-select"
         value={orgId}
-        onChange={(e) => setOrgId(e.target.value)}
+        onChange={(e) => void switchOrg(e.target.value)}
       >
         {orgs.map((org) => (
           <option
