@@ -123,6 +123,64 @@ const api = {
       this.assertOk(browser, res, `ensureOrg ${orgId}`);
     });
     return this;
+  },
+
+  /**
+   * Create an SSO provider (feature #7). Tolerates 10020 (already
+   * exists) for idempotency across runs.
+   */
+  ensureSSOProvider(browser, providerId, provider) {
+    this.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/auth/sso/providers',
+      org: 'org-default',
+      body: {provider: Object.assign({providerId}, provider)}
+    }, (res) => {
+      if (res.body && res.body.code === 10020) {
+        // Already exists: fine.
+        return;
+      }
+      this.assertOk(browser, res, `ensureSSOProvider ${providerId}`);
+    });
+    return this;
+  },
+
+  /**
+   * Enable an SSO provider (feature #7).
+   */
+  enableSSOProvider(browser, providerId) {
+    this.request(browser, {
+      method: 'POST',
+      path: `/api/v1/admin/auth/sso/providers/${providerId}:enable`,
+      org: 'org-default'
+    }, (res) => {
+      this.assertOk(browser, res, `enableSSOProvider ${providerId}`);
+    });
+    return this;
+  },
+
+  /**
+   * Perform an SSO login via the callback and store the session token
+   * in localStorage (feature #7). The fake IdP is an in-process HTTP
+   * server that returns a fixed ID token.
+   */
+  ssoLogin(browser, providerId) {
+    // The callback exchanges the code at the fake IdP's token endpoint.
+    // The fake IdP is configured in the compose stack; here we call the
+    // callback with a valid state and code.
+    this.request(browser, {
+      method: 'GET',
+      path: `/api/v1/auth/sso/${providerId}/callback?code=e2e-code&state=e2e-state`,
+      org: ''
+    }, (res) => {
+      const body = this.assertOk(browser, res, `ssoLogin ${providerId}`);
+      browser.assert.ok(Boolean(body.sessionToken), 'ssoLogin: session token returned');
+      // Store the session token in localStorage.
+      browser.execute(function (token) {
+        localStorage.setItem('go-taas.session-token', token);
+      }, [body.sessionToken]);
+    });
+    return this;
   }
 };
 
