@@ -183,6 +183,8 @@ export interface AvailableModel {
   modelId: string;
   name: string;
   latestVersion: string;
+  // Feature #16 read-only autoscaling projection.
+  autoscaling?: ModelAutoscaling;
 }
 
 export interface InferenceServiceSummary {
@@ -194,6 +196,63 @@ export interface InferenceServiceSummary {
   replicas: number;
   state: string;
   updatedAt: string;
+  // Feature #16 autoscaling summary fields.
+  autoscalingEnabled?: boolean;
+  currentReplicas?: number;
+  minReplicas?: number;
+  maxReplicas?: number;
+  autoscalingState?: string;
+}
+
+// ---- inference autoscaling (feature #16) ----
+
+export interface AutoscalingPolicy {
+  enabled: boolean;
+  minReplicas: number;
+  maxReplicas: number;
+  targetConcurrency: number;
+  scaleToZero: boolean;
+  cooldownSeconds: number;
+}
+
+export interface AutoscalingStatus {
+  state: string;
+  currentReplicas: number;
+  desiredReplicas: number;
+  currentConcurrency: number;
+  targetConcurrency: number;
+  lastScalingEventAt: string;
+  errorReason?: string;
+}
+
+export interface GetAutoscalingPolicyResponse {
+  response: { code: number; message: string };
+  policy?: AutoscalingPolicy;
+}
+
+export interface GetInferenceServiceResponse {
+  response: { code: number; message: string };
+  service: InferenceServiceSummary & { accelerator?: string; acceleratorType?: string };
+  endpoints: string[];
+  autoscaling?: AutoscalingPolicy;
+  autoscalingStatus?: AutoscalingStatus;
+}
+
+// ModelAutoscaling is the masked user-realm autoscaling projection
+// (feature #16, AD13): no operator fields.
+export interface ModelAutoscaling {
+  autoscaled: boolean;
+  currentReplicas: number;
+  minReplicas: number;
+  maxReplicas: number;
+  scaleToZero: boolean;
+  state: string; // steady | scaling | scaled-to-zero | warming-up | fixed
+}
+
+export interface GetAvailableModelResponse {
+  response: { code: number; message: string };
+  model?: AvailableModel;
+  autoscaling?: ModelAutoscaling;
 }
 
 export interface ImageSummary {

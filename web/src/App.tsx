@@ -15,6 +15,8 @@ import UserApiKeysPage from './pages/user/ApiKeysPage';
 import UserRequestLogsPage from './pages/user/RequestLogsPage';
 import UserPlaygroundPage from './pages/user/PlaygroundPage';
 import UserBillsPage from './pages/user/BillsPage';
+import UserModelsPage from './pages/user/ModelsPage';
+import UserModelDetailPage from './pages/user/ModelDetailPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import ProjectsPage from './pages/ProjectsPage';
@@ -35,6 +37,7 @@ import AccountsPage from './pages/AccountsPage';
 import BillingPaymentsPage from './pages/BillingPaymentsPage';
 import BillingInvoicesPage from './pages/BillingInvoicesPage';
 import AuditLogsPage from './pages/AuditLogsPage';
+import AutoscalingPage from './pages/AutoscalingPage';
 import ActivityPage from './pages/user/ActivityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -77,6 +80,8 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/playground" element={<UserPlaygroundPage />} />
               <Route path="/billing" element={<UserBillsPage />} />
               <Route path="/activity" element={<ActivityPage />} />
+              <Route path="/models" element={<UserModelsPage />} />
+              <Route path="/models/:id" element={<UserModelDetailPage />} />
               <Route path="*" element={<NotFoundPage homePath="/usage" homeLabel="Usage" />} />
             </Routes>
           </UserShell>
@@ -114,6 +119,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/billing/payments" element={<BillingPaymentsPage />} />
               <Route path="/admin/billing/invoices" element={<BillingInvoicesPage />} />
               <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
+              <Route path="/admin/autoscaling" element={<AutoscalingPage />} />
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>

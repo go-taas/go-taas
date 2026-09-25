@@ -8,7 +8,13 @@
 // not granted is not selectable.
 
 import { useEffect, useMemo, useState } from 'react';
-import { api, ApiError, type ModelSummary } from '../api';
+import {
+  api,
+  ApiError,
+  type AutoscalingPolicy,
+  type GetAutoscalingPolicyResponse,
+  type ModelSummary,
+} from '../api';
 import { Dialog, ErrorBanner } from '../components';
 
 interface ImageEntry {
@@ -62,6 +68,29 @@ export default function DeployDialog({
   const [replicas, setReplicas] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // Feature #16 FR2.1: the autoscaling section, pre-filled from the
+  // global default.
+  const [autoscaling, setAutoscaling] = useState<AutoscalingPolicy>({
+    enabled: true,
+    minReplicas: 1,
+    maxReplicas: 10,
+    targetConcurrency: 32,
+    scaleToZero: false,
+    cooldownSeconds: 300,
+  });
+  const [autoscalingErrors, setAutoscalingErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    // Load the global default policy to pre-fill the autoscaling section.
+    api
+      .get<GetAutoscalingPolicyResponse>('/api/v1/admin/autoscaling/policy', orgId)
+      .then((data) => {
+        if (data.policy) setAutoscaling(data.policy);
+      })
+      .catch(() => {
+        // Keep the shipped defaults on failure.
+      });
+  }, [orgId]);
 
   useEffect(() => {
     // Load the image catalog once; the dropdown filters by accelerator.
@@ -125,6 +154,13 @@ export default function DeployDialog({
       setError('Choose an image compatible with the accelerator.');
       return;
     }
+    // Feature #16 FR1.3: validate the autoscaling section inline.
+    const asErrs = validateAutoscaling(autoscaling);
+    setAutoscalingErrors(asErrs);
+    if (Object.keys(asErrs).length > 0) {
+      setError('Fix the autoscaling fields.');
+      return;
+    }
     setSubmitting(true);
     setError('');
     try {
@@ -136,6 +172,7 @@ export default function DeployDialog({
         accelerator,
         acceleratorType: acceleratorType.trim(),
         replicas: String(r),
+        autoscaling,
       });
       onDeployed(res.serviceId);
     } catch (e) {
@@ -143,6 +180,11 @@ export default function DeployDialog({
     } finally {
       setSubmitting(false);
     }
+  };
+
+  const setAS = (patch: Partial<AutoscalingPolicy>) => {
+    setAutoscaling((p) => ({ ...p, ...patch }));
+    setAutoscalingErrors({});
   };
 
   return (
@@ -246,6 +288,98 @@ export default function DeployDialog({
           />
         </div>
       </div>
+
+      <h4 style={{ marginBottom: 8 }}>Autoscaling</h4>
+      <div className="form-grid">
+        <div className="form-field">
+          <label htmlFor="deploy-as-enabled">Enabled</label>
+          <input
+            id="deploy-as-enabled"
+            data-testid="deploy-as-enabled"
+            type="checkbox"
+            checked={autoscaling.enabled}
+            onChange={(e) => setAS({ enabled: e.target.checked })}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-as-min">Min replicas</label>
+          <input
+            id="deploy-as-min"
+            data-testid="deploy-as-min"
+            type="number"
+            min={0}
+            max={100}
+            disabled={!autoscaling.enabled}
+            value={autoscaling.minReplicas}
+            onChange={(e) => setAS({ minReplicas: parseInt(e.target.value, 10) || 0 })}
+          />
+          {autoscalingErrors.minReplicas && (
+            <div className="field-error">{autoscalingErrors.minReplicas}</div>
+          )}
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-as-max">Max replicas</label>
+          <input
+            id="deploy-as-max"
+            data-testid="deploy-as-max"
+            type="number"
+            min={1}
+            max={100}
+            disabled={!autoscaling.enabled}
+            value={autoscaling.maxReplicas}
+            onChange={(e) => setAS({ maxReplicas: parseInt(e.target.value, 10) || 0 })}
+          />
+          {autoscalingErrors.maxReplicas && (
+            <div className="field-error">{autoscalingErrors.maxReplicas}</div>
+          )}
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-as-target">Target concurrency</label>
+          <input
+            id="deploy-as-target"
+            data-testid="deploy-as-target"
+            type="number"
+            min={1}
+            max={1000}
+            disabled={!autoscaling.enabled}
+            value={autoscaling.targetConcurrency}
+            onChange={(e) => setAS({ targetConcurrency: parseInt(e.target.value, 10) || 0 })}
+          />
+          {autoscalingErrors.targetConcurrency && (
+            <div className="field-error">{autoscalingErrors.targetConcurrency}</div>
+          )}
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-as-scale-to-zero">Scale to zero</label>
+          <input
+            id="deploy-as-scale-to-zero"
+            data-testid="deploy-as-scale-to-zero"
+            type="checkbox"
+            disabled={!autoscaling.enabled || autoscaling.minReplicas !== 0}
+            checked={autoscaling.scaleToZero}
+            onChange={(e) => setAS({ scaleToZero: e.target.checked })}
+          />
+          {autoscalingErrors.scaleToZero && (
+            <div className="field-error">{autoscalingErrors.scaleToZero}</div>
+          )}
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-as-cooldown">Cooldown seconds</label>
+          <input
+            id="deploy-as-cooldown"
+            data-testid="deploy-as-cooldown"
+            type="number"
+            min={0}
+            max={3600}
+            disabled={!autoscaling.enabled}
+            value={autoscaling.cooldownSeconds}
+            onChange={(e) => setAS({ cooldownSeconds: parseInt(e.target.value, 10) || 0 })}
+          />
+          {autoscalingErrors.cooldownSeconds && (
+            <div className="field-error">{autoscalingErrors.cooldownSeconds}</div>
+          )}
+        </div>
+      </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
@@ -261,4 +395,17 @@ export default function DeployDialog({
       </div>
     </Dialog>
   );
+}
+
+// validateAutoscaling mirrors the server-side validation matrix
+// (feature #16, §5.3).
+function validateAutoscaling(p: AutoscalingPolicy): Record<string, string> {
+  const errs: Record<string, string> = {};
+  if (p.minReplicas > p.maxReplicas) errs.maxReplicas = 'Max replicas must be ≥ min replicas and ≤ 100.';
+  if (p.minReplicas === 0 && !p.scaleToZero) errs.minReplicas = 'Min replicas must be 0 to enable scale-to-zero.';
+  if (p.scaleToZero && p.minReplicas !== 0) errs.scaleToZero = 'Set min replicas to 0 to enable scale-to-zero.';
+  if (p.targetConcurrency < 1 || p.targetConcurrency > 1000) errs.targetConcurrency = 'Target concurrency must be between 1 and 1000.';
+  if (p.cooldownSeconds < 0 || p.cooldownSeconds > 3600) errs.cooldownSeconds = 'Cooldown must be between 0 and 3600 seconds.';
+  if (p.maxReplicas < 1 || p.maxReplicas > 100) errs.maxReplicas = 'Max replicas must be ≥ min replicas and ≤ 100.';
+  return errs;
 }

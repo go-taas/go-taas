@@ -221,6 +221,51 @@ table.data tr:last-child td {
   margin-left: 8px;
 }
 
+/* ---- autoscaling badges (feature #16) ---- */
+.badge.autoscaled {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.badge.fixed {
+  background: #eceff1;
+  color: #607d8b;
+}
+.badge.cold-starting {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+.badge.scaled-to-zero {
+  background: #eceff1;
+  color: #607d8b;
+}
+.badge.steady {
+  background: var(--ok-soft);
+  color: var(--ok);
+}
+.badge.scaling-up,
+.badge.scaling-down {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+.badge.error {
+  background: var(--danger-soft);
+  color: var(--danger);
+}
+.badge.disabled {
+  background: #eceff1;
+  color: #607d8b;
+}
+
+/* ---- warning banner (feature #16 disable warning) ---- */
+.warning-banner {
+  background: var(--warn-soft);
+  color: var(--warn);
+  border-radius: 6px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}
+
 /* ---- buttons, forms ---- */
 
 button,
