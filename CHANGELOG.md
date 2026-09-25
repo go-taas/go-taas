@@ -1,3 +1,10 @@
+# [1.14.0](https://github.com/go-taas/go-taas/compare/v1.13.0...v1.14.0) (2026-09-25)
+
+
+### Features
+
+* **audit:** add audit logging and activity export ([cafac59](https://github.com/go-taas/go-taas/commit/cafac59f1e6666ce40ec772fbacb8a50b4795663))
+
 # [1.13.0](https://github.com/go-taas/go-taas/compare/v1.12.1...v1.13.0) (2026-09-25)
 
 
