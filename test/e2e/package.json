@@ -19,7 +19,8 @@
     "test:sso": "nightwatch --tag sso",
     "test:model-authorization": "nightwatch --tag model-authorization",
     "test:console-surfaces": "nightwatch --tag console-surfaces",
-    "test:payments-invoices": "nightwatch --tag payments-invoices"
+    "test:payments-invoices": "nightwatch --tag payments-invoices",
+    "test:audit-logging": "nightwatch --tag audit-logging"
   },
   "license": "Apache-2.0",
   "devDependencies": {
