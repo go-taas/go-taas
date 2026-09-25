@@ -1,3 +1,14 @@
+# [1.15.0](https://github.com/go-taas/go-taas/compare/v1.14.0...v1.15.0) (2026-09-25)
+
+
+### Features
+
+* **controller:** reconcile HPA lifecycle and scale-to-zero ([3ce9f75](https://github.com/go-taas/go-taas/commit/3ce9f75d1e3ca82bcd7993f94f73406e0f103704)), closes [#16](https://github.com/go-taas/go-taas/issues/16)
+* **infer:** add autoscaling policy proto, error code and config ([b3e4cf7](https://github.com/go-taas/go-taas/commit/b3e4cf7c16806fc1baa6c19a90e1c1f79d7a7dfc))
+* **infer:** implement autoscaling policy RPCs and concurrency consumer ([449ca5a](https://github.com/go-taas/go-taas/commit/449ca5af0715a4ab53996ab0f7fd01218ecf190e))
+* **model:** add user-realm autoscaling projection and GetAvailableModel ([fbd10fe](https://github.com/go-taas/go-taas/commit/fbd10feaa9e9ad9f2e1f5e321722f1421777478a)), closes [#16](https://github.com/go-taas/go-taas/issues/16)
+* **web:** add autoscaling pages on both console surfaces ([6a15c4b](https://github.com/go-taas/go-taas/commit/6a15c4bd2a499be1f6c48d9b0c0f290c234aa9f1))
+
 # [1.14.0](https://github.com/go-taas/go-taas/compare/v1.13.0...v1.14.0) (2026-09-25)
 
 
