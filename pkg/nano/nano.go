@@ -217,3 +217,35 @@ func rawOf(a Amount) *big.Int {
 	}
 	return a.raw
 }
+
+// tokensPerM is the denominator of a per-1M-token rate.
+const tokensPerM = 1_000_000
+
+// share computes one token-costing term: tokens * ratePerM / tokensPerM,
+// in exact raw units. All arithmetic is integer big.Int, so the 30-decimal
+// precision of the rates is preserved across the division; a zero term
+// contributes zero.
+func share(tokens uint64, ratePerM Amount) *big.Int {
+	if tokens == 0 || ratePerM.raw == nil || ratePerM.raw.Sign() == 0 {
+		return big.NewInt(0)
+	}
+	num := new(big.Int).Mul(new(big.Int).SetUint64(tokens), new(big.Int).Set(rawOf(ratePerM)))
+	return new(big.Int).Quo(num, big.NewInt(tokensPerM))
+}
+
+// Settlement derives the exact XNO amount payable for one inference call
+// from per-1M-token XNO rates (the shape of pricing.md D2: tokens * rate
+// per 1M). Unlike the card rail — whose 2-decimal cents rounding (see
+// billing.pricing.computeAmount) writes off any charge below $0.005 — this
+// keeps the full 30-decimal raw precision, so a sub-cent cached read or
+// short completion settles exactly instead of being batched or discarded
+// (issue #7). Passing it a nil-or-zero rate respects a model it cannot
+// price (matched by a caller's price resolution before settlement).
+func Settlement(promptTokens, completionTokens, cachedTokens uint64,
+	inputPerM, outputPerM, cachedPerM Amount) Amount {
+	total := new(big.Int)
+	total.Add(total, share(promptTokens, inputPerM))
+	total.Add(total, share(completionTokens, outputPerM))
+	total.Add(total, share(cachedTokens, cachedPerM))
+	return NewRaw(total)
+}
