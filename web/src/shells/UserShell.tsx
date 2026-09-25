@@ -15,6 +15,7 @@ export const USER_NAV_ITEMS = [
   { path: '/request-logs', label: 'Request Logs', testid: 'user-nav-request-logs' },
   { path: '/playground', label: 'Playground', testid: 'user-nav-playground' },
   { path: '/billing', label: 'Billing', testid: 'user-nav-billing' },
+  { path: '/activity', label: 'Activity', testid: 'user-nav-activity' },
 ];
 
 function isActive(path: string, current: string): boolean {

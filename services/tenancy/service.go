@@ -16,6 +16,7 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 )
 
 // ServiceName is the unique name of this service.
@@ -48,7 +49,21 @@ type Service struct {
 	// AcceptInvitation/RejectInvitation (feature #10). Implemented by
 	// the auth module; nil until wired.
 	sessionResolver SessionResolver
+
+	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
+	// Nil until wired: no audit events are produced.
+	auditRecorder AuditRecorder
 }
+
+// AuditRecorder is the best-effort, non-fatal audit recorder seam
+// (feature #15, AD3). It is implemented by the audit module and injected
+// at wiring time.
+type AuditRecorder interface {
+	// Record writes one audit event best-effort; it never returns an
+	// error.
+	Record(ctx context.Context, ev *audit.AuditEvent)
+}
+
 
 // New constructs the tenancy service. The repository is wired lazily
 // on first use from the shared components (the database component is
@@ -73,6 +88,20 @@ func (s *Service) SetRoleGuard(g *RoleGuard) { s.roleGuard = g }
 // Production and FVT wire it; unit tests leave it nil so session
 // resolution no-ops.
 func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r }
+
+// SetAuditRecorder injects the best-effort audit recorder (feature #15,
+// AD3). Production wires the audit module; unit tests may inject a fake.
+func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// recordAudit writes one audit event best-effort (feature #15, AD3). A
+// recorder failure is logged and never fails or rolls back the mutation.
+func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
+	if s.auditRecorder == nil {
+		return
+	}
+	s.auditRecorder.Record(ctx, ev)
+}
+
 
 // MigrateSchemaForFVT applies the tenancy schema (organizations,
 // projects, org_members, invitations) onto a caller-provided database
@@ -196,6 +225,16 @@ func (s *Service) CreateOrganization(ctx context.Context, req *tenancyv1.CreateO
 	if err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful creation best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: summary.GetOrganizationId(),
+		ActorUserID:    "admin",
+		ActorType:      "user",
+		Action:         "organization.create",
+		ResourceType:   "organization",
+		ResourceID:     summary.GetOrganizationId(),
+		Result:         "success",
+	})
 	return &tenancyv1.CreateOrganizationResponse{Response: okResponse(), Organization: summary}, nil
 }
 
@@ -275,6 +314,16 @@ func (s *Service) UpdateOrganization(ctx context.Context, req *tenancyv1.UpdateO
 	if err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful update best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: summary.GetOrganizationId(),
+		ActorUserID:    "admin",
+		ActorType:      "user",
+		Action:         "organization.update",
+		ResourceType:   "organization",
+		ResourceID:     summary.GetOrganizationId(),
+		Result:         "success",
+	})
 	return &tenancyv1.UpdateOrganizationResponse{Response: okResponse(), Organization: summary}, nil
 }
 

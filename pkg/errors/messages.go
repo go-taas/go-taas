@@ -96,6 +96,11 @@ var messages = map[Code]string{
 	CodePaymentIntentInvalid:  "payment intent invalid",
 	CodeInvoiceNotFound:       "invoice not found",
 	CodeAutoRechargeInvalid:   "auto recharge invalid",
+
+	// audit
+	CodeAuditEventNotFound: "audit event not found",
+	CodeAuditExportInvalid: "invalid export format",
+	CodeAuditRangeInvalid:  "invalid time range",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

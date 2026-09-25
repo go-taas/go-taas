@@ -20,6 +20,7 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/tenancy"
@@ -88,6 +89,19 @@ type Service struct {
 	invoiceRepo *InvoiceRepository
 	// accounts is the feature-#8 account repository, wired lazily.
 	accounts *AccountRepository
+
+	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
+	// Nil until wired: no audit events are produced.
+	auditRecorder AuditRecorder
+}
+
+// AuditRecorder is the best-effort, non-fatal audit recorder seam
+// (feature #15, AD3). It is implemented by the audit module and injected
+// at wiring time.
+type AuditRecorder interface {
+	// Record writes one audit event best-effort; it never returns an
+	// error.
+	Record(ctx context.Context, ev *audit.AuditEvent)
 }
 
 // New constructs the billing service. The repository is wired lazily
@@ -106,6 +120,19 @@ func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
 // by the user-realm reads (feature-17 AD6). Production and FVT wire the
 // auth service; unit tests may inject a fake.
 func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+// SetAuditRecorder injects the best-effort audit recorder (feature #15,
+// AD3). Production wires the audit module; unit tests may inject a fake.
+func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// recordAudit writes one audit event best-effort (feature #15, AD3). A
+// recorder failure is logged and never fails or rolls back the mutation.
+func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
+	if s.auditRecorder == nil {
+		return
+	}
+	s.auditRecorder.Record(ctx, ev)
+}
+
 
 // resolveOrg returns the organization context for a user-realm read
 // (feature-17 AD6): the session's active org when a session is present,

@@ -34,6 +34,8 @@ import BillsPage from './pages/BillsPage';
 import AccountsPage from './pages/AccountsPage';
 import BillingPaymentsPage from './pages/BillingPaymentsPage';
 import BillingInvoicesPage from './pages/BillingInvoicesPage';
+import AuditLogsPage from './pages/AuditLogsPage';
+import ActivityPage from './pages/user/ActivityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -74,6 +76,7 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/request-logs" element={<UserRequestLogsPage />} />
               <Route path="/playground" element={<UserPlaygroundPage />} />
               <Route path="/billing" element={<UserBillsPage />} />
+              <Route path="/activity" element={<ActivityPage />} />
               <Route path="*" element={<NotFoundPage homePath="/usage" homeLabel="Usage" />} />
             </Routes>
           </UserShell>
@@ -110,6 +113,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/billing/accounts" element={<AccountsPage />} />
               <Route path="/admin/billing/payments" element={<BillingPaymentsPage />} />
               <Route path="/admin/billing/invoices" element={<BillingInvoicesPage />} />
+              <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>

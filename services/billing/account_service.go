@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/services/audit"
 )
 
 // Account field limits (architecture Section 5.1).
@@ -89,6 +90,16 @@ func (s *Service) CreateAccount(ctx context.Context, req *billingv1.CreateAccoun
 	if err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful account creation best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "billing.account.create",
+		ResourceType:   "account",
+		ResourceID:     created.ID,
+		Result:         "success",
+	})
 	return &billingv1.CreateAccountResponse{Response: okResponse(), Account: summarizeAccount(created)}, nil
 }
 
@@ -184,6 +195,16 @@ func (s *Service) UpdateAccount(ctx context.Context, req *billingv1.UpdateAccoun
 	if err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful account update best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "billing.account.update",
+		ResourceType:   "account",
+		ResourceID:     updated.ID,
+		Result:         "success",
+	})
 	return &billingv1.UpdateAccountResponse{Response: okResponse(), Account: summarizeAccount(updated)}, nil
 }
 
@@ -250,6 +271,20 @@ func (s *Service) moneyTx(ctx context.Context, accountID string, amountCents int
 	if err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful recharge/refund best-effort.
+	action := "billing.recharge"
+	if txType == TransactionTypeRefund {
+		action = "billing.refund"
+	}
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         action,
+		ResourceType:   "account",
+		ResourceID:     accountID,
+		Result:         "success",
+	})
 	return &billingv1.RechargeResponse{
 		Response:    okResponse(),
 		Account:     summarizeAccount(updated),

@@ -128,3 +128,10 @@ const (
 	CodeInvoiceNotFound       Code = 10513 // INVOICE_NOT_FOUND
 	CodeAutoRechargeInvalid   Code = 10514 // AUTO_RECHARGE_INVALID
 )
+
+// audit module error codes.
+const (
+	CodeAuditEventNotFound Code = 10601 // AUDIT_EVENT_NOT_FOUND
+	CodeAuditExportInvalid Code = 10602 // AUDIT_EXPORT_INVALID
+	CodeAuditRangeInvalid  Code = 10603 // AUDIT_RANGE_INVALID
+)

@@ -25,6 +25,7 @@ export const ADMIN_NAV_ITEMS = [
   { path: '/admin/billing/accounts', label: 'Accounts', testid: 'nav-accounts' },
   { path: '/admin/billing/payments', label: 'Payments', testid: 'nav-payments' },
   { path: '/admin/billing/invoices', label: 'Invoices', testid: 'nav-invoices' },
+  { path: '/admin/audit-logs', label: 'Audit Logs', testid: 'nav-audit-logs' },
 ];
 
 function isActive(path: string, current: string): boolean {

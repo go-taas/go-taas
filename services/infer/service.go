@@ -21,6 +21,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/model"
 	"github.com/go-taas/go-taas/services/tenancy"
@@ -74,7 +75,20 @@ type Service struct {
 	// the user-realm playground (feature-17 AD6). Nil until wired: the
 	// transitional X-Organization-Id header is used.
 	sessionOrgResolver SessionOrgResolver
+	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
+	// Nil until wired: no audit events are produced.
+	auditRecorder AuditRecorder
 }
+
+// AuditRecorder is the best-effort, non-fatal audit recorder seam
+// (feature #15, AD3). It is implemented by the audit module and injected
+// at wiring time.
+type AuditRecorder interface {
+	// Record writes one audit event best-effort; it never returns an
+	// error.
+	Record(ctx context.Context, ev *audit.AuditEvent)
+}
+
 
 // New constructs the inference service from the shared server
 // components.
@@ -91,6 +105,19 @@ func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
 // by the user-realm playground (feature-17 AD6). Production and FVT wire
 // the auth service; unit tests may inject a fake.
 func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+// SetAuditRecorder injects the best-effort audit recorder (feature #15,
+// AD3). Production wires the audit module; unit tests may inject a fake.
+func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// recordAudit writes one audit event best-effort (feature #15, AD3). A
+// recorder failure is logged and never fails or rolls back the mutation.
+func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
+	if s.auditRecorder == nil {
+		return
+	}
+	s.auditRecorder.Record(ctx, ev)
+}
+
 
 // resolveOrg returns the organization context for the user-realm
 // playground (feature-17 AD6): the session's active org when a session
@@ -313,6 +340,17 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, apierrors.Newf(apierrors.CodeInternal, "infer: publish change failed")
 	}
 
+	// Feature #15: record the successful deploy best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.create",
+		ResourceType:   "inference_service",
+		ResourceID:     svc.ID,
+		Result:         "success",
+	})
+
 	return &inferv1.CreateInferenceServiceResponse{
 		Response:  okResponse(),
 		ServiceId: svc.ID,
@@ -442,6 +480,17 @@ func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleI
 		return nil, apierrors.Newf(apierrors.CodeInternal, "infer: publish change failed")
 	}
 
+	// Feature #15: record the successful scale best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.scale",
+		ResourceType:   "inference_service",
+		ResourceID:     req.GetServiceId(),
+		Result:         "success",
+	})
+
 	return &inferv1.ScaleInferenceServiceResponse{Response: okResponse()}, nil
 }
 
@@ -485,6 +534,17 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 		logger.S().Warnw("infer: publish delete change failed",
 			"service_id", req.GetServiceId(), "err", err)
 	}
+
+	// Feature #15: record the successful delete best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.delete",
+		ResourceType:   "inference_service",
+		ResourceID:     req.GetServiceId(),
+		Result:         "success",
+	})
 
 	return &inferv1.DeleteInferenceServiceResponse{Response: okResponse()}, nil
 }

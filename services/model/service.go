@@ -17,6 +17,7 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 
@@ -85,6 +86,19 @@ type Service struct {
 	// the user-realm catalog (feature-17 AD6). Nil until wired: the
 	// transitional X-Organization-Id header is used.
 	sessionOrgResolver SessionOrgResolver
+
+	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
+	// Nil until wired: no audit events are produced.
+	auditRecorder AuditRecorder
+}
+
+// AuditRecorder is the best-effort, non-fatal audit recorder seam
+// (feature #15, AD3). It is implemented by the audit module and injected
+// at wiring time.
+type AuditRecorder interface {
+	// Record writes one audit event best-effort; it never returns an
+	// error.
+	Record(ctx context.Context, ev *audit.AuditEvent)
 }
 
 // DeleteGuard blocks the deletion of a model. It returns a non-nil
@@ -126,6 +140,19 @@ func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r 
 // by the user-realm catalog (feature-17 AD6). Production and FVT wire
 // the auth service; unit tests may inject a fake.
 func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+
+// SetAuditRecorder injects the best-effort audit recorder (feature #15,
+// AD3). Production wires the audit module; unit tests may inject a fake.
+func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// recordAudit writes one audit event best-effort (feature #15, AD3). A
+// recorder failure is logged and never fails or rolls back the mutation.
+func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
+	if s.auditRecorder == nil {
+		return
+	}
+	s.auditRecorder.Record(ctx, ev)
+}
 
 // checkOrg validates that the organization exists (10005 when unknown).
 // No-op when the guard is not wired.
@@ -268,6 +295,15 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	if err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful registration best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		ActorUserID:  s.grantedBy(ctx),
+		ActorType:    "user",
+		Action:       "model.create",
+		ResourceType: "model",
+		ResourceID:   modelID,
+		Result:       "success",
+	})
 	return &modelv1.RegisterModelResponse{
 		Response: okResponse(),
 		ModelId:  modelID,
@@ -495,6 +531,15 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 	if err := repo.DeleteModel(ctx, req.GetModelId()); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful deletion best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		ActorUserID:  s.grantedBy(ctx),
+		ActorType:    "user",
+		Action:       "model.delete",
+		ResourceType: "model",
+		ResourceID:   req.GetModelId(),
+		Result:       "success",
+	})
 	return &modelv1.DeleteModelResponse{Response: okResponse()}, nil
 }
 
@@ -526,6 +571,16 @@ func (s *Service) GrantModelAccess(ctx context.Context, req *modelv1.GrantModelA
 	if err := repo.GrantAccess(ctx, req.GetModelId(), orgID, s.grantedBy(ctx)); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful grant best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    s.grantedBy(ctx),
+		ActorType:      "user",
+		Action:         "model.grant",
+		ResourceType:   "model",
+		ResourceID:     req.GetModelId(),
+		Result:         "success",
+	})
 	return &modelv1.GrantModelAccessResponse{Response: okResponse()}, nil
 }
 
@@ -553,6 +608,16 @@ func (s *Service) RevokeModelAccess(ctx context.Context, req *modelv1.RevokeMode
 	if err := repo.RevokeAccess(ctx, req.GetModelId(), orgID); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful revoke best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    s.grantedBy(ctx),
+		ActorType:      "user",
+		Action:         "model.revoke",
+		ResourceType:   "model",
+		ResourceID:     req.GetModelId(),
+		Result:         "success",
+	})
 	return &modelv1.RevokeModelAccessResponse{Response: okResponse()}, nil
 }
 

@@ -341,6 +341,29 @@ type TenancyConfig struct {
 	InvitationTTL time.Duration `mapstructure:"invitationTTL"`
 }
 
+// AuditConfig holds audit-module specific settings (feature #15).
+type AuditConfig struct {
+	// Retention configures the audit-event retention cleanup runner.
+	Retention AuditRetentionConfig `mapstructure:"retention"`
+	// ExportMaxRows is the export row cap (AD7); default 10000.
+	ExportMaxRows int `mapstructure:"exportMaxRows"`
+}
+
+// AuditRetentionConfig holds the audit retention runner settings
+// (feature #15, AD6).
+type AuditRetentionConfig struct {
+	// Enabled turns the audit retention runner on or off (incident-triage
+	// kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// EventTTL is how long audit events are kept before deletion;
+	// default 365 days.
+	EventTTL time.Duration `mapstructure:"eventTTL"`
+	// BatchSize is the number of rows deleted per retention pass.
+	BatchSize int `mapstructure:"batchSize"`
+	// Interval is the ticker period between retention passes.
+	Interval time.Duration `mapstructure:"interval"`
+}
+
 // Configuration is the root of the merged configuration tree.
 type Configuration struct {
 	Databases  Databases        `mapstructure:"db"`
@@ -354,6 +377,7 @@ type Configuration struct {
 	Image      ImageConfig      `mapstructure:"image"`
 	Model      ModelConfig      `mapstructure:"model"`
 	Tenancy    TenancyConfig    `mapstructure:"tenancy"`
+	Audit      AuditConfig      `mapstructure:"audit"`
 	Log        LogConfig        `mapstructure:"log"`
 }
 
@@ -443,6 +467,18 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Billing.CycleReset.Interval < 0 {
 		return &FieldError{Field: "billing.cycleReset.interval", Reason: "must be non-negative"}
+	}
+	if c.Audit.Retention.EventTTL < 0 {
+		return &FieldError{Field: "audit.retention.eventTTL", Reason: "must not be negative"}
+	}
+	if c.Audit.Retention.BatchSize < 0 {
+		return &FieldError{Field: "audit.retention.batchSize", Reason: "must not be negative"}
+	}
+	if c.Audit.Retention.Interval < 0 {
+		return &FieldError{Field: "audit.retention.interval", Reason: "must not be negative"}
+	}
+	if c.Audit.ExportMaxRows < 0 {
+		return &FieldError{Field: "audit.exportMaxRows", Reason: "must not be negative"}
 	}
 	return nil
 }

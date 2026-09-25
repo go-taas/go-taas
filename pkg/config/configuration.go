@@ -165,6 +165,18 @@ func (c *Configuration) applyDefaults() {
 	if c.Billing.CycleReset.Interval == 0 {
 		c.Billing.CycleReset.Interval = time.Minute
 	}
+	if c.Audit.Retention.EventTTL == 0 {
+		c.Audit.Retention.EventTTL = 365 * 24 * time.Hour
+	}
+	if c.Audit.Retention.BatchSize == 0 {
+		c.Audit.Retention.BatchSize = 1000
+	}
+	if c.Audit.Retention.Interval == 0 {
+		c.Audit.Retention.Interval = time.Hour
+	}
+	if c.Audit.ExportMaxRows == 0 {
+		c.Audit.ExportMaxRows = 10000
+	}
 }
 
 // String returns a string representation of the configuration for logging.

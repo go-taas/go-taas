@@ -23,6 +23,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 )
 
 // ServiceName is the unique name of this service.
@@ -55,7 +56,21 @@ type Service struct {
 
 	deleteGuard DeleteGuard
 	inUse       InUseProvider
+
+	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
+	// Nil until wired: no audit events are produced.
+	auditRecorder AuditRecorder
 }
+
+// AuditRecorder is the best-effort, non-fatal audit recorder seam
+// (feature #15, AD3). It is implemented by the audit module and injected
+// at wiring time.
+type AuditRecorder interface {
+	// Record writes one audit event best-effort; it never returns an
+	// error.
+	Record(ctx context.Context, ev *audit.AuditEvent)
+}
+
 
 // New constructs the image registry service. The repositories are
 // wired lazily on first use from the shared components (the database
@@ -64,6 +79,20 @@ type Service struct {
 func New(components server.Components) *Service {
 	return &Service{components: components}
 }
+
+// SetAuditRecorder injects the best-effort audit recorder (feature #15,
+// AD3). Production wires the audit module; unit tests may inject a fake.
+func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// recordAudit writes one audit event best-effort (feature #15, AD3). A
+// recorder failure is logged and never fails or rolls back the mutation.
+func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
+	if s.auditRecorder == nil {
+		return
+	}
+	s.auditRecorder.Record(ctx, ev)
+}
+
 
 // NewWithRepositories constructs an image service bound directly to
 // repositories. It is the injection point used by tests and by any
@@ -288,6 +317,16 @@ func (s *Service) RegisterImage(ctx context.Context, req *imagev1.RegisterImageR
 	if err := repo.CreateImage(ctx, img); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful registration best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: "",
+		ActorUserID:    "admin",
+		ActorType:      "user",
+		Action:         "image.register",
+		ResourceType:   "image",
+		ResourceID:     img.ID,
+		Result:         "success",
+	})
 	return &imagev1.RegisterImageResponse{Response: okResponse(), ImageId: img.ID}, nil
 }
 
@@ -420,6 +459,16 @@ func (s *Service) DeleteImage(ctx context.Context, req *imagev1.DeleteImageReque
 	if err := repo.Delete(ctx, req.GetImageId()); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful deletion best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: "",
+		ActorUserID:    "admin",
+		ActorType:      "user",
+		Action:         "image.delete",
+		ResourceType:   "image",
+		ResourceID:     req.GetImageId(),
+		Result:         "success",
+	})
 	return &imagev1.DeleteImageResponse{Response: okResponse()}, nil
 }
 

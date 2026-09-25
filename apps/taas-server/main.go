@@ -12,6 +12,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
 
+	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/auth"
 	"github.com/go-taas/go-taas/services/billing"
 	"github.com/go-taas/go-taas/services/image"
@@ -80,6 +81,8 @@ func main() {
 	srv.RegisterService(meteringSvc)
 	billingSvc := billing.New(srv.Components())
 	srv.RegisterService(billingSvc)
+	auditSvc := audit.New(srv.Components())
+	srv.RegisterService(auditSvc)
 
 	// The delete-model and delete-image reference guards need the infer
 	// repository; wire them after both services are registered (AC3,
@@ -123,6 +126,24 @@ func main() {
 			// service resolve the authenticated caller (feature #10).
 			tenancySvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			tenancySvc.SetSessionResolver(authSvc)
+			// The audit service (feature #15) resolves the session's
+			// active org and caller for the admin/end-user audit reads,
+			// and gates the admin audit RPCs by the caller's role.
+			auditSvc.SetSessionOrgResolver(authSvc)
+			auditSvc.SetSessionUserResolver(authSvc)
+			auditSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// The auth service records key revokes and logins into the
+			// audit trail best-effort (feature #15, AC1/AC3).
+			auditRecorder := audit.NewRecorder(audit.NewRepository(gormDB))
+			authSvc.SetAuditRecorder(auditRecorder)
+			// The other mutating services record their control-plane
+			// mutations into the same trail best-effort (feature #15,
+			// FR1.2).
+			modelSvc.SetAuditRecorder(auditRecorder)
+			inferSvc.SetAuditRecorder(auditRecorder)
+			billingSvc.SetAuditRecorder(auditRecorder)
+			imageSvc.SetAuditRecorder(auditRecorder)
+			tenancySvc.SetAuditRecorder(auditRecorder)
 			// The auth session derives roles/accessible orgs from
 			// org_members (feature #10, AD2/AD11).
 			authSvc.SetMembershipResolver(tenancy.NewMembershipResolver(gormDB))
@@ -157,6 +178,9 @@ func main() {
 		srv.AddRunner(runner)
 	}
 	if runner := metering.NewRequestLogRetentionRunnerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := audit.NewAuditRetentionRunnerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 	if runner := billing.NewEventConsumerRunner(srv.Components()); runner != nil {

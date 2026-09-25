@@ -1,0 +1,174 @@
+syntax = "proto3";
+
+package taas.audit.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/audit/v1;auditv1";
+
+// AuditService records control-plane mutations and exposes the audit
+// trail to the admin console and the caller's own activity to the
+// end-user console (feature #15).
+service AuditService {
+  // RecordAuditEvent is the best-effort, non-fatal recorder invoked by
+  // every mutating control-plane API after the mutation succeeds. It
+  // has no HTTP binding (cluster-internal surface, AD10).
+  rpc RecordAuditEvent(RecordAuditEventRequest) returns (RecordAuditEventResponse);
+
+  // ListAuditEvents returns audit events across tenants, filtered by
+  // org, actor, action, resource type, result and time range.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListAuditEvents(ListAuditEventsRequest) returns (ListAuditEventsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/audit/events"};
+  }
+
+  // GetAuditEvent returns one audit event's full metadata for drill-down.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetAuditEvent(GetAuditEventRequest) returns (GetAuditEventResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/audit/events/{audit_event_id}"};
+  }
+
+  // ExportAuditEvents returns the filtered set as CSV or JSON, capped at
+  // 10000 rows.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ExportAuditEvents(ExportAuditEventsRequest) returns (ExportAuditEventsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/audit/events:export"};
+  }
+
+  // ListMyActivity returns the caller's own audit events.
+  // User-surface API: served under /api/v1; hard-scoped to the caller.
+  rpc ListMyActivity(ListMyActivityRequest) returns (ListMyActivityResponse) {
+    option (google.api.http) = {get: "/api/v1/audit/activity"};
+  }
+
+  // ExportMyActivity returns the caller's own filtered events as CSV or
+  // JSON, capped at 10000 rows.
+  // User-surface API: served under /api/v1; hard-scoped to the caller.
+  rpc ExportMyActivity(ExportMyActivityRequest) returns (ExportMyActivityResponse) {
+    option (google.api.http) = {get: "/api/v1/audit/activity:export"};
+  }
+}
+
+enum AuditActorType {
+  AUDIT_ACTOR_TYPE_UNSPECIFIED = 0;
+  AUDIT_ACTOR_TYPE_USER = 1;
+  AUDIT_ACTOR_TYPE_SYSTEM = 2;
+  AUDIT_ACTOR_TYPE_API_KEY = 3;
+}
+
+enum AuditResult {
+  AUDIT_RESULT_UNSPECIFIED = 0;
+  AUDIT_RESULT_SUCCESS = 1;
+  AUDIT_RESULT_FAILURE = 2;
+}
+
+enum AuditExportFormat {
+  AUDIT_EXPORT_FORMAT_UNSPECIFIED = 0;
+  AUDIT_EXPORT_FORMAT_CSV = 1;
+  AUDIT_EXPORT_FORMAT_JSON = 2;
+}
+
+message AuditEvent {
+  string audit_event_id = 1;
+  string organization_id = 2; // empty for platform-level events
+  string actor_user_id = 3;
+  AuditActorType actor_type = 4;
+  string action = 5; // curated enum name, e.g. "api_key.revoke"
+  string resource_type = 6;
+  string resource_id = 7;
+  AuditResult result = 8;
+  string ip_address = 9;
+  string user_agent = 10;
+  string metadata = 11; // JSON string of the metadata object
+  int64 created_at = 12; // unix seconds
+}
+
+message RecordAuditEventRequest {
+  string organization_id = 1;
+  string actor_user_id = 2;
+  AuditActorType actor_type = 3;
+  string action = 4;
+  string resource_type = 5;
+  string resource_id = 6;
+  AuditResult result = 7;
+  string ip_address = 8;
+  string user_agent = 9;
+  string metadata = 10; // JSON string
+}
+
+message RecordAuditEventResponse {
+  taas.common.v1.Response response = 1;
+  string audit_event_id = 2;
+}
+
+message ListAuditEventsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string organization_id = 2; // empty = all orgs (admin)
+  string actor_user_id = 3;
+  string action = 4;
+  string resource_type = 5;
+  AuditResult result = 6;
+  int64 since = 7;
+  int64 until = 8;
+}
+
+message ListAuditEventsResponse {
+  taas.common.v1.Response response = 1;
+  repeated AuditEvent audit_events = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetAuditEventRequest {
+  string audit_event_id = 1;
+}
+
+message GetAuditEventResponse {
+  taas.common.v1.Response response = 1;
+  AuditEvent audit_event = 2;
+}
+
+message ExportAuditEventsRequest {
+  string organization_id = 1;
+  string actor_user_id = 2;
+  string action = 3;
+  string resource_type = 4;
+  AuditResult result = 5;
+  int64 since = 6;
+  int64 until = 7;
+  AuditExportFormat format = 8;
+}
+
+message ExportAuditEventsResponse {
+  taas.common.v1.Response response = 1;
+  string content = 2; // CSV or JSON text
+  bool truncated = 3; // true when the cap was hit
+}
+
+message ListMyActivityRequest {
+  taas.common.v1.PageRequest page = 1;
+  string action = 2;
+  AuditResult result = 3;
+  int64 since = 4;
+  int64 until = 5;
+}
+
+message ListMyActivityResponse {
+  taas.common.v1.Response response = 1;
+  repeated AuditEvent audit_events = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message ExportMyActivityRequest {
+  string action = 1;
+  AuditResult result = 2;
+  int64 since = 3;
+  int64 until = 4;
+  AuditExportFormat format = 5;
+}
+
+message ExportMyActivityResponse {
+  taas.common.v1.Response response = 1;
+  string content = 2;
+  bool truncated = 3;
+}

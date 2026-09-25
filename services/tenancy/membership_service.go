@@ -16,6 +16,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/services/audit"
 )
 
 // emailRegex is a light email shape check (feature #10, FR2.1).
@@ -113,6 +114,16 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 	if err := repo.AddMember(ctx, m); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful member add best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    userID,
+		ActorType:      "user",
+		Action:         "member.add",
+		ResourceType:   "member",
+		ResourceID:     userID,
+		Result:         "success",
+	})
 	return &tenancyv1.AddOrgMemberResponse{
 		Response: okResponse(),
 		Member:   summarizeMember(m),
@@ -148,6 +159,16 @@ func (s *Service) SetOrgMemberRole(ctx context.Context, req *tenancyv1.SetOrgMem
 		return nil, err
 	}
 	m.Role = role
+	// Feature #15: record the successful role change best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    userID,
+		ActorType:      "user",
+		Action:         "member.role_change",
+		ResourceType:   "member",
+		ResourceID:     userID,
+		Result:         "success",
+	})
 	return &tenancyv1.SetOrgMemberRoleResponse{
 		Response: okResponse(),
 		Member:   summarizeMember(m),
@@ -178,6 +199,16 @@ func (s *Service) RemoveOrgMember(ctx context.Context, req *tenancyv1.RemoveOrgM
 	if err := repo.RemoveMember(ctx, orgID, userID); err != nil {
 		return nil, err
 	}
+	// Feature #15: record the successful member removal best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    userID,
+		ActorType:      "user",
+		Action:         "member.remove",
+		ResourceType:   "member",
+		ResourceID:     userID,
+		Result:         "success",
+	})
 	return &tenancyv1.RemoveOrgMemberResponse{Response: okResponse()}, nil
 }
 

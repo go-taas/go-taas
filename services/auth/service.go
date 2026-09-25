@@ -24,6 +24,7 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 
@@ -87,6 +88,20 @@ type Service struct {
 	// pluginFactory builds the IdP plugin for a provider type. It is
 	// the injection point for tests to substitute a fake plugin.
 	pluginFactory func(string) (IDPPlugin, error)
+
+	// auditRecorder is the best-effort audit recorder (feature #15,
+	// AD3). Nil until wired: no audit events are produced. Mutating
+	// RPCs call it after the mutation succeeds and ignore its failure.
+	auditRecorder AuditRecorder
+}
+
+// AuditRecorder is the best-effort, non-fatal audit recorder seam
+// (feature #15, AD3). It is implemented by the audit module and injected
+// at wiring time. A failure is logged and never fails the mutation.
+type AuditRecorder interface {
+	// Record writes one audit event best-effort; it never returns an
+	// error.
+	Record(ctx context.Context, ev *audit.AuditEvent)
 }
 
 // New constructs the auth service. The repository and cache are wired
@@ -262,6 +277,11 @@ func (s *Service) SetSessionStore(st *SessionStore) { s.sessionStore = st }
 // (feature #10, AD2/AD11). Production and FVT wire it; unit tests leave
 // it nil so session derivation falls back to IdP claims.
 func (s *Service) SetMembershipResolver(r *tenancy.MembershipResolver) { s.membershipResolver = r }
+
+// SetAuditRecorder injects the best-effort audit recorder (feature #15,
+// AD3). Production and FVT wire it; unit tests leave it nil so no audit
+// events are produced.
+func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
 
 // CreateSessionForTest creates a session in the store directly. It is
 // used by FVT to seed a session without going through the SSO flow.
@@ -478,7 +498,27 @@ func (s *Service) RevokeAPIKey(ctx context.Context, req *authv1.RevokeAPIKeyRequ
 		logger.S().Warnw("auth: verdict cache unavailable during revoke", "err", err)
 	}
 
+	// Feature #15: record the successful revoke best-effort (AC1/AC3).
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    "system",
+		ActorType:      "system",
+		Action:         "api_key.revoke",
+		ResourceType:   "api_key",
+		ResourceID:     req.GetKeyId(),
+		Result:         "success",
+	})
+
 	return &authv1.RevokeAPIKeyResponse{Response: okResponse()}, nil
+}
+
+// recordAudit writes one audit event best-effort (feature #15, AD3). A
+// recorder failure is logged and never fails or rolls back the mutation.
+func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
+	if s.auditRecorder == nil {
+		return
+	}
+	s.auditRecorder.Record(ctx, ev)
 }
 
 // UpdateAPIKey edits a key's name, expiry and rate limits post-creation

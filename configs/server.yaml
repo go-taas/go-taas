@@ -102,6 +102,17 @@ tenancy:
   defaultOrgId: "org-default"
   defaultOrgDisplayName: "Default Organization"
 
+audit:
+  # retention deletes audit events older than eventTTL, in batches
+  # (feature #15, AD6).
+  retention:
+    enabled: true
+    eventTTL: 8760h
+    batchSize: 1000
+    interval: 1h
+  # exportMaxRows caps the synchronous CSV/JSON export (AD7).
+  exportMaxRows: 10000
+
 image:
   registry:
     - imageId: "img-vllm-nvidia-v063"
