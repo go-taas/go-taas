@@ -151,6 +151,9 @@ func newModelInferEnv(t *testing.T) *modelInferEnv {
 	bus := newRecordingBus()
 	modelSvc := model.NewForFVT(db)
 	modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(db))
+	// Feature #16: the user-realm catalog's autoscaling projection is
+	// resolved from the infer module's service status (AD13).
+	modelSvc.SetAutoscalingProvider(infer.NewModelAutoscalingProvider(db))
 	inferSvc := infer.NewForFVT(db, bus)
 	inferSvc.SetOrgGuard(tenancy.NewOrgGuard(db))
 	imageSvc := image.NewForFVT(db, bus)
