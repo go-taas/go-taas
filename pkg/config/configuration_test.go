@@ -110,6 +110,26 @@ func TestValidate(t *testing.T) {
 	}
 }
 
+func TestValidateAutoscalingConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	// Negative concurrency workers fails.
+	cfg.Infer.Autoscaling.ConcurrencyConsumer.Workers = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative concurrency workers should fail validation")
+	}
+	cfg.Infer.Autoscaling.ConcurrencyConsumer.Workers = 2
+	// Negative status-report interval fails.
+	cfg.Infer.Autoscaling.StatusReportInterval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative status report interval should fail validation")
+	}
+	cfg.Infer.Autoscaling.StatusReportInterval = 5 * time.Second
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid autoscaling config rejected: %v", err)
+	}
+}
+
 func TestLoadDotEnv(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")

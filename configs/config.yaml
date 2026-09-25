@@ -106,6 +106,13 @@ infer:
   statusConsumer:
     enabled: true
     workers: 2
+  # autoscaling (feature #16): the concurrency-metric consumer and the
+  # controller's autoscaling status-report interval.
+  autoscaling:
+    concurrencyConsumer:
+      enabled: true
+      workers: 2
+    statusReportInterval: 5s
 
 tenancy:
   # The organization seeded on first boot (when the organizations table

@@ -73,6 +73,7 @@ var messages = map[Code]string{
 	CodeInferEndpointNotFound:    "inference endpoint not found",
 	CodeInferReplicasInvalid:     "inference replicas invalid",
 	CodeInferEngineUnsupported:   "inference engine unsupported",
+	CodeAutoscalingPolicyInvalid: "autoscaling policy invalid",
 
 	// metering
 	CodeMeteringEventInvalid:    "metering event invalid",

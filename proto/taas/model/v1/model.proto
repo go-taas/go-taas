@@ -74,6 +74,15 @@ service ModelService {
   rpc ListAvailableModels(ListAvailableModelsRequest) returns (ListAvailableModelsResponse) {
     option (google.api.http) = {get: "/api/v1/models"};
   }
+
+  // GetAvailableModel returns one available model's masked projection
+  // plus its read-only autoscaling summary (feature #16, AD13). The
+  // projection carries no operator fields (no cooldown, no target
+  // concurrency, no service identifiers).
+  // User-surface API: served under /api/v1.
+  rpc GetAvailableModel(GetAvailableModelRequest) returns (GetAvailableModelResponse) {
+    option (google.api.http) = {get: "/api/v1/models/{model_id}"};
+  }
 }
 
 message RegisterModelRequest {
@@ -177,9 +186,35 @@ message AvailableModel {
   string model_id = 1;
   string name = 2;
   string latest_version = 3;
+  // autoscaling is the read-only autoscaling projection (feature #16,
+  // AD13). Nil when the model is not autoscaled.
+  ModelAutoscaling autoscaling = 4;
 }
 message ListAvailableModelsResponse {
   taas.common.v1.Response response = 1;
   repeated AvailableModel models = 2;
   taas.common.v1.PageMeta page_meta = 3;
+}
+
+// ModelAutoscaling is the masked user-realm autoscaling projection
+// (feature #16, AD13): it carries no operator fields (no cooldown, no
+// target concurrency, no service identifiers).
+message ModelAutoscaling {
+  bool autoscaled = 1;
+  int32 current_replicas = 2;
+  int32 min_replicas = 3;
+  int32 max_replicas = 4;
+  bool scale_to_zero = 5;
+  // state is steady | scaling | scaled-to-zero | warming-up | fixed.
+  string state = 6;
+}
+
+message GetAvailableModelRequest {
+  string model_id = 1; // path
+}
+
+message GetAvailableModelResponse {
+  taas.common.v1.Response response = 1;
+  AvailableModel model = 2;
+  ModelAutoscaling autoscaling = 3;
 }

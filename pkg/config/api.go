@@ -255,6 +255,29 @@ type InferConfig struct {
 	EndpointBaseURL string `mapstructure:"endpointBaseURL"`
 	// StatusConsumer controls the infer module's status-subject consumer.
 	StatusConsumer StatusConsumerConfig `mapstructure:"statusConsumer"`
+	// Autoscaling controls the infer module's autoscaling consumers and
+	// the controller's status-report interval (feature #16).
+	Autoscaling InferAutoscalingConfig `mapstructure:"autoscaling"`
+}
+
+// InferAutoscalingConfig holds the feature-16 autoscaling settings.
+type InferAutoscalingConfig struct {
+	// ConcurrencyConsumer controls the infer module's concurrency-metric
+	// consumer Runner.
+	ConcurrencyConsumer InferConcurrencyConsumerConfig `mapstructure:"concurrencyConsumer"`
+	// StatusReportInterval is the minimum interval between autoscaling
+	// status reports per service (bounded to avoid flooding the subject).
+	StatusReportInterval time.Duration `mapstructure:"statusReportInterval"`
+}
+
+// InferConcurrencyConsumerConfig holds the kill switch and worker count
+// of the infer concurrency-metric consumer.
+type InferConcurrencyConsumerConfig struct {
+	// Enabled turns the concurrency consumer Runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent concurrency handlers.
+	Workers int `mapstructure:"workers"`
 }
 
 // StatusConsumerConfig holds the kill switch and worker count of the
@@ -404,6 +427,12 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Infer.StatusConsumer.Workers < 0 {
 		return &FieldError{Field: "infer.statusConsumer.workers", Reason: "must not be negative"}
+	}
+	if c.Infer.Autoscaling.ConcurrencyConsumer.Workers < 0 {
+		return &FieldError{Field: "infer.autoscaling.concurrencyConsumer.workers", Reason: "must not be negative"}
+	}
+	if c.Infer.Autoscaling.StatusReportInterval < 0 {
+		return &FieldError{Field: "infer.autoscaling.statusReportInterval", Reason: "must not be negative"}
 	}
 	if c.Image.WarmupStatusConsumer.Workers < 0 {
 		return &FieldError{Field: "image.warmupStatusConsumer.workers", Reason: "must not be negative"}

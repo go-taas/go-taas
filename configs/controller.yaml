@@ -15,6 +15,10 @@ infer:
   # services. Empty means the controller falls back to the in-cluster
   # Service DNS name.
   endpointBaseURL: ""
+  # autoscaling (feature #16): the controller reports autoscaling status
+  # at most once per statusReportInterval per service.
+  autoscaling:
+    statusReportInterval: 5s
 
 controller:
   workers: 4

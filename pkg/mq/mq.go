@@ -72,6 +72,10 @@ type Subjects struct {
 	// InferServiceStatus carries observed-state reports from the
 	// controller back to the infer module (state, endpoints, failures).
 	InferServiceStatus string
+	// InferServiceConcurrency carries gateway-reported in-flight
+	// concurrency per inference service (feature #16, AD11). The
+	// controller consumes it to drive the HPA concurrency metric.
+	InferServiceConcurrency string
 	// ImageWarmups carries image warmup tasks.
 	ImageWarmups string
 	// ImageWarmupStatus carries warmup task status reports from the
@@ -86,12 +90,13 @@ type Subjects struct {
 // DefaultSubjects returns the canonical subject names.
 func DefaultSubjects() Subjects {
 	return Subjects{
-		InferServiceChanges: "infer.services.changes",
-		InferServiceStatus:  "infer.services.status",
-		ImageWarmups:        "image.warmups",
-		ImageWarmupStatus:   "image.warmup.status",
-		MeteringEvents:      "metering.events",
-		Settlements:         "billing.settlements",
+		InferServiceChanges:     "infer.services.changes",
+		InferServiceStatus:      "infer.services.status",
+		InferServiceConcurrency: "infer.services.concurrency",
+		ImageWarmups:            "image.warmups",
+		ImageWarmupStatus:       "image.warmup.status",
+		MeteringEvents:          "metering.events",
+		Settlements:             "billing.settlements",
 	}
 }
 

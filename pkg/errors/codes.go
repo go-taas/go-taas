@@ -100,6 +100,7 @@ const (
 	CodeInferEndpointNotFound    Code = 10304 // INFER_ENDPOINT_NOT_FOUND
 	CodeInferReplicasInvalid     Code = 10305 // INFER_REPLICAS_INVALID
 	CodeInferEngineUnsupported   Code = 10306 // INFER_ENGINE_UNSUPPORTED
+	CodeAutoscalingPolicyInvalid Code = 10307 // AUTOSCALING_POLICY_INVALID
 )
 
 // metering module error codes.

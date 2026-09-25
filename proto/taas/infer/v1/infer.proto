@@ -73,6 +73,35 @@ service InferServiceService {
       body: "*"
     };
   }
+
+  // GetAutoscalingPolicy returns the global default autoscaling policy
+  // applied to new inference services (feature #16, FR1.4).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetAutoscalingPolicy(GetAutoscalingPolicyRequest) returns (GetAutoscalingPolicyResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/autoscaling/policy"};
+  }
+
+  // UpdateAutoscalingPolicy saves the global default autoscaling policy.
+  // Synchronous (FR1.4); the policy is validated before any message is
+  // published (AD10).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateAutoscalingPolicy(UpdateAutoscalingPolicyRequest) returns (UpdateAutoscalingPolicyResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/autoscaling/policy"
+      body: "*"
+    };
+  }
+
+  // UpdateInferenceServiceAutoscaling edits a service's per-service
+  // autoscaling policy in place. Asynchronous via MQ (AD9): the update
+  // returns immediately and the service state reflects convergence.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateInferenceServiceAutoscaling(UpdateInferenceServiceAutoscalingRequest) returns (UpdateInferenceServiceAutoscalingResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/inference-services/{service_id}:autoscaling"
+      body: "*"
+    };
+  }
 }
 
 message CreateInferenceServiceRequest {
@@ -85,6 +114,9 @@ message CreateInferenceServiceRequest {
   string accelerator = 6;
   // accelerator_type is the concrete card model requested.
   string accelerator_type = 7;
+  // autoscaling is the per-service autoscaling policy (feature #16,
+  // AD2). Empty means "inherit the global default".
+  AutoscalingPolicy autoscaling = 8;
 }
 
 message CreateInferenceServiceResponse {
@@ -113,6 +145,18 @@ message InferenceServiceSummary {
   // failed, terminated.
   string state = 7;
   int64 updated_at = 8;
+  // autoscaling_enabled is true when the service's effective policy has
+  // autoscaling on (feature #16, FR3.1).
+  bool autoscaling_enabled = 9;
+  // current_replicas is the observed replica count (feature #16).
+  int32 current_replicas = 10;
+  // min_replicas / max_replicas are the effective policy bounds
+  // (feature #16).
+  int32 min_replicas = 11;
+  int32 max_replicas = 12;
+  // autoscaling_state is the closed autoscaling state enum (feature #16,
+  // FR3.2).
+  AutoscalingState autoscaling_state = 13;
 }
 
 message GetInferenceServiceRequest {
@@ -123,6 +167,12 @@ message GetInferenceServiceResponse {
   taas.common.v1.Response response = 1;
   InferenceServiceSummary service = 2;
   repeated string endpoints = 3;
+  // autoscaling is the effective policy (resolved from the global
+  // default when the service stores {}), feature #16.
+  AutoscalingPolicy autoscaling = 4;
+  // autoscaling_status is the live autoscaling status block (feature
+  // #16, FR3.2).
+  AutoscalingStatus autoscaling_status = 5;
 }
 
 message ScaleInferenceServiceRequest {
@@ -176,4 +226,71 @@ message PlaygroundModelResponse {
   int64 prompt_tokens = 4;
   int64 completion_tokens = 5;
   int64 latency_ms = 6;
+}
+
+// AutoscalingPolicy is the six-field autoscaling policy (feature #16,
+// AD2). It is stored as a jsonb column on inference_services and as the
+// singleton global-default row.
+message AutoscalingPolicy {
+  bool enabled = 1;
+  int32 min_replicas = 2;
+  int32 max_replicas = 3;
+  int32 target_concurrency = 4;
+  bool scale_to_zero = 5;
+  int32 cooldown_seconds = 6;
+}
+
+// AutoscalingState is the closed enum the consoles render badges from
+// (feature #16, FR3.2).
+enum AutoscalingState {
+  AUTOSCALING_STATE_UNSPECIFIED = 0;
+  AUTOSCALING_STATE_DISABLED = 1;
+  AUTOSCALING_STATE_STEADY = 2;
+  AUTOSCALING_STATE_SCALING_UP = 3;
+  AUTOSCALING_STATE_SCALING_DOWN = 4;
+  AUTOSCALING_STATE_SCALED_TO_ZERO = 5;
+  AUTOSCALING_STATE_COLD_STARTING = 6;
+  AUTOSCALING_STATE_ERROR = 7;
+}
+
+// AutoscalingStatus is the live autoscaling status block reported by the
+// controller (feature #16, FR3.2). It is write-only by the controller and
+// read-only on the wire.
+message AutoscalingStatus {
+  AutoscalingState state = 1;
+  int32 current_replicas = 2;
+  int32 desired_replicas = 3;
+  int32 current_concurrency = 4;
+  int32 target_concurrency = 5;
+  int64 last_scaling_event_at = 6;
+  // error_reason is populated when state = ERROR (FR3.4).
+  string error_reason = 7;
+}
+
+message GetAutoscalingPolicyRequest {}
+
+message GetAutoscalingPolicyResponse {
+  taas.common.v1.Response response = 1;
+  AutoscalingPolicy policy = 2;
+}
+
+message UpdateAutoscalingPolicyRequest {
+  AutoscalingPolicy policy = 1;
+}
+
+message UpdateAutoscalingPolicyResponse {
+  taas.common.v1.Response response = 1;
+  AutoscalingPolicy policy = 2;
+}
+
+message UpdateInferenceServiceAutoscalingRequest {
+  string service_id = 1; // path
+  AutoscalingPolicy policy = 2;
+}
+
+message UpdateInferenceServiceAutoscalingResponse {
+  taas.common.v1.Response response = 1;
+  // fixed_replicas is the resulting fixed count when disabling
+  // autoscaling (FR2.5).
+  int32 fixed_replicas = 2;
 }
