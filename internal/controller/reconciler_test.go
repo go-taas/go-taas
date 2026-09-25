@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -486,4 +487,152 @@ func TestControllerRunSubscribes(t *testing.T) {
 	case <-time.After(2 * time.Second):
 		t.Fatal("Run did not return after cancel")
 	}
+}
+
+// testChangeEventWithAutoscaling builds a change event with an
+// autoscaling policy (feature #16).
+func testChangeEventWithAutoscaling(eventType, name string, policy *autoscalingPolicy) changeEvent {
+	evt := testChangeEvent(eventType, name)
+	evt.Autoscaling = policy
+	return evt
+}
+
+func TestBuildHPA(t *testing.T) {
+	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
+		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
+	})
+	hpa := buildHPA(evt)
+
+	assert.Equal(t, "hpa-demo", hpa.Name)
+	assert.Equal(t, reconcileNamespace, hpa.Namespace)
+	require.NotNil(t, hpa.Spec.MinReplicas)
+	assert.Equal(t, int32(1), *hpa.Spec.MinReplicas)
+	assert.Equal(t, int32(10), hpa.Spec.MaxReplicas)
+	assert.Equal(t, "demo", hpa.Spec.ScaleTargetRef.Name)
+	assert.Equal(t, "Deployment", hpa.Spec.ScaleTargetRef.Kind)
+
+	// Concurrency object metric with AverageValue target.
+	require.Len(t, hpa.Spec.Metrics, 1)
+	m := hpa.Spec.Metrics[0]
+	assert.Equal(t, autoscalingv2.ObjectMetricSourceType, m.Type)
+	require.NotNil(t, m.Object)
+	assert.Equal(t, "taas-infer-concurrency", m.Object.Metric.Name)
+	assert.Equal(t, autoscalingv2.AverageValueMetricType, m.Object.Target.Type)
+	require.NotNil(t, m.Object.Target.AverageValue)
+	assert.Equal(t, int64(32), m.Object.Target.AverageValue.Value())
+
+	// Downscale stabilization window equals the cooldown.
+	require.NotNil(t, hpa.Spec.Behavior)
+	require.NotNil(t, hpa.Spec.Behavior.ScaleDown)
+	require.NotNil(t, hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
+	assert.Equal(t, int32(300), *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
+}
+
+func TestBuildHPAScaleToZero(t *testing.T) {
+	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 0, MaxReplicas: 5,
+		TargetConcurrency: 16, ScaleToZero: true, CooldownSeconds: 120,
+	})
+	hpa := buildHPA(evt)
+	require.NotNil(t, hpa.Spec.MinReplicas)
+	assert.Equal(t, int32(0), *hpa.Spec.MinReplicas)
+	assert.Equal(t, int32(5), hpa.Spec.MaxReplicas)
+}
+
+func TestApplyUpsertWithAutoscalingCreatesHPA(t *testing.T) {
+	publisher := &recordingPublisher{Client: mq.NewFake()}
+	reconciler, clientset := newFakeReconciler(publisher)
+
+	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
+		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
+	})
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt)))
+
+	// The HPA exists with the desired spec.
+	hpa, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, int32(10), hpa.Spec.MaxReplicas)
+
+	// Re-apply with a different max: the HPA is patched (idempotent).
+	evt2 := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 1, MaxReplicas: 20,
+		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
+	})
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt2)))
+	hpa, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, int32(20), hpa.Spec.MaxReplicas)
+}
+
+func TestApplyUpsertAutoscalingDisabledDeletesHPA(t *testing.T) {
+	publisher := &recordingPublisher{Client: mq.NewFake()}
+	reconciler, clientset := newFakeReconciler(publisher)
+
+	// First enable autoscaling.
+	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
+		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
+	})
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt)))
+	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// Then disable: the HPA is deleted and the Deployment is pinned.
+	disabled := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: false, MinReplicas: 1, MaxReplicas: 10,
+		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
+	})
+	disabled.Replicas = 3
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(disabled)))
+
+	_, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	assert.Error(t, err, "HPA should be deleted when autoscaling is disabled")
+
+	dep, err := clientset.AppsV1().Deployments(reconcileNamespace).
+		Get(context.Background(), "demo", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, int32(3), *dep.Spec.Replicas, "deployment pinned to fixed count (FR2.5)")
+}
+
+func TestApplyDeleteRemovesHPA(t *testing.T) {
+	publisher := &recordingPublisher{Client: mq.NewFake()}
+	reconciler, clientset := newFakeReconciler(publisher)
+
+	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
+		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
+	})
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt)))
+
+	delEvt := testChangeEvent("delete", "demo")
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(delEvt)))
+
+	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	assert.Error(t, err, "HPA should be deleted with the service")
+}
+
+func TestChangeEventDecodeAutoscaling(t *testing.T) {
+	// The controller's changeEvent must decode the infer module's
+	// published autoscaling JSON (feature #16, §6.1).
+	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
+		Enabled: true, MinReplicas: 1, MaxReplicas: 8,
+		TargetConcurrency: 48, ScaleToZero: false, CooldownSeconds: 200,
+	})
+	body, err := json.Marshal(evt)
+	require.NoError(t, err)
+
+	var decoded changeEvent
+	require.NoError(t, json.Unmarshal(body, &decoded))
+	require.NotNil(t, decoded.Autoscaling)
+	assert.Equal(t, true, decoded.Autoscaling.Enabled)
+	assert.Equal(t, 8, decoded.Autoscaling.MaxReplicas)
+	assert.Equal(t, 48, decoded.Autoscaling.TargetConcurrency)
+	assert.Equal(t, 200, decoded.Autoscaling.CooldownSeconds)
 }

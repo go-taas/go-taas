@@ -9,8 +9,10 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
+	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
@@ -44,6 +46,20 @@ type changeEvent struct {
 	Replicas        int    `json:"replicas"`
 	Accelerator     string `json:"accelerator"`
 	AcceleratorType string `json:"accelerator_type"`
+	// Autoscaling is the effective autoscaling policy (feature #16,
+	// §6.1). Nil means autoscaling is disabled.
+	Autoscaling *autoscalingPolicy `json:"autoscaling,omitempty"`
+}
+
+// autoscalingPolicy is the effective autoscaling policy carried in a
+// change event (feature #16, §6.1).
+type autoscalingPolicy struct {
+	Enabled           bool `json:"enabled"`
+	MinReplicas       int  `json:"min_replicas"`
+	MaxReplicas       int  `json:"max_replicas"`
+	TargetConcurrency int  `json:"target_concurrency"`
+	ScaleToZero       bool `json:"scale_to_zero"`
+	CooldownSeconds   int  `json:"cooldown_seconds"`
 }
 
 // statusReport is the observed-state report published on the status
@@ -53,7 +69,21 @@ type statusReport struct {
 	State         string   `json:"state"`
 	Endpoints     []string `json:"endpoints"`
 	FailureReason *string  `json:"failure_reason"`
-	ReportedAt    string   `json:"reported_at"`
+	// Autoscaling is the autoscaling status block (feature #16, §6.2).
+	Autoscaling *autoscalingStatus `json:"autoscaling,omitempty"`
+	ReportedAt  string             `json:"reported_at"`
+}
+
+// autoscalingStatus is the autoscaling status block inside a status
+// report (feature #16, §6.2).
+type autoscalingStatus struct {
+	State              string `json:"state"`
+	CurrentReplicas    int    `json:"current_replicas"`
+	DesiredReplicas    int    `json:"desired_replicas"`
+	CurrentConcurrency int    `json:"current_concurrency"`
+	TargetConcurrency  int    `json:"target_concurrency"`
+	LastScalingEventAt string `json:"last_scaling_event_at"`
+	ErrorReason        string `json:"error_reason"`
 }
 
 // k8sReconciler is the default Reconciler backed by the Kubernetes
@@ -363,7 +393,7 @@ func (r *k8sReconciler) publishWarmupStatus(ctx context.Context, taskID, state s
 	return r.statusPublisher.Publish(ctx, mq.DefaultSubjects().ImageWarmupStatus, body, nil)
 }
 
-// applyDelete tears down the Deployment and Service, ignoring
+// applyDelete tears down the Deployment, Service and HPA, ignoring
 // not-found. The RPC already set state=terminated; no status report is
 // needed.
 func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error {
@@ -377,14 +407,21 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
 		return fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr)
 	}
+	// Feature #16: tear down the HPA alongside the Deployment/Service.
+	hpaErr := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Delete(ctx, hpaName(evt.Name), metav1.DeleteOptions{})
+	if hpaErr != nil && !apierrors.IsNotFound(hpaErr) {
+		return fmt.Errorf("controller: delete hpa %s: %w", evt.Name, hpaErr)
+	}
 	logger.S().Infow("controller: tore down inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
 	return nil
 }
 
-// applyUpsert reports deploying, creates or updates the Deployment and
-// Service, then reports running with endpoints. Any reconcile failure
-// reports failed with the reason (AC7).
+// applyUpsert reports deploying, creates or updates the Deployment,
+// Service and (when autoscaling is enabled) the HPA, then reports
+// running with endpoints. Any reconcile failure reports failed with the
+// reason (AC7).
 func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error {
 	if err := r.publishStatus(ctx, evt.ServiceID, "deploying", nil, nil); err != nil {
 		logger.S().Warnw("controller: publish deploying status failed",
@@ -398,6 +435,24 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	svc := buildService(evt)
 	if err := r.createOrUpdateService(ctx, svc); err != nil {
 		return r.reportFailure(ctx, evt, err)
+	}
+
+	// Feature #16: reconcile the HPA. When autoscaling is enabled, create
+	// or update it; when disabled, delete it and pin the Deployment to the
+	// fixed replica count (FR2.5).
+	if evt.Autoscaling != nil && evt.Autoscaling.Enabled {
+		hpa := buildHPA(evt)
+		if err := r.createOrUpdateHPA(ctx, hpa); err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
+	} else {
+		if err := r.deleteHPA(ctx, evt.Name); err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
+		// Pin the Deployment to the fixed replica count.
+		if err := r.pinDeploymentReplicas(ctx, evt); err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
 	}
 
 	// Watch pod readiness: poll the Deployment's ready replicas with a
@@ -414,6 +469,51 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	logger.S().Infow("controller: inference service running",
 		"service_id", evt.ServiceID, "name", evt.Name, "endpoints", endpoints)
 	return nil
+}
+
+// deleteHPA deletes the service's HPA, ignoring not-found.
+func (r *k8sReconciler) deleteHPA(ctx context.Context, name string) error {
+	err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Delete(ctx, hpaName(name), metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("controller: delete hpa %s: %w", name, err)
+	}
+	return nil
+}
+
+// pinDeploymentReplicas sets the Deployment's replicas to the fixed
+// count when autoscaling is disabled (FR2.5).
+func (r *k8sReconciler) pinDeploymentReplicas(ctx context.Context, evt changeEvent) error {
+	patch, err := json.Marshal(map[string]any{
+		"spec": map[string]any{"replicas": clampReplicas(evt.Replicas)},
+	})
+	if err != nil {
+		return err
+	}
+	_, err = r.clientset.AppsV1().Deployments(reconcileNamespace).
+		Patch(ctx, deploymentName(evt.Name), types.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	return err
+}
+
+// createOrUpdateHPA creates the HPA or patches the desired spec
+// (idempotent reconcile).
+func (r *k8sReconciler) createOrUpdateHPA(ctx context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler) error {
+	_, err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Create(ctx, hpa, metav1.CreateOptions{})
+	if err == nil {
+		return nil
+	}
+	if !apierrors.IsAlreadyExists(err) {
+		return err
+	}
+	// Strategic merge patch: the spec must be wrapped in a "spec" key.
+	patch, err := json.Marshal(map[string]any{"spec": hpa.Spec})
+	if err != nil {
+		return err
+	}
+	_, err = r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+		Patch(ctx, hpa.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
+	return err
 }
 
 // reportFailure publishes the failed status with the reason and returns
@@ -558,6 +658,75 @@ func buildService(evt changeEvent) *corev1.Service {
 	}
 }
 
+// buildHPA composes the HorizontalPodAutoscaler for a change event with
+// autoscaling enabled (feature #16, §7.1): a concurrency object metric
+// with an AverageValue target, min/max replicas from the policy, and a
+// downscale stabilization window equal to the cooldown.
+func buildHPA(evt changeEvent) *autoscalingv2.HorizontalPodAutoscaler {
+	policy := evt.Autoscaling
+	if policy == nil {
+		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10, TargetConcurrency: 32, CooldownSeconds: 300}
+	}
+	minReplicas := clampReplicas(policy.MinReplicas)
+	if minReplicas < 0 {
+		minReplicas = 0
+	}
+	maxReplicas := clampReplicas(policy.MaxReplicas)
+	if maxReplicas < 1 {
+		maxReplicas = 1
+	}
+	target := clampReplicas(policy.TargetConcurrency)
+	if target < 1 {
+		target = 32
+	}
+	cooldown := clampReplicas(policy.CooldownSeconds)
+	if cooldown < 0 {
+		cooldown = 0
+	}
+	labels := resourceLabels(evt)
+	return &autoscalingv2.HorizontalPodAutoscaler{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      hpaName(evt.Name),
+			Namespace: reconcileNamespace,
+			Labels:    labels,
+		},
+		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
+			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
+				APIVersion: "apps/v1",
+				Kind:       "Deployment",
+				Name:       deploymentName(evt.Name),
+			},
+			MinReplicas: &minReplicas,
+			MaxReplicas: maxReplicas,
+			Metrics: []autoscalingv2.MetricSpec{{
+				Type: autoscalingv2.ObjectMetricSourceType,
+				Object: &autoscalingv2.ObjectMetricSource{
+					DescribedObject: autoscalingv2.CrossVersionObjectReference{
+						APIVersion: "v1",
+						Kind:       "Service",
+						Name:       serviceName(evt.Name),
+					},
+					Metric: autoscalingv2.MetricIdentifier{
+						Name: "taas-infer-concurrency",
+					},
+					Target: autoscalingv2.MetricTarget{
+						Type:         autoscalingv2.AverageValueMetricType,
+						AverageValue: resource.NewQuantity(int64(target), resource.DecimalSI),
+					},
+				},
+			}},
+			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
+				ScaleDown: &autoscalingv2.HPAScalingRules{
+					StabilizationWindowSeconds: &cooldown,
+				},
+			},
+		},
+	}
+}
+
+// hpaName is the Kubernetes resource name of a service's HPA.
+func hpaName(name string) string { return "hpa-" + name }
+
 // resourceLabels returns the label set shared by the Deployment and
 // Service for one inference service.
 func resourceLabels(evt changeEvent) map[string]string {
@@ -591,6 +760,12 @@ func (r *k8sReconciler) endpointFor(name string) string {
 // publishStatus publishes an observed-state report on the status
 // subject.
 func (r *k8sReconciler) publishStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string) error {
+	return r.publishStatusWithAutoscaling(ctx, serviceID, state, endpoints, failureReason, nil)
+}
+
+// publishStatusWithAutoscaling publishes an observed-state report with
+// an optional autoscaling status block (feature #16, §6.2).
+func (r *k8sReconciler) publishStatusWithAutoscaling(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string, autoscaling *autoscalingStatus) error {
 	if r.statusPublisher == nil {
 		return nil
 	}
@@ -599,6 +774,7 @@ func (r *k8sReconciler) publishStatus(ctx context.Context, serviceID, state stri
 		State:         state,
 		Endpoints:     endpoints,
 		FailureReason: failureReason,
+		Autoscaling:   autoscaling,
 		ReportedAt:    time.Now().UTC().Format(time.RFC3339),
 	}
 	body, err := json.Marshal(report)
