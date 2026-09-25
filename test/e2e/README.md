@@ -15,6 +15,7 @@ against the local docker compose stack.
 | Console surface separation | feature-17 `console-surface-separation` | `tests/consoleSurfaces.js` |
 | Payments, invoices & auto-recharge | feature-14 `payments-invoices-auto-recharge` | `tests/paymentsInvoices.js` |
 | Audit logging & activity export | feature-15 `audit-logging` | `tests/auditLogging.js` |
+| Inference autoscaling & scale-to-zero | feature-16 `inference-autoscaling` | `tests/inferenceAutoscaling.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md` and
