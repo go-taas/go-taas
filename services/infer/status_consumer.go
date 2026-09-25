@@ -21,7 +21,23 @@ type statusReport struct {
 	State         string   `json:"state"`
 	Endpoints     []string `json:"endpoints"`
 	FailureReason *string  `json:"failure_reason"`
-	ReportedAt    string   `json:"reported_at"`
+	// Autoscaling is the controller-reported autoscaling status block
+	// (feature #16, §6.2). Nil when the report carries no autoscaling
+	// status.
+	Autoscaling *autoscalingStatusReport `json:"autoscaling,omitempty"`
+	ReportedAt  string                   `json:"reported_at"`
+}
+
+// autoscalingStatusReport is the autoscaling status block inside a
+// status report (feature #16, §6.2).
+type autoscalingStatusReport struct {
+	State              string `json:"state"`
+	CurrentReplicas    int    `json:"current_replicas"`
+	DesiredReplicas    int    `json:"desired_replicas"`
+	CurrentConcurrency int    `json:"current_concurrency"`
+	TargetConcurrency  int    `json:"target_concurrency"`
+	LastScalingEventAt string `json:"last_scaling_event_at"`
+	ErrorReason        string `json:"error_reason"`
 }
 
 // StatusConsumer subscribes to the status subject and applies each
@@ -99,7 +115,7 @@ func (c *StatusConsumer) handle(ctx context.Context, msg mq.Message) error {
 		return nil
 	}
 
-	if err := c.repo.ApplyStatus(ctx, report.ServiceID, report.State, report.Endpoints, report.FailureReason); err != nil {
+	if err := c.repo.ApplyStatus(ctx, report.ServiceID, report.State, report.Endpoints, report.FailureReason, report.Autoscaling); err != nil {
 		if ae, ok := apierrors.As(err); ok && ae.Code == apierrors.CodeInferServiceNotFound {
 			// Late report for a deleted service: skip, do not retry.
 			logger.S().Infow("infer: status report for unknown service, skipping",

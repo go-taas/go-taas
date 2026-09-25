@@ -23,8 +23,9 @@ func newInferTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&InferenceService{}))
+	require.NoError(t, db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}))
 	require.NoError(t, model.MigrateSchemaForFVT(db))
+	require.NoError(t, NewAutoscalingPolicyRepository(db).SeedDefault(context.Background()))
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -189,7 +190,7 @@ func TestRepositoryApplyStatus(t *testing.T) {
 	svc := seedService(t, repo, "org", "svc", StateDeploying, time.Now())
 
 	// running with endpoints.
-	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil, nil))
 	row, err := repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StateRunning, row.State)
@@ -198,7 +199,7 @@ func TestRepositoryApplyStatus(t *testing.T) {
 
 	// failed with reason.
 	reason := "image pull backoff"
-	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateFailed, nil, &reason))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateFailed, nil, &reason, nil))
 	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StateFailed, row.State)
@@ -206,13 +207,13 @@ func TestRepositoryApplyStatus(t *testing.T) {
 	assert.Equal(t, reason, *row.FailureReason)
 
 	// back to running clears the reason.
-	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil, nil))
 	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	require.Nil(t, row.FailureReason)
 
 	// Unknown service: 10301.
-	err = repo.ApplyStatus(ctx, "missing", StateRunning, nil, nil)
+	err = repo.ApplyStatus(ctx, "missing", StateRunning, nil, nil, nil)
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)

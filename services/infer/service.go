@@ -6,12 +6,14 @@ package infer
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"regexp"
 	"strings"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
@@ -165,10 +167,13 @@ func NewForFVT(db *gorm.DB, mqClient mq.Client) *Service {
 	)
 }
 
-// MigrateSchemaForFVT applies the infer schema (inference_services) to
-// the given database. FVT-only helper.
+// MigrateSchemaForFVT applies the infer schema (inference_services,
+// autoscaling_policy) to the given database. FVT-only helper.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&InferenceService{})
+	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}); err != nil {
+		return err
+	}
+	return NewAutoscalingPolicyRepository(db).SeedDefault(context.Background())
 }
 
 // AttachToServer implements server.Service.
@@ -190,7 +195,13 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return db.WithContext(ctx).AutoMigrate(&InferenceService{})
+	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}); err != nil {
+		return err
+	}
+	// Seed the singleton global-default policy (feature #16, §4.3): the
+	// global policy always exists.
+	policyRepo := NewAutoscalingPolicyRepository(db)
+	return policyRepo.SeedDefault(ctx)
 }
 
 // gormDB resolves the *gorm.DB handle from the components.
@@ -306,6 +317,11 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if img.Accelerator != accelerator {
 		return nil, apierrors.New(apierrors.CodeImageIncompatible)
 	}
+	// Feature #16: validate the explicit autoscaling policy synchronously
+	// (AD10) before any write or publish.
+	if err := validateAutoscalingPolicy(req.GetAutoscaling()); err != nil {
+		return nil, err
+	}
 
 	repo, err := s.repository()
 	if err != nil {
@@ -314,6 +330,18 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	client, err := s.mqClientFor()
 	if err != nil {
 		return nil, err
+	}
+
+	// Feature #16: store the explicit policy, or {} to inherit the global
+	// default (FR1.2).
+	var autoscalingJSON datatypes.JSON
+	if req.GetAutoscaling() != nil {
+		autoscalingJSON, err = policyToJSON(policyFromProto(req.GetAutoscaling()))
+		if err != nil {
+			return nil, err
+		}
+	} else {
+		autoscalingJSON = datatypes.JSON("{}")
 	}
 
 	svc := &InferenceService{
@@ -328,12 +356,20 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		AcceleratorType: strings.TrimSpace(req.GetAcceleratorType()),
 		State:           StatePending,
 		Endpoints:       []string{},
+		Autoscaling:     autoscalingJSON,
 	}
 	if err := repo.Create(ctx, svc); err != nil {
 		return nil, err
 	}
 
 	evt := buildChangeEvent(EventTypeUpsert, svc, modelVersion.WeightPath, img.Reference(), img.Engine)
+	// Feature #16: the change event carries the effective policy (the
+	// global default when the service stores {}).
+	effective, err := repo.ResolveEffectivePolicy(ctx, svc)
+	if err != nil {
+		return nil, err
+	}
+	evt.Autoscaling = effective
 	if err := publishChangeWithCompensation(ctx, client, repo, evt, svc.ID); err != nil {
 		logger.S().Errorw("infer: publish create change failed",
 			"service_id", svc.ID, "err", err)
@@ -378,9 +414,17 @@ func (s *Service) ListInferenceServices(ctx context.Context, req *inferv1.ListIn
 		return nil, err
 	}
 
+	// Feature #16: resolve the global default once so the list summary
+	// can merge it for services that inherit ({}).
+	globalDefault, err := s.globalAutoscalingDefault(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	services := make([]*inferv1.InferenceServiceSummary, 0, len(rows))
 	for _, row := range rows {
-		services = append(services, summarizeService(row))
+		effective := effectivePolicyForRow(row, globalDefault)
+		services = append(services, summarizeService(row, effective))
 	}
 	return &inferv1.ListInferenceServicesResponse{
 		Response: okResponse(),
@@ -408,16 +452,71 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		return nil, err
 	}
 
+	// Feature #16: resolve the effective policy and the autoscaling
+	// status block.
+	effective, err := repo.ResolveEffectivePolicy(ctx, row)
+	if err != nil {
+		return nil, err
+	}
+
 	// Endpoints are only exposed while running.
 	var endpoints []string
 	if row.State == StateRunning {
 		endpoints = row.Endpoints
 	}
 	return &inferv1.GetInferenceServiceResponse{
-		Response:  okResponse(),
-		Service:   summarizeService(row),
-		Endpoints: endpoints,
+		Response:          okResponse(),
+		Service:           summarizeService(row, effective),
+		Endpoints:         endpoints,
+		Autoscaling:       policyToProto(effective),
+		AutoscalingStatus: autoscalingStatusFromRow(row),
 	}, nil
+}
+
+// globalAutoscalingDefault resolves the global default policy, falling
+// back to the shipped defaults when the singleton is not seeded.
+func (s *Service) globalAutoscalingDefault(ctx context.Context) (*AutoscalingPolicy, error) {
+	policyRepo, err := s.autoscalingPolicyRepository()
+	if err != nil {
+		return nil, err
+	}
+	policy, err := policyRepo.GetDefault(ctx)
+	if err != nil {
+		// The row is seeded at migration; a miss is an infrastructure
+		// invariant violation, but fall back to defaults so reads still
+		// work.
+		return defaultAutoscalingPolicy(), nil
+	}
+	return policy, nil
+}
+
+// effectivePolicyForRow returns the effective policy for a row: the
+// stored policy when present, otherwise the global default.
+func effectivePolicyForRow(row *InferenceService, globalDefault *AutoscalingPolicy) *AutoscalingPolicy {
+	if len(row.Autoscaling) > 0 && string(row.Autoscaling) != "{}" && string(row.Autoscaling) != "null" {
+		var p AutoscalingPolicy
+		if err := json.Unmarshal(row.Autoscaling, &p); err == nil {
+			return &p
+		}
+	}
+	return globalDefault
+}
+
+// autoscalingStatusFromRow maps a row's autoscaling status columns to the
+// proto status block.
+func autoscalingStatusFromRow(row *InferenceService) *inferv1.AutoscalingStatus {
+	status := &inferv1.AutoscalingStatus{
+		State:              autoscalingStateProto(row.AutoscalingState),
+		CurrentReplicas:    clampToInt32(row.AutoscalingCurrentReplicas),
+		DesiredReplicas:    clampToInt32(row.AutoscalingDesiredReplicas),
+		CurrentConcurrency: clampToInt32(row.AutoscalingCurrentConcurrency),
+		TargetConcurrency:  clampToInt32(row.AutoscalingTargetConcurrency),
+		ErrorReason:        row.AutoscalingErrorReason,
+	}
+	if row.AutoscalingLastScalingEventAt != nil {
+		status.LastScalingEventAt = row.AutoscalingLastScalingEventAt.Unix()
+	}
+	return status
 }
 
 // ScaleInferenceService changes the replica count of an inference
@@ -563,17 +662,54 @@ func resolveOrganizationID(ctx context.Context) (string, error) {
 	return values[0], nil
 }
 
-// summarizeService maps a row to the API summary.
-func summarizeService(row *InferenceService) *inferv1.InferenceServiceSummary {
+// summarizeService maps a row to the API summary. effective is the
+// resolved effective autoscaling policy (the global default when the
+// service stores {}).
+func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *inferv1.InferenceServiceSummary {
+	enabled := false
+	min, max := 0, 0
+	if effective != nil {
+		enabled = effective.Enabled
+		min = effective.MinReplicas
+		max = effective.MaxReplicas
+	}
 	return &inferv1.InferenceServiceSummary{
-		ServiceId:    row.ID,
-		Name:         row.Name,
-		ModelId:      row.ModelID,
-		ModelVersion: row.ModelVersion,
-		ImageId:      row.ImageID,
-		Replicas:     clampToInt32(row.Replicas),
-		State:        row.State,
-		UpdatedAt:    row.UpdatedAt.Unix(),
+		ServiceId:          row.ID,
+		Name:               row.Name,
+		ModelId:            row.ModelID,
+		ModelVersion:       row.ModelVersion,
+		ImageId:            row.ImageID,
+		Replicas:           clampToInt32(row.Replicas),
+		State:              row.State,
+		UpdatedAt:          row.UpdatedAt.Unix(),
+		AutoscalingEnabled: enabled,
+		CurrentReplicas:    clampToInt32(row.AutoscalingCurrentReplicas),
+		MinReplicas:        clampToInt32(min),
+		MaxReplicas:        clampToInt32(max),
+		AutoscalingState:   autoscalingStateProto(row.AutoscalingState),
+	}
+}
+
+// autoscalingStateProto maps the stored autoscaling state string to the
+// proto enum.
+func autoscalingStateProto(state string) inferv1.AutoscalingState {
+	switch state {
+	case "disabled":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_DISABLED
+	case "steady":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_STEADY
+	case "scaling-up":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_SCALING_UP
+	case "scaling-down":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_SCALING_DOWN
+	case "scaled-to-zero":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_SCALED_TO_ZERO
+	case "cold-starting":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_COLD_STARTING
+	case "error":
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_ERROR
+	default:
+		return inferv1.AutoscalingState_AUTOSCALING_STATE_UNSPECIFIED
 	}
 }
 

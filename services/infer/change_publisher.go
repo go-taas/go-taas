@@ -42,7 +42,11 @@ type changeEvent struct {
 	Replicas        int              `json:"replicas"`
 	Accelerator     string           `json:"accelerator"`
 	AcceleratorType string           `json:"accelerator_type"`
-	PublishedAt     time.Time        `json:"published_at"`
+	// Autoscaling is the effective autoscaling policy (feature #16,
+	// §6.1). Nil when autoscaling is not configured (the controller
+	// treats it as disabled).
+	Autoscaling *AutoscalingPolicy `json:"autoscaling,omitempty"`
+	PublishedAt time.Time          `json:"published_at"`
 }
 
 // buildChangeEvent composes the change event for a service row with its

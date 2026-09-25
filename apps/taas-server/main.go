@@ -152,6 +152,10 @@ func main() {
 			modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(gormDB))
 			imageSvc.SetDeleteGuard(infer.NewDeleteImageGuard(gormDB))
 			imageSvc.SetInUseProvider(infer.NewImageInUseProvider(gormDB))
+			// Feature #16: the user-realm catalog's read-only autoscaling
+			// projection is resolved from the infer module's service
+			// status (AD13).
+			modelSvc.SetAutoscalingProvider(infer.NewModelAutoscalingProvider(gormDB))
 		}
 	}
 	// The SSO session store is Redis-backed (feature #7). Wire it from
@@ -163,6 +167,9 @@ func main() {
 		}
 	}
 	if runner := infer.NewStatusConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := infer.NewConcurrencyConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 	if runner := image.NewWarmupStatusConsumerRunner(srv.Components()); runner != nil {

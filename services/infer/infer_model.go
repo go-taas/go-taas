@@ -2,6 +2,8 @@ package infer
 
 import (
 	"time"
+
+	"gorm.io/datatypes"
 )
 
 // Inference service lifecycle states (closed set, contract constraint 2).
@@ -46,6 +48,24 @@ type InferenceService struct {
 	// set by the controller through the status subject. The jsonb type
 	// applies on PostgreSQL; SQLite (tests) stores the same JSON text.
 	Endpoints []string `gorm:"type:jsonb;serializer:json;not null;default:'[]'"`
+	// Autoscaling is the per-service autoscaling policy as a JSON object
+	// (feature #16, AD1). Empty {} means "inherit the global default".
+	Autoscaling datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	// AutoscalingState is the observed autoscaling state (feature #16,
+	// FR3.2). Write-only by the controller; read-only on the wire.
+	AutoscalingState string `gorm:"size:32;not null;default:''"`
+	// AutoscalingCurrentReplicas is the observed replica count.
+	AutoscalingCurrentReplicas int `gorm:"not null;default:0"`
+	// AutoscalingDesiredReplicas is the desired replica count.
+	AutoscalingDesiredReplicas int `gorm:"not null;default:0"`
+	// AutoscalingCurrentConcurrency is the observed in-flight concurrency.
+	AutoscalingCurrentConcurrency int `gorm:"not null;default:0"`
+	// AutoscalingTargetConcurrency is the effective target concurrency.
+	AutoscalingTargetConcurrency int `gorm:"not null;default:0"`
+	// AutoscalingLastScalingEventAt is the last scaling event time.
+	AutoscalingLastScalingEventAt *time.Time
+	// AutoscalingErrorReason is the failure reason when state=error.
+	AutoscalingErrorReason string `gorm:"size:512;not null;default:''"`
 	// CreatedAt is the creation time (UTC).
 	CreatedAt time.Time
 	// UpdatedAt is the last state change.

@@ -140,10 +140,11 @@ func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, orgID, 
 	})
 }
 
-// ApplyStatus applies a controller status report: state, endpoints and
-// failure_reason. Last-write-wins is acceptable (the controller is the
-// only publisher). failure_reason is cleared on any non-failed state.
-func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string) error {
+// ApplyStatus applies a controller status report: state, endpoints,
+// failure_reason and the autoscaling status block. Last-write-wins is
+// acceptable (the controller is the only publisher). failure_reason is
+// cleared on any non-failed state.
+func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string, autoscaling *autoscalingStatusReport) error {
 	if endpoints == nil {
 		endpoints = []string{}
 	}
@@ -163,6 +164,17 @@ func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID,
 	} else if state != StateFailed {
 		fields["failure_reason"] = nil
 	}
+	if autoscaling != nil {
+		fields["autoscaling_state"] = autoscaling.State
+		fields["autoscaling_current_replicas"] = autoscaling.CurrentReplicas
+		fields["autoscaling_desired_replicas"] = autoscaling.DesiredReplicas
+		fields["autoscaling_current_concurrency"] = autoscaling.CurrentConcurrency
+		fields["autoscaling_target_concurrency"] = autoscaling.TargetConcurrency
+		fields["autoscaling_error_reason"] = autoscaling.ErrorReason
+		if ts, err := time.Parse(time.RFC3339, autoscaling.LastScalingEventAt); err == nil {
+			fields["autoscaling_last_scaling_event_at"] = ts
+		}
+	}
 	res := r.DB(ctx).
 		Model(&InferenceService{}).
 		Where("id = ?", serviceID).
@@ -177,6 +189,41 @@ func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID,
 		return apierrors.New(apierrors.CodeInferServiceNotFound)
 	}
 	return nil
+}
+
+// ApplyConcurrency updates the service's current-concurrency projection
+// from a gateway concurrency report (feature #16, §6.3). Unknown service
+// ids map to CodeInferServiceNotFound.
+func (r *InferenceServiceRepository) ApplyConcurrency(ctx context.Context, serviceID string, inFlight int) error {
+	res := r.DB(ctx).
+		Model(&InferenceService{}).
+		Where("id = ?", serviceID).
+		Update("autoscaling_current_concurrency", inFlight)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	return nil
+}
+
+// FindReadyByModelAndOrganization returns the newest running inference
+// service for a model in an organization, or nil when none exists
+// (feature #16, AD13). Used by the model module's autoscaling projection.
+func (r *InferenceServiceRepository) FindReadyByModelAndOrganization(ctx context.Context, orgID, modelID string) (*InferenceService, error) {
+	var row InferenceService
+	err := r.DB(ctx).
+		Where("organization_id = ? AND model_id = ? AND state = ?", orgID, modelID, StateRunning).
+		Order("updated_at DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
 }
 
 // CountByModelID counts the inference services referencing the model.

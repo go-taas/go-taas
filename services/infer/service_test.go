@@ -221,7 +221,7 @@ func TestListAndGetInferenceServices(t *testing.T) {
 	// Drive to running via the status consumer path: endpoints appear.
 	repo, err := svc.repository()
 	require.NoError(t, err)
-	require.NoError(t, repo.ApplyStatus(context.Background(), id1, StateRunning, []string{"http://demo/v1"}, nil))
+	require.NoError(t, repo.ApplyStatus(context.Background(), id1, StateRunning, []string{"http://demo/v1"}, nil, nil))
 	get, err = svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: id1})
 	require.NoError(t, err)
 	assert.Equal(t, StateRunning, get.GetService().GetState())
