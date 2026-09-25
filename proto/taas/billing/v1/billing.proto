@@ -33,7 +33,7 @@ service BillingService {
   rpc GetBalance(GetBalanceRequest) returns (GetBalanceResponse) {
     option (google.api.http) = {
       get: "/api/v1/billing/balance"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/billing/balance"
@@ -47,7 +47,7 @@ service BillingService {
   rpc ListBills(ListBillsRequest) returns (ListBillsResponse) {
     option (google.api.http) = {
       get: "/api/v1/billing/bills"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/billing/bills"
@@ -62,7 +62,7 @@ service BillingService {
   rpc ListCharges(ListChargesRequest) returns (ListChargesResponse) {
     option (google.api.http) = {
       get: "/api/v1/billing/charges"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/billing/charges"

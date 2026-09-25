@@ -23,7 +23,7 @@ service MeteringService {
   rpc ListVouchers(ListVouchersRequest) returns (ListVouchersResponse) {
     option (google.api.http) = {
       get: "/api/v1/metering/vouchers"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/metering/vouchers"
@@ -45,7 +45,7 @@ service MeteringService {
   rpc GetUsageSummary(GetUsageSummaryRequest) returns (GetUsageSummaryResponse) {
     option (google.api.http) = {
       get: "/api/v1/metering/usage-summary"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/metering/usage-summary"
@@ -68,7 +68,7 @@ service MeteringService {
   rpc GetUsageDashboard(GetUsageDashboardRequest) returns (GetUsageDashboardResponse) {
     option (google.api.http) = {
       get: "/api/v1/metering/usage-dashboard"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/metering/usage-dashboard"
@@ -83,7 +83,7 @@ service MeteringService {
   rpc ListRequestLogs(ListRequestLogsRequest) returns (ListRequestLogsResponse) {
     option (google.api.http) = {
       get: "/api/v1/metering/request-logs"
-      additional_bindings {
+      additional_bindings: {
         // Deprecated (console-surface-separation): kept functional for
         // the transitional migration window.
         get: "/api/v1/admin/metering/request-logs"
