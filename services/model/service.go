@@ -60,6 +60,18 @@ type SessionOrgResolver interface {
 	SessionActiveOrg(ctx context.Context) (string, error)
 }
 
+// AutoscalingProvider resolves the read-only autoscaling projection for
+// a model (feature #16, AD13). It is implemented by the infer module and
+// injected at wiring time, keeping the model module free of an infer
+// dependency (the same package-level dependency pattern as the delete
+// guard). Nil until wired: the projection is omitted.
+type AutoscalingProvider interface {
+	// ModelAutoscaling returns the autoscaling projection for the model's
+	// ready inference service, or nil when the model has no autoscaled
+	// ready service.
+	ModelAutoscaling(ctx context.Context, orgID, modelID string) (*modelv1.ModelAutoscaling, error)
+}
+
 // Service implements the model registry gRPC service.
 type Service struct {
 	modelv1.UnimplementedModelServiceServer
@@ -86,6 +98,11 @@ type Service struct {
 	// the user-realm catalog (feature-17 AD6). Nil until wired: the
 	// transitional X-Organization-Id header is used.
 	sessionOrgResolver SessionOrgResolver
+
+	// autoscalingProvider resolves the read-only autoscaling projection
+	// for the user-realm catalog (feature #16, AD13). Nil until wired:
+	// the projection is omitted.
+	autoscalingProvider AutoscalingProvider
 
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
@@ -140,6 +157,11 @@ func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r 
 // by the user-realm catalog (feature-17 AD6). Production and FVT wire
 // the auth service; unit tests may inject a fake.
 func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+
+// SetAutoscalingProvider injects the read-only autoscaling projection
+// provider (feature #16, AD13). Production wires the infer module; unit
+// tests may inject a fake.
+func (s *Service) SetAutoscalingProvider(p AutoscalingProvider) { s.autoscalingProvider = p }
 
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
@@ -420,7 +442,8 @@ func resolveOrganizationID(ctx context.Context) (string, error) {
 // ListAvailableModels returns the masked user-realm catalog (feature-17
 // AD8/AD11): the models the caller's organization may use, under
 // feature-13's default-allow rule. The projection carries no weight_path,
-// version list or grant rows.
+// version list or grant rows. Each model carries a read-only autoscaling
+// projection (feature #16, AD13).
 func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvailableModelsRequest) (*modelv1.ListAvailableModelsResponse, error) {
 	orgID, err := s.resolveOrg(ctx)
 	if err != nil {
@@ -444,12 +467,70 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 		if latest, latestErr := repo.LatestVersion(ctx, row.ID); latestErr == nil && latest != nil {
 			summary.LatestVersion = latest.Version
 		}
+		if s.autoscalingProvider != nil {
+			if as, asErr := s.autoscalingProvider.ModelAutoscaling(ctx, orgID, row.ID); asErr == nil {
+				summary.Autoscaling = as
+			}
+		}
 		models = append(models, summary)
 	}
 	return &modelv1.ListAvailableModelsResponse{
 		Response: okResponse(),
 		Models:   models,
 		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampToInt32(limit)},
+	}, nil
+}
+
+// GetAvailableModel returns one available model's masked projection plus
+// its read-only autoscaling summary (feature #16, AD13). Unknown model →
+// 10101.
+func (s *Service) GetAvailableModel(ctx context.Context, req *modelv1.GetAvailableModelRequest) (*modelv1.GetAvailableModelResponse, error) {
+	orgID, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if strings.TrimSpace(req.GetModelId()) == "" {
+		return nil, apierrors.New(apierrors.CodeModelNotFound)
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	// The model must be available to the org (default-allow rule).
+	rows, _, err := repo.ListModelsForOrganization(ctx, orgID, 0, 100)
+	if err != nil {
+		return nil, err
+	}
+	var found *Model
+	for _, row := range rows {
+		if row.ID == req.GetModelId() {
+			found = row
+			break
+		}
+	}
+	if found == nil {
+		return nil, apierrors.New(apierrors.CodeModelNotFound)
+	}
+
+	summary := &modelv1.AvailableModel{
+		ModelId: found.ID,
+		Name:    found.Name,
+	}
+	if latest, latestErr := repo.LatestVersion(ctx, found.ID); latestErr == nil && latest != nil {
+		summary.LatestVersion = latest.Version
+	}
+	var autoscaling *modelv1.ModelAutoscaling
+	if s.autoscalingProvider != nil {
+		autoscaling, err = s.autoscalingProvider.ModelAutoscaling(ctx, orgID, found.ID)
+		if err != nil {
+			return nil, err
+		}
+		summary.Autoscaling = autoscaling
+	}
+	return &modelv1.GetAvailableModelResponse{
+		Response:    okResponse(),
+		Model:       summary,
+		Autoscaling: autoscaling,
 	}, nil
 }
 
