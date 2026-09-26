@@ -90,6 +90,12 @@ const (
 	CodeImageWarmupFailed     Code = 10205 // IMAGE_WARMUP_FAILED
 	CodeImageInUse            Code = 10206 // IMAGE_IN_USE
 	CodeImageReferenceInvalid Code = 10207 // IMAGE_REFERENCE_INVALID
+	// CodeAcceleratorNodeNotFound is returned by the accelerator
+	// inventory when a node id is absent from the projection cache
+	// (feature #18, AD6). It lives in the image block because the
+	// accelerator inventory is the node/card-type inventory the image
+	// module defers to.
+	CodeAcceleratorNodeNotFound Code = 10208 // ACCELERATOR_NODE_NOT_FOUND
 )
 
 // infer module error codes.

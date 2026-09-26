@@ -1,0 +1,117 @@
+syntax = "proto3";
+
+package taas.accelerator.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/accelerator/v1;acceleratorv1";
+
+// AcceleratorService serves the read-only accelerator fleet inventory
+// (feature #18). It is a projection of Kubernetes node + extended-resource
+// state collected by the Controller and served through the admin gateway.
+// Admin-surface API: served under /api/v1/admin/accelerators.
+service AcceleratorService {
+  // ListAcceleratorNodes returns the fleet list with vendor/health
+  // filters, node-name search, and pagination.
+  rpc ListAcceleratorNodes(ListAcceleratorNodesRequest) returns (ListAcceleratorNodesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/accelerators/nodes"};
+  }
+
+  // GetAcceleratorNode returns one node's detail: per-GPU breakdown,
+  // labels, taints, resources, and warmup-task context.
+  rpc GetAcceleratorNode(GetAcceleratorNodeRequest) returns (GetAcceleratorNodeResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/accelerators/nodes/{node_id}"};
+  }
+
+  // ListCardTypeSummary returns the (vendor, card_type) capacity summary.
+  rpc ListCardTypeSummary(ListCardTypeSummaryRequest) returns (ListCardTypeSummaryResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/accelerators/card-types"};
+  }
+}
+
+message ListAcceleratorNodesRequest {
+  taas.common.v1.PageRequest page = 1;
+  // vendor filters by accelerator vendor; empty means all.
+  string vendor = 2;
+  // health filters by composite health; empty means all.
+  string health = 3;
+  // search matches a node name substring.
+  string search = 4;
+}
+
+message ListAcceleratorNodesResponse {
+  taas.common.v1.Response response = 1;
+  repeated AcceleratorNodeSummary nodes = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message AcceleratorNodeSummary {
+  string node_id = 1;
+  string name = 2;
+  string vendor = 3;
+  repeated string card_types = 4;
+  int64 gpus_allocated = 5;
+  int64 gpus_free = 6;
+  string driver_version = 7;
+  string device_plugin_state = 8; // healthy | degraded | unknown
+  string readiness = 9; // ready | not_ready | unknown
+  string health = 10; // healthy | degraded | unknown
+  int64 last_updated_at = 11;
+}
+
+message GetAcceleratorNodeRequest {
+  string node_id = 1;
+}
+
+message GetAcceleratorNodeResponse {
+  taas.common.v1.Response response = 1;
+  AcceleratorNode node = 2;
+}
+
+message AcceleratorNode {
+  AcceleratorNodeSummary summary = 1;
+  repeated AcceleratorGPU gpus = 2;
+  map<string, string> labels = 3;
+  repeated string taints = 4;
+  repeated AcceleratorResource resources = 5;
+  repeated WarmupTaskRef warmup_tasks = 6;
+}
+
+message AcceleratorGPU {
+  int64 index = 1;
+  string model = 2;
+  bool allocated = 3;
+  bool free = 4;
+  string note = 5;
+}
+
+message AcceleratorResource {
+  string card_type = 1;
+  int64 allocatable = 2;
+  int64 allocated = 3;
+}
+
+message WarmupTaskRef {
+  string task_id = 1;
+  string state = 2;
+  string node_outcome = 3;
+}
+
+message ListCardTypeSummaryRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListCardTypeSummaryResponse {
+  taas.common.v1.Response response = 1;
+  repeated CardTypeSummary card_types = 2;
+}
+
+message CardTypeSummary {
+  string vendor = 1;
+  string card_type = 2;
+  int64 total = 3;
+  int64 allocated = 4;
+  int64 free = 5;
+  int64 node_count = 6;
+}

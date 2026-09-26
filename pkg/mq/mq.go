@@ -81,6 +81,10 @@ type Subjects struct {
 	// ImageWarmupStatus carries warmup task status reports from the
 	// controller back to the image module (state, node results).
 	ImageWarmupStatus string
+	// AcceleratorInventory carries the controller's full accelerator
+	// fleet snapshot (feature #18, AD1). The accelerator service
+	// consumes it to maintain its in-memory projection cache.
+	AcceleratorInventory string
 	// MeteringEvents carries token usage events from the data-plane gateway.
 	MeteringEvents string
 	// Settlements carries settlement events from metering to billing.
@@ -95,6 +99,7 @@ func DefaultSubjects() Subjects {
 		InferServiceConcurrency: "infer.services.concurrency",
 		ImageWarmups:            "image.warmups",
 		ImageWarmupStatus:       "image.warmup.status",
+		AcceleratorInventory:    "accelerator.inventory",
 		MeteringEvents:          "metering.events",
 		Settlements:             "billing.settlements",
 	}

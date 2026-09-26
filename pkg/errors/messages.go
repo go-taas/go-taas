@@ -65,6 +65,8 @@ var messages = map[Code]string{
 	CodeImageDigestInvalid: "image digest invalid",
 	CodeImageIncompatible:  "image incompatible with target",
 	CodeImageWarmupFailed:  "image warmup failed",
+	// CodeAcceleratorNodeNotFound (feature #18, AD6).
+	CodeAcceleratorNodeNotFound: "accelerator node not found",
 
 	// infer
 	CodeInferServiceNotFound:     "inference service not found",
