@@ -1,3 +1,14 @@
+# [1.16.0](https://github.com/go-taas/go-taas/compare/v1.15.0...v1.16.0) (2026-09-26)
+
+
+### Features
+
+* **accelerator:** add inventory proto, projection cache and admin RPCs ([3331911](https://github.com/go-taas/go-taas/commit/3331911d39b95eb28a08f7926ab4ff4f1b02cc82)), closes [#18](https://github.com/go-taas/go-taas/issues/18)
+* **config:** add accelerator inventory config section ([afba0d0](https://github.com/go-taas/go-taas/commit/afba0d04435aecbfe3f70b6076521715d98b9ea3))
+* **controller:** collect and publish accelerator inventory snapshot ([557f161](https://github.com/go-taas/go-taas/commit/557f1617fda0c96a1497fbcd5368ed13721c9913))
+* **image:** add warmup-task-for-node narrow read provider ([787adbc](https://github.com/go-taas/go-taas/commit/787adbcfddda6daa582269c1c1ba4627af94263d))
+* **web:** add accelerator inventory pages on the admin console ([5be3371](https://github.com/go-taas/go-taas/commit/5be3371a5459ca5a4a753b1e9b11f7089b2d0307))
+
 # [1.15.0](https://github.com/go-taas/go-taas/compare/v1.14.0...v1.15.0) (2026-09-25)
 
 
