@@ -51,6 +51,7 @@ export const ADMIN_NAV_ITEMS: { path: string; label: string; testid: string; ico
   { path: '/admin/autoscaling', label: 'Autoscaling', testid: 'nav-autoscaling', icon: Gauge },
   { path: '/admin/accelerators', label: 'Accelerators', testid: 'nav-accelerators', icon: Cpu },
   { path: '/admin/compatibility', label: 'Compatibility', testid: 'nav-compatibility', icon: PuzzlePiece },
+  { path: '/admin/load-tests', label: 'Load Tests', testid: 'nav-load-tests', icon: Gauge },
 ];
 
 function isActive(path: string, current: string): boolean {

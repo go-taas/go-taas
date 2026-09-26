@@ -650,3 +650,103 @@ export function formatTime(unixSeconds: string | number | undefined): string {
   if (!isFinite(n) || n <= 0) return '—';
   return new Date(n * 1000).toLocaleString();
 }
+
+// ---- inference load testing (feature #20) ----
+// Admin surface: /api/v1/admin/load-tests/*. User surface (masked):
+// /api/v1/models/{model_id}/load-tests. int64 fields arrive as strings.
+
+export interface LoadTestSummary {
+  loadTestId: string;
+  serviceId: string;
+  serviceName: string;
+  modelId: string;
+  modelName: string;
+  concurrency: number;
+  durationSeconds: number;
+  requestRate: number;
+  state: string; // pending | running | completed | failed | stopped
+  startedAt: string;
+  completedAt: string;
+  throughputRps: number;
+  latencyP95Ms: number;
+  outputTokensPerSec: number;
+  errorRate: number;
+}
+
+export interface LoadTestProgress {
+  requestsSent: string;
+  successCount: string;
+  failureCount: string;
+  elapsedSeconds: string;
+}
+
+export interface LoadTestResult {
+  totalRequests: string;
+  successCount: string;
+  failureCount: string;
+  errorRate: number;
+  throughputRps: number;
+  outputTokensPerSec: number;
+  inputTokens: string;
+  outputTokens: string;
+  latencyP50Ms: number;
+  latencyP90Ms: number;
+  latencyP95Ms: number;
+  latencyP99Ms: number;
+}
+
+export interface ListLoadTestsResponse {
+  response: ResponseEnvelope;
+  runs: LoadTestSummary[];
+  pageMeta?: PageMeta;
+}
+
+export interface GetLoadTestResponse {
+  response: ResponseEnvelope;
+  summary: LoadTestSummary;
+  promptTemplate: string;
+  maxTokens: number;
+  progress?: LoadTestProgress;
+  result?: LoadTestResult;
+  failureReason: string;
+}
+
+export interface CreateLoadTestResponse {
+  response: ResponseEnvelope;
+  loadTestId: string;
+  state: string;
+}
+
+export interface StopLoadTestResponse {
+  response: ResponseEnvelope;
+  state: string;
+}
+
+// ModelLoadTestResult is the masked end-user projection: no service ids
+// and no operator internals (feature #20, AD2).
+export interface ModelLoadTestResult {
+  throughputRps: number;
+  latencyP95Ms: number;
+  outputTokensPerSec: number;
+  errorRate: number;
+  concurrency: number;
+  durationSeconds: number;
+  completedAt: string;
+}
+
+export interface GetModelLoadTestsResponse {
+  response: ResponseEnvelope;
+  results: ModelLoadTestResult[];
+}
+
+// formatPercent renders a 0..1 ratio as a percentage string.
+export function formatPercent(ratio: number | undefined): string {
+  if (ratio === undefined || ratio === null || !isFinite(ratio)) return '0.0%';
+  return `${(ratio * 100).toFixed(1)}%`;
+}
+
+// formatRate renders a float metric with fixed decimals and a fallback.
+export function formatRate(value: number | undefined, decimals = 1): string {
+  if (value === undefined || value === null || !isFinite(value)) return '—';
+  return value.toFixed(decimals);
+}

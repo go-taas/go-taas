@@ -6,7 +6,7 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { BackLink } from '../../components';
-import { type GetAvailableModelResponse } from '../../api';
+import { formatTime, type GetAvailableModelResponse } from '../../api';
 
 interface ModelCompatibilityEntry {
   engine: string;
@@ -21,15 +21,33 @@ interface ModelCompatibilityResponse {
   experimentalCount: string;
 }
 
+// Feature #20: the masked load-test performance projection (no service
+// ids, no operator internals).
+interface ModelLoadTestResult {
+  throughputRps: number;
+  latencyP95Ms: number;
+  outputTokensPerSec: number;
+  errorRate: number;
+  concurrency: number;
+  durationSeconds: number;
+  completedAt: string;
+}
+interface ModelLoadTestsResponse {
+  response: { code: number; message: string };
+  results: ModelLoadTestResult[];
+}
+
 export default function ModelDetailPage() {
   const api = useApi();
   const { orgId } = useOrg();
   const id = window.location.pathname.split('/').pop() || '';
   const [data, setData] = useState<GetAvailableModelResponse | null>(null);
   const [compat, setCompat] = useState<ModelCompatibilityResponse | null>(null);
+  const [perf, setPerf] = useState<ModelLoadTestsResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [compatError, setCompatError] = useState('');
+  const [perfError, setPerfError] = useState('');
 
   useEffect(() => {
     api
@@ -42,6 +60,11 @@ export default function ModelDetailPage() {
       .get<ModelCompatibilityResponse>(`/api/v1/models/${id}/compatibility`, orgId)
       .then(setCompat)
       .catch((e) => setCompatError(e instanceof Error ? e.message : 'failed to load compatibility'));
+    // Feature #20: the masked performance projection (AD2).
+    api
+      .get<ModelLoadTestsResponse>(`/api/v1/models/${id}/load-tests`, orgId)
+      .then(setPerf)
+      .catch((e) => setPerfError(e instanceof Error ? e.message : 'failed to load performance'));
   }, [api, orgId, id]);
 
   if (loading) return <div className="loading">Loading…</div>;
@@ -152,6 +175,42 @@ export default function ModelDetailPage() {
             </table>
             <p className="muted">Compatibility is curated by the platform operator.</p>
           </>
+        )}
+      </div>
+
+      <div className="panel" data-testid="model-detail-performance">
+        <h3 style={{ marginTop: 0 }}>Performance</h3>
+        {perfError ? (
+          <div className="error" data-testid="model-detail-performance-error">{perfError}</div>
+        ) : (perf?.results || []).length === 0 ? (
+          <p className="muted" data-testid="model-detail-performance-empty">
+            No performance results recorded for this model yet.
+          </p>
+        ) : (
+          <table className="data" data-testid="model-detail-performance-table">
+            <thead>
+              <tr>
+                <th>Throughput</th>
+                <th>p95 latency</th>
+                <th>Tokens/sec</th>
+                <th>Error rate</th>
+                <th>Concurrency</th>
+                <th>Measured</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(perf?.results || []).map((r, i) => (
+                <tr key={`${r.completedAt}-${i}`} data-testid="model-detail-performance-row">
+                  <td>{r.throughputRps.toFixed(1)} req/s</td>
+                  <td>{r.latencyP95Ms.toFixed(1)} ms</td>
+                  <td>{r.outputTokensPerSec.toFixed(1)}</td>
+                  <td>{(r.errorRate * 100).toFixed(1)}%</td>
+                  <td>{r.concurrency}</td>
+                  <td>{formatTime(r.completedAt)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         )}
       </div>
     </div>
