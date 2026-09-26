@@ -354,6 +354,12 @@ func (s *Service) GetModelLoadTests(ctx context.Context, req *inferv1.GetModelLo
 	if modelID == "" {
 		return nil, apierrors.New(apierrors.CodeModelNotFound)
 	}
+	// A malformed (non-UUID) id can never match a stored model; guard it
+	// so the uuid column comparison cannot surface a cast error (10101
+	// instead of 500).
+	if _, err := uuid.Parse(modelID); err != nil {
+		return nil, apierrors.New(apierrors.CodeModelNotFound)
+	}
 
 	modelRepo, err := s.modelRepository()
 	if err != nil {

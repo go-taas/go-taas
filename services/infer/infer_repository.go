@@ -93,8 +93,13 @@ func (r *InferenceServiceRepository) FindByIDAndOrganization(ctx context.Context
 
 // FindByID returns one service by id across organizations (platform
 // scope, feature #20 AD1: load testing is an operator activity that
-// spans orgs). A miss maps to CodeInferServiceNotFound.
+// spans orgs). A miss maps to CodeInferServiceNotFound; a malformed
+// (non-UUID) id maps there too, because it can never match a stored row
+// and a raw comparison would surface a uuid cast error.
 func (r *InferenceServiceRepository) FindByID(ctx context.Context, serviceID string) (*InferenceService, error) {
+	if _, err := uuid.Parse(serviceID); err != nil {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
 	var row InferenceService
 	err := r.DB(ctx).Where("id = ?", serviceID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {

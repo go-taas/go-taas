@@ -54,6 +54,12 @@ func newLoadTestEnv(t *testing.T) (*Service, *gorm.DB, *LoadTestRunner) {
 	return svc, db, runner
 }
 
+// testUUID returns a deterministic valid UUID for fixtures: comparing a
+// non-UUID string against a uuid column is a cast error on PostgreSQL.
+func testUUID(n int) string {
+	return fmt.Sprintf("00000000-0000-0000-0000-%012d", n)
+}
+
 // seedRunningServiceWithEndpoint seeds a running service pointing at
 // endpoint for the given model.
 func seedRunningServiceWithEndpoint(t *testing.T, db *gorm.DB, modelID, endpoint string) *InferenceService {
@@ -122,7 +128,7 @@ func TestGetLoadTestProgressFromRowWhenNotInFlight(t *testing.T) {
 	repo := NewLoadTestRepository(db)
 	start := time.Now().UTC().Add(-30 * time.Second)
 	require.NoError(t, repo.Create(ctx, &LoadTest{
-		ID:              "run-pending",
+		ID:              testUUID(11),
 		ServiceName:     "svc",
 		ModelID:         "model-1",
 		ModelName:       "qwen-3b",
@@ -139,7 +145,7 @@ func TestGetLoadTestProgressFromRowWhenNotInFlight(t *testing.T) {
 		UpdatedAt:       start,
 	}))
 
-	got, err := svc.GetLoadTest(ctx, &inferv1.GetLoadTestRequest{LoadTestId: "run-pending"})
+	got, err := svc.GetLoadTest(ctx, &inferv1.GetLoadTestRequest{LoadTestId: testUUID(11)})
 	require.NoError(t, err)
 	require.NotNil(t, got.GetProgress())
 	assert.Equal(t, int64(42), got.GetProgress().GetRequestsSent())
@@ -191,6 +197,51 @@ func assertIndexColumns(t *testing.T, db *gorm.DB, name string, want []string) {
 		}
 	}
 	t.Fatalf("index %s not found", name)
+}
+
+// TestMalformedIdentifiersMapToNotFound covers the uuid guards: a
+// non-UUID id can never match a stored row, and comparing it against a
+// uuid column would surface a cast error (500 on PostgreSQL) instead of
+// the documented not-found code.
+func TestMalformedIdentifiersMapToNotFound(t *testing.T) {
+	svc, db, _ := newLoadTestEnv(t)
+	ctx := context.Background()
+	repo := NewLoadTestRepository(db)
+
+	_, err := svc.GetLoadTest(ctx, &inferv1.GetLoadTestRequest{LoadTestId: "not-a-uuid"})
+	requireErrorCode(t, err, apierrors.CodeLoadTestNotFound)
+
+	_, err = svc.StopLoadTest(ctx, &inferv1.StopLoadTestRequest{LoadTestId: "not-a-uuid"})
+	requireErrorCode(t, err, apierrors.CodeLoadTestNotFound)
+
+	_, err = svc.DeleteLoadTest(ctx, &inferv1.DeleteLoadTestRequest{LoadTestId: "not-a-uuid"})
+	requireErrorCode(t, err, apierrors.CodeLoadTestNotFound)
+
+	_, err = svc.CreateLoadTest(ctx, &inferv1.CreateLoadTestRequest{
+		ServiceId: "not-a-uuid", PromptTemplate: "hi", DurationSeconds: 5,
+	})
+	requireErrorCode(t, err, apierrors.CodeInferServiceNotFound)
+
+	_, err = svc.GetModelLoadTests(orgContext("org-a"), &inferv1.GetModelLoadTestsRequest{ModelId: "not-a-uuid"})
+	requireErrorCode(t, err, apierrors.CodeModelNotFound)
+
+	_, err = repo.FindByID(ctx, "not-a-uuid")
+	requireErrorCode(t, err, apierrors.CodeLoadTestNotFound)
+
+	err = repo.Delete(ctx, "not-a-uuid")
+	requireErrorCode(t, err, apierrors.CodeLoadTestNotFound)
+
+	_, err = NewInferenceServiceRepository(db).FindByID(ctx, "not-a-uuid")
+	requireErrorCode(t, err, apierrors.CodeInferServiceNotFound)
+}
+
+// requireErrorCode asserts err is an API error carrying want.
+func requireErrorCode(t *testing.T, err error, want apierrors.Code) {
+	t.Helper()
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok, "expected an API error, got %v", err)
+	assert.Equal(t, want, ae.Code, "error code for %v", err)
 }
 
 func TestLoadTestRepositoryResolvesAndCaches(t *testing.T) {
@@ -372,33 +423,33 @@ func TestListLoadTestsFiltersSearchPagination(t *testing.T) {
 	repo := NewLoadTestRepository(db)
 
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	seedLoadTestRow(t, repo, "run-alpha", "svc-alpha", "model-1", LoadTestStateCompleted, base)
-	seedLoadTestRow(t, repo, "run-beta", "svc-beta", "model-2", LoadTestStateFailed, base.Add(time.Hour))
+	seedLoadTestRow(t, repo, testUUID(1), "svc-alpha", "model-1", LoadTestStateCompleted, base)
+	seedLoadTestRow(t, repo, testUUID(2), "svc-beta", "model-2", LoadTestStateFailed, base.Add(time.Hour))
 
 	// No filter: both rows, newest first.
 	resp, err := svc.ListLoadTests(ctx, &inferv1.ListLoadTestsRequest{})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRuns(), 2)
-	assert.Equal(t, "run-beta", resp.GetRuns()[0].GetLoadTestId())
+	assert.Equal(t, testUUID(2), resp.GetRuns()[0].GetLoadTestId())
 	assert.Equal(t, int64(2), resp.GetPageMeta().GetTotal())
 
 	// Status filter.
 	resp, err = svc.ListLoadTests(ctx, &inferv1.ListLoadTestsRequest{Status: LoadTestStateFailed})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRuns(), 1)
-	assert.Equal(t, "run-beta", resp.GetRuns()[0].GetLoadTestId())
+	assert.Equal(t, testUUID(2), resp.GetRuns()[0].GetLoadTestId())
 
 	// Model filter.
 	resp, err = svc.ListLoadTests(ctx, &inferv1.ListLoadTestsRequest{ModelId: "model-1"})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRuns(), 1)
-	assert.Equal(t, "run-alpha", resp.GetRuns()[0].GetLoadTestId())
+	assert.Equal(t, testUUID(1), resp.GetRuns()[0].GetLoadTestId())
 
 	// Case-insensitive service-name search.
 	resp, err = svc.ListLoadTests(ctx, &inferv1.ListLoadTestsRequest{Search: "ALPHA"})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRuns(), 1)
-	assert.Equal(t, "run-alpha", resp.GetRuns()[0].GetLoadTestId())
+	assert.Equal(t, testUUID(1), resp.GetRuns()[0].GetLoadTestId())
 
 	// Pagination.
 	resp, err = svc.ListLoadTests(ctx, &inferv1.ListLoadTestsRequest{
@@ -406,7 +457,7 @@ func TestListLoadTestsFiltersSearchPagination(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.GetRuns(), 1)
-	assert.Equal(t, "run-alpha", resp.GetRuns()[0].GetLoadTestId())
+	assert.Equal(t, testUUID(1), resp.GetRuns()[0].GetLoadTestId())
 	assert.Equal(t, int64(2), resp.GetPageMeta().GetTotal())
 }
 
@@ -422,16 +473,16 @@ func TestStopLoadTestStateMachine(t *testing.T) {
 	repo := NewLoadTestRepository(db)
 
 	// A terminal run cannot be stopped (10310).
-	seedLoadTestRow(t, repo, "run-done", "svc", "model-1", LoadTestStateCompleted, time.Now().UTC())
-	_, err := svc.StopLoadTest(ctx, &inferv1.StopLoadTestRequest{LoadTestId: "run-done"})
+	seedLoadTestRow(t, repo, testUUID(3), "svc", "model-1", LoadTestStateCompleted, time.Now().UTC())
+	_, err := svc.StopLoadTest(ctx, &inferv1.StopLoadTestRequest{LoadTestId: testUUID(3)})
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeLoadTestStateInvalid, ae.Code)
 
 	// A pending run that is not in flight cannot be stopped either.
-	seedLoadTestRow(t, repo, "run-ghost", "svc", "model-1", LoadTestStatePending, time.Now().UTC())
-	_, err = svc.StopLoadTest(ctx, &inferv1.StopLoadTestRequest{LoadTestId: "run-ghost"})
+	seedLoadTestRow(t, repo, testUUID(4), "svc", "model-1", LoadTestStatePending, time.Now().UTC())
+	_, err = svc.StopLoadTest(ctx, &inferv1.StopLoadTestRequest{LoadTestId: testUUID(4)})
 	require.Error(t, err)
 	ae, ok = apierrors.As(err)
 	require.True(t, ok)
@@ -474,18 +525,18 @@ func TestDeleteLoadTestStateMachine(t *testing.T) {
 	repo := NewLoadTestRepository(db)
 
 	// A running run cannot be deleted (10310).
-	seedLoadTestRow(t, repo, "run-running", "svc", "model-1", LoadTestStateRunning, time.Now().UTC())
-	_, err := svc.DeleteLoadTest(ctx, &inferv1.DeleteLoadTestRequest{LoadTestId: "run-running"})
+	seedLoadTestRow(t, repo, testUUID(5), "svc", "model-1", LoadTestStateRunning, time.Now().UTC())
+	_, err := svc.DeleteLoadTest(ctx, &inferv1.DeleteLoadTestRequest{LoadTestId: testUUID(5)})
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeLoadTestStateInvalid, ae.Code)
 
 	// A terminal run is deleted.
-	seedLoadTestRow(t, repo, "run-terminal", "svc", "model-1", LoadTestStateStopped, time.Now().UTC())
-	_, err = svc.DeleteLoadTest(ctx, &inferv1.DeleteLoadTestRequest{LoadTestId: "run-terminal"})
+	seedLoadTestRow(t, repo, testUUID(6), "svc", "model-1", LoadTestStateStopped, time.Now().UTC())
+	_, err = svc.DeleteLoadTest(ctx, &inferv1.DeleteLoadTestRequest{LoadTestId: testUUID(6)})
 	require.NoError(t, err)
-	_, err = repo.FindByID(ctx, "run-terminal")
+	_, err = repo.FindByID(ctx, testUUID(6))
 	require.Error(t, err)
 	ae, ok = apierrors.As(err)
 	require.True(t, ok)
@@ -506,9 +557,9 @@ func TestGetModelLoadTestsMaskedProjection(t *testing.T) {
 	modelID := seedModel(t, db, "qwen", "v1")
 
 	base := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
-	seedLoadTestRowFull(t, repo, "run-completed", modelID, LoadTestStateCompleted, base)
-	seedLoadTestRowFull(t, repo, "run-failed", modelID, LoadTestStateFailed, base.Add(time.Hour))
-	seedLoadTestRowFull(t, repo, "run-running", modelID, LoadTestStateRunning, base.Add(2*time.Hour))
+	seedLoadTestRowFull(t, repo, testUUID(7), modelID, LoadTestStateCompleted, base)
+	seedLoadTestRowFull(t, repo, testUUID(8), modelID, LoadTestStateFailed, base.Add(time.Hour))
+	seedLoadTestRowFull(t, repo, testUUID(5), modelID, LoadTestStateRunning, base.Add(2*time.Hour))
 
 	resp, err := svc.GetModelLoadTests(ctx, &inferv1.GetModelLoadTestsRequest{ModelId: modelID})
 	require.NoError(t, err)
@@ -551,7 +602,7 @@ func TestRunnerRecoversInterruptedRuns(t *testing.T) {
 	db := newInferTestDB(t)
 	repo := NewLoadTestRepository(db)
 	ctx := context.Background()
-	seedLoadTestRow(t, repo, "run-interrupted", "svc", "model-1", LoadTestStateRunning, time.Now().UTC())
+	seedLoadTestRow(t, repo, testUUID(9), "svc", "model-1", LoadTestStateRunning, time.Now().UTC())
 
 	runner := NewLoadTestRunner(repo, fakeCredProvider{cred: "sk"}, time.Second)
 	runCtx, cancel := context.WithCancel(ctx)
@@ -562,13 +613,13 @@ func TestRunnerRecoversInterruptedRuns(t *testing.T) {
 	}()
 
 	require.Eventually(t, func() bool {
-		row, err := repo.FindByID(ctx, "run-interrupted")
+		row, err := repo.FindByID(ctx, testUUID(9))
 		return err == nil && row.State == LoadTestStateFailed
 	}, 2*time.Second, 20*time.Millisecond)
 	cancel()
 	<-done
 
-	row, err := repo.FindByID(ctx, "run-interrupted")
+	row, err := repo.FindByID(ctx, testUUID(9))
 	require.NoError(t, err)
 	require.NotNil(t, row.FailureReason)
 	assert.Contains(t, *row.FailureReason, "restarted")
@@ -613,7 +664,7 @@ func TestRunnerCredentialFailureFailsRun(t *testing.T) {
 	}()
 
 	run := &LoadTest{
-		ID:              "run-nocred",
+		ID:              testUUID(10),
 		ServiceName:     "svc",
 		ModelName:       "qwen",
 		Concurrency:     1,
@@ -628,7 +679,7 @@ func TestRunnerCredentialFailureFailsRun(t *testing.T) {
 	require.NoError(t, runner.Submit(run, "http://127.0.0.1:1"))
 
 	require.Eventually(t, func() bool {
-		row, err := repo.FindByID(context.Background(), "run-nocred")
+		row, err := repo.FindByID(context.Background(), testUUID(10))
 		return err == nil && row.State == LoadTestStateFailed
 	}, 5*time.Second, 20*time.Millisecond)
 
@@ -684,15 +735,15 @@ func TestDeleteBeforeRetention(t *testing.T) {
 	repo := NewLoadTestRepository(db)
 	ctx := context.Background()
 	old := time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)
-	seedLoadTestRow(t, repo, "run-old", "svc", "model-1", LoadTestStateCompleted, old)
-	seedLoadTestRow(t, repo, "run-new", "svc", "model-1", LoadTestStateCompleted, time.Now().UTC())
-	seedLoadTestRow(t, repo, "run-active", "svc", "model-1", LoadTestStateRunning, old)
+	seedLoadTestRow(t, repo, testUUID(12), "svc", "model-1", LoadTestStateCompleted, old)
+	seedLoadTestRow(t, repo, testUUID(13), "svc", "model-1", LoadTestStateCompleted, time.Now().UTC())
+	seedLoadTestRow(t, repo, testUUID(14), "svc", "model-1", LoadTestStateRunning, old)
 
 	deleted, err := repo.DeleteBefore(ctx, time.Now().UTC().Add(-24*time.Hour))
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), deleted)
 	// The active run is never deleted by retention.
-	_, err = repo.FindByID(ctx, "run-active")
+	_, err = repo.FindByID(ctx, testUUID(14))
 	require.NoError(t, err)
 }
 
@@ -701,7 +752,7 @@ func seedLoadTestRow(t *testing.T, repo *LoadTestRepository, id, serviceName, mo
 	t.Helper()
 	require.NoError(t, repo.Create(context.Background(), &LoadTest{
 		ID:              id,
-		ServiceID:       "svc-" + id,
+		ServiceID:       testUUID(100),
 		ServiceName:     serviceName,
 		ModelID:         modelID,
 		ModelName:       "qwen-3b",
@@ -721,7 +772,7 @@ func seedLoadTestRowFull(t *testing.T, repo *LoadTestRepository, id, modelID, st
 	t.Helper()
 	require.NoError(t, repo.Create(context.Background(), &LoadTest{
 		ID:                 id,
-		ServiceID:          "svc-" + id,
+		ServiceID:          testUUID(100),
 		ServiceName:        "svc",
 		ModelID:            modelID,
 		ModelName:          "qwen-3b",

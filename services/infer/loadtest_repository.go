@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/go-taas/go-taas/pkg/database"
@@ -46,8 +47,13 @@ func (r *LoadTestRepository) Create(ctx context.Context, run *LoadTest) error {
 	return r.BaseRepository.Create(ctx, run)
 }
 
-// FindByID returns one run by id; a miss maps to 10308.
+// FindByID returns one run by id; a miss maps to 10308. A malformed
+// (non-UUID) id also maps to 10308: it can never match a stored row, and
+// a raw comparison against the uuid column would surface a cast error.
 func (r *LoadTestRepository) FindByID(ctx context.Context, id string) (*LoadTest, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, apierrors.New(apierrors.CodeLoadTestNotFound)
+	}
 	var row LoadTest
 	err := r.DB(ctx).Where("id = ?", id).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -209,8 +215,12 @@ func (r *LoadTestRepository) MarkRunning(ctx context.Context, id string, started
 	})
 }
 
-// Delete removes a run by id; a miss maps to 10308.
+// Delete removes a run by id; a miss maps to 10308. A malformed id maps
+// to 10308 for the same reason as FindByID.
 func (r *LoadTestRepository) Delete(ctx context.Context, id string) error {
+	if _, err := uuid.Parse(id); err != nil {
+		return apierrors.New(apierrors.CodeLoadTestNotFound)
+	}
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
 		res := r.DB(ctx).Delete(&LoadTest{}, "id = ?", id)
 		if res.Error != nil {
