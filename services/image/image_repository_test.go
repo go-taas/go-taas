@@ -290,6 +290,39 @@ func TestWarmupTaskRepositoryLatestByImageIDs(t *testing.T) {
 	assert.Equal(t, TaskStateFailed, latest["img-1"].State)
 }
 
+func TestWarmupTaskRepositoryListForNode(t *testing.T) {
+	repo := newWarmupTestRepo(t)
+	ctx := context.Background()
+
+	// A task whose node_results mention node-a.
+	require.NoError(t, repo.Create(ctx, &WarmupTask{
+		ImageID:     "img-1",
+		State:       TaskStateSucceeded,
+		NodeResults: []byte(`[{"node":"node-a","state":"succeeded"}]`),
+	}))
+	// A task whose node_results mention node-b.
+	require.NoError(t, repo.Create(ctx, &WarmupTask{
+		ImageID:     "img-1",
+		State:       TaskStateFailed,
+		NodeResults: []byte(`[{"node":"node-b","state":"failed"}]`),
+	}))
+
+	rows, err := repo.ListWarmupTasksForNode(ctx, "node-a", 20)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, TaskStateSucceeded, rows[0].State)
+
+	// A node with no results returns nothing.
+	rows, err = repo.ListWarmupTasksForNode(ctx, "node-c", 20)
+	require.NoError(t, err)
+	assert.Empty(t, rows)
+
+	// limit <= 0 falls back to the default.
+	rows, err = repo.ListWarmupTasksForNode(ctx, "node-a", 0)
+	require.NoError(t, err)
+	assert.Len(t, rows, 1)
+}
+
 func TestWarmupTaskRepositoryMarkFailed(t *testing.T) {
 	repo := newWarmupTestRepo(t)
 	ctx := context.Background()

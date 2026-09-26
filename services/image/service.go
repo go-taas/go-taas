@@ -71,7 +71,6 @@ type AuditRecorder interface {
 	Record(ctx context.Context, ev *audit.AuditEvent)
 }
 
-
 // New constructs the image registry service. The repositories are
 // wired lazily on first use from the shared components (the database
 // component is initialized by server Init, which runs after service
@@ -92,7 +91,6 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 	}
 	s.auditRecorder.Record(ctx, ev)
 }
-
 
 // NewWithRepositories constructs an image service bound directly to
 // repositories. It is the injection point used by tests and by any
@@ -120,6 +118,20 @@ func NewForFVT(db *gorm.DB, publisher mq.Client) *Service {
 	svc := &Service{repo: NewRepository(db), tasks: NewWarmupTaskRepository(db), publisher: publisher}
 	wireRegistry(db)
 	return svc
+}
+
+// WarmupTasksForNodeProvider returns warmup tasks that targeted a node
+// (feature #18, Section 5.3). It is the narrow cross-module read seam
+// the accelerator service consumes.
+type WarmupTasksForNodeProvider interface {
+	ListWarmupTasksForNode(ctx context.Context, nodeID string, limit int) ([]*WarmupTask, error)
+}
+
+// NewWarmupTasksForNodeProvider builds a WarmupTasksForNodeProvider over
+// the shared database. It mirrors the infer.NewDeleteImageGuard narrow-
+// interface constructor pattern.
+func NewWarmupTasksForNodeProvider(db *gorm.DB) WarmupTasksForNodeProvider {
+	return NewWarmupTaskRepository(db)
 }
 
 // MigrateSchemaForFVT applies the image schema (images, warmup_tasks)

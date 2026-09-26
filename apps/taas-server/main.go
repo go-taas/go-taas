@@ -12,6 +12,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
 
+	"github.com/go-taas/go-taas/services/accelerator"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/auth"
 	"github.com/go-taas/go-taas/services/billing"
@@ -83,6 +84,10 @@ func main() {
 	srv.RegisterService(billingSvc)
 	auditSvc := audit.New(srv.Components())
 	srv.RegisterService(auditSvc)
+	// Feature #18: the accelerator inventory service serves the read-only
+	// fleet view from its in-memory projection cache.
+	acceleratorSvc := accelerator.New()
+	srv.RegisterService(acceleratorSvc)
 
 	// The delete-model and delete-image reference guards need the infer
 	// repository; wire them after both services are registered (AC3,
@@ -152,6 +157,10 @@ func main() {
 			modelSvc.SetDeleteGuard(infer.NewDeleteModelGuard(gormDB))
 			imageSvc.SetDeleteGuard(infer.NewDeleteImageGuard(gormDB))
 			imageSvc.SetInUseProvider(infer.NewImageInUseProvider(gormDB))
+			// Feature #18: the accelerator service reads warmup-task
+			// context for a node's detail view through the image
+			// module's narrow provider.
+			acceleratorSvc.SetWarmupProvider(image.NewWarmupTasksForNodeProvider(gormDB))
 			// Feature #16: the user-realm catalog's read-only autoscaling
 			// projection is resolved from the infer module's service
 			// status (AD13).
@@ -173,6 +182,9 @@ func main() {
 		srv.AddRunner(runner)
 	}
 	if runner := image.NewWarmupStatusConsumerRunner(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 	if runner := metering.NewEventConsumerRunner(srv.Components()); runner != nil {

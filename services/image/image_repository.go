@@ -266,6 +266,30 @@ func (r *WarmupTaskRepository) LatestByImageIDs(ctx context.Context, imageIDs []
 	return out, nil
 }
 
+// ListWarmupTasksForNode returns warmup tasks whose node_selector
+// matches the node or whose node_results mention the node, newest first,
+// capped at limit (feature #18, Section 5.3). It is the narrow read the
+// accelerator service uses for a node's warmup-task context.
+func (r *WarmupTaskRepository) ListWarmupTasksForNode(ctx context.Context, nodeID string, limit int) ([]*WarmupTask, error) {
+	if limit <= 0 {
+		limit = 20
+	}
+	var rows []*WarmupTask
+	// node_selector is a JSON object of label key/value pairs; a task
+	// targets the node when the node name appears in its node_results
+	// (the per-node outcome) or when the selector is empty (all nodes).
+	// CAST(... AS TEXT) is portable across Postgres and SQLite (FVT).
+	err := r.DB(ctx).
+		Where("CAST(node_results AS TEXT) LIKE ?", "%"+nodeID+"%").
+		Order("created_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // ApplyStatus applies one status report from the controller. Terminal
 // states are never overwritten: a late running report after succeeded
 // is skipped (RowsAffected == 0).
