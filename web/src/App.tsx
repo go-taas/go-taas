@@ -38,6 +38,8 @@ import BillingPaymentsPage from './pages/BillingPaymentsPage';
 import BillingInvoicesPage from './pages/BillingInvoicesPage';
 import AuditLogsPage from './pages/AuditLogsPage';
 import AutoscalingPage from './pages/AutoscalingPage';
+import AcceleratorsPage from './pages/AcceleratorsPage';
+import AcceleratorNodeDetailPage from './pages/AcceleratorNodeDetailPage';
 import ActivityPage from './pages/user/ActivityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -120,6 +122,8 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/billing/invoices" element={<BillingInvoicesPage />} />
               <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
               <Route path="/admin/autoscaling" element={<AutoscalingPage />} />
+              <Route path="/admin/accelerators" element={<AcceleratorsPage />} />
+              <Route path="/admin/accelerators/:nodeId" element={<AcceleratorNodeDetailPage />} />
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>
