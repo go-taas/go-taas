@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/go-taas/go-taas/compare/v1.18.1...v1.19.0) (2026-09-26)
+
+
+### Features
+
+* **web:** redesign console with AI-native SaaS design system ([0c63483](https://github.com/go-taas/go-taas/commit/0c6348371893ce9923b98a67cb7f1e7d1ea2742d)), closes [#7c3](https://github.com/go-taas/go-taas/issues/7c3) [#0891b2](https://github.com/go-taas/go-taas/issues/0891b2)
+
 ## [1.18.1](https://github.com/go-taas/go-taas/compare/v1.18.0...v1.18.1) (2026-09-26)
 
 
