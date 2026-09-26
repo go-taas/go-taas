@@ -93,6 +93,12 @@ type Service struct {
 	// AD3). Nil until wired: no audit events are produced. Mutating
 	// RPCs call it after the mutation succeeds and ignore its failure.
 	auditRecorder AuditRecorder
+
+	// systemCredential is the plaintext synthetic platform credential
+	// held in memory for the load-test runner (feature #20, AD11). It
+	// is seeded by Migrate and never persisted; empty means "not
+	// seeded" and GetSystemCredential fails closed.
+	systemCredential string
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -163,7 +169,12 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return db.WithContext(ctx).AutoMigrate(&APIKey{}, &SSOProvider{}, &IdentityBinding{}, &User{})
+	if err := db.WithContext(ctx).AutoMigrate(&APIKey{}, &SSOProvider{}, &IdentityBinding{}, &User{}); err != nil {
+		return err
+	}
+	// Feature #20 (AD11): seed the synthetic platform credential used by
+	// the load-test runner. The plaintext stays in memory only.
+	return s.seedSystemCredential(ctx, NewAPIKeyRepository(db))
 }
 
 // gormDB resolves the *gorm.DB from the wired repository or the shared

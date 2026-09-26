@@ -85,6 +85,17 @@ type Service struct {
 	// (model, engine, card_type) combination for deploy-time enforcement
 	// (feature #19, AD13). Nil until wired: no matrix check is applied.
 	compatibilityChecker image.CompatibilityChecker
+
+	// loadTestRepo persists load-test runs (feature #20). Wired lazily
+	// from the shared components.
+	loadTestRepo *LoadTestRepository
+	// loadTestRunner executes load tests asynchronously (feature #20,
+	// AD12). Nil until wired: CreateLoadTest fails closed (10311).
+	loadTestRunner *LoadTestRunner
+	// systemCredentialProvider resolves the synthetic platform
+	// credential for the load-test runner (feature #20, AD11). Nil until
+	// wired: CreateLoadTest fails closed (10311).
+	systemCredentialProvider SystemCredentialProvider
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -122,6 +133,20 @@ func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
 func (s *Service) SetCompatibilityChecker(c image.CompatibilityChecker) {
 	s.compatibilityChecker = c
 }
+
+// SetSystemCredentialProvider installs the narrow accessor for the
+// synthetic platform credential the load-test runner presents to the
+// inference endpoint (feature #20, AD11). Production wires the auth
+// service; unit tests may inject a fake.
+func (s *Service) SetSystemCredentialProvider(p SystemCredentialProvider) {
+	s.systemCredentialProvider = p
+}
+
+// SetLoadTestRunner installs the async load-test runner (feature #20).
+// It must be called before serving; without it a load test cannot be
+// created (10311). The enable/disable kill switch is a startup decision
+// made at wiring time (main.go), so this path never reads global config.
+func (s *Service) SetLoadTestRunner(r *LoadTestRunner) { s.loadTestRunner = r }
 
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.
@@ -179,9 +204,10 @@ func NewForFVT(db *gorm.DB, mqClient mq.Client) *Service {
 }
 
 // MigrateSchemaForFVT applies the infer schema (inference_services,
-// autoscaling_policy) to the given database. FVT-only helper.
+// autoscaling_policy, load_tests) to the given database. FVT-only
+// helper.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}); err != nil {
+	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}); err != nil {
 		return err
 	}
 	return NewAutoscalingPolicyRepository(db).SeedDefault(context.Background())

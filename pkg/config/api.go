@@ -441,7 +441,22 @@ type Configuration struct {
 	Tenancy     TenancyConfig     `mapstructure:"tenancy"`
 	Audit       AuditConfig       `mapstructure:"audit"`
 	Accelerator AcceleratorConfig `mapstructure:"accelerator"`
+	LoadTest    LoadTestConfig    `mapstructure:"loadtest"`
 	Log         LogConfig         `mapstructure:"log"`
+}
+
+// LoadTestConfig holds the feature-20 load-testing settings.
+type LoadTestConfig struct {
+	// ProgressInterval is how often the runner persists a live-progress
+	// snapshot to the load_tests row (AD12). Default 5s.
+	ProgressInterval time.Duration `mapstructure:"progressInterval"`
+	// Retention is how long terminal runs are kept before the cleanup
+	// runner deletes them (AD9). Default 2160h (90 days).
+	Retention time.Duration `mapstructure:"retention"`
+	// SystemCredentialEnabled is the kill switch for the synthetic
+	// platform credential (AD11). When false, CreateLoadTest returns
+	// 10311 because there is no credential to drive with.
+	SystemCredentialEnabled bool `mapstructure:"systemCredentialEnabled"`
 }
 
 // Validate checks semantic constraints that cannot be expressed as struct
@@ -473,6 +488,12 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Infer.Autoscaling.StatusReportInterval < 0 {
 		return &FieldError{Field: "infer.autoscaling.statusReportInterval", Reason: "must not be negative"}
+	}
+	if c.LoadTest.ProgressInterval < 0 {
+		return &FieldError{Field: "loadtest.progressInterval", Reason: "must not be negative"}
+	}
+	if c.LoadTest.Retention < 0 {
+		return &FieldError{Field: "loadtest.retention", Reason: "must not be negative"}
 	}
 	if c.Image.WarmupStatusConsumer.Workers < 0 {
 		return &FieldError{Field: "image.warmupStatusConsumer.workers", Reason: "must not be negative"}

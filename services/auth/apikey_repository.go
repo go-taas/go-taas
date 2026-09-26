@@ -128,3 +128,47 @@ func (r *APIKeyRepository) UpdateByIDAndOrganization(ctx context.Context, orgID,
 	row.ExpiresAt = expiresAt
 	return &row, nil
 }
+
+// FindSystemCredential returns the synthetic platform credential used by
+// the load-test runner (feature #20, AD11). A miss maps to
+// CodeAPIKeyNotFound: the row is seeded at migration, so its absence is
+// an infrastructure invariant violation.
+func (r *APIKeyRepository) FindSystemCredential(ctx context.Context) (*APIKey, error) {
+	var row APIKey
+	err := r.DB(ctx).Where("is_system = ?", true).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apierrors.New(apierrors.CodeAPIKeyNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// UpsertSystemCredential inserts or refreshes the single synthetic
+// platform credential row (feature #20, AD11). It is idempotent: exactly
+// one is_system row is kept, and the lookup/salted hashes are refreshed
+// to match the caller-supplied key material.
+func (r *APIKeyRepository) UpsertSystemCredential(ctx context.Context, row *APIKey) error {
+	row.IsSystem = true
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		var existing APIKey
+		err := r.DB(ctx).Where("is_system = ?", true).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return r.Create(ctx, row)
+		}
+		if err != nil {
+			return err
+		}
+		row.ID = existing.ID
+		return r.UpdateFields(ctx, existing.ID, map[string]any{
+			"prefix":          row.Prefix,
+			"lookup_hash":     row.LookupHash,
+			"salt":            row.Salt,
+			"salted_hash":     row.SaltedHash,
+			"organization_id": row.OrganizationID,
+			"revoked":         false,
+			"is_system":       true,
+		})
+	})
+}

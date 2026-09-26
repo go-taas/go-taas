@@ -40,6 +40,11 @@ type APIKey struct {
 	RateLimitRPM int64 `gorm:"not null;default:0"`
 	// RateLimitTPM is the max tokens per minute; 0 = unlimited.
 	RateLimitTPM int64 `gorm:"not null;default:0"`
+	// IsSystem marks the synthetic platform credential used by the
+	// load-test runner (feature #20, AD11). The data-plane gateway
+	// recognizes this flag and skips balance holds and rate/spend-limit
+	// checks while still producing request logs.
+	IsSystem bool `gorm:"not null;default:false;index"`
 }
 
 // TableName returns the table name of APIKey.

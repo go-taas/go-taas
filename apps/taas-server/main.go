@@ -93,6 +93,12 @@ func main() {
 	acceleratorSvc := accelerator.NewWithCache(acceleratorCache)
 	srv.RegisterService(acceleratorSvc)
 
+	// Feature #20: the async load-test runner is constructed once the
+	// database is available (it persists runs and drives real traffic
+	// through the synthetic platform credential, AD11/AD12) and is
+	// registered as a server runner below.
+	var loadTestRunner *infer.LoadTestRunner
+
 	// The delete-model and delete-image reference guards need the infer
 	// repository; wire them after both services are registered (AC3,
 	// feature #3 D7). The components are only available after Init, so
@@ -179,6 +185,21 @@ func main() {
 			imageSvc.SetSessionOrgResolver(authSvc)
 			inferSvc.SetCompatibilityChecker(image.NewCompatibilityChecker(imageSvc))
 			modelSvc.SetCompatibilityProvider(image.NewModelCompatibilitySummaryProvider(imageSvc))
+			// Feature #20: the load-test runner persists runs and drives
+			// real inference traffic with the synthetic platform
+			// credential the auth module seeds (AD11/AD12). The runner is
+			// a server.Runner, registered below. A disabled kill switch
+			// leaves the runner unwired, so CreateLoadTest fails closed
+			// (10311) rather than leaving a pending row with no executor.
+			if cfg.LoadTest.SystemCredentialEnabled {
+				loadTestRunner = infer.NewLoadTestRunner(
+					infer.NewLoadTestRepository(gormDB),
+					authSvc,
+					cfg.LoadTest.ProgressInterval,
+				)
+				inferSvc.SetLoadTestRunner(loadTestRunner)
+				inferSvc.SetSystemCredentialProvider(authSvc)
+			}
 		}
 	}
 	// The SSO session store is Redis-backed (feature #7). Wire it from
@@ -200,6 +221,11 @@ func main() {
 	}
 	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components(), acceleratorCache); runner != nil {
 		srv.AddRunner(runner)
+	}
+	// Feature #20: the load-test runner recovers interrupted runs and
+	// executes queued load tests.
+	if loadTestRunner != nil {
+		srv.AddRunner(loadTestRunner)
 	}
 	if runner := metering.NewEventConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)

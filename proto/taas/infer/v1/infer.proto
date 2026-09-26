@@ -102,6 +102,58 @@ service InferServiceService {
       body: "*"
     };
   }
+
+  // CreateLoadTest configures and starts a load test against a running
+  // inference service. Returns immediately with state=pending; the run
+  // is executed asynchronously by the infer runner (feature #20, AD3).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc CreateLoadTest(CreateLoadTestRequest) returns (CreateLoadTestResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/load-tests"
+      body: "*"
+    };
+  }
+
+  // ListLoadTests returns the load-test history with service/status/
+  // model filters, service-name search, and pagination (feature #20).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListLoadTests(ListLoadTestsRequest) returns (ListLoadTestsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/load-tests"};
+  }
+
+  // GetLoadTest returns one load test: config, current state, live
+  // progress while running, and the full result set when completed.
+  // A missing id returns 10308 (feature #20).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetLoadTest(GetLoadTestRequest) returns (GetLoadTestResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/load-tests/{load_test_id}"};
+  }
+
+  // StopLoadTest stops a pending/running test; the state becomes
+  // stopped and partial results are retained. Wrong state returns 10310
+  // (feature #20).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc StopLoadTest(StopLoadTestRequest) returns (StopLoadTestResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/load-tests/{load_test_id}:stop"
+      body: "*"
+    };
+  }
+
+  // DeleteLoadTest deletes a completed/failed/stopped run. Deleting a
+  // running/pending run returns 10310 (feature #20).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc DeleteLoadTest(DeleteLoadTestRequest) returns (DeleteLoadTestResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/load-tests/{load_test_id}"};
+  }
+
+  // GetModelLoadTests returns the masked user-realm projection: the
+  // model's most recent completed load-test results, with no service
+  // ids and no operator internals (feature #20, AD2).
+  // User-surface API: served under /api/v1.
+  rpc GetModelLoadTests(GetModelLoadTestsRequest) returns (GetModelLoadTestsResponse) {
+    option (google.api.http) = {get: "/api/v1/models/{model_id}/load-tests"};
+  }
 }
 
 message CreateInferenceServiceRequest {
@@ -297,4 +349,115 @@ message UpdateInferenceServiceAutoscalingResponse {
   // fixed_replicas is the resulting fixed count when disabling
   // autoscaling (FR2.5).
   int32 fixed_replicas = 2;
+}
+
+message CreateLoadTestRequest {
+  string service_id = 1;
+  int32 concurrency = 2;        // 1-1000, default 1
+  int32 duration_seconds = 3;   // 5-3600, default 60
+  int32 request_rate = 4;       // 0-10000, 0 = unlimited, default 0
+  string prompt_template = 5;   // required, <= 4096 chars
+  int32 max_tokens = 6;         // 1-8192, default 256
+}
+message CreateLoadTestResponse {
+  taas.common.v1.Response response = 1;
+  string load_test_id = 2;
+  string state = 3;             // pending
+}
+
+message ListLoadTestsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string service_id = 2;
+  string status = 3;            // pending|running|completed|failed|stopped
+  string model_id = 4;
+  string search = 5;            // service-name substring
+}
+message ListLoadTestsResponse {
+  taas.common.v1.Response response = 1;
+  repeated LoadTestSummary runs = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message LoadTestSummary {
+  string load_test_id = 1;
+  string service_id = 2;
+  string service_name = 3;
+  string model_id = 4;
+  string model_name = 5;
+  int32 concurrency = 6;
+  int32 duration_seconds = 7;
+  int32 request_rate = 8;
+  string state = 9;             // pending|running|completed|failed|stopped
+  int64 started_at = 10;
+  int64 completed_at = 11;
+  // Result summary, populated when completed.
+  double throughput_rps = 12;
+  double latency_p95_ms = 13;
+  double output_tokens_per_sec = 14;
+  double error_rate = 15;
+}
+
+message GetLoadTestRequest {
+  string load_test_id = 1;      // path
+}
+message LoadTestProgress {
+  int64 requests_sent = 1;
+  int64 success_count = 2;
+  int64 failure_count = 3;
+  int64 elapsed_seconds = 4;
+}
+message LoadTestResult {
+  int64 total_requests = 1;
+  int64 success_count = 2;
+  int64 failure_count = 3;
+  double error_rate = 4;
+  double throughput_rps = 5;
+  double output_tokens_per_sec = 6;
+  int64 input_tokens = 7;
+  int64 output_tokens = 8;
+  double latency_p50_ms = 9;
+  double latency_p90_ms = 10;
+  double latency_p95_ms = 11;
+  double latency_p99_ms = 12;
+}
+message GetLoadTestResponse {
+  taas.common.v1.Response response = 1;
+  LoadTestSummary summary = 2;
+  string prompt_template = 3;
+  int32 max_tokens = 4;
+  LoadTestProgress progress = 5;   // live while pending/running
+  LoadTestResult result = 6;       // full when completed
+  string failure_reason = 7;       // when failed
+}
+
+message StopLoadTestRequest {
+  string load_test_id = 1;      // path
+}
+message StopLoadTestResponse {
+  taas.common.v1.Response response = 1;
+  string state = 2;             // stopped
+}
+
+message DeleteLoadTestRequest {
+  string load_test_id = 1;      // path
+}
+message DeleteLoadTestResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message GetModelLoadTestsRequest {
+  string model_id = 1;          // path
+}
+message ModelLoadTestResult {
+  double throughput_rps = 1;
+  double latency_p95_ms = 2;
+  double output_tokens_per_sec = 3;
+  double error_rate = 4;
+  int32 concurrency = 5;
+  int32 duration_seconds = 6;
+  int64 completed_at = 7;
+}
+message GetModelLoadTestsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ModelLoadTestResult results = 2;   // most recent completed first
 }

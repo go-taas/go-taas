@@ -91,6 +91,21 @@ func (r *InferenceServiceRepository) FindByIDAndOrganization(ctx context.Context
 	return &row, nil
 }
 
+// FindByID returns one service by id across organizations (platform
+// scope, feature #20 AD1: load testing is an operator activity that
+// spans orgs). A miss maps to CodeInferServiceNotFound.
+func (r *InferenceServiceRepository) FindByID(ctx context.Context, serviceID string) (*InferenceService, error) {
+	var row InferenceService
+	err := r.DB(ctx).Where("id = ?", serviceID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // ListByOrganization returns one page of the organization's services
 // ordered by updated_at DESC (newest first) and the total count. The
 // default view excludes terminated services (AC9).

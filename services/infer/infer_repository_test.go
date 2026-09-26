@@ -23,7 +23,7 @@ func newInferTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}))
+	require.NoError(t, db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}))
 	require.NoError(t, model.MigrateSchemaForFVT(db))
 	require.NoError(t, NewAutoscalingPolicyRepository(db).SeedDefault(context.Background()))
 	t.Cleanup(func() {

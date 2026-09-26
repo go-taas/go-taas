@@ -81,6 +81,10 @@ var messages = map[Code]string{
 	CodeInferReplicasInvalid:     "inference replicas invalid",
 	CodeInferEngineUnsupported:   "inference engine unsupported",
 	CodeAutoscalingPolicyInvalid: "autoscaling policy invalid",
+	CodeLoadTestNotFound:         "load test not found",
+	CodeLoadTestConfigInvalid:    "load test config invalid",
+	CodeLoadTestStateInvalid:     "load test state invalid",
+	CodeLoadTestTargetInvalid:    "load test target invalid",
 
 	// metering
 	CodeMeteringEventInvalid:    "metering event invalid",

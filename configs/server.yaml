@@ -140,3 +140,13 @@ image:
   warmupStatusConsumer:
     enabled: true
     workers: 2
+
+# Feature #20: inference load testing. The runner persists a live
+# progress snapshot every progressInterval, keeps terminal runs for
+# retention, and drives traffic with the synthetic platform credential
+# (systemCredentialEnabled is the kill switch; when false CreateLoadTest
+# returns 10311).
+loadtest:
+  progressInterval: 5s
+  retention: 2160h
+  systemCredentialEnabled: true

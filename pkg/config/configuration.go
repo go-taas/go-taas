@@ -64,6 +64,13 @@ func ParseConfigs(pathPattern string) {
 	// while an absent key still defaults to true.
 	v.SetDefault("image.compatibility.seedOnBoot", true)
 
+	// Feature #20: the load-test system credential is enabled by
+	// default (AD11). Applied here (not in applyDefaults) so an explicit
+	// `systemCredentialEnabled: false` in a config file or a
+	// CONFIG_LOADTEST_SYSTEMCREDENTIALENABLED=false override is
+	// preserved, while an absent key still defaults to true.
+	v.SetDefault("loadtest.systemCredentialEnabled", true)
+
 	for _, configFile := range matches {
 		// Skip hidden files such as editor backups.
 		if strings.HasPrefix(filepath.Base(configFile), ".") {
@@ -127,6 +134,13 @@ func (c *Configuration) applyDefaults() {
 	}
 	if c.Accelerator.SnapshotConsumer.Workers == 0 {
 		c.Accelerator.SnapshotConsumer.Workers = 1
+	}
+	// Feature #20: load-test runner defaults.
+	if c.LoadTest.ProgressInterval == 0 {
+		c.LoadTest.ProgressInterval = 5 * time.Second
+	}
+	if c.LoadTest.Retention == 0 {
+		c.LoadTest.Retention = 90 * 24 * time.Hour
 	}
 	if c.Model.Auth.CacheTTL == 0 {
 		c.Model.Auth.CacheTTL = 5 * time.Second
