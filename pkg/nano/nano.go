@@ -241,8 +241,12 @@ func share(tokens uint64, ratePerM Amount) *big.Int {
 
 // Settlement derives the exact XNO amount payable for one inference call
 // from per-1M-token XNO rates (the shape of pricing.md D2: tokens * rate
-// per 1M). It prices prompt tokens and cached tokens at their own rates
-// and prices reasoning tokens at the output rate, matching the D2 contract
+// per 1M). Its signature is the D2 contract's four token counters —
+// Settlement(promptTokens, completionTokens, reasoningTokens, cachedTokens,
+// inputPerM, outputPerM, cachedPerM) — matching the four-category usage the
+// metering layer records (feature #4's counters). It prices prompt tokens
+// and cached tokens at their own rates and prices reasoning tokens at the
+// output rate, matching the D2 contract
 // (docs/design/pricing.md prices reasoning_tokens at the output rate).
 // Unlike the card rail — whose 2-decimal cents rounding (see
 // billing.pricing.computeAmount) writes off any charge below $0.005 — this
