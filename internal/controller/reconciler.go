@@ -23,9 +23,6 @@ import (
 	"github.com/go-taas/go-taas/pkg/mq"
 )
 
-// reconcileNamespace is the namespace the controller manages resources in.
-const reconcileNamespace = "taas-infer"
-
 // changeEvent mirrors the desired-state change published by the infer
 // module (architecture Section 4.5.1).
 type changeEvent struct {
@@ -93,22 +90,29 @@ type k8sReconciler struct {
 	clientset       kubernetes.Interface
 	statusPublisher mq.Client
 	endpointBaseURL string
+	// namespace is the namespace the controller manages resources in.
+	// Defaults to "taas-infer" when empty (backward compatible).
+	namespace string
 }
 
 // NewK8sReconciler builds the default Kubernetes-backed reconciler.
 // statusPublisher is the MQ client used to publish observed-state
 // reports; endpointBaseURL composes endpoint URLs ("" = in-cluster DNS).
-func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL string) Reconciler {
-	return newReconcilerWithClientset(client.Clientset(), statusPublisher, endpointBaseURL)
+func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string) Reconciler {
+	return newReconcilerWithClientset(client.Clientset(), statusPublisher, endpointBaseURL, namespace)
 }
 
 // newReconcilerWithClientset builds a reconciler over an arbitrary
 // clientset (the fake clientset in tests).
-func newReconcilerWithClientset(clientset kubernetes.Interface, statusPublisher mq.Client, endpointBaseURL string) Reconciler {
+func newReconcilerWithClientset(clientset kubernetes.Interface, statusPublisher mq.Client, endpointBaseURL, namespace string) Reconciler {
+	if namespace == "" {
+		namespace = "taas-infer"
+	}
 	return &k8sReconciler{
 		clientset:       clientset,
 		statusPublisher: statusPublisher,
 		endpointBaseURL: endpointBaseURL,
+		namespace:       namespace,
 	}
 }
 
@@ -219,14 +223,14 @@ func (r *k8sReconciler) ApplyImageWarmup(ctx context.Context, msg mq.Message) er
 func (r *k8sReconciler) warmupNode(ctx context.Context, task warmupTask, node string) warmupNodeResult {
 	podName := warmupPodName(task.TaskID, node)
 	// Best-effort cleanup of a leftover pod from a crashed attempt.
-	if err := r.clientset.CoreV1().Pods(reconcileNamespace).
+	if err := r.clientset.CoreV1().Pods(r.namespace).
 		Delete(ctx, podName, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
 		return warmupNodeResult{Node: node, State: "failed",
 			Message: fmt.Sprintf("delete leftover pod: %v", err)}
 	}
 
-	pod := buildWarmupPod(task, podName, node)
-	if _, err := r.clientset.CoreV1().Pods(reconcileNamespace).
+	pod := r.buildWarmupPod(task, podName, node)
+	if _, err := r.clientset.CoreV1().Pods(r.namespace).
 		Create(ctx, pod, metav1.CreateOptions{}); err != nil {
 		return warmupNodeResult{Node: node, State: "failed",
 			Message: fmt.Sprintf("create pod: %v", err)}
@@ -250,7 +254,7 @@ func (r *k8sReconciler) awaitPodTerminal(ctx context.Context, podName string) (c
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		pod, err := r.clientset.CoreV1().Pods(reconcileNamespace).
+		pod, err := r.clientset.CoreV1().Pods(r.namespace).
 			Get(ctx, podName, metav1.GetOptions{})
 		if err != nil {
 			return "", "", fmt.Errorf("controller: get pod %s: %w", podName, err)
@@ -312,11 +316,11 @@ func (r *k8sReconciler) listNodes(ctx context.Context, selector map[string]strin
 // imagePullPolicy=Always forces a real pull even when the image is
 // already present on the node (a cached image would otherwise mask a
 // registry outage).
-func buildWarmupPod(task warmupTask, podName, node string) *corev1.Pod {
+func (r *k8sReconciler) buildWarmupPod(task warmupTask, podName, node string) *corev1.Pod {
 	return &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      podName,
-			Namespace: reconcileNamespace,
+			Namespace: r.namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by":     "taas-controller",
 				"taas.go-taas.github.io/task-type": "image-warmup",
@@ -397,18 +401,18 @@ func (r *k8sReconciler) publishWarmupStatus(ctx context.Context, taskID, state s
 // not-found. The RPC already set state=terminated; no status report is
 // needed.
 func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error {
-	depErr := r.clientset.AppsV1().Deployments(reconcileNamespace).
+	depErr := r.clientset.AppsV1().Deployments(r.namespace).
 		Delete(ctx, deploymentName(evt.Name), metav1.DeleteOptions{})
 	if depErr != nil && !apierrors.IsNotFound(depErr) {
 		return fmt.Errorf("controller: delete deployment %s: %w", evt.Name, depErr)
 	}
-	svcErr := r.clientset.CoreV1().Services(reconcileNamespace).
+	svcErr := r.clientset.CoreV1().Services(r.namespace).
 		Delete(ctx, serviceName(evt.Name), metav1.DeleteOptions{})
 	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
 		return fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr)
 	}
 	// Feature #16: tear down the HPA alongside the Deployment/Service.
-	hpaErr := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+	hpaErr := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
 		Delete(ctx, hpaName(evt.Name), metav1.DeleteOptions{})
 	if hpaErr != nil && !apierrors.IsNotFound(hpaErr) {
 		return fmt.Errorf("controller: delete hpa %s: %w", evt.Name, hpaErr)
@@ -428,11 +432,11 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 			"service_id", evt.ServiceID, "err", err)
 	}
 
-	deployment := buildDeployment(evt)
+	deployment := r.buildDeployment(evt)
 	if err := r.createOrUpdateDeployment(ctx, deployment); err != nil {
 		return r.reportFailure(ctx, evt, err)
 	}
-	svc := buildService(evt)
+	svc := r.buildService(evt)
 	if err := r.createOrUpdateService(ctx, svc); err != nil {
 		return r.reportFailure(ctx, evt, err)
 	}
@@ -441,7 +445,7 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	// or update it; when disabled, delete it and pin the Deployment to the
 	// fixed replica count (FR2.5).
 	if evt.Autoscaling != nil && evt.Autoscaling.Enabled {
-		hpa := buildHPA(evt)
+		hpa := r.buildHPA(evt)
 		if err := r.createOrUpdateHPA(ctx, hpa); err != nil {
 			return r.reportFailure(ctx, evt, err)
 		}
@@ -473,7 +477,7 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 
 // deleteHPA deletes the service's HPA, ignoring not-found.
 func (r *k8sReconciler) deleteHPA(ctx context.Context, name string) error {
-	err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+	err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
 		Delete(ctx, hpaName(name), metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		return fmt.Errorf("controller: delete hpa %s: %w", name, err)
@@ -490,7 +494,7 @@ func (r *k8sReconciler) pinDeploymentReplicas(ctx context.Context, evt changeEve
 	if err != nil {
 		return err
 	}
-	_, err = r.clientset.AppsV1().Deployments(reconcileNamespace).
+	_, err = r.clientset.AppsV1().Deployments(r.namespace).
 		Patch(ctx, deploymentName(evt.Name), types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
 }
@@ -498,7 +502,7 @@ func (r *k8sReconciler) pinDeploymentReplicas(ctx context.Context, evt changeEve
 // createOrUpdateHPA creates the HPA or patches the desired spec
 // (idempotent reconcile).
 func (r *k8sReconciler) createOrUpdateHPA(ctx context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler) error {
-	_, err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+	_, err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
 		Create(ctx, hpa, metav1.CreateOptions{})
 	if err == nil {
 		return nil
@@ -511,7 +515,7 @@ func (r *k8sReconciler) createOrUpdateHPA(ctx context.Context, hpa *autoscalingv
 	if err != nil {
 		return err
 	}
-	_, err = r.clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
+	_, err = r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
 		Patch(ctx, hpa.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
 }
@@ -537,7 +541,7 @@ func (r *k8sReconciler) awaitReadiness(ctx context.Context, evt changeEvent) err
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
-		dep, err := r.clientset.AppsV1().Deployments(reconcileNamespace).
+		dep, err := r.clientset.AppsV1().Deployments(r.namespace).
 			Get(ctx, deploymentName(evt.Name), metav1.GetOptions{})
 		if err != nil {
 			return fmt.Errorf("controller: get deployment %s: %w", evt.Name, err)
@@ -557,7 +561,7 @@ func (r *k8sReconciler) awaitReadiness(ctx context.Context, evt changeEvent) err
 // createOrUpdateDeployment creates the Deployment or patches the
 // desired spec (idempotent reconcile).
 func (r *k8sReconciler) createOrUpdateDeployment(ctx context.Context, dep *appsv1.Deployment) error {
-	_, err := r.clientset.AppsV1().Deployments(reconcileNamespace).
+	_, err := r.clientset.AppsV1().Deployments(r.namespace).
 		Create(ctx, dep, metav1.CreateOptions{})
 	if err == nil {
 		return nil
@@ -570,7 +574,7 @@ func (r *k8sReconciler) createOrUpdateDeployment(ctx context.Context, dep *appsv
 	if err != nil {
 		return err
 	}
-	_, err = r.clientset.AppsV1().Deployments(reconcileNamespace).
+	_, err = r.clientset.AppsV1().Deployments(r.namespace).
 		Patch(ctx, dep.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
 }
@@ -578,7 +582,7 @@ func (r *k8sReconciler) createOrUpdateDeployment(ctx context.Context, dep *appsv
 // createOrUpdateService creates the Service or patches the desired
 // spec (idempotent reconcile).
 func (r *k8sReconciler) createOrUpdateService(ctx context.Context, svc *corev1.Service) error {
-	_, err := r.clientset.CoreV1().Services(reconcileNamespace).
+	_, err := r.clientset.CoreV1().Services(r.namespace).
 		Create(ctx, svc, metav1.CreateOptions{})
 	if err == nil {
 		return nil
@@ -591,19 +595,19 @@ func (r *k8sReconciler) createOrUpdateService(ctx context.Context, svc *corev1.S
 	if err != nil {
 		return err
 	}
-	_, err = r.clientset.CoreV1().Services(reconcileNamespace).
+	_, err = r.clientset.CoreV1().Services(r.namespace).
 		Patch(ctx, svc.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
 }
 
 // buildDeployment composes the Deployment for a change event: engine
 // image, replicas, weight-volume mount and accelerator node selector.
-func buildDeployment(evt changeEvent) *appsv1.Deployment {
+func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
 	labels := resourceLabels(evt)
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName(evt.Name),
-			Namespace: reconcileNamespace,
+			Namespace: r.namespace,
 			Labels:    labels,
 		},
 		Spec: appsv1.DeploymentSpec{
@@ -639,12 +643,12 @@ func buildDeployment(evt changeEvent) *appsv1.Deployment {
 }
 
 // buildService composes the ClusterIP Service fronting the pods.
-func buildService(evt changeEvent) *corev1.Service {
+func (r *k8sReconciler) buildService(evt changeEvent) *corev1.Service {
 	labels := resourceLabels(evt)
 	return &corev1.Service{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      serviceName(evt.Name),
-			Namespace: reconcileNamespace,
+			Namespace: r.namespace,
 			Labels:    labels,
 		},
 		Spec: corev1.ServiceSpec{
@@ -662,7 +666,7 @@ func buildService(evt changeEvent) *corev1.Service {
 // autoscaling enabled (feature #16, §7.1): a concurrency object metric
 // with an AverageValue target, min/max replicas from the policy, and a
 // downscale stabilization window equal to the cooldown.
-func buildHPA(evt changeEvent) *autoscalingv2.HorizontalPodAutoscaler {
+func (r *k8sReconciler) buildHPA(evt changeEvent) *autoscalingv2.HorizontalPodAutoscaler {
 	policy := evt.Autoscaling
 	if policy == nil {
 		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10, TargetConcurrency: 32, CooldownSeconds: 300}
@@ -687,7 +691,7 @@ func buildHPA(evt changeEvent) *autoscalingv2.HorizontalPodAutoscaler {
 	return &autoscalingv2.HorizontalPodAutoscaler{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      hpaName(evt.Name),
-			Namespace: reconcileNamespace,
+			Namespace: r.namespace,
 			Labels:    labels,
 		},
 		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
@@ -754,7 +758,7 @@ func (r *k8sReconciler) endpointFor(name string) string {
 	if r.endpointBaseURL != "" {
 		return strings.TrimSuffix(r.endpointBaseURL, "/") + "/" + name + "/v1"
 	}
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local/v1", serviceName(name), reconcileNamespace)
+	return fmt.Sprintf("http://%s.%s.svc.cluster.local/v1", serviceName(name), r.namespace)
 }
 
 // publishStatus publishes an observed-state report on the status

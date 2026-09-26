@@ -245,6 +245,9 @@ type ControllerConfig struct {
 	Workers int `mapstructure:"workers"`
 	// MaxRetries bounds retries for a failed reconcile task.
 	MaxRetries int `mapstructure:"maxRetries"`
+	// Namespace is the Kubernetes namespace the controller manages
+	// inference resources in. Empty defaults to "taas-infer".
+	Namespace string `mapstructure:"namespace"`
 }
 
 // InferConfig holds infer-module specific settings.

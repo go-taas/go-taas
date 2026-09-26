@@ -20,6 +20,16 @@ import (
 	"github.com/go-taas/go-taas/pkg/mq"
 )
 
+// reconcileNamespace is the default namespace the reconciler uses when
+// none is configured (mirrors the production default).
+const reconcileNamespace = "taas-infer"
+
+// testReconciler returns a reconciler over a fake clientset for the
+// build-function tests.
+func testReconciler() *k8sReconciler {
+	return &k8sReconciler{clientset: fake.NewSimpleClientset(), namespace: reconcileNamespace}
+}
+
 func testChangeEvent(eventType, name string) changeEvent {
 	evt := changeEvent{
 		EventType:       eventType,
@@ -41,7 +51,7 @@ func testChangeEvent(eventType, name string) changeEvent {
 
 func TestBuildDeployment(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
-	dep := buildDeployment(evt)
+	dep := testReconciler().buildDeployment(evt)
 
 	assert.Equal(t, "demo", dep.Name)
 	assert.Equal(t, reconcileNamespace, dep.Namespace)
@@ -66,7 +76,7 @@ func TestBuildDeployment(t *testing.T) {
 
 func TestBuildService(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
-	svc := buildService(evt)
+	svc := testReconciler().buildService(evt)
 
 	assert.Equal(t, "demo-svc", svc.Name)
 	assert.Equal(t, reconcileNamespace, svc.Namespace)
@@ -92,7 +102,7 @@ func TestEndpointFor(t *testing.T) {
 	assert.Equal(t, "https://infer.example.com/demo/v1", r.endpointFor("demo"))
 
 	// Empty base URL: in-cluster DNS.
-	r = &k8sReconciler{}
+	r = &k8sReconciler{namespace: reconcileNamespace}
 	assert.Equal(t, "http://demo-svc.taas-infer.svc.cluster.local/v1", r.endpointFor("demo"))
 }
 
@@ -219,7 +229,7 @@ func newFakeReconciler(publisher mq.Client) (Reconciler, *fake.Clientset) {
 		pod.Status.Phase = corev1.PodRunning
 		return true, pod, nil
 	})
-	return newReconcilerWithClientset(clientset, publisher, "https://infer.example.com/"), clientset
+	return newReconcilerWithClientset(clientset, publisher, "https://infer.example.com/", ""), clientset
 }
 
 // markReady sets the Deployment's ready replicas so awaitReadiness
@@ -287,7 +297,7 @@ func TestApplyUpsertIdempotent(t *testing.T) {
 func TestApplyUpsertFailureReportsFailed(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
 	// Plain clientset: the Deployment never becomes ready.
-	reconciler := newReconcilerWithClientset(fake.NewSimpleClientset(), publisher, "")
+	reconciler := newReconcilerWithClientset(fake.NewSimpleClientset(), publisher, "", "")
 
 	// Cancel the context so awaitReadiness fails after the first poll.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -386,10 +396,10 @@ func TestAwaitReadinessPolls(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
 	// Plain clientset: readiness only appears once markReady runs.
 	clientset := fake.NewSimpleClientset()
-	reconciler := newReconcilerWithClientset(clientset, publisher, "")
+	reconciler := newReconcilerWithClientset(clientset, publisher, "", "")
 
 	evt := testChangeEvent("upsert", "demo")
-	dep := buildDeployment(evt)
+	dep := testReconciler().buildDeployment(evt)
 	_, err := clientset.AppsV1().Deployments(reconcileNamespace).Create(
 		context.Background(), dep, metav1.CreateOptions{})
 	require.NoError(t, err)
@@ -407,7 +417,7 @@ func TestAwaitReadinessPolls(t *testing.T) {
 
 func TestApplyUpsertWithNilPublisher(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	reconciler := newReconcilerWithClientset(clientset, nil, "")
+	reconciler := newReconcilerWithClientset(clientset, nil, "", "")
 
 	// The deployment never becomes ready; with a cancelled context the
 	// reconcile fails but must not panic on the nil publisher.
@@ -449,14 +459,14 @@ func TestDeploymentNameAndServiceName(t *testing.T) {
 func TestBuildDeploymentDefaults(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
 	evt.Replicas = 0
-	dep := buildDeployment(evt)
+	dep := testReconciler().buildDeployment(evt)
 	assert.Equal(t, int32(0), *dep.Spec.Replicas)
 }
 
 func TestNewK8sReconciler(t *testing.T) {
 	// The constructor wires the clientset through; reconcile paths are
 	// covered by the fake-clientset tests above.
-	reconciler := NewK8sReconciler(&k8s.Client{}, mq.NewFake(), "https://infer.example.com")
+	reconciler := NewK8sReconciler(&k8s.Client{}, mq.NewFake(), "https://infer.example.com", "")
 	assert.NotNil(t, reconciler)
 }
 
@@ -502,7 +512,7 @@ func TestBuildHPA(t *testing.T) {
 		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
 		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
 	})
-	hpa := buildHPA(evt)
+	hpa := testReconciler().buildHPA(evt)
 
 	assert.Equal(t, "hpa-demo", hpa.Name)
 	assert.Equal(t, reconcileNamespace, hpa.Namespace)
@@ -534,7 +544,7 @@ func TestBuildHPAScaleToZero(t *testing.T) {
 		Enabled: true, MinReplicas: 0, MaxReplicas: 5,
 		TargetConcurrency: 16, ScaleToZero: true, CooldownSeconds: 120,
 	})
-	hpa := buildHPA(evt)
+	hpa := testReconciler().buildHPA(evt)
 	require.NotNil(t, hpa.Spec.MinReplicas)
 	assert.Equal(t, int32(0), *hpa.Spec.MinReplicas)
 	assert.Equal(t, int32(5), hpa.Spec.MaxReplicas)
