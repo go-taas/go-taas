@@ -11,6 +11,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
@@ -144,6 +145,52 @@ func TestGetLoadTestProgressFromRowWhenNotInFlight(t *testing.T) {
 	assert.Equal(t, int64(42), got.GetProgress().GetRequestsSent())
 	assert.GreaterOrEqual(t, got.GetProgress().GetElapsedSeconds(), int64(29))
 	assert.Nil(t, got.GetResult(), "a non-terminal run has no result block")
+}
+
+// TestResponseMigrateCreatesLoadTestSchema covers the production Migrate
+// hook: the runner queries load_tests at startup (recovery), so the
+// table must exist after Migrate. The FVT helper is a separate path and
+// does not prove this (a bug that shipped once).
+func TestResponseMigrateCreatesLoadTestSchema(t *testing.T) {
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	require.NoError(t, err)
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		_ = sqlDB.Close()
+	})
+
+	svc := New(&fakeComponents{db: db, mqType: "client"})
+	require.NoError(t, svc.Migrate(context.Background()))
+
+	assert.True(t, db.Migrator().HasTable(&LoadTest{}), "Migrate must create the load_tests table")
+	assert.True(t, db.Migrator().HasTable(&InferenceService{}))
+	assert.True(t, db.Migrator().HasTable(&AutoscalingPolicy{}))
+}
+
+// TestLoadTestSchemaIndexes pins the composite indexes the list filters
+// and the masked user projection rely on. The column order is the point:
+// an index with the same name but different columns is a different index.
+func TestLoadTestSchemaIndexes(t *testing.T) {
+	db := newInferTestDB(t)
+	// Columns() excludes the implicit ordering suffix GORM adds per column.
+	assertIndexColumns(t, db, "idx_load_tests_service_created", []string{"service_id", "created_at"})
+	assertIndexColumns(t, db, "idx_load_tests_model_state_created", []string{"model_id", "state", "created_at"})
+	assertIndexColumns(t, db, "idx_load_tests_state_created", []string{"state", "created_at"})
+}
+
+// assertIndexColumns asserts the ordered columns of a named index.
+func assertIndexColumns(t *testing.T, db *gorm.DB, name string, want []string) {
+	t.Helper()
+	indexes, err := db.Migrator().GetIndexes(&LoadTest{})
+	require.NoError(t, err)
+	for _, idx := range indexes {
+		if idx.Name() == name {
+			assert.Equal(t, want, idx.Columns(), "index %s columns", name)
+			return
+		}
+	}
+	t.Fatalf("index %s not found", name)
 }
 
 func TestLoadTestRepositoryResolvesAndCaches(t *testing.T) {

@@ -54,7 +54,7 @@ type LoadTest struct {
 	// MaxTokens caps each completion, 1-8192 (AD5).
 	MaxTokens int `gorm:"not null"`
 	// State is the run state (closed set, AD3).
-	State string `gorm:"size:16;not null;default:'pending';index:idx_load_tests_state_created,priority:1"`
+	State string `gorm:"size:16;not null;default:'pending';index:idx_load_tests_state_created,priority:1;index:idx_load_tests_model_state_created,priority:2"`
 	// FailureReason is the human-readable reason when state=failed.
 	FailureReason *string `gorm:"size:512"`
 	// StartedAt is when the runner picked up the run.

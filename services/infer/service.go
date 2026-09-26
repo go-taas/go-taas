@@ -232,7 +232,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}); err != nil {
 		return err
 	}
 	// Seed the singleton global-default policy (feature #16, §4.3): the
