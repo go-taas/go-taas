@@ -65,10 +65,10 @@ func TestModelAutoscalingProvider(t *testing.T) {
 	svc.AutoscalingState = "steady"
 	svc.AutoscalingCurrentReplicas = 3
 	require.NoError(t, repo.UpdateFields(context.Background(), svc.ID, map[string]any{
-		"model_id":                       "model-1",
-		"autoscaling_state":              "steady",
-		"autoscaling_current_replicas":   3,
-		"autoscaling":                    `{"enabled":true,"min_replicas":1,"max_replicas":10,"target_concurrency":32,"scale_to_zero":false,"cooldown_seconds":300}`,
+		"model_id":                     "model-1",
+		"autoscaling_state":            "steady",
+		"autoscaling_current_replicas": 3,
+		"autoscaling":                  `{"enabled":true,"min_replicas":1,"max_replicas":10,"target_concurrency":32,"scale_to_zero":false,"cooldown_seconds":300}`,
 	}))
 
 	proj, err = provider.ModelAutoscaling(context.Background(), "org", "model-1")

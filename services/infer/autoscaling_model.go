@@ -36,12 +36,12 @@ const singletonPolicyID = 1
 // default policy (feature #16, §4.2).
 func defaultAutoscalingPolicy() *AutoscalingPolicy {
 	return &AutoscalingPolicy{
-		ID:               singletonPolicyID,
-		Enabled:          true,
-		MinReplicas:      1,
-		MaxReplicas:      10,
+		ID:                singletonPolicyID,
+		Enabled:           true,
+		MinReplicas:       1,
+		MaxReplicas:       10,
 		TargetConcurrency: 32,
-		ScaleToZero:      false,
-		CooldownSeconds:  300,
+		ScaleToZero:       false,
+		CooldownSeconds:   300,
 	}
 }

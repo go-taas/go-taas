@@ -61,13 +61,13 @@ func (r *AutoscalingPolicyRepository) UpsertDefault(ctx context.Context, p *Auto
 		return r.DB(ctx).Model(&AutoscalingPolicy{}).
 			Where("id = ?", singletonPolicyID).
 			Updates(map[string]any{
-				"enabled":           p.Enabled,
-				"min_replicas":      p.MinReplicas,
-				"max_replicas":      p.MaxReplicas,
+				"enabled":            p.Enabled,
+				"min_replicas":       p.MinReplicas,
+				"max_replicas":       p.MaxReplicas,
 				"target_concurrency": p.TargetConcurrency,
-				"scale_to_zero":     p.ScaleToZero,
-				"cooldown_seconds":  p.CooldownSeconds,
-				"updated_at":        p.UpdatedAt,
+				"scale_to_zero":      p.ScaleToZero,
+				"cooldown_seconds":   p.CooldownSeconds,
+				"updated_at":         p.UpdatedAt,
 			}).Error
 	})
 }

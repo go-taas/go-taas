@@ -91,7 +91,6 @@ type AuditRecorder interface {
 	Record(ctx context.Context, ev *audit.AuditEvent)
 }
 
-
 // New constructs the inference service from the shared server
 // components.
 func New(components server.Components) *Service {
@@ -107,6 +106,7 @@ func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
 // by the user-realm playground (feature-17 AD6). Production and FVT wire
 // the auth service; unit tests may inject a fake.
 func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
@@ -119,7 +119,6 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 	}
 	s.auditRecorder.Record(ctx, ev)
 }
-
 
 // resolveOrg returns the organization context for the user-realm
 // playground (feature-17 AD6): the session's active org when a session
