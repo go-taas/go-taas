@@ -96,6 +96,38 @@ func TestServiceListCompatibilityDimensions(t *testing.T) {
 	assert.Equal(t, int64(2), resp.GetStatusCounts().GetUnsupported())
 }
 
+func TestServiceListCompatibilityDimensionsDepartedCardType(t *testing.T) {
+	svc := newCompatServiceForTest(t)
+	ctx := context.Background()
+
+	// Seed the matrix with both card types (A800, M100).
+	_, err := svc.compatRepo.SeedIfEmpty(ctx, testCardTypes, StatusExperimental)
+	require.NoError(t, err)
+
+	// Curate a cell for M100 so it has a stored cell.
+	_, err = svc.compatRepo.SetStatus(ctx, "model-qwen", "sglang", "M100", StatusSupported, "validated", testCardTypes, StatusExperimental)
+	require.NoError(t, err)
+
+	// Simulate M100 leaving the fleet: the provider now returns only A800.
+	svc.cardTypesProvider = fakeCardTypesProvider([]CardType{{Vendor: "nvidia", CardType: "A800"}})
+
+	resp, err := svc.ListCompatibilityDimensions(ctx, &imagev1.ListCompatibilityDimensionsRequest{})
+	require.NoError(t, err)
+
+	// BUG-COMPAT-001: a departed card type with stored cells must remain a
+	// grid column, flagged in_fleet: false, so the operator's curation is
+	// never silently dropped (AD10).
+	var m100 *imagev1.CompatibilityDimensionCardType
+	for _, ct := range resp.GetCardTypes() {
+		if ct.GetCardType() == "M100" {
+			m100 = ct
+		}
+	}
+	require.NotNil(t, m100, "departed card type M100 must remain a grid column")
+	assert.False(t, m100.GetInFleet(), "M100 left the fleet so in_fleet must be false")
+	assert.Equal(t, int64(1), resp.GetStatusCounts().GetSupported(), "M100's curated supported cell must still be counted")
+}
+
 func TestServiceSetCompatibilityStatus(t *testing.T) {
 	svc := newCompatServiceForTest(t)
 	ctx := context.Background()

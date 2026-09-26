@@ -172,11 +172,11 @@ func (s *Service) ListCompatibilityDimensions(ctx context.Context, _ *imagev1.Li
 	if err != nil {
 		return nil, err
 	}
-	cardTypes, err := s.cardTypes()
+	liveCardTypes, err := s.cardTypes()
 	if err != nil {
 		return nil, err
 	}
-	models, engines, cardTypes, counts, err := repo.ListDimensions(ctx, cardTypes, s.lazySeedDefault())
+	models, engines, cardTypes, counts, err := repo.ListDimensions(ctx, liveCardTypes, s.lazySeedDefault())
 	if err != nil {
 		return nil, err
 	}
@@ -188,11 +188,14 @@ func (s *Service) ListCompatibilityDimensions(ctx context.Context, _ *imagev1.Li
 	for _, e := range engines {
 		engineOut = append(engineOut, &imagev1.CompatibilityDimensionEngine{Engine: e.Engine, Accelerator: e.Accelerator})
 	}
-	cardOut := make([]*imagev1.CompatibilityDimensionCardType, 0, len(cardTypes))
+	// in_fleet is derived from the live fleet set, not from the returned
+	// axis, so a card type that left the fleet is flagged in_fleet: false
+	// (AD10) and the grid can render the "not in fleet" marker.
 	inFleet := map[string]bool{}
-	for _, ct := range cardTypes {
+	for _, ct := range liveCardTypes {
 		inFleet[ct.CardType] = true
 	}
+	cardOut := make([]*imagev1.CompatibilityDimensionCardType, 0, len(cardTypes))
 	for _, ct := range cardTypes {
 		cardOut = append(cardOut, &imagev1.CompatibilityDimensionCardType{
 			CardType: ct.CardType,

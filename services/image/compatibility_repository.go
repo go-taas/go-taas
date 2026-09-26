@@ -454,6 +454,14 @@ func (r *CompatibilityRepository) ListCells(ctx context.Context, modelID, engine
 // Section 6.2). The counts cover the full cross product (stored cells
 // unioned with derived cells), consistent with ListCells, so the summary
 // strip reflects the current fleet even before the first-boot seed runs.
+//
+// The card-type axis is the union of the live fleet's card types and the
+// card types present in stored cells (AD10): a card type that left the
+// fleet keeps its curated cells and must remain a grid column so the
+// operator's curation is never silently dropped. Departed card types are
+// returned with an empty vendor (their vendor is not stored) and are
+// flagged in_fleet: false by the service, which derives the flag from the
+// live fleet set.
 func (r *CompatibilityRepository) ListDimensions(ctx context.Context, cardTypes []CardType, lazyDefault string) ([]ModelRow, []EngineDim, []CardType, map[string]int64, error) {
 	models, err := r.listModels(ctx)
 	if err != nil {
@@ -477,18 +485,41 @@ func (r *CompatibilityRepository) ListDimensions(ctx context.Context, cardTypes 
 	for _, ct := range cardTypes {
 		inFleet[ct.CardType] = true
 	}
+	// Build the card-type axis as the union of the live fleet's card
+	// types and the card types present in stored cells (AD10). Departed
+	// card types keep their curated cells and remain grid columns.
+	axis := make([]CardType, 0, len(cardTypes))
+	seen := map[string]bool{}
+	for _, ct := range cardTypes {
+		axis = append(axis, ct)
+		seen[ct.CardType] = true
+	}
+	for _, c := range stored {
+		if !seen[c.CardType] {
+			axis = append(axis, CardType{CardType: c.CardType})
+			seen[c.CardType] = true
+		}
+	}
+	sort.Slice(axis, func(i, j int) bool { return axis[i].CardType < axis[j].CardType })
+
 	// Count the union of stored and derived cells so the summary strip
-	// matches the grid even when the first-boot seed has not run.
+	// matches the grid even when the first-boot seed has not run. A
+	// default cell is only derived for card types still in the fleet (a
+	// departed card type has no vendor to match); departed card types
+	// contribute only their stored cells.
 	byKey := map[string]*CompatibilityCell{}
 	for _, c := range stored {
 		byKey[c.ModelID+"\x00"+c.Engine+"\x00"+c.CardType] = c
 	}
 	for _, m := range models {
 		for _, e := range engines {
-			for _, ct := range cardTypes {
+			for _, ct := range axis {
 				key := m.ID + "\x00" + e.Engine + "\x00" + ct.CardType
 				cell, ok := byKey[key]
 				if !ok {
+					if !inFleet[ct.CardType] {
+						continue
+					}
 					cell = &CompatibilityCell{
 						Status:   defaultStatusFor(e.Accelerator, ct.Vendor, lazyDefault),
 						CardType: ct.CardType,
@@ -501,7 +532,7 @@ func (r *CompatibilityRepository) ListDimensions(ctx context.Context, cardTypes 
 			}
 		}
 	}
-	return models, engines, cardTypes, counts, nil
+	return models, engines, axis, counts, nil
 }
 
 // GetModelCompatibility returns the masked user-realm projection: the
