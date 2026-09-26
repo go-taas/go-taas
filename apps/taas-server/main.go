@@ -169,6 +169,16 @@ func main() {
 			// projection is resolved from the infer module's service
 			// status (AD13).
 			modelSvc.SetAutoscalingProvider(infer.NewModelAutoscalingProvider(gormDB))
+			// Feature #19: the compatibility matrix. The image module
+			// reads the live card-type set from the accelerator
+			// inventory (AD11), the infer module enforces the matrix at
+			// deploy time (AD13), and the model module's masked catalog
+			// gains the compatibility summary (AD12).
+			imageSvc.SetCardTypesProvider(accelerator.NewCardTypesProvider(acceleratorCache))
+			imageSvc.SetCompatibilityLazyDefault(cfg.Image.Compatibility.LazySeedDefault)
+			imageSvc.SetSessionOrgResolver(authSvc)
+			inferSvc.SetCompatibilityChecker(image.NewCompatibilityChecker(imageSvc))
+			modelSvc.SetCompatibilityProvider(image.NewModelCompatibilitySummaryProvider(imageSvc))
 		}
 	}
 	// The SSO session store is Redis-backed (feature #7). Wire it from

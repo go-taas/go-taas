@@ -72,6 +72,26 @@ type AutoscalingProvider interface {
 	ModelAutoscaling(ctx context.Context, orgID, modelID string) (*modelv1.ModelAutoscaling, error)
 }
 
+// CompatibilityProvider resolves the masked compatibility summary for a
+// model (feature #19, AD12). It is implemented by the image module and
+// injected at wiring time, keeping the model module free of an image
+// dependency. Nil until wired: the summary is omitted.
+type CompatibilityProvider interface {
+	// ModelCompatibilitySummary returns a compact string of the model's
+	// supported/experimental engine/card-type combos (e.g. "vLLM ·
+	// A800, H800"), or "" when the model has none.
+	ModelCompatibilitySummary(ctx context.Context, modelID string) (string, error)
+}
+
+// CompatibilityProviderFunc adapts a function to the
+// CompatibilityProvider interface.
+type CompatibilityProviderFunc func(ctx context.Context, modelID string) (string, error)
+
+// ModelCompatibilitySummary implements CompatibilityProvider.
+func (f CompatibilityProviderFunc) ModelCompatibilitySummary(ctx context.Context, modelID string) (string, error) {
+	return f(ctx, modelID)
+}
+
 // Service implements the model registry gRPC service.
 type Service struct {
 	modelv1.UnimplementedModelServiceServer
@@ -103,6 +123,11 @@ type Service struct {
 	// for the user-realm catalog (feature #16, AD13). Nil until wired:
 	// the projection is omitted.
 	autoscalingProvider AutoscalingProvider
+
+	// compatibilityProvider resolves the masked compatibility summary
+	// for the user-realm catalog (feature #19, AD12). Nil until wired:
+	// the summary is omitted.
+	compatibilityProvider CompatibilityProvider
 
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
@@ -162,6 +187,11 @@ func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgReso
 // provider (feature #16, AD13). Production wires the infer module; unit
 // tests may inject a fake.
 func (s *Service) SetAutoscalingProvider(p AutoscalingProvider) { s.autoscalingProvider = p }
+
+// SetCompatibilityProvider injects the masked compatibility summary
+// provider (feature #19, AD12). Production wires the image module; unit
+// tests may inject a fake.
+func (s *Service) SetCompatibilityProvider(p CompatibilityProvider) { s.compatibilityProvider = p }
 
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
@@ -472,6 +502,12 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 				summary.Autoscaling = as
 			}
 		}
+		// Feature #19 (AD12): the masked compatibility summary.
+		if s.compatibilityProvider != nil {
+			if compat, compatErr := s.compatibilityProvider.ModelCompatibilitySummary(ctx, row.ID); compatErr == nil {
+				summary.Compatibility = compat
+			}
+		}
 		models = append(models, summary)
 	}
 	return &modelv1.ListAvailableModelsResponse{
@@ -526,6 +562,12 @@ func (s *Service) GetAvailableModel(ctx context.Context, req *modelv1.GetAvailab
 			return nil, err
 		}
 		summary.Autoscaling = autoscaling
+	}
+	// Feature #19 (AD12): the masked compatibility summary.
+	if s.compatibilityProvider != nil {
+		if compat, compatErr := s.compatibilityProvider.ModelCompatibilitySummary(ctx, found.ID); compatErr == nil {
+			summary.Compatibility = compat
+		}
 	}
 	return &modelv1.GetAvailableModelResponse{
 		Response:    okResponse(),

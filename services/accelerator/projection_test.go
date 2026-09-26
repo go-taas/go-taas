@@ -98,6 +98,30 @@ func TestProjectionCacheReplaceAndGet(t *testing.T) {
 	assert.False(t, ok)
 }
 
+// TestProjectionCacheListCardTypes covers the narrow card-type read the
+// image module consumes for the compatibility matrix (feature #19,
+// AD11): distinct (vendor, card_type) pairs, sorted, omitting zero-
+// allocatable card types.
+func TestProjectionCacheListCardTypes(t *testing.T) {
+	cache := NewProjectionCache()
+	cache.Replace(map[string]*AcceleratorNode{
+		"n1": testNode("n1", "node-1", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535",
+			[]AcceleratorResource{{CardType: "A800", Allocatable: 8, Allocated: 2}}),
+		"n2": testNode("n2", "node-2", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535",
+			[]AcceleratorResource{{CardType: "H800", Allocatable: 4, Allocated: 0}}),
+		"n3": testNode("n3", "node-3", VendorMetax, ReadinessReady, DevicePluginHealthy, "1.0",
+			[]AcceleratorResource{{CardType: "M100", Allocatable: 0, Allocated: 0}}),
+	})
+
+	cardTypes := cache.ListCardTypes()
+	require.Len(t, cardTypes, 2)
+	// Sorted by vendor then card type; M100 (zero allocatable) omitted.
+	assert.Equal(t, "A800", cardTypes[0].CardType)
+	assert.Equal(t, VendorNvidia, cardTypes[0].Vendor)
+	assert.Equal(t, "H800", cardTypes[1].CardType)
+	assert.Equal(t, VendorNvidia, cardTypes[1].Vendor)
+}
+
 func TestProjectionCacheListFiltersAndPagination(t *testing.T) {
 	cache := NewProjectionCache()
 	nodes := map[string]*AcceleratorNode{

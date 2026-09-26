@@ -96,6 +96,16 @@ const (
 	// accelerator inventory is the node/card-type inventory the image
 	// module defers to.
 	CodeAcceleratorNodeNotFound Code = 10208 // ACCELERATOR_NODE_NOT_FOUND
+
+	// Compatibility matrix error codes (feature #19, AD8). They live in
+	// the image block because the matrix is owned by the image module.
+	CodeCompatibilityCellNotFound     Code = 10209 // COMPATIBILITY_CELL_NOT_FOUND
+	CodeCompatibilityStatusInvalid    Code = 10210 // COMPATIBILITY_STATUS_INVALID
+	CodeCompatibilityDimensionInvalid Code = 10211 // COMPATIBILITY_DIMENSION_INVALID
+	// CodeCompatibilityUnsupported is returned by the infer deploy-time
+	// enforcement when a (model, engine, card_type) combination is
+	// unsupported (feature #19, AD13).
+	CodeCompatibilityUnsupported Code = 10212 // COMPATIBILITY_UNSUPPORTED
 )
 
 // infer module error codes.

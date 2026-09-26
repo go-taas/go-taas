@@ -80,6 +80,11 @@ type Service struct {
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
+
+	// compatibilityChecker resolves the compatibility status of a
+	// (model, engine, card_type) combination for deploy-time enforcement
+	// (feature #19, AD13). Nil until wired: no matrix check is applied.
+	compatibilityChecker image.CompatibilityChecker
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -110,6 +115,13 @@ func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgReso
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// SetCompatibilityChecker installs the compatibility matrix checker for
+// deploy-time enforcement (feature #19, AD13). It must be called before
+// serving.
+func (s *Service) SetCompatibilityChecker(c image.CompatibilityChecker) {
+	s.compatibilityChecker = c
+}
 
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.
@@ -316,6 +328,23 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if img.Accelerator != accelerator {
 		return nil, apierrors.New(apierrors.CodeImageIncompatible)
 	}
+	// Feature #19 (AD13): the deploy form consults the compatibility
+	// matrix. An unsupported combination is blocked at deploy time; an
+	// experimental combination deploys with a warning flag on the
+	// response. The check runs before any desired-state write, so a
+	// blocked deploy publishes nothing.
+	compatStatus := ""
+	if s.compatibilityChecker != nil {
+		compatStatus, err = s.compatibilityChecker(ctx, req.GetModelId(), img.Engine, strings.TrimSpace(req.GetAcceleratorType()))
+		if err != nil {
+			return nil, err
+		}
+		if compatStatus == image.StatusUnsupported {
+			return nil, apierrors.Newf(apierrors.CodeCompatibilityUnsupported,
+				"model %s is not supported on engine %s with card type %s; see the compatibility matrix",
+				req.GetModelId(), img.Engine, strings.TrimSpace(req.GetAcceleratorType()))
+		}
+	}
 	// Feature #16: validate the explicit autoscaling policy synchronously
 	// (AD10) before any write or publish.
 	if err := validateAutoscalingPolicy(req.GetAutoscaling()); err != nil {
@@ -389,7 +418,17 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	return &inferv1.CreateInferenceServiceResponse{
 		Response:  okResponse(),
 		ServiceId: svc.ID,
+		Warning:   experimentalWarning(compatStatus),
 	}, nil
+}
+
+// experimentalWarning returns the warning banner text when the deployed
+// combination is experimental, or "" otherwise (feature #19, AD13).
+func experimentalWarning(compatStatus string) string {
+	if compatStatus == image.StatusExperimental {
+		return "This model/engine/card-type combination is experimental and not fully validated."
+	}
+	return ""
 }
 
 // ListInferenceServices returns the inference services of the caller's

@@ -161,6 +161,69 @@ func TestAcceleratorDefaults(t *testing.T) {
 	}
 }
 
+func TestCompatibilityDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Image.Compatibility.LazySeedDefault != "experimental" {
+		t.Fatalf("lazySeedDefault default = %q, want experimental", cfg.Image.Compatibility.LazySeedDefault)
+	}
+	// An explicit lazySeedDefault is preserved.
+	cfg.Image.Compatibility.LazySeedDefault = "supported"
+	cfg.applyDefaults()
+	if cfg.Image.Compatibility.LazySeedDefault != "supported" {
+		t.Fatalf("explicit lazySeedDefault overwritten: %q", cfg.Image.Compatibility.LazySeedDefault)
+	}
+}
+
+func TestParseConfigsCompatibilitySection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+image:
+  compatibility:
+    seedOnBoot: false
+    lazySeedDefault: "unsupported"
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Image.Compatibility.SeedOnBoot {
+		t.Fatal("seedOnBoot should be false from the file")
+	}
+	if cfg.Image.Compatibility.LazySeedDefault != "unsupported" {
+		t.Fatalf("lazySeedDefault = %q, want unsupported", cfg.Image.Compatibility.LazySeedDefault)
+	}
+}
+
+func TestParseConfigsCompatibilitySeedOnBootDefaultsTrue(t *testing.T) {
+	// An absent seedOnBoot key defaults to true (AD3), while an explicit
+	// false is preserved (covered by TestParseConfigsCompatibilitySection).
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if !cfg.Image.Compatibility.SeedOnBoot {
+		t.Fatal("seedOnBoot should default to true when the key is absent")
+	}
+}
+
 func TestLoadDotEnv(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")

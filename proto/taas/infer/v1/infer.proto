@@ -122,6 +122,10 @@ message CreateInferenceServiceRequest {
 message CreateInferenceServiceResponse {
   taas.common.v1.Response response = 1;
   string service_id = 2;
+  // warning is set when the deployed (model, engine, card_type)
+  // combination is experimental (feature #19, AD13): the deploy
+  // succeeds but the console renders a warning banner.
+  string warning = 3;
 }
 
 message ListInferenceServicesRequest {

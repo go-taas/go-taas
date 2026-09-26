@@ -185,6 +185,8 @@ export interface AvailableModel {
   latestVersion: string;
   // Feature #16 read-only autoscaling projection.
   autoscaling?: ModelAutoscaling;
+  // Feature #19 masked compatibility summary (e.g. "vLLM · A800, H800").
+  compatibility?: string;
 }
 
 export interface InferenceServiceSummary {

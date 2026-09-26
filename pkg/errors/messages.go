@@ -67,6 +67,11 @@ var messages = map[Code]string{
 	CodeImageWarmupFailed:  "image warmup failed",
 	// CodeAcceleratorNodeNotFound (feature #18, AD6).
 	CodeAcceleratorNodeNotFound: "accelerator node not found",
+	// Compatibility matrix (feature #19, AD8).
+	CodeCompatibilityCellNotFound:     "compatibility cell not found",
+	CodeCompatibilityStatusInvalid:    "compatibility status invalid",
+	CodeCompatibilityDimensionInvalid: "compatibility dimension invalid",
+	CodeCompatibilityUnsupported:      "compatibility combination unsupported",
 
 	// infer
 	CodeInferServiceNotFound:     "inference service not found",

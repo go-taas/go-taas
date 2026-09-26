@@ -73,6 +73,52 @@ service ImageService {
   rpc GetWarmupTask(GetWarmupTaskRequest) returns (GetWarmupTaskResponse) {
     option (google.api.http) = {get: "/api/v1/admin/warmup-tasks/{task_id}"};
   }
+
+  // ListCompatibilityMatrix returns matrix cells with model/engine/card/
+  // status filters, model-name search, and pagination.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListCompatibilityMatrix(ListCompatibilityMatrixRequest) returns (ListCompatibilityMatrixResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/compatibility"};
+  }
+
+  // ListCompatibilityDimensions returns the three axis lists (models,
+  // engines, card types + vendors) and the per-status counts.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListCompatibilityDimensions(ListCompatibilityDimensionsRequest) returns (ListCompatibilityDimensionsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/compatibility/dimensions"};
+  }
+
+  // GetCompatibilityCell returns one cell; a missing cell returns 10209.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetCompatibilityCell(GetCompatibilityCellRequest) returns (GetCompatibilityCellResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/compatibility/{model_id}/{engine}/{card_type}"};
+  }
+
+  // SetCompatibilityStatus sets a cell's status and optional note.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc SetCompatibilityStatus(SetCompatibilityStatusRequest) returns (SetCompatibilityStatusResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/compatibility/{model_id}/{engine}/{card_type}"
+      body: "*"
+    };
+  }
+
+  // BulkSetCompatibilityStatus sets the same status and note for a list
+  // of cells atomically (all-or-nothing).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc BulkSetCompatibilityStatus(BulkSetCompatibilityStatusRequest) returns (BulkSetCompatibilityStatusResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/compatibility:bulk"
+      body: "*"
+    };
+  }
+
+  // GetModelCompatibility returns the masked user-realm projection: the
+  // model's supported/experimental engines and card types. Unsupported
+  // combos are hidden. User-surface API: served under /api/v1.
+  rpc GetModelCompatibility(GetModelCompatibilityRequest) returns (GetModelCompatibilityResponse) {
+    option (google.api.http) = {get: "/api/v1/models/{model_id}/compatibility"};
+  }
 }
 
 message RegisterImageRequest {
@@ -205,4 +251,113 @@ message GetWarmupTaskRequest {
 message GetWarmupTaskResponse {
   taas.common.v1.Response response = 1;
   WarmupTaskSummary task = 2;
+}
+
+// ---- Compatibility matrix (feature #19) ----
+
+message CompatibilityCell {
+  string model_id = 1;
+  string model_name = 2;
+  string engine = 3;
+  string card_type = 4;
+  string card_vendor = 5;
+  string status = 6; // supported | experimental | unsupported
+  string note = 7;
+  bool not_in_fleet = 8;
+  int64 updated_at = 9;
+}
+
+message ListCompatibilityMatrixRequest {
+  taas.common.v1.PageRequest page = 1;
+  string model_id = 2;
+  string engine = 3;
+  string card_type = 4;
+  string status = 5;
+  string search = 6; // model-name substring
+}
+message ListCompatibilityMatrixResponse {
+  taas.common.v1.Response response = 1;
+  repeated CompatibilityCell cells = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message CompatibilityDimensionModel {
+  string model_id = 1;
+  string model_name = 2;
+}
+message CompatibilityDimensionEngine {
+  string engine = 1;
+  string accelerator = 2;
+}
+message CompatibilityDimensionCardType {
+  string card_type = 1;
+  string vendor = 2;
+  bool in_fleet = 3;
+}
+message CompatibilityStatusCounts {
+  int64 supported = 1;
+  int64 experimental = 2;
+  int64 unsupported = 3;
+  int64 not_in_fleet = 4;
+}
+message ListCompatibilityDimensionsRequest {}
+message ListCompatibilityDimensionsResponse {
+  taas.common.v1.Response response = 1;
+  repeated CompatibilityDimensionModel models = 2;
+  repeated CompatibilityDimensionEngine engines = 3;
+  repeated CompatibilityDimensionCardType card_types = 4;
+  CompatibilityStatusCounts status_counts = 5;
+}
+
+message GetCompatibilityCellRequest {
+  string model_id = 1; // path
+  string engine = 2; // path
+  string card_type = 3; // path
+}
+message GetCompatibilityCellResponse {
+  taas.common.v1.Response response = 1;
+  CompatibilityCell cell = 2;
+}
+
+message SetCompatibilityStatusRequest {
+  string model_id = 1; // path
+  string engine = 2; // path
+  string card_type = 3; // path
+  string status = 4;
+  string note = 5; // <= 512 chars
+}
+message SetCompatibilityStatusResponse {
+  taas.common.v1.Response response = 1;
+  CompatibilityCell cell = 2;
+}
+
+message CompatibilityCellRef {
+  string model_id = 1;
+  string engine = 2;
+  string card_type = 3;
+}
+message BulkSetCompatibilityStatusRequest {
+  repeated CompatibilityCellRef cells = 1;
+  string status = 2;
+  string note = 3; // <= 512 chars
+}
+message BulkSetCompatibilityStatusResponse {
+  taas.common.v1.Response response = 1;
+  int64 updated = 2;
+}
+
+message GetModelCompatibilityRequest {
+  string model_id = 1; // path
+}
+message ModelCompatibilityEntry {
+  string engine = 1;
+  string card_type = 2;
+  string card_vendor = 3;
+  string status = 4; // supported | experimental (masked)
+}
+message GetModelCompatibilityResponse {
+  taas.common.v1.Response response = 1;
+  repeated ModelCompatibilityEntry entries = 2;
+  int64 supported_count = 3;
+  int64 experimental_count = 4;
 }

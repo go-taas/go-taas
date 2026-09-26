@@ -189,6 +189,11 @@ message AvailableModel {
   // autoscaling is the read-only autoscaling projection (feature #16,
   // AD13). Nil when the model is not autoscaled.
   ModelAutoscaling autoscaling = 4;
+  // compatibility is the masked compatibility summary (feature #19,
+  // AD12): a compact string of the model's supported/experimental
+  // engine/card-type combos (e.g. "vLLM · A800, H800"). Empty when the
+  // model has no supported/experimental combos.
+  string compatibility = 5;
 }
 message ListAvailableModelsResponse {
   taas.common.v1.Response response = 1;

@@ -12,6 +12,7 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/metadata"
 	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
@@ -24,6 +25,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/audit"
+	"github.com/go-taas/go-taas/services/model"
 )
 
 // ServiceName is the unique name of this service.
@@ -39,6 +41,36 @@ type DeleteGuard func(ctx context.Context, imageID string) error
 // the image module stays free of an infer dependency.
 type InUseProvider func(ctx context.Context, imageID string) ([]*imagev1.InUseService, error)
 
+// SessionOrgResolver resolves the session's active organization
+// (feature #19, AD7). It is implemented by the auth module and injected
+// at wiring time. Nil until wired: the transitional X-Organization-Id
+// header is used.
+type SessionOrgResolver interface {
+	// SessionActiveOrg returns the session's active organization, or
+	// ("", nil) when no session is present (transitional access).
+	SessionActiveOrg(ctx context.Context) (string, error)
+}
+
+// organizationMetadataKey is the gRPC metadata key carrying the
+// transitional caller organization (set by the gateway from the
+// X-Organization-Id header).
+const organizationMetadataKey = "x-organization-id"
+
+// resolveOrganizationID reads the transitional caller organization from
+// the x-organization-id gRPC metadata. Missing or empty values are
+// unauthorized.
+func resolveOrganizationID(ctx context.Context) (string, error) {
+	md, ok := metadata.FromIncomingContext(ctx)
+	if !ok {
+		return "", errors.New(errors.CodeUnauthorized)
+	}
+	values := md.Get(organizationMetadataKey)
+	if len(values) == 0 || strings.TrimSpace(values[0]) == "" {
+		return "", errors.New(errors.CodeUnauthorized)
+	}
+	return strings.TrimSpace(values[0]), nil
+}
+
 // Service implements the image registry gRPC service.
 type Service struct {
 	imagev1.UnimplementedImageServiceServer
@@ -49,6 +81,29 @@ type Service struct {
 	// production resolves them lazily from the shared components.
 	repo  *Repository
 	tasks *WarmupTaskRepository
+
+	// compatRepo is the compatibility matrix repository (feature #19).
+	// Production resolves it lazily from the shared components; tests
+	// and FVT inject it directly.
+	compatRepo *CompatibilityRepository
+
+	// cardTypesProvider returns the live card-type set from the
+	// accelerator inventory (feature #19, AD11). Nil until wired: the
+	// card-type axis is empty.
+	cardTypesProvider CardTypesProvider
+
+	// compatLazyDefault is the configured lazy-seed default status
+	// (feature #19, AD3). Empty falls back to experimental.
+	compatLazyDefault string
+
+	// modelRepo is the model repository used by the user-realm masked
+	// projection (feature #19, AD7). Production resolves it lazily.
+	modelRepo *model.Repository
+
+	// sessionOrgResolver resolves the session's active organization for
+	// the user-realm masked projection (feature #19, AD7). Nil until
+	// wired: the transitional X-Organization-Id header is used.
+	sessionOrgResolver SessionOrgResolver
 
 	// publisher is the optional direct MQ client injection point used
 	// by FVT; production resolves the client from the components.
@@ -111,11 +166,85 @@ func (s *Service) SetInUseProvider(provider InUseProvider) {
 	s.inUse = provider
 }
 
+// SetCardTypesProvider installs the live card-type provider from the
+// accelerator inventory (feature #19, AD11). It must be called before
+// serving.
+func (s *Service) SetCardTypesProvider(p CardTypesProvider) {
+	s.cardTypesProvider = p
+}
+
+// SetCompatibilityLazyDefault sets the lazy-seed default status
+// (feature #19, AD3). Empty falls back to experimental.
+func (s *Service) SetCompatibilityLazyDefault(v string) {
+	s.compatLazyDefault = v
+}
+
+// SetModelRepository injects the model repository used by the user-realm
+// masked projection (feature #19, AD7). Production resolves it lazily
+// from the shared components; tests and FVT inject it directly.
+func (s *Service) SetModelRepository(r *model.Repository) {
+	s.modelRepo = r
+}
+
+// SetSessionOrgResolver injects the session-organization resolver used
+// by the user-realm masked projection (feature #19, AD7). Production
+// wires the auth service; unit tests may inject a fake.
+func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) {
+	s.sessionOrgResolver = r
+}
+
+// compatibilityRepository lazily wires and returns the compatibility
+// matrix repository.
+func (s *Service) compatibilityRepository() (*CompatibilityRepository, error) {
+	if s.compatRepo != nil {
+		return s.compatRepo, nil
+	}
+	db, err := s.gormDB()
+	if err != nil {
+		return nil, err
+	}
+	s.compatRepo = NewCompatibilityRepository(db)
+	return s.compatRepo, nil
+}
+
+// modelRepository lazily wires and returns the model repository.
+func (s *Service) modelRepository() (*model.Repository, error) {
+	if s.modelRepo != nil {
+		return s.modelRepo, nil
+	}
+	db, err := s.gormDB()
+	if err != nil {
+		return nil, err
+	}
+	s.modelRepo = model.NewRepository(db)
+	return s.modelRepo, nil
+}
+
+// resolveOrg returns the organization context for the user-realm masked
+// projection (feature #19, AD7): the session's active org when a session
+// is present, otherwise the transitional X-Organization-Id header.
+func (s *Service) resolveOrg(ctx context.Context) (string, error) {
+	if s.sessionOrgResolver != nil {
+		if org, err := s.sessionOrgResolver.SessionActiveOrg(ctx); err != nil {
+			return "", err
+		} else if org != "" {
+			return org, nil
+		}
+	}
+	return resolveOrganizationID(ctx)
+}
+
 // NewForFVT constructs an image service bound to a caller-provided GORM
 // database and MQ client. It exists so full-verification tests can
 // wire the real service stack against a disposable database and bus.
 func NewForFVT(db *gorm.DB, publisher mq.Client) *Service {
-	svc := &Service{repo: NewRepository(db), tasks: NewWarmupTaskRepository(db), publisher: publisher}
+	svc := &Service{
+		repo:       NewRepository(db),
+		tasks:      NewWarmupTaskRepository(db),
+		compatRepo: NewCompatibilityRepository(db),
+		modelRepo:  model.NewRepository(db),
+		publisher:  publisher,
+	}
 	wireRegistry(db)
 	return svc
 }
@@ -134,10 +263,11 @@ func NewWarmupTasksForNodeProvider(db *gorm.DB) WarmupTasksForNodeProvider {
 	return NewWarmupTaskRepository(db)
 }
 
-// MigrateSchemaForFVT applies the image schema (images, warmup_tasks)
-// onto a caller-provided database for full-verification tests.
+// MigrateSchemaForFVT applies the image schema (images, warmup_tasks,
+// compatibility_cells) onto a caller-provided database for
+// full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Image{}, &WarmupTask{}); err != nil {
+	if err := db.AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}); err != nil {
 		return err
 	}
 	return db.Exec(oneActivePartialIndex).Error
@@ -166,7 +296,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Image{}, &WarmupTask{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}); err != nil {
 		return err
 	}
 	if err := db.WithContext(ctx).Exec(oneActivePartialIndex).Error; err != nil {
@@ -186,16 +316,44 @@ func (s *Service) Migrate(ctx context.Context) error {
 	}
 	if count > 0 {
 		logger.S().Infow("image: table non-empty, skipping first-boot seed", "rows", count)
-		return nil
+	} else {
+		cfg := config.GetConfig()
+		if cfg != nil && len(cfg.Image.Registry) > 0 {
+			if err := repo.SeedFromConfig(ctx, cfg.Image.Registry); err != nil {
+				return fmt.Errorf("image: first-boot seed failed: %w", err)
+			}
+			logger.S().Infow("image: first-boot seed complete", "seeded", len(cfg.Image.Registry))
+		}
 	}
+
+	// Feature #19: the compatibility matrix first-boot seed (AD3). It
+	// runs when the compatibility_cells table is empty and the
+	// compatibility.seedOnBoot config is enabled.
+	return s.seedCompatibility(ctx)
+}
+
+// seedCompatibility runs the compatibility matrix first-boot seed when
+// the table is empty and seedOnBoot is enabled (feature #19, AD3).
+func (s *Service) seedCompatibility(ctx context.Context) error {
 	cfg := config.GetConfig()
-	if cfg == nil || len(cfg.Image.Registry) == 0 {
+	if cfg != nil && !cfg.Image.Compatibility.SeedOnBoot {
 		return nil
 	}
-	if err := repo.SeedFromConfig(ctx, cfg.Image.Registry); err != nil {
-		return fmt.Errorf("image: first-boot seed failed: %w", err)
+	repo, err := s.compatibilityRepository()
+	if err != nil {
+		return err
 	}
-	logger.S().Infow("image: first-boot seed complete", "seeded", len(cfg.Image.Registry))
+	cardTypes, err := s.cardTypes()
+	if err != nil {
+		return err
+	}
+	seeded, err := repo.SeedIfEmpty(ctx, cardTypes, s.lazySeedDefault())
+	if err != nil {
+		return fmt.Errorf("image: compatibility first-boot seed failed: %w", err)
+	}
+	if seeded > 0 {
+		logger.S().Infow("image: compatibility matrix first-boot seed complete", "seeded", seeded)
+	}
 	return nil
 }
 

@@ -325,6 +325,22 @@ type ImageConfig struct {
 	Registry []ImageRegistryEntry `mapstructure:"registry"`
 	// WarmupStatusConsumer configures the warmup status Runner.
 	WarmupStatusConsumer ImageWarmupStatusConsumerConfig `mapstructure:"warmupStatusConsumer"`
+	// Compatibility configures the model × engine × card-type
+	// compatibility matrix (feature #19, AD3).
+	Compatibility CompatibilityConfig `mapstructure:"compatibility"`
+}
+
+// CompatibilityConfig holds the compatibility matrix settings (feature
+// #19, AD3).
+type CompatibilityConfig struct {
+	// SeedOnBoot seeds the compatibility_cells table on first boot when
+	// it is empty (AD3). Disable to skip the first-boot seed entirely.
+	SeedOnBoot bool `mapstructure:"seedOnBoot"`
+	// LazySeedDefault is the default status applied to a lazily-created
+	// cell (AD3). It is overridden by the vendor-match rule: vendor-
+	// matched combos default to experimental, vendor-mismatched to
+	// unsupported.
+	LazySeedDefault string `mapstructure:"lazySeedDefault"`
 }
 
 // AcceleratorSnapshotConsumerConfig holds the accelerator snapshot

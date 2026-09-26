@@ -40,6 +40,7 @@ import AuditLogsPage from './pages/AuditLogsPage';
 import AutoscalingPage from './pages/AutoscalingPage';
 import AcceleratorsPage from './pages/AcceleratorsPage';
 import AcceleratorNodeDetailPage from './pages/AcceleratorNodeDetailPage';
+import CompatibilityPage from './pages/CompatibilityPage';
 import ActivityPage from './pages/user/ActivityPage';
 import NotFoundPage from './pages/NotFoundPage';
 
@@ -124,6 +125,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/autoscaling" element={<AutoscalingPage />} />
               <Route path="/admin/accelerators" element={<AcceleratorsPage />} />
               <Route path="/admin/accelerators/:nodeId" element={<AcceleratorNodeDetailPage />} />
+              <Route path="/admin/compatibility" element={<CompatibilityPage />} />
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>

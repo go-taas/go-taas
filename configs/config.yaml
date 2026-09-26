@@ -164,6 +164,16 @@ image:
   warmupStatusConsumer:
     enabled: true
     workers: 2
+  # compatibility configures the model × engine × card-type matrix
+  # (feature #19, AD3).
+  compatibility:
+    # seedOnBoot seeds the compatibility_cells table on first boot when
+    # it is empty. Disable to skip the first-boot seed entirely.
+    seedOnBoot: true
+    # lazySeedDefault is the default status applied to a lazily-created
+    # cell. It is overridden by the vendor-match rule: vendor-matched
+    # combos default to experimental, vendor-mismatched to unsupported.
+    lazySeedDefault: "experimental"
 
 accelerator:
   # collectInterval is the Controller's node/GPU collection period; the

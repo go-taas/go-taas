@@ -57,6 +57,13 @@ func ParseConfigs(pathPattern string) {
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.SetEnvPrefix("CONFIG")
 
+	// Feature #19: the compatibility matrix seeds on first boot by
+	// default (AD3). The default is applied here (not in applyDefaults)
+	// so an explicit `seedOnBoot: false` in a config file or a
+	// CONFIG_IMAGE_COMPATIBILITY_SEEDONBOOT=false override is preserved,
+	// while an absent key still defaults to true.
+	v.SetDefault("image.compatibility.seedOnBoot", true)
+
 	for _, configFile := range matches {
 		// Skip hidden files such as editor backups.
 		if strings.HasPrefix(filepath.Base(configFile), ".") {
@@ -107,6 +114,13 @@ func (c *Configuration) applyDefaults() {
 	}
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2
+	}
+	// Feature #19: the compatibility matrix defaults. seedOnBoot is true
+	// by default; lazySeedDefault is "experimental" (the vendor-match
+	// rule's experimental branch; the unsupported branch is always
+	// unsupported regardless of this value).
+	if c.Image.Compatibility.LazySeedDefault == "" {
+		c.Image.Compatibility.LazySeedDefault = "experimental"
 	}
 	if c.Accelerator.CollectInterval == 0 {
 		c.Accelerator.CollectInterval = 30 * time.Second
