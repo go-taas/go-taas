@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/go-taas/go-taas/compare/v1.16.1...v1.17.0) (2026-09-26)
+
+
+### Features
+
+* **auth:** resolve OIDC endpoints via discovery for Keycloak ([4d1ee5d](https://github.com/go-taas/go-taas/commit/4d1ee5d09d95bc800ada166254d233a5fd0365f5))
+
 ## [1.16.1](https://github.com/go-taas/go-taas/compare/v1.16.0...v1.16.1) (2026-09-26)
 
 
