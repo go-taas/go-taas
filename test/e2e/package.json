@@ -21,7 +21,8 @@
     "test:console-surfaces": "nightwatch --tag console-surfaces",
     "test:payments-invoices": "nightwatch --tag payments-invoices",
     "test:audit-logging": "nightwatch --tag audit-logging",
-    "test:inference-autoscaling": "nightwatch --tag inference-autoscaling"
+    "test:inference-autoscaling": "nightwatch --tag inference-autoscaling",
+    "test:accelerator-inventory": "nightwatch --tag accelerator-inventory"
   },
   "license": "Apache-2.0",
   "devDependencies": {

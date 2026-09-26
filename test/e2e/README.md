@@ -16,6 +16,7 @@ against the local docker compose stack.
 | Payments, invoices & auto-recharge | feature-14 `payments-invoices-auto-recharge` | `tests/paymentsInvoices.js` |
 | Audit logging & activity export | feature-15 `audit-logging` | `tests/auditLogging.js` |
 | Inference autoscaling & scale-to-zero | feature-16 `inference-autoscaling` | `tests/inferenceAutoscaling.js` |
+| Accelerator inventory & health | feature-18 `accelerator-inventory` | `tests/acceleratorInventory.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md` and
