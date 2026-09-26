@@ -1,3 +1,18 @@
+# [1.20.0](https://github.com/go-taas/go-taas/compare/v1.19.0...v1.20.0) (2026-09-26)
+
+
+### Bug Fixes
+
+* **infer:** create load_tests in Migrate and index it by model+state ([f421ae8](https://github.com/go-taas/go-taas/commit/f421ae89383a5729b4588d9e4e67468ac01186ea))
+* **infer:** guard malformed identifiers in load-test lookups ([2b6875a](https://github.com/go-taas/go-taas/commit/2b6875a3b52a1f67672653a60b6b89bf2ff7d245))
+* **infer:** return 10311 for an unknown load-test target ([94fd8a3](https://github.com/go-taas/go-taas/commit/94fd8a3388cd1394d046793b93d4c2b74f674696))
+
+
+### Features
+
+* **infer:** add inference load testing with async runner ([82ee1f7](https://github.com/go-taas/go-taas/commit/82ee1f7eb23a2c57ffe7c5dd9d25f73c8b0c75b0))
+* **web:** add load testing pages on both console surfaces ([74f4e3d](https://github.com/go-taas/go-taas/commit/74f4e3d8433d2fb7d5a047b8f2005660605cb0a0))
+
 # [1.19.0](https://github.com/go-taas/go-taas/compare/v1.18.1...v1.19.0) (2026-09-26)
 
 
