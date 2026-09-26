@@ -74,6 +74,15 @@ service InferServiceService {
     };
   }
 
+  // GetInferenceEndpoint returns the tenant-facing inference base URL
+  // ("<inference-gateway>/v1") from server configuration. It is never
+  // a client constant. Requires no organization context; a missing
+  // configuration returns the standard internal error.
+  // User-surface API: served under /api/v1.
+  rpc GetInferenceEndpoint(GetInferenceEndpointRequest) returns (GetInferenceEndpointResponse) {
+    option (google.api.http) = {get: "/api/v1/inference-endpoint"};
+  }
+
   // GetAutoscalingPolicy returns the global default autoscaling policy
   // applied to new inference services (feature #16, FR1.4).
   // Admin-surface API: served under /api/v1/admin.
@@ -282,6 +291,16 @@ message PlaygroundModelResponse {
   int64 prompt_tokens = 4;
   int64 completion_tokens = 5;
   int64 latency_ms = 6;
+}
+
+message GetInferenceEndpointRequest {}
+
+message GetInferenceEndpointResponse {
+  taas.common.v1.Response response = 1;
+  // base_url is the OpenAI-compatible inference base URL, e.g.
+  // "https://infer.example.com/v1". The tenant appends
+  // "/chat/completions" to reach the completion endpoint.
+  string base_url = 2;
 }
 
 // AutoscalingPolicy is the six-field autoscaling policy (feature #16,

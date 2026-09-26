@@ -10,6 +10,7 @@ import { isAdminPath, MOVED_ADMIN_ROUTES, realmHome } from './surface-routes';
 import { UserShell } from './shells/UserShell';
 import { AdminShell } from './shells/AdminShell';
 import UserLoginPage from './pages/user/UserLoginPage';
+import UserQuickstartPage from './pages/user/QuickstartPage';
 import UserUsagePage from './pages/user/UsagePage';
 import UserApiKeysPage from './pages/user/ApiKeysPage';
 import UserRequestLogsPage from './pages/user/RequestLogsPage';
@@ -79,6 +80,7 @@ function UserSurface({ path }: { path: string }) {
         ) : (
           <UserShell>
             <Routes>
+              <Route path="/quickstart" element={<UserQuickstartPage />} />
               <Route path="/usage" element={<UserUsagePage />} />
               <Route path="/api-keys" element={<UserApiKeysPage />} />
               <Route path="/request-logs" element={<UserRequestLogsPage />} />

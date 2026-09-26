@@ -91,6 +91,10 @@ services:
       CONFIG_DB_MASTER_HOST: postgres
       CONFIG_REDIS_HOST: redis
       CONFIG_MQ_URL: nats://nats:4222
+      # Feature #21 (SDK/Quickstart): the inference gateway's public base
+      # URL. The quickstart page reads it via GET /api/v1/inference-endpoint
+      # and derives the OpenAI-compatible base URL (<base>/v1).
+      CONFIG_INFER_ENDPOINTBASEURL: https://infer.example.com
     ports:
       - "9090:9090" # gRPC
       - "9091:9091" # gateway (HTTP/JSON)

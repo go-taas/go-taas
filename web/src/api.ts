@@ -428,6 +428,13 @@ export interface PlaygroundInferResponse {
   latencyMs: string;
 }
 
+// ---- inference endpoint (feature #21, SDK / Quickstart) ----
+
+export interface InferenceEndpointResponse {
+  response: { code: number; message: string };
+  baseUrl: string;
+}
+
 // ---- billing balance (feature #8, reused by the widget) ----
 
 export interface BalanceResponse {

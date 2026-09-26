@@ -11,6 +11,7 @@ import {
   Receipt,
   Pulse,
   Cube,
+  Rocket,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -20,6 +21,7 @@ import { realmLoginPath } from '../surface-routes';
 import { OrgSwitcher } from '../org';
 
 export const USER_NAV_ITEMS: { path: string; label: string; testid: string; icon: Icon }[] = [
+  { path: '/quickstart', label: 'Quickstart', testid: 'user-nav-quickstart', icon: Rocket },
   { path: '/usage', label: 'Usage', testid: 'user-nav-usage', icon: ChartLine },
   { path: '/api-keys', label: 'API Keys', testid: 'user-nav-api-keys', icon: Key },
   { path: '/request-logs', label: 'Request Logs', testid: 'user-nav-request-logs', icon: ListMagnifyingGlass },
