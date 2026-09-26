@@ -119,7 +119,7 @@ const (
 	CodeAutoscalingPolicyInvalid Code = 10307 // AUTOSCALING_POLICY_INVALID
 
 	// Load-testing error codes (feature #20, AD8).
-	CodeLoadTestNotFound     Code = 10308 // LOAD_TEST_NOT_FOUND
+	CodeLoadTestNotFound      Code = 10308 // LOAD_TEST_NOT_FOUND
 	CodeLoadTestConfigInvalid Code = 10309 // LOAD_TEST_CONFIG_INVALID
 	CodeLoadTestStateInvalid  Code = 10310 // LOAD_TEST_STATE_INVALID
 	CodeLoadTestTargetInvalid Code = 10311 // LOAD_TEST_TARGET_INVALID

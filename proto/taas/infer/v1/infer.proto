@@ -353,24 +353,24 @@ message UpdateInferenceServiceAutoscalingResponse {
 
 message CreateLoadTestRequest {
   string service_id = 1;
-  int32 concurrency = 2;        // 1-1000, default 1
-  int32 duration_seconds = 3;   // 5-3600, default 60
-  int32 request_rate = 4;       // 0-10000, 0 = unlimited, default 0
-  string prompt_template = 5;   // required, <= 4096 chars
-  int32 max_tokens = 6;         // 1-8192, default 256
+  int32 concurrency = 2; // 1-1000, default 1
+  int32 duration_seconds = 3; // 5-3600, default 60
+  int32 request_rate = 4; // 0-10000, 0 = unlimited, default 0
+  string prompt_template = 5; // required, <= 4096 chars
+  int32 max_tokens = 6; // 1-8192, default 256
 }
 message CreateLoadTestResponse {
   taas.common.v1.Response response = 1;
   string load_test_id = 2;
-  string state = 3;             // pending
+  string state = 3; // pending
 }
 
 message ListLoadTestsRequest {
   taas.common.v1.PageRequest page = 1;
   string service_id = 2;
-  string status = 3;            // pending|running|completed|failed|stopped
+  string status = 3; // pending|running|completed|failed|stopped
   string model_id = 4;
-  string search = 5;            // service-name substring
+  string search = 5; // service-name substring
 }
 message ListLoadTestsResponse {
   taas.common.v1.Response response = 1;
@@ -387,7 +387,7 @@ message LoadTestSummary {
   int32 concurrency = 6;
   int32 duration_seconds = 7;
   int32 request_rate = 8;
-  string state = 9;             // pending|running|completed|failed|stopped
+  string state = 9; // pending|running|completed|failed|stopped
   int64 started_at = 10;
   int64 completed_at = 11;
   // Result summary, populated when completed.
@@ -398,7 +398,7 @@ message LoadTestSummary {
 }
 
 message GetLoadTestRequest {
-  string load_test_id = 1;      // path
+  string load_test_id = 1; // path
 }
 message LoadTestProgress {
   int64 requests_sent = 1;
@@ -425,28 +425,28 @@ message GetLoadTestResponse {
   LoadTestSummary summary = 2;
   string prompt_template = 3;
   int32 max_tokens = 4;
-  LoadTestProgress progress = 5;   // live while pending/running
-  LoadTestResult result = 6;       // full when completed
-  string failure_reason = 7;       // when failed
+  LoadTestProgress progress = 5; // live while pending/running
+  LoadTestResult result = 6; // full when completed
+  string failure_reason = 7; // when failed
 }
 
 message StopLoadTestRequest {
-  string load_test_id = 1;      // path
+  string load_test_id = 1; // path
 }
 message StopLoadTestResponse {
   taas.common.v1.Response response = 1;
-  string state = 2;             // stopped
+  string state = 2; // stopped
 }
 
 message DeleteLoadTestRequest {
-  string load_test_id = 1;      // path
+  string load_test_id = 1; // path
 }
 message DeleteLoadTestResponse {
   taas.common.v1.Response response = 1;
 }
 
 message GetModelLoadTestsRequest {
-  string model_id = 1;          // path
+  string model_id = 1; // path
 }
 message ModelLoadTestResult {
   double throughput_rps = 1;
@@ -459,5 +459,5 @@ message ModelLoadTestResult {
 }
 message GetModelLoadTestsResponse {
   taas.common.v1.Response response = 1;
-  repeated ModelLoadTestResult results = 2;   // most recent completed first
+  repeated ModelLoadTestResult results = 2; // most recent completed first
 }
