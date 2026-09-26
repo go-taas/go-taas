@@ -1,3 +1,10 @@
+# [1.22.0](https://github.com/go-taas/go-taas/compare/v1.21.0...v1.22.0) (2026-09-26)
+
+
+### Features
+
+* **infer:** add SDK quickstart inference endpoint and page ([a6e4a99](https://github.com/go-taas/go-taas/commit/a6e4a99b3b65eb8f91c15662a6ec291232432d32)), closes [#21](https://github.com/go-taas/go-taas/issues/21)
+
 # [1.21.0](https://github.com/go-taas/go-taas/compare/v1.20.0...v1.21.0) (2026-09-26)
 
 
