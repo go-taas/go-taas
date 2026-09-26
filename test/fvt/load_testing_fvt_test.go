@@ -259,12 +259,13 @@ func TestFVTLoadTestLifecycle(t *testing.T) {
 func TestFVTLoadTestValidation(t *testing.T) {
 	env := newLoadTestEnv(t, chatHandler())
 
-	// Unknown service → 10301 (the target lookup fails first).
+	// Unknown service → 10311 (AD4: unknown and non-running targets share
+	// one "invalid target" outcome).
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/load-tests", map[string]any{
 		"service_id": "missing", "prompt_template": "hi", "duration_seconds": 5,
 	})
 	assert.NotEqual(t, http.StatusOK, code)
-	assert.EqualValues(t, 10301, body["code"], "unknown target service: %v", body)
+	assert.EqualValues(t, 10311, body["code"], "unknown target service: %v", body)
 
 	// Invalid config → 10309.
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/load-tests", map[string]any{

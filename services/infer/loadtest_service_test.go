@@ -220,7 +220,7 @@ func TestMalformedIdentifiersMapToNotFound(t *testing.T) {
 	_, err = svc.CreateLoadTest(ctx, &inferv1.CreateLoadTestRequest{
 		ServiceId: "not-a-uuid", PromptTemplate: "hi", DurationSeconds: 5,
 	})
-	requireErrorCode(t, err, apierrors.CodeInferServiceNotFound)
+	requireErrorCode(t, err, apierrors.CodeLoadTestTargetInvalid)
 
 	_, err = svc.GetModelLoadTests(orgContext("org-a"), &inferv1.GetModelLoadTestsRequest{ModelId: "not-a-uuid"})
 	requireErrorCode(t, err, apierrors.CodeModelNotFound)
@@ -316,44 +316,34 @@ func TestCreateLoadTestTargetInvalid(t *testing.T) {
 	ctx := context.Background()
 	modelID := seedModel(t, db, "qwen", "v1")
 
-	// Unknown service id → 10301 (the target lookup fails first).
+	// Unknown service id → 10311 (AD4: a missing target is as unusable as
+	// a non-running one).
 	_, err := svc.CreateLoadTest(ctx, &inferv1.CreateLoadTestRequest{
 		ServiceId: "missing", PromptTemplate: "hi", DurationSeconds: 5,
 	})
-	require.Error(t, err)
-	ae, ok := apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeInferServiceNotFound, ae.Code)
+	requireErrorCode(t, err, apierrors.CodeLoadTestTargetInvalid)
+
+	repo := NewInferenceServiceRepository(db)
 
 	// A non-running service → 10311.
-	repo := NewInferenceServiceRepository(db)
 	pending := seedService(t, repo, "org-a", "svc-pending", StatePending, time.Now().UTC())
 	_, err = svc.CreateLoadTest(ctx, &inferv1.CreateLoadTestRequest{
 		ServiceId: pending.ID, PromptTemplate: "hi", DurationSeconds: 5,
 	})
-	require.Error(t, err)
-	ae, ok = apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeLoadTestTargetInvalid, ae.Code)
+	requireErrorCode(t, err, apierrors.CodeLoadTestTargetInvalid)
 
 	// A running service with no endpoint → 10311.
 	noEndpoint := seedService(t, repo, "org-a", "svc-no-endpoint", StateRunning, time.Now().UTC())
 	_, err = svc.CreateLoadTest(ctx, &inferv1.CreateLoadTestRequest{
 		ServiceId: noEndpoint.ID, PromptTemplate: "hi", DurationSeconds: 5,
 	})
-	require.Error(t, err)
-	ae, ok = apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeLoadTestTargetInvalid, ae.Code)
+	requireErrorCode(t, err, apierrors.CodeLoadTestTargetInvalid)
 
 	// An invalid config → 10309 (checked before the target).
 	_, err = svc.CreateLoadTest(ctx, &inferv1.CreateLoadTestRequest{
 		ServiceId: noEndpoint.ID, PromptTemplate: "", DurationSeconds: 5,
 	})
-	require.Error(t, err)
-	ae, ok = apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeLoadTestConfigInvalid, ae.Code)
+	requireErrorCode(t, err, apierrors.CodeLoadTestConfigInvalid)
 
 	_ = modelID
 }

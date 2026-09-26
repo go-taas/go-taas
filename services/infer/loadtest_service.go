@@ -100,6 +100,12 @@ func (s *Service) CreateLoadTest(ctx context.Context, req *inferv1.CreateLoadTes
 	}
 	svc, err := serviceRepo.FindByID(ctx, strings.TrimSpace(req.GetServiceId()))
 	if err != nil {
+		// AD4/§6.4 define one "is the target a live service" check whose
+		// failure is 10311: an unknown service is as unusable a target as
+		// a non-running one.
+		if ae, ok := apierrors.As(err); ok && ae.Code == apierrors.CodeInferServiceNotFound {
+			return nil, apierrors.New(apierrors.CodeLoadTestTargetInvalid)
+		}
 		return nil, err
 	}
 	if svc.State != StateRunning || len(svc.Endpoints) == 0 {
