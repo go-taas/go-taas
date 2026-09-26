@@ -23,8 +23,11 @@ import (
 // OIDCPlugin implements the OIDC/OAuth 2.0 authorization-code flow.
 type OIDCPlugin struct{}
 
-// Authorize builds the OIDC authorize URL with a signed state.
-func (p *OIDCPlugin) Authorize(_ context.Context, prov *SSOProvider) (*AuthorizeResult, error) {
+// Authorize builds the OIDC authorize URL with a signed state. The
+// authorization endpoint is resolved via OIDC discovery (Keycloak and
+// other real IdPs do not serve {issuer}/authorize), falling back to the
+// legacy {issuer}/authorize path for the in-process fake IdP.
+func (p *OIDCPlugin) Authorize(ctx context.Context, prov *SSOProvider) (*AuthorizeResult, error) {
 	if prov.Issuer == "" || prov.ClientID == "" || prov.RedirectURI == "" {
 		return nil, apierrors.New(apierrors.CodeSSOProviderInvalid)
 	}
@@ -34,7 +37,7 @@ func (p *OIDCPlugin) Authorize(_ context.Context, prov *SSOProvider) (*Authorize
 	}
 	state := newState()
 	authorizeURL := buildAuthorizeURL(
-		strings.TrimSuffix(prov.Issuer, "/")+"/authorize",
+		oidcAuthorizeEndpoint(ctx, prov.Issuer),
 		prov.ClientID, prov.RedirectURI, scopes, state,
 	)
 	return &AuthorizeResult{RedirectURL: authorizeURL}, nil
@@ -50,8 +53,9 @@ func (p *OIDCPlugin) Callback(ctx context.Context, prov *SSOProvider, req *authv
 		return nil, apierrors.New(apierrors.CodeSSOProviderInvalid)
 	}
 
-	// Exchange the code at the token endpoint.
-	tokenURL := strings.TrimSuffix(prov.Issuer, "/") + "/token"
+	// Exchange the code at the token endpoint (resolved via OIDC
+	// discovery, falling back to {issuer}/token for the fake IdP).
+	tokenURL := oidcTokenEndpoint(ctx, prov.Issuer)
 	form := url.Values{}
 	form.Set("grant_type", "authorization_code")
 	form.Set("code", req.GetCode())
@@ -140,4 +144,56 @@ func decodeIDTokenClaims(token string) (map[string][]string, error) {
 
 func base64RawURLDecode(s string) ([]byte, error) {
 	return base64.RawURLEncoding.DecodeString(s)
+}
+
+// oidcDiscovery is the subset of the OIDC discovery document the plugin
+// needs to locate the authorization and token endpoints.
+type oidcDiscovery struct {
+	AuthorizationEndpoint string `json:"authorization_endpoint"`
+	TokenEndpoint         string `json:"token_endpoint"`
+}
+
+// discoverOIDC fetches the OIDC discovery document from the issuer's
+// well-known endpoint. A failure returns an error; callers fall back to
+// the legacy {issuer}/authorize and {issuer}/token endpoints.
+func discoverOIDC(ctx context.Context, issuer string) (*oidcDiscovery, error) {
+	wellKnown := strings.TrimSuffix(issuer, "/") + "/.well-known/openid-configuration"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, wellKnown, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("oidc discovery: status %d", resp.StatusCode)
+	}
+	var d oidcDiscovery
+	if err := json.NewDecoder(resp.Body).Decode(&d); err != nil {
+		return nil, err
+	}
+	if d.AuthorizationEndpoint == "" || d.TokenEndpoint == "" {
+		return nil, fmt.Errorf("oidc discovery: missing endpoints")
+	}
+	return &d, nil
+}
+
+// oidcAuthorizeEndpoint resolves the authorization endpoint via OIDC
+// discovery, falling back to the legacy {issuer}/authorize path.
+func oidcAuthorizeEndpoint(ctx context.Context, issuer string) string {
+	if d, err := discoverOIDC(ctx, issuer); err == nil {
+		return d.AuthorizationEndpoint
+	}
+	return strings.TrimSuffix(issuer, "/") + "/authorize"
+}
+
+// oidcTokenEndpoint resolves the token endpoint via OIDC discovery,
+// falling back to the legacy {issuer}/token path.
+func oidcTokenEndpoint(ctx context.Context, issuer string) string {
+	if d, err := discoverOIDC(ctx, issuer); err == nil {
+		return d.TokenEndpoint
+	}
+	return strings.TrimSuffix(issuer, "/") + "/token"
 }

@@ -110,14 +110,19 @@ docker-push:
 
 ## compose-up: build the taas-server image (console included) and start
 ## the local deployment-verification stack (PostgreSQL, Redis, NATS,
-## taas-server). The admin console is served by taas-server at
-## http://localhost:9091/ — same origin as the API.
+## Keycloak, taas-server). The admin console is served by taas-server at
+## http://localhost:9091/ — same origin as the API. Keycloak (the local
+## OIDC IdP) is at http://localhost:8080 (admin / admin); its realm,
+## client and test user are imported from deploy/compose/keycloak.
+## NOTE: for the SSO flow the host must resolve `keycloak` to 127.0.0.1:
+##   echo '127.0.0.1 keycloak' | sudo tee -a /etc/hosts
 compose-up:
 	docker build --target taas-server \
 		$(DOCKER_BUILD_ARGS) \
 		-f $(DOCKERFILE) -t "$(IMAGE_REPO)/taas-server:$(IMAGE_TAG)" .
 	docker compose -f deploy/compose/docker-compose.yaml up -d
 	@echo ">> console: http://localhost:9091/  (API: /api/v1/..., gRPC: 9090, metrics: 9092)"
+	@echo ">> keycloak: http://localhost:8080/  (admin / admin)"
 
 ## compose-down: stop and remove the local verification stack
 compose-down:

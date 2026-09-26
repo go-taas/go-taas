@@ -1,14 +1,15 @@
 # Local deployment-verification stack for go-taas.
 #
 # Brings up the full control plane (taas-server) with its backing
-# services (PostgreSQL, Redis, NATS) so features can be verified against
-# a real deployment before they are handed downstream:
+# services (PostgreSQL, Redis, NATS, Keycloak) so features can be
+# verified against a real deployment before they are handed downstream:
 #
 #   make compose-up     # build images and start the stack
 #   make compose-down   # stop and remove the stack
 #
 # The gateway listens on http://127.0.0.1:9091, gRPC on 9090 and the
-# monitor port (metrics/healthz) on 9092.
+# monitor port (metrics/healthz) on 9092. Keycloak (the local OIDC IdP
+# for SSO debugging) is at http://localhost:8080 (admin / admin).
 
 name: go-taas
 
@@ -44,6 +45,34 @@ services:
       test: ["CMD-SHELL", "echo PING | nc -w 2 127.0.0.1 4222 | grep -q PONG"]
       interval: 2s
       timeout: 3s
+      retries: 30
+
+  # Local OIDC identity provider for debugging the SSO flow (feature #7).
+  # The realm, a confidential client and a test user are imported from
+  # deploy/compose/keycloak/realm-export.json on first start.
+  #
+  # Reachability: the SSO provider's issuer must be reachable from BOTH
+  # the host browser (authorize redirect) and the taas-server container
+  # (token exchange). We use the single hostname `keycloak` for both:
+  #   - inside the compose network it resolves to this container;
+  #   - on the host it must resolve to 127.0.0.1 (add to /etc/hosts):
+  #       127.0.0.1 keycloak
+  # The admin console is at http://localhost:8080 (admin / admin).
+  keycloak:
+    image: quay.io/keycloak/keycloak:26.0
+    command: ["start-dev", "--import-realm"]
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_HEALTH_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/8080 && echo -e 'GET /health/ready HTTP/1.1\\r\\nHost: localhost\\r\\nConnection: close\\r\\n\\r\\n' >&3 && grep -qi '200 OK' <&3"]
+      interval: 5s
+      timeout: 5s
       retries: 30
 
   taas-server:
