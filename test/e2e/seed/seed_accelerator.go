@@ -82,6 +82,12 @@ func main() {
 	// (configs/config.yaml mq.namespace, default "taas-dev"), so the
 	// snapshot must be published to "<namespace>.accelerator.inventory".
 	subject := flag.String("subject", "taas-dev.accelerator.inventory", "NATS subject")
+	// omitCard drops every node whose CardTypes contains the named card
+	// type, so the compatibility-matrix suite can exercise the
+	// not_in_fleet derivation (feature #19, AC6/AC10) by publishing a
+	// snapshot that no longer carries a card type the matrix already has
+	// cells for.
+	omitCard := flag.String("omitCard", "", "card type to omit from the snapshot")
 	flag.Parse()
 
 	nc, err := nats.Connect(*url)
@@ -269,6 +275,22 @@ func main() {
 	}
 
 	snap := snapshot{Nodes: nodes, ReportedAt: time.Now().UTC()}
+	if *omitCard != "" {
+		filtered := nodes[:0]
+		for _, n := range nodes {
+			keep := true
+			for _, ct := range n.CardTypes {
+				if ct == *omitCard {
+					keep = false
+					break
+				}
+			}
+			if keep {
+				filtered = append(filtered, n)
+			}
+		}
+		snap.Nodes = filtered
+	}
 	body, err := json.Marshal(snap)
 	if err != nil {
 		log.Fatalf("marshal: %v", err)

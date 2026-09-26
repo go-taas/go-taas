@@ -36,6 +36,10 @@ function seedInventory(browser) {
   const cmd = [
     'docker run --rm --network go-taas_default',
     `-e GOPROXY=https://goproxy.cn,direct`,
+    // Persist the Go module + build caches across runs so the seed does
+    // not re-download dependencies on every invocation.
+    '-v go-taas-go-mod-cache:/go/pkg/mod',
+    '-v go-taas-go-build-cache:/root/.cache/go-build',
     `-v "${repoRoot}":/app`,
     '-w /app/test/e2e/seed',
     'golang:1.26-alpine',

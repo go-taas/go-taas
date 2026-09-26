@@ -22,7 +22,8 @@
     "test:payments-invoices": "nightwatch --tag payments-invoices",
     "test:audit-logging": "nightwatch --tag audit-logging",
     "test:inference-autoscaling": "nightwatch --tag inference-autoscaling",
-    "test:accelerator-inventory": "nightwatch --tag accelerator-inventory"
+    "test:accelerator-inventory": "nightwatch --tag accelerator-inventory",
+    "test:compatibility-matrix": "nightwatch --tag compatibility-matrix"
   },
   "license": "Apache-2.0",
   "devDependencies": {
