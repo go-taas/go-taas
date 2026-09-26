@@ -1,3 +1,10 @@
+## [1.18.1](https://github.com/go-taas/go-taas/compare/v1.18.0...v1.18.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **image:** render departed card types in compatibility grid ([5353146](https://github.com/go-taas/go-taas/commit/53531466084d1b126d66e2c0afc136b27ff47917))
+
 # [1.18.0](https://github.com/go-taas/go-taas/compare/v1.17.0...v1.18.0) (2026-09-26)
 
 
