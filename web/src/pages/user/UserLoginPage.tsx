@@ -44,7 +44,9 @@ export default function UserLoginPage() {
 
   return (
     <div className="login" data-testid="sso-login-list">
+      <div className="login-brand" aria-hidden="true" />
       <h1>Sign in to go-taas</h1>
+      <p className="login-subtitle">Access your API keys, usage, request logs and billing.</p>
       {error && <div className="error" data-testid="login-error">{error}</div>}
       {providers.length === 0 ? (
         <div data-testid="login-no-providers">No sign-in providers configured.</div>

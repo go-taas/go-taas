@@ -3,20 +3,30 @@
 // keys (AD12).
 
 import { useEffect, useState, type ReactNode } from 'react';
+import {
+  ChartLine,
+  Key,
+  ListMagnifyingGlass,
+  Play,
+  Receipt,
+  Pulse,
+  Cube,
+  type Icon,
+} from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
 import { realmLoginPath } from '../surface-routes';
 import { OrgSwitcher } from '../org';
 
-export const USER_NAV_ITEMS = [
-  { path: '/usage', label: 'Usage', testid: 'user-nav-usage' },
-  { path: '/api-keys', label: 'API Keys', testid: 'user-nav-api-keys' },
-  { path: '/request-logs', label: 'Request Logs', testid: 'user-nav-request-logs' },
-  { path: '/playground', label: 'Playground', testid: 'user-nav-playground' },
-  { path: '/billing', label: 'Billing', testid: 'user-nav-billing' },
-  { path: '/activity', label: 'Activity', testid: 'user-nav-activity' },
-  { path: '/models', label: 'Models', testid: 'user-nav-models' },
+export const USER_NAV_ITEMS: { path: string; label: string; testid: string; icon: Icon }[] = [
+  { path: '/usage', label: 'Usage', testid: 'user-nav-usage', icon: ChartLine },
+  { path: '/api-keys', label: 'API Keys', testid: 'user-nav-api-keys', icon: Key },
+  { path: '/request-logs', label: 'Request Logs', testid: 'user-nav-request-logs', icon: ListMagnifyingGlass },
+  { path: '/playground', label: 'Playground', testid: 'user-nav-playground', icon: Play },
+  { path: '/billing', label: 'Billing', testid: 'user-nav-billing', icon: Receipt },
+  { path: '/activity', label: 'Activity', testid: 'user-nav-activity', icon: Pulse },
+  { path: '/models', label: 'Models', testid: 'user-nav-models', icon: Cube },
 ];
 
 function isActive(path: string, current: string): boolean {
@@ -66,20 +76,24 @@ export function UserShell({ children }: { children: ReactNode }) {
       <aside className="sidebar" data-testid="sidebar">
         <div className="brand">go-taas</div>
         <nav>
-          {USER_NAV_ITEMS.map((item) => (
-            <a
-              key={item.path}
-              href={item.path}
-              className={isActive(item.path, path) ? 'nav-item active' : 'nav-item'}
-              data-testid={item.testid}
-              onClick={(e) => {
-                e.preventDefault();
-                navigate(item.path);
-              }}
-            >
-              {item.label}
-            </a>
-          ))}
+          {USER_NAV_ITEMS.map((item) => {
+            const IconComp = item.icon;
+            return (
+              <a
+                key={item.path}
+                href={item.path}
+                className={isActive(item.path, path) ? 'nav-item active' : 'nav-item'}
+                data-testid={item.testid}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(item.path);
+                }}
+              >
+                <IconComp size={18} weight="duotone" aria-hidden="true" />
+                <span>{item.label}</span>
+              </a>
+            );
+          })}
         </nav>
         <OrgSwitcher />
         {getSessionToken(realm) && (
