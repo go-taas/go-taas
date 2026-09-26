@@ -1,3 +1,10 @@
+## [1.16.1](https://github.com/go-taas/go-taas/compare/v1.16.0...v1.16.1) (2026-09-26)
+
+
+### Bug Fixes
+
+* **accelerator:** share projection cache between consumer and service ([bc1e5df](https://github.com/go-taas/go-taas/commit/bc1e5df2757e0d362bfee9bfe21c15373d67b471))
+
 # [1.16.0](https://github.com/go-taas/go-taas/compare/v1.15.0...v1.16.0) (2026-09-26)
 
 
