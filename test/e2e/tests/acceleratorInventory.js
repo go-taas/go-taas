@@ -41,7 +41,7 @@ function seedInventory(browser) {
     '-v go-taas-go-mod-cache:/go/pkg/mod',
     '-v go-taas-go-build-cache:/root/.cache/go-build',
     `-v "${repoRoot}":/app`,
-    '-w /app/test/e2e/seed',
+    '-w /app/test/e2e/seed/accelerator',
     'golang:1.26-alpine',
     'sh -c "go run seed_accelerator.go"'
   ].join(' ');
