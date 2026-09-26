@@ -327,6 +327,29 @@ type ImageConfig struct {
 	WarmupStatusConsumer ImageWarmupStatusConsumerConfig `mapstructure:"warmupStatusConsumer"`
 }
 
+// AcceleratorSnapshotConsumerConfig holds the accelerator snapshot
+// consumer Runner settings (feature #18, AD1).
+type AcceleratorSnapshotConsumerConfig struct {
+	// Enabled turns the snapshot consumer Runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent snapshot handlers.
+	Workers int `mapstructure:"workers"`
+}
+
+// AcceleratorConfig holds the accelerator inventory settings (feature
+// #18). The collect interval lives here (not in ControllerConfig)
+// because it is read by both the controller (collection loop) and the
+// accelerator service (snapshot consumer).
+type AcceleratorConfig struct {
+	// CollectInterval is the Controller's node/GPU collection period;
+	// the full snapshot is published on this interval (AD1). Default 30s.
+	CollectInterval time.Duration `mapstructure:"collectInterval"`
+	// SnapshotConsumer configures the accelerator service's snapshot
+	// consumer Runner (kill switch + worker count).
+	SnapshotConsumer AcceleratorSnapshotConsumerConfig `mapstructure:"snapshotConsumer"`
+}
+
 // ModelAuthConfig holds the per-tenant model authorization settings
 // (feature #13).
 type ModelAuthConfig struct {
@@ -389,19 +412,20 @@ type AuditRetentionConfig struct {
 
 // Configuration is the root of the merged configuration tree.
 type Configuration struct {
-	Databases  Databases        `mapstructure:"db"`
-	Redis      Redis            `mapstructure:"redis"`
-	MQ         MQConfig         `mapstructure:"mq"`
-	Auth       AuthConfig       `mapstructure:"auth"`
-	Metering   MeteringConfig   `mapstructure:"metering"`
-	Billing    BillingConfig    `mapstructure:"billing"`
-	Controller ControllerConfig `mapstructure:"controller"`
-	Infer      InferConfig      `mapstructure:"infer"`
-	Image      ImageConfig      `mapstructure:"image"`
-	Model      ModelConfig      `mapstructure:"model"`
-	Tenancy    TenancyConfig    `mapstructure:"tenancy"`
-	Audit      AuditConfig      `mapstructure:"audit"`
-	Log        LogConfig        `mapstructure:"log"`
+	Databases   Databases         `mapstructure:"db"`
+	Redis       Redis             `mapstructure:"redis"`
+	MQ          MQConfig          `mapstructure:"mq"`
+	Auth        AuthConfig        `mapstructure:"auth"`
+	Metering    MeteringConfig    `mapstructure:"metering"`
+	Billing     BillingConfig     `mapstructure:"billing"`
+	Controller  ControllerConfig  `mapstructure:"controller"`
+	Infer       InferConfig       `mapstructure:"infer"`
+	Image       ImageConfig       `mapstructure:"image"`
+	Model       ModelConfig       `mapstructure:"model"`
+	Tenancy     TenancyConfig     `mapstructure:"tenancy"`
+	Audit       AuditConfig       `mapstructure:"audit"`
+	Accelerator AcceleratorConfig `mapstructure:"accelerator"`
+	Log         LogConfig         `mapstructure:"log"`
 }
 
 // Validate checks semantic constraints that cannot be expressed as struct
@@ -436,6 +460,12 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Image.WarmupStatusConsumer.Workers < 0 {
 		return &FieldError{Field: "image.warmupStatusConsumer.workers", Reason: "must not be negative"}
+	}
+	if c.Accelerator.CollectInterval < 0 {
+		return &FieldError{Field: "accelerator.collectInterval", Reason: "must not be negative"}
+	}
+	if c.Accelerator.SnapshotConsumer.Workers < 0 {
+		return &FieldError{Field: "accelerator.snapshotConsumer.workers", Reason: "must not be negative"}
 	}
 	if c.Model.Auth.CacheTTL < 0 {
 		return &FieldError{Field: "model.auth.cacheTTL", Reason: "must not be negative"}

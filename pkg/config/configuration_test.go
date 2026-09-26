@@ -130,6 +130,37 @@ func TestValidateAutoscalingConfig(t *testing.T) {
 	}
 }
 
+func TestValidateAcceleratorConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	// Negative collect interval fails.
+	cfg.Accelerator.CollectInterval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative collect interval should fail validation")
+	}
+	cfg.Accelerator.CollectInterval = 30 * time.Second
+	// Negative snapshot consumer workers fails.
+	cfg.Accelerator.SnapshotConsumer.Workers = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative snapshot consumer workers should fail validation")
+	}
+	cfg.Accelerator.SnapshotConsumer.Workers = 1
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid accelerator config rejected: %v", err)
+	}
+}
+
+func TestAcceleratorDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Accelerator.CollectInterval != 30*time.Second {
+		t.Fatalf("collect interval default = %v, want 30s", cfg.Accelerator.CollectInterval)
+	}
+	if cfg.Accelerator.SnapshotConsumer.Workers != 1 {
+		t.Fatalf("snapshot consumer workers default = %d, want 1", cfg.Accelerator.SnapshotConsumer.Workers)
+	}
+}
+
 func TestLoadDotEnv(t *testing.T) {
 	dir := t.TempDir()
 	envPath := filepath.Join(dir, ".env")

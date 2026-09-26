@@ -165,6 +165,16 @@ image:
     enabled: true
     workers: 2
 
+accelerator:
+  # collectInterval is the Controller's node/GPU collection period; the
+  # full snapshot is published on this interval (feature #18, AD1).
+  collectInterval: 30s
+  # snapshotConsumer configures the accelerator service's snapshot
+  # consumer Runner (kill switch + worker count).
+  snapshotConsumer:
+    enabled: true
+    workers: 1
+
 controller:
   workers: 4
   maxRetries: 5
