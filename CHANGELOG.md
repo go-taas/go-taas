@@ -1,3 +1,10 @@
+# [1.18.0](https://github.com/go-taas/go-taas/compare/v1.17.0...v1.18.0) (2026-09-26)
+
+
+### Features
+
+* **image:** add model x engine x card-type compatibility matrix ([fef65a0](https://github.com/go-taas/go-taas/commit/fef65a0260ee014a8b9c1e469ec613c1f4e8b5a5))
+
 # [1.17.0](https://github.com/go-taas/go-taas/compare/v1.16.1...v1.17.0) (2026-09-26)
 
 
