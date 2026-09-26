@@ -51,6 +51,11 @@ func main() {
 	}
 
 	ctrl := controller.New(mqClient, controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL))
+	// Feature #18: the accelerator inventory collector lists nodes and
+	// publishes the full snapshot on the configured interval.
+	ctrl.SetInventoryCollector(controller.NewInventoryCollector(
+		k8sClient.Clientset(), mqClient, cfg.Accelerator.CollectInterval,
+	))
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

@@ -29,12 +29,21 @@ type Reconciler interface {
 type Controller struct {
 	client     mq.Client
 	reconciler Reconciler
+	// inventory is the optional accelerator inventory collector
+	// (feature #18). Nil when not configured.
+	inventory *InventoryCollector
 }
 
 // New constructs a Controller consuming client and applying events with
 // reconciler.
 func New(client mq.Client, reconciler Reconciler) *Controller {
 	return &Controller{client: client, reconciler: reconciler}
+}
+
+// SetInventoryCollector installs the accelerator inventory collector
+// (feature #18). It must be called before Run.
+func (c *Controller) SetInventoryCollector(collector *InventoryCollector) {
+	c.inventory = collector
 }
 
 // Run subscribes to all consumed subjects and blocks until ctx is
@@ -58,6 +67,9 @@ func (c *Controller) Run(ctx context.Context) error {
 			errCh <- err
 		}
 	}()
+	if c.inventory != nil {
+		go c.inventory.Run(ctx)
+	}
 
 	select {
 	case <-ctx.Done():
