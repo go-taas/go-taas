@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-taas/go-taas/pkg/mq"
+	acceleratorv1 "github.com/go-taas/go-taas/proto/taas/accelerator/v1"
 )
 
 func TestSnapshotConsumerAppliesSnapshot(t *testing.T) {
@@ -102,4 +103,60 @@ func TestSnapshotConsumerSkipsEmptyNodeID(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, consumer.handle(context.Background(), mq.Message{Body: body}))
 	assert.Empty(t, cache.nodes)
+}
+
+// TestSnapshotConsumerSharesCacheWithService guards BUG-ACCEL-001: the
+// snapshot consumer and the accelerator service must share the SAME
+// ProjectionCache instance, so the consumer's Replace() populates the
+// cache the RPCs read. If they were separate caches, the service would
+// keep serving an empty inventory after a valid snapshot.
+func TestSnapshotConsumerSharesCacheWithService(t *testing.T) {
+	// One cache, wired into both the service and the consumer — exactly
+	// how apps/taas-server/main.go constructs them.
+	cache := NewProjectionCache()
+	svc := NewWithCache(cache)
+	consumer := NewSnapshotConsumer(mq.NewFake(), cache, 1)
+
+	snap := inventorySnapshot{
+		ReportedAt: time.Now().UTC(),
+		Nodes: []snapshotNode{
+			{
+				NodeID:            "node-nvidia-a800-01",
+				Name:              "node-nvidia-a800-01",
+				Vendor:            VendorNvidia,
+				CardTypes:         []string{"gpu"},
+				GPUsAllocated:     2,
+				GPUsFree:          6,
+				DriverVersion:     "535",
+				DevicePluginState: DevicePluginHealthy,
+				Readiness:         ReadinessReady,
+				Resources: []snapshotResource{
+					{CardType: "A800", Allocatable: 8, Allocated: 2},
+				},
+			},
+		},
+	}
+	body, err := json.Marshal(snap)
+	require.NoError(t, err)
+
+	// The consumer applies the snapshot to the shared cache.
+	require.NoError(t, consumer.handle(context.Background(), mq.Message{Subject: "accelerator.inventory", Body: body}))
+
+	// The service reads the SAME cache, so the fleet list and the node
+	// detail must reflect the ingested snapshot.
+	listResp, err := svc.ListAcceleratorNodes(context.Background(), &acceleratorv1.ListAcceleratorNodesRequest{})
+	require.NoError(t, err)
+	require.Len(t, listResp.Nodes, 1)
+	assert.Equal(t, "node-nvidia-a800-01", listResp.Nodes[0].Name)
+	assert.EqualValues(t, 1, listResp.PageMeta.Total)
+
+	getResp, err := svc.GetAcceleratorNode(context.Background(), &acceleratorv1.GetAcceleratorNodeRequest{NodeId: "node-nvidia-a800-01"})
+	require.NoError(t, err)
+	require.NotNil(t, getResp.Node)
+	assert.Equal(t, "node-nvidia-a800-01", getResp.Node.Summary.Name)
+
+	cardResp, err := svc.ListCardTypeSummary(context.Background(), &acceleratorv1.ListCardTypeSummaryRequest{})
+	require.NoError(t, err)
+	require.Len(t, cardResp.CardTypes, 1)
+	assert.Equal(t, "A800", cardResp.CardTypes[0].CardType)
 }

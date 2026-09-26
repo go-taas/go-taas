@@ -552,7 +552,7 @@ type AcceleratorSnapshotConsumerConfig struct {
 
 - **Proto**：纯增量 —— 新服务上的三个新 RPC。无既有 RPC 或消息变更。用 `buf generate` 重新生成。
 - **无 schema 迁移**：清单是内存投影（AD11）；无 `AutoMigrate`、无 SQL、无 init-SQL 升级路径。`accelerator` 服务不注册 `Migrator`。
-- **新服务注册**：`apps/taas-server/main.go` 注册 `accelerator.New(srv.Components())`，并加入 `srv.AddRunner(accelerator.NewSnapshotConsumerRunner(srv.Components()))`。网关自动拾取新服务的处理器注册函数。
+- **新服务注册**：`apps/taas-server/main.go` 一次性构造投影缓存（`accelerator.NewProjectionCache()`），在其上注册服务（`accelerator.NewWithCache(cache)`），并加入 `srv.AddRunner(accelerator.NewSnapshotConsumerRunner(srv.Components(), cache))`。服务与快照消费者共享**同一个**缓存实例，因此消费者的 `Replace()` 会填充 RPC 所读取的缓存（BUG-ACCEL-001）。网关自动拾取新服务的处理器注册函数。
 - **Controller**：`apps/controller/main.go` 启动采集循环。Controller 与 `taas-server` 可独立升级（特性-17 / 架构 §2.7）：旧 Controller 不发布快照会让 accelerator 服务保持空缓存（页面显示空态）；新 Controller 配旧服务无害（subject 只是无人订阅）。
 - **配置**：`accelerator` 段是增量的；早于它的二进制回退到默认值。
 - **向后兼容**：无既有 API、页面或测试变更。新导航项与页面是对管理控制台的增量。
@@ -621,7 +621,7 @@ func (c *ProjectionCache) CardTypeSummary() []CardTypeSummary // 读锁，分组
 
 - `SnapshotConsumer` 实现 `server.Runner`：`Run(ctx)` 订阅 `subjects.AcceleratorInventory` 并通过 `handle` 应用每个快照。
 - `handle(ctx, msg)`：反序列化快照；畸形 → 记录日志 + 跳过（绝不重试）。对每个节点从三个原始信号计算复合 `health`（第 4.3 节）；构建 `map[string]*AcceleratorNode`；`cache.Replace(...)`。
-- 构造：`NewSnapshotConsumer(mqClient, cache, workers)`；`NewSnapshotConsumerRunner(components)` 在禁用或组件不可用时返回 nil（`infer`/`image` 模式）。
+- 构造：`NewSnapshotConsumer(mqClient, cache, workers)`；`NewSnapshotConsumerRunner(components, cache)` 在禁用或组件不可用时返回 nil（`infer`/`image` 模式）。调用方传入服务所读取的同一个 `*ProjectionCache`，使消费者与服务共享一个缓存（BUG-ACCEL-001）。
 - 配置：`accelerator.snapshotConsumer.{enabled,workers}`（默认 true / 1）。
 
 `service.go`：

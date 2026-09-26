@@ -73,10 +73,12 @@ func NewSnapshotConsumer(client mq.Client, cache *ProjectionCache, workers int) 
 }
 
 // NewSnapshotConsumerRunner builds the SnapshotConsumer from the shared
-// server components. It returns nil when the consumer is disabled or the
-// required components are unavailable, so callers can pass the result
-// straight to AddRunner.
-func NewSnapshotConsumerRunner(components server.Components) *SnapshotConsumer {
+// server components over the caller-provided projection cache. The cache
+// must be the same instance the accelerator service reads from, so the
+// consumer's Replace() populates the cache the RPCs serve (BUG-ACCEL-001).
+// It returns nil when the consumer is disabled or the required components
+// are unavailable, so callers can pass the result straight to AddRunner.
+func NewSnapshotConsumerRunner(components server.Components, cache *ProjectionCache) *SnapshotConsumer {
 	if components == nil {
 		return nil
 	}
@@ -94,7 +96,7 @@ func NewSnapshotConsumerRunner(components server.Components) *SnapshotConsumer {
 			"type", fmt.Sprintf("%T", components.MQ().Client()))
 		return nil
 	}
-	return NewSnapshotConsumer(client, NewProjectionCache(), cfg.Accelerator.SnapshotConsumer.Workers)
+	return NewSnapshotConsumer(client, cache, cfg.Accelerator.SnapshotConsumer.Workers)
 }
 
 // Run implements server.Runner: it subscribes to the accelerator

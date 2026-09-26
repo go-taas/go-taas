@@ -85,8 +85,12 @@ func main() {
 	auditSvc := audit.New(srv.Components())
 	srv.RegisterService(auditSvc)
 	// Feature #18: the accelerator inventory service serves the read-only
-	// fleet view from its in-memory projection cache.
-	acceleratorSvc := accelerator.New()
+	// fleet view from its in-memory projection cache. The cache is
+	// constructed once and shared with the snapshot consumer so the
+	// consumer's Replace() populates the same cache the RPCs read
+	// (BUG-ACCEL-001).
+	acceleratorCache := accelerator.NewProjectionCache()
+	acceleratorSvc := accelerator.NewWithCache(acceleratorCache)
 	srv.RegisterService(acceleratorSvc)
 
 	// The delete-model and delete-image reference guards need the infer
@@ -184,7 +188,7 @@ func main() {
 	if runner := image.NewWarmupStatusConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
-	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components()); runner != nil {
+	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components(), acceleratorCache); runner != nil {
 		srv.AddRunner(runner)
 	}
 	if runner := metering.NewEventConsumerRunner(srv.Components()); runner != nil {

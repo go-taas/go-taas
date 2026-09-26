@@ -556,7 +556,7 @@ Defaults: `collectInterval` 30 s, `snapshotConsumer.enabled` true, `workers` 1 (
 
 - **Proto**: additive — three new RPCs on a new service. No existing RPC or message changes. Regenerate with `buf generate`.
 - **No schema migration**: the inventory is an in-memory projection (AD11); there is no `AutoMigrate`, no SQL, no init-SQL upgrade path. The `accelerator` service registers no `Migrator`.
-- **New service registration**: `apps/taas-server/main.go` registers `accelerator.New(srv.Components())` and adds `srv.AddRunner(accelerator.NewSnapshotConsumerRunner(srv.Components()))`. The gateway picks up the new service's handler register function automatically.
+- **New service registration**: `apps/taas-server/main.go` constructs the projection cache once (`accelerator.NewProjectionCache()`), registers the service over it (`accelerator.NewWithCache(cache)`), and adds `srv.AddRunner(accelerator.NewSnapshotConsumerRunner(srv.Components(), cache))`. The service and the snapshot consumer share the **same** cache instance, so the consumer's `Replace()` populates the cache the RPCs read (BUG-ACCEL-001). The gateway picks up the new service's handler register function automatically.
 - **Controller**: `apps/controller/main.go` starts the collection loop. The Controller and `taas-server` can be upgraded independently (feature-17 / architecture §2.7): an old Controller publishing no snapshots leaves the accelerator service with an empty cache (the page shows the empty state); a new Controller with an old server is harmless (the subject is simply unsubscribed).
 - **Config**: the `accelerator` section is additive; binaries that predate it fall back to defaults.
 - **Backward compatibility**: no existing API, page, or test changes. The new nav item and pages are additive to the admin console.
@@ -625,7 +625,7 @@ func (c *ProjectionCache) CardTypeSummary() []CardTypeSummary // read lock, grou
 
 - `SnapshotConsumer` implements `server.Runner`: `Run(ctx)` subscribes to `subjects.AcceleratorInventory` and applies each snapshot via `handle`.
 - `handle(ctx, msg)`: unmarshal the snapshot; malformed → log + skip (never retried). For each node, compute the composite `health` from the three raw signals (Section 4.3); build the `map[string]*AcceleratorNode`; `cache.Replace(...)`.
-- Construction: `NewSnapshotConsumer(mqClient, cache, workers)`; `NewSnapshotConsumerRunner(components)` returns nil when disabled or components unavailable (the `infer`/`image` pattern).
+- Construction: `NewSnapshotConsumer(mqClient, cache, workers)`; `NewSnapshotConsumerRunner(components, cache)` returns nil when disabled or components unavailable (the `infer`/`image` pattern). The caller passes the same `*ProjectionCache` the service reads from, so the consumer and service share one cache (BUG-ACCEL-001).
 - Config: `accelerator.snapshotConsumer.{enabled,workers}` (defaults true / 1).
 
 `service.go`:
