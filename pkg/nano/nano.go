@@ -217,3 +217,50 @@ func rawOf(a Amount) *big.Int {
 	}
 	return a.raw
 }
+
+// tokensPerM is the denominator of a per-1M-token rate.
+const tokensPerM = 1_000_000
+
+// share computes one token-costing term: tokens * ratePerM / tokensPerM,
+// in raw units. The rate is XNO per 1M tokens, so dividing by 1e6 is the
+// decimal shift that turns a per-1M-token rate into a per-token charge;
+// the division truncates any sub-raw fraction toward zero, which is the
+// intended granularity of per-token accounting (a single token at a rate
+// smaller than one raw per token contributes 0 raw and is written off by
+// nothing — it is simply below the smallest Nano unit). A zero or
+// negative rate (a model the caller cannot price, or an invalid input)
+// contributes zero: rates are non-negative XNO per 1M tokens, and a
+// negative one must not reduce the settlement.
+func share(tokens uint64, ratePerM Amount) *big.Int {
+	if tokens == 0 || ratePerM.raw == nil || ratePerM.raw.Sign() <= 0 {
+		return big.NewInt(0)
+	}
+	num := new(big.Int).Mul(new(big.Int).SetUint64(tokens), new(big.Int).Set(rawOf(ratePerM)))
+	return new(big.Int).Quo(num, big.NewInt(tokensPerM))
+}
+
+// Settlement derives the exact XNO amount payable for one inference call
+// from per-1M-token XNO rates (the shape of pricing.md D2: tokens * rate
+// per 1M). Its signature is the D2 contract's four token counters —
+// Settlement(promptTokens, completionTokens, reasoningTokens, cachedTokens,
+// inputPerM, outputPerM, cachedPerM) — matching the four-category usage the
+// metering layer records (feature #4's counters). It prices prompt tokens
+// and cached tokens at their own rates and prices reasoning tokens at the
+// output rate, matching the D2 contract
+// (docs/design/pricing.md prices reasoning_tokens at the output rate).
+// Unlike the card rail — whose 2-decimal cents rounding (see
+// billing.pricing.computeAmount) writes off any charge below $0.005 — this
+// keeps the full 30-decimal raw precision, so a sub-cent cached read or
+// short completion settles exactly instead of being batched or discarded
+// (issue #7). Passing it a nil-or-zero rate respects a model it cannot
+// price (matched by a caller's price resolution before settlement); a
+// negative rate is treated as absent and never reduces the settlement.
+func Settlement(promptTokens, completionTokens, reasoningTokens, cachedTokens uint64,
+	inputPerM, outputPerM, cachedPerM Amount) Amount {
+	total := new(big.Int)
+	total.Add(total, share(promptTokens, inputPerM))
+	total.Add(total, share(completionTokens, outputPerM))
+	total.Add(total, share(reasoningTokens, outputPerM))
+	total.Add(total, share(cachedTokens, cachedPerM))
+	return NewRaw(total)
+}
