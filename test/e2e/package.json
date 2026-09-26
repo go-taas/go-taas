@@ -23,7 +23,8 @@
     "test:audit-logging": "nightwatch --tag audit-logging",
     "test:inference-autoscaling": "nightwatch --tag inference-autoscaling",
     "test:accelerator-inventory": "nightwatch --tag accelerator-inventory",
-    "test:compatibility-matrix": "nightwatch --tag compatibility-matrix"
+    "test:compatibility-matrix": "nightwatch --tag compatibility-matrix",
+    "test:load-testing": "nightwatch --tag load-testing"
   },
   "license": "Apache-2.0",
   "devDependencies": {

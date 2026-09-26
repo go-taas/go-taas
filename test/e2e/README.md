@@ -18,6 +18,7 @@ against the local docker compose stack.
 | Inference autoscaling & scale-to-zero | feature-16 `inference-autoscaling` | `tests/inferenceAutoscaling.js` |
 | Accelerator inventory & health | feature-18 `accelerator-inventory` | `tests/acceleratorInventory.js` |
 | Compatibility matrix | feature-19 `compatibility-matrix` | `tests/compatibilityMatrix.js` |
+| Inference load testing | feature-20 `load-testing` | `tests/loadTesting.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md` and
