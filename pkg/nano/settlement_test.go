@@ -116,6 +116,22 @@ func TestSettlementTruncatesToRawGranularity(t *testing.T) {
 	require.Equal(t, "999999", million.Raw().String())
 }
 
+// TestSettlementRoundsOnceAcrossTerms pins the rounding policy: terms are
+// summed exactly and the total is floored to whole raw once, so two
+// sub-raw terms that together reach a raw are not both written off.
+func TestSettlementRoundsOnceAcrossTerms(t *testing.T) {
+	// 1 prompt token at 500000 raw/1M = 0.5 raw; 1 completion token at
+	// 500000 raw/1M = 0.5 raw. Exact total 1.0 raw.
+	half := RawFromInt(500000)
+	got := Settlement(1, 1, 0, 0, half, half, Amount{})
+	require.Equal(t, "1", got.Raw().String())
+
+	// Three terms of 0.999999 raw each: exact 2.999997, floored to 2.
+	r := RawFromInt(999999)
+	got = Settlement(1, 1, 1, 0, r, r, Amount{})
+	require.Equal(t, "2", got.Raw().String())
+}
+
 func mustXNO(s string) Amount {
 	a, err := ParseXNO(s)
 	if err != nil {

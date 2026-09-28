@@ -221,22 +221,18 @@ func rawOf(a Amount) *big.Int {
 // tokensPerM is the denominator of a per-1M-token rate.
 const tokensPerM = 1_000_000
 
-// share computes one token-costing term: tokens * ratePerM / tokensPerM,
-// in raw units. The rate is XNO per 1M tokens, so dividing by 1e6 is the
-// decimal shift that turns a per-1M-token rate into a per-token charge;
-// the division truncates any sub-raw fraction toward zero, which is the
-// intended granularity of per-token accounting (a single token at a rate
-// smaller than one raw per token contributes 0 raw and is written off by
-// nothing — it is simply below the smallest Nano unit). A zero or
-// negative rate (a model the caller cannot price, or an invalid input)
+// share computes one token-costing term before the per-1M shift:
+// tokens * ratePerM, in raw-times-1M units. Settlement sums every term at
+// this precision and divides by tokensPerM once, so a sub-raw remainder in
+// one term is never discarded before it can combine with another. A zero
+// or negative rate (a model the caller cannot price, or an invalid input)
 // contributes zero: rates are non-negative XNO per 1M tokens, and a
 // negative one must not reduce the settlement.
 func share(tokens uint64, ratePerM Amount) *big.Int {
 	if tokens == 0 || ratePerM.raw == nil || ratePerM.raw.Sign() <= 0 {
 		return big.NewInt(0)
 	}
-	num := new(big.Int).Mul(new(big.Int).SetUint64(tokens), new(big.Int).Set(rawOf(ratePerM)))
-	return new(big.Int).Quo(num, big.NewInt(tokensPerM))
+	return new(big.Int).Mul(new(big.Int).SetUint64(tokens), new(big.Int).Set(rawOf(ratePerM)))
 }
 
 // Settlement derives the exact XNO amount payable for one inference call
@@ -255,6 +251,8 @@ func share(tokens uint64, ratePerM Amount) *big.Int {
 // (issue #7). Passing it a nil-or-zero rate respects a model it cannot
 // price (matched by a caller's price resolution before settlement); a
 // negative rate is treated as absent and never reduces the settlement.
+// Rounding policy: the terms are summed exactly and the total is truncated
+// toward zero to whole raw once, so the result is floor(exact amount).
 func Settlement(promptTokens, completionTokens, reasoningTokens, cachedTokens uint64,
 	inputPerM, outputPerM, cachedPerM Amount) Amount {
 	total := new(big.Int)
@@ -262,5 +260,7 @@ func Settlement(promptTokens, completionTokens, reasoningTokens, cachedTokens ui
 	total.Add(total, share(completionTokens, outputPerM))
 	total.Add(total, share(reasoningTokens, outputPerM))
 	total.Add(total, share(cachedTokens, cachedPerM))
-	return NewRaw(total)
+	// One rounding for the whole call: the exact sum is truncated toward
+	// zero to whole raw (the smallest Nano unit) only here.
+	return NewRaw(total.Quo(total, big.NewInt(tokensPerM)))
 }
