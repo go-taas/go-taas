@@ -1,3 +1,11 @@
+## [1.41.2](https://github.com/go-taas/go-taas/compare/v1.41.1...v1.41.2) (2026-10-01)
+
+
+### Bug Fixes
+
+* **infer:** gate ListServiceLogPods by caller role ([a0bbf7e](https://github.com/go-taas/go-taas/commit/a0bbf7e510c168b2ded0c9af8d2240e002d812cb)), closes [#33](https://github.com/go-taas/go-taas/issues/33)
+* **model:** migrate stale global active-version index ([d4bd9e4](https://github.com/go-taas/go-taas/commit/d4bd9e4bc32822038636a3153d5e428b07380b62))
+
 ## [1.41.1](https://github.com/go-taas/go-taas/compare/v1.41.0...v1.41.1) (2026-10-01)
 
 
