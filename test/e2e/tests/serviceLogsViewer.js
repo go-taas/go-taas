@@ -256,13 +256,12 @@ module.exports = {
         browser.waitForElementPresent('[data-testid="logs-follow-toggle"]', 10000, 'AC4: follow toggle');
         browser.waitForElementPresent('[data-testid="logs-search-input"]', 10000, 'AC4: search input');
         // The compose stack has no kubeconfig, so the pod enumeration fails
-        // closed (10301). The page renders the filter bar but the log pane
-        // area is stuck in the loading state (the page does not set
-        // loading=false when loadPods fails and replica stays empty, so
-        // loadLogs never fires) — reported as a bug (SL-1). Assert the
-        // filter bar renders; the log pane/empty/error state is covered by
-        // the bug report.
-        browser.waitForElementPresent('[data-testid="logs-filter-bar"]', 10000, 'AC4: filter bar persists');
+        // closed (10301). The page must surface the error state with a
+        // Retry button instead of hanging on the loading spinner (SL-1,
+        // design §5.3 error state). Assert the error banner and Retry
+        // button render.
+        browser.waitForElementPresent('[data-testid="error-banner"]', 10000, 'AC4: error banner on load failure');
+        browser.waitForElementPresent('[data-testid="logs-retry"]', 10000, 'AC4: retry button on load failure');
       });
     });
   },
