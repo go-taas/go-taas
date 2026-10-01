@@ -220,6 +220,7 @@ module.exports = {
   'AC3: UpdateInferenceServiceVersion changes only model_version, keeps service_id; unknown service -> 10301, unknown version -> 10103': function (browser) {
     const org = browser.globals.orgA;
     const name = `e2e-mv-roll-${browser.globals.runId}-${browser.globals.testSeq}`;
+    let serviceId = '';
 
     api.request(browser, {
       method: 'POST',
@@ -250,7 +251,7 @@ module.exports = {
           }
         }, (res2) => {
           const svc = api.assertOk(browser, res2, 'AC3: create service');
-          const serviceId = svc.serviceId;
+          serviceId = svc.serviceId;
           browser.assert.ok(Boolean(serviceId), 'AC3: serviceId returned');
 
           // Update version to v2 in place.
@@ -278,20 +279,23 @@ module.exports = {
       });
     });
 
-    // Unknown service -> 10301.
+    // Unknown service -> 10301. Use a valid-format UUID so the lookup
+    // reaches the not-found path on PostgreSQL (a non-UUID string would be
+    // a uuid cast error -> code 13).
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/admin/inference-services/does-not-exist:update-version',
+      path: '/api/v1/admin/inference-services/00000000-0000-0000-0000-000000000000:update-version',
       org,
       body: {modelVersion: 'v2'}
     }, (res) => {
       api.assertBusinessError(browser, res, 10301, 'AC3: unknown service -> 10301');
     });
 
-    // Unknown version -> 10103.
+    // Unknown version -> 10103. Use the real service created above with an
+    // unknown version so the version lookup is reached.
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/admin/inference-services/does-not-exist:update-version',
+      path: `/api/v1/admin/inference-services/${serviceId}:update-version`,
       org,
       body: {modelVersion: 'nope'}
     }, (res) => {
