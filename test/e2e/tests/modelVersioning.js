@@ -183,6 +183,18 @@ module.exports = {
                 const v1 = body.versions[1];
                 browser.assert.equal(v0.isActive, true, 'AC2: v2 active');
                 browser.assert.equal(v1.isActive, false, 'AC2: v1 cleared');
+
+                // Unknown version -> 10103. Use the EXISTING model with a
+                // version it does not have, so the version lookup is
+                // reached (a non-existent model returns 10101 first).
+                api.request(browser, {
+                  method: 'POST',
+                  path: `/api/v1/admin/models/${modelId}/versions/nope:activate`,
+                  org,
+                  body: {}
+                }, (res6) => {
+                  api.assertBusinessError(browser, res6, 10103, 'AC2: unknown version -> 10103');
+                });
               });
             });
           });
@@ -190,8 +202,8 @@ module.exports = {
       });
     });
 
-    // Unknown version -> 10103. Use a valid-format UUID model so the
-    // version lookup is reached (a non-UUID model returns 13 on
+    // Unknown model -> 10101. A valid-format UUID that does not exist
+    // returns the design contract code (a non-UUID model returns 13 on
     // PostgreSQL, reported separately).
     api.request(browser, {
       method: 'POST',
@@ -199,7 +211,7 @@ module.exports = {
       org,
       body: {}
     }, (res) => {
-      api.assertBusinessError(browser, res, 10103, 'AC2: unknown version -> 10103');
+      api.assertBusinessError(browser, res, 10101, 'AC2: unknown model -> 10101');
     });
   },
 
@@ -233,7 +245,8 @@ module.exports = {
             modelVersion: 'v1',
             imageId: 'img-vllm-nvidia-v063',
             replicas: '2',
-            accelerator: 'nvidia'
+            accelerator: 'nvidia',
+            acceleratorType: 'gpu'
           }
         }, (res2) => {
           const svc = api.assertOk(browser, res2, 'AC3: create service');
@@ -468,7 +481,8 @@ module.exports = {
             modelVersion: 'v1',
             imageId: 'img-vllm-nvidia-v063',
             replicas: '2',
-            accelerator: 'nvidia'
+            accelerator: 'nvidia',
+            acceleratorType: 'gpu'
           }
         }, () => {
           browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${org}')`);
