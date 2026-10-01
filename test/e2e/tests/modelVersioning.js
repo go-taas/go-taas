@@ -273,6 +273,17 @@ module.exports = {
             }, (res4) => {
               const body = api.assertOk(browser, res4, 'AC3: get service');
               browser.assert.equal(body.service.modelVersion, 'v2', 'AC3: model_version updated');
+
+              // Unknown version -> 10103. Runs inside the callback chain so
+              // serviceId is populated (api.request is async).
+              api.request(browser, {
+                method: 'POST',
+                path: `/api/v1/admin/inference-services/${serviceId}:update-version`,
+                org,
+                body: {modelVersion: 'nope'}
+              }, (res5) => {
+                api.assertBusinessError(browser, res5, 10103, 'AC3: unknown version -> 10103');
+              });
             });
           });
         });
@@ -289,17 +300,6 @@ module.exports = {
       body: {modelVersion: 'v2'}
     }, (res) => {
       api.assertBusinessError(browser, res, 10301, 'AC3: unknown service -> 10301');
-    });
-
-    // Unknown version -> 10103. Use the real service created above with an
-    // unknown version so the version lookup is reached.
-    api.request(browser, {
-      method: 'POST',
-      path: `/api/v1/admin/inference-services/${serviceId}:update-version`,
-      org,
-      body: {modelVersion: 'nope'}
-    }, (res) => {
-      api.assertBusinessError(browser, res, 10103, 'AC3: unknown version -> 10103');
     });
   },
 
@@ -460,6 +460,7 @@ module.exports = {
   'AC7: rollback dialog lists only non-terminated services on a different version': function (browser) {
     const org = browser.globals.orgA;
     const name = `e2e-mv-rollpage-${browser.globals.runId}-${browser.globals.testSeq}`;
+    let serviceId = '';
 
     api.request(browser, {
       method: 'POST',
@@ -488,7 +489,8 @@ module.exports = {
             accelerator: 'nvidia',
             acceleratorType: 'gpu'
           }
-        }, () => {
+        }, (res2) => {
+          serviceId = api.assertOk(browser, res2, 'AC7: create service').serviceId;
           browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${org}')`);
           browser.url(browser.globals.baseUrl + `/admin/models/${modelId}/versions`);
           browser.waitForElementPresent('[data-testid="model-versions-title"]', 15000, 'AC7: page renders');
@@ -497,8 +499,9 @@ module.exports = {
           browser.click('[data-testid="rollback-v2"]');
           browser.waitForElementPresent('[data-testid="rollback-dialog"]', 10000, 'AC7: rollback dialog');
           browser.waitForElementPresent('[data-testid="rollback-warning"]', 10000, 'AC7: rollback warning');
-          // The dialog lists the service (not the empty state).
-          browser.waitForElementPresent('[data-testid="rollback-empty"]', 10000, 'AC7: rollback empty state (no eligible services)');
+          // The service is on v1 (different from v2) and non-terminated, so
+          // the dialog lists it (not the empty state).
+          browser.waitForElementPresent(`[data-testid="rollback-select-${serviceId}"]`, 10000, 'AC7: eligible service listed in rollback dialog');
         });
       });
     });
