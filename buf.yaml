@@ -6,6 +6,15 @@ deps:
 lint:
   use:
     - STANDARD
+  # The admin SSO and surface-switch RPCs reuse the public request and
+  # response messages by design; renaming them would change the API.
+  ignore_only:
+    RPC_REQUEST_RESPONSE_UNIQUE:
+      - proto/taas/auth/v1/auth.proto
+    RPC_REQUEST_STANDARD_NAME:
+      - proto/taas/auth/v1/auth.proto
+    RPC_RESPONSE_STANDARD_NAME:
+      - proto/taas/auth/v1/auth.proto
 breaking:
   use:
     - FILE
