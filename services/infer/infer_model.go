@@ -34,6 +34,9 @@ type InferenceService struct {
 	// (config-driven in feature #2; the images table arrives in
 	// feature #3).
 	ImageID string `gorm:"size:64;not null"`
+	// ClusterID is the cluster the service is placed on (feature #40,
+	// AD7). Empty means the platform default cluster was used.
+	ClusterID string `gorm:"size:64;not null;default:'';index"`
 	// Replicas is the desired replica count, 1-100.
 	Replicas int `gorm:"not null"`
 	// Accelerator names the hardware platform (nvidia/iluvatar/metax).

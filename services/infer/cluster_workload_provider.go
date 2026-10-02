@@ -2,6 +2,7 @@ package infer
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -28,10 +29,10 @@ func (p *ClusterWorkloadProvider) ListServicesByCluster(ctx context.Context, clu
 		Name      string
 		ModelID   string
 		State     string
-		CreatedAt int64
+		CreatedAt time.Time
 	}
 	err := p.db.DB(ctx).Table("inference_services").
-		Select("id, name, model_id, state, EXTRACT(EPOCH FROM created_at)::bigint AS created_at").
+		Select("id, name, model_id, state, created_at").
 		Where("cluster_id = ?", clusterID).
 		Scan(&rows).Error
 	if err != nil {
@@ -40,7 +41,7 @@ func (p *ClusterWorkloadProvider) ListServicesByCluster(ctx context.Context, clu
 	out := make([]cluster.ClusterWorkload, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, cluster.ClusterWorkload{
-			ServiceID: r.ID, Name: r.Name, ModelID: r.ModelID, State: r.State, CreatedAt: r.CreatedAt,
+			ServiceID: r.ID, Name: r.Name, ModelID: r.ModelID, State: r.State, CreatedAt: r.CreatedAt.Unix(),
 		})
 	}
 	return out, nil
