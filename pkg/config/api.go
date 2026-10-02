@@ -295,6 +295,9 @@ type ControllerConfig struct {
 	// FineTuning configures the fine-tuning job executor (feature #39,
 	// Section 9).
 	FineTuning ControllerFineTuningConfig `mapstructure:"finetuning"`
+	// Cluster configures the per-cluster health collection loop (feature
+	// #40, Section 9).
+	Cluster ControllerClusterConfig `mapstructure:"cluster"`
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -614,6 +617,23 @@ type ControllerFineTuningConfig struct {
 	PollInterval time.Duration `mapstructure:"pollInterval"`
 }
 
+// ClusterConfig holds cluster-module specific settings (feature #40,
+// Section 9).
+type ClusterConfig struct {
+	// DefaultClusterID is the platform default cluster for the deploy
+	// form's cluster selector (AD8). Empty means the first active
+	// cluster.
+	DefaultClusterID string `mapstructure:"defaultClusterId"`
+}
+
+// ControllerClusterConfig holds the controller's per-cluster health
+// collection settings (feature #40, Section 9).
+type ControllerClusterConfig struct {
+	// CollectInterval is the Controller's per-cluster health collection
+	// period (AD4). Default 30s.
+	CollectInterval time.Duration `mapstructure:"collectInterval"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -683,6 +703,7 @@ type Configuration struct {
 	ResourceMetrics ResourceMetricsConfig `mapstructure:"resourcemetrics"`
 	Docs            DocsConfig            `mapstructure:"docs"`
 	FineTuning      FineTuningConfig      `mapstructure:"finetuning"`
+	Cluster         ClusterConfig         `mapstructure:"cluster"`
 	Log           LogConfig           `mapstructure:"log"`
 }
 
@@ -860,6 +881,9 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Controller.FineTuning.PollInterval < 0 {
 		return &FieldError{Field: "controller.finetuning.pollInterval", Reason: "must not be negative"}
+	}
+	if c.Controller.Cluster.CollectInterval < 0 {
+		return &FieldError{Field: "controller.cluster.collectInterval", Reason: "must not be negative"}
 	}
 	if c.Notification.Consumer.Workers < 0 {
 		return &FieldError{Field: "notification.consumer.workers", Reason: "must not be negative"}

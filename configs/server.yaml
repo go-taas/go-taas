@@ -248,3 +248,9 @@ docs:
 # Controller runs as a Kubernetes Job (AD6).
 finetuning:
   jobImage: ghcr.io/go-taas/go-taas/finetune:latest
+
+# Feature #40: multi-cluster management. The platform default cluster
+# for the deploy form's cluster selector (empty means the first active
+# cluster, AD8).
+cluster:
+  defaultClusterId: ""

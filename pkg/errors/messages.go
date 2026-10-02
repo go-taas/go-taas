@@ -170,8 +170,10 @@ var messages = map[Code]string{
 	CodeFineTuningHyperparametersInvalid: "invalid fine-tuning hyperparameters",
 
 	// cluster (feature #40, AD2)
-	CodeClusterNotFound: "cluster not found",
-	CodeClusterInvalid:  "invalid cluster",
+	CodeClusterNotFound:          "cluster not found",
+	CodeClusterExists:            "cluster already exists",
+	CodeClusterStateInvalid:      "invalid cluster state",
+	CodeClusterKubeconfigInvalid: "invalid cluster kubeconfig reference",
 
 	// account (feature #41, AD2)
 	CodeExportNotFound: "export not found",

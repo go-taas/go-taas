@@ -56,3 +56,8 @@ controller:
   # Kubernetes Job status on pollInterval (5s default, AD6).
   finetuning:
     pollInterval: 5s
+  # cluster (feature #40): the per-cluster health collection loop polls
+  # each registered cluster's nodes on collectInterval (30s default,
+  # AD4).
+  cluster:
+    collectInterval: 30s

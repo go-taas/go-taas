@@ -285,8 +285,10 @@ const (
 // cluster module error codes (feature #40, AD2). The block is
 // 12401-12499, the next free block after finetuning's 123xx.
 const (
-	CodeClusterNotFound Code = 12401 // CLUSTER_NOT_FOUND
-	CodeClusterInvalid  Code = 12402 // CLUSTER_INVALID
+	CodeClusterNotFound          Code = 12401 // CLUSTER_NOT_FOUND
+	CodeClusterExists            Code = 12402 // CLUSTER_EXISTS
+	CodeClusterStateInvalid      Code = 12403 // CLUSTER_STATE_INVALID
+	CodeClusterKubeconfigInvalid Code = 12404 // CLUSTER_KUBECONFIG_INVALID
 )
 
 // account module error codes (feature #41, AD2). The block is

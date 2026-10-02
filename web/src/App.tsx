@@ -38,6 +38,8 @@ import FineTuningPage from './pages/FineTuningPage';
 import FineTuningJobDetailPage from './pages/FineTuningJobDetailPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
+import ClustersPage from './pages/ClustersPage';
+import ClusterDetailPage from './pages/ClusterDetailPage';
 import ServiceLogsPage from './pages/ServiceLogsPage';
 import ServiceMetricsPage from './pages/ServiceMetricsPage';
 import DeploymentHistoryPage from './pages/DeploymentHistoryPage';
@@ -184,6 +186,8 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/images" element={<ImagesPage />} />
               <Route path="/admin/images/:id" element={<ImageDetailPage />} />
               <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
+              <Route path="/admin/clusters" element={<ClustersPage />} />
+              <Route path="/admin/clusters/:clusterId" element={<ClusterDetailPage />} />
               <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />
               <Route path="/admin/services/:id/logs" element={<ServiceLogsPage />} />
               <Route path="/admin/services/:id/metrics" element={<ServiceMetricsPage />} />

@@ -1,0 +1,125 @@
+syntax = "proto3";
+
+package taas.cluster.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/cluster/v1;clusterv1";
+
+// ClusterService serves the cluster registry and the cluster-health
+// projection. Admin-surface API: served under /api/v1/admin/clusters.
+service ClusterService {
+  // RegisterCluster registers an inference cluster (name, region,
+  // kubeconfig reference) and returns cluster_id with state=active.
+  rpc RegisterCluster(RegisterClusterRequest) returns (RegisterClusterResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/clusters" body: "*"};
+  }
+
+  // ListClusters returns the registered clusters, newest first, with
+  // per-cluster health and workload counts.
+  rpc ListClusters(ListClustersRequest) returns (ListClustersResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/clusters"};
+  }
+
+  // GetCluster returns a cluster's full detail (health, nodes).
+  rpc GetCluster(GetClusterRequest) returns (GetClusterResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/clusters/{cluster_id}"};
+  }
+
+  // GetClusterWorkloads returns the inference services placed on a
+  // cluster.
+  rpc GetClusterWorkloads(GetClusterWorkloadsRequest) returns (GetClusterWorkloadsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/clusters/{cluster_id}/workloads"};
+  }
+
+  // DisableCluster sets a cluster disabled (exclude from new
+  // placements). It is idempotent.
+  rpc DisableCluster(DisableClusterRequest) returns (DisableClusterResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/clusters/{cluster_id}:disable"};
+  }
+}
+
+message RegisterClusterRequest {
+  string name = 1;
+  string region = 2;
+  string kubeconfig_ref = 3;
+}
+
+message RegisterClusterResponse {
+  taas.common.v1.Response response = 1;
+  string cluster_id = 2;
+  // state is active immediately (AD5).
+  string state = 3;
+}
+
+message ListClustersRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListClustersResponse {
+  taas.common.v1.Response response = 1;
+  repeated ClusterSummary clusters = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message ClusterSummary {
+  string cluster_id = 1;
+  string name = 2;
+  string region = 3;
+  // state is active / disabled.
+  string state = 4;
+  // health is healthy / degraded / unknown.
+  string health = 5;
+  int64 node_count = 6;
+  int64 service_count = 7;
+  int64 last_checked_at = 8;
+}
+
+message GetClusterRequest {
+  string cluster_id = 1;
+}
+
+message GetClusterResponse {
+  taas.common.v1.Response response = 1;
+  Cluster cluster = 2;
+}
+
+message Cluster {
+  ClusterSummary summary = 1;
+  repeated ClusterNode nodes = 2;
+}
+
+message ClusterNode {
+  string node_id = 1;
+  string name = 2;
+  // status is ready / not_ready / unknown.
+  string status = 3;
+}
+
+message GetClusterWorkloadsRequest {
+  string cluster_id = 1;
+  taas.common.v1.PageRequest page = 2;
+}
+
+message GetClusterWorkloadsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ClusterWorkload workloads = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message ClusterWorkload {
+  string service_id = 1;
+  string name = 2;
+  string model_id = 3;
+  string state = 4;
+  int64 created_at = 5;
+}
+
+message DisableClusterRequest {
+  string cluster_id = 1;
+}
+
+message DisableClusterResponse {
+  taas.common.v1.Response response = 1;
+}

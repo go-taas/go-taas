@@ -21,6 +21,7 @@ import (
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/auth"
 	"github.com/go-taas/go-taas/services/billing"
+	"github.com/go-taas/go-taas/services/cluster"
 	"github.com/go-taas/go-taas/services/docs"
 	"github.com/go-taas/go-taas/services/finetuning"
 	"github.com/go-taas/go-taas/services/image"
@@ -155,6 +156,12 @@ func main() {
 	finetuningSvc := finetuning.New(srv.Components())
 	finetuningSvc.SetJobImage(cfg.FineTuning.JobImage)
 	srv.RegisterService(finetuningSvc)
+	// Feature #40: the cluster service owns the cluster registry and the
+	// cluster-health projection (admin-only).
+	clusterCache := cluster.NewProjectionCache()
+	clusterSvc := cluster.New(srv.Components())
+	clusterSvc.SetDefaultClusterID(cfg.Cluster.DefaultClusterID)
+	srv.RegisterService(clusterSvc)
 
 	// Feature #20: the async load-test runner is constructed once the
 	// database is available (it persists runs and drives real traffic
@@ -282,6 +289,14 @@ func main() {
 				finetuningSvc.SetServiceDeployer(infer.NewFineTuningServiceDeployer(gormDB, mqClient))
 				finetuningSvc.SetPublisher(mqClient)
 			}
+			// Feature #40: the cluster service resolves the session's
+			// active org and caller, gates the admin cluster RPCs by the
+			// caller's role (AD1), and lists workload placement via the
+			// infer module (AD7).
+			clusterSvc.SetSessionOrgResolver(authSvc)
+			clusterSvc.SetSessionUserResolver(authSvc)
+			clusterSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			clusterSvc.SetWorkloadProvider(infer.NewClusterWorkloadProvider(gormDB))
 			// Feature #28/#31: the metering service resolves the session's
 			// active org and caller, and gates the admin usage-keys and
 			// error-analysis RPCs by the caller's role (AD9).
@@ -372,6 +387,11 @@ func main() {
 		srv.AddRunner(runner)
 	}
 	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components(), acceleratorCache); runner != nil {
+		srv.AddRunner(runner)
+	}
+	// Feature #40: the cluster health snapshot consumer maintains the
+	// in-memory projection cache the cluster RPCs read (AD4).
+	if runner := cluster.NewSnapshotConsumerRunner(srv.Components(), clusterCache); runner != nil {
 		srv.AddRunner(runner)
 	}
 	// Feature #20: the load-test runner recovers interrupted runs and

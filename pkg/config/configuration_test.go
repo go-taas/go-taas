@@ -589,6 +589,55 @@ controller:
 	}
 }
 
+func TestClusterDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Controller.Cluster.CollectInterval != 30*time.Second {
+		t.Fatalf("controller cluster collectInterval default = %v, want 30s", cfg.Controller.Cluster.CollectInterval)
+	}
+}
+
+func TestValidateClusterConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Controller.Cluster.CollectInterval = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative cluster collectInterval should fail validation")
+	}
+	cfg.Controller.Cluster.CollectInterval = 30 * time.Second
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid cluster config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsClusterSection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+cluster:
+  defaultClusterId: cluster-1
+controller:
+  cluster:
+    collectInterval: 15s
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Cluster.DefaultClusterID != "cluster-1" {
+		t.Fatalf("cluster defaultClusterId = %q, want cluster-1", cfg.Cluster.DefaultClusterID)
+	}
+	if cfg.Controller.Cluster.CollectInterval != 15*time.Second {
+		t.Fatalf("controller cluster collectInterval = %v, want 15s", cfg.Controller.Cluster.CollectInterval)
+	}
+}
+
 func TestNotificationDefaults(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.applyDefaults()

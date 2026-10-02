@@ -1271,3 +1271,56 @@ export interface DeployFineTunedModelResponse {
   response: ResponseEnvelope;
   serviceId: string;
 }
+
+// ---- multi-cluster management (feature #40) ----
+
+export interface ClusterSummary {
+  clusterId: string;
+  name: string;
+  region: string;
+  state: string;
+  health: string;
+  nodeCount: string;
+  serviceCount: string;
+  lastCheckedAt: string;
+}
+
+export interface ClusterNode {
+  nodeId: string;
+  name: string;
+  status: string;
+}
+
+export interface Cluster {
+  summary: ClusterSummary;
+  nodes: ClusterNode[];
+}
+
+export interface ClusterWorkload {
+  serviceId: string;
+  name: string;
+  modelId: string;
+  state: string;
+  createdAt: string;
+}
+
+export interface ListClustersResponse {
+  response: ResponseEnvelope;
+  clusters: ClusterSummary[];
+}
+
+export interface RegisterClusterResponse {
+  response: ResponseEnvelope;
+  clusterId: string;
+  state: string;
+}
+
+export interface GetClusterResponse {
+  response: ResponseEnvelope;
+  cluster: Cluster;
+}
+
+export interface GetClusterWorkloadsResponse {
+  response: ResponseEnvelope;
+  workloads: ClusterWorkload[];
+}

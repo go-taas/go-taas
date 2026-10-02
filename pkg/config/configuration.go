@@ -302,6 +302,11 @@ func (c *Configuration) applyDefaults() {
 	if c.Controller.FineTuning.PollInterval == 0 {
 		c.Controller.FineTuning.PollInterval = 5 * time.Second
 	}
+	// Feature #40: the controller's per-cluster health collection
+	// interval defaults to 30s (AD4).
+	if c.Controller.Cluster.CollectInterval == 0 {
+		c.Controller.Cluster.CollectInterval = 30 * time.Second
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {

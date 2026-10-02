@@ -108,6 +108,10 @@ type Subjects struct {
 	// FineTuningJobsStatus carries fine-tuning job status reports from
 	// the controller back to the finetuning module (feature #39, AD6).
 	FineTuningJobsStatus string
+	// ClusterHealth carries the controller's per-cluster health snapshot
+	// (feature #40, AD4). The cluster module consumes it to maintain its
+	// in-memory projection cache.
+	ClusterHealth string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -125,6 +129,7 @@ func DefaultSubjects() Subjects {
 		NotificationEvents:      "notification.events",
 		FineTuningJobsChanges:   "finetuning.jobs.changes",
 		FineTuningJobsStatus:    "finetuning.jobs.status",
+		ClusterHealth:           "cluster.health",
 	}
 }
 
