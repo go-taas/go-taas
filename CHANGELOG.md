@@ -1,3 +1,11 @@
+# [1.45.0](https://github.com/go-taas/go-taas/compare/v1.44.0...v1.45.0) (2026-10-02)
+
+
+### Features
+
+* **cluster:** add multi-cluster management (feature [#40](https://github.com/go-taas/go-taas/issues/40)) ([fb4fddc](https://github.com/go-taas/go-taas/commit/fb4fddc424285706505230bb274c2603d96511b6))
+* **finetune:** add model fine-tuning management (feature [#39](https://github.com/go-taas/go-taas/issues/39)) ([cd6b938](https://github.com/go-taas/go-taas/commit/cd6b938ed0763b27caa26a20e7d11e06ea533a3b))
+
 # [1.44.0](https://github.com/go-taas/go-taas/compare/v1.43.0...v1.44.0) (2026-10-02)
 
 
