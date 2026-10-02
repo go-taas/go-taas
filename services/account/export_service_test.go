@@ -13,6 +13,7 @@ import (
 	accountv1 "github.com/go-taas/go-taas/proto/taas/account/v1"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 type fakeSessionOrgResolver struct{ org string }
@@ -146,6 +147,41 @@ func TestRoleDenied(t *testing.T) {
 	svc := newService(t, db, false)
 	// AC8: role denied -> 10036.
 	_, err := svc.ListDataExports(ctxWithOrg(context.Background(), "org-1"), &accountv1.ListDataExportsRequest{})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}
+
+// TestListDataExportsRealRoleGuardNonMember verifies the export RPC's
+// role check rejects a non-member session with 10036 when the real
+// tenancy RoleGuard is wired (AC8). This is a regression test for the
+// roleUser="user" defect: the minimum role must be a key of the tenancy
+// roleRank map (RoleMember), otherwise a non-member's rank 0 is not
+// below the minimum's rank 0 and the check is a no-op.
+func TestListDataExportsRealRoleGuardNonMember(t *testing.T) {
+	db := newTestDB(t)
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+
+	// Seed an org and a member with the member role.
+	require.NoError(t, db.Create(&tenancy.Organization{
+		ID: "org-1", DisplayName: "org-1", State: tenancy.StateActive,
+	}).Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{
+		OrganizationID: "org-1", UserID: "member-uuid", Role: tenancy.RoleMember,
+	}).Error)
+
+	svc := NewForFVT(db)
+	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: "org-1"})
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "member-uuid"})
+	svc.SetRoleGuard(tenancy.NewRoleGuard(db))
+
+	// A member session is allowed.
+	resp, err := svc.ListDataExports(ctxWithOrg(context.Background(), "org-1"), &accountv1.ListDataExportsRequest{})
+	require.NoError(t, err)
+	require.NotNil(t, resp)
+
+	// A non-member session (no membership row) is rejected with 10036.
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "non-member-uuid"})
+	_, err = svc.ListDataExports(ctxWithOrg(context.Background(), "org-1"), &accountv1.ListDataExportsRequest{})
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
 }

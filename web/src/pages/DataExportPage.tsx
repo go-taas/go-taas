@@ -4,7 +4,8 @@
 // docs/architecture/data-export-privacy.md §6.5.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, type DataExport } from '../api';
+import { type DataExport } from '../api';
+import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { ErrorBanner, StateBadge, usePolling } from '../components';
@@ -18,6 +19,7 @@ const RANGE_PRESETS = [
 ];
 
 export default function DataExportPage() {
+  const api = useApi();
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [exports, setExports] = useState<DataExport[]>([]);
@@ -44,7 +46,7 @@ export default function DataExportPage() {
     } finally {
       setLoading(false);
     }
-  }, [orgId, t]);
+  }, [api, orgId, t]);
 
   useEffect(() => {
     void load();
