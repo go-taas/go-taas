@@ -18,6 +18,7 @@ import (
 
 	"github.com/go-taas/go-taas/internal/controller"
 	"github.com/go-taas/go-taas/services/accelerator"
+	"github.com/go-taas/go-taas/services/account"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/auth"
 	"github.com/go-taas/go-taas/services/billing"
@@ -162,6 +163,11 @@ func main() {
 	clusterSvc := cluster.New(srv.Components())
 	clusterSvc.SetDefaultClusterID(cfg.Cluster.DefaultClusterID)
 	srv.RegisterService(clusterSvc)
+	// Feature #41: the account service owns the data-export job lifecycle
+	// and the account-data bundle (end-user-only).
+	accountSvc := account.New(srv.Components())
+	accountSvc.SetMaxRangeSeconds(cfg.Account.Export.MaxRangeSeconds)
+	srv.RegisterService(accountSvc)
 
 	// Feature #20: the async load-test runner is constructed once the
 	// database is available (it persists runs and drives real traffic
@@ -297,6 +303,12 @@ func main() {
 			clusterSvc.SetSessionUserResolver(authSvc)
 			clusterSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			clusterSvc.SetWorkloadProvider(infer.NewClusterWorkloadProvider(gormDB))
+			// Feature #41: the account service resolves the session's
+			// active org and caller, and gates the data-export RPCs by
+			// the caller's role (AD1).
+			accountSvc.SetSessionOrgResolver(authSvc)
+			accountSvc.SetSessionUserResolver(authSvc)
+			accountSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			// Feature #28/#31: the metering service resolves the session's
 			// active org and caller, and gates the admin usage-keys and
 			// error-analysis RPCs by the caller's role (AD9).
@@ -460,6 +472,18 @@ func main() {
 	if cfg.Billing.Reports.Enabled {
 		srv.AddRunner(billing.NewReportGeneratorRunner(billingSvc, cfg.Billing.Reports.GeneratorInterval))
 		srv.AddRunner(billing.NewScheduleRunner(billingSvc, cfg.Billing.Reports.ScheduleInterval))
+	}
+	// Feature #41: the data-export generation runner picks up pending
+	// exports and renders them (AD2). It is wired after Init so the
+	// database is available.
+	if dbComponent := srv.Components().DB(); dbComponent != nil {
+		if gormDB, ok := dbComponent.GormDB().(*gorm.DB); ok {
+			srv.AddRunner(account.NewExportGeneratorRunner(
+				accountSvc,
+				account.NewDBExportDataProvider(gormDB),
+				cfg.Account.Export.GeneratorInterval,
+			))
+		}
 	}
 
 	srv.Serve()

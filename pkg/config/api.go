@@ -634,6 +634,24 @@ type ControllerClusterConfig struct {
 	CollectInterval time.Duration `mapstructure:"collectInterval"`
 }
 
+// AccountConfig holds account-module specific settings (feature #41,
+// Section 9).
+type AccountConfig struct {
+	// Export configures the data-export generation runner.
+	Export AccountExportConfig `mapstructure:"export"`
+}
+
+// AccountExportConfig holds the data-export generation settings (feature
+// #41, Section 9).
+type AccountExportConfig struct {
+	// GeneratorInterval is the export-generation runner's tick interval
+	// (AD2). Default 5s.
+	GeneratorInterval time.Duration `mapstructure:"generatorInterval"`
+	// MaxRangeSeconds is the maximum range accepted by CreateDataExport
+	// (AD6). Default 7948800 (92 days).
+	MaxRangeSeconds int64 `mapstructure:"maxRangeSeconds"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -704,6 +722,7 @@ type Configuration struct {
 	Docs            DocsConfig            `mapstructure:"docs"`
 	FineTuning      FineTuningConfig      `mapstructure:"finetuning"`
 	Cluster         ClusterConfig         `mapstructure:"cluster"`
+	Account         AccountConfig         `mapstructure:"account"`
 	Log           LogConfig           `mapstructure:"log"`
 }
 
@@ -884,6 +903,9 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Controller.Cluster.CollectInterval < 0 {
 		return &FieldError{Field: "controller.cluster.collectInterval", Reason: "must not be negative"}
+	}
+	if c.Account.Export.MaxRangeSeconds < 0 {
+		return &FieldError{Field: "account.export.maxRangeSeconds", Reason: "must not be negative"}
 	}
 	if c.Notification.Consumer.Workers < 0 {
 		return &FieldError{Field: "notification.consumer.workers", Reason: "must not be negative"}

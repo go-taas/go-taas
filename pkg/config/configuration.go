@@ -307,6 +307,14 @@ func (c *Configuration) applyDefaults() {
 	if c.Controller.Cluster.CollectInterval == 0 {
 		c.Controller.Cluster.CollectInterval = 30 * time.Second
 	}
+	// Feature #41: the data-export generation runner defaults (Section
+	// 9).
+	if c.Account.Export.GeneratorInterval == 0 {
+		c.Account.Export.GeneratorInterval = 5 * time.Second
+	}
+	if c.Account.Export.MaxRangeSeconds == 0 {
+		c.Account.Export.MaxRangeSeconds = 92 * 24 * 3600
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {

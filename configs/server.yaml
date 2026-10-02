@@ -254,3 +254,11 @@ finetuning:
 # cluster, AD8).
 cluster:
   defaultClusterId: ""
+
+# Feature #41: data export & privacy. The export-generation runner ticks
+# on generatorInterval; CreateDataExport accepts a range up to
+# maxRangeSeconds (92 days, AD6).
+account:
+  export:
+    generatorInterval: 5s
+    maxRangeSeconds: 7948800

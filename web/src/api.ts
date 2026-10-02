@@ -1324,3 +1324,38 @@ export interface GetClusterWorkloadsResponse {
   response: ResponseEnvelope;
   workloads: ClusterWorkload[];
 }
+
+// ---- data export & privacy (feature #41) ----
+
+export interface DataExport {
+  exportId: string;
+  type: string;
+  since: string;
+  until: string;
+  format: string;
+  status: string;
+  rowCount: string;
+  createdAt: string;
+}
+
+export interface CreateDataExportResponse {
+  response: ResponseEnvelope;
+  export: DataExport;
+}
+
+export interface ListDataExportsResponse {
+  response: ResponseEnvelope;
+  exports: DataExport[];
+}
+
+export interface GetDataExportResponse {
+  response: ResponseEnvelope;
+  export: DataExport;
+}
+
+export interface DownloadDataExportResponse {
+  response: ResponseEnvelope;
+  file: string;
+  contentType: string;
+  filename: string;
+}

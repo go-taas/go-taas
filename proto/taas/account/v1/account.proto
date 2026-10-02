@@ -1,0 +1,97 @@
+syntax = "proto3";
+
+package taas.account.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/account/v1;accountv1";
+
+// AccountService serves the data-export job lifecycle and the
+// account-data bundle. End-user surface API: served under
+// /api/v1/account/export.
+service AccountService {
+  // CreateDataExport creates a data-export job (type, range, format)
+  // and returns an export with status=pending.
+  rpc CreateDataExport(CreateDataExportRequest) returns (CreateDataExportResponse) {
+    option (google.api.http) = {post: "/api/v1/account/export" body: "*"};
+  }
+
+  // ListDataExports returns the caller's export history, newest first.
+  rpc ListDataExports(ListDataExportsRequest) returns (ListDataExportsResponse) {
+    option (google.api.http) = {get: "/api/v1/account/export"};
+  }
+
+  // GetDataExport returns an export's status and definition.
+  rpc GetDataExport(GetDataExportRequest) returns (GetDataExportResponse) {
+    option (google.api.http) = {get: "/api/v1/account/export/{export_id}"};
+  }
+
+  // DownloadDataExport returns the export file when status=ready.
+  rpc DownloadDataExport(DownloadDataExportRequest) returns (DownloadDataExportResponse) {
+    option (google.api.http) = {get: "/api/v1/account/export/{export_id}/download"};
+  }
+}
+
+message CreateDataExportRequest {
+  // type is usage / billing / request_logs / account.
+  string type = 1;
+  // since/until bound the range, unix seconds. Defaults: until = now,
+  // since = until - 30d. Not applicable to account.
+  int64 since = 2;
+  int64 until = 3;
+  // format is json / csv (account is always json).
+  string format = 4;
+}
+
+message CreateDataExportResponse {
+  taas.common.v1.Response response = 1;
+  DataExport export = 2;
+}
+
+message ListDataExportsRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListDataExportsResponse {
+  taas.common.v1.Response response = 1;
+  repeated DataExport exports = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetDataExportRequest {
+  string export_id = 1;
+}
+
+message GetDataExportResponse {
+  taas.common.v1.Response response = 1;
+  DataExport export = 2;
+}
+
+message DownloadDataExportRequest {
+  string export_id = 1;
+}
+
+message DownloadDataExportResponse {
+  taas.common.v1.Response response = 1;
+  // file is the rendered export (JSON or CSV).
+  string file = 2;
+  // content_type is application/json or text/csv.
+  string content_type = 3;
+  // filename is data-export-<export_id>.json or .csv.
+  string filename = 4;
+}
+
+message DataExport {
+  string export_id = 1;
+  // type is usage / billing / request_logs / account.
+  string type = 2;
+  int64 since = 3;
+  int64 until = 4;
+  // format is json / csv.
+  string format = 5;
+  // status is pending / ready / failed.
+  string status = 6;
+  int64 row_count = 7;
+  int64 created_at = 8;
+}

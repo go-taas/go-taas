@@ -638,6 +638,57 @@ controller:
 	}
 }
 
+func TestAccountExportDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Account.Export.GeneratorInterval != 5*time.Second {
+		t.Fatalf("account export generatorInterval default = %v, want 5s", cfg.Account.Export.GeneratorInterval)
+	}
+	if cfg.Account.Export.MaxRangeSeconds != 92*24*3600 {
+		t.Fatalf("account export maxRangeSeconds default = %d, want %d", cfg.Account.Export.MaxRangeSeconds, 92*24*3600)
+	}
+}
+
+func TestValidateAccountExportConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Account.Export.MaxRangeSeconds = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative account export maxRangeSeconds should fail validation")
+	}
+	cfg.Account.Export.MaxRangeSeconds = 92 * 24 * 3600
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid account export config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsAccountExportSection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+account:
+  export:
+    generatorInterval: 10s
+    maxRangeSeconds: 604800
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Account.Export.GeneratorInterval != 10*time.Second {
+		t.Fatalf("account export generatorInterval = %v, want 10s", cfg.Account.Export.GeneratorInterval)
+	}
+	if cfg.Account.Export.MaxRangeSeconds != 604800 {
+		t.Fatalf("account export maxRangeSeconds = %d, want 604800", cfg.Account.Export.MaxRangeSeconds)
+	}
+}
+
 func TestNotificationDefaults(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.applyDefaults()

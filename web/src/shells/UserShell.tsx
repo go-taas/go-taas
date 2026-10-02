@@ -16,6 +16,7 @@ import {
   FileText,
   Bell,
   BookOpen,
+  DownloadSimple,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -50,6 +51,7 @@ export const USER_NAV_ITEMS: { path: string; labelKey: string; testid: string; i
   { path: '/models', labelKey: 'nav.models', testid: 'user-nav-models', icon: Cube },
   { path: '/traces', labelKey: 'nav.traces', testid: 'user-nav-traces', icon: ChartLine },
   { path: '/errors', labelKey: 'nav.errors', testid: 'user-nav-errors', icon: ChartLine },
+  { path: '/account/export', labelKey: 'nav.dataExport', testid: 'user-nav-data-export', icon: DownloadSimple },
 ];
 
 function isActive(path: string, current: string): boolean {

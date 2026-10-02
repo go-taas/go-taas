@@ -88,6 +88,7 @@ import UserErrorDetailPage from './pages/user/UserErrorDetailPage';
 import UserCostAnalyticsPage from './pages/user/UserCostAnalyticsPage';
 import UserCostDetailPage from './pages/user/UserCostDetailPage';
 import UserForecastPage from './pages/user/UserForecastPage';
+import DataExportPage from './pages/DataExportPage';
 import NotFoundPage from './pages/NotFoundPage';
 
 export default function App() {
@@ -152,6 +153,7 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/forecast" element={<UserForecastPage />} />
               <Route path="/errors" element={<UserErrorAnalysisPage />} />
               <Route path="/errors/:errorCode" element={<UserErrorDetailPage />} />
+              <Route path="/account/export" element={<DataExportPage />} />
               <Route path="*" element={<NotFoundPage homePath="/usage" homeLabel="Usage" />} />
             </Routes>
           </UserShell>
