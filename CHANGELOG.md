@@ -1,3 +1,12 @@
+## [1.46.1](https://github.com/go-taas/go-taas/compare/v1.46.0...v1.46.1) (2026-10-02)
+
+
+### Bug Fixes
+
+* **cluster:** add cluster_id to inference services (MC-1) ([4127797](https://github.com/go-taas/go-taas/commit/412779717445432c1720419c2451668ac61bd47b)), closes [#40](https://github.com/go-taas/go-taas/issues/40)
+* **docs:** gate the docs RPC by the member role (AD-1) ([ac12515](https://github.com/go-taas/go-taas/commit/ac1251589759ab30cd9813c3a6275d3fcf04bd55))
+* **export:** use user API client and gate export RPC by member role (DE-1, DE-2) ([cd26df1](https://github.com/go-taas/go-taas/commit/cd26df10ee29356ae8414553f0627c4e8311d86e)), closes [#41](https://github.com/go-taas/go-taas/issues/41)
+
 # [1.46.0](https://github.com/go-taas/go-taas/compare/v1.45.0...v1.46.0) (2026-10-02)
 
 
