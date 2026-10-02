@@ -1,3 +1,16 @@
+# [1.42.0](https://github.com/go-taas/go-taas/compare/v1.41.2...v1.42.0) (2026-10-02)
+
+
+### Bug Fixes
+
+* **nano:** address 4 in-scope Copilot findings on PR [#14](https://github.com/go-taas/go-taas/issues/14) ([86fa40b](https://github.com/go-taas/go-taas/commit/86fa40b5817e6ae2b888b16cb7ef7d4fa03c17db))
+* **nano:** sum settlement terms exactly and round to whole raw once ([56e8661](https://github.com/go-taas/go-taas/commit/56e86617e883d3a558b48e8c971adb99972a10c7))
+
+
+### Features
+
+* **nano:** exact per-inference settlement amount, kept at 30-decimal raw ([37da8d9](https://github.com/go-taas/go-taas/commit/37da8d9d138eca435cc7edfdd617d9fc3869304c)), closes [#7](https://github.com/go-taas/go-taas/issues/7)
+
 ## [1.41.2](https://github.com/go-taas/go-taas/compare/v1.41.1...v1.41.2) (2026-10-01)
 
 
