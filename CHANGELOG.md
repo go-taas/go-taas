@@ -1,3 +1,10 @@
+# [1.44.0](https://github.com/go-taas/go-taas/compare/v1.43.0...v1.44.0) (2026-10-02)
+
+
+### Features
+
+* **docs:** add API documentation explorer (feature [#38](https://github.com/go-taas/go-taas/issues/38)) ([5c79741](https://github.com/go-taas/go-taas/commit/5c79741ddd0fad28dadafcdad9c232b58b508a14))
+
 # [1.43.0](https://github.com/go-taas/go-taas/compare/v1.42.0...v1.43.0) (2026-10-02)
 
 
