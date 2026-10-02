@@ -47,3 +47,8 @@ controller:
     # mountPath is the path the weights volume is mounted at inside
     # inference pods. Defaults to "/data/weights".
     mountPath: "/data/weights"
+  # resourceMetrics (feature #37): the per-service CPU/memory/GPU
+  # sampling loop reads from the Kubernetes metrics-server and the
+  # accelerator signals on sampleInterval (30s default, AD2).
+  resourceMetrics:
+    sampleInterval: 30s

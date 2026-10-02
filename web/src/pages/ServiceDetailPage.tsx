@@ -97,6 +97,17 @@ export default function ServiceDetailPage() {
         >
           {t('servicelogs.title')}
         </a>
+        <a
+          className="secondary"
+          data-testid="service-metrics-link"
+          href={`/admin/services/${s.serviceId}/metrics`}
+          onClick={(e) => {
+            e.preventDefault();
+            navigate(`/admin/services/${s.serviceId}/metrics`);
+          }}
+        >
+          {t('servicemetrics.title')}
+        </a>
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>

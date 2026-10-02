@@ -1134,3 +1134,35 @@ export function formatRate(value: number | undefined, decimals = 1): string {
   if (value === undefined || value === null || !isFinite(value)) return '—';
   return value.toFixed(decimals);
 }
+
+// ---- service resource metrics (feature #37) ----
+
+export interface ResourceMetricsCard {
+  currentCpuPercent: string;
+  currentMemoryBytes: string;
+  currentGpuPercent: string;
+  replicaCount: string;
+  dataThrough: string;
+}
+
+export interface ResourceMetricsSeriesPoint {
+  bucket: string;
+  cpuPercent: string;
+  memoryBytes: string;
+  gpuPercent: string;
+}
+
+export interface ResourceMetricsReplicaRow {
+  replicaIndex: string;
+  currentCpuPercent: string;
+  currentMemoryBytes: string;
+  currentGpuPercent: string;
+  dataThrough: string;
+}
+
+export interface GetServiceResourceMetricsResponse {
+  response: ResponseEnvelope;
+  cards: ResourceMetricsCard;
+  series: ResourceMetricsSeriesPoint[];
+  replicas: ResourceMetricsReplicaRow[];
+}

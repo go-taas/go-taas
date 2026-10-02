@@ -36,6 +36,7 @@ import ModelVersionsPage from './pages/ModelVersionsPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import ServiceLogsPage from './pages/ServiceLogsPage';
+import ServiceMetricsPage from './pages/ServiceMetricsPage';
 import DeploymentHistoryPage from './pages/DeploymentHistoryPage';
 import ImagesPage from './pages/ImagesPage';
 import ImageDetailPage from './pages/ImageDetailPage';
@@ -179,6 +180,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
               <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />
               <Route path="/admin/services/:id/logs" element={<ServiceLogsPage />} />
+              <Route path="/admin/services/:id/metrics" element={<ServiceMetricsPage />} />
               <Route path="/admin/deployments" element={<DeploymentHistoryPage />} />
               <Route path="/admin/usage" element={<UsagePage />} />
               <Route path="/admin/pricing" element={<PricingPage />} />

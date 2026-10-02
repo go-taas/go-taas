@@ -280,6 +280,16 @@ func (c *Configuration) applyDefaults() {
 	if c.Tracing.Retention.TraceTTL == 0 {
 		c.Tracing.Retention.TraceTTL = 720 * time.Hour
 	}
+	// Feature #37: the resourcemetrics max range defaults to 92 days
+	// (AD5), mirroring the observability/metering maxRangeSeconds.
+	if c.ResourceMetrics.MaxRangeSeconds == 0 {
+		c.ResourceMetrics.MaxRangeSeconds = 92 * 24 * 3600
+	}
+	// Feature #37: the controller's per-service resource sampling
+	// interval defaults to 30s (AD2).
+	if c.Controller.ResourceMetrics.SampleInterval == 0 {
+		c.Controller.ResourceMetrics.SampleInterval = 30 * time.Second
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {

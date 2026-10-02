@@ -289,6 +289,9 @@ type ControllerConfig struct {
 	// JuiceFS-backed StorageClass so every inference pod reads the same
 	// model weights the control plane downloads.
 	Weights WeightsConfig `mapstructure:"weights"`
+	// ResourceMetrics configures the per-service CPU/memory/GPU sampling
+	// loop (feature #37, AD2).
+	ResourceMetrics ControllerResourceMetricsConfig `mapstructure:"resourceMetrics"`
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -567,6 +570,23 @@ type ObservabilityStatusConfig struct {
 	StaleAfterSeconds int64 `mapstructure:"staleAfterSeconds"`
 }
 
+// ResourceMetricsConfig holds resourcemetrics-module specific settings
+// (feature #37, Section 9).
+type ResourceMetricsConfig struct {
+	// MaxRangeSeconds is the maximum range accepted by the
+	// GetServiceResourceMetrics RPC (AD5). Default 7948800 (92 days),
+	// mirroring the metering maxRangeSeconds constant.
+	MaxRangeSeconds int64 `mapstructure:"maxRangeSeconds"`
+}
+
+// ControllerResourceMetricsConfig holds the controller's per-service
+// resource sampling settings (feature #37, Section 9).
+type ControllerResourceMetricsConfig struct {
+	// SampleInterval is the Controller's per-service CPU/memory/GPU
+	// sampling period (AD2). Default 30s.
+	SampleInterval time.Duration `mapstructure:"sampleInterval"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -633,6 +653,7 @@ type Configuration struct {
 	Observability ObservabilityConfig `mapstructure:"observability"`
 	Notification  NotificationConfig  `mapstructure:"notification"`
 	Tracing       TracingConfig       `mapstructure:"tracing"`
+	ResourceMetrics ResourceMetricsConfig `mapstructure:"resourcemetrics"`
 	Log           LogConfig           `mapstructure:"log"`
 }
 
@@ -801,6 +822,12 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Observability.MaxRangeSeconds < 0 {
 		return &FieldError{Field: "observability.maxRangeSeconds", Reason: "must not be negative"}
+	}
+	if c.ResourceMetrics.MaxRangeSeconds < 0 {
+		return &FieldError{Field: "resourcemetrics.maxRangeSeconds", Reason: "must not be negative"}
+	}
+	if c.Controller.ResourceMetrics.SampleInterval < 0 {
+		return &FieldError{Field: "controller.resourceMetrics.sampleInterval", Reason: "must not be negative"}
 	}
 	if c.Notification.Consumer.Workers < 0 {
 		return &FieldError{Field: "notification.consumer.workers", Reason: "must not be negative"}

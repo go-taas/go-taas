@@ -51,6 +51,10 @@ func NewClient(cfg *Config) (*Client, error) {
 // Clientset returns the typed Kubernetes clientset.
 func (c *Client) Clientset() kubernetes.Interface { return c.clientset }
 
+// RESTConfig returns the underlying REST config, used to build
+// additional typed clients (e.g. the metrics-server client).
+func (c *Client) RESTConfig() *rest.Config { return c.config }
+
 // Dynamic returns the dynamic Kubernetes client.
 func (c *Client) Dynamic() dynamic.Interface { return c.dynamic }
 

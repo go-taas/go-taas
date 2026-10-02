@@ -199,6 +199,14 @@ services:
       # Feature: the JuiceFS-backed StorageClass the controller
       # provisions the model-weights PVC from (read from .env).
       CONFIG_CONTROLLER_WEIGHTS_STORAGECLASS: ${WEIGHTS_STORAGE_CLASS:-}
+      # Feature #37: the per-service resource sampler writes sample rows
+      # to the shared PostgreSQL database.
+      CONFIG_DB_MASTER_HOST: postgres
+      CONFIG_DB_MASTER_PORT: "5432"
+      CONFIG_DB_MASTER_DBNAME: taas
+      CONFIG_DB_MASTER_USER: taas
+      CONFIG_DB_MASTER_PASSWORD: taas
+      CONFIG_DB_MASTER_SSLMODE: disable
     volumes:
       - ${KUBECONFIG:-$HOME/.kube/config}:/etc/taas/kubeconfig:ro
 

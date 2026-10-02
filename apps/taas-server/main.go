@@ -26,6 +26,7 @@ import (
 	"github.com/go-taas/go-taas/services/model"
 	"github.com/go-taas/go-taas/services/notification"
 	"github.com/go-taas/go-taas/services/observability"
+	"github.com/go-taas/go-taas/services/resourcemetrics"
 	"github.com/go-taas/go-taas/services/tenancy"
 	"github.com/go-taas/go-taas/services/tracing"
 	"github.com/go-taas/go-taas/services/webhook"
@@ -135,6 +136,12 @@ func main() {
 	acceleratorCache := accelerator.NewProjectionCache()
 	acceleratorSvc := accelerator.NewWithCache(acceleratorCache)
 	srv.RegisterService(acceleratorSvc)
+	// Feature #37: the resourcemetrics service serves the read-only
+	// per-service CPU/memory/GPU utilization aggregation over the
+	// service_resource_metrics table (admin-only).
+	resourceMetricsSvc := resourcemetrics.New(srv.Components())
+	resourceMetricsSvc.SetMaxRangeSeconds(cfg.ResourceMetrics.MaxRangeSeconds)
+	srv.RegisterService(resourceMetricsSvc)
 
 	// Feature #20: the async load-test runner is constructed once the
 	// database is available (it persists runs and drives real traffic
@@ -234,6 +241,15 @@ func main() {
 			tracingSvc.SetSessionUserResolver(authSvc)
 			tracingSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			meteringSvc.SetTraceCapturer(tracingSvc)
+			// Feature #37: the resourcemetrics service resolves the
+			// session's active org and caller, gates the admin
+			// resource-metrics RPC by the caller's role (AD1), and
+			// validates the service_id against the infer service
+			// contract (10301).
+			resourceMetricsSvc.SetSessionOrgResolver(authSvc)
+			resourceMetricsSvc.SetSessionUserResolver(authSvc)
+			resourceMetricsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			resourceMetricsSvc.SetServiceExists(infer.NewServiceExistsProvider(gormDB))
 			// Feature #28/#31: the metering service resolves the session's
 			// active org and caller, and gates the admin usage-keys and
 			// error-analysis RPCs by the caller's role (AD9).

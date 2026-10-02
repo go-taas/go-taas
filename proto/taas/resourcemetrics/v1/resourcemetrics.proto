@@ -1,0 +1,73 @@
+syntax = "proto3";
+
+package taas.resourcemetrics.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/resourcemetrics/v1;resourcemetricsv1";
+
+// ResourceMetricsService serves the read-only per-service resource
+// utilization. Admin-surface API: served under /api/v1/admin.
+service ResourceMetricsService {
+  // GetServiceResourceMetrics returns per-service CPU/memory/GPU
+  // utilization over time: summary cards, a time-series of buckets, and
+  // a per-replica breakdown. It is admin-only (no user binding).
+  rpc GetServiceResourceMetrics(GetServiceResourceMetricsRequest) returns (GetServiceResourceMetricsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/services/{service_id}/metrics"};
+  }
+}
+
+message GetServiceResourceMetricsRequest {
+  // service_id is the path parameter (the infer service contract).
+  string service_id = 1;
+  // since/until bound the range, unix seconds. Defaults: until = now,
+  // since = until - 24h. A range > 92 days is rejected (10404).
+  int64 since = 2;
+  int64 until = 3;
+  // replica optionally filters to one masked replica index; empty means
+  // service-wide.
+  string replica = 4;
+  // metric optionally selects one dimension (cpu / memory / gpu); empty
+  // means all. An invalid value returns 12101.
+  string metric = 5;
+}
+
+message GetServiceResourceMetricsResponse {
+  taas.common.v1.Response response = 1;
+  ResourceMetricsCard cards = 2;
+  repeated ResourceMetricsSeriesPoint series = 3;
+  repeated ResourceMetricsReplicaRow replicas = 4;
+}
+
+// ResourceMetricsCard is the headline summary of the range. gpu_percent
+// is best-effort and empty when the accelerator signals do not expose it
+// (AD7).
+message ResourceMetricsCard {
+  double current_cpu_percent = 1;
+  int64 current_memory_bytes = 2;
+  double current_gpu_percent = 3;
+  int64 replica_count = 4;
+  // data_through is the start of the last complete sample bucket (AD6).
+  int64 data_through = 5;
+}
+
+// ResourceMetricsSeriesPoint is one time bucket of the series (hourly for
+// ranges <= 7 days, daily otherwise, AD5).
+message ResourceMetricsSeriesPoint {
+  // bucket is the bucket start, unix seconds.
+  int64 bucket = 1;
+  double cpu_percent = 2;
+  int64 memory_bytes = 3;
+  double gpu_percent = 4;
+}
+
+// ResourceMetricsReplicaRow is one replica's aggregate in the per-replica
+// table.
+message ResourceMetricsReplicaRow {
+  string replica_index = 1;
+  double current_cpu_percent = 2;
+  int64 current_memory_bytes = 3;
+  double current_gpu_percent = 4;
+  int64 data_through = 5;
+}

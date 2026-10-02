@@ -32,6 +32,9 @@ type Controller struct {
 	// inventory is the optional accelerator inventory collector
 	// (feature #18). Nil when not configured.
 	inventory *InventoryCollector
+	// resourceSampler is the optional per-service resource sampling loop
+	// (feature #37). Nil when not configured.
+	resourceSampler *ResourceSampler
 }
 
 // New constructs a Controller consuming client and applying events with
@@ -44,6 +47,12 @@ func New(client mq.Client, reconciler Reconciler) *Controller {
 // (feature #18). It must be called before Run.
 func (c *Controller) SetInventoryCollector(collector *InventoryCollector) {
 	c.inventory = collector
+}
+
+// SetResourceSampler installs the per-service resource sampling loop
+// (feature #37). It must be called before Run.
+func (c *Controller) SetResourceSampler(sampler *ResourceSampler) {
+	c.resourceSampler = sampler
 }
 
 // Run subscribes to all consumed subjects and blocks until ctx is
@@ -69,6 +78,9 @@ func (c *Controller) Run(ctx context.Context) error {
 	}()
 	if c.inventory != nil {
 		go c.inventory.Run(ctx)
+	}
+	if c.resourceSampler != nil {
+		go c.resourceSampler.Run(ctx)
 	}
 
 	select {

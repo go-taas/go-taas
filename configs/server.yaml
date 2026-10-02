@@ -232,3 +232,9 @@ notification:
 tracing:
   retention:
     traceTTL: 720h
+
+# Feature #37: per-service resource metrics. The read-only aggregation
+# over service_resource_metrics accepts a range up to maxRangeSeconds
+# (92 days by default, AD5); a longer range returns 10404.
+resourcemetrics:
+  maxRangeSeconds: 7948800

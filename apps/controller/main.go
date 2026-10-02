@@ -9,8 +9,11 @@ import (
 	"os/signal"
 	"syscall"
 
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+
 	"github.com/go-taas/go-taas/internal/controller"
 	"github.com/go-taas/go-taas/pkg/config"
+	"github.com/go-taas/go-taas/pkg/database"
 	"github.com/go-taas/go-taas/pkg/k8s"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
@@ -60,6 +63,29 @@ func main() {
 	ctrl.SetInventoryCollector(controller.NewInventoryCollector(
 		k8sClient.Clientset(), mqClient, cfg.Accelerator.CollectInterval,
 	))
+	// Feature #37: the per-service resource sampling loop reads
+	// CPU/memory from the Kubernetes metrics-server and GPU utilization
+	// from the accelerator signals, and writes sample rows to the
+	// service_resource_metrics table. It is wired when the database is
+	// reachable; the metrics-server client is built from the same
+	// kubeconfig.
+	if db, dbErr := database.InitDB(&cfg.Databases.Master); dbErr == nil {
+		defer func() {
+			if sqlDB, err := db.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}()
+		metricsClient, mcErr := metricsclientset.NewForConfig(k8sClient.RESTConfig())
+		if mcErr == nil {
+			ctrl.SetResourceSampler(controller.NewResourceSampler(
+				db,
+				controller.NewK8sResourceSampleProvider(
+					k8sClient.Clientset(), metricsClient, cfg.Controller.Namespace, nil,
+				),
+				cfg.Controller.ResourceMetrics.SampleInterval,
+			))
+		}
+	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()

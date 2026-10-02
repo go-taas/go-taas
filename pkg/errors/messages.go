@@ -155,6 +155,26 @@ var messages = map[Code]string{
 
 	// error-analysis (feature #31, AD2)
 	CodeErrorCauseNotFound: "error cause not found",
+
+	// resourcemetrics (feature #37, AD9)
+	CodeServiceMetricsInvalid: "invalid service metric or replica filter",
+
+	// docs (feature #38, AD2)
+	CodeDocsEndpointNotFound: "documentation endpoint not found",
+
+	// finetuning (feature #39, AD2)
+	CodeFinetuneJobNotFound:    "fine-tuning job not found",
+	CodeFinetuneJobInvalid:     "invalid fine-tuning job",
+	CodeFinetuneDatasetInvalid: "invalid fine-tuning dataset",
+	CodeFinetuneJobStateInvalid: "invalid fine-tuning job state",
+
+	// cluster (feature #40, AD2)
+	CodeClusterNotFound: "cluster not found",
+	CodeClusterInvalid:  "invalid cluster",
+
+	// account (feature #41, AD2)
+	CodeExportNotFound: "export not found",
+	CodeExportInvalid:  "invalid export",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

@@ -446,6 +446,58 @@ observability:
 	}
 }
 
+func TestResourceMetricsDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.ResourceMetrics.MaxRangeSeconds != 92*24*3600 {
+		t.Fatalf("resourcemetrics max range default = %d, want %d", cfg.ResourceMetrics.MaxRangeSeconds, 92*24*3600)
+	}
+	if cfg.Controller.ResourceMetrics.SampleInterval != 30*time.Second {
+		t.Fatalf("controller resourceMetrics sampleInterval default = %v, want 30s", cfg.Controller.ResourceMetrics.SampleInterval)
+	}
+}
+
+func TestValidateResourceMetricsConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.ResourceMetrics.MaxRangeSeconds = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative resourcemetrics max range should fail validation")
+	}
+	cfg.ResourceMetrics.MaxRangeSeconds = 92 * 24 * 3600
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid resourcemetrics config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsResourceMetricsSection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+resourcemetrics:
+  maxRangeSeconds: 604800
+controller:
+  resourceMetrics:
+    sampleInterval: 15s
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.ResourceMetrics.MaxRangeSeconds != 604800 {
+		t.Fatalf("resourcemetrics max range = %d, want 604800", cfg.ResourceMetrics.MaxRangeSeconds)
+	}
+	if cfg.Controller.ResourceMetrics.SampleInterval != 15*time.Second {
+		t.Fatalf("controller resourceMetrics sampleInterval = %v, want 15s", cfg.Controller.ResourceMetrics.SampleInterval)
+	}
+}
+
 func TestNotificationDefaults(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.applyDefaults()
