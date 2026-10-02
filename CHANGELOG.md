@@ -1,3 +1,10 @@
+# [1.46.0](https://github.com/go-taas/go-taas/compare/v1.45.0...v1.46.0) (2026-10-02)
+
+
+### Features
+
+* **export:** add data export and privacy (feature [#41](https://github.com/go-taas/go-taas/issues/41)) ([5f023d2](https://github.com/go-taas/go-taas/commit/5f023d22625cb7aecae42edc98379d0c62366a00))
+
 # [1.45.0](https://github.com/go-taas/go-taas/compare/v1.44.0...v1.45.0) (2026-10-02)
 
 
