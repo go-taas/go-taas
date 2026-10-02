@@ -35,6 +35,11 @@ against the local docker compose stack.
 | Deployment history & audit | feature-34 `deployment-history-audit` | `tests/deploymentHistoryAudit.js` |
 | Model playground comparison | feature-35 `playground-comparison` | `tests/playgroundComparison.js` |
 | Usage & cost forecasting | feature-36 `usage-cost-forecasting` | `tests/usageCostForecasting.js` |
+| Inference service resource metrics | feature-37 `service-resource-metrics` | `tests/serviceResourceMetrics.js` |
+| API documentation explorer | feature-38 `api-docs-explorer` | `tests/apiDocsExplorer.js` |
+| Model fine-tuning management | feature-39 `model-finetuning` | `tests/modelFineTuning.js` |
+| Multi-cluster management | feature-40 `multi-cluster-management` | `tests/multiClusterManagement.js` |
+| Data export & privacy | feature-41 `data-export-privacy` | `tests/dataExportPrivacy.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md`,
@@ -93,6 +98,11 @@ npm run test:service-logs-viewer    # feature-33 only
 npm run test:deployment-history-audit  # feature-34 only
 npm run test:playground-comparison  # feature-35 only
 npm run test:usage-cost-forecasting # feature-36 only
+npm run test:service-resource-metrics # feature-37 only
+npm run test:api-docs-explorer        # feature-38 only
+npm run test:model-finetuning         # feature-39 only
+npm run test:multi-cluster-management # feature-40 only
+npm run test:data-export-privacy      # feature-41 only
 ```
 
 Environment overrides:

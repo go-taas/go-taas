@@ -40,7 +40,12 @@
     "test:service-logs-viewer": "nightwatch --tag service-logs-viewer",
     "test:deployment-history-audit": "nightwatch --tag deployment-history-audit",
     "test:playground-comparison": "nightwatch --tag playground-comparison",
-    "test:usage-cost-forecasting": "nightwatch --tag usage-cost-forecasting"
+    "test:usage-cost-forecasting": "nightwatch --tag usage-cost-forecasting",
+    "test:service-resource-metrics": "nightwatch --tag service-resource-metrics",
+    "test:api-docs-explorer": "nightwatch --tag api-docs-explorer",
+    "test:model-finetuning": "nightwatch --tag model-finetuning",
+    "test:multi-cluster-management": "nightwatch --tag multi-cluster-management",
+    "test:data-export-privacy": "nightwatch --tag data-export-privacy"
   },
   "license": "Apache-2.0",
   "devDependencies": {
