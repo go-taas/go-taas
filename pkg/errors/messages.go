@@ -162,13 +162,6 @@ var messages = map[Code]string{
 	// docs (feature #38, AD2)
 	CodeDocsEndpointNotFound: "documentation endpoint not found",
 
-	// finetuning (feature #39, AD2)
-	CodeFineTuningJobNotFound:            "fine-tuning job not found",
-	CodeFineTuningJobStateInvalid:        "invalid fine-tuning job state",
-	CodeFineTuningDatasetNotFound:        "fine-tuning dataset not found",
-	CodeFineTuningDatasetInvalid:         "invalid fine-tuning dataset",
-	CodeFineTuningHyperparametersInvalid: "invalid fine-tuning hyperparameters",
-
 	// cluster (feature #40, AD2)
 	CodeClusterNotFound:          "cluster not found",
 	CodeClusterExists:            "cluster already exists",

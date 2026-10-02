@@ -537,58 +537,6 @@ docs:
 	}
 }
 
-func TestFineTuningDefaults(t *testing.T) {
-	cfg := &Configuration{}
-	cfg.applyDefaults()
-	if cfg.FineTuning.JobImage != "ghcr.io/go-taas/go-taas/finetune:latest" {
-		t.Fatalf("finetuning jobImage default = %q, want the curated image", cfg.FineTuning.JobImage)
-	}
-	if cfg.Controller.FineTuning.PollInterval != 5*time.Second {
-		t.Fatalf("controller finetuning pollInterval default = %v, want 5s", cfg.Controller.FineTuning.PollInterval)
-	}
-}
-
-func TestValidateFineTuningConfig(t *testing.T) {
-	cfg := &Configuration{}
-	cfg.Billing.Currency = "USD"
-	cfg.Controller.FineTuning.PollInterval = -1
-	if err := cfg.Validate(); err == nil {
-		t.Fatal("negative finetuning pollInterval should fail validation")
-	}
-	cfg.Controller.FineTuning.PollInterval = 5 * time.Second
-	if err := cfg.Validate(); err != nil {
-		t.Fatalf("valid finetuning config rejected: %v", err)
-	}
-}
-
-func TestParseConfigsFineTuningSection(t *testing.T) {
-	path := writeTempConfig(t, `
-db:
-  master:
-    host: localhost
-    port: 5432
-    dbName: taas
-    user: taas
-    password: secret
-finetuning:
-  jobImage: custom/finetune:v1
-controller:
-  finetuning:
-    pollInterval: 10s
-`)
-	ParseConfigs(path)
-	cfg := GetConfig()
-	if cfg == nil {
-		t.Fatal("GetConfig returned nil after ParseConfigs")
-	}
-	if cfg.FineTuning.JobImage != "custom/finetune:v1" {
-		t.Fatalf("finetuning jobImage = %q, want custom/finetune:v1", cfg.FineTuning.JobImage)
-	}
-	if cfg.Controller.FineTuning.PollInterval != 10*time.Second {
-		t.Fatalf("controller finetuning pollInterval = %v, want 10s", cfg.Controller.FineTuning.PollInterval)
-	}
-}
-
 func TestClusterDefaults(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.applyDefaults()

@@ -38,7 +38,7 @@ go-taas 在单一集群上以 Kubernetes Deployment 运行推理服务（model-c
 | AD6 | **新 `DisableCluster` RPC** 将集群设为 `disabled`；禁用集群从部署表单的集群选择器与新建放置中排除，但既有服务继续运行直至运维人员显式迁移 | 设计 D6。禁用集群（维护、退役）不得拆除运行中的服务；运维人员显式迁移它们 |
 | AD7 | **工作负载放置是推理服务上的集群字段**：部署表单（功能 #2）增加 **Cluster** 选择器（来自 `ListClusters`，仅 `active`），`CreateInferenceService` 记录所选 `cluster_id`。新 `GetClusterWorkloads` RPC 返回放置在集群上的服务 | 设计 D7。"跨集群路由部署"意味着运维人员在部署时选择集群；将其记录在服务上提供放置视图与路由控制 |
 | AD8 | **部署表单将集群选择器默认为平台默认**（第一个 `active` 集群，或配置的默认），使既有单集群部署无需变更即可继续工作 | 设计 D8。默认值保留既有行为（单集群情形）；运维人员在多集群时覆盖它 |
-| AD9 | **新错误码在 cluster 块（12401–12499）**：**12401 `CodeClusterNotFound`**、**12402 `CodeClusterExists`**、**12403 `CodeClusterStateInvalid`**、**12404 `CodeClusterKubeconfigInvalid`**。未知推理服务复用 **10301** | 设计 D9。多集群是新模块（AD2），因此其错误码位于 finetuning 块（123xx）之后的空白块；区分错误码使每种失败模式可操作，而 infer 契约保持统一 |
+| AD9 | **新错误码在 cluster 块（12401–12499）**：**12401 `CodeClusterNotFound`**、**12402 `CodeClusterExists`**、**12403 `CodeClusterStateInvalid`**、**12404 `CodeClusterKubeconfigInvalid`**。未知推理服务复用 **10301** | 设计 D9。多集群是新模块（AD2），因此其错误码位于 docs 块（122xx）之后的空白块；区分错误码使每种失败模式可操作，而 infer 契约保持统一 |
 | AD10 | **页面除注册与禁用操作外只读** —— 注册表单与禁用操作写入；其余（列表、详情、健康、放置）只读且仅对访问审计 | 设计 D10。本功能的写入是注册与禁用操作；审计轨迹（功能 #15）覆盖它们。除既有写入路径外无需新增审计事件 |
 
 ---

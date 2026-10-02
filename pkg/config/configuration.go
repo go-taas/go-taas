@@ -294,14 +294,6 @@ func (c *Configuration) applyDefaults() {
 	if c.Docs.CatalogVersion == "" {
 		c.Docs.CatalogVersion = "v1"
 	}
-	// Feature #39: the fine-tuning job image and the controller's
-	// fine-tuning poll interval defaults (Section 9).
-	if c.FineTuning.JobImage == "" {
-		c.FineTuning.JobImage = "ghcr.io/go-taas/go-taas/finetune:latest"
-	}
-	if c.Controller.FineTuning.PollInterval == 0 {
-		c.Controller.FineTuning.PollInterval = 5 * time.Second
-	}
 	// Feature #40: the controller's per-cluster health collection
 	// interval defaults to 30s (AD4).
 	if c.Controller.Cluster.CollectInterval == 0 {

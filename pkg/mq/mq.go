@@ -102,12 +102,6 @@ type Subjects struct {
 	// notification module subscribes and creates a notification for every
 	// enabled user, and evaluates threshold alerts on the same stream.
 	NotificationEvents string
-	// FineTuningJobsChanges carries fine-tuning job change events from
-	// the finetuning module to the controller (feature #39, AD5).
-	FineTuningJobsChanges string
-	// FineTuningJobsStatus carries fine-tuning job status reports from
-	// the controller back to the finetuning module (feature #39, AD6).
-	FineTuningJobsStatus string
 	// ClusterHealth carries the controller's per-cluster health snapshot
 	// (feature #40, AD4). The cluster module consumes it to maintain its
 	// in-memory projection cache.
@@ -127,8 +121,6 @@ func DefaultSubjects() Subjects {
 		Settlements:             "billing.settlements",
 		WebhookEvents:           "webhook.events",
 		NotificationEvents:      "notification.events",
-		FineTuningJobsChanges:   "finetuning.jobs.changes",
-		FineTuningJobsStatus:    "finetuning.jobs.status",
 		ClusterHealth:           "cluster.health",
 	}
 }

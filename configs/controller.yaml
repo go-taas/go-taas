@@ -52,10 +52,6 @@ controller:
   # accelerator signals on sampleInterval (30s default, AD2).
   resourceMetrics:
     sampleInterval: 30s
-  # finetuning (feature #39): the fine-tuning job executor polls the
-  # Kubernetes Job status on pollInterval (5s default, AD6).
-  finetuning:
-    pollInterval: 5s
   # cluster (feature #40): the per-cluster health collection loop polls
   # each registered cluster's nodes on collectInterval (30s default,
   # AD4).

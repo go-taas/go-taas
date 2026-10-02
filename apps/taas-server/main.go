@@ -12,7 +12,6 @@ import (
 	"github.com/go-taas/go-taas/pkg/k8s"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/modelhub"
-	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/registry"
 	"github.com/go-taas/go-taas/pkg/server"
 
@@ -24,7 +23,6 @@ import (
 	"github.com/go-taas/go-taas/services/billing"
 	"github.com/go-taas/go-taas/services/cluster"
 	"github.com/go-taas/go-taas/services/docs"
-	"github.com/go-taas/go-taas/services/finetuning"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/metering"
@@ -152,11 +150,6 @@ func main() {
 	docsSvc := docs.New()
 	docsSvc.SetCatalogVersion(cfg.Docs.CatalogVersion)
 	srv.RegisterService(docsSvc)
-	// Feature #39: the finetuning service owns the dataset registry and
-	// the fine-tuning job lifecycle (admin-only).
-	finetuningSvc := finetuning.New(srv.Components())
-	finetuningSvc.SetJobImage(cfg.FineTuning.JobImage)
-	srv.RegisterService(finetuningSvc)
 	// Feature #40: the cluster service owns the cluster registry and the
 	// cluster-health projection (admin-only).
 	clusterCache := cluster.NewProjectionCache()
@@ -282,19 +275,6 @@ func main() {
 			docsSvc.SetSessionOrgResolver(authSvc)
 			docsSvc.SetSessionUserResolver(authSvc)
 			docsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
-			// Feature #39: the finetuning service resolves the session's
-			// active org and caller, gates the admin fine-tuning RPCs by
-			// the caller's role (AD1), resolves base models and registers
-			// fine-tuned models via the model module, and deploys
-			// fine-tuned models via the infer module (AD8).
-			finetuningSvc.SetSessionOrgResolver(authSvc)
-			finetuningSvc.SetSessionUserResolver(authSvc)
-			finetuningSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
-			finetuningSvc.SetModelResolver(model.NewFineTuningModelResolver(gormDB))
-			if mqClient, ok := srv.Components().MQ().Client().(mq.Client); ok {
-				finetuningSvc.SetServiceDeployer(infer.NewFineTuningServiceDeployer(gormDB, mqClient))
-				finetuningSvc.SetPublisher(mqClient)
-			}
 			// Feature #40: the cluster service resolves the session's
 			// active org and caller, gates the admin cluster RPCs by the
 			// caller's role (AD1), and lists workload placement via the

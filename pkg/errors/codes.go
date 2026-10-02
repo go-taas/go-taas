@@ -272,18 +272,8 @@ const (
 	CodeDocsEndpointNotFound Code = 12201 // DOCS_ENDPOINT_NOT_FOUND
 )
 
-// finetuning module error codes (feature #39, AD2). The block is
-// 12301-12399, the next free block after docs' 122xx.
-const (
-	CodeFineTuningJobNotFound            Code = 12301 // FINETUNE_JOB_NOT_FOUND
-	CodeFineTuningJobStateInvalid        Code = 12302 // FINETUNE_JOB_STATE_INVALID
-	CodeFineTuningDatasetNotFound        Code = 12303 // FINETUNE_DATASET_NOT_FOUND
-	CodeFineTuningDatasetInvalid         Code = 12304 // FINETUNE_DATASET_INVALID
-	CodeFineTuningHyperparametersInvalid Code = 12305 // FINETUNE_HYPERPARAMETERS_INVALID
-)
-
 // cluster module error codes (feature #40, AD2). The block is
-// 12401-12499, the next free block after finetuning's 123xx.
+// 12401-12499, the next free block after docs' 122xx.
 const (
 	CodeClusterNotFound          Code = 12401 // CLUSTER_NOT_FOUND
 	CodeClusterExists            Code = 12402 // CLUSTER_EXISTS
