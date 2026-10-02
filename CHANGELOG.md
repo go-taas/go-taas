@@ -1,3 +1,10 @@
+# [1.43.0](https://github.com/go-taas/go-taas/compare/v1.42.0...v1.43.0) (2026-10-02)
+
+
+### Features
+
+* **metrics:** add per-service resource metrics (feature [#37](https://github.com/go-taas/go-taas/issues/37)) ([828caba](https://github.com/go-taas/go-taas/commit/828caba0616e9778a8b0a3e60128999bd12107cb))
+
 # [1.42.0](https://github.com/go-taas/go-taas/compare/v1.41.2...v1.42.0) (2026-10-02)
 
 
