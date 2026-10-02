@@ -8,9 +8,12 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 
 	docsv1 "github.com/go-taas/go-taas/proto/taas/docs/v1"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 type fakeSessionOrgResolver struct{ org string }
@@ -109,4 +112,44 @@ func TestGetApiDocsNoOrg(t *testing.T) {
 	_, err := svc.GetApiDocs(context.Background(), &docsv1.GetApiDocsRequest{})
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeUnauthorized, apierrors.CodeOf(err))
+}
+
+// TestGetApiDocsRealRoleGuardNonMember verifies the docs RPC's role
+// check rejects a non-member session with 10036 when the real tenancy
+// RoleGuard is wired (AC8). This is a regression test for the
+// roleUser="user" defect: the minimum role must be a key of the tenancy
+// roleRank map (RoleMember), otherwise a non-member's rank 0 is not
+// below the minimum's rank 0 and the check is a no-op.
+func TestGetApiDocsRealRoleGuardNonMember(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:"+t.Name()+"?mode=memory&cache=shared"), &gorm.Config{})
+	require.NoError(t, err)
+	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	t.Cleanup(func() {
+		sqlDB, _ := db.DB()
+		_ = sqlDB.Close()
+	})
+
+	// Seed an org and a member with the member role.
+	require.NoError(t, db.Create(&tenancy.Organization{
+		ID: "org-1", DisplayName: "org-1", State: tenancy.StateActive,
+	}).Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{
+		OrganizationID: "org-1", UserID: "member-uuid", Role: tenancy.RoleMember,
+	}).Error)
+
+	svc := NewForFVT()
+	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: "org-1"})
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "member-uuid"})
+	svc.SetRoleGuard(tenancy.NewRoleGuard(db))
+
+	// A member session is allowed.
+	resp, err := svc.GetApiDocs(ctxWithOrg(context.Background(), "org-1"), &docsv1.GetApiDocsRequest{})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.Categories)
+
+	// A non-member session (no membership row) is rejected with 10036.
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "non-member-uuid"})
+	_, err = svc.GetApiDocs(ctxWithOrg(context.Background(), "org-1"), &docsv1.GetApiDocsRequest{})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
 }

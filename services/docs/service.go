@@ -16,6 +16,7 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ServiceName is the unique name of this service.
@@ -47,9 +48,11 @@ type RoleGuard interface {
 	RequireRole(ctx context.Context, orgID, userID, minRole string) error
 }
 
-// roleUser is the minimum org role for the docs RPC (AD1): the catalog
-// is a user-realm surface.
-const roleUser = "user"
+// roleMember is the minimum org role for the docs RPC (AD1): the
+// catalog is a user-realm surface. It must be a key of the tenancy
+// roleRank map (RoleMember), so a non-member session is rejected with
+// 10036.
+const roleMember = tenancy.RoleMember
 
 // Service implements the docs gRPC service.
 type Service struct {
@@ -176,7 +179,7 @@ func (s *Service) requireUserRole(ctx context.Context, orgID string) error {
 	if !hasSession {
 		return nil
 	}
-	return s.roleGuard.RequireRole(ctx, orgID, userID, roleUser)
+	return s.roleGuard.RequireRole(ctx, orgID, userID, roleMember)
 }
 
 // GetApiDocs returns the curated user-realm API catalog (AC1, AC2). It
