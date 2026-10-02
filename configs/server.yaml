@@ -243,3 +243,8 @@ resourcemetrics:
 # catalog is served at its configured version (v1 by default, AD3).
 docs:
   catalogVersion: v1
+
+# Feature #39: model fine-tuning. The curated fine-tuning image the
+# Controller runs as a Kubernetes Job (AD6).
+finetuning:
+  jobImage: ghcr.io/go-taas/go-taas/finetune:latest

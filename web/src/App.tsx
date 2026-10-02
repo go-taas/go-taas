@@ -34,6 +34,8 @@ import IdentityBindingsPage from './pages/IdentityBindingsPage';
 import ModelsPage from './pages/ModelsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
 import ModelVersionsPage from './pages/ModelVersionsPage';
+import FineTuningPage from './pages/FineTuningPage';
+import FineTuningJobDetailPage from './pages/FineTuningJobDetailPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import ServiceLogsPage from './pages/ServiceLogsPage';
@@ -177,6 +179,8 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/models" element={<ModelsPage />} />
               <Route path="/admin/models/:id" element={<ModelDetailPage />} />
               <Route path="/admin/models/:id/versions" element={<ModelVersionsPage />} />
+              <Route path="/admin/finetuning" element={<FineTuningPage />} />
+              <Route path="/admin/finetuning/:jobId" element={<FineTuningJobDetailPage />} />
               <Route path="/admin/images" element={<ImagesPage />} />
               <Route path="/admin/images/:id" element={<ImageDetailPage />} />
               <Route path="/admin/inference-services" element={<InferenceServicesPage />} />

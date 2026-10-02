@@ -292,6 +292,9 @@ type ControllerConfig struct {
 	// ResourceMetrics configures the per-service CPU/memory/GPU sampling
 	// loop (feature #37, AD2).
 	ResourceMetrics ControllerResourceMetricsConfig `mapstructure:"resourceMetrics"`
+	// FineTuning configures the fine-tuning job executor (feature #39,
+	// Section 9).
+	FineTuning ControllerFineTuningConfig `mapstructure:"finetuning"`
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -595,6 +598,22 @@ type DocsConfig struct {
 	CatalogVersion string `mapstructure:"catalogVersion"`
 }
 
+// FineTuningConfig holds finetuning-module specific settings (feature
+// #39, Section 9).
+type FineTuningConfig struct {
+	// JobImage is the curated fine-tuning image the Controller runs as a
+	// Kubernetes Job (AD6).
+	JobImage string `mapstructure:"jobImage"`
+}
+
+// ControllerFineTuningConfig holds the controller's fine-tuning job
+// executor settings (feature #39, Section 9).
+type ControllerFineTuningConfig struct {
+	// PollInterval is the Controller's fine-tuning job status poll
+	// interval. Default 5s.
+	PollInterval time.Duration `mapstructure:"pollInterval"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -663,6 +682,7 @@ type Configuration struct {
 	Tracing       TracingConfig       `mapstructure:"tracing"`
 	ResourceMetrics ResourceMetricsConfig `mapstructure:"resourcemetrics"`
 	Docs            DocsConfig            `mapstructure:"docs"`
+	FineTuning      FineTuningConfig      `mapstructure:"finetuning"`
 	Log           LogConfig           `mapstructure:"log"`
 }
 
@@ -837,6 +857,9 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Controller.ResourceMetrics.SampleInterval < 0 {
 		return &FieldError{Field: "controller.resourceMetrics.sampleInterval", Reason: "must not be negative"}
+	}
+	if c.Controller.FineTuning.PollInterval < 0 {
+		return &FieldError{Field: "controller.finetuning.pollInterval", Reason: "must not be negative"}
 	}
 	if c.Notification.Consumer.Workers < 0 {
 		return &FieldError{Field: "notification.consumer.workers", Reason: "must not be negative"}

@@ -1206,3 +1206,68 @@ export interface GetApiDocsResponse {
   response: ResponseEnvelope;
   categories: ApiDocsCategory[];
 }
+
+// ---- model fine-tuning (feature #39) ----
+
+export interface FineTuningDataset {
+  datasetId: string;
+  name: string;
+  format: string;
+  objectPath: string;
+  createdAt: string;
+}
+
+export interface FineTuningHyperparameters {
+  epochs: string;
+  batchSize: string;
+  learningRate: string;
+}
+
+export interface FineTuningJobSummary {
+  jobId: string;
+  name: string;
+  baseModelId: string;
+  baseModelVersion: string;
+  datasetId: string;
+  state: string;
+  fineTunedModelId: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FineTuningJob {
+  summary: FineTuningJobSummary;
+  hyperparameters: FineTuningHyperparameters;
+  failureReason: string;
+}
+
+export interface ListFineTuningDatasetsResponse {
+  response: ResponseEnvelope;
+  datasets: FineTuningDataset[];
+}
+
+export interface RegisterFineTuningDatasetResponse {
+  response: ResponseEnvelope;
+  datasetId: string;
+}
+
+export interface ListFineTuningJobsResponse {
+  response: ResponseEnvelope;
+  jobs: FineTuningJobSummary[];
+}
+
+export interface GetFineTuningJobResponse {
+  response: ResponseEnvelope;
+  job: FineTuningJob;
+}
+
+export interface CreateFineTuningJobResponse {
+  response: ResponseEnvelope;
+  jobId: string;
+  state: string;
+}
+
+export interface DeployFineTunedModelResponse {
+  response: ResponseEnvelope;
+  serviceId: string;
+}

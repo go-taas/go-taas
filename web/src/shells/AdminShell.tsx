@@ -43,6 +43,7 @@ export const ADMIN_NAV_ITEMS: { path: string; labelKey: string; testid: string; 
   { path: '/admin/sso', labelKey: 'nav.ssoProviders', testid: 'nav-sso-providers', icon: Key },
   { path: '/admin/identity-bindings', labelKey: 'nav.identityBindings', testid: 'nav-identity-bindings', icon: LinkSimple },
   { path: '/admin/models', labelKey: 'nav.models', testid: 'nav-models', icon: Cube },
+  { path: '/admin/finetuning', labelKey: 'nav.finetuning', testid: 'nav-finetuning', icon: Cube },
   { path: '/admin/inference-services', labelKey: 'nav.inferenceServices', testid: 'nav-inference-services', icon: Rocket },
   { path: '/admin/deployments', labelKey: 'nav.deployments', testid: 'nav-deployments', icon: Scroll },
   { path: '/admin/images', labelKey: 'nav.images', testid: 'nav-images', icon: Image },

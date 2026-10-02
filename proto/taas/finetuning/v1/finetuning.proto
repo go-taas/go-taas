@@ -1,0 +1,148 @@
+syntax = "proto3";
+
+package taas.finetuning.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/finetuning/v1;finetuningv1";
+
+// FineTuningService serves the dataset registry and the fine-tuning job
+// lifecycle. Admin-surface API: served under /api/v1/admin/finetuning.
+service FineTuningService {
+  // RegisterFineTuningDataset registers a dataset (name, format, object
+  // path) and returns dataset_id.
+  rpc RegisterFineTuningDataset(RegisterFineTuningDatasetRequest) returns (RegisterFineTuningDatasetResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/finetuning/datasets" body: "*"};
+  }
+
+  // ListFineTuningDatasets returns the registered datasets, newest
+  // first.
+  rpc ListFineTuningDatasets(ListFineTuningDatasetsRequest) returns (ListFineTuningDatasetsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/finetuning/datasets"};
+  }
+
+  // CreateFineTuningJob creates a fine-tuning job (dataset, base model,
+  // hyperparameters) and returns job_id with state=pending immediately.
+  rpc CreateFineTuningJob(CreateFineTuningJobRequest) returns (CreateFineTuningJobResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/finetuning/jobs" body: "*"};
+  }
+
+  // ListFineTuningJobs returns the fine-tuning jobs, newest first.
+  rpc ListFineTuningJobs(ListFineTuningJobsRequest) returns (ListFineTuningJobsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/finetuning/jobs"};
+  }
+
+  // GetFineTuningJob returns a fine-tuning job's full record.
+  rpc GetFineTuningJob(GetFineTuningJobRequest) returns (GetFineTuningJobResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/finetuning/jobs/{job_id}"};
+  }
+
+  // DeployFineTunedModel deploys a succeeded job's fine-tuned model as
+  // an inference service and returns service_id.
+  rpc DeployFineTunedModel(DeployFineTunedModelRequest) returns (DeployFineTunedModelResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/finetuning/jobs/{job_id}:deploy" body: "*"};
+  }
+}
+
+message RegisterFineTuningDatasetRequest {
+  string name = 1;
+  // format is jsonl / csv.
+  string format = 2;
+  string object_path = 3;
+}
+
+message RegisterFineTuningDatasetResponse {
+  taas.common.v1.Response response = 1;
+  string dataset_id = 2;
+}
+
+message ListFineTuningDatasetsRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListFineTuningDatasetsResponse {
+  taas.common.v1.Response response = 1;
+  repeated FineTuningDataset datasets = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message FineTuningDataset {
+  string dataset_id = 1;
+  string name = 2;
+  string format = 3;
+  string object_path = 4;
+  int64 created_at = 5;
+}
+
+message CreateFineTuningJobRequest {
+  string name = 1;
+  string base_model_id = 2;
+  string base_model_version = 3;
+  string dataset_id = 4;
+  FineTuningHyperparameters hyperparameters = 5;
+}
+
+message FineTuningHyperparameters {
+  int32 epochs = 1;
+  int32 batch_size = 2;
+  double learning_rate = 3;
+}
+
+message CreateFineTuningJobResponse {
+  taas.common.v1.Response response = 1;
+  string job_id = 2;
+  // state is pending immediately (AD5).
+  string state = 3;
+}
+
+message ListFineTuningJobsRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListFineTuningJobsResponse {
+  taas.common.v1.Response response = 1;
+  repeated FineTuningJobSummary jobs = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message FineTuningJobSummary {
+  string job_id = 1;
+  string name = 2;
+  string base_model_id = 3;
+  string base_model_version = 4;
+  string dataset_id = 5;
+  // state is pending / running / succeeded / failed.
+  string state = 6;
+  string fine_tuned_model_id = 7;
+  int64 created_at = 8;
+  int64 updated_at = 9;
+}
+
+message GetFineTuningJobRequest {
+  string job_id = 1;
+}
+
+message GetFineTuningJobResponse {
+  taas.common.v1.Response response = 1;
+  FineTuningJob job = 2;
+}
+
+message FineTuningJob {
+  FineTuningJobSummary summary = 1;
+  FineTuningHyperparameters hyperparameters = 2;
+  string failure_reason = 3;
+}
+
+message DeployFineTunedModelRequest {
+  string job_id = 1;
+  string image_id = 2;
+  // accelerator is nvidia / iluvatar / metax.
+  string accelerator = 3;
+  int32 replicas = 4;
+}
+
+message DeployFineTunedModelResponse {
+  taas.common.v1.Response response = 1;
+  string service_id = 2;
+}

@@ -294,6 +294,14 @@ func (c *Configuration) applyDefaults() {
 	if c.Docs.CatalogVersion == "" {
 		c.Docs.CatalogVersion = "v1"
 	}
+	// Feature #39: the fine-tuning job image and the controller's
+	// fine-tuning poll interval defaults (Section 9).
+	if c.FineTuning.JobImage == "" {
+		c.FineTuning.JobImage = "ghcr.io/go-taas/go-taas/finetune:latest"
+	}
+	if c.Controller.FineTuning.PollInterval == 0 {
+		c.Controller.FineTuning.PollInterval = 5 * time.Second
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {
