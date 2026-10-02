@@ -11,8 +11,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	docsv1 "github.com/go-taas/go-taas/proto/taas/docs/v1"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	docsv1 "github.com/go-taas/go-taas/proto/taas/docs/v1"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 

@@ -9,8 +9,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"gorm.io/gorm"
 
-	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	accountv1 "github.com/go-taas/go-taas/proto/taas/account/v1"
+	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
