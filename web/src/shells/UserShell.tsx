@@ -15,6 +15,7 @@ import {
   LinkSimple,
   FileText,
   Bell,
+  BookOpen,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -33,6 +34,7 @@ const adminRoles = ['platform-admin', 'org-admin', 'admin', 'owner'];
 
 export const USER_NAV_ITEMS: { path: string; labelKey: string; testid: string; icon: Icon }[] = [
   { path: '/quickstart', labelKey: 'nav.quickstart', testid: 'user-nav-quickstart', icon: Rocket },
+  { path: '/docs', labelKey: 'nav.apiDocs', testid: 'user-nav-api-docs', icon: BookOpen },
   { path: '/usage', labelKey: 'nav.usage', testid: 'user-nav-usage', icon: ChartLine },
   { path: '/usage/keys', labelKey: 'nav.usageKeys', testid: 'user-nav-usage-keys', icon: Key },
   { path: '/cost', labelKey: 'nav.cost', testid: 'user-nav-cost', icon: ChartLine },

@@ -14,6 +14,7 @@ import UserLoginPage from './pages/user/UserLoginPage';
 import UserCustomLoginPage from './pages/user/UserCustomLoginPage';
 import AdminCustomLoginPage from './pages/AdminCustomLoginPage';
 import UserQuickstartPage from './pages/user/QuickstartPage';
+import ApiDocsPage from './pages/ApiDocsPage';
 import UserUsagePage from './pages/user/UsagePage';
 import UserApiKeysPage from './pages/user/ApiKeysPage';
 import UserRequestLogsPage from './pages/user/RequestLogsPage';
@@ -123,6 +124,7 @@ function UserSurface({ path }: { path: string }) {
           <UserShell>
             <Routes>
               <Route path="/quickstart" element={<UserQuickstartPage />} />
+              <Route path="/docs" element={<ApiDocsPage />} />
               <Route path="/usage" element={<UserUsagePage />} />
               <Route path="/api-keys" element={<UserApiKeysPage />} />
               <Route path="/request-logs" element={<UserRequestLogsPage />} />

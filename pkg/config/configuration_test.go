@@ -498,6 +498,45 @@ controller:
 	}
 }
 
+func TestDocsDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Docs.CatalogVersion != "v1" {
+		t.Fatalf("docs catalogVersion default = %q, want v1", cfg.Docs.CatalogVersion)
+	}
+}
+
+func TestValidateDocsConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Docs.CatalogVersion = "v1"
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid docs config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsDocsSection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+docs:
+  catalogVersion: v2
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Docs.CatalogVersion != "v2" {
+		t.Fatalf("docs catalogVersion = %q, want v2", cfg.Docs.CatalogVersion)
+	}
+}
+
 func TestNotificationDefaults(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.applyDefaults()

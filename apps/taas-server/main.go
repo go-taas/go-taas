@@ -20,6 +20,7 @@ import (
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/auth"
 	"github.com/go-taas/go-taas/services/billing"
+	"github.com/go-taas/go-taas/services/docs"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/metering"
@@ -142,6 +143,11 @@ func main() {
 	resourceMetricsSvc := resourcemetrics.New(srv.Components())
 	resourceMetricsSvc.SetMaxRangeSeconds(cfg.ResourceMetrics.MaxRangeSeconds)
 	srv.RegisterService(resourceMetricsSvc)
+	// Feature #38: the docs service serves the curated user-realm API
+	// catalog for the API documentation explorer (end-user-only).
+	docsSvc := docs.New()
+	docsSvc.SetCatalogVersion(cfg.Docs.CatalogVersion)
+	srv.RegisterService(docsSvc)
 
 	// Feature #20: the async load-test runner is constructed once the
 	// database is available (it persists runs and drives real traffic
@@ -250,6 +256,12 @@ func main() {
 			resourceMetricsSvc.SetSessionUserResolver(authSvc)
 			resourceMetricsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			resourceMetricsSvc.SetServiceExists(infer.NewServiceExistsProvider(gormDB))
+			// Feature #38: the docs service resolves the session's
+			// active org and caller, and gates the docs RPC by the
+			// caller's role (AD1).
+			docsSvc.SetSessionOrgResolver(authSvc)
+			docsSvc.SetSessionUserResolver(authSvc)
+			docsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			// Feature #28/#31: the metering service resolves the session's
 			// active org and caller, and gates the admin usage-keys and
 			// error-analysis RPCs by the caller's role (AD9).

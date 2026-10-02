@@ -1166,3 +1166,43 @@ export interface GetServiceResourceMetricsResponse {
   series: ResourceMetricsSeriesPoint[];
   replicas: ResourceMetricsReplicaRow[];
 }
+
+// ---- API documentation explorer (feature #38) ----
+
+export interface ApiDocsParameter {
+  name: string;
+  in: string;
+  required: boolean;
+  type: string;
+  description: string;
+}
+
+export interface ApiDocsErrorCode {
+  code: string;
+  constant: string;
+  message: string;
+}
+
+export interface ApiDocsEndpoint {
+  endpointId: string;
+  method: string;
+  path: string;
+  summary: string;
+  description: string;
+  parameters: ApiDocsParameter[];
+  requestExample: string;
+  responseExample: string;
+  errorCodes: ApiDocsErrorCode[];
+  tryable: boolean;
+}
+
+export interface ApiDocsCategory {
+  categoryId: string;
+  categoryName: string;
+  endpoints: ApiDocsEndpoint[];
+}
+
+export interface GetApiDocsResponse {
+  response: ResponseEnvelope;
+  categories: ApiDocsCategory[];
+}

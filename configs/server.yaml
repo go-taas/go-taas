@@ -238,3 +238,8 @@ tracing:
 # (92 days by default, AD5); a longer range returns 10404.
 resourcemetrics:
   maxRangeSeconds: 7948800
+
+# Feature #38: the API documentation explorer. The curated user-realm
+# catalog is served at its configured version (v1 by default, AD3).
+docs:
+  catalogVersion: v1

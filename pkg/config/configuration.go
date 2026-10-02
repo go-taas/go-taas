@@ -290,6 +290,10 @@ func (c *Configuration) applyDefaults() {
 	if c.Controller.ResourceMetrics.SampleInterval == 0 {
 		c.Controller.ResourceMetrics.SampleInterval = 30 * time.Second
 	}
+	// Feature #38: the docs catalog version defaults to v1 (AD3, AD7).
+	if c.Docs.CatalogVersion == "" {
+		c.Docs.CatalogVersion = "v1"
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {

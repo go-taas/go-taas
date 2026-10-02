@@ -587,6 +587,14 @@ type ControllerResourceMetricsConfig struct {
 	SampleInterval time.Duration `mapstructure:"sampleInterval"`
 }
 
+// DocsConfig holds docs-module specific settings (feature #38, Section
+// 9).
+type DocsConfig struct {
+	// CatalogVersion is the version of the curated API catalog served by
+	// GetApiDocs (AD3, AD7). Default "v1".
+	CatalogVersion string `mapstructure:"catalogVersion"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -654,6 +662,7 @@ type Configuration struct {
 	Notification  NotificationConfig  `mapstructure:"notification"`
 	Tracing       TracingConfig       `mapstructure:"tracing"`
 	ResourceMetrics ResourceMetricsConfig `mapstructure:"resourcemetrics"`
+	Docs            DocsConfig            `mapstructure:"docs"`
 	Log           LogConfig           `mapstructure:"log"`
 }
 

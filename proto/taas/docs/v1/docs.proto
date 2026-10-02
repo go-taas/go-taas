@@ -1,0 +1,67 @@
+syntax = "proto3";
+
+package taas.docs.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/docs/v1;docsv1";
+
+// DocsService serves the curated user-realm API catalog. End-user
+// surface API: served under /api/v1/docs.
+service DocsService {
+  // GetApiDocs returns the curated user-realm API catalog: categories,
+  // endpoints, parameters, request/response examples, and error codes.
+  // It is end-user-only (no admin binding).
+  rpc GetApiDocs(GetApiDocsRequest) returns (GetApiDocsResponse) {
+    option (google.api.http) = {get: "/api/v1/docs"};
+  }
+}
+
+message GetApiDocsRequest {}
+
+message GetApiDocsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ApiDocsCategory categories = 2;
+}
+
+// ApiDocsCategory is one group of endpoints in the catalog.
+message ApiDocsCategory {
+  string category_id = 1;
+  string category_name = 2;
+  repeated ApiDocsEndpoint endpoints = 3;
+}
+
+// ApiDocsEndpoint is one endpoint's documentation.
+message ApiDocsEndpoint {
+  string endpoint_id = 1;
+  // method is GET / POST / PUT / DELETE.
+  string method = 2;
+  string path = 3;
+  string summary = 4;
+  string description = 5;
+  repeated ApiDocsParameter parameters = 6;
+  // request_example and response_example are JSON strings.
+  string request_example = 7;
+  string response_example = 8;
+  repeated ApiDocsErrorCode error_codes = 9;
+  // tryable is whether try-it-in-console is available.
+  bool tryable = 10;
+}
+
+// ApiDocsParameter is one parameter of an endpoint.
+message ApiDocsParameter {
+  string name = 1;
+  // in is path / query / body / header.
+  string in = 2;
+  bool required = 3;
+  string type = 4;
+  string description = 5;
+}
+
+// ApiDocsErrorCode is one error code an endpoint can return.
+message ApiDocsErrorCode {
+  int32 code = 1;
+  string constant = 2;
+  string message = 3;
+}
