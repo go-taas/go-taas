@@ -169,10 +169,10 @@ var messages = map[Code]string{
 	CodeClusterKubeconfigInvalid: "invalid cluster kubeconfig reference",
 
 	// account (feature #41, AD2)
-	CodeDataExportNotFound:     "data export not found",
-	CodeDataExportTypeInvalid:  "invalid data export type",
+	CodeDataExportNotFound:      "data export not found",
+	CodeDataExportTypeInvalid:   "invalid data export type",
 	CodeDataExportFormatInvalid: "invalid data export format",
-	CodeDataExportNotReady:     "data export not ready",
+	CodeDataExportNotReady:      "data export not ready",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

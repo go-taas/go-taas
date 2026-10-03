@@ -681,29 +681,29 @@ type NotificationRetentionConfig struct {
 
 // Configuration is the root of the merged configuration tree.
 type Configuration struct {
-	Databases     Databases           `mapstructure:"db"`
-	Redis         Redis               `mapstructure:"redis"`
-	MQ            MQConfig            `mapstructure:"mq"`
-	Auth          AuthConfig          `mapstructure:"auth"`
-	Metering      MeteringConfig      `mapstructure:"metering"`
-	Billing       BillingConfig       `mapstructure:"billing"`
-	Controller    ControllerConfig    `mapstructure:"controller"`
-	Infer         InferConfig         `mapstructure:"infer"`
-	Image         ImageConfig         `mapstructure:"image"`
-	Model         ModelConfig         `mapstructure:"model"`
-	Tenancy       TenancyConfig       `mapstructure:"tenancy"`
-	Audit         AuditConfig         `mapstructure:"audit"`
-	Accelerator   AcceleratorConfig   `mapstructure:"accelerator"`
-	LoadTest      LoadTestConfig      `mapstructure:"loadtest"`
-	Webhook       WebhookConfig       `mapstructure:"webhook"`
-	Observability ObservabilityConfig `mapstructure:"observability"`
-	Notification  NotificationConfig  `mapstructure:"notification"`
-	Tracing       TracingConfig       `mapstructure:"tracing"`
+	Databases       Databases             `mapstructure:"db"`
+	Redis           Redis                 `mapstructure:"redis"`
+	MQ              MQConfig              `mapstructure:"mq"`
+	Auth            AuthConfig            `mapstructure:"auth"`
+	Metering        MeteringConfig        `mapstructure:"metering"`
+	Billing         BillingConfig         `mapstructure:"billing"`
+	Controller      ControllerConfig      `mapstructure:"controller"`
+	Infer           InferConfig           `mapstructure:"infer"`
+	Image           ImageConfig           `mapstructure:"image"`
+	Model           ModelConfig           `mapstructure:"model"`
+	Tenancy         TenancyConfig         `mapstructure:"tenancy"`
+	Audit           AuditConfig           `mapstructure:"audit"`
+	Accelerator     AcceleratorConfig     `mapstructure:"accelerator"`
+	LoadTest        LoadTestConfig        `mapstructure:"loadtest"`
+	Webhook         WebhookConfig         `mapstructure:"webhook"`
+	Observability   ObservabilityConfig   `mapstructure:"observability"`
+	Notification    NotificationConfig    `mapstructure:"notification"`
+	Tracing         TracingConfig         `mapstructure:"tracing"`
 	ResourceMetrics ResourceMetricsConfig `mapstructure:"resourcemetrics"`
 	Docs            DocsConfig            `mapstructure:"docs"`
 	Cluster         ClusterConfig         `mapstructure:"cluster"`
 	Account         AccountConfig         `mapstructure:"account"`
-	Log           LogConfig           `mapstructure:"log"`
+	Log             LogConfig             `mapstructure:"log"`
 }
 
 // LoadTestConfig holds the feature-20 load-testing settings.

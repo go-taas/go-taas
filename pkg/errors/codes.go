@@ -284,8 +284,8 @@ const (
 // account module error codes (feature #41, AD2). The block is
 // 12501-12599, the next free block after cluster's 124xx.
 const (
-	CodeDataExportNotFound    Code = 12501 // DATA_EXPORT_NOT_FOUND
-	CodeDataExportTypeInvalid Code = 12502 // DATA_EXPORT_TYPE_INVALID
+	CodeDataExportNotFound      Code = 12501 // DATA_EXPORT_NOT_FOUND
+	CodeDataExportTypeInvalid   Code = 12502 // DATA_EXPORT_TYPE_INVALID
 	CodeDataExportFormatInvalid Code = 12503 // DATA_EXPORT_FORMAT_INVALID
-	CodeDataExportNotReady    Code = 12504 // DATA_EXPORT_NOT_READY
+	CodeDataExportNotReady      Code = 12504 // DATA_EXPORT_NOT_READY
 )
