@@ -129,10 +129,34 @@ module.exports = {
   'AC-C1: API keys page renders rate-limit column': function (browser) {
     browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
     browser.url(browser.globals.baseUrl + '/api-keys');
+    api.seedSession(browser, 'user', browser.globals.orgA);
+    browser.execute(function () {
+      return Boolean(localStorage.getItem('go-taas.user.session-token'));
+    }, [], (result) => {
+      const value = result && result.value !== undefined ? result.value : result;
+      browser.assert.ok(value, 'AC-C1: user realm session is stored after API keys navigation');
+    });
+    browser.waitForElementPresent(
+      '[data-testid="user-shell"]',
+      10000,
+      'AC-C1: user session guard keeps the API keys page on the user surface'
+    );
+    browser.assert.urlContains('/api-keys', 'AC-C1: API keys route remains active');
     browser.waitForElementPresent(
       '[data-testid="create-api-key"]',
       10000,
       'AC-C1: create button renders'
+    );
+    browser.click('[data-testid="create-api-key"]');
+    browser.waitForElementPresent(
+      '[data-testid="rate-limit-rpm"]',
+      5000,
+      'AC-C1: RPM control renders in the user create dialog'
+    );
+    browser.waitForElementPresent(
+      '[data-testid="rate-limit-tpm"]',
+      5000,
+      'AC-C1: TPM control renders in the user create dialog'
     );
     browser.waitForElementPresent(
       '[data-testid="api-keys-empty"], [data-testid="api-keys-table"]',
