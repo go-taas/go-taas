@@ -1,3 +1,10 @@
+# [1.47.0](https://github.com/go-taas/go-taas/compare/v1.46.1...v1.47.0) (2026-10-08)
+
+
+### Features
+
+* **batch,prompt:** add batch inference and prompt management ([7218ca4](https://github.com/go-taas/go-taas/commit/7218ca4ccf69bdfeeb7e795e1df15d863537b48d))
+
 ## [1.46.1](https://github.com/go-taas/go-taas/compare/v1.46.0...v1.46.1) (2026-10-02)
 
 
