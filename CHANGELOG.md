@@ -1,3 +1,16 @@
+# [1.49.0](https://github.com/go-taas/go-taas/compare/v1.48.0...v1.49.0) (2026-10-08)
+
+
+### Bug Fixes
+
+* **apikeys:** add create, edit and revoke dialogs with RPM/TPM rate-limit controls ([ad77304](https://github.com/go-taas/go-taas/commit/ad77304a4de814579d29c279d27177dbda257ac3))
+* **requestlogs:** add status, API-key, model and time-range filters ([2f83ee8](https://github.com/go-taas/go-taas/commit/2f83ee8ff5c0c8ff6cb2b3bccb97ea61fea7a276))
+
+
+### Features
+
+* **evaluation:** add prompt evaluation suites with real metered completion runs ([33e4008](https://github.com/go-taas/go-taas/commit/33e40086cabf112e0f68265afaaf78b36f65ac8f)), closes [#44](https://github.com/go-taas/go-taas/issues/44)
+
 # [1.48.0](https://github.com/go-taas/go-taas/compare/v1.47.0...v1.48.0) (2026-10-08)
 
 
