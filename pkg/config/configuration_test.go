@@ -797,3 +797,144 @@ billing:
 		t.Fatalf("forecast range max days = %d, want 45", cfg.Billing.Forecast.RangeMaxDays)
 	}
 }
+
+func TestBatchDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Batch.Worker.PollInterval != 5*time.Second {
+		t.Fatalf("batch worker pollInterval default = %v, want 5s", cfg.Batch.Worker.PollInterval)
+	}
+	if cfg.Batch.Worker.Concurrency != 4 {
+		t.Fatalf("batch worker concurrency default = %d, want 4", cfg.Batch.Worker.Concurrency)
+	}
+	if cfg.Batch.Retention.FileTTL != 720*time.Hour {
+		t.Fatalf("batch retention fileTTL default = %v, want 720h", cfg.Batch.Retention.FileTTL)
+	}
+	if cfg.Batch.Retention.Interval != time.Hour {
+		t.Fatalf("batch retention interval default = %v, want 1h", cfg.Batch.Retention.Interval)
+	}
+	if cfg.Batch.MaxFileBytes != 524288000 {
+		t.Fatalf("batch maxFileBytes default = %d, want 524288000", cfg.Batch.MaxFileBytes)
+	}
+	if cfg.Batch.MaxLines != 50000 {
+		t.Fatalf("batch maxLines default = %d, want 50000", cfg.Batch.MaxLines)
+	}
+	if cfg.Batch.StoreDir != "/data/batch" {
+		t.Fatalf("batch storeDir default = %q, want /data/batch", cfg.Batch.StoreDir)
+	}
+}
+
+func TestValidateBatchConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Batch.Worker.Concurrency = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative batch worker concurrency should fail validation")
+	}
+	cfg.Batch.Worker.Concurrency = 4
+	cfg.Batch.MaxFileBytes = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative batch maxFileBytes should fail validation")
+	}
+	cfg.Batch.MaxFileBytes = 524288000
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid batch config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsBatchSection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+batch:
+  worker:
+    pollInterval: 10s
+    concurrency: 8
+  retention:
+    fileTTL: 48h
+    interval: 30m
+  maxFileBytes: 1048576
+  maxLines: 1000
+  storeDir: /tmp/batch
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Batch.Worker.PollInterval != 10*time.Second {
+		t.Fatalf("batch worker pollInterval = %v, want 10s", cfg.Batch.Worker.PollInterval)
+	}
+	if cfg.Batch.Worker.Concurrency != 8 {
+		t.Fatalf("batch worker concurrency = %d, want 8", cfg.Batch.Worker.Concurrency)
+	}
+	if cfg.Batch.Retention.FileTTL != 48*time.Hour {
+		t.Fatalf("batch retention fileTTL = %v, want 48h", cfg.Batch.Retention.FileTTL)
+	}
+	if cfg.Batch.MaxFileBytes != 1048576 {
+		t.Fatalf("batch maxFileBytes = %d, want 1048576", cfg.Batch.MaxFileBytes)
+	}
+	if cfg.Batch.StoreDir != "/tmp/batch" {
+		t.Fatalf("batch storeDir = %q, want /tmp/batch", cfg.Batch.StoreDir)
+	}
+}
+
+func TestPromptDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Prompt.MaxNameLength != 128 {
+		t.Fatalf("prompt maxNameLength default = %d, want 128", cfg.Prompt.MaxNameLength)
+	}
+	if cfg.Prompt.MaxContentLength != 6144 {
+		t.Fatalf("prompt maxContentLength default = %d, want 6144", cfg.Prompt.MaxContentLength)
+	}
+}
+
+func TestValidatePromptConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Prompt.MaxNameLength = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative prompt maxNameLength should fail validation")
+	}
+	cfg.Prompt.MaxNameLength = 128
+	cfg.Prompt.MaxContentLength = -1
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative prompt maxContentLength should fail validation")
+	}
+	cfg.Prompt.MaxContentLength = 6144
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid prompt config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsPromptSection(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+prompt:
+  maxNameLength: 64
+  maxContentLength: 4096
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Prompt.MaxNameLength != 64 {
+		t.Fatalf("prompt maxNameLength = %d, want 64", cfg.Prompt.MaxNameLength)
+	}
+	if cfg.Prompt.MaxContentLength != 4096 {
+		t.Fatalf("prompt maxContentLength = %d, want 4096", cfg.Prompt.MaxContentLength)
+	}
+}

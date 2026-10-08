@@ -1,0 +1,438 @@
+syntax = "proto3";
+
+package taas.prompt.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/prompt/v1;promptv1";
+
+// PromptService manages prompts, folders, usage counters, and the shared
+// template library. The tenant-owned prompt RPCs are user-only under
+// /api/v1/prompts/* (the admin surface masks prompt content). The
+// admin-only RPCs are served under /api/v1/admin/prompts/* and manage
+// the shared template library and the cross-tenant usage analytics.
+service PromptService {
+  // CreatePrompt creates a prompt with version = 1.
+  // User-surface API: tenant-scoped under /api/v1/prompts.
+  rpc CreatePrompt(CreatePromptRequest) returns (CreatePromptResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/prompts"
+      body: "*"
+    };
+  }
+
+  // ListPrompts returns the caller's prompts, with dotted pagination.
+  // User-surface API: tenant-scoped under /api/v1/prompts.
+  rpc ListPrompts(ListPromptsRequest) returns (ListPromptsResponse) {
+    option (google.api.http) = {get: "/api/v1/prompts"};
+  }
+
+  // GetPrompt returns a prompt's active version and metadata.
+  // User-surface API: tenant-scoped under /api/v1/prompts.
+  rpc GetPrompt(GetPromptRequest) returns (GetPromptResponse) {
+    option (google.api.http) = {get: "/api/v1/prompts/{prompt_id}"};
+  }
+
+  // UpdatePrompt creates a new version and makes it active.
+  // User-surface API: served under /api/v1/prompts.
+  rpc UpdatePrompt(UpdatePromptRequest) returns (UpdatePromptResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/prompts/{prompt_id}"
+      body: "*"
+    };
+  }
+
+  // DeletePrompt deletes a prompt and all its versions.
+  // User-surface API: served under /api/v1/prompts.
+  rpc DeletePrompt(DeletePromptRequest) returns (DeletePromptResponse) {
+    option (google.api.http) = {delete: "/api/v1/prompts/{prompt_id}"};
+  }
+
+  // ListPromptVersions returns a prompt's version history.
+  // User-surface API: served under /api/v1/prompts.
+  rpc ListPromptVersions(ListPromptVersionsRequest) returns (ListPromptVersionsResponse) {
+    option (google.api.http) = {get: "/api/v1/prompts/{prompt_id}/versions"};
+  }
+
+  // RollbackPrompt restores a previous version as active.
+  // User-surface API: served under /api/v1/prompts.
+  rpc RollbackPrompt(RollbackPromptRequest) returns (RollbackPromptResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/prompts/{prompt_id}/rollback"
+      body: "*"
+    };
+  }
+
+  // CreatePromptFolder creates a folder.
+  // User-surface API: served under /api/v1/prompts.
+  rpc CreatePromptFolder(CreatePromptFolderRequest) returns (CreatePromptFolderResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/prompts/folders"
+      body: "*"
+    };
+  }
+
+  // ListPromptFolders lists the caller's folders.
+  // User-surface API: served under /api/v1/prompts.
+  rpc ListPromptFolders(ListPromptFoldersRequest) returns (ListPromptFoldersResponse) {
+    option (google.api.http) = {get: "/api/v1/prompts/folders"};
+  }
+
+  // DeletePromptFolder deletes an empty folder.
+  // User-surface API: served under /api/v1/prompts.
+  rpc DeletePromptFolder(DeletePromptFolderRequest) returns (DeletePromptFolderResponse) {
+    option (google.api.http) = {delete: "/api/v1/prompts/folders/{folder_id}"};
+  }
+
+  // GetPromptUsage returns a prompt's usage counters.
+  // User-surface API: served under /api/v1/prompts.
+  rpc GetPromptUsage(GetPromptUsageRequest) returns (GetPromptUsageResponse) {
+    option (google.api.http) = {get: "/api/v1/prompts/{prompt_id}/usage"};
+  }
+
+  // RecordPromptUsage increments a prompt's usage counters.
+  // User-surface API: served under /api/v1/prompts.
+  rpc RecordPromptUsage(RecordPromptUsageRequest) returns (RecordPromptUsageResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/prompts/{prompt_id}/usage"
+      body: "*"
+    };
+  }
+
+  // ListPromptTemplates lets a tenant browse shared templates.
+  // User-surface API: served under /api/v1/prompts.
+  rpc ListPromptTemplates(ListPromptTemplatesRequest) returns (ListPromptTemplatesResponse) {
+    option (google.api.http) = {get: "/api/v1/prompts/templates"};
+  }
+
+  // CopyPromptTemplate copies a shared template into a tenant-owned
+  // prompt. User-surface API: served under /api/v1/prompts.
+  rpc CopyPromptTemplate(CopyPromptTemplateRequest) returns (CopyPromptTemplateResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/prompts/templates/{template_id}/copy"
+      body: "*"
+    };
+  }
+
+  // AdminListPrompts lists all prompts across tenants, masked.
+  // Admin-surface API: served under /api/v1/admin/prompts.
+  rpc AdminListPrompts(AdminListPromptsRequest) returns (AdminListPromptsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/prompts"};
+  }
+
+  // AdminPromptUsage returns prompt usage analytics across tenants.
+  // Admin-surface API: served under /api/v1/admin/prompts.
+  rpc AdminPromptUsage(AdminPromptUsageRequest) returns (AdminPromptUsageResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/prompts/usage"};
+  }
+
+  // AdminCreateTemplate creates a shared template.
+  // Admin-surface API: served under /api/v1/admin/prompts.
+  rpc AdminCreateTemplate(AdminCreateTemplateRequest) returns (AdminCreateTemplateResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/prompts/templates"
+      body: "*"
+    };
+  }
+
+  // AdminListTemplates lists shared templates.
+  // Admin-surface API: served under /api/v1/admin/prompts.
+  rpc AdminListTemplates(AdminListTemplatesRequest) returns (AdminListTemplatesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/prompts/templates"};
+  }
+
+  // AdminUpdateTemplate updates a shared template.
+  // Admin-surface API: served under /api/v1/admin/prompts.
+  rpc AdminUpdateTemplate(AdminUpdateTemplateRequest) returns (AdminUpdateTemplateResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/prompts/templates/{template_id}"
+      body: "*"
+    };
+  }
+
+  // AdminDeleteTemplate deletes a shared template.
+  // Admin-surface API: served under /api/v1/admin/prompts.
+  rpc AdminDeleteTemplate(AdminDeleteTemplateRequest) returns (AdminDeleteTemplateResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/prompts/templates/{template_id}"};
+  }
+}
+
+message CreatePromptRequest {
+  string name = 1; // required, ≤ 128 chars, unique per org
+  string content = 2; // required, ≤ 6144 chars
+  string model_id = 3; // optional
+  string folder_id = 4; // optional
+  repeated string variables = 5; // optional, ${var} syntax
+}
+
+message CreatePromptResponse {
+  taas.common.v1.Response response = 1;
+  Prompt prompt = 2;
+}
+
+message ListPromptsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string search = 2; // searches name and content
+  string folder_id = 3; // filter
+  string model_id = 4; // filter
+  // organization_id is an optional admin filter; absent means all orgs.
+  // On the user surface it is ignored (the caller's org is implicit).
+  string organization_id = 5;
+}
+
+message ListPromptsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Prompt prompts = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetPromptRequest {
+  string prompt_id = 1;
+}
+
+message GetPromptResponse {
+  taas.common.v1.Response response = 1;
+  Prompt prompt = 2;
+}
+
+message UpdatePromptRequest {
+  string prompt_id = 1;
+  string content = 2; // required, ≤ 6144 chars
+  string model_id = 3; // optional
+  repeated string variables = 4; // optional
+}
+
+message UpdatePromptResponse {
+  taas.common.v1.Response response = 1;
+  Prompt prompt = 2;
+}
+
+message DeletePromptRequest {
+  string prompt_id = 1;
+}
+
+message DeletePromptResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message ListPromptVersionsRequest {
+  string prompt_id = 1;
+  taas.common.v1.PageRequest page = 2;
+}
+
+message ListPromptVersionsResponse {
+  taas.common.v1.Response response = 1;
+  repeated PromptVersion versions = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message RollbackPromptRequest {
+  string prompt_id = 1;
+  int32 version = 2; // the version to restore as active
+}
+
+message RollbackPromptResponse {
+  taas.common.v1.Response response = 1;
+  Prompt prompt = 2;
+}
+
+message CreatePromptFolderRequest {
+  string name = 1; // required, ≤ 128 chars, unique per org
+}
+
+message CreatePromptFolderResponse {
+  taas.common.v1.Response response = 1;
+  PromptFolder folder = 2;
+}
+
+message ListPromptFoldersRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListPromptFoldersResponse {
+  taas.common.v1.Response response = 1;
+  repeated PromptFolder folders = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message DeletePromptFolderRequest {
+  string folder_id = 1;
+}
+
+message DeletePromptFolderResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message GetPromptUsageRequest {
+  string prompt_id = 1;
+}
+
+message GetPromptUsageResponse {
+  taas.common.v1.Response response = 1;
+  int64 times_used = 2;
+  int64 last_used_at = 3; // unix seconds
+}
+
+message RecordPromptUsageRequest {
+  string prompt_id = 1;
+}
+
+message RecordPromptUsageResponse {
+  taas.common.v1.Response response = 1;
+  int64 times_used = 2;
+}
+
+message ListPromptTemplatesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string search = 2; // searches name and content
+  string model_id = 3; // filter
+}
+
+message ListPromptTemplatesResponse {
+  taas.common.v1.Response response = 1;
+  repeated PromptTemplate templates = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message CopyPromptTemplateRequest {
+  string template_id = 1;
+  string name = 2; // optional; defaults to the template name
+}
+
+message CopyPromptTemplateResponse {
+  taas.common.v1.Response response = 1;
+  Prompt prompt = 2;
+}
+
+message AdminListPromptsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string search = 2;
+  string organization_id = 3; // filter
+  string model_id = 4; // filter
+}
+
+message AdminListPromptsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Prompt prompts = 2; // content masked
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message AdminPromptUsageRequest {
+  // organization_id is an optional filter; absent means all orgs.
+  string organization_id = 1;
+}
+
+message AdminPromptUsageResponse {
+  taas.common.v1.Response response = 1;
+  int64 total_prompts = 2;
+  int64 total_uses = 3;
+  repeated PromptUsageRow most_used = 4; // top 10
+  repeated OrgUsageRow by_organization = 5;
+}
+
+message AdminCreateTemplateRequest {
+  string name = 1; // required, ≤ 128 chars
+  string content = 2; // required, ≤ 6144 chars
+  string model_id = 3; // optional
+  repeated string variables = 4; // optional
+}
+
+message AdminCreateTemplateResponse {
+  taas.common.v1.Response response = 1;
+  PromptTemplate template = 2;
+}
+
+message AdminListTemplatesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string search = 2;
+}
+
+message AdminListTemplatesResponse {
+  taas.common.v1.Response response = 1;
+  repeated PromptTemplate templates = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message AdminUpdateTemplateRequest {
+  string template_id = 1;
+  string name = 2;
+  string content = 3;
+  string model_id = 4;
+  repeated string variables = 5;
+}
+
+message AdminUpdateTemplateResponse {
+  taas.common.v1.Response response = 1;
+  PromptTemplate template = 2;
+}
+
+message AdminDeleteTemplateRequest {
+  string template_id = 1;
+}
+
+message AdminDeleteTemplateResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// Prompt is one prompt with its active version.
+message Prompt {
+  string prompt_id = 1;
+  string organization_id = 2;
+  string name = 3;
+  string content = 4; // the active version's content
+  string model_id = 5;
+  string folder_id = 6;
+  int32 version = 7; // the active version
+  repeated string variables = 8;
+  int64 times_used = 9;
+  int64 last_used_at = 10; // unix seconds
+  int64 created_at = 11; // unix seconds
+  int64 updated_at = 12; // unix seconds
+}
+
+// PromptVersion is one immutable version of a prompt.
+message PromptVersion {
+  string prompt_id = 1;
+  int32 version = 2;
+  string content = 3;
+  string model_id = 4;
+  repeated string variables = 5;
+  int64 created_at = 6; // unix seconds
+  string created_by = 7;
+}
+
+// PromptFolder is one folder.
+message PromptFolder {
+  string folder_id = 1;
+  string name = 2;
+  int64 prompt_count = 3;
+}
+
+// PromptTemplate is one shared template.
+message PromptTemplate {
+  string template_id = 1;
+  string name = 2;
+  string content = 3;
+  string model_id = 4;
+  repeated string variables = 5;
+  int64 times_used = 6;
+  int64 created_at = 7; // unix seconds
+  int64 updated_at = 8; // unix seconds
+}
+
+// PromptUsageRow is one prompt's usage in the admin analytics.
+message PromptUsageRow {
+  string prompt_id = 1;
+  string name = 2;
+  string organization_id = 3;
+  int64 times_used = 4;
+  int64 last_used_at = 5; // unix seconds
+}
+
+// OrgUsageRow is one organization's aggregate usage.
+message OrgUsageRow {
+  string organization_id = 1;
+  int64 prompt_count = 2;
+  int64 total_uses = 3;
+}

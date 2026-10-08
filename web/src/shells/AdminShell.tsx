@@ -25,6 +25,7 @@ import {
   PuzzlePiece,
   Bell,
   Globe,
+  TextT,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -68,6 +69,8 @@ export const ADMIN_NAV_ITEMS: { path: string; labelKey: string; testid: string; 
   { path: '/admin/observability', labelKey: 'nav.observability', testid: 'nav-observability', icon: ChartLine },
   { path: '/admin/traces', labelKey: 'nav.traces', testid: 'nav-traces', icon: ChartLine },
   { path: '/admin/errors', labelKey: 'nav.errors', testid: 'nav-errors', icon: ChartLine },
+  { path: '/admin/batch', labelKey: 'nav.batch', testid: 'nav-batch', icon: Cube },
+  { path: '/admin/prompts', labelKey: 'nav.prompts', testid: 'nav-prompts', icon: TextT },
   { path: '/admin/status', labelKey: 'nav.status', testid: 'nav-status', icon: Gauge },
 ];
 

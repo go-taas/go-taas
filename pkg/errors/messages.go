@@ -173,6 +173,24 @@ var messages = map[Code]string{
 	CodeDataExportTypeInvalid:   "invalid data export type",
 	CodeDataExportFormatInvalid: "invalid data export format",
 	CodeDataExportNotReady:      "data export not ready",
+
+	// batch (feature #42, AD7)
+	CodeBatchJobNotFound:     "batch job not found",
+	CodeBatchJobStateInvalid: "invalid batch job state",
+	CodeBatchInputInvalid:    "invalid JSONL input file",
+	CodeBatchInputTooLarge:   "input file too large",
+	CodeBatchModelMismatch:   "multiple models in one batch",
+	CodeBatchNotCompleted:    "batch not completed",
+
+	// prompt (feature #43, AD7)
+	CodePromptNotFound:         "prompt not found",
+	CodePromptVersionNotFound:  "prompt version not found",
+	CodePromptNameConflict:     "prompt name already exists",
+	CodePromptFolderNotFound:   "folder not found",
+	CodePromptInvalidContent:   "invalid prompt content",
+	CodePromptInvalidVariable:  "invalid variable",
+	CodePromptTemplateNotFound: "template not found",
+	CodePromptFolderNotEmpty:   "folder not empty",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

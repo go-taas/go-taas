@@ -257,3 +257,26 @@ account:
   export:
     generatorInterval: 5s
     maxRangeSeconds: 7948800
+
+# Feature #42: batch inference. The batch worker picks up in_progress
+# jobs and processes them at 50% of the real-time price; the retention
+# runner deletes completed jobs' result/error files after fileTTL (30
+# days, AD8). maxFileBytes/maxLines bound the JSONL input file.
+batch:
+  worker:
+    enabled: true
+    pollInterval: 5s
+    concurrency: 4
+  retention:
+    enabled: true
+    fileTTL: 720h
+    interval: 1h
+  maxFileBytes: 524288000
+  maxLines: 50000
+  storeDir: /data/batch
+
+# Feature #43: prompt management. maxNameLength/maxContentLength bound
+# the prompt/folder/template name and content lengths.
+prompt:
+  maxNameLength: 128
+  maxContentLength: 6144

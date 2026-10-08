@@ -289,3 +289,27 @@ const (
 	CodeDataExportFormatInvalid Code = 12503 // DATA_EXPORT_FORMAT_INVALID
 	CodeDataExportNotReady      Code = 12504 // DATA_EXPORT_NOT_READY
 )
+
+// batch module error codes (feature #42, AD7). The block is
+// 12601-12699, the next free block after account's 125xx.
+const (
+	CodeBatchJobNotFound     Code = 12601 // BATCH_JOB_NOT_FOUND
+	CodeBatchJobStateInvalid Code = 12602 // BATCH_JOB_STATE_INVALID
+	CodeBatchInputInvalid    Code = 12603 // BATCH_INPUT_INVALID
+	CodeBatchInputTooLarge   Code = 12604 // BATCH_INPUT_TOO_LARGE
+	CodeBatchModelMismatch   Code = 12605 // BATCH_MODEL_MISMATCH
+	CodeBatchNotCompleted    Code = 12606 // BATCH_NOT_COMPLETED
+)
+
+// prompt module error codes (feature #43, AD7). The block is
+// 12701-12799, the next free block after batch's 126xx.
+const (
+	CodePromptNotFound          Code = 12701 // PROMPT_NOT_FOUND
+	CodePromptVersionNotFound   Code = 12702 // PROMPT_VERSION_NOT_FOUND
+	CodePromptNameConflict      Code = 12703 // PROMPT_NAME_CONFLICT
+	CodePromptFolderNotFound    Code = 12704 // PROMPT_FOLDER_NOT_FOUND
+	CodePromptInvalidContent    Code = 12705 // PROMPT_INVALID_CONTENT
+	CodePromptInvalidVariable   Code = 12706 // PROMPT_INVALID_VARIABLE
+	CodePromptTemplateNotFound  Code = 12707 // PROMPT_TEMPLATE_NOT_FOUND
+	CodePromptFolderNotEmpty    Code = 12708 // PROMPT_FOLDER_NOT_EMPTY
+)

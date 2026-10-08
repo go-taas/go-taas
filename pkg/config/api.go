@@ -633,6 +633,61 @@ type AccountExportConfig struct {
 	MaxRangeSeconds int64 `mapstructure:"maxRangeSeconds"`
 }
 
+// BatchConfig holds batch-module specific settings (feature #42, Section
+// 9).
+type BatchConfig struct {
+	// Worker configures the batch worker runner (AD3, AD4).
+	Worker BatchWorkerConfig `mapstructure:"worker"`
+	// Retention configures the result/error-file retention runner (AD8).
+	Retention BatchRetentionConfig `mapstructure:"retention"`
+	// MaxFileBytes is the maximum input file size (AD2). Default
+	// 524288000 (500 MB).
+	MaxFileBytes int64 `mapstructure:"maxFileBytes"`
+	// MaxLines is the maximum number of input lines (AD2). Default 50000.
+	MaxLines int `mapstructure:"maxLines"`
+	// StoreDir is the local directory where the JSONL input/result/error
+	// files are stored (the object-store mount). Default /data/batch.
+	StoreDir string `mapstructure:"storeDir"`
+}
+
+// BatchWorkerConfig holds the batch worker runner settings (feature #42,
+// Section 9).
+type BatchWorkerConfig struct {
+	// Enabled turns the batch worker on or off (incident-triage kill
+	// switch). Default true.
+	Enabled bool `mapstructure:"enabled"`
+	// PollInterval is how often the batch worker polls for in_progress
+	// jobs. Default 5s.
+	PollInterval time.Duration `mapstructure:"pollInterval"`
+	// Concurrency is the number of concurrent requests processed per job
+	// pass. Default 4.
+	Concurrency int `mapstructure:"concurrency"`
+}
+
+// BatchRetentionConfig holds the batch retention runner settings
+// (feature #42, AD8).
+type BatchRetentionConfig struct {
+	// Enabled turns the result/error-file retention runner on or off
+	// (incident-triage kill switch). Default true.
+	Enabled bool `mapstructure:"enabled"`
+	// FileTTL is how long a completed job's result/error files are kept
+	// before deletion. Default 720h (30 days).
+	FileTTL time.Duration `mapstructure:"fileTTL"`
+	// Interval is the ticker period between retention passes. Default 1h.
+	Interval time.Duration `mapstructure:"interval"`
+}
+
+// PromptConfig holds prompt-module specific settings (feature #43,
+// Section 9).
+type PromptConfig struct {
+	// MaxNameLength is the maximum prompt/folder/template name length.
+	// Default 128.
+	MaxNameLength int `mapstructure:"maxNameLength"`
+	// MaxContentLength is the maximum prompt/template content length.
+	// Default 6144.
+	MaxContentLength int `mapstructure:"maxContentLength"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -703,6 +758,8 @@ type Configuration struct {
 	Docs            DocsConfig            `mapstructure:"docs"`
 	Cluster         ClusterConfig         `mapstructure:"cluster"`
 	Account         AccountConfig         `mapstructure:"account"`
+	Batch           BatchConfig           `mapstructure:"batch"`
+	Prompt          PromptConfig          `mapstructure:"prompt"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -898,6 +955,30 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Tracing.Retention.TraceTTL < 0 {
 		return &FieldError{Field: "tracing.retention.traceTTL", Reason: "must not be negative"}
+	}
+	if c.Batch.Worker.PollInterval < 0 {
+		return &FieldError{Field: "batch.worker.pollInterval", Reason: "must not be negative"}
+	}
+	if c.Batch.Worker.Concurrency < 0 {
+		return &FieldError{Field: "batch.worker.concurrency", Reason: "must not be negative"}
+	}
+	if c.Batch.Retention.FileTTL < 0 {
+		return &FieldError{Field: "batch.retention.fileTTL", Reason: "must not be negative"}
+	}
+	if c.Batch.Retention.Interval < 0 {
+		return &FieldError{Field: "batch.retention.interval", Reason: "must not be negative"}
+	}
+	if c.Batch.MaxFileBytes < 0 {
+		return &FieldError{Field: "batch.maxFileBytes", Reason: "must not be negative"}
+	}
+	if c.Batch.MaxLines < 0 {
+		return &FieldError{Field: "batch.maxLines", Reason: "must not be negative"}
+	}
+	if c.Prompt.MaxNameLength < 0 {
+		return &FieldError{Field: "prompt.maxNameLength", Reason: "must not be negative"}
+	}
+	if c.Prompt.MaxContentLength < 0 {
+		return &FieldError{Field: "prompt.maxContentLength", Reason: "must not be negative"}
 	}
 	return nil
 }

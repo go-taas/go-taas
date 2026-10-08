@@ -20,6 +20,7 @@ import (
 	"github.com/go-taas/go-taas/services/account"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/auth"
+	"github.com/go-taas/go-taas/services/batch"
 	"github.com/go-taas/go-taas/services/billing"
 	"github.com/go-taas/go-taas/services/cluster"
 	"github.com/go-taas/go-taas/services/docs"
@@ -29,6 +30,7 @@ import (
 	"github.com/go-taas/go-taas/services/model"
 	"github.com/go-taas/go-taas/services/notification"
 	"github.com/go-taas/go-taas/services/observability"
+	"github.com/go-taas/go-taas/services/prompt"
 	"github.com/go-taas/go-taas/services/resourcemetrics"
 	"github.com/go-taas/go-taas/services/tenancy"
 	"github.com/go-taas/go-taas/services/tracing"
@@ -161,6 +163,16 @@ func main() {
 	accountSvc := account.New(srv.Components())
 	accountSvc.SetMaxRangeSeconds(cfg.Account.Export.MaxRangeSeconds)
 	srv.RegisterService(accountSvc)
+	// Feature #42: the batch service owns the batch-job lifecycle, the
+	// JSONL input/output file store, the JSONL validator, the batch
+	// worker, and the retention runner.
+	batchSvc := batch.New(srv.Components())
+	srv.RegisterService(batchSvc)
+	// Feature #43: the prompt service owns the prompt lifecycle,
+	// versioning, folders, usage counters, and the shared template
+	// library.
+	promptSvc := prompt.New(srv.Components())
+	srv.RegisterService(promptSvc)
 
 	// Feature #20: the async load-test runner is constructed once the
 	// database is available (it persists runs and drives real traffic
@@ -289,6 +301,21 @@ func main() {
 			accountSvc.SetSessionOrgResolver(authSvc)
 			accountSvc.SetSessionUserResolver(authSvc)
 			accountSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// Feature #42: the batch service resolves the session's
+			// active org and caller, gates the admin batch RPCs by the
+			// caller's role, and records batch actions into the audit
+			// trail (AD9).
+			batchSvc.SetSessionOrgResolver(authSvc)
+			batchSvc.SetSessionUserResolver(authSvc)
+			batchSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// Feature #43: the prompt service resolves the session's
+			// active org and caller, gates the admin prompt RPCs by the
+			// caller's role, and records prompt actions into the audit
+			// trail (AD9).
+			promptSvc.SetSessionOrgResolver(authSvc)
+			promptSvc.SetSessionUserResolver(authSvc)
+			promptSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+
 			// Feature #28/#31: the metering service resolves the session's
 			// active org and caller, and gates the admin usage-keys and
 			// error-analysis RPCs by the caller's role (AD9).
@@ -308,6 +335,9 @@ func main() {
 			tenancySvc.SetAuditRecorder(auditRecorder)
 			webhookSvc.SetAuditRecorder(auditRecorder)
 			notificationSvc.SetAuditRecorder(auditRecorder)
+			batchSvc.SetAuditRecorder(auditRecorder)
+			promptSvc.SetAuditRecorder(auditRecorder)
+
 			// The auth session derives roles/accessible orgs from
 			// org_members (feature #10, AD2/AD11).
 			authSvc.SetMembershipResolver(tenancy.NewMembershipResolver(gormDB))
@@ -463,6 +493,33 @@ func main() {
 				account.NewDBExportDataProvider(gormDB),
 				cfg.Account.Export.GeneratorInterval,
 			))
+			// Feature #42: the batch worker and the retention runner.
+			// The worker drives the inference endpoint with the system
+			// credential and meters successes at 0.5x; the retention
+			// runner deletes expired result/error files (AD8).
+			if cfg.Batch.Worker.Enabled {
+				batchRepo := batch.NewRepository(gormDB)
+				batchStore := batch.NewLocalFileStore(cfg.Batch.StoreDir)
+				var inferClient batch.InferenceClient
+				var meterer batch.Meterer
+				if cfg.Infer.EndpointBaseURL != "" {
+					inferClient = batch.NewHTTPInferenceClient(cfg.Infer.EndpointBaseURL, "")
+				}
+				if inferClient != nil {
+					srv.AddRunner(batch.NewBatchWorker(
+						batchRepo, batchStore, inferClient, meterer,
+						cfg.Batch.Worker.Concurrency, cfg.Batch.Worker.PollInterval,
+					))
+				}
+			}
+			if cfg.Batch.Retention.Enabled {
+				batchRepo := batch.NewRepository(gormDB)
+				batchStore := batch.NewLocalFileStore(cfg.Batch.StoreDir)
+				srv.AddRunner(batch.NewBatchRetentionRunner(
+					batchRepo, batchStore,
+					cfg.Batch.Retention.FileTTL, cfg.Batch.Retention.Interval,
+				))
+			}
 		}
 	}
 

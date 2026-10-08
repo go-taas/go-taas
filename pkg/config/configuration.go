@@ -307,6 +307,35 @@ func (c *Configuration) applyDefaults() {
 	if c.Account.Export.MaxRangeSeconds == 0 {
 		c.Account.Export.MaxRangeSeconds = 92 * 24 * 3600
 	}
+	// Feature #42: batch module defaults (Section 9).
+	if c.Batch.Worker.PollInterval == 0 {
+		c.Batch.Worker.PollInterval = 5 * time.Second
+	}
+	if c.Batch.Worker.Concurrency == 0 {
+		c.Batch.Worker.Concurrency = 4
+	}
+	if c.Batch.Retention.FileTTL == 0 {
+		c.Batch.Retention.FileTTL = 720 * time.Hour
+	}
+	if c.Batch.Retention.Interval == 0 {
+		c.Batch.Retention.Interval = time.Hour
+	}
+	if c.Batch.MaxFileBytes == 0 {
+		c.Batch.MaxFileBytes = 524288000
+	}
+	if c.Batch.MaxLines == 0 {
+		c.Batch.MaxLines = 50000
+	}
+	if c.Batch.StoreDir == "" {
+		c.Batch.StoreDir = "/data/batch"
+	}
+	// Feature #43: prompt module defaults (Section 9).
+	if c.Prompt.MaxNameLength == 0 {
+		c.Prompt.MaxNameLength = 128
+	}
+	if c.Prompt.MaxContentLength == 0 {
+		c.Prompt.MaxContentLength = 6144
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {

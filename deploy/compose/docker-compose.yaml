@@ -166,12 +166,36 @@ services:
       CONFIG_NOTIFICATION_RETENTION_NOTIFICATIONTTL: ${NOTIFICATION_RETENTION_TTL:-2160h}
       CONFIG_NOTIFICATION_RETENTION_BATCHSIZE: ${NOTIFICATION_RETENTION_BATCH_SIZE:-1000}
       CONFIG_NOTIFICATION_RETENTION_INTERVAL: ${NOTIFICATION_RETENTION_INTERVAL:-1h}
+      # Feature #42: batch inference. The batch worker and the retention
+      # runner are enabled by default; the JSONL input bounds are read
+      # from the .env file (empty falls back to the defaults).
+      CONFIG_BATCH_WORKER_ENABLED: "true"
+      CONFIG_BATCH_WORKER_POLLINTERVAL: ${BATCH_WORKER_POLL_INTERVAL:-5s}
+      CONFIG_BATCH_WORKER_CONCURRENCY: ${BATCH_WORKER_CONCURRENCY:-4}
+      CONFIG_BATCH_RETENTION_ENABLED: "true"
+      CONFIG_BATCH_RETENTION_FILETTL: ${BATCH_RETENTION_FILE_TTL:-720h}
+      CONFIG_BATCH_RETENTION_INTERVAL: ${BATCH_RETENTION_INTERVAL:-1h}
+      CONFIG_BATCH_MAXFILEBYTES: ${BATCH_MAX_FILE_BYTES:-524288000}
+      CONFIG_BATCH_MAXLINES: ${BATCH_MAX_LINES:-50000}
+      CONFIG_BATCH_STOREDIR: /data/batch
+      # Feature #43: prompt management. The name/content length bounds
+      # are read from the .env file (empty falls back to the defaults).
+      CONFIG_PROMPT_MAXNAMELENGTH: ${PROMPT_MAX_NAME_LENGTH:-128}
+      CONFIG_PROMPT_MAXCONTENTLENGTH: ${PROMPT_MAX_CONTENT_LENGTH:-6144}
     volumes:
       - type: bind
         source: ${JUICE_FS_HOST_MOUNT:-/var/lib/go-taas/juicefs}
         target: /data/weights
         bind:
           propagation: rshared
+      # Feature #42: the batch module stores the JSONL input/result/error
+      # files under /data/batch (CONFIG_BATCH_STOREDIR). The container runs
+      # as the distroless nonroot user (uid 65532), so the store needs a
+      # writable host bind mount (the named-volume root would be owned by
+      # root and unwritable by the nonroot user).
+      - type: bind
+        source: ${BATCH_STORE_HOST_MOUNT:-/var/lib/go-taas/batch}
+        target: /data/batch
     ports:
       - "9090:9090" # gRPC
       - "9091:9091" # gateway (HTTP/JSON)

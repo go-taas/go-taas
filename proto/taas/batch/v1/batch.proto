@@ -1,0 +1,216 @@
+syntax = "proto3";
+
+package taas.batch.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/batch/v1;batchv1";
+
+// BatchService manages batch inference jobs. The user RPCs are
+// tenant-scoped under /api/v1/batch/*; the admin RPCs are fleet-wide and
+// masked under /api/v1/admin/batch/*. CreateBatchJob, DownloadBatchResult
+// and DownloadBatchError are user-only (the admin surface masks
+// per-request content).
+service BatchService {
+  // CreateBatchJob creates a batch job from an uploaded JSONL input file
+  // and a completion window. User-surface API: tenant-scoped under
+  // /api/v1/batch.
+  rpc CreateBatchJob(CreateBatchJobRequest) returns (CreateBatchJobResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/batch"
+      body: "*"
+    };
+  }
+
+  // ListBatchJobs returns the caller's batch jobs, newest first, with
+  // dotted pagination. User-surface API: tenant-scoped under
+  // /api/v1/batch.
+  rpc ListBatchJobs(ListBatchJobsRequest) returns (ListBatchJobsResponse) {
+    option (google.api.http) = {get: "/api/v1/batch"};
+  }
+
+  // GetBatchJob returns a job's status and stats.
+  // User-surface API: tenant-scoped under /api/v1/batch.
+  rpc GetBatchJob(GetBatchJobRequest) returns (GetBatchJobResponse) {
+    option (google.api.http) = {get: "/api/v1/batch/{batch_id}"};
+  }
+
+  // CancelBatchJob cancels a job in validating or in_progress.
+  // User-surface API: tenant-scoped under /api/v1/batch.
+  rpc CancelBatchJob(CancelBatchJobRequest) returns (CancelBatchJobResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/batch/{batch_id}/cancel"
+      body: "*"
+    };
+  }
+
+  // DownloadBatchResult returns the result file when status = completed.
+  // User-surface API: served under /api/v1/batch.
+  rpc DownloadBatchResult(DownloadBatchResultRequest) returns (DownloadBatchResultResponse) {
+    option (google.api.http) = {get: "/api/v1/batch/{batch_id}/result"};
+  }
+
+  // DownloadBatchError returns the error file when status = completed.
+  // User-surface API: served under /api/v1/batch.
+  rpc DownloadBatchError(DownloadBatchErrorRequest) returns (DownloadBatchErrorResponse) {
+    option (google.api.http) = {get: "/api/v1/batch/{batch_id}/error"};
+  }
+
+  // AdminListBatchJobs returns all batch jobs across tenants, masked,
+  // newest first, with dotted pagination. Admin-surface API: fleet-wide
+  // under /api/v1/admin/batch.
+  rpc AdminListBatchJobs(AdminListBatchJobsRequest) returns (AdminListBatchJobsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/batch"};
+  }
+
+  // AdminGetBatchJob returns any job's metadata and aggregate stats,
+  // masked. Admin-surface API: fleet-wide under /api/v1/admin/batch.
+  rpc AdminGetBatchJob(AdminGetBatchJobRequest) returns (AdminGetBatchJobResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/batch/{batch_id}"};
+  }
+
+  // AdminCancelBatchJob cancels any job in validating or in_progress.
+  // Admin-surface API: fleet-wide under /api/v1/admin/batch.
+  rpc AdminCancelBatchJob(AdminCancelBatchJobRequest) returns (AdminCancelBatchJobResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/batch/{batch_id}/cancel"
+      body: "*"
+    };
+  }
+}
+
+// BatchJobStatus is the batch-job lifecycle status.
+enum BatchJobStatus {
+  BATCH_JOB_STATUS_UNSPECIFIED = 0;
+  BATCH_JOB_STATUS_VALIDATING = 1;
+  BATCH_JOB_STATUS_IN_PROGRESS = 2;
+  BATCH_JOB_STATUS_FINALIZING = 3;
+  BATCH_JOB_STATUS_COMPLETED = 4;
+  BATCH_JOB_STATUS_FAILED = 5;
+  BATCH_JOB_STATUS_EXPIRED = 6;
+  BATCH_JOB_STATUS_CANCELLED = 7;
+}
+
+message CreateBatchJobRequest {
+  // input_file is the JSONL input file content (≤ 500 MB, ≤ 50,000
+  // lines). Each line is {"custom_id","method","url","body"}.
+  bytes input_file = 1;
+  // completion_window is the completion window, default "24h", range
+  // "1h"–"14d".
+  string completion_window = 2;
+}
+
+message CreateBatchJobResponse {
+  taas.common.v1.Response response = 1;
+  BatchJob batch_job = 2;
+}
+
+message ListBatchJobsRequest {
+  taas.common.v1.PageRequest page = 1;
+  // status/model are optional filters.
+  string status = 2;
+  string model = 3;
+}
+
+message ListBatchJobsResponse {
+  taas.common.v1.Response response = 1;
+  repeated BatchJob batch_jobs = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetBatchJobRequest {
+  string batch_id = 1;
+}
+
+message GetBatchJobResponse {
+  taas.common.v1.Response response = 1;
+  BatchJob batch_job = 2;
+}
+
+message CancelBatchJobRequest {
+  string batch_id = 1;
+}
+
+message CancelBatchJobResponse {
+  taas.common.v1.Response response = 1;
+  BatchJob batch_job = 2;
+}
+
+message DownloadBatchResultRequest {
+  string batch_id = 1;
+}
+
+message DownloadBatchResultResponse {
+  taas.common.v1.Response response = 1;
+  // content is the result JSONL file content when status = completed.
+  bytes content = 2;
+  // filename is the Content-Disposition filename.
+  string filename = 3;
+}
+
+message DownloadBatchErrorRequest {
+  string batch_id = 1;
+}
+
+message DownloadBatchErrorResponse {
+  taas.common.v1.Response response = 1;
+  // content is the error JSONL file content when status = completed.
+  bytes content = 2;
+  // filename is the Content-Disposition filename.
+  string filename = 3;
+}
+
+message AdminListBatchJobsRequest {
+  taas.common.v1.PageRequest page = 1;
+  // status/model/organization_id are optional filters; absent
+  // organization_id means all orgs.
+  string status = 2;
+  string model = 3;
+  string organization_id = 4;
+}
+
+message AdminListBatchJobsResponse {
+  taas.common.v1.Response response = 1;
+  repeated BatchJob batch_jobs = 2; // masked (no raw request/response)
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message AdminGetBatchJobRequest {
+  string batch_id = 1;
+}
+
+message AdminGetBatchJobResponse {
+  taas.common.v1.Response response = 1;
+  BatchJob batch_job = 2; // masked (no raw request/response)
+}
+
+message AdminCancelBatchJobRequest {
+  string batch_id = 1;
+}
+
+message AdminCancelBatchJobResponse {
+  taas.common.v1.Response response = 1;
+  BatchJob batch_job = 2;
+}
+
+// BatchJob is one batch inference job.
+message BatchJob {
+  string batch_id = 1;
+  string organization_id = 2;
+  string model = 3;
+  BatchJobStatus status = 4;
+  string completion_window = 5;
+  int64 total_requests = 6;
+  int64 processed_requests = 7;
+  int64 succeeded_requests = 8;
+  int64 failed_requests = 9;
+  int64 input_tokens = 10;
+  int64 output_tokens = 11;
+  int64 cost = 12; // minor units, JSON string
+  string currency = 13;
+  bool files_expired = 14;
+  int64 created_at = 15; // unix seconds
+  int64 completed_at = 16; // unix seconds
+  int64 files_expire_at = 17; // unix seconds
+}

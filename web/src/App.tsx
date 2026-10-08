@@ -83,6 +83,13 @@ import ErrorAnalysisPage from './pages/ErrorAnalysisPage';
 import ErrorDetailPage from './pages/ErrorDetailPage';
 import UserErrorAnalysisPage from './pages/user/UserErrorAnalysisPage';
 import UserErrorDetailPage from './pages/user/UserErrorDetailPage';
+import UserBatchPage from './pages/user/UserBatchPage';
+import UserBatchDetailPage from './pages/user/UserBatchDetailPage';
+import AdminBatchPage from './pages/AdminBatchPage';
+import AdminBatchDetailPage from './pages/AdminBatchDetailPage';
+import UserPromptsPage from './pages/user/UserPromptsPage';
+import UserPromptDetailPage from './pages/user/UserPromptDetailPage';
+import AdminPromptsPage from './pages/AdminPromptsPage';
 import UserCostAnalyticsPage from './pages/user/UserCostAnalyticsPage';
 import UserCostDetailPage from './pages/user/UserCostDetailPage';
 import UserForecastPage from './pages/user/UserForecastPage';
@@ -151,6 +158,10 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/forecast" element={<UserForecastPage />} />
               <Route path="/errors" element={<UserErrorAnalysisPage />} />
               <Route path="/errors/:errorCode" element={<UserErrorDetailPage />} />
+              <Route path="/batch" element={<UserBatchPage />} />
+              <Route path="/batch/:batchId" element={<UserBatchDetailPage />} />
+              <Route path="/prompts" element={<UserPromptsPage />} />
+              <Route path="/prompts/:promptId" element={<UserPromptDetailPage />} />
               <Route path="/account/export" element={<DataExportPage />} />
               <Route path="*" element={<NotFoundPage homePath="/usage" homeLabel="Usage" />} />
             </Routes>
@@ -219,6 +230,9 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/status" element={<SystemStatusPage />} />
               <Route path="/admin/errors" element={<ErrorAnalysisPage />} />
               <Route path="/admin/errors/:errorCode" element={<ErrorDetailPage />} />
+              <Route path="/admin/batch" element={<AdminBatchPage />} />
+              <Route path="/admin/batch/:batchId" element={<AdminBatchDetailPage />} />
+              <Route path="/admin/prompts" element={<AdminPromptsPage />} />
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>
