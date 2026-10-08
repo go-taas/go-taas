@@ -57,6 +57,7 @@ type recordingBus struct {
 	warmups  []mq.Message
 	meter    []mq.Message
 	settle   []mq.Message
+	routing  []mq.Message
 	inFlight int
 	subs     map[string][]mq.Handler
 }
@@ -80,6 +81,8 @@ func (b *recordingBus) Publish(_ context.Context, subject string, body []byte, h
 		b.meter = append(b.meter, msg)
 	case mq.DefaultSubjects().Settlements:
 		b.settle = append(b.settle, msg)
+	case mq.DefaultSubjects().InferRoutingPolicies:
+		b.routing = append(b.routing, msg)
 	}
 	handlers := append([]mq.Handler(nil), b.subs[subject]...)
 	b.mu.Unlock()

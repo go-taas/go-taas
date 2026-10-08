@@ -26,6 +26,7 @@ import {
   Bell,
   Globe,
   TextT,
+  ArrowsSplit,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -64,6 +65,7 @@ export const ADMIN_NAV_ITEMS: { path: string; labelKey: string; testid: string; 
   { path: '/admin/accelerators', labelKey: 'nav.accelerators', testid: 'nav-accelerators', icon: Cpu },
   { path: '/admin/compatibility', labelKey: 'nav.compatibility', testid: 'nav-compatibility', icon: PuzzlePiece },
   { path: '/admin/load-tests', labelKey: 'nav.loadTests', testid: 'nav-load-tests', icon: Gauge },
+  { path: '/admin/routing-policies', labelKey: 'nav.routingPolicies', testid: 'nav-routing-policies', icon: ArrowsSplit },
   { path: '/admin/webhooks', labelKey: 'nav.webhooks', testid: 'nav-webhooks', icon: LinkSimple },
   { path: '/admin/notifications', labelKey: 'nav.notifications', testid: 'nav-notifications', icon: Bell },
   { path: '/admin/observability', labelKey: 'nav.observability', testid: 'nav-observability', icon: ChartLine },

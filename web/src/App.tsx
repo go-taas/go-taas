@@ -56,6 +56,7 @@ import AcceleratorsPage from './pages/AcceleratorsPage';
 import AcceleratorNodeDetailPage from './pages/AcceleratorNodeDetailPage';
 import CompatibilityPage from './pages/CompatibilityPage';
 import LoadTestsPage from './pages/LoadTestsPage';
+import RoutingPoliciesPage from './pages/RoutingPoliciesPage';
 import LoadTestDetailPage from './pages/LoadTestDetailPage';
 import WebhooksPage from './pages/WebhooksPage';
 import WebhookDetailPage from './pages/WebhookDetailPage';
@@ -215,6 +216,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/compatibility" element={<CompatibilityPage />} />
               <Route path="/admin/load-tests" element={<LoadTestsPage />} />
               <Route path="/admin/load-tests/:loadTestId" element={<LoadTestDetailPage />} />
+              <Route path="/admin/routing-policies" element={<RoutingPoliciesPage />} />
               <Route path="/admin/webhooks" element={<WebhooksPage />} />
               <Route path="/admin/webhooks/:webhookId" element={<WebhookDetailPage />} />
               <Route path="/admin/notifications" element={<AdminNotificationsPage />} />

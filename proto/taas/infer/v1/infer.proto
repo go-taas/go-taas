@@ -220,6 +220,46 @@ service InferServiceService {
       body: "*"
     };
   }
+
+  // ListRoutingPolicies returns paginated catalog model and policy
+  // summaries with search/state/accelerator filters (feature #45, §5).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListRoutingPolicies(ListRoutingPoliciesRequest) returns (ListRoutingPoliciesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-policies"};
+  }
+
+  // GetRoutingPolicy returns the current policy or default state for a
+  // model: pinned version, eligible/ready counts, revision, retry
+  // options (feature #45, §5).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetRoutingPolicy(GetRoutingPolicyRequest) returns (GetRoutingPolicyResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-policies/{model_id}"};
+  }
+
+  // UpdateRoutingPolicy validates and atomically persists a new policy
+  // revision (feature #45, §5).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateRoutingPolicy(UpdateRoutingPolicyRequest) returns (UpdateRoutingPolicyResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/routing-policies/{model_id}"
+      body: "*"
+    };
+  }
+
+  // ListRoutingTargetHealth returns the masked service readiness
+  // projection for a model's eligible targets: desired/ready replicas,
+  // accelerator/card, cluster, health timestamp (feature #45, §5).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListRoutingTargetHealth(ListRoutingTargetHealthRequest) returns (ListRoutingTargetHealthResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-policies/{model_id}/health"};
+  }
+
+  // ListRoutingPolicyRevisions returns the latest 20 immutable
+  // revisions with actor and before/after values (feature #45, §5).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListRoutingPolicyRevisions(ListRoutingPolicyRevisionsRequest) returns (ListRoutingPolicyRevisionsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-policies/{model_id}/revisions"};
+  }
 }
 
 message CreateInferenceServiceRequest {
@@ -678,4 +718,132 @@ message RollbackDeploymentResponse {
   taas.common.v1.Response response = 1;
   string service_id = 2;
   string state = 3; // deploying
+}
+
+// RetryCategory enumerates the failure classes a routing policy may
+// retry before the response is committed (feature #45, §5.1).
+enum RetryCategory {
+  RETRY_CATEGORY_UNSPECIFIED = 0;
+  RETRY_CATEGORY_CONNECT_TIMEOUT = 1;
+  RETRY_CATEGORY_HTTP_429 = 2;
+  RETRY_CATEGORY_HTTP_5XX = 3;
+}
+
+// RoutingPolicy is the current policy state for one catalog model
+// (feature #45, §5.1).
+message RoutingPolicy {
+  string model_id = 1;
+  string model_version = 2;
+  bool enabled = 3;
+  // service_ids is the ordered preference list of eligible targets.
+  repeated string service_ids = 4;
+  int32 max_attempts = 5;
+  repeated RetryCategory retry_on = 6;
+  int64 revision = 7;
+  string updated_at = 8;
+  // publication_state is pending / published for the outbox delivery.
+  string publication_state = 9;
+  int32 eligible_count = 10;
+  int32 ready_count = 11;
+}
+
+// RoutingPolicySummary is one list row: the policy projection plus
+// model display fields (feature #45, §5.1).
+message RoutingPolicySummary {
+  string model_id = 1;
+  string model_name = 2;
+  string model_version = 3;
+  bool enabled = 4;
+  string policy_state = 5; // DEFAULT / ENABLED / UNAVAILABLE / UNKNOWN
+  int32 target_count = 6;
+  int32 ready_count = 7;
+  int32 max_attempts = 8;
+  string updated_at = 9;
+}
+
+message ListRoutingPoliciesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string search = 2;
+  string state = 3; // DEFAULT / ENABLED / UNAVAILABLE
+  string accelerator = 4;
+  string sort = 5; // model / ready / updated
+}
+
+message ListRoutingPoliciesResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingPolicySummary policies = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetRoutingPolicyRequest {
+  string model_id = 1;
+}
+
+message GetRoutingPolicyResponse {
+  taas.common.v1.Response response = 1;
+  RoutingPolicy policy = 2;
+}
+
+message UpdateRoutingPolicyRequest {
+  string model_id = 1; // path
+  string model_version = 2;
+  bool enabled = 3;
+  repeated string service_ids = 4;
+  int32 max_attempts = 5;
+  repeated RetryCategory retry_on = 6;
+  // expected_revision is the revision the caller read; 0 means the
+  // policy has never been created (optimistic concurrency).
+  int64 expected_revision = 7;
+}
+
+message UpdateRoutingPolicyResponse {
+  taas.common.v1.Response response = 1;
+  RoutingPolicy policy = 2;
+}
+
+// RoutingTargetHealth is the masked readiness projection of one
+// eligible service (feature #45, §5.1). It never carries endpoint URLs
+// or pod identifiers.
+message RoutingTargetHealth {
+  string service_id = 1;
+  string service_name = 2;
+  string accelerator = 3;
+  string accelerator_type = 4;
+  string cluster_id = 5;
+  string cluster_name = 6;
+  int32 desired_replicas = 7;
+  int32 ready_replicas = 8;
+  bool endpoint_ready = 9;
+  string updated_at = 10;
+}
+
+message ListRoutingTargetHealthRequest {
+  string model_id = 1;
+}
+
+message ListRoutingTargetHealthResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingTargetHealth targets = 2;
+}
+
+// RoutingPolicyRevision is one immutable history entry with the
+// before/after policy snapshots (feature #45, §5.1).
+message RoutingPolicyRevision {
+  int64 revision = 1;
+  string actor = 2;
+  string updated_at = 3;
+  string summary = 4;
+  RoutingPolicy before = 5;
+  RoutingPolicy after = 6;
+}
+
+message ListRoutingPolicyRevisionsRequest {
+  string model_id = 1;
+  taas.common.v1.PageRequest page = 2;
+}
+
+message ListRoutingPolicyRevisionsResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingPolicyRevision revisions = 2;
+  taas.common.v1.PageMeta page_meta = 3;
 }

@@ -31,3 +31,16 @@ func (r *Recorder) Record(ctx context.Context, ev *AuditEvent) {
 			"action", ev.Action, "resource_type", ev.ResourceType, "resource_id", ev.ResourceID, "err", err)
 	}
 }
+
+// RecordInTx writes one audit event inside the caller's open
+// transaction (feature #45, §13.1). The repository resolves the
+// transaction handle from ctx, so the event commits or rolls back with
+// the mutation it accompanies. Unlike Record, a failure is returned so
+// the caller can roll the whole unit of work back.
+func (r *Recorder) RecordInTx(ctx context.Context, ev *AuditEvent) error {
+	if r == nil || r.repo == nil {
+		return nil
+	}
+	_, err := r.repo.InsertAuditEvent(ctx, ev)
+	return err
+}

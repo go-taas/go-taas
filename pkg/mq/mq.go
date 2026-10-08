@@ -106,6 +106,10 @@ type Subjects struct {
 	// (feature #40, AD4). The cluster module consumes it to maintain its
 	// in-memory projection cache.
 	ClusterHealth string
+	// InferRoutingPolicies carries routing-policy revision snapshots the
+	// infer outbox publisher emits and the inference gateway adapter
+	// consumes (feature #45, §9). It is not consumed by the controller.
+	InferRoutingPolicies string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -121,8 +125,7 @@ func DefaultSubjects() Subjects {
 		Settlements:             "billing.settlements",
 		WebhookEvents:           "webhook.events",
 		NotificationEvents:      "notification.events",
-		ClusterHealth:           "cluster.health",
-	}
+		ClusterHealth:           "cluster.health", InferRoutingPolicies: "infer.routing.policies"}
 }
 
 // NewFake returns an in-memory Client for unit tests and local development

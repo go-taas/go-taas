@@ -123,6 +123,10 @@ const (
 	CodeLoadTestConfigInvalid Code = 10309 // LOAD_TEST_CONFIG_INVALID
 	CodeLoadTestStateInvalid  Code = 10310 // LOAD_TEST_STATE_INVALID
 	CodeLoadTestTargetInvalid Code = 10311 // LOAD_TEST_TARGET_INVALID
+
+	// Routing-policy error codes (feature #45, §5.2).
+	CodeRoutingPolicyInvalid          Code = 10312 // ROUTING_POLICY_INVALID
+	CodeRoutingPolicyRevisionConflict Code = 10313 // ROUTING_POLICY_REVISION_CONFLICT
 )
 
 // metering module error codes.

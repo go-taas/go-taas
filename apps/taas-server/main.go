@@ -12,6 +12,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/k8s"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/modelhub"
+	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/registry"
 	"github.com/go-taas/go-taas/pkg/server"
 
@@ -420,6 +421,26 @@ func main() {
 	// executes queued load tests.
 	if loadTestRunner != nil {
 		srv.AddRunner(loadTestRunner)
+	}
+	// Feature #45: the routing-policy outbox publisher delivers
+	// committed policy revisions to the inference gateway adapter on
+	// the dedicated infer.routing.policies subject (AD5). It is wired
+	// after Init so the database and MQ components are available; a
+	// missing MQ component leaves pending outbox rows durable (the
+	// publication state stays pending) rather than falsely marking
+	// them published.
+	if dbComponent := srv.Components().DB(); dbComponent != nil {
+		if gormDB, ok := dbComponent.GormDB().(*gorm.DB); ok {
+			if mqComponent := srv.Components().MQ(); mqComponent != nil {
+				if mqClient, ok := mqComponent.Client().(mq.Client); ok {
+					srv.AddRunner(infer.NewRoutingPolicyPublisher(
+						infer.NewRoutingPolicyRepository(gormDB),
+						mqClient,
+						0,
+					))
+				}
+			}
+		}
 	}
 	if runner := metering.NewEventConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)

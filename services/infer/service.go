@@ -146,6 +146,11 @@ type Service struct {
 	// deploymentEventRepo persists the deployment event trail (feature
 	// #34, AD2). Wired lazily from the shared components.
 	deploymentEventRepo *DeploymentEventRepository
+
+	// routingPolicyRepo persists routing policies, revisions and the
+	// publication outbox (feature #45, §4.1). Wired lazily from the
+	// shared components.
+	routingPolicyRepo *RoutingPolicyRepository
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -331,6 +336,7 @@ func NewWithDependencies(
 		modelRepo:           modelRepo,
 		mqClient:            mqClient,
 		deploymentEventRepo: deploymentEventRepo,
+		routingPolicyRepo:   NewRoutingPolicyRepository(repo.DB(context.Background())),
 	}
 }
 
@@ -346,10 +352,11 @@ func NewForFVT(db *gorm.DB, mqClient mq.Client) *Service {
 }
 
 // MigrateSchemaForFVT applies the infer schema (inference_services,
-// autoscaling_policy, load_tests, deployment_events) to the given
+// autoscaling_policy, load_tests, deployment_events, routing_policies,
+// routing_policy_revisions, routing_policy_outbox) to the given
 // database. FVT-only helper.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}); err != nil {
+	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}); err != nil {
 		return err
 	}
 	return NewAutoscalingPolicyRepository(db).SeedDefault(context.Background())
@@ -374,7 +381,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}); err != nil {
 		return err
 	}
 	// Seed the singleton global-default policy (feature #16, §4.3): the
