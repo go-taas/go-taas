@@ -93,6 +93,16 @@ module.exports = {
       'AC-A8: status filter renders'
     );
     browser.waitForElementPresent(
+      '[data-testid="request-log-filter-key"]',
+      5000,
+      'AC-A8: API key filter renders'
+    );
+    browser.waitForElementPresent(
+      '[data-testid="request-log-filter-model"]',
+      5000,
+      'AC-A8: model filter renders'
+    );
+    browser.waitForElementPresent(
       '[data-testid="request-logs-empty"], [data-testid="request-logs-table"]',
       10000,
       'AC-A8: request logs list renders'

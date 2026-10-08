@@ -203,15 +203,17 @@ const api = {
     const path = require('path');
     const { execSync } = require('child_process');
     const repoRoot = path.resolve(__dirname, '..', '..', '..');
+    const dockerNetwork = process.env.E2E_DOCKER_NETWORK || 'go-taas_default';
+    const cachePrefix = process.env.E2E_SEED_CACHE_PREFIX || 'go-taas';
     const rolesArg = roles ? ` -roles '${roles}'` : '';
     const userArg = user ? ` -user '${user}'` : '';
     const noMemberArg = opts && opts.noMember ? ' -no-member' : '';
     const cmd = [
-      'docker run --rm --network go-taas_default',
+      `docker run --rm --network '${dockerNetwork}'`,
       '-e GOPROXY=https://goproxy.cn,direct',
-      '-v go-taas-go-mod-cache:/go/pkg/mod',
-      '-v go-taas-go-build-cache:/root/.cache/go-build',
-      `-v "${repoRoot}":/app`,
+      `-v ${cachePrefix}-go-mod-cache:/go/pkg/mod`,
+      `-v ${cachePrefix}-go-build-cache:/root/.cache/go-build`,
+      `-v "${repoRoot}":/app:ro`,
       '-w /app/test/e2e/seed/session',
       'golang:1.26-alpine',
       `sh -c "go run seed_session.go -redis 'redis:6379' -realm '${realm}' -org '${org}'${rolesArg}${userArg}${noMemberArg}"`

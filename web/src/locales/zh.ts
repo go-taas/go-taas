@@ -1225,6 +1225,26 @@ export const zh: Record<string, string> = {
   'uapikeys.updateFailed': '更新密钥失败',
 
   // ---- User: Request Logs ----
+  'ureqlogs.title': '请求日志',
+  'ureqlogs.empty': '没有请求日志。',
+  'ureqlogs.colTime': '时间',
+  'ureqlogs.colModel': '模型',
+  'ureqlogs.colStatus': '状态',
+  'ureqlogs.colTokens': 'Tokens',
+  'ureqlogs.colLatency': '延迟',
+  'ureqlogs.latencyMs': '{latencyMs}ms',
+  'ureqlogs.loadFailed': '加载日志失败',
+  'ureqlogs.range24h': '24 小时',
+  'ureqlogs.range7d': '7 天',
+  'ureqlogs.range30d': '30 天',
+  'ureqlogs.allStatuses': '全部状态',
+  'ureqlogs.success': '成功',
+  'ureqlogs.error': '错误',
+  'ureqlogs.streaming': '流式响应',
+  'ureqlogs.keyPlaceholder': 'API 密钥 ID',
+  'ureqlogs.modelPlaceholder': '模型 ID',
+  'ureqlogs.colRequest': '请求 ID',
+  'ureqlogs.colKey': 'API 密钥',
 
   // ---- User: Model Detail ----
   'umodeldetail.back': '返回模型',

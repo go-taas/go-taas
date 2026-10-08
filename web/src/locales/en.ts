@@ -1234,6 +1234,26 @@ export const en: Record<string, string> = {
   'uapikeys.updateFailed': 'failed to update key',
 
   // ---- User: Request Logs ----
+  'ureqlogs.title': 'Request Logs',
+  'ureqlogs.empty': 'No request logs.',
+  'ureqlogs.colTime': 'Time',
+  'ureqlogs.colModel': 'Model',
+  'ureqlogs.colStatus': 'Status',
+  'ureqlogs.colTokens': 'Tokens',
+  'ureqlogs.colLatency': 'Latency',
+  'ureqlogs.latencyMs': '{latencyMs}ms',
+  'ureqlogs.loadFailed': 'failed to load logs',
+  'ureqlogs.range24h': '24 hours',
+  'ureqlogs.range7d': '7 days',
+  'ureqlogs.range30d': '30 days',
+  'ureqlogs.allStatuses': 'All statuses',
+  'ureqlogs.success': 'Success',
+  'ureqlogs.error': 'Error',
+  'ureqlogs.streaming': 'Streaming',
+  'ureqlogs.keyPlaceholder': 'API key ID',
+  'ureqlogs.modelPlaceholder': 'Model ID',
+  'ureqlogs.colRequest': 'Request ID',
+  'ureqlogs.colKey': 'API key',
 
   // ---- User: Model Detail ----
   'umodeldetail.back': 'Back to Models',
