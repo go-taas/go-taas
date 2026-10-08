@@ -41,9 +41,47 @@ module.exports = {
     browser.end();
   },
 
+  'AC9: a user session cannot call the admin request-logs API': function (browser) {
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/metering/request-logs',
+      org: browser.globals.orgA,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC9: wrong realm rejected');
+    });
+  },
+
+  'AC-A8: request logs API answers empty for a fresh org': function (browser) {
+    const org = browser.globals.orgA;
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/metering/request-logs',
+      org,
+      sessionRealm: 'user'
+    }, (res) => {
+      const body = api.assertOk(browser, res, 'request logs list');
+      browser.assert.ok(
+        Array.isArray(body.requestLogs),
+        'AC-A8: request logs returns an array'
+      );
+    });
+  },
+
+  'AC-B3: playground page renders controls': function (browser) {
+    browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
+    browser.url(browser.globals.baseUrl + '/playground');
+    browser.waitForElementPresent(
+      '[data-testid="playground-model-select"], [data-testid="playground-no-models"]',
+      10000,
+      'AC-B3: model selector or no-models state renders'
+    );
+    browser.assert.not.elementPresent('[data-testid="playground-service-select"]', 'AC-B3: user playground does not expose service selection');
+  },
+
   'AC-A8: request logs page renders filters and empty state': function (browser) {
     browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
-    browser.url(browser.globals.baseUrl + '/admin/request-logs');
+    browser.url(browser.globals.baseUrl + '/request-logs');
     browser.waitForElementPresent(
       '[data-testid="request-log-filters"]',
       10000,
@@ -61,48 +99,4 @@ module.exports = {
     );
   },
 
-  'AC-B3: playground page renders controls': function (browser) {
-    browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
-    browser.url(browser.globals.baseUrl + '/admin/playground');
-    browser.waitForElementPresent(
-      '[data-testid="playground-service-select"]',
-      10000,
-      'AC-B3: service selector renders'
-    );
-    browser.waitForElementPresent(
-      '[data-testid="playground-key-select"]',
-      5000,
-      'AC-B3: key selector renders'
-    );
-    browser.waitForElementPresent(
-      '[data-testid="playground-prompt-input"]',
-      5000,
-      'AC-B3: prompt input renders'
-    );
-    browser.waitForElementPresent(
-      '[data-testid="playground-send"]',
-      5000,
-      'AC-B3: send button renders'
-    );
-    browser.waitForElementPresent(
-      '[data-testid="playground-response"]',
-      5000,
-      'AC-B3: response pane renders'
-    );
-  },
-
-  'AC-A8: request logs API answers empty for a fresh org': function (browser) {
-    const org = browser.globals.orgA;
-    api.request(browser, {
-      method: 'GET',
-      path: '/api/v1/admin/metering/request-logs',
-      org
-    }, (res) => {
-      const body = api.assertOk(browser, res, 'request logs list');
-      browser.assert.ok(
-        Array.isArray(body.requestLogs),
-        'AC-A8: request logs returns an array'
-      );
-    });
-  }
 };

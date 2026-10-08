@@ -40,7 +40,7 @@ const api = {
    * must return true on success; assertion failures are reported by the
    * callback itself via browser.assert.
    */
-  request(browser, {method = 'GET', path, body, org, headers = {}}, verify) {
+  request(browser, {method = 'GET', path, body, org, headers = {}, sessionRealm}, verify) {
     const url = this.url(browser, path);
     const payload = {
       url,
@@ -52,12 +52,17 @@ const api = {
           headers
         ),
         body: body !== undefined ? JSON.stringify(body) : undefined
-      }
+      },
+      sessionRealm
     };
 
     browser
       .timeoutsAsyncScript(15000)
-      .executeAsync(function ({url, options}, done) {
+      .executeAsync(function ({url, options, sessionRealm}, done) {
+        if (sessionRealm) {
+          const token = localStorage.getItem(`go-taas.${sessionRealm}.session-token`);
+          if (token) options.headers.Authorization = `Bearer ${token}`;
+        }
         fetch(url, options)
           .then(async (res) => {
             const text = await res.text();

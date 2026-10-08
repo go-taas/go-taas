@@ -46,28 +46,39 @@ module.exports = {
   'AC-C1: API key create persists rate limits and edit updates them': function (browser) {
     const org = browser.globals.orgA;
 
-    // Create a key with rate limits via the API.
+    // Create a key with rate limits via the end-user API.
     api.request(browser, {
       method: 'POST',
-      path: '/api/v1/admin/auth/api-keys',
+      path: '/api/v1/auth/api-keys',
       org,
+      sessionRealm: 'user',
       body: {name: 'limited', rateLimitRpm: 100, rateLimitTpm: 50000}
     }, (res) => {
       const body = api.assertOk(browser, res, 'create key with limits');
       browser.assert.ok(body.keyId, 'AC-C1: key id returned');
-    });
+      const keyId = body.keyId;
+      api.request(browser, {
+        method: 'PUT',
+        path: `/api/v1/auth/api-keys/${keyId}`,
+        org,
+        sessionRealm: 'user',
+        body: {name: 'limited', rateLimitRpm: 120, rateLimitTpm: 60000}
+      }, (updateRes) => {
+        api.assertOk(browser, updateRes, 'update key limits');
 
-    // List returns the limits.
-    api.request(browser, {
-      method: 'GET',
-      path: '/api/v1/admin/auth/api-keys',
-      org
-    }, (res) => {
-      const body = api.assertOk(browser, res, 'list keys');
-      const key = (body.keys || []).find((k) => k.name === 'limited');
-      browser.assert.ok(key, 'AC-C1: created key listed');
-      browser.assert.equal(String(key.rateLimitRpm), '100', 'AC-C1: rpm persisted');
-      browser.assert.equal(String(key.rateLimitTpm), '50000', 'AC-C1: tpm persisted');
+        api.request(browser, {
+          method: 'GET',
+          path: '/api/v1/auth/api-keys',
+          org,
+          sessionRealm: 'user'
+        }, (listRes) => {
+          const listBody = api.assertOk(browser, listRes, 'list keys');
+          const key = (listBody.keys || []).find((item) => item.name === 'limited');
+          browser.assert.ok(key, 'AC-C1: created key listed');
+          browser.assert.equal(String(key.rateLimitRpm), '120', 'AC-C1: updated rpm persisted');
+          browser.assert.equal(String(key.rateLimitTpm), '60000', 'AC-C1: updated tpm persisted');
+        });
+      });
     });
   },
 
@@ -89,20 +100,15 @@ module.exports = {
     });
   },
 
-  'AC-C1: API keys page renders rate-limit column': function (browser) {
-    browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
-    browser.url(browser.globals.baseUrl + '/admin/api-keys');
-    browser.waitForElementPresent(
-      '[data-testid="create-api-key"]',
-      10000,
-      'AC-C1: create button renders'
-    );
-    // The rate-limit column renders (empty state or table).
-    browser.waitForElementPresent(
-      '[data-testid="api-keys-empty"], [data-testid="api-keys-table"]',
-      10000,
-      'AC-C1: keys list renders'
-    );
+  'AC9: a user session cannot call the admin API-key API': function (browser) {
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/auth/api-keys',
+      org: browser.globals.orgA,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC9: wrong realm rejected');
+    });
   },
 
   'AC-C2: accounts page renders spend-limit column': function (browser) {
@@ -117,6 +123,21 @@ module.exports = {
       '[data-testid="accounts-empty"], [data-testid="accounts-table"]',
       10000,
       'AC-C2: accounts list renders'
+    );
+  },
+
+  'AC-C1: API keys page renders rate-limit column': function (browser) {
+    browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
+    browser.url(browser.globals.baseUrl + '/api-keys');
+    browser.waitForElementPresent(
+      '[data-testid="create-api-key"]',
+      10000,
+      'AC-C1: create button renders'
+    );
+    browser.waitForElementPresent(
+      '[data-testid="api-keys-empty"], [data-testid="api-keys-table"]',
+      10000,
+      'AC-C1: keys list renders'
     );
   }
 };

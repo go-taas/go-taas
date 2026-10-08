@@ -41,10 +41,43 @@ module.exports = {
     // Seed an admin-realm session so the protected pages render (feature:
     // unauthenticated pages redirect to login).
     api.seedSession(browser, 'admin', browser.globals.orgA);
+    api.seedSession(browser, 'user', browser.globals.orgA);
   },
 
   afterEach(browser) {
     browser.end();
+  },
+
+  'AC9 (surface separation): user session reads balance through the user API': function (browser) {
+    const org = browser.globals.orgA;
+    api.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/billing/accounts',
+      org,
+      body: {mode: 'prepaid', overdrawPolicy: 'block', initialBalanceCents: 1500}
+    }, (createRes) => {
+      api.assertOk(browser, createRes, 'create account for user balance');
+      api.request(browser, {
+        method: 'GET',
+        path: '/api/v1/billing/balance',
+        org,
+        sessionRealm: 'user'
+      }, (balanceRes) => {
+        const body = api.assertOk(browser, balanceRes, 'user balance snapshot');
+        browser.assert.equal(body.mode, 'prepaid', 'AC9: user sees prepaid account mode');
+      });
+    });
+  },
+
+  'AC9 (surface separation): a user session cannot call admin billing APIs': function (browser) {
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/billing/accounts',
+      org: browser.globals.orgA,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC9: wrong realm rejected');
+    });
   },
 
   'FR7: accounts page renders empty state and create dialog': function (browser) {

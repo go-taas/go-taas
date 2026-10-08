@@ -38,10 +38,40 @@ module.exports = {
     // Seed an admin-realm session so the protected pages render (feature:
     // unauthenticated pages redirect to login).
     api.seedSession(browser, 'admin', browser.globals.orgA);
+    api.seedSession(browser, 'user', browser.globals.orgA);
   },
 
   afterEach(browser) {
     browser.end();
+  },
+
+  'AC9 (surface separation): user usage page and API use the user surface': function (browser) {
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/metering/usage-dashboard',
+      org: browser.globals.orgA,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertOk(browser, res, 'user usage dashboard');
+    });
+    browser.url(browser.globals.baseUrl + '/usage');
+    browser.waitForElementPresent('[data-testid="usage-dashboard-cards"]', 10000, 'AC9: user usage page renders');
+    browser.waitForElementPresent(
+      '[data-testid="usage-empty"], [data-testid="usage-table"]',
+      10000,
+      'AC9: user usage data state renders'
+    );
+  },
+
+  'AC9 (surface separation): a user session cannot call admin usage APIs': function (browser) {
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/metering/usage-dashboard',
+      org: browser.globals.orgA,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC9: wrong realm rejected');
+    });
   },
 
   'AC1: usage page renders dashboard cards, chart and metric toggle': function (browser) {

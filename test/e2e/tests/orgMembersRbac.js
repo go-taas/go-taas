@@ -36,10 +36,23 @@ module.exports = {
     // Seed an admin-realm session so the protected pages render (feature:
     // unauthenticated pages redirect to login).
     api.seedSession(browser, 'admin', browser.globals.orgA);
+    api.seedSession(browser, 'user', browser.globals.orgA);
   },
 
   afterEach(browser) {
     browser.end();
+  },
+
+  'AC9 (surface separation): a user session cannot call admin member APIs': function (browser) {
+    const org = browser.globals.orgA;
+    api.request(browser, {
+      method: 'GET',
+      path: `/api/v1/admin/tenancy/organizations/${org}/members`,
+      org,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC9: wrong realm rejected');
+    });
   },
 
   'AC10: members page renders': function (browser) {

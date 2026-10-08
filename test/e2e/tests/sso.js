@@ -45,6 +45,17 @@ module.exports = {
     browser.end();
   },
 
+  'AC9 (surface separation): a user session cannot call admin provider APIs': function (browser) {
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/auth/sso/providers',
+      org: browser.globals.orgA,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC9: wrong realm rejected');
+    });
+  },
+
   'AC1: create SSO provider returns the provider with the secret masked': function (browser) {
     const providerId = browser.globals.providerId;
     api.request(browser, {
