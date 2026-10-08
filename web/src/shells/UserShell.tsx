@@ -18,6 +18,7 @@ import {
   BookOpen,
   DownloadSimple,
   TextT,
+  ChartBar,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -46,6 +47,7 @@ export const USER_NAV_ITEMS: { path: string; labelKey: string; testid: string; i
   { path: '/playground', labelKey: 'nav.playground', testid: 'user-nav-playground', icon: Play },
   { path: '/batch', labelKey: 'nav.batch', testid: 'user-nav-batch', icon: Cube },
   { path: '/prompts', labelKey: 'nav.prompts', testid: 'user-nav-prompts', icon: TextT },
+  { path: '/evaluations', labelKey: 'nav.evaluations', testid: 'user-nav-evaluations', icon: ChartBar },
   { path: '/billing', labelKey: 'nav.billing', testid: 'user-nav-billing', icon: Receipt },
   { path: '/billing/reports', labelKey: 'nav.billingReports', testid: 'user-nav-billing-reports', icon: FileText },
   { path: '/activity', labelKey: 'nav.activity', testid: 'user-nav-activity', icon: Pulse },

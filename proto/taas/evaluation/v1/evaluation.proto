@@ -1,0 +1,278 @@
+syntax = "proto3";
+
+package taas.evaluation.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/evaluation/v1;evaluationv1";
+
+service EvaluationService {
+  rpc CreateEvaluation(CreateEvaluationRequest) returns (EvaluationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/evaluations"
+      body: "*"
+    };
+  }
+  rpc ListEvaluations(ListEvaluationsRequest) returns (ListEvaluationsResponse) {
+    option (google.api.http) = {get: "/api/v1/evaluations"};
+  }
+  rpc GetEvaluation(GetEvaluationRequest) returns (EvaluationResponse) {
+    option (google.api.http) = {get: "/api/v1/evaluations/{evaluation_id}"};
+  }
+  rpc UpdateEvaluation(UpdateEvaluationRequest) returns (EvaluationResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/evaluations/{evaluation_id}"
+      body: "*"
+    };
+  }
+  rpc DeleteEvaluation(DeleteEvaluationRequest) returns (DeleteEvaluationResponse) {
+    option (google.api.http) = {delete: "/api/v1/evaluations/{evaluation_id}"};
+  }
+  rpc CreateEvaluationCase(CreateEvaluationCaseRequest) returns (EvaluationCaseResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/evaluations/{evaluation_id}/cases"
+      body: "*"
+    };
+  }
+  rpc UpdateEvaluationCase(UpdateEvaluationCaseRequest) returns (EvaluationCaseResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/evaluations/{evaluation_id}/cases/{case_id}"
+      body: "*"
+    };
+  }
+  rpc DeleteEvaluationCase(DeleteEvaluationCaseRequest) returns (DeleteEvaluationCaseResponse) {
+    option (google.api.http) = {delete: "/api/v1/evaluations/{evaluation_id}/cases/{case_id}"};
+  }
+  rpc ReorderEvaluationCases(ReorderEvaluationCasesRequest) returns (EvaluationResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/evaluations/{evaluation_id}/cases:reorder"
+      body: "*"
+    };
+  }
+  rpc CreateEvaluationRun(CreateEvaluationRunRequest) returns (EvaluationRunResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/evaluations/{evaluation_id}/runs"
+      body: "*"
+    };
+  }
+  rpc ListEvaluationRuns(ListEvaluationRunsRequest) returns (ListEvaluationRunsResponse) {
+    option (google.api.http) = {get: "/api/v1/evaluations/{evaluation_id}/runs"};
+  }
+  rpc GetEvaluationRun(GetEvaluationRunRequest) returns (EvaluationRunResponse) {
+    option (google.api.http) = {get: "/api/v1/evaluations/{evaluation_id}/runs/{run_id}"};
+  }
+  rpc CancelEvaluationRun(CancelEvaluationRunRequest) returns (EvaluationRunResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/evaluations/{evaluation_id}/runs/{run_id}:cancel"
+      body: "*"
+    };
+  }
+  rpc CompareEvaluationRuns(CompareEvaluationRunsRequest) returns (CompareEvaluationRunsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/evaluations/{evaluation_id}/runs:compare"
+      body: "*"
+    };
+  }
+}
+
+message Evaluation {
+  string evaluation_id = 1;
+  string name = 2;
+  string description = 3;
+  string prompt_id = 4;
+  int32 prompt_version = 5;
+  string prompt_name = 6;
+  int32 case_count = 7;
+  string created_at = 8;
+  string updated_at = 9;
+  repeated EvaluationCase cases = 10;
+}
+message EvaluationCase {
+  string case_id = 1;
+  string evaluation_id = 2;
+  int32 position = 3;
+  string name = 4;
+  string variables_json = 5;
+  string expected_output = 6;
+  repeated EvaluationCheck checks = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+message EvaluationCheck {
+  string type = 1;
+  string expected = 2;
+}
+message EvaluationRun {
+  string run_id = 1;
+  string evaluation_id = 2;
+  string status = 3;
+  string prompt_id = 4;
+  int32 prompt_version = 5;
+  string prompt_content = 6;
+  repeated string prompt_variables = 7;
+  string model_id = 8;
+  string model_name = 9;
+  string api_key_id = 10;
+  int32 case_count = 11;
+  int32 completed_count = 12;
+  int32 passed_count = 13;
+  int32 failed_count = 14;
+  int32 error_count = 15;
+  int32 cancelled_count = 16;
+  int64 total_cost_minor = 17;
+  string currency = 18;
+  int64 median_latency_ms = 19;
+  string created_at = 20;
+  string started_at = 21;
+  string completed_at = 22;
+  repeated EvaluationRunCase cases = 23;
+}
+message EvaluationRunCase {
+  string result_id = 1;
+  string case_id = 2;
+  int32 case_position = 3;
+  string case_name = 4;
+  string variables_json = 5;
+  string expected_output = 6;
+  repeated EvaluationCheck checks = 7;
+  string status = 8;
+  string completion = 9;
+  repeated EvaluationCheckResult check_results = 10;
+  int64 input_tokens = 11;
+  int64 output_tokens = 12;
+  int64 latency_ms = 13;
+  int64 cost_minor = 14;
+  string currency = 15;
+  int32 error_code = 16;
+  string error_message = 17;
+  string completed_at = 18;
+}
+message EvaluationCheckResult {
+  string type = 1;
+  string expected = 2;
+  bool passed = 3;
+  string message = 4;
+}
+
+message CreateEvaluationRequest {
+  string name = 1;
+  string description = 2;
+  string prompt_id = 3;
+  int32 prompt_version = 4;
+}
+message ListEvaluationsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string search = 2;
+  string prompt_id = 3;
+  string status = 4;
+}
+message GetEvaluationRequest {
+  string evaluation_id = 1;
+}
+message UpdateEvaluationRequest {
+  string evaluation_id = 1;
+  string name = 2;
+  string description = 3;
+  string prompt_id = 4;
+  int32 prompt_version = 5;
+}
+message DeleteEvaluationRequest {
+  string evaluation_id = 1;
+}
+message DeleteEvaluationResponse {
+  taas.common.v1.Response response = 1;
+}
+message EvaluationResponse {
+  taas.common.v1.Response response = 1;
+  Evaluation evaluation = 2;
+}
+message CreateEvaluationCaseRequest {
+  string evaluation_id = 1;
+  string name = 2;
+  map<string, string> variables = 3;
+  string expected_output = 4;
+  repeated EvaluationCheck checks = 5;
+}
+message UpdateEvaluationCaseRequest {
+  string evaluation_id = 1;
+  string case_id = 2;
+  string name = 3;
+  map<string, string> variables = 4;
+  string expected_output = 5;
+  repeated EvaluationCheck checks = 6;
+}
+message EvaluationCaseResponse {
+  taas.common.v1.Response response = 1;
+  EvaluationCase case = 2;
+}
+message DeleteEvaluationCaseRequest {
+  string evaluation_id = 1;
+  string case_id = 2;
+}
+message DeleteEvaluationCaseResponse {
+  taas.common.v1.Response response = 1;
+}
+message ReorderEvaluationCasesRequest {
+  string evaluation_id = 1;
+  repeated string case_ids = 2;
+}
+message CreateEvaluationRunRequest {
+  string evaluation_id = 1;
+  string model_id = 2;
+  string api_key_id = 3;
+  repeated string case_ids = 4;
+  int32 prompt_version = 5;
+}
+message ListEvaluationRunsRequest {
+  string evaluation_id = 1;
+  taas.common.v1.PageRequest page = 2;
+  string status = 3;
+}
+message GetEvaluationRunRequest {
+  string evaluation_id = 1;
+  string run_id = 2;
+  taas.common.v1.PageRequest page = 3;
+  string case_status = 4;
+  string search = 5;
+}
+message CancelEvaluationRunRequest {
+  string evaluation_id = 1;
+  string run_id = 2;
+}
+message EvaluationRunResponse {
+  taas.common.v1.Response response = 1;
+  EvaluationRun run = 2;
+}
+message ListEvaluationsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Evaluation evaluations = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+message ListEvaluationRunsResponse {
+  taas.common.v1.Response response = 1;
+  repeated EvaluationRun runs = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+message CompareEvaluationRunsRequest {
+  string evaluation_id = 1;
+  string left_run_id = 2;
+  string right_run_id = 3;
+}
+message CompareEvaluationRunsResponse {
+  taas.common.v1.Response response = 1;
+  EvaluationRun left = 2;
+  EvaluationRun right = 3;
+  int64 pass_rate_delta_milli = 4;
+  int64 cost_delta_minor = 5;
+  int64 median_latency_delta_ms = 6;
+  repeated EvaluationRunCaseComparison cases = 7;
+}
+message EvaluationRunCaseComparison {
+  string case_id = 1;
+  string case_name = 2;
+  EvaluationRunCase left = 3;
+  EvaluationRunCase right = 4;
+  bool only_in_left = 5;
+  bool only_in_right = 6;
+}

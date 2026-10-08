@@ -57,6 +57,19 @@ func (r *APIKeyRepository) FindByLookupHash(ctx context.Context, digest string) 
 	return &row, nil
 }
 
+// FindActiveByIDAndOrganization returns an unrevoked, unexpired key owned by orgID.
+func (r *APIKeyRepository) FindActiveByIDAndOrganization(ctx context.Context, orgID, keyID string, now time.Time) (*APIKey, error) {
+	var row APIKey
+	err := r.DB(ctx).Where("id = ? AND organization_id = ? AND revoked = false AND (expires_at IS NULL OR expires_at > ?)", keyID, orgID, now).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apierrors.New(apierrors.CodeAPIKeyNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // RevokeByIDAndOrganization soft-revokes the key owned by orgID inside a
 // transaction. A missing key or a key of another organization maps to
 // CodeAPIKeyNotFound (no cross-org existence leak). The update is

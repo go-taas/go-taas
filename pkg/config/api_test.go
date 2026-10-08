@@ -173,6 +173,83 @@ func TestShippedConfigModelAuth(t *testing.T) {
 	}
 }
 
+// TestParseConfigsEvaluationSection proves the feature-44 evaluation
+// keys reach the loaded configuration: a key that is absent from the
+// shipped YAML is silently ignored by the env override, so it must be
+// parsed from a file as well.
+func TestParseConfigsEvaluationSection(t *testing.T) {
+	path := writeTempConfig(t, `
+evaluation:
+  worker:
+    enabled: true
+    pollInterval: 3s
+    maxConcurrentRuns: 2
+    maxConcurrentCasesPerRun: 1
+  retention:
+    enabled: true
+    ttl: 1440h
+    interval: 5m
+  maxCasesPerRun: 20
+  maxVariableValueLength: 5000
+  maxInFlightRunsPerOrg: 3
+`)
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if !cfg.Evaluation.Worker.Enabled {
+		t.Fatal("evaluation.worker.enabled should be true")
+	}
+	if cfg.Evaluation.Worker.PollInterval != 3*time.Second {
+		t.Fatalf("evaluation.worker.pollInterval: %v", cfg.Evaluation.Worker.PollInterval)
+	}
+	if cfg.Evaluation.Worker.MaxConcurrentRuns != 2 {
+		t.Fatalf("evaluation.worker.maxConcurrentRuns: %d", cfg.Evaluation.Worker.MaxConcurrentRuns)
+	}
+	if cfg.Evaluation.Worker.MaxConcurrentCasesPerRun != 1 {
+		t.Fatalf("evaluation.worker.maxConcurrentCasesPerRun: %d", cfg.Evaluation.Worker.MaxConcurrentCasesPerRun)
+	}
+	if !cfg.Evaluation.Retention.Enabled {
+		t.Fatal("evaluation.retention.enabled should be true")
+	}
+	if cfg.Evaluation.Retention.TTL != 1440*time.Hour {
+		t.Fatalf("evaluation.retention.ttl: %v", cfg.Evaluation.Retention.TTL)
+	}
+	if cfg.Evaluation.Retention.Interval != 5*time.Minute {
+		t.Fatalf("evaluation.retention.interval: %v", cfg.Evaluation.Retention.Interval)
+	}
+	if cfg.Evaluation.MaxCasesPerRun != 20 {
+		t.Fatalf("evaluation.maxCasesPerRun: %d", cfg.Evaluation.MaxCasesPerRun)
+	}
+	if cfg.Evaluation.MaxVariableValueLength != 5000 {
+		t.Fatalf("evaluation.maxVariableValueLength: %d", cfg.Evaluation.MaxVariableValueLength)
+	}
+	if cfg.Evaluation.MaxInFlightRunsPerOrg != 3 {
+		t.Fatalf("evaluation.maxInFlightRunsPerOrg: %d", cfg.Evaluation.MaxInFlightRunsPerOrg)
+	}
+}
+
+// TestParseConfigsEvaluationSectionDefault pins the feature-44
+// defaults: an omitted key gets the shipped default, not 0.
+func TestParseConfigsEvaluationSectionDefault(t *testing.T) {
+	path := writeTempConfig(t, "log:\n  level: info\n")
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg.Evaluation.Worker.PollInterval != 2*time.Second {
+		t.Fatalf("default evaluation.worker.pollInterval: %v", cfg.Evaluation.Worker.PollInterval)
+	}
+	if cfg.Evaluation.Worker.MaxConcurrentRuns != 4 {
+		t.Fatalf("default evaluation.worker.maxConcurrentRuns: %d", cfg.Evaluation.Worker.MaxConcurrentRuns)
+	}
+	if cfg.Evaluation.Retention.TTL != 2160*time.Hour {
+		t.Fatalf("default evaluation.retention.ttl: %v", cfg.Evaluation.Retention.TTL)
+	}
+	if cfg.Evaluation.MaxCasesPerRun != 50 {
+		t.Fatalf("default evaluation.maxCasesPerRun: %d", cfg.Evaluation.MaxCasesPerRun)
+	}
+	if cfg.Evaluation.MaxInFlightRunsPerOrg != 10 {
+		t.Fatalf("default evaluation.maxInFlightRunsPerOrg: %d", cfg.Evaluation.MaxInFlightRunsPerOrg)
+	}
+}
+
 // TestParseConfigsHarborSection proves the Harbor keys reach the loaded
 // configuration: a key absent from the shipped YAML is silently ignored
 // by the env override, so it must be parsed from a file as well.

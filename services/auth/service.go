@@ -212,6 +212,16 @@ func (s *Service) repository() (*APIKeyRepository, error) {
 	return s.repo, nil
 }
 
+// ValidateActiveAPIKey checks that keyID is active and owned by orgID without returning secret material.
+func (s *Service) ValidateActiveAPIKey(ctx context.Context, orgID, keyID string) error {
+	repo, err := s.repository()
+	if err != nil {
+		return err
+	}
+	_, err = repo.FindActiveByIDAndOrganization(ctx, orgID, keyID, time.Now().UTC())
+	return err
+}
+
 // verdictCacheFor lazily wires and returns the verdict cache.
 func (s *Service) verdictCacheFor() (verdictCache, error) {
 	if s.cache != nil {

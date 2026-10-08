@@ -308,12 +308,24 @@ const (
 // prompt module error codes (feature #43, AD7). The block is
 // 12701-12799, the next free block after batch's 126xx.
 const (
-	CodePromptNotFound          Code = 12701 // PROMPT_NOT_FOUND
-	CodePromptVersionNotFound   Code = 12702 // PROMPT_VERSION_NOT_FOUND
-	CodePromptNameConflict      Code = 12703 // PROMPT_NAME_CONFLICT
-	CodePromptFolderNotFound    Code = 12704 // PROMPT_FOLDER_NOT_FOUND
-	CodePromptInvalidContent    Code = 12705 // PROMPT_INVALID_CONTENT
-	CodePromptInvalidVariable   Code = 12706 // PROMPT_INVALID_VARIABLE
-	CodePromptTemplateNotFound  Code = 12707 // PROMPT_TEMPLATE_NOT_FOUND
-	CodePromptFolderNotEmpty    Code = 12708 // PROMPT_FOLDER_NOT_EMPTY
+	CodePromptNotFound         Code = 12701 // PROMPT_NOT_FOUND
+	CodePromptVersionNotFound  Code = 12702 // PROMPT_VERSION_NOT_FOUND
+	CodePromptNameConflict     Code = 12703 // PROMPT_NAME_CONFLICT
+	CodePromptFolderNotFound   Code = 12704 // PROMPT_FOLDER_NOT_FOUND
+	CodePromptInvalidContent   Code = 12705 // PROMPT_INVALID_CONTENT
+	CodePromptInvalidVariable  Code = 12706 // PROMPT_INVALID_VARIABLE
+	CodePromptTemplateNotFound Code = 12707 // PROMPT_TEMPLATE_NOT_FOUND
+	CodePromptFolderNotEmpty   Code = 12708 // PROMPT_FOLDER_NOT_EMPTY
+)
+
+// prompt-evaluation module error codes (feature #44).
+const (
+	CodeEvaluationNotFound             Code = 12801 // EVALUATION_NOT_FOUND
+	CodeEvaluationNameConflict         Code = 12802 // EVALUATION_NAME_CONFLICT
+	CodeEvaluationCaseInvalid          Code = 12803 // EVALUATION_CASE_INVALID
+	CodeEvaluationCheckInvalid         Code = 12804 // EVALUATION_CHECK_INVALID
+	CodeEvaluationRunNotFound          Code = 12805 // EVALUATION_RUN_NOT_FOUND
+	CodeEvaluationRunStateInvalid      Code = 12806 // EVALUATION_RUN_STATE_INVALID
+	CodeEvaluationLimitExceeded        Code = 12807 // EVALUATION_LIMIT_EXCEEDED
+	CodeEvaluationPromptVersionInvalid Code = 12808 // EVALUATION_PROMPT_VERSION_INVALID
 )

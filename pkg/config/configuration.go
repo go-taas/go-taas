@@ -336,6 +336,30 @@ func (c *Configuration) applyDefaults() {
 	if c.Prompt.MaxContentLength == 0 {
 		c.Prompt.MaxContentLength = 6144
 	}
+	if c.Evaluation.Worker.PollInterval == 0 {
+		c.Evaluation.Worker.PollInterval = 2 * time.Second
+	}
+	if c.Evaluation.Worker.MaxConcurrentRuns == 0 {
+		c.Evaluation.Worker.MaxConcurrentRuns = 4
+	}
+	if c.Evaluation.Worker.MaxConcurrentCasesPerRun == 0 {
+		c.Evaluation.Worker.MaxConcurrentCasesPerRun = 1
+	}
+	if c.Evaluation.Retention.TTL == 0 {
+		c.Evaluation.Retention.TTL = 2160 * time.Hour
+	}
+	if c.Evaluation.Retention.Interval == 0 {
+		c.Evaluation.Retention.Interval = time.Hour
+	}
+	if c.Evaluation.MaxCasesPerRun == 0 {
+		c.Evaluation.MaxCasesPerRun = 50
+	}
+	if c.Evaluation.MaxVariableValueLength == 0 {
+		c.Evaluation.MaxVariableValueLength = 10000
+	}
+	if c.Evaluation.MaxInFlightRunsPerOrg == 0 {
+		c.Evaluation.MaxInFlightRunsPerOrg = 10
+	}
 	// The image-import Harbor project defaults to "taas" so imported
 	// images always land in the platform's own project.
 	if c.Image.Harbor.Project == "" {

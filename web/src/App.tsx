@@ -90,6 +90,7 @@ import AdminBatchPage from './pages/AdminBatchPage';
 import AdminBatchDetailPage from './pages/AdminBatchDetailPage';
 import UserPromptsPage from './pages/user/UserPromptsPage';
 import UserPromptDetailPage from './pages/user/UserPromptDetailPage';
+import UserEvaluationsPage, { UserEvaluationComparePage, UserEvaluationDetailPage, UserEvaluationRunPage } from './pages/user/UserEvaluationsPage';
 import AdminPromptsPage from './pages/AdminPromptsPage';
 import UserCostAnalyticsPage from './pages/user/UserCostAnalyticsPage';
 import UserCostDetailPage from './pages/user/UserCostDetailPage';
@@ -162,6 +163,10 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/batch" element={<UserBatchPage />} />
               <Route path="/batch/:batchId" element={<UserBatchDetailPage />} />
               <Route path="/prompts" element={<UserPromptsPage />} />
+              <Route path="/evaluations/:evaluationId/runs/:runId" element={<UserEvaluationRunPage />} />
+              <Route path="/evaluations/:evaluationId/compare" element={<UserEvaluationComparePage />} />
+              <Route path="/evaluations/:evaluationId" element={<UserEvaluationDetailPage />} />
+              <Route path="/evaluations" element={<UserEvaluationsPage />} />
               <Route path="/prompts/:promptId" element={<UserPromptDetailPage />} />
               <Route path="/account/export" element={<DataExportPage />} />
               <Route path="*" element={<NotFoundPage homePath="/usage" homeLabel="Usage" />} />

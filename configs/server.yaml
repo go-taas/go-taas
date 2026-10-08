@@ -280,3 +280,17 @@ batch:
 prompt:
   maxNameLength: 128
   maxContentLength: 6144
+
+evaluation:
+  worker:
+    enabled: true
+    pollInterval: 2s
+    maxConcurrentRuns: 4
+    maxConcurrentCasesPerRun: 1
+  retention:
+    enabled: true
+    ttl: 2160h
+    interval: 1h
+  maxCasesPerRun: 50
+  maxVariableValueLength: 10000
+  maxInFlightRunsPerOrg: 10

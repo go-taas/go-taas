@@ -44,7 +44,8 @@
     "test:service-resource-metrics": "nightwatch --tag service-resource-metrics",
     "test:api-docs-explorer": "nightwatch --tag api-docs-explorer",
     "test:multi-cluster-management": "nightwatch --tag multi-cluster-management",
-    "test:data-export-privacy": "nightwatch --tag data-export-privacy"
+    "test:data-export-privacy": "nightwatch --tag data-export-privacy",
+    "test:prompt-evaluation": "nightwatch --tag prompt-evaluation"
   },
   "license": "Apache-2.0",
   "devDependencies": {

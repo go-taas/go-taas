@@ -25,6 +25,7 @@ import (
 	"github.com/go-taas/go-taas/services/billing"
 	"github.com/go-taas/go-taas/services/cluster"
 	"github.com/go-taas/go-taas/services/docs"
+	"github.com/go-taas/go-taas/services/evaluation"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/metering"
@@ -174,6 +175,9 @@ func main() {
 	// library.
 	promptSvc := prompt.New(srv.Components())
 	srv.RegisterService(promptSvc)
+	// Feature #44: tenant-scoped prompt evaluation suites and durable runs.
+	evaluationSvc := evaluation.New(srv.Components())
+	srv.RegisterService(evaluationSvc)
 
 	// Feature #20: the async load-test runner is constructed once the
 	// database is available (it persists runs and drives real traffic
@@ -316,6 +320,33 @@ func main() {
 			promptSvc.SetSessionOrgResolver(authSvc)
 			promptSvc.SetSessionUserResolver(authSvc)
 			promptSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			evaluationSvc.SetSessionOrgResolver(authSvc)
+			evaluationSvc.SetSessionUserResolver(authSvc)
+			evaluationSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			evaluationSvc.SetPromptResolver(promptSvc)
+			evaluationSvc.SetAPIKeyValidator(authSvc)
+			// Feature #44 (AD5): the evaluation runner executes every
+			// case through the real metered completion path — the infer
+			// provider resolves a ready inference service, presents the
+			// synthetic platform credential and fires one real
+			// chat-completion request per case. The metering publisher
+			// emits the standard metering.events payload so usage, cost,
+			// request logs and organization/key attribution flow through
+			// the normal metering path. Without the provider the run
+			// creation fails closed (12806).
+			evaluationSvc.SetCompletionProvider(infer.NewEvaluationCompletionProvider(
+				infer.NewInferenceServiceRepository(gormDB),
+				authSvc,
+				model.NewRepository(gormDB),
+			))
+			if mqComponent := srv.Components().MQ(); mqComponent != nil {
+				if mqClient, ok := mqComponent.Client().(mq.Client); ok {
+					evaluationSvc.SetMeteringPublisher(evaluation.NewMQMeteringPublisher(mqClient))
+				}
+			}
+			evaluationSvc.SetCostAttributor(evaluation.NewDefaultCostAttributor(
+				evaluation.NewDBPriceReader(gormDB),
+			))
 
 			// Feature #28/#31: the metering service resolves the session's
 			// active org and caller, and gates the admin usage-keys and
@@ -338,6 +369,7 @@ func main() {
 			notificationSvc.SetAuditRecorder(auditRecorder)
 			batchSvc.SetAuditRecorder(auditRecorder)
 			promptSvc.SetAuditRecorder(auditRecorder)
+			evaluationSvc.SetAuditRecorder(auditRecorder)
 
 			// The auth session derives roles/accessible orgs from
 			// org_members (feature #10, AD2/AD11).
@@ -540,6 +572,17 @@ func main() {
 					batchRepo, batchStore,
 					cfg.Batch.Retention.FileTTL, cfg.Batch.Retention.Interval,
 				))
+			}
+			if cfg.Evaluation.Retention.Enabled {
+				srv.AddRunner(evaluation.NewRetentionRunner(evaluation.NewRepository(gormDB), cfg.Evaluation.Retention.TTL, cfg.Evaluation.Retention.Interval))
+			}
+			// Feature #44 (AD5): the evaluation worker claims pending
+			// runs via a database lease and executes every case through
+			// the real metered completion path. A disabled worker
+			// leaves runs pending (they fail closed at creation only
+			// when the completion provider itself is unwired).
+			if cfg.Evaluation.Worker.Enabled {
+				srv.AddRunner(evaluation.NewRunner(evaluationSvc))
 			}
 		}
 	}

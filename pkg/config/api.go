@@ -688,6 +688,30 @@ type PromptConfig struct {
 	MaxContentLength int `mapstructure:"maxContentLength"`
 }
 
+// EvaluationConfig holds prompt-evaluation settings.
+type EvaluationConfig struct {
+	Worker                 EvaluationWorkerConfig    `mapstructure:"worker"`
+	Retention              EvaluationRetentionConfig `mapstructure:"retention"`
+	MaxCasesPerRun         int                       `mapstructure:"maxCasesPerRun"`
+	MaxVariableValueLength int                       `mapstructure:"maxVariableValueLength"`
+	MaxInFlightRunsPerOrg  int                       `mapstructure:"maxInFlightRunsPerOrg"`
+}
+
+// EvaluationWorkerConfig controls asynchronous evaluation execution.
+type EvaluationWorkerConfig struct {
+	Enabled                  bool          `mapstructure:"enabled"`
+	PollInterval             time.Duration `mapstructure:"pollInterval"`
+	MaxConcurrentRuns        int           `mapstructure:"maxConcurrentRuns"`
+	MaxConcurrentCasesPerRun int           `mapstructure:"maxConcurrentCasesPerRun"`
+}
+
+// EvaluationRetentionConfig controls evaluation snapshot expiry.
+type EvaluationRetentionConfig struct {
+	Enabled  bool          `mapstructure:"enabled"`
+	TTL      time.Duration `mapstructure:"ttl"`
+	Interval time.Duration `mapstructure:"interval"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -760,6 +784,7 @@ type Configuration struct {
 	Account         AccountConfig         `mapstructure:"account"`
 	Batch           BatchConfig           `mapstructure:"batch"`
 	Prompt          PromptConfig          `mapstructure:"prompt"`
+	Evaluation      EvaluationConfig      `mapstructure:"evaluation"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
