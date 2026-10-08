@@ -1,3 +1,10 @@
+# [1.48.0](https://github.com/go-taas/go-taas/compare/v1.47.0...v1.48.0) (2026-10-08)
+
+
+### Features
+
+* **infer:** add admin inference routing policies with revisioned outbox distribution ([f091a15](https://github.com/go-taas/go-taas/commit/f091a15ae7152e61b809e4b5a56fb6a567f72152)), closes [#45](https://github.com/go-taas/go-taas/issues/45)
+
 # [1.47.0](https://github.com/go-taas/go-taas/compare/v1.46.1...v1.47.0) (2026-10-08)
 
 
