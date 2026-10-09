@@ -1,3 +1,13 @@
+## [1.49.2](https://github.com/go-taas/go-taas/compare/v1.49.1...v1.49.2) (2026-10-09)
+
+
+### Bug Fixes
+
+* **batch:** normalize proto enum status names and poll the detail page in the console ([cadf602](https://github.com/go-taas/go-taas/commit/cadf60245224905374dc1bb8b5b2fa98953b4ade))
+* **batch:** promote validating jobs to in_progress in the worker ([8408ad6](https://github.com/go-taas/go-taas/commit/8408ad63b6794175abf1f6544b2ada38c795f8fb))
+* **playground:** compare prompt version loosely across string and number ([d058716](https://github.com/go-taas/go-taas/commit/d05871606d37e28047fa1d66164dbc607e8fb64a))
+* **prompts:** wrap bare variable names into ${var} in the console dialogs ([0e8777c](https://github.com/go-taas/go-taas/commit/0e8777c8a85adf81d67688a0ad39ab91e67bdf53))
+
 ## [1.49.1](https://github.com/go-taas/go-taas/compare/v1.49.0...v1.49.1) (2026-10-09)
 
 
