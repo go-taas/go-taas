@@ -1,3 +1,10 @@
+## [1.49.1](https://github.com/go-taas/go-taas/compare/v1.49.0...v1.49.1) (2026-10-09)
+
+
+### Bug Fixes
+
+* **infer:** require a ready selected target to enable a routing policy ([6ae786d](https://github.com/go-taas/go-taas/commit/6ae786d0d48567ef312b98be5df7acf6f930ead7))
+
 # [1.49.0](https://github.com/go-taas/go-taas/compare/v1.48.0...v1.49.0) (2026-10-08)
 
 
