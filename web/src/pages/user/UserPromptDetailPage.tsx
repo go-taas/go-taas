@@ -92,10 +92,14 @@ export default function UserPromptDetailPage() {
     setSaving(true);
     setError('');
     try {
+      // Variables use ${var} syntax (design FR1.4); a bare name typed
+      // into the tag input is wrapped automatically so the server-side
+      // 12706 validation only fires on genuinely malformed references.
       const vars = editVariables
         .split(',')
         .map((v) => v.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map((v) => (v.startsWith('${') && v.endsWith('}') ? v : `\${${v.replace(/^\$\{|\}$/g, '')}}`));
       await api.post(`/api/v1/prompts/${promptId}`, orgId, {
         content: editContent,
         model_id: editModel || undefined,

@@ -434,10 +434,14 @@ function CreatePromptDialog({
     setSubmitting(true);
     setError('');
     try {
+      // Variables use ${var} syntax (design FR1.4); a bare name typed
+      // into the tag input is wrapped automatically so the server-side
+      // 12706 validation only fires on genuinely malformed references.
       const vars = variables
         .split(',')
         .map((v) => v.trim())
-        .filter(Boolean);
+        .filter(Boolean)
+        .map((v) => (v.startsWith('${') && v.endsWith('}') ? v : `\${${v.replace(/^\$\{|\}$/g, '')}}`));
       const data = await api.post<CreatePromptResponse>('/api/v1/prompts', orgId, {
         name: name.trim(),
         content,
