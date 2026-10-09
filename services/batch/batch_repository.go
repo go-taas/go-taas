@@ -164,6 +164,35 @@ func (r *Repository) NextInProgressJob(ctx context.Context) (*BatchJob, error) {
 	return &row, nil
 }
 
+// PromoteValidatingJob atomically claims the oldest validating job by
+// advancing it to in_progress (AD3: validating -> in_progress). The
+// conditional update makes the claim single-writer safe: only the
+// caller whose update matched the row owns the job.
+func (r *Repository) PromoteValidatingJob(ctx context.Context) (*BatchJob, error) {
+	var row BatchJob
+	err := r.DB(ctx).Where("status = ?", StatusValidating).
+		Order("created_at ASC").Order("batch_id ASC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	result := r.DB(ctx).Model(&BatchJob{}).
+		Where("batch_id = ? AND status = ?", row.BatchID, StatusValidating).
+		Update("status", StatusInProgress)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	if result.RowsAffected == 0 {
+		// Another worker claimed it between the read and the update.
+		return nil, nil
+	}
+	row.Status = StatusInProgress
+	return &row, nil
+}
+
 // IncrementCounters atomically advances a job's progress counters.
 func (r *Repository) IncrementCounters(ctx context.Context, batchID string, processed, succeeded, failed, inputTokens, outputTokens, cost int64) error {
 	return r.DB(ctx).Model(&BatchJob{}).Where("batch_id = ?", batchID).

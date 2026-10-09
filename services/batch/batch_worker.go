@@ -170,9 +170,18 @@ func (w *BatchWorker) Run(ctx context.Context) error {
 	}
 }
 
-// RunOnce picks up in_progress jobs and processes them. It is extracted
-// for tests.
+// RunOnce promotes the oldest validating job to in_progress (AD3) and
+// processes one in_progress job. It is extracted for tests.
 func (w *BatchWorker) RunOnce(ctx context.Context) {
+	// The lifecycle requires validating -> in_progress before the
+	// worker can pick a job up (AD3); CreateBatchJob only ever writes
+	// validating, so the worker owns the promotion.
+	if job, err := w.repo.PromoteValidatingJob(ctx); err != nil {
+		logger.S().Warnw("batch: promote validating job failed", "err", err)
+	} else if job != nil {
+		w.processJob(ctx, job)
+		return
+	}
 	job, err := w.repo.NextInProgressJob(ctx)
 	if err != nil {
 		logger.S().Warnw("batch: next in-progress job failed", "err", err)

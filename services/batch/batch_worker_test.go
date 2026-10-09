@@ -64,6 +64,37 @@ func TestBatchWorkerProcessesJob(t *testing.T) {
 	assert.Contains(t, string(result), "custom_id")
 }
 
+// TestBatchWorkerPromotesValidatingJob verifies the worker owns the
+// validating -> in_progress transition (AD3): a freshly created job
+// (status validating, the only status CreateBatchJob writes) is picked
+// up and driven to completed without any external status writer.
+func TestBatchWorkerPromotesValidatingJob(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewRepository(db)
+	store := NewMemFileStore()
+	ctx := context.Background()
+
+	content := validJSONL()
+	job := seedJob(t, db, "org-a")
+	key, err := store.PutInput(ctx, "org-a", job.BatchID, content)
+	require.NoError(t, err)
+	// No manual SetStatus: the job stays validating as created.
+	// UpdateBatchJob writes the status field too, so carry it over.
+	require.NoError(t, repo.UpdateBatchJob(ctx, &BatchJob{
+		BatchID:      job.BatchID,
+		Status:       StatusValidating,
+		InputFileKey: key,
+	}))
+
+	worker := NewBatchWorker(repo, store, &fakeInferenceClient{}, &fakeMeterer{cost: 25}, 2, time.Second)
+	worker.RunOnce(ctx)
+
+	got, err := repo.FindBatchJobByID(ctx, "org-a", job.BatchID)
+	require.NoError(t, err)
+	assert.Equal(t, StatusCompleted, got.Status, "validating job must be promoted and processed")
+	assert.Equal(t, int64(2), got.SucceededRequests)
+}
+
 func TestBatchWorkerFileFailure(t *testing.T) {
 	db := newTestDB(t)
 	repo := NewRepository(db)
