@@ -73,16 +73,72 @@ module.exports = {
     api.request(browser, {
       method: 'GET',
       path: '/api/v1/admin/routing-policies?page.limit=5',
-      org
+      org,
+      sessionRealm: 'admin'
     }, (res) => {
       api.assertOk(browser, res, 'admin routing-policies reachable');
     });
+    // The bare user prefix has no routing-policy route: a user-realm
+    // session passes the user-surface realm guard and gets the gateway
+    // 404 (an admin session would be rejected 10038 before routing).
     api.request(browser, {
       method: 'GET',
       path: '/api/v1/routing-policies?page.limit=5',
-      org
+      org,
+      sessionRealm: 'user'
     }, (res) => {
       browser.assert.equal(res.status, 404, 'user-prefix routing-policies is 404');
+    });
+  },
+
+  'AC10: a user session cannot read or update routing policies': function (browser) {
+    const org = browser.globals.orgA;
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/routing-policies?page.limit=5',
+      org,
+      sessionRealm: 'user'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC10: user realm rejected on admin list');
+    });
+    api.request(browser, {
+      method: 'PUT',
+      path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
+      org,
+      sessionRealm: 'user',
+      body: {
+        model_version: 'v1',
+        enabled: true,
+        service_ids: [RUNNING_ID],
+        max_attempts: 1,
+        expected_revision: '0'
+      }
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10038, 'AC10: user realm rejected on admin update');
+    });
+  },
+
+  'AC10: routing-policy admin RPCs require a session (10027) and the admin role (10036)': function (browser) {
+    const org = browser.globals.orgA;
+    // Without any session the RoleGuard cannot resolve the caller.
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/routing-policies?page.limit=5',
+      org
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10027, 'AC10: no session rejected');
+    });
+    // A non-member admin-realm session is denied by the RoleGuard
+    // (the seeded member rows are skipped with -no-member).
+    const nonMemberUser = `33333333-4444-4444-4444-${browser.globals.runId.toString().padStart(12, '0').slice(-12)}`;
+    api.seedSession(browser, 'admin', org, 'admin', nonMemberUser, {noMember: true});
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/routing-policies?page.limit=5',
+      org,
+      sessionRealm: 'admin'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10036, 'AC10: non-member session denied');
     });
   },
 
@@ -101,7 +157,8 @@ module.exports = {
     api.request(browser, {
       method: 'GET',
       path: '/api/v1/admin/routing-policies?search=routing-model',
-      org
+      org,
+      sessionRealm: 'admin'
     }, (res) => {
       const body = api.assertOk(browser, res, 'AC1: list');
       const policies = body.policies || [];
@@ -118,7 +175,8 @@ module.exports = {
     api.request(browser, {
       method: 'GET',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}/health`,
-      org
+      org,
+      sessionRealm: 'admin'
     }, (res) => {
       const body = api.assertOk(browser, res, 'AC2: health');
       const targets = body.targets || [];
@@ -142,6 +200,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -159,6 +218,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -179,6 +239,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -194,6 +255,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -208,6 +270,7 @@ module.exports = {
         method: 'PUT',
         path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
         org,
+        sessionRealm: 'admin',
         body: {
           model_version: 'v1',
           enabled: false,
@@ -222,7 +285,8 @@ module.exports = {
         api.request(browser, {
           method: 'GET',
           path: `/api/v1/admin/routing-policies?search=routing-model`,
-          org
+          org,
+          sessionRealm: 'admin'
         }, (res3) => {
           const list = api.assertOk(browser, res3, 'AC4: list');
           const found = (list.policies || []).find((p) => p.modelId === MODEL_ID);
@@ -239,6 +303,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -255,6 +320,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -275,6 +341,7 @@ module.exports = {
       method: 'PUT',
       path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
       org,
+      sessionRealm: 'admin',
       body: {
         model_version: 'v1',
         enabled: true,
@@ -289,6 +356,7 @@ module.exports = {
         method: 'PUT',
         path: `/api/v1/admin/routing-policies/${MODEL_ID}`,
         org,
+        sessionRealm: 'admin',
         body: {
           model_version: 'v1',
           enabled: false,
@@ -302,7 +370,8 @@ module.exports = {
         api.request(browser, {
           method: 'GET',
           path: `/api/v1/admin/routing-policies/${MODEL_ID}/revisions`,
-          org
+          org,
+          sessionRealm: 'admin'
         }, (res3) => {
           const body = api.assertOk(browser, res3, 'AC6: revisions');
           const revisions = body.revisions || [];

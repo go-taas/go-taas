@@ -51,6 +51,22 @@ func main() {
 	// A catalog model with an active version (AD2: policies pin the
 	// active version).
 	modelID := "33333333-3333-3333-3333-333333333333"
+
+	// Reset any policy state left over from earlier runs of the suite:
+	// every seeded case must start from revision 0 so the API cases can
+	// send expected_revision "0" deterministically. The compose
+	// PostgreSQL persists across runs, and AC3's successful PUT leaves
+	// the policy at revision 1 otherwise.
+	for _, stmt := range []string{
+		`DELETE FROM routing_policy_outbox WHERE model_id = $1`,
+		`DELETE FROM routing_policy_revisions WHERE model_id = $1`,
+		`DELETE FROM routing_policies WHERE model_id = $1`,
+	} {
+		if _, err := db.Exec(stmt, modelID); err != nil {
+			log.Fatalf("reset policy state: %v", err)
+		}
+	}
+
 	if _, err := db.Exec(`
 		INSERT INTO models (id, name, description, created_at, updated_at)
 		VALUES ($1, 'routing-model', 'e2e routing-policy model', now(), now())
