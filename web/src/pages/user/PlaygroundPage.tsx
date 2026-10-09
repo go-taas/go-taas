@@ -1,5 +1,7 @@
 // End-user model playground (feature-17 AD8): model-based, never names an
-// inference service.
+// inference service. Feature-43 AC10: /playground?prompt=<id>&version=<n>
+// (opened from a prompt's "Open in playground" action) pre-fills the
+// prompt editor with that prompt version's content.
 
 import { useEffect, useState } from 'react';
 import { useApi } from '../../surface';
@@ -16,6 +18,31 @@ export default function PlaygroundPage() {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<PlaygroundInferResponse | null>(null);
   const [error, setError] = useState('');
+
+  // Feature-43 AC10: a prompt link (?prompt=<id>&version=<n>) pre-fills
+  // the editor with that version's content.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const promptId = params.get('prompt');
+    if (!promptId) return;
+    const version = params.get('version');
+    api
+      .get<{ prompt?: { content?: string; version?: string | number } }>(
+        `/api/v1/prompts/${promptId}`,
+        orgId,
+      )
+      .then((data) => {
+        const p = data.prompt;
+        if (!p) return;
+        // The gateway serializes version as a number while the URL param is
+        // a string; compare loosely so the prefill is not silently skipped.
+        if (version !== null && p.version !== undefined && String(p.version) !== version) return; // active version differs
+        setPrompt(p.content || '');
+      })
+      .catch(() => {
+        // A stale/deleted prompt link must not break the playground.
+      });
+  }, [api, orgId]);
 
   useEffect(() => {
     api
