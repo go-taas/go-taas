@@ -399,6 +399,16 @@ module.exports = {
     browser.waitForElementPresent('[data-testid="routing-policy-drawer"]', 15000, 'drawer opens');
     browser.waitForElementPresent('[data-testid="policy-enabled-toggle"]', 15000, 'toggle present');
 
+    // The seed resets the policy to revision 0 with no targets, so
+    // first add the running service as the ordered target — enabling
+    // with no ready target is blocked inline per FR2.4 and the save
+    // button would stay disabled.
+    browser.waitForElementPresent('[data-testid="add-target"]', 5000, 'add target enabled');
+    browser.click('[data-testid="add-target"]');
+    browser.waitForElementPresent('[data-testid="add-target-menu"]', 5000, 'add target menu');
+    browser.click(`[data-testid="add-target-menu"] option[value="${RUNNING_ID}"]`);
+    browser.waitForElementPresent(`[data-testid="target-row-${RUNNING_ID}"]`, 5000, 'target added');
+
     // Enable the policy; the confirmation dialog names the model.
     browser.click('[data-testid="policy-enabled-toggle"]');
     browser.waitForElementPresent('[data-testid="save-policy"]', 5000, 'save enabled');
