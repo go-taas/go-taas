@@ -321,6 +321,7 @@ func (s *Service) UpdateRoutingPolicy(ctx context.Context, req *inferv1.UpdateRo
 		return nil, routingPolicyInvalid()
 	}
 	seenIDs := make(map[string]bool, len(req.GetServiceIds()))
+	selectedReady := 0
 	for _, id := range req.GetServiceIds() {
 		if seenIDs[id] {
 			return nil, routingPolicyInvalid()
@@ -329,6 +330,9 @@ func (s *Service) UpdateRoutingPolicy(ctx context.Context, req *inferv1.UpdateRo
 		svc, ok := byID[id]
 		if !ok || svc.State == StateTerminated {
 			return nil, routingPolicyInvalid()
+		}
+		if svc.State == StateRunning {
+			selectedReady++
 		}
 	}
 	if len(seenIDs) > MaxRoutingTargets {
@@ -353,9 +357,11 @@ func (s *Service) UpdateRoutingPolicy(ctx context.Context, req *inferv1.UpdateRo
 	if req.GetMaxAttempts() > MinRoutingAttempts && len(retryOn) == 0 {
 		return nil, routingPolicyInvalid()
 	}
-	// Enabling requires at least one currently ready eligible target
-	// (feature #45, §5.2).
-	if req.GetEnabled() && ready == 0 {
+	// Enabling requires at least one currently ready target among the
+	// selected services (feature #45, §5.2): an enabled policy routes
+	// only to its ordered target list, so a selection with no ready
+	// target would fail closed at the gateway immediately.
+	if req.GetEnabled() && selectedReady == 0 {
 		return nil, routingPolicyInvalid()
 	}
 
