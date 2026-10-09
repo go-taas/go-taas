@@ -26,6 +26,17 @@ function canCancel(status: string): boolean {
   return status === 'validating' || status === 'in_progress';
 }
 
+// The gateway serializes the proto enum name (e.g.
+// BATCH_JOB_STATUS_COMPLETED); normalize to the short form the UI
+// compares against so download/cancel enable correctly.
+function shortStatus(status: string): string {
+  return status.replace(/^BATCH_JOB_STATUS_/, '').toLowerCase();
+}
+
+function isTerminal(status: string): boolean {
+  return status === 'completed' || status === 'failed' || status === 'cancelled';
+}
+
 function download(content: string, filename: string) {
   const bytes = Uint8Array.from(atob(content), (c) => c.charCodeAt(0));
   const blob = new Blob([bytes], { type: 'application/x-ndjson' });
@@ -53,7 +64,7 @@ export default function UserBatchDetailPage() {
     setError('');
     try {
       const data = await api.get<GetResponse>(`/api/v1/batch/${batchId}`, orgId);
-      setJob(data.batchJob);
+      setJob({ ...data.batchJob, status: shortStatus(data.batchJob.status) });
     } catch (e) {
       setError(e instanceof Error ? e.message : t('batch.loadFailed'));
     } finally {
@@ -64,6 +75,14 @@ export default function UserBatchDetailPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // The design polls GetBatchJob until the status is terminal so the
+  // progress bar and the download/cancel actions track the worker.
+  useEffect(() => {
+    if (!job || isTerminal(job.status)) return;
+    const timer = setInterval(() => void load(), 5000);
+    return () => clearInterval(timer);
+  }, [job, load]);
 
   const cancelJob = async () => {
     setBusy(true);

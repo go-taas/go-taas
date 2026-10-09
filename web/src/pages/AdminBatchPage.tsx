@@ -23,6 +23,13 @@ function canCancel(status: string): boolean {
   return status === 'validating' || status === 'in_progress';
 }
 
+// The gateway serializes the proto enum name (e.g.
+// BATCH_JOB_STATUS_IN_PROGRESS); normalize to the short form the UI
+// compares against so the cancel action enables correctly.
+function shortStatus(status: string): string {
+  return status.replace(/^BATCH_JOB_STATUS_/, '').toLowerCase();
+}
+
 export default function AdminBatchPage() {
   const api = useApi();
   const { orgId } = useOrg();
@@ -43,7 +50,7 @@ export default function AdminBatchPage() {
       params.set('page.offset', String(offset));
       params.set('page.limit', String(PAGE_SIZE));
       const data = await api.get<ListResponse>(`/api/v1/admin/batch?${params.toString()}`, orgId);
-      setJobs(data.batchJobs || []);
+      setJobs((data.batchJobs || []).map((j) => ({ ...j, status: shortStatus(j.status) })));
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('batch.loadFailed'));
