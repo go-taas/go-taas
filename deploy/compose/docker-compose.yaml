@@ -111,6 +111,18 @@ services:
       timeout: 5s
       retries: 30
 
+  # Ad-hoc mock inference server for compose verification (features #44
+  # and #42). Serves the OpenAI-compatible POST /v1/chat/completions with
+  # a deterministic completion and token usage. The taas-server batch
+  # worker and evaluation worker call it via CONFIG_INFER_ENDPOINTBASEURL.
+  mock-infer:
+    image: python:3.12-alpine
+    volumes:
+      - ../../test/e2e/mock/mock_infer.py:/srv/app.py:ro
+    command: ["python", "/srv/app.py"]
+    ports:
+      - "18000:8000"
+
   taas-server:
     image: ghcr.io/go-taas/go-taas/taas-server:dev
     depends_on:
@@ -122,6 +134,8 @@ services:
         condition: service_healthy
       juicefs:
         condition: service_started
+      mock-infer:
+        condition: service_started
     environment:
       # Configuration overrides via the CONFIG_ env prefix (see
       # configs/config.yaml); service discovery inside the compose
@@ -131,8 +145,11 @@ services:
       CONFIG_MQ_URL: nats://nats:4222
       # Feature #21 (SDK/Quickstart): the inference gateway's public base
       # URL. The quickstart page reads it via GET /api/v1/inference-endpoint
-      # and derives the OpenAI-compatible base URL (<base>/v1).
-      CONFIG_INFER_ENDPOINTBASEURL: https://infer.example.com
+      # and derives the OpenAI-compatible base URL (<base>/v1). In the
+      # compose stack the mock-infer service plays the inference gateway, so
+      # the batch worker (feature #42) and evaluation worker (feature #44)
+      # reach a real OpenAI-compatible endpoint.
+      CONFIG_INFER_ENDPOINTBASEURL: http://mock-infer:8000
       # Feature: model download. The weights directory is the JuiceFS
       # mount shared with the inference pods.
       CONFIG_MODEL_WEIGHTSDIR: /data/weights
