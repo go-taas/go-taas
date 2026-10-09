@@ -49,7 +49,7 @@
   },
   "license": "Apache-2.0",
   "devDependencies": {
-    "chromedriver": "^153.0.3",
+    "chromedriver": "155.0.0",
     "nightwatch": "^3.16.0"
   }
 }
