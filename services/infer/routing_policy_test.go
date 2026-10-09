@@ -205,13 +205,13 @@ func TestRoutingPolicyValidationMatrix(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeRoutingPolicyInvalid, apierrors.CodeOf(err))
 
-        // Enabling with only non-ready selected targets is rejected even
-        // when other eligible services of the same model are ready: the
-        // policy routes only to its ordered target list (feature #45,
-        // §5.2; e2e AC4).
-        _, err = svc.UpdateRoutingPolicy(routingAdminCtx(), routingUpdate(modelID, true, []string{pendingID}, 1, nil, 0))
-        require.Error(t, err)
-        assert.Equal(t, apierrors.CodeRoutingPolicyInvalid, apierrors.CodeOf(err))
+	// Enabling with only non-ready selected targets is rejected even
+	// when other eligible services of the same model are ready: the
+	// policy routes only to its ordered target list (feature #45,
+	// §5.2; e2e AC4).
+	_, err = svc.UpdateRoutingPolicy(routingAdminCtx(), routingUpdate(modelID, true, []string{pendingID}, 1, nil, 0))
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeRoutingPolicyInvalid, apierrors.CodeOf(err))
 
 	// More than 10 targets: 10312.
 	ids := make([]string, 0, MaxRoutingTargets+1)
