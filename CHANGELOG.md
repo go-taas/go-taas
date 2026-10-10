@@ -1,3 +1,10 @@
+## [1.50.1](https://github.com/go-taas/go-taas/compare/v1.50.0...v1.50.1) (2026-10-10)
+
+
+### Bug Fixes
+
+* **model:** treat non-uuid model ids as a plain catalog miss ([e9d4fbd](https://github.com/go-taas/go-taas/commit/e9d4fbd903357fb8ba0c4ee8dce96d38de07c552))
+
 # [1.50.0](https://github.com/go-taas/go-taas/compare/v1.49.2...v1.50.0) (2026-10-10)
 
 
