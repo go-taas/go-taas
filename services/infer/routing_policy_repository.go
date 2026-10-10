@@ -95,8 +95,13 @@ func (r *RoutingPolicyRepository) ListSummaries(ctx context.Context, filter Rout
 	switch filter.Sort {
 	case "ready", "-ready":
 		sort = readySortExpr + " DESC, m.name ASC"
-	case "updated", "-updated":
-		sort = "p.updated_at DESC, m.name ASC"
+	case "updated":
+		sort = "p.updated_at ASC NULLS FIRST, m.name ASC"
+	case "-updated":
+		// DESC puts NULLs first in Postgres, which would bury every
+		// recently-updated policy under the 100+ never-configured
+		// models; NULLS LAST keeps "most recently updated" on top.
+		sort = "p.updated_at DESC NULLS LAST, m.name ASC"
 	case "model", "-model", "":
 	default:
 		return nil, 0, apierrors.New(apierrors.CodeRoutingPolicyInvalid)
