@@ -1,3 +1,12 @@
+# [1.50.0](https://github.com/go-taas/go-taas/compare/v1.49.2...v1.50.0) (2026-10-10)
+
+
+### Features
+
+* **auth:** add api key model scoping proto and error code ([86ecc8c](https://github.com/go-taas/go-taas/commit/86ecc8c991a1fed3010ab81fed74dad8aba0285a))
+* **auth:** enforce api key model scope in the data plane ([9b27df5](https://github.com/go-taas/go-taas/commit/9b27df5b72154282fcd0d537e933fca68cf66edd))
+* **console:** add model scope ui to the user api keys page ([d8f8947](https://github.com/go-taas/go-taas/commit/d8f8947aab181c36551b5213b1814f734087b499))
+
 ## [1.49.2](https://github.com/go-taas/go-taas/compare/v1.49.1...v1.49.2) (2026-10-09)
 
 
