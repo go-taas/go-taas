@@ -1232,6 +1232,18 @@ export const en: Record<string, string> = {
   'uapikeys.nameRequired': 'Name is required',
   'uapikeys.createFailed': 'failed to create key',
   'uapikeys.updateFailed': 'failed to update key',
+  // Model scope (feature #46)
+  'uapikeys.colScope': 'Model scope',
+  'uapikeys.scopeAll': 'All models',
+  'uapikeys.scopeCount': '{count} models',
+  'uapikeys.scopeSection': 'Model scope',
+  'uapikeys.scopeOptionAll': 'All authorized models',
+  'uapikeys.scopeOptionRestricted': 'Restrict to selected models',
+  'uapikeys.scopeEditTitle': 'Edit model scope',
+  'uapikeys.scopeEditNote': 'The allow-list is replaced in full. Empty clears the scope (all authorized models).',
+  'uapikeys.scopeModelsLoadFailed': 'failed to load models',
+  'uapikeys.scopeSaveFailed': 'failed to update scope',
+  'uapikeys.scopeEdit': 'Edit scope',
 
   // ---- User: Request Logs ----
   'ureqlogs.title': 'Request Logs',

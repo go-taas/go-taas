@@ -1223,6 +1223,18 @@ export const zh: Record<string, string> = {
   'uapikeys.nameRequired': '名称为必填项',
   'uapikeys.createFailed': '创建密钥失败',
   'uapikeys.updateFailed': '更新密钥失败',
+  // 模型范围（feature #46）
+  'uapikeys.colScope': '模型范围',
+  'uapikeys.scopeAll': '全部模型',
+  'uapikeys.scopeCount': '{count} 个模型',
+  'uapikeys.scopeSection': '模型范围',
+  'uapikeys.scopeOptionAll': '全部已授权模型',
+  'uapikeys.scopeOptionRestricted': '限制为选定模型',
+  'uapikeys.scopeEditTitle': '编辑模型范围',
+  'uapikeys.scopeEditNote': '白名单将被整体替换。留空表示清除范围（全部已授权模型）。',
+  'uapikeys.scopeModelsLoadFailed': '加载模型失败',
+  'uapikeys.scopeSaveFailed': '更新范围失败',
+  'uapikeys.scopeEdit': '编辑范围',
 
   // ---- User: Request Logs ----
   'ureqlogs.title': '请求日志',

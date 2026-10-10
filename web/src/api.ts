@@ -164,6 +164,9 @@ export interface ApiKeySummary {
   revokedAt: string;
   rateLimitRpm?: string;
   rateLimitTpm?: string;
+  // models is the key's model allow-list (feature #46): catalog model
+  // IDs in stored order; empty/undefined = all org-granted models.
+  models?: string[];
 }
 
 export interface ModelSummary {
