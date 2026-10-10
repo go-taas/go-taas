@@ -92,6 +92,21 @@ service AuthService {
     };
   }
 
+  // UpdateAPIKeyScope replaces a key's model allow-list (feature #46).
+  // The list is the complete replacement: empty clears the scope (all
+  // org-granted models). It never changes the secret and never returns
+  // the plaintext.
+  // User-surface API: served under /api/v1; the session's active org
+  // wins and X-Organization-Id is ignored (feature-17 AD6). There is
+  // deliberately no admin additional_binding: scope writes are
+  // user-surface only (feature #46, AD4).
+  rpc UpdateAPIKeyScope(UpdateAPIKeyScopeRequest) returns (UpdateAPIKeyScopeResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/auth/api-keys/{key_id}/scope"
+      body: "*"
+    };
+  }
+
   // VerifyAPIKey checks an API key on behalf of the data-plane gateway.
   // It is called per request by the gateway's Wasm plugin and is backed
   // by a Redis positive cache.
@@ -325,6 +340,9 @@ message APIKeySummary {
   int64 rate_limit_rpm = 8;
   // rate_limit_tpm is the max tokens per minute; 0 = unlimited.
   int64 rate_limit_tpm = 9;
+  // models is the key's model allow-list (feature #46, AD1): catalog
+  // model IDs in stored order; empty = all org-granted models.
+  repeated string models = 10;
 }
 
 message CreateAPIKeyRequest {
@@ -334,6 +352,9 @@ message CreateAPIKeyRequest {
   int64 rate_limit_rpm = 3;
   // rate_limit_tpm is the max tokens per minute; 0 = unlimited.
   int64 rate_limit_tpm = 4;
+  // models is the optional initial model allow-list (feature #46):
+  // 0-50 distinct catalog model IDs; empty = unrestricted.
+  repeated string models = 5;
 }
 
 message UpdateAPIKeyRequest {
@@ -350,6 +371,22 @@ message UpdateAPIKeyRequest {
 message UpdateAPIKeyResponse {
   taas.common.v1.Response response = 1;
   // key never carries the plaintext.
+  APIKeySummary key = 2;
+}
+
+message UpdateAPIKeyScopeRequest {
+  // key_id is the path parameter.
+  string key_id = 1;
+  // models is the complete replacement allow-list (feature #46):
+  // 0-50 distinct catalog model IDs in the desired order; empty
+  // clears the scope (all org-granted models).
+  repeated string models = 2;
+}
+
+message UpdateAPIKeyScopeResponse {
+  taas.common.v1.Response response = 1;
+  // key carries the updated summary (including models); never the
+  // plaintext.
   APIKeySummary key = 2;
 }
 

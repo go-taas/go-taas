@@ -49,6 +49,7 @@ var messages = map[Code]string{
 	CodeForbidden:             "forbidden",
 	CodeRateLimitExceeded:     "rate limit exceeded",
 	CodeRealmMismatch:         "session belongs to the other console",
+	CodeAPIKeyModelNotAllowed: "model not allowed for this api key",
 
 	// model
 	CodeModelNotFound:        "model not found",

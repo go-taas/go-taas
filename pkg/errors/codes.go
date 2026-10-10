@@ -70,6 +70,11 @@ const (
 	CodeForbidden             Code = 10036 // FORBIDDEN
 	CodeRateLimitExceeded     Code = 10037 // RATE_LIMIT_EXCEEDED
 	CodeRealmMismatch         Code = 10038 // REALM_MISMATCH
+	// CodeAPIKeyModelNotAllowed is returned by VerifyAPIKey when the
+	// requested model is outside the key's model allow-list (feature
+	// #46, AD3). It is checked before org-level model authorization so
+	// callers can distinguish a key-scope denial from an org denial.
+	CodeAPIKeyModelNotAllowed Code = 10039 // API_KEY_MODEL_NOT_ALLOWED
 )
 
 // model module error codes.
