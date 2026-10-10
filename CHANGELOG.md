@@ -1,3 +1,10 @@
+## [1.50.2](https://github.com/go-taas/go-taas/compare/v1.50.1...v1.50.2) (2026-10-10)
+
+
+### Bug Fixes
+
+* **infer:** keep recently-updated routing policies on top of the list ([345d715](https://github.com/go-taas/go-taas/commit/345d7153f4dda7ede39f412360c3603b241b954c))
+
 ## [1.50.1](https://github.com/go-taas/go-taas/compare/v1.50.0...v1.50.1) (2026-10-10)
 
 
