@@ -406,28 +406,57 @@ module.exports = {
   // ---- Console pages: admin (AC7/AC8/AC9/AC10) ----
 
   'AC7: admin page renders builder, report history and schedule list': function (browser) {
-    browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${browser.globals.orgA}')`);
-    browser.url(browser.globals.baseUrl + '/admin/billing/reports');
+    // The admin schedule list is fleet-wide and every other test in
+    // this suite deletes the schedule it creates, so seed one via the
+    // API first to make the list deterministically non-empty (AC7
+    // asserts the populated rendering, not the empty state — AC9 does).
+    api.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/billing/reports/schedules',
+      org: browser.globals.orgA,
+      body: {
+        name: `ac7-${browser.globals.runId}`,
+        dimension: 'REPORT_DIMENSION_MODEL',
+        relativeRange: 'RELATIVE_RANGE_LAST_7_DAYS',
+        granularity: 'REPORT_GRANULARITY_DAILY',
+        frequency: 'REPORT_FREQUENCY_WEEKLY'
+      }
+    }, (seedRes) => {
+      const seeded = api.assertOk(browser, seedRes, 'AC7: seed schedule');
+      const seededId = seeded.schedule.scheduleId;
 
-    browser.waitForElementPresent('[data-testid="billing-reports-page"]', 15000, 'AC7: page renders');
-    browser.waitForElementPresent('[data-testid="report-builder"]', 10000, 'AC7: report builder');
-    browser.waitForElementPresent('[data-testid="report-name"]', 10000, 'AC7: report name field');
-    browser.waitForElementPresent('[data-testid="report-dimension-model"]', 10000, 'AC7: dimension radio');
-    browser.waitForElementPresent('[data-testid="report-org"]', 10000, 'AC7: org dropdown');
-    browser.waitForElementPresent('[data-testid="report-granularity-daily"]', 10000, 'AC7: granularity radio');
-    browser.waitForElementPresent('[data-testid="report-timezone"]', 10000, 'AC7: timezone dropdown');
-    browser.waitForElementPresent('[data-testid="generate-report"]', 10000, 'AC7: generate button');
-    browser.waitForElementPresent('[data-testid="reports-table"]', 10000, 'AC7: reports table');
-    browser.waitForElementPresent('[data-testid="reports-refresh"]', 10000, 'AC7: refresh button');
+      browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${browser.globals.orgA}')`);
+      browser.url(browser.globals.baseUrl + '/admin/billing/reports');
 
-    // Switch to the Schedules tab.
-    browser.click('[data-testid="schedules-tab"]');
-    browser.waitForElementPresent('[data-testid="schedule-builder"]', 10000, 'AC7: schedule builder');
-    browser.waitForElementPresent('[data-testid="schedule-name"]', 10000, 'AC7: schedule name field');
-    browser.waitForElementPresent('[data-testid="schedule-relative-range"]', 10000, 'AC7: relative range');
-    browser.waitForElementPresent('[data-testid="schedule-frequency-weekly"]', 10000, 'AC7: frequency radio');
-    browser.waitForElementPresent('[data-testid="create-schedule"]', 10000, 'AC7: create schedule button');
-    browser.waitForElementPresent('[data-testid="schedules-table"]', 10000, 'AC7: schedules table');
+      browser.waitForElementPresent('[data-testid="billing-reports-page"]', 15000, 'AC7: page renders');
+      browser.waitForElementPresent('[data-testid="report-builder"]', 10000, 'AC7: report builder');
+      browser.waitForElementPresent('[data-testid="report-name"]', 10000, 'AC7: report name field');
+      browser.waitForElementPresent('[data-testid="report-dimension-model"]', 10000, 'AC7: dimension radio');
+      browser.waitForElementPresent('[data-testid="report-org"]', 10000, 'AC7: org dropdown');
+      browser.waitForElementPresent('[data-testid="report-granularity-daily"]', 10000, 'AC7: granularity radio');
+      browser.waitForElementPresent('[data-testid="report-timezone"]', 10000, 'AC7: timezone dropdown');
+      browser.waitForElementPresent('[data-testid="generate-report"]', 10000, 'AC7: generate button');
+      browser.waitForElementPresent('[data-testid="reports-table"]', 10000, 'AC7: reports table');
+      browser.waitForElementPresent('[data-testid="reports-refresh"]', 10000, 'AC7: refresh button');
+
+      // Switch to the Schedules tab.
+      browser.click('[data-testid="schedules-tab"]');
+      browser.waitForElementPresent('[data-testid="schedule-builder"]', 10000, 'AC7: schedule builder');
+      browser.waitForElementPresent('[data-testid="schedule-name"]', 10000, 'AC7: schedule name field');
+      browser.waitForElementPresent('[data-testid="schedule-relative-range"]', 10000, 'AC7: relative range');
+      browser.waitForElementPresent('[data-testid="schedule-frequency-weekly"]', 10000, 'AC7: frequency radio');
+      browser.waitForElementPresent('[data-testid="create-schedule"]', 10000, 'AC7: create schedule button');
+      browser.waitForElementPresent('[data-testid="schedules-table"]', 10000, 'AC7: schedules table');
+
+      // Remove the seeded schedule so the suite leaves no residue.
+      api.request(browser, {
+        method: 'DELETE',
+        path: `/api/v1/admin/billing/reports/schedules/${seededId}`,
+        org: browser.globals.orgA
+      }, (delRes) => {
+        api.assertOk(browser, delRes, 'AC7: seeded schedule removed');
+      });
+    });
   },
 
   'AC8: generating a report shows progress, polls until ready, then enables Download': function (browser) {

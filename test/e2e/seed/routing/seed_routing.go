@@ -67,10 +67,15 @@ func main() {
 		}
 	}
 
+	// ON CONFLICT DO UPDATE keeps the row fresh. The admin list sorts by
+	// model name ASC with a 20-row page, and the persisted compose
+	// database accumulates 100+ models from other suites across runs, so
+	// the name must sort into the first page: the "aaa-" prefix keeps it
+	// ahead of every e2e-generated name.
 	if _, err := db.Exec(`
 		INSERT INTO models (id, name, description, created_at, updated_at)
-		VALUES ($1, 'routing-model', 'e2e routing-policy model', now(), now())
-		ON CONFLICT (id) DO NOTHING`, modelID); err != nil {
+		VALUES ($1, 'aaa-routing-model', 'e2e routing-policy model', now(), now())
+		ON CONFLICT (id) DO UPDATE SET name = 'aaa-routing-model', created_at = now(), updated_at = now()`, modelID); err != nil {
 		log.Fatalf("seed model: %v", err)
 	}
 	if _, err := db.Exec(`
