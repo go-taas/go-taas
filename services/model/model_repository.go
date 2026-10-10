@@ -87,8 +87,13 @@ func (r *Repository) GetModel(ctx context.Context, id string) (*Model, error) {
 // It implements the auth service's ModelExistenceChecker seam (feature
 // #46, AD6): the write-time validation of key scope lists. A miss is a
 // plain false, not an error, so the caller can reject the scope write
-// with 10101.
+// with 10101. A non-UUID id can never match the uuid-typed primary key
+// (Postgres would reject the comparison with SQLSTATE 22P02), so it is
+// a plain miss too — the batch_repository uuid.Parse guard precedent.
 func (r *Repository) ModelExists(ctx context.Context, id string) (bool, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return false, nil
+	}
 	_, err := r.GetModel(ctx, id)
 	if err != nil {
 		if apierrors.CodeOf(err) == apierrors.CodeModelNotFound {
