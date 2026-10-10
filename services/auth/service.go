@@ -5,6 +5,7 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
 	"math"
 	"strings"
 	"time"
@@ -79,6 +80,12 @@ type Service struct {
 	// authorization gate. Nil until wired: the model field of
 	// VerifyAPIKey stays accepted-but-ignored.
 	modelAuthorizer ModelAuthorizer
+
+	// modelExistenceChecker resolves whether a model ID exists in the
+	// catalog (feature #46, AD6): the write-time half of the key scope
+	// validation. Nil until wired: scope writes containing unknown
+	// model IDs are accepted (transitional fail-open).
+	modelExistenceChecker ModelExistenceChecker
 
 	// modelAuthCache caches the per-(org, model) authorization verdict
 	// (feature-13, AD6). Wired lazily from the Redis component, or
@@ -401,6 +408,7 @@ func summarizeAPIKey(row *APIKey) *authv1.APIKeySummary {
 		Revoked:      row.Revoked,
 		RateLimitRpm: row.RateLimitRPM,
 		RateLimitTpm: row.RateLimitTPM,
+		Models:       decodeModelIDs(row.Models),
 	}
 	if row.ExpiresAt != nil {
 		summary.ExpiresAt = row.ExpiresAt.Unix()
@@ -409,6 +417,40 @@ func summarizeAPIKey(row *APIKey) *authv1.APIKeySummary {
 		summary.RevokedAt = row.RevokedAt.Unix()
 	}
 	return summary
+}
+
+// maxKeyScopeModels bounds a key's model allow-list (feature #46, AD1).
+const maxKeyScopeModels = 50
+
+// validateKeyScope validates a model allow-list for CreateAPIKey and
+// UpdateAPIKeyScope (feature #46, §5.2): each ID is trimmed and must be
+// non-empty, duplicates are rejected, the list is capped at 50, and —
+// when the existence checker is wired — every ID must exist in the
+// catalog. An empty list is valid and clears the scope.
+func (s *Service) validateKeyScope(ctx context.Context, models []string) ([]string, error) {
+	if len(models) == 0 {
+		return nil, nil
+	}
+	if len(models) > maxKeyScopeModels {
+		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: at most %d models are allowed", maxKeyScopeModels)
+	}
+	seen := make(map[string]struct{}, len(models))
+	trimmed := make([]string, 0, len(models))
+	for _, m := range models {
+		id := strings.TrimSpace(m)
+		if id == "" {
+			return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: model id must not be empty")
+		}
+		if _, dup := seen[id]; dup {
+			return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: duplicate model id %q", id)
+		}
+		seen[id] = struct{}{}
+		trimmed = append(trimmed, id)
+	}
+	if err := s.checkModelsExist(ctx, trimmed); err != nil {
+		return nil, err
+	}
+	return trimmed, nil
 }
 
 // CreateAPIKey issues a new API key. The plaintext key is returned
@@ -444,6 +486,13 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: rate limits must be non-negative")
 	}
 
+	// Optional model allow-list (feature #46, AD1): validated against
+	// the same rules as scope edits; empty = unrestricted.
+	models, err := s.validateKeyScope(ctx, req.GetModels())
+	if err != nil {
+		return nil, err
+	}
+
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -475,6 +524,7 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 		Revoked:        false,
 		RateLimitRPM:   req.GetRateLimitRpm(),
 		RateLimitTPM:   req.GetRateLimitTpm(),
+		Models:         encodeModelIDs(models),
 	}
 	if err := repo.Create(ctx, row); err != nil {
 		return nil, err
@@ -611,6 +661,84 @@ func (s *Service) UpdateAPIKey(ctx context.Context, req *authv1.UpdateAPIKeyRequ
 	}, nil
 }
 
+// UpdateAPIKeyScope replaces a key's model allow-list (feature #46,
+// AD5). The list is the complete replacement: empty clears the scope.
+// It never changes the secret, never returns the plaintext, and is
+// user-surface only (no admin binding exists).
+func (s *Service) UpdateAPIKeyScope(ctx context.Context, req *authv1.UpdateAPIKeyScopeRequest) (*authv1.UpdateAPIKeyScopeResponse, error) {
+	orgID, err := s.resolveOrgContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Scope edits stay allowed under a disabled organization: they
+	// tighten or clear a key's reach, they never accrue spend.
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
+	if req.GetKeyId() == "" {
+		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: key_id is required")
+	}
+
+	// Validate the replacement list (feature #46, §5.2): trimmed
+	// non-empty IDs, no duplicates, ≤ 50, catalog existence when the
+	// checker is wired. Empty clears the scope.
+	models, err := s.validateKeyScope(ctx, req.GetModels())
+	if err != nil {
+		return nil, err
+	}
+
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	row, before, err := repo.UpdateScopeByIDAndOrganization(ctx, orgID, req.GetKeyId(), encodeModelIDs(models))
+	if err != nil {
+		return nil, err
+	}
+	if row == nil {
+		return nil, apierrors.New(apierrors.CodeAPIKeyNotFound)
+	}
+	if row.Revoked {
+		return nil, apierrors.New(apierrors.CodeAPIKeyRevoked)
+	}
+
+	// Invalidate the positive-cache entry so the new scope propagates
+	// within the cache TTL (AD5). A failure only degrades the bound.
+	cache, err := s.verdictCacheFor()
+	if err == nil {
+		if delErr := cache.Delete(ctx, row.LookupHash); delErr != nil {
+			logger.S().Warnw("auth: delete api key cache entry failed on scope update",
+				"key_id", req.GetKeyId(), "err", delErr)
+		}
+	}
+
+	// Feature #46, AD9: record the scope change best-effort with the
+	// before/after lists so the change is attributable and reviewable.
+	// The actor is the session user when a session is present, else
+	// "system" (the api_key.revoke precedent).
+	actor := "system"
+	if uid, err := s.SessionUserID(ctx); err == nil && uid != "" {
+		actor = uid
+	}
+	if meta, mErr := json.Marshal(map[string]any{"before": before, "after": models}); mErr == nil {
+		s.recordAudit(ctx, &audit.AuditEvent{
+			OrganizationID: orgID,
+			ActorUserID:    actor,
+			ActorType:      "user",
+			Action:         "api_key.scope_updated",
+			ResourceType:   "api_key",
+			ResourceID:     req.GetKeyId(),
+			Result:         "success",
+			Metadata:       string(meta),
+		})
+	}
+
+	return &authv1.UpdateAPIKeyScopeResponse{
+		Response: okResponse(),
+		Key:      summarizeAPIKey(row),
+	}, nil
+}
+
 // VerifyAPIKey authenticates an inference request by its API key digest.
 // It is called by the gateway on the data-plane request path.
 func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequest) (*authv1.VerifyAPIKeyResponse, error) {
@@ -665,10 +793,30 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 			Role:           apiKeyRole,
 			RateLimitRPM:   row.RateLimitRPM,
 			RateLimitTPM:   row.RateLimitTPM,
+			Models:         decodeModelIDs(row.Models),
 		}
 		if err := cache.Set(ctx, digest, verdict, s.apiKeyCacheTTL()); err != nil {
 			// A cache write failure only costs performance, not security.
 			logger.S().Warnw("auth: cache verdict write failed", "key_id", row.ID, "err", err)
+		}
+	}
+
+	// Key-level model scope (feature #46, AD2/AD3): a scoped key may
+	// only call the models in its allow-list. Enforced from the verdict
+	// on both cache paths, before the org-level authorization so a
+	// key-scope denial is distinguishable from an org denial (10039 vs
+	// 10105). An empty list skips the check entirely: an unscoped key
+	// behaves exactly as before (AC3).
+	if len(verdict.Models) > 0 && req.GetModel() != "" {
+		allowed := false
+		for _, m := range verdict.Models {
+			if m == req.GetModel() {
+				allowed = true
+				break
+			}
+		}
+		if !allowed {
+			return nil, apierrors.New(apierrors.CodeAPIKeyModelNotAllowed)
 		}
 	}
 

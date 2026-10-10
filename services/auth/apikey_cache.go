@@ -22,6 +22,11 @@ type keyVerdict struct {
 	// without a DB hit per request.
 	RateLimitRPM int64 `json:"rate_limit_rpm"`
 	RateLimitTPM int64 `json:"rate_limit_tpm"`
+	// Models is the key's model allow-list (feature #46, AD2): empty or
+	// nil = all org-granted models. Carried so the data plane enforces
+	// the scope from the cache without a DB hit per request, on both
+	// the cache-hit and cache-miss paths.
+	Models []string `json:"models,omitempty"`
 }
 
 // cacheKeyPrefix namespaces the API-key verdict entries in Redis.

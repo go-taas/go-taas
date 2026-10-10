@@ -83,6 +83,22 @@ func (r *Repository) GetModel(ctx context.Context, id string) (*Model, error) {
 	return row, nil
 }
 
+// ModelExists reports whether the model id is present in the catalog.
+// It implements the auth service's ModelExistenceChecker seam (feature
+// #46, AD6): the write-time validation of key scope lists. A miss is a
+// plain false, not an error, so the caller can reject the scope write
+// with 10101.
+func (r *Repository) ModelExists(ctx context.Context, id string) (bool, error) {
+	_, err := r.GetModel(ctx, id)
+	if err != nil {
+		if apierrors.CodeOf(err) == apierrors.CodeModelNotFound {
+			return false, nil
+		}
+		return false, err
+	}
+	return true, nil
+}
+
 // CreateVersion inserts a new model version row, generating the id
 // when unset. A unique violation on (model_id, version) maps to
 // CodeModelExists (AC1).

@@ -142,6 +142,40 @@ func (r *APIKeyRepository) UpdateByIDAndOrganization(ctx context.Context, orgID,
 	return &row, nil
 }
 
+// UpdateScopeByIDAndOrganization replaces a key's model allow-list,
+// scoped to the owning organization (feature #46, AD5). A missing key or
+// a key of another organization returns nil (the caller maps it to
+// CodeAPIKeyNotFound — no cross-org existence leak). It returns both the
+// updated row and the previous allow-list (read before the update) so
+// the caller can record the audit before-value.
+func (r *APIKeyRepository) UpdateScopeByIDAndOrganization(ctx context.Context, orgID, keyID, modelsJSON string) (*APIKey, []string, error) {
+	var row APIKey
+	var before []string
+	err := r.db.WithinTx(ctx, func(ctx context.Context) error {
+		err := r.DB(ctx).
+			Where("id = ? AND organization_id = ?", keyID, orgID).
+			First(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		before = decodeModelIDs(row.Models)
+		if err := r.UpdateFields(ctx, row.ID, map[string]any{"models": modelsJSON}); err != nil {
+			return err
+		}
+		return r.DB(ctx).Where("id = ?", row.ID).First(&row).Error
+	})
+	if err != nil {
+		return nil, nil, err
+	}
+	if row.ID == "" {
+		return nil, nil, nil
+	}
+	return &row, before, nil
+}
+
 // FindSystemCredential returns the synthetic platform credential used by
 // the load-test runner (feature #20, AD11). A miss maps to
 // CodeAPIKeyNotFound: the row is seeded at migration, so its absence is

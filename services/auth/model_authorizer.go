@@ -136,6 +136,43 @@ func (c *fakeModelAuthCache) Set(_ context.Context, key string, allowed bool, tt
 // nil so the model field is ignored.
 func (s *Service) SetModelAuthorizer(a ModelAuthorizer) { s.modelAuthorizer = a }
 
+// ModelExistenceChecker resolves whether a model ID exists in the
+// catalog (feature #46, AD6). It is implemented by the model module's
+// repository and injected at wiring time next to the authorizer, so
+// scope writes are validated against the same catalog the data plane
+// authorizes against. Nil until wired: scope writes containing unknown
+// model IDs are accepted (the transitional fail-open shape, matching
+// the authorizer seam).
+type ModelExistenceChecker interface {
+	// ModelExists returns true when the model ID is present in the
+	// catalog.
+	ModelExists(ctx context.Context, modelID string) (bool, error)
+}
+
+// SetModelExistenceChecker injects the catalog existence check (feature
+// #46, AD6). Production and FVT wire the model repository; unit tests
+// leave it nil so unknown IDs stay accepted.
+func (s *Service) SetModelExistenceChecker(c ModelExistenceChecker) { s.modelExistenceChecker = c }
+
+// checkModelsExist validates that every model ID of a scope list exists
+// in the catalog (feature #46, AD6). A nil checker accepts the list
+// (transitional fail-open); a checker error fails the write.
+func (s *Service) checkModelsExist(ctx context.Context, modelIDs []string) error {
+	if s.modelExistenceChecker == nil || len(modelIDs) == 0 {
+		return nil
+	}
+	for _, id := range modelIDs {
+		exists, err := s.modelExistenceChecker.ModelExists(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return apierrors.Newf(apierrors.CodeModelNotFound, "auth: model %q not found", id)
+		}
+	}
+	return nil
+}
+
 // modelAuthCacheFor resolves the per-(org, model) verdict cache, lazily
 // wiring the Redis-backed one from the shared components. A nil return
 // means no cache is available: the check then runs uncached, because the

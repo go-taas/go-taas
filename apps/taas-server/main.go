@@ -216,6 +216,10 @@ func main() {
 			// lazily from the Redis component with model.auth.cacheTTL
 			// (AD6).
 			authSvc.SetModelAuthorizer(model.NewRepository(gormDB))
+			// API key model scoping (feature #46, AD6): the same model
+			// repository validates at write time that every model ID of a
+			// key scope list exists in the catalog.
+			authSvc.SetModelExistenceChecker(model.NewRepository(gormDB))
 			modelSvc.SetSessionResolver(authSvc)
 			// Console surface separation (feature-17 AD6): the session's
 			// active org wins over X-Organization-Id on the user-realm

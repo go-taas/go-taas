@@ -1,6 +1,9 @@
 package auth
 
-import "time"
+import (
+	"encoding/json"
+	"time"
+)
 
 // APIKey is the GORM model of the api_keys table and the single source of
 // truth for its schema (created by AutoMigrate, no hand-written DDL).
@@ -40,11 +43,45 @@ type APIKey struct {
 	RateLimitRPM int64 `gorm:"not null;default:0"`
 	// RateLimitTPM is the max tokens per minute; 0 = unlimited.
 	RateLimitTPM int64 `gorm:"not null;default:0"`
+	// Models is the optional model allow-list (feature #46, AD1): a
+	// JSON array of catalog model IDs stored as a jsonb string, empty
+	// ("[]") = all org-granted models. Encoded/decoded at the
+	// repository boundary (routing_policies.service_ids convention).
+	Models string `gorm:"type:jsonb;not null;default:'[]'"`
 	// IsSystem marks the synthetic platform credential used by the
 	// load-test runner (feature #20, AD11). The data-plane gateway
 	// recognizes this flag and skips balance holds and rate/spend-limit
 	// checks while still producing request logs.
 	IsSystem bool `gorm:"not null;default:false;index"`
+}
+
+// encodeModelIDs serializes a model allow-list into the jsonb column
+// payload (feature #46, AD1). nil and empty both encode as "[]".
+func encodeModelIDs(models []string) string {
+	if len(models) == 0 {
+		return "[]"
+	}
+	b, err := json.Marshal(models)
+	if err != nil {
+		// json.Marshal of []string cannot fail; fall back to the
+		// empty scope rather than panicking on an impossible path.
+		return "[]"
+	}
+	return string(b)
+}
+
+// decodeModelIDs parses the jsonb column payload back into a model
+// allow-list. An empty/invalid payload decodes as nil (unrestricted),
+// matching the column default.
+func decodeModelIDs(raw string) []string {
+	if raw == "" || raw == "[]" {
+		return nil
+	}
+	var models []string
+	if err := json.Unmarshal([]byte(raw), &models); err != nil {
+		return nil
+	}
+	return models
 }
 
 // TableName returns the table name of APIKey.
