@@ -1,3 +1,10 @@
+# [1.51.0](https://github.com/go-taas/go-taas/compare/v1.50.2...v1.51.0) (2026-10-12)
+
+
+### Features
+
+* **runtime:** add the distributed inference runtime (AIBrix integration) ([7092cc1](https://github.com/go-taas/go-taas/commit/7092cc1f86bf5150961b70477a611072a70c2404)), closes [#47](https://github.com/go-taas/go-taas/issues/47)
+
 ## [1.50.2](https://github.com/go-taas/go-taas/compare/v1.50.1...v1.50.2) (2026-10-10)
 
 
