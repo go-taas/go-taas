@@ -223,14 +223,23 @@ module.exports = {
           `AC4: create returns without blocking on pods (${elapsed} ms)`
         );
 
-        // In compose there is no controller, so the service stays pending —
-        // that is the expected steady state, and endpoints must stay empty.
+        // AC4 asserts the create call returns immediately without
+        // waiting for pods: the service is created in a pre-running
+        // state and endpoints stay empty. In compose the controller is
+        // running, so it may have already advanced the service from
+        // "pending" to "deploying" by the time we read it back — accept
+        // either pre-running state, and assert it is not yet running.
         api.request(browser, {
           path: `/api/v1/admin/inference-services/${created.serviceId}`,
           org
         }, (res3) => {
           const body = api.assertOk(browser, res3, 'get service after create');
-          browser.assert.equal(body.service.state, 'pending', 'state is pending (no controller in compose)');
+          const state = body.service.state;
+          browser.assert.ok(
+            ['pending', 'deploying'].indexOf(state) !== -1,
+            `state is pre-running (pending or deploying), got "${state}"`
+          );
+          browser.assert.notEqual(state, 'running', 'service is not running yet');
           browser.assert.deepEqual(body.endpoints, [], 'endpoints empty while not running');
           browser.assert.equal(body.service.modelId, model.modelId, 'spec echoes modelId');
           browser.assert.equal(body.service.imageId, NVIDIA_IMAGE, 'spec echoes imageId');
