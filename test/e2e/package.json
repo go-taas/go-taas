@@ -46,7 +46,8 @@
     "test:multi-cluster-management": "nightwatch --tag multi-cluster-management",
     "test:data-export-privacy": "nightwatch --tag data-export-privacy",
     "test:prompt-evaluation": "nightwatch --tag prompt-evaluation",
-    "test:distributed-inference-runtime": "nightwatch --tag distributed-inference-runtime"
+    "test:distributed-inference-runtime": "nightwatch --tag distributed-inference-runtime",
+    "test:external-model-providers": "nightwatch --tag external-model-providers"
   },
   "license": "Apache-2.0",
   "devDependencies": {
