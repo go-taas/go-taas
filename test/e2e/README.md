@@ -39,6 +39,7 @@ against the local docker compose stack.
 | API documentation explorer | feature-38 `api-docs-explorer` | `tests/apiDocsExplorer.js` |
 | Multi-cluster management | feature-40 `multi-cluster-management` | `tests/multiClusterManagement.js` |
 | Data export & privacy | feature-41 `data-export-privacy` | `tests/dataExportPrivacy.js` |
+| Distributed inference runtime | feature-47 `distributed-inference-runtime` | `tests/distributedInferenceRuntime.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md`,
@@ -101,6 +102,7 @@ npm run test:service-resource-metrics # feature-37 only
 npm run test:api-docs-explorer        # feature-38 only
 npm run test:multi-cluster-management # feature-40 only
 npm run test:data-export-privacy      # feature-41 only
+npm run test:distributed-inference-runtime # feature-47 only
 ```
 
 Environment overrides:

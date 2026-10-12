@@ -45,7 +45,8 @@
     "test:api-docs-explorer": "nightwatch --tag api-docs-explorer",
     "test:multi-cluster-management": "nightwatch --tag multi-cluster-management",
     "test:data-export-privacy": "nightwatch --tag data-export-privacy",
-    "test:prompt-evaluation": "nightwatch --tag prompt-evaluation"
+    "test:prompt-evaluation": "nightwatch --tag prompt-evaluation",
+    "test:distributed-inference-runtime": "nightwatch --tag distributed-inference-runtime"
   },
   "license": "Apache-2.0",
   "devDependencies": {
