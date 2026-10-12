@@ -7,12 +7,12 @@
 **Token as a Service —— 基于 Kubernetes、面向智能体与 SDK 的开源大模型推理服务与计量计费平台**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://golang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 **Go TaaS** 是一个在 Kubernetes 上提供大模型推理与计费服务的开源平台。管理员在异构算力（NVIDIA GPU、天数智芯 CoreX、沐曦 MetaX）上部署开源模型（Qwen、DeepSeek、LLaMA 等），并按「模型 × 卡型」灵活定价；智能体与 SDK 通过 OpenAI 兼容 API 消费模型，按 API Key 隔离，按 token 计量并异步结算。
 
-> **状态**：Go TaaS 处于设计与早期开发阶段。[架构设计](./docs/design/architecture.zh-cn.md)已经确定，实现进度见[路线图](#路线图)。
+> **状态**：功能完备，端到端验证通过。全部 45 个特性点（编号 1–46，其中微调管理已由产品负责人裁剪）均已在两套控制台实现，单元测试与 FVT 套件通过，45 个 Nightwatch 端到端套件在 Docker Compose 环境全绿。各阶段交付内容见[路线图](#路线图)。
 
 **English | [简体中文](./README.zh-cn.md)**
 
@@ -31,18 +31,66 @@
 
 ## 特性
 
+下表每一能力都在普通用户控制台和/或 admin 控制台有对应界面，并配有端到端测试套件。
+
+**平台基础**
+
 | 领域 | 能力 |
 | --- | --- |
-| 异构算力 | 统一支持 NVIDIA GPU、天数智芯 CoreX 与沐曦 MetaX；节点打标、Device Plugin 与驱动部署由各厂商 GPU Operator 完成 |
-| 控制面 / 数据面分离 | 管理 API 与推理 API 由两个独立网关承载，推理链路扩缩容、升级或降级时平台管理能力不受影响 |
-| 模型一键部署 | 通过控制台或 API 部署模型；平台经消息队列与 Kubernetes Controller 编排推理工作负载，无需手写 YAML |
-| 推理镜像管理 | 统一登记、版本化 NVIDIA / CoreX / MetaX 引擎镜像并维护适配关系，节点级预热缩短冷启动 |
-| OpenAI 兼容 API | `/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 由基于 Envoy 的网关承载；鉴权、计量与路由运行在 Wasm 插件中，推理流量不经过业务进程 |
-| Token 计量与计费 | 网关侧计量 token 用量（prompt / completion / cached / reasoning），生成防篡改凭单，按 API Key 异步结算 |
-| 灵活定价 | 「模型 × 卡型」价格矩阵，输入/输出 token 分别定价，支持阶梯价与套餐包；余额（预付费）与额度（后付费）两种账户模式 |
-| 多租户 | 组织 / 项目两级隔离，API Key 全生命周期管理；密钥仅以加盐哈希存储 |
-| SSO 联邦认证 | 插件化身份提供方 —— LDAP/LDAPS、OIDC/OAuth 2.0（GitHub、Google、GitLab）、SAML 2.0 与微信 —— 支持账号绑定、JIT 预置与属性到角色的映射 |
-| 存储与网络分层 | Longhorn 承载集群状态，MinIO + JuiceFS 承载权重与镜像；控制面走常规以太网，推理可选 RDMA（RoCE / InfiniBand） |
+| 异构算力 | 统一支持 NVIDIA GPU、天数智芯 CoreX 与沐曦 MetaX；节点打标、Device Plugin 与驱动部署由各厂商 GPU Operator 完成。**加速器清单**实时上报各节点 GPU 机队健康状态，**兼容性矩阵**记录「模型 × 引擎 × 卡型」的支持情况。 |
+| 控制面 / 数据面分离 | 管理 API 与推理 API 由两个独立网关承载，推理链路扩缩容、升级或降级时平台管理能力不受影响。 |
+| 双控制台，一致体验 | 面向租户的**普通用户控制台**位于 `/`（API `/api/v1/*`），面向运维的 **admin 控制台**位于 `/admin`（API `/api/v1/admin/*`），各自独立会话、独立登录与基于角色的路由。 |
+| 存储与网络分层 | Longhorn 承载集群状态，MinIO + JuiceFS 承载权重与镜像；控制面走常规以太网，推理可选 RDMA（RoCE / InfiniBand）。 |
+
+**模型与推理**
+
+| 领域 | 能力 |
+| --- | --- |
+| 模型目录与一键部署 | 登记并版本化模型，从任一控制台或 API 一键部署；平台经消息队列与 Kubernetes Controller 编排推理工作负载，无需手写 YAML，并内置版本历史与回滚。 |
+| 推理镜像管理 | 统一登记、版本化 NVIDIA / CoreX / MetaX 引擎镜像并维护适配关系，节点级预热缩短冷启动。 |
+| OpenAI 兼容 API | `/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 由基于 Envoy 的网关承载；鉴权、计量与路由运行在 Wasm 插件中，推理流量不经过业务进程。 |
+| 路由与容灾 | **路由策略**按序使用健康部署，在同一模型内做有界故障转移与可重试失败分类，绝不静默替换模型或版本。 |
+| 弹性伸缩 | 推理弹性伸缩并支持缩容到零（scale-to-zero）。 |
+| 压测 | 对推理服务发起压测，查看吞吐、时延与 tokens/秒 结果。 |
+| 批量推理 | 提交 JSONL 批量请求，异步按折扣价处理，监控进度并下载结果/错误文件。 |
+
+**计费、计量与分析**
+
+| 领域 | 能力 |
+| --- | --- |
+| Token 计量与计费 | 网关侧计量 token 用量（prompt / completion / cached / reasoning），生成防篡改凭单，按 API Key 异步结算。 |
+| 灵活定价 | 「模型 × 卡型」价格矩阵，输入/输出 token 分别定价，支持阶梯价与套餐包；余额（预付费）与额度（后付费）两种账户模式。 |
+| 支付与发票 | 支付、发票与自动充值，完整账单流水。 |
+| 用量与成本分析 | 用量看板、按请求成本归集、按 API Key 用量分析、含趋势与「每 token 成本」的成本分析，以及用量/成本预测。 |
+| 账单报表 | 按组织 / Key / 模型生成并下载用量与账单 CSV 报表，支持定时报表历史。 |
+
+**租户、权限与治理**
+
+| 领域 | 能力 |
+| --- | --- |
+| 多租户 | 全平台组织 / 项目两级隔离，含组织成员、角色与邀请（RBAC）。 |
+| 租户级模型授权 | 限定每个租户可消费的目录模型。 |
+| API Key | 全生命周期（创建 / 列出 / 吊销），加盐哈希存储，支持每 Key 限流、组织支出上限，以及每 Key **模型范围限定**，让泄露或过权的 Key 无法访问未授权模型。 |
+| SSO 联邦认证 | 插件化身份提供方 —— LDAP/LDAPS、OIDC/OAuth 2.0（GitHub、Google、GitLab）、SAML 2.0 与微信 —— 支持账号绑定、JIT 预置与属性到角色的映射。 |
+| 审计与数据治理 | 审计日志与活动导出、部署历史审计，以及符合 GDPR 的数据导出（用量、账单、请求日志，JSON/CSV）。 |
+
+**可观测与自动化**
+
+| 领域 | 能力 |
+| --- | --- |
+| 可观测 | 按模型查看时延 / 吞吐 / 错误率 / token 吞吐看板，按服务查看 CPU / 内存 / GPU 资源指标，并可查看推理服务日志。 |
+| 请求链路追踪 | 端到端下钻单条推理请求（请求 → 网关 → 推理服务），查看分阶段时延（TTFT、生成、总时延）与按 request-id 检索。 |
+| 健康与错误 | 平台组件健康与依赖状态，以及错误分析（错误码/率趋势、Top 原因与下钻）。 |
+| 事件与自动化 | 出站 Webhook（部署、伸缩、计费、支出上限、余额不足事件）支持签名密钥、重试策略与投递日志；通知中心支持按用户偏好与阈值告警。 |
+
+**提示词工具**
+
+| 领域 | 能力 |
+| --- | --- |
+| 提示词库 | 创建、版本化、归类、搜索与复用提示词模板；在 playground 中打开；查看每个提示词的用量统计。 |
+| Playground 与对比 | 交互式 playground，以及对同一提示词的多模型并排对比（时延 / token / 成本）。 |
+| 提示词评测 | 维护基于变量的测试用例，用指定模型运行某个提示词版本，使用确定性检查或人工评审打分，并对比可复现的运行结果。 |
+| API 文档浏览器 | 控制台内的交互式 API 参考，含端点列表、请求/响应示例与「在控制台试用」。 |
 
 ## 架构
 
@@ -63,7 +111,7 @@ flowchart TD
         subgraph cp["控制面（常规网络）"]
             direction TB
             CGW["控制面 Gateway（HTTP）<br/>平台管理 API"]
-            GRPC["gRPC Server（单 Deployment）<br/>微服务：auth · model · image · infer · billing · metering · webhook"]
+            GRPC["gRPC Server（单 Deployment）<br/>20 个微服务<br/>auth · model · infer · billing · metering · tenancy · …"]
             MQ["消息队列（Kafka / NATS）"]
             CTRL["Controller<br/>（K8s 资源调谐）"]
             CGW --> GRPC
@@ -119,7 +167,8 @@ flowchart TD
 
 - 流量按受众分流：管理员经**控制面 Gateway**（HTTP，由 `grpc-gateway` 从 Protobuf 契约生成）进入，智能体与 SDK 调用**推理 Gateway**（Envoy + Wasm）。
 - 两个网关作为独立工作负载部署，控制面 API 与推理 API 的扩缩容、升级与故障域完全隔离。
-- 各微服务 gRPC server（`auth`、`model`、`image`、`infer`、`billing`、`metering`、`webhook`）运行在**单一 Deployment** 内，经**消息队列**（Kafka / NATS）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
+- API 按受众分区：普通用户控制台及其租户调用 `/api/v1/*`，`/api/v1/admin/*` 专供 admin 控制台；携带错误面会话的请求会在进入任何 handler 之前被拒绝。
+- 各微服务 gRPC server（`auth`、`model`、`image`、`infer`、`billing`、`metering`、`tenancy`、`account`、`audit`、`observability`、`tracing`、`notification`、`webhook`、`batch`、`prompt`、`evaluation`、`cluster`、`accelerator`、`resourcemetrics`、`docs`）运行在**单一 Deployment** 内，经**消息队列**（Kafka / NATS）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
 - 鉴权、计量与路由运行在推理 Gateway 的 **Wasm 插件**中，推理流量不经过业务进程。
 - 推理 Gateway 通过 **gRPC 调用 `auth` 模块**校验每个 API Key，两级缓存（Wasm 本地 TTL 缓存 → Redis）支撑；超时或 `auth` 不可用时按 fail-closed 拒绝。
 - 推理服务与控制面共享**同一个 Kubernetes 集群**，通过 Namespace、节点标签与污点/容忍度隔离。
@@ -138,18 +187,18 @@ flowchart TD
 | 网络 | 控制面走常规以太网；推理可选 RDMA（RoCE / InfiniBand） |
 | 编排 | Kubernetes + client-go |
 | 推理引擎 | NVIDIA：vLLM / SGLang / TensorRT-LLM；天数智芯 CoreX；沐曦 MetaX |
-| 前端（`web/`） | React + TypeScript + Tailwind CSS + shadcn/ui + Framer Motion |
+| 前端（`web/`） | React 18 + TypeScript + Vite + Phosphor Icons —— 单一 SPA，同时承载普通用户与 admin 两套控制台 |
+| 测试 | Go 单元测试与 FVT 套件（`test/fvt`）、Nightwatch 浏览器端到端套件（`test/e2e`） |
 
 ## 快速开始
 
-> 项目处于早期开发阶段。以下命令描述的是规划中的工作流，将随实现进展更新。
-
 ### 环境要求
 
-- Go 1.25+
+- Go 1.26+
 - golangci-lint v2
 - buf
 - Node.js 20+（前端，`web/`）
+- Docker 与 Docker Compose（本地环境）
 - Git
 
 ### 从源码构建
@@ -162,7 +211,9 @@ make pbgen   # 生成 Protobuf 代码（gRPC stubs + grpc-gateway + OpenAPI）
 make deps    # 更新依赖
 make lint    # 静态检查
 make ut      # 单元测试
+make fvt     # 功能验证测试
 make build   # 构建二进制
+make test    # 完整测试目标
 ```
 
 ### Docker Compose 体验
@@ -195,11 +246,11 @@ make compose-down  # 停止并删除环境
 标签。`make compose-down` 会删除 compose 环境（含数据库卷）并清理上述全部
 集群资源（通过 `deploy/compose/scripts/cluster-down.sh`）。
 
-管理控制台由 `taas-server` 提供，访问 `http://localhost:9091/admin`
-（与 API 同源，无需 CORS 配置）。管理类 API 位于 `/api/v1/admin/*`；
-用户类 API（登录、注册）位于 `/api/v1/auth/*`。
-网关端口：`9091`（HTTP/JSON + 控制台）、
-`9090`（gRPC）、`9092`（指标/健康检查）。
+控制台由 `taas-server` 提供，与 API 同源（无需 CORS 配置）：**普通用户
+控制台** 位于 `http://localhost:9091/`，**admin 控制台** 位于
+`http://localhost:9091/admin`。用户类 API 位于 `/api/v1/*`（登录、注册
+在 `/api/v1/auth/*`）；管理类 API 位于 `/api/v1/admin/*`。
+网关端口：`9091`（HTTP/JSON + 控制台）、`9090`（gRPC）、`9092`（指标/健康检查）。
 
 另发布独立的 `console` 镜像（nginx 承载同一 Vite 产物，`/api/` 反代到网关），
 供前端与控制面独立扩缩容、独立发布的部署场景使用：
@@ -259,14 +310,24 @@ curl https://<your-taas-host>/v1/chat/completions \
 | [Architecture Design](./docs/design/architecture.md) | English |
 | [架构设计文档](./docs/design/architecture.zh-cn.md) | 中文 |
 
+[`docs/`](./docs) 目录包含完整文档集：
+
+- [`docs/design/`](./docs/design) —— 每个特性点的产品/UI 设计文档（英文 + `zh-cn`）。
+- [`docs/architecture/`](./docs/architecture) —— 每个特性点的架构与详细设计文档（英文 + `zh-cn`）。
+- [`docs/api/`](./docs/api) —— 按服务生成的 OpenAPI/Swagger 规范（auth、model、infer、billing 等）。
+
 ## 路线图
 
-| 阶段 | 内容 |
-| --- | --- |
-| Phase 1（MVP） | 单集群 NVIDIA：模型 CRUD、API Key、控制/推理网关分离、vLLM 部署、网关侧鉴权与计量 |
-| Phase 2 | 计费与多租户：定价、余额/额度、阶梯价、异步结算、审计、运营看板 |
-| Phase 3 | 异构算力：GPU Operator 集成、天数智芯 / 沐曦引擎与镜像适配、兼容矩阵 |
-| Phase 4 | 生产化：Helm 一键部署、弹性伸缩、RDMA 网络、压测、SDK、社区运营 |
+下列四个阶段均已交付并在 Docker Compose 环境完成端到端验证；剩余为运维
+加固工作（在特性待办之外单独跟踪）。
+
+| 阶段 | 状态 | 已交付 |
+| --- | --- | --- |
+| Phase 1（MVP） | ✅ 已交付 | 模型目录与一键部署、API Key 生命周期、控制/推理网关分离、网关侧鉴权与计量。 |
+| Phase 2 | ✅ 已交付 | 价格矩阵、余额/额度、阶梯价、异步结算、用量/成本分析、支付/发票/自动充值、审计日志、RBAC、通知。 |
+| Phase 3 | ✅ 已交付 | 加速器清单与健康、天数智芯 / 沐曦引擎与镜像适配、模型 × 引擎 × 卡型兼容性矩阵。 |
+| Phase 4 | ✅ 已交付 | 弹性伸缩、路由策略、压测、可观测与链路追踪、Webhook、通知中心、提示词库与评测、批量推理、多集群管理、API 文档浏览器、数据导出。 |
+| 后续 | 🚧 规划中 | Helm 一键部署、RDMA 网络、社区运营（无独立控制台页面，在特性待办之外单独跟踪）。 |
 
 ## 参与贡献
 

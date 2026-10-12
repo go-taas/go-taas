@@ -356,6 +356,29 @@ img { max-width: 100%; }
   border: 4px solid var(--teal-600);
 }
 
+.timeline-item--done .timeline-dot { background: var(--teal-600); }
+.timeline-item--planned .timeline-dot { border-color: var(--ink-400); background: var(--surface); }
+
+.timeline-status {
+  display: inline-block;
+  margin-left: 10px;
+  padding: 1px 9px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--teal-600);
+  background: var(--teal-50);
+  border: 1px solid var(--teal-100);
+  border-radius: 999px;
+  vertical-align: middle;
+}
+.timeline-status--planned {
+  color: var(--ink-500);
+  background: #f2f5f6;
+  border-color: var(--line);
+}
+
 .timeline-body h3 { margin: 0 0 6px; font-size: 17px; }
 .timeline-body p { margin: 0; color: var(--ink-500); font-size: 14.5px; }
 

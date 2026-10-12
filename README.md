@@ -7,12 +7,12 @@
 **Token as a Service — an open-source LLM inference and metering/billing platform for AI agents and SDKs, built on Kubernetes**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
-[![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8.svg)](https://golang.org/)
+[![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://golang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](./CONTRIBUTING.md)
 
 **Go TaaS** is an open-source platform for serving and billing large language models on Kubernetes. Administrators deploy open-source models (Qwen, DeepSeek, LLaMA, etc.) on heterogeneous accelerators — NVIDIA GPU, Iluvatar CoreX, and MetaX — and price them per model and card type. Agents and SDKs consume the models through an OpenAI-compatible API, with per-API-Key isolation, token metering, and settlement.
 
-> **Status**: Go TaaS is in the design and early-development stage. The [architecture](./docs/design/architecture.md) is defined, and implementation is tracked in the [roadmap](#roadmap).
+> **Status**: Feature-complete and end-to-end verified. All 45 backlog feature points (rows 1–46; fine-tuning was descoped by the product owner) are implemented across both consoles, with unit + FVT suites and 45 Nightwatch end-to-end suites green on the Docker Compose stack. See the [roadmap](#roadmap) for what shipped in each phase.
 
 **English | [简体中文](./README.zh-cn.md)**
 
@@ -31,18 +31,67 @@
 
 ## Features
 
+Every capability below ships a console surface on the end-user and/or admin
+console and is covered by an end-to-end test suite.
+
+**Platform foundations**
+
 | Area | Capability |
 | --- | --- |
-| Heterogeneous compute | Unified support for NVIDIA GPU, Iluvatar CoreX, and MetaX; node labeling, Device Plugins, and driver deployment are handled by each vendor's GPU Operator |
-| Control plane / data plane separation | Management APIs and inference APIs are served by separate gateways, so platform operations stay available while the inference path scales, upgrades, or degrades |
-| One-click model deployment | Deploy models from the console or API; the platform provisions inference workloads through a message queue and a Kubernetes controller, with no hand-written YAML |
-| Inference image management | Register, version, and map engine images across NVIDIA / CoreX / MetaX, with node-level pre-pulling to shorten cold starts |
-| OpenAI-compatible API | `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` served by an Envoy-based gateway; authentication, metering, and routing run in Wasm plugins, so inference traffic never passes through business processes |
-| Token metering and billing | Token usage (prompt / completion / cached / reasoning) is metered at the gateway, recorded as tamper-proof vouchers, and settled asynchronously per API Key |
-| Flexible pricing | A model × card-type price matrix with separate input/output token rates, tiered pricing, and packages; balance (prepaid) and quota (postpaid) account modes |
-| Multi-tenancy | Organization/project isolation with full API Key lifecycle management; keys are stored only as salted hashes |
-| SSO federation | Pluggable identity providers — LDAP/LDAPS, OIDC/OAuth 2.0 (GitHub, Google, GitLab), SAML 2.0, and WeChat — with account binding, JIT provisioning, and attribute-to-role mapping |
-| Tiered storage and networking | Longhorn for cluster state, MinIO + JuiceFS for weights and images; standard Ethernet for the control plane, optional RDMA (RoCE / InfiniBand) for inference |
+| Heterogeneous compute | Unified support for NVIDIA GPU, Iluvatar CoreX, and MetaX; node labeling, Device Plugins, and driver deployment are handled by each vendor's GPU Operator. A live **accelerator inventory** reports per-node GPU fleet health, and a **compatibility matrix** records which model × engine × card-type combinations are supported. |
+| Control plane / data plane separation | Management APIs and inference APIs are served by separate gateways, so platform operations stay available while the inference path scales, upgrades, or degrades. |
+| Two consoles, one product | A dedicated **end-user console** at `/` (API `/api/v1/*`) for tenants, and a separate **admin console** at `/admin` (API `/api/v1/admin/*`) for operators — each with its own session, login flow, and role-based routing. |
+| Tiered storage and networking | Longhorn for cluster state, MinIO + JuiceFS for weights and images; standard Ethernet for the control plane, optional RDMA (RoCE / InfiniBand) for inference. |
+
+**Models and inference**
+
+| Area | Capability |
+| --- | --- |
+| Model catalog & one-click deployment | Register and version models, then deploy with one click from either console or the API; the platform provisions inference workloads through a message queue and a Kubernetes controller, with no hand-written YAML. Version history and rollback are built in. |
+| Inference image management | Register, version, and map engine images across NVIDIA / CoreX / MetaX, with node-level pre-pulling to shorten cold starts. |
+| OpenAI-compatible API | `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` served by an Envoy-based gateway; authentication, metering, and routing run in Wasm plugins, so inference traffic never passes through business processes. |
+| Routing & resilience | Ordered **routing policies** over healthy deployments with bounded same-model failover and retryable-failure categories — no silent model or version substitution. |
+| Autoscaling | Inference autoscaling with scale-to-zero, driven by load signals. |
+| Load testing | Run a load test against an inference service and view throughput, latency, and tokens-per-second results. |
+| Batch inference | Submit a JSONL batch of requests, process it asynchronously at a discounted rate, monitor progress, and download result/error files. |
+
+**Billing, metering and analytics**
+
+| Area | Capability |
+| --- | --- |
+| Token metering and billing | Token usage (prompt / completion / cached / reasoning) is metered at the gateway, recorded as tamper-proof vouchers, and settled asynchronously per API Key. |
+| Flexible pricing | A model × card-type price matrix with separate input/output token rates, tiered pricing, and packages; balance (prepaid) and quota (postpaid) account modes. |
+| Payments and invoices | Payments, invoices, and auto-recharge top-ups, with a full billing ledger. |
+| Usage and cost analytics | Usage dashboards, per-request cost attribution, per-API-key usage analytics, cost analytics with trends and cost-per-token, and usage/cost forecasting. |
+| Billing reports | Generate and download per-org / per-key / per-model usage and billing reports as CSV, with scheduled report history. |
+
+**Tenancy, access and governance**
+
+| Area | Capability |
+| --- | --- |
+| Multi-tenancy | Organization/project isolation across the whole platform, with organization members, roles, and invitations (RBAC). |
+| Per-tenant model authorization | Restrict which catalog models each tenant may consume. |
+| API Keys | Full lifecycle (create / list / revoke), salted-hash storage, per-key rate limits, org spend limits, and per-key **model scoping** so a leaked or over-broad key cannot reach unauthorized models. |
+| SSO federation | Pluggable identity providers — LDAP/LDAPS, OIDC/OAuth 2.0 (GitHub, Google, GitLab), SAML 2.0, and WeChat — with account binding, JIT provisioning, and attribute-to-role mapping. |
+| Audit & data governance | Audit logging and activity export, deployment history & audit, and GDPR-style data export (usage, billing, request logs) as JSON/CSV. |
+
+**Observability and automation**
+
+| Area | Capability |
+| --- | --- |
+| Observability | Per-model latency / throughput / error-rate / token-throughput dashboards, per-service CPU / memory / GPU resource metrics, and inference service log viewing. |
+| Request tracing | Drill into individual inference requests end-to-end (request → gateway → inference service) with per-phase latency breakdown (TTFT, generation, total) and request-id lookup. |
+| Health & errors | Platform component health and dependency status, plus error analysis (code/rate trends, top causes, and drill-down). |
+| Events & automation | Outbound webhooks (deployment, autoscaling, billing, spend-limit, and balance-low events) with signing secrets, retry policy, and a delivery log; plus a notification center with per-user preferences and threshold alerts. |
+
+**Prompt tooling**
+
+| Area | Capability |
+| --- | --- |
+| Prompt library | Create, version, organize, search, and reuse prompt templates; open a prompt in the playground; per-prompt usage stats. |
+| Playground & comparison | Interactive playground, plus side-by-side model comparison on the same prompt with latency / token / cost per model. |
+| Prompt evaluation | Curate variable-based test cases, run a saved prompt version against a model, score with deterministic checks or manual review, and compare repeatable run results. |
+| API docs explorer | An in-console interactive API reference with endpoint lists, request/response examples, and try-it-in-console. |
 
 ## Architecture
 
@@ -63,7 +112,7 @@ flowchart TD
         subgraph cp["Control Plane (standard network)"]
             direction TB
             CGW["Control Gateway (HTTP)<br/>platform management API"]
-            GRPC["gRPC Server (single Deployment)<br/>microservices: auth · model · image · infer · billing · metering · webhook"]
+            GRPC["gRPC Server (single Deployment)<br/>20 microservices<br/>auth · model · infer · billing · metering · tenancy · …"]
             MQ["Message Queue (Kafka / NATS)"]
             CTRL["Controller<br/>(K8s resource reconciliation)"]
             CGW --> GRPC
@@ -119,7 +168,8 @@ flowchart TD
 
 - Traffic is split by audience: administrators enter through the **Control Gateway** (HTTP, generated from the Protobuf contract by `grpc-gateway`), while agents and SDKs call the **Inference Gateway** (Envoy + Wasm).
 - The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.
-- All microservice gRPC servers (`auth`, `model`, `image`, `infer`, `billing`, `metering`, `webhook`) run in a **single Deployment** and hand work to the Controller through a **message queue** (Kafka / NATS), decoupling API serving from Kubernetes reconciliation.
+- APIs are partitioned by audience: the end-user console and its tenants call `/api/v1/*`, while `/api/v1/admin/*` is reserved for the admin console. A request that carries a session from the wrong surface is rejected before any handler runs.
+- All microservice gRPC servers (`auth`, `model`, `image`, `infer`, `billing`, `metering`, `tenancy`, `account`, `audit`, `observability`, `tracing`, `notification`, `webhook`, `batch`, `prompt`, `evaluation`, `cluster`, `accelerator`, `resourcemetrics`, `docs`) run in a **single Deployment** and hand work to the Controller through a **message queue** (Kafka / NATS), decoupling API serving from Kubernetes reconciliation.
 - Authentication, metering, and routing run in **Wasm plugins** at the Inference Gateway, so inference traffic never passes through business processes.
 - The Inference Gateway verifies every API Key by **calling the `auth` module over gRPC**, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or `auth` unavailability it fails closed.
 - Inference services and the control plane share **one Kubernetes cluster**, isolated through Namespaces, node labels, and taints/tolerations.
@@ -138,18 +188,18 @@ See the [Architecture Design](./docs/design/architecture.md) for component respo
 | Network | Standard Ethernet for the control plane; RDMA (RoCE / InfiniBand) optional for inference |
 | Orchestration | Kubernetes + client-go |
 | Inference engines | NVIDIA: vLLM / SGLang / TensorRT-LLM; Iluvatar CoreX; MetaX |
-| Frontend (`web/`) | React + TypeScript + Tailwind CSS + shadcn/ui + Framer Motion |
+| Frontend (`web/`) | React 18 + TypeScript + Vite + Phosphor Icons — a single SPA serving both the end-user and admin consoles |
+| Testing | Go unit tests + FVT suites (`test/fvt`) and Nightwatch browser end-to-end suites (`test/e2e`) |
 
 ## Getting Started
 
-> The project is in early development. The commands below describe the planned workflow and will be updated as implementation progresses.
-
 ### Prerequisites
 
-- Go 1.25+
+- Go 1.26+
 - golangci-lint v2
 - buf
 - Node.js 20+ (frontend, `web/`)
+- Docker + Docker Compose (for the local stack)
 - Git
 
 ### Build from Source
@@ -162,7 +212,9 @@ make pbgen   # generate Protobuf code (gRPC stubs + grpc-gateway + OpenAPI)
 make deps    # update dependencies
 make lint    # static checks
 make ut      # unit tests
+make fvt     # functional verification tests
 make build   # build the binary
+make test    # full test target
 ```
 
 ### Docker Compose
@@ -198,11 +250,12 @@ on the node IP at `:30379`), and the accelerator node labels.
 volume) and cleans up all of those cluster resources (via
 `deploy/compose/scripts/cluster-down.sh`).
 
-The admin console is served by `taas-server` at `http://localhost:9091/admin`
-(same origin as the API — no CORS setup needed). Management APIs live under
-`/api/v1/admin/*`; user-facing APIs (login, signup) live under `/api/v1/auth/*`.
-The gateway listens on `9091` (HTTP/JSON + console), `9090` (gRPC) and `9092`
-(metrics/healthz).
+The console is served by `taas-server`, same origin as the API (no CORS setup
+needed): the **end-user console** at `http://localhost:9091/` and the **admin
+console** at `http://localhost:9091/admin`. End-user APIs live under
+`/api/v1/*` (login and signup under `/api/v1/auth/*`); management APIs live
+under `/api/v1/admin/*`. The gateway listens on `9091` (HTTP/JSON + console),
+`9090` (gRPC) and `9092` (metrics/healthz).
 
 A standalone `console` image (nginx serving the same Vite bundle, with `/api/`
 reverse-proxied to the gateway) is also published for deployments that scale
@@ -263,14 +316,25 @@ curl https://<your-taas-host>/v1/chat/completions \
 | [Architecture Design](./docs/design/architecture.md) | English |
 | [架构设计文档](./docs/design/architecture.zh-cn.md) | 中文 |
 
+The [`docs/`](./docs) directory carries the full documentation set:
+
+- [`docs/design/`](./docs/design) — product/UI design documents, one per feature point (EN + `zh-cn`).
+- [`docs/architecture/`](./docs/architecture) — architecture and detailed design documents, one per feature point (EN + `zh-cn`).
+- [`docs/api/`](./docs/api) — generated OpenAPI/Swagger specs per service (auth, model, infer, billing, …).
+
 ## Roadmap
 
-| Phase | Content |
-| --- | --- |
-| Phase 1 (MVP) | Single-cluster NVIDIA: model CRUD, API Keys, control/inference gateway split, vLLM deployment, gateway-side auth and metering |
-| Phase 2 | Billing & multi-tenancy: pricing, balance/quota, tiered pricing, asynchronous settlement, audit, operations dashboard |
-| Phase 3 | Heterogeneous accelerators: GPU Operator integration, Iluvatar / MetaX engine and image adaptation, compatibility matrix |
-| Phase 4 | Productionization: Helm one-click install, autoscaling, RDMA networking, load testing, SDK, community operations |
+All four phases below have shipped and are end-to-end verified on the Docker
+Compose stack; remaining work is operational hardening (tracked outside the
+feature backlog).
+
+| Phase | Status | Delivered |
+| --- | --- | --- |
+| Phase 1 (MVP) | ✅ Shipped | Model catalog & one-click deployment, API Key lifecycle, control/inference gateway split, gateway-side auth and metering. |
+| Phase 2 | ✅ Shipped | Price matrix, balance/quota, tiered pricing, async settlement, usage/cost analytics, payments/invoices/auto-recharge, audit logging, RBAC, notifications. |
+| Phase 3 | ✅ Shipped | Accelerator inventory & health, Iluvatar / MetaX engine and image adaptation, model × engine × card-type compatibility matrix. |
+| Phase 4 | ✅ Shipped | Autoscaling, routing policies, load testing, observability & tracing, webhooks, notification center, prompt library & evaluation, batch inference, multi-cluster management, API docs explorer, data export. |
+| Next | 🚧 Planned | Helm one-click install, RDMA networking, community operations (no standalone console surface, tracked separately from the feature backlog). |
 
 ## Contributing
 
