@@ -1,3 +1,10 @@
+# [1.52.0](https://github.com/go-taas/go-taas/compare/v1.51.0...v1.52.0) (2026-10-12)
+
+
+### Features
+
+* **provider:** add external model provider registry and passthrough ([5081721](https://github.com/go-taas/go-taas/commit/5081721227cf847a4a6d556119ce74bf36fc2724)), closes [#48](https://github.com/go-taas/go-taas/issues/48)
+
 # [1.51.0](https://github.com/go-taas/go-taas/compare/v1.50.2...v1.51.0) (2026-10-12)
 
 
