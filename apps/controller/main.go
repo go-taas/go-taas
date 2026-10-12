@@ -53,15 +53,42 @@ func main() {
 		logger.S().Fatalw("init kubernetes client failed", "err", err)
 	}
 
+	// Feature #47: the shared serving-scheme cache. It defaults to plain
+	// and is populated by the runtime.scheme consumer so a restarted
+	// controller reconverges without a database.
+	schemeCache := controller.NewSchemeCache()
+
 	ctrl := controller.New(mqClient, controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, controller.WeightsConfig{
 		StorageClass: cfg.Controller.Weights.StorageClass,
 		PVCName:      cfg.Controller.Weights.PVCName,
 		MountPath:    cfg.Controller.Weights.MountPath,
-	}))
+	}, schemeCache))
 	// Feature #18: the accelerator inventory collector lists nodes and
 	// publishes the full snapshot on the configured interval.
 	ctrl.SetInventoryCollector(controller.NewInventoryCollector(
 		k8sClient.Clientset(), mqClient, cfg.Accelerator.CollectInterval,
+	))
+	// Feature #47: the distributed-inference-runtime consumer of the
+	// serving scheme, the model-change consumer that reconciles AIBrix
+	// ModelClaims, and the component + ModelClaim collector that publishes
+	// the runtime.health snapshot.
+	if cfg.Runtime.SchemeConsumer.Enabled {
+		ctrl.SetRuntimeSchemeConsumer(controller.NewRuntimeSchemeConsumer(mqClient, schemeCache))
+	}
+	if cfg.Runtime.ModelChangeConsumer.Enabled {
+		ctrl.SetRuntimeModelChangeConsumer(controller.NewRuntimeModelChangeConsumer(
+			mqClient, k8sClient.Dynamic(), cfg.Controller.Namespace,
+		))
+	}
+	ctrl.SetRuntimeCollector(controller.NewRuntimeCollector(
+		k8sClient.Clientset(), k8sClient.Dynamic(), mqClient,
+		controller.RuntimeCollectorConfig{
+			Interval:        cfg.Runtime.CollectInterval,
+			Namespace:       cfg.Controller.Namespace,
+			AIBrixNamespace: cfg.Runtime.AIBrix.Namespace,
+			Gateway:         cfg.Runtime.AIBrix.Gateway,
+		},
+		schemeCache,
 	))
 	// Feature #37: the per-service resource sampling loop reads
 	// CPU/memory from the Kubernetes metrics-server and GPU utilization

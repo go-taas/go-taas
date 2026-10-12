@@ -372,6 +372,24 @@ func (c *Configuration) applyDefaults() {
 	if c.Controller.Weights.MountPath == "" {
 		c.Controller.Weights.MountPath = "/data/weights"
 	}
+	// Feature #47: distributed-inference-runtime defaults (Section 9).
+	// The collection and scheme-broadcast intervals default to 30s and the
+	// AIBrix control plane defaults to the shipped namespace/gateway.
+	if c.Runtime.CollectInterval == 0 {
+		c.Runtime.CollectInterval = 30 * time.Second
+	}
+	if c.Runtime.SchemeBroadcastInterval == 0 {
+		c.Runtime.SchemeBroadcastInterval = 30 * time.Second
+	}
+	if c.Runtime.HealthConsumer.Workers == 0 {
+		c.Runtime.HealthConsumer.Workers = 1
+	}
+	if c.Runtime.AIBrix.Namespace == "" {
+		c.Runtime.AIBrix.Namespace = "aibrix-system"
+	}
+	if c.Runtime.AIBrix.Gateway == "" {
+		c.Runtime.AIBrix.Gateway = "envoy-aibrix-system-aibrix-eg"
+	}
 }
 
 // String returns a string representation of the configuration for logging.

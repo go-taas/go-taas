@@ -110,6 +110,17 @@ type Subjects struct {
 	// infer outbox publisher emits and the inference gateway adapter
 	// consumes (feature #45, §9). It is not consumed by the controller.
 	InferRoutingPolicies string
+	// RuntimeHealth carries the controller's runtime component +
+	// ModelClaim full snapshot (feature #47, AD4). The runtime service
+	// consumes it to maintain its in-memory projection cache.
+	RuntimeHealth string
+	// RuntimeScheme carries the persisted serving scheme broadcast so the
+	// DB-less controller reconverges after a restart (feature #47, AD6).
+	RuntimeScheme string
+	// RuntimeModelChanges carries runtime model registration desired-state
+	// changes the controller reconciles into AIBrix ModelClaims
+	// (feature #47, AD5).
+	RuntimeModelChanges string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -125,7 +136,11 @@ func DefaultSubjects() Subjects {
 		Settlements:             "billing.settlements",
 		WebhookEvents:           "webhook.events",
 		NotificationEvents:      "notification.events",
-		ClusterHealth:           "cluster.health", InferRoutingPolicies: "infer.routing.policies"}
+		ClusterHealth:           "cluster.health",
+		InferRoutingPolicies:    "infer.routing.policies",
+		RuntimeHealth:           "runtime.health",
+		RuntimeScheme:           "runtime.scheme",
+		RuntimeModelChanges:     "runtime.models.changes"}
 }
 
 // NewFake returns an in-memory Client for unit tests and local development

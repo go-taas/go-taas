@@ -16,6 +16,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/go-taas/go-taas/pkg/k8s"
@@ -96,6 +97,12 @@ type k8sReconciler struct {
 	// weights configures the shared model-weights filesystem mounted
 	// into inference pods (feature: JuiceFS-backed weights).
 	weights WeightsConfig
+	// dynamic is the dynamic client used to write AIBrix ModelClaims and
+	// PodAutoscalers (feature #47, AD5). Nil disables the AIBrix path.
+	dynamic dynamic.Interface
+	// scheme is the shared serving-scheme cache (feature #47, AD6). Nil
+	// defaults to plain.
+	scheme *SchemeCache
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -115,13 +122,15 @@ type WeightsConfig struct {
 // NewK8sReconciler builds the default Kubernetes-backed reconciler.
 // statusPublisher is the MQ client used to publish observed-state
 // reports; endpointBaseURL composes endpoint URLs ("" = in-cluster DNS).
-func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig) Reconciler {
-	return newReconcilerWithClientset(client.Clientset(), statusPublisher, endpointBaseURL, namespace, weights)
+// scheme is the shared serving-scheme cache (feature #47); nil defaults to
+// plain. The dynamic client is taken from client.Dynamic().
+func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig, scheme *SchemeCache) Reconciler {
+	return newReconcilerWithClientset(client.Clientset(), client.Dynamic(), statusPublisher, endpointBaseURL, namespace, weights, scheme)
 }
 
-// newReconcilerWithClientset builds a reconciler over an arbitrary
-// clientset (the fake clientset in tests).
-func newReconcilerWithClientset(clientset kubernetes.Interface, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig) Reconciler {
+// newReconcilerWithClientset builds a reconciler over arbitrary clientsets
+// (the fake clientset in tests).
+func newReconcilerWithClientset(clientset kubernetes.Interface, dyn dynamic.Interface, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig, scheme *SchemeCache) Reconciler {
 	if namespace == "" {
 		namespace = "taas-infer"
 	}
@@ -131,12 +140,17 @@ func newReconcilerWithClientset(clientset kubernetes.Interface, statusPublisher 
 	if weights.MountPath == "" {
 		weights.MountPath = "/data/weights"
 	}
+	if scheme == nil {
+		scheme = NewSchemeCache()
+	}
 	return &k8sReconciler{
 		clientset:       clientset,
 		statusPublisher: statusPublisher,
 		endpointBaseURL: endpointBaseURL,
 		namespace:       namespace,
 		weights:         weights,
+		dynamic:         dyn,
+		scheme:          scheme,
 	}
 }
 
@@ -453,6 +467,12 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 	if hpaErr != nil && !apierrors.IsNotFound(hpaErr) {
 		return fmt.Errorf("controller: delete hpa %s: %w", evt.Name, hpaErr)
 	}
+	// Feature #47: tear down the AIBrix ModelClaim and PodAutoscaler
+	// best-effort (ignoring absence and write failures).
+	if err := deleteModelClaim(ctx, r.dynamic, r.namespace, evt.Name); err != nil {
+		logger.S().Warnw("controller: delete aibrix modelclaim failed", "name", evt.Name, "err", err)
+	}
+	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
 	logger.S().Infow("controller: tore down inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
 	return nil
@@ -485,18 +505,51 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		return r.reportFailure(ctx, evt, err)
 	}
 
+	// Feature #47 (AD5, AD13): when the serving scheme is aibrix, register
+	// the model with AIBrix by creating or updating a ModelClaim through
+	// the dynamic client. The write is best-effort: a failure (CRD absent
+	// or dynamic client unavailable) is logged and the plain serving path
+	// continues unchanged.
+	if r.aibrixScheme() {
+		claim := buildModelClaimFromEvent(evt, r.namespace, r.weights.MountPath)
+		if err := applyModelClaim(ctx, r.dynamic, claim); err != nil {
+			logger.S().Warnw("controller: aibrix modelclaim write failed, continuing on the plain path",
+				"service_id", evt.ServiceID, "name", evt.Name, "err", err)
+		}
+	}
+
 	// Feature #16: reconcile the HPA. When autoscaling is enabled, create
 	// or update it; when disabled, delete it and pin the Deployment to the
 	// fixed replica count (FR2.5).
+	//
+	// Feature #47 (AD13): when the serving scheme is aibrix, the AIBrix
+	// PodAutoscaler replaces the Kubernetes HPA; any AIBrix write failure
+	// logs and falls back to the plain path so serving is never blocked.
+	useAIBrixAutoscaler := false
+	if evt.Autoscaling != nil && evt.Autoscaling.Enabled && r.aibrixScheme() {
+		if err := r.applyAIBrixAutoscaler(ctx, evt); err != nil {
+			logger.S().Warnw("controller: aibrix podautoscaler write failed, falling back to HPA",
+				"service_id", evt.ServiceID, "name", evt.Name, "err", err)
+		} else {
+			useAIBrixAutoscaler = true
+			// Remove any plain HPA so autoscaling is not applied twice.
+			if err := r.deleteHPA(ctx, evt.Name); err != nil {
+				return r.reportFailure(ctx, evt, err)
+			}
+		}
+	}
 	if evt.Autoscaling != nil && evt.Autoscaling.Enabled {
-		hpa := r.buildHPA(evt)
-		if err := r.createOrUpdateHPA(ctx, hpa); err != nil {
-			return r.reportFailure(ctx, evt, err)
+		if !useAIBrixAutoscaler {
+			hpa := r.buildHPA(evt)
+			if err := r.createOrUpdateHPA(ctx, hpa); err != nil {
+				return r.reportFailure(ctx, evt, err)
+			}
 		}
 	} else {
 		if err := r.deleteHPA(ctx, evt.Name); err != nil {
 			return r.reportFailure(ctx, evt, err)
 		}
+		deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
 		// Pin the Deployment to the fixed replica count.
 		if err := r.pinDeploymentReplicas(ctx, evt); err != nil {
 			return r.reportFailure(ctx, evt, err)
@@ -527,6 +580,30 @@ func (r *k8sReconciler) deleteHPA(ctx context.Context, name string) error {
 		return fmt.Errorf("controller: delete hpa %s: %w", name, err)
 	}
 	return nil
+}
+
+// aibrixScheme reports whether the cached serving scheme is aibrix.
+func (r *k8sReconciler) aibrixScheme() bool {
+	return r.scheme != nil && r.scheme.Scheme() == schemeAIBrix
+}
+
+// applyAIBrixAutoscaler creates or updates the AIBrix PodAutoscaler for a
+// change event with autoscaling enabled (feature #47, §13.5). The
+// min/max replicas come from the effective autoscaling policy.
+func (r *k8sReconciler) applyAIBrixAutoscaler(ctx context.Context, evt changeEvent) error {
+	policy := evt.Autoscaling
+	if policy == nil {
+		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10}
+	}
+	minReplicas := clampReplicas(policy.MinReplicas)
+	if minReplicas < 0 {
+		minReplicas = 0
+	}
+	maxReplicas := clampReplicas(policy.MaxReplicas)
+	if maxReplicas < 1 {
+		maxReplicas = 1
+	}
+	return applyPodAutoscaler(ctx, r.dynamic, r.namespace, deploymentName(evt.Name), evt.Name, minReplicas, maxReplicas)
 }
 
 // pinDeploymentReplicas sets the Deployment's replicas to the fixed

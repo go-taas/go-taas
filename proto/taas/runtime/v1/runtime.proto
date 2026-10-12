@@ -1,0 +1,168 @@
+syntax = "proto3";
+
+package taas.runtime.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/runtime/v1;runtimev1";
+
+// RuntimeService serves the platform serving scheme, the installed
+// runtime component health, and the models registered with the runtime
+// (feature #47). Admin-surface API: served under /api/v1/admin/runtime.
+service RuntimeService {
+  // GetRuntimeStatus returns the runtime overview: scheme, availability,
+  // runtime name/version, cluster, last checked, reason, and components.
+  rpc GetRuntimeStatus(GetRuntimeStatusRequest) returns (GetRuntimeStatusResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/runtime"};
+  }
+
+  // ListRuntimeComponents returns the runtime components (AIBrix control
+  // plane + Envoy AI Gateway under the aibrix scheme, the Controller +
+  // Kubernetes API fallback under the plain scheme).
+  rpc ListRuntimeComponents(ListRuntimeComponentsRequest) returns (ListRuntimeComponentsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/runtime/components"};
+  }
+
+  // GetServingScheme returns the persisted platform serving scheme.
+  rpc GetServingScheme(GetServingSchemeRequest) returns (GetServingSchemeResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/runtime/scheme"};
+  }
+
+  // UpdateServingScheme sets the scheme to plain or aibrix. It is audited
+  // and idempotent; a non-{plain,aibrix} value returns 12902.
+  rpc UpdateServingScheme(UpdateServingSchemeRequest) returns (UpdateServingSchemeResponse) {
+    option (google.api.http) = {put: "/api/v1/admin/runtime/scheme" body: "*"};
+  }
+
+  // ListRuntimeModels returns the ModelClaim projection with pagination,
+  // name search, and engine/status filters.
+  rpc ListRuntimeModels(ListRuntimeModelsRequest) returns (ListRuntimeModelsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/runtime/models"};
+  }
+
+  // RegisterRuntimeModel registers a model with the runtime (publishes a
+  // desired-state change the Controller reconciles into a ModelClaim).
+  rpc RegisterRuntimeModel(RegisterRuntimeModelRequest) returns (RegisterRuntimeModelResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/runtime/models" body: "*"};
+  }
+
+  // DeregisterRuntimeModel removes a model registration (deletes the
+  // ModelClaim). An unknown model_name returns 12903.
+  rpc DeregisterRuntimeModel(DeregisterRuntimeModelRequest) returns (DeregisterRuntimeModelResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/runtime/models/{model_name}"};
+  }
+}
+
+message GetRuntimeStatusRequest {}
+
+message GetRuntimeStatusResponse {
+  taas.common.v1.Response response = 1;
+  RuntimeStatus runtime = 2;
+}
+
+message RuntimeStatus {
+  string scheme = 1;          // plain | aibrix
+  string availability = 2;    // available | degraded | unavailable | unknown
+  string runtime_name = 3;    // plain | aibrix
+  string runtime_version = 4; // optional, reported by AIBrix
+  string cluster_name = 5;
+  int64 last_checked_at = 6;
+  string reason = 7;
+  repeated RuntimeComponent components = 8;
+}
+
+message ListRuntimeComponentsRequest {}
+
+message ListRuntimeComponentsResponse {
+  taas.common.v1.Response response = 1;
+  repeated RuntimeComponent components = 2;
+}
+
+message RuntimeComponent {
+  string component_id = 1;
+  string name = 2;
+  string kind = 3;       // control_plane | gateway | fallback
+  string namespace = 4;
+  string status = 5;     // ready | progressing | degraded | unavailable | unknown
+  int64 ready_replicas = 6;
+  int64 desired_replicas = 7;
+  int64 last_checked_at = 8;
+}
+
+message GetServingSchemeRequest {}
+
+message GetServingSchemeResponse {
+  taas.common.v1.Response response = 1;
+  ServingScheme scheme = 2;
+}
+
+message ServingScheme {
+  string scheme = 1;   // plain | aibrix
+  int64 updated_at = 2;
+  string updated_by = 3;
+}
+
+message UpdateServingSchemeRequest {
+  string scheme = 1;   // plain | aibrix
+}
+
+message UpdateServingSchemeResponse {
+  taas.common.v1.Response response = 1;
+  ServingScheme scheme = 2;
+}
+
+message ListRuntimeModelsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string name = 2;     // model-name substring search
+  string engine = 3;   // vllm | sglang
+  string status = 4;   // ready | progressing | degraded | failed | unknown
+}
+
+message ListRuntimeModelsResponse {
+  taas.common.v1.Response response = 1;
+  repeated RegisteredModel models = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message RegisteredModel {
+  string model_name = 1;
+  string engine = 2;
+  int64 replicas = 3;
+  int64 ready_replicas = 4;
+  int64 ready_candidates = 5;
+  repeated ModelCondition conditions = 6;
+  string status = 7;
+  int64 created_at = 8;
+  int64 age_seconds = 9;
+}
+
+message ModelCondition {
+  string type = 1;
+  string status = 2;
+  string reason = 3;
+  string message = 4;
+  int64 last_transition_time = 5;
+}
+
+message RegisterRuntimeModelRequest {
+  string model_name = 1;
+  string engine = 2;       // vllm | sglang
+  int64 replicas = 3;      // 0..32
+  string artifact_url = 4;
+  map<string, string> pod_selector = 5;
+  map<string, string> engine_args = 6;
+}
+
+message RegisterRuntimeModelResponse {
+  taas.common.v1.Response response = 1;
+  RegisteredModel model = 2;
+}
+
+message DeregisterRuntimeModelRequest {
+  string model_name = 1;
+}
+
+message DeregisterRuntimeModelResponse {
+  taas.common.v1.Response response = 1;
+}

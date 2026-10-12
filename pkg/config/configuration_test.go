@@ -938,3 +938,83 @@ prompt:
 		t.Fatalf("prompt maxContentLength = %d, want 4096", cfg.Prompt.MaxContentLength)
 	}
 }
+
+func TestRuntimeDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Runtime.CollectInterval != 30*time.Second {
+		t.Fatalf("runtime collectInterval default = %v, want 30s", cfg.Runtime.CollectInterval)
+	}
+	if cfg.Runtime.SchemeBroadcastInterval != 30*time.Second {
+		t.Fatalf("runtime schemeBroadcastInterval default = %v, want 30s", cfg.Runtime.SchemeBroadcastInterval)
+	}
+	if cfg.Runtime.HealthConsumer.Workers != 1 {
+		t.Fatalf("runtime healthConsumer.workers default = %d, want 1", cfg.Runtime.HealthConsumer.Workers)
+	}
+	if cfg.Runtime.AIBrix.Namespace != "aibrix-system" {
+		t.Fatalf("runtime aibrix.namespace default = %q, want aibrix-system", cfg.Runtime.AIBrix.Namespace)
+	}
+	if cfg.Runtime.AIBrix.Gateway != "envoy-aibrix-system-aibrix-eg" {
+		t.Fatalf("runtime aibrix.gateway default = %q, want envoy-aibrix-system-aibrix-eg", cfg.Runtime.AIBrix.Gateway)
+	}
+}
+
+func TestValidateRuntimeConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	// Negative collect interval fails.
+	cfg.Runtime.CollectInterval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative runtime collectInterval should fail validation")
+	}
+	cfg.Runtime.CollectInterval = 30 * time.Second
+	// Negative scheme-broadcast interval fails.
+	cfg.Runtime.SchemeBroadcastInterval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative runtime schemeBroadcastInterval should fail validation")
+	}
+	cfg.Runtime.SchemeBroadcastInterval = 30 * time.Second
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid runtime config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsRuntimeSectionAndEnvOverride(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+runtime:
+  collectInterval: 45s
+  schemeConsumer:
+    enabled: false
+  aibrix:
+    namespace: aibrix-system
+    gateway: envoy-custom
+`)
+	// The nested AIBrix namespace is overridable by the CONFIG_ env prefix
+	// (feature #47, Section 9); the key must also be present in the shipped
+	// YAML for the override to take effect.
+	t.Setenv("CONFIG_RUNTIME_AIBRIX_NAMESPACE", "aibrix-custom")
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Runtime.CollectInterval != 45*time.Second {
+		t.Fatalf("runtime collectInterval = %v, want 45s", cfg.Runtime.CollectInterval)
+	}
+	if cfg.Runtime.SchemeConsumer.Enabled {
+		t.Fatal("runtime schemeConsumer.enabled should be false from the config file")
+	}
+	if cfg.Runtime.AIBrix.Gateway != "envoy-custom" {
+		t.Fatalf("runtime aibrix.gateway = %q, want envoy-custom", cfg.Runtime.AIBrix.Gateway)
+	}
+	if cfg.Runtime.AIBrix.Namespace != "aibrix-custom" {
+		t.Fatalf("runtime aibrix.namespace env override = %q, want aibrix-custom", cfg.Runtime.AIBrix.Namespace)
+	}
+}

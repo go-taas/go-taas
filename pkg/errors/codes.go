@@ -334,3 +334,16 @@ const (
 	CodeEvaluationLimitExceeded        Code = 12807 // EVALUATION_LIMIT_EXCEEDED
 	CodeEvaluationPromptVersionInvalid Code = 12808 // EVALUATION_PROMPT_VERSION_INVALID
 )
+
+// runtime module error codes (feature #47, AD9). The runtime module owns
+// the platform serving scheme and the runtime-health and registered-model
+// projections.
+const (
+	CodeRuntimeUnavailable       Code = 12901 // RUNTIME_UNAVAILABLE
+	CodeRuntimeSchemeInvalid     Code = 12902 // RUNTIME_SCHEME_INVALID
+	CodeRuntimeModelNotFound     Code = 12903 // RUNTIME_MODEL_NOT_FOUND
+	CodeRuntimeModelExists       Code = 12904 // RUNTIME_MODEL_EXISTS
+	CodeRuntimeEngineUnsupported Code = 12905 // RUNTIME_ENGINE_UNSUPPORTED
+	CodeRuntimeReplicasInvalid   Code = 12906 // RUNTIME_REPLICAS_INVALID
+	CodeRuntimeModelNameInvalid  Code = 12907 // RUNTIME_MODEL_NAME_INVALID
+)

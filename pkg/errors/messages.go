@@ -192,6 +192,15 @@ var messages = map[Code]string{
 	CodePromptInvalidVariable:  "invalid variable",
 	CodePromptTemplateNotFound: "template not found",
 	CodePromptFolderNotEmpty:   "folder not empty",
+
+	// runtime (feature #47, AD9)
+	CodeRuntimeUnavailable:       "runtime unavailable",
+	CodeRuntimeSchemeInvalid:     "invalid serving scheme",
+	CodeRuntimeModelNotFound:     "registered model not found",
+	CodeRuntimeModelExists:       "model already registered",
+	CodeRuntimeEngineUnsupported: "unsupported inference engine",
+	CodeRuntimeReplicasInvalid:   "invalid replica count",
+	CodeRuntimeModelNameInvalid:  "invalid model name",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

@@ -35,6 +35,15 @@ type Controller struct {
 	// resourceSampler is the optional per-service resource sampling loop
 	// (feature #37). Nil when not configured.
 	resourceSampler *ResourceSampler
+	// runtimeCollector is the optional distributed-inference-runtime
+	// component + ModelClaim collector (feature #47). Nil when not
+	// configured.
+	runtimeCollector *RuntimeCollector
+	// runtimeScheme is the optional serving-scheme consumer (feature #47).
+	runtimeScheme *RuntimeSchemeConsumer
+	// runtimeModelChange is the optional model-change consumer
+	// (feature #47).
+	runtimeModelChange *RuntimeModelChangeConsumer
 }
 
 // New constructs a Controller consuming client and applying events with
@@ -55,12 +64,30 @@ func (c *Controller) SetResourceSampler(sampler *ResourceSampler) {
 	c.resourceSampler = sampler
 }
 
+// SetRuntimeCollector installs the distributed-inference-runtime
+// collector (feature #47). It must be called before Run.
+func (c *Controller) SetRuntimeCollector(collector *RuntimeCollector) {
+	c.runtimeCollector = collector
+}
+
+// SetRuntimeSchemeConsumer installs the serving-scheme consumer
+// (feature #47). It must be called before Run.
+func (c *Controller) SetRuntimeSchemeConsumer(consumer *RuntimeSchemeConsumer) {
+	c.runtimeScheme = consumer
+}
+
+// SetRuntimeModelChangeConsumer installs the runtime model-change
+// consumer (feature #47). It must be called before Run.
+func (c *Controller) SetRuntimeModelChangeConsumer(consumer *RuntimeModelChangeConsumer) {
+	c.runtimeModelChange = consumer
+}
+
 // Run subscribes to all consumed subjects and blocks until ctx is
 // cancelled or a subscription fails. Subscriptions are started in the
 // background because broker clients differ in whether Subscribe blocks;
 // Run only owns the overall lifecycle.
 func (c *Controller) Run(ctx context.Context) error {
-	errCh := make(chan error, 2)
+	errCh := make(chan error, 4)
 
 	go func() {
 		if err := c.client.Subscribe(ctx, subjects.InferServiceChanges, func(msg mq.Message) error {
@@ -81,6 +108,25 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 	if c.resourceSampler != nil {
 		go c.resourceSampler.Run(ctx)
+	}
+	// Feature #47: the runtime scheme/model-change consumers and the
+	// component collector.
+	if c.runtimeScheme != nil {
+		go func() {
+			if err := c.runtimeScheme.Run(ctx); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	if c.runtimeModelChange != nil {
+		go func() {
+			if err := c.runtimeModelChange.Run(ctx); err != nil {
+				errCh <- err
+			}
+		}()
+	}
+	if c.runtimeCollector != nil {
+		go c.runtimeCollector.Run(ctx)
 	}
 
 	select {

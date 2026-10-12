@@ -250,7 +250,7 @@ func newFakeReconciler(publisher mq.Client) (Reconciler, *fake.Clientset) {
 		pod.Status.Phase = corev1.PodRunning
 		return true, pod, nil
 	})
-	return newReconcilerWithClientset(clientset, publisher, "https://infer.example.com/", "", WeightsConfig{}), clientset
+	return newReconcilerWithClientset(clientset, nil, publisher, "https://infer.example.com/", "", WeightsConfig{}, nil), clientset
 }
 
 // markReady sets the Deployment's ready replicas so awaitReadiness
@@ -351,7 +351,7 @@ func TestApplyUpsertIdempotent(t *testing.T) {
 func TestApplyUpsertFailureReportsFailed(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
 	// Plain clientset: the Deployment never becomes ready.
-	reconciler := newReconcilerWithClientset(fake.NewSimpleClientset(), publisher, "", "", WeightsConfig{})
+	reconciler := newReconcilerWithClientset(fake.NewSimpleClientset(), nil, publisher, "", "", WeightsConfig{}, nil)
 
 	// Cancel the context so awaitReadiness fails after the first poll.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -450,7 +450,7 @@ func TestAwaitReadinessPolls(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
 	// Plain clientset: readiness only appears once markReady runs.
 	clientset := fake.NewSimpleClientset()
-	reconciler := newReconcilerWithClientset(clientset, publisher, "", "", WeightsConfig{})
+	reconciler := newReconcilerWithClientset(clientset, nil, publisher, "", "", WeightsConfig{}, nil)
 
 	evt := testChangeEvent("upsert", "demo")
 	dep := testReconciler().buildDeployment(evt)
@@ -471,7 +471,7 @@ func TestAwaitReadinessPolls(t *testing.T) {
 
 func TestApplyUpsertWithNilPublisher(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
-	reconciler := newReconcilerWithClientset(clientset, nil, "", "", WeightsConfig{})
+	reconciler := newReconcilerWithClientset(clientset, nil, nil, "", "", WeightsConfig{}, nil)
 
 	// The deployment never becomes ready; with a cancelled context the
 	// reconcile fails but must not panic on the nil publisher.
@@ -609,7 +609,7 @@ func TestEnsureWeightsPVCNoStorageClass(t *testing.T) {
 func TestNewK8sReconciler(t *testing.T) {
 	// The constructor wires the clientset through; reconcile paths are
 	// covered by the fake-clientset tests above.
-	reconciler := NewK8sReconciler(&k8s.Client{}, mq.NewFake(), "https://infer.example.com", "", WeightsConfig{})
+	reconciler := NewK8sReconciler(&k8s.Client{}, mq.NewFake(), "https://infer.example.com", "", WeightsConfig{}, nil)
 	assert.NotNil(t, reconciler)
 }
 

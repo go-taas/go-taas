@@ -79,6 +79,34 @@ metering:
     enabled: true
     workers: 2
 
+# Distributed inference runtime (feature #47). The platform serving scheme
+# (plain | aibrix) plus the runtime component + registered-model
+# projections. The controller consumes collectInterval, the scheme and
+# model-change consumers, and the aibrix block; the server consumes the
+# snapshot consumer.
+runtime:
+  # collectInterval is the Controller's runtime-component and ModelClaim
+  # collection period; the full snapshot is published on this interval.
+  collectInterval: 30s
+  # schemeBroadcastInterval is how often the runtime service re-broadcasts
+  # the persisted scheme so a restarted Controller reconverges.
+  schemeBroadcastInterval: 30s
+  # schemeConsumer configures the Controller's scheme consumer.
+  schemeConsumer:
+    enabled: true
+  # healthConsumer configures the runtime service's snapshot consumer.
+  healthConsumer:
+    enabled: true
+    workers: 1
+  # modelChangeConsumer configures the Controller's model-change consumer.
+  modelChangeConsumer:
+    enabled: true
+  # aibrix names the installed AIBrix control plane's namespace and the
+  # Envoy AI Gateway Deployment observed for health.
+  aibrix:
+    namespace: aibrix-system
+    gateway: envoy-aibrix-system-aibrix-eg
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.

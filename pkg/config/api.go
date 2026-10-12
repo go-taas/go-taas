@@ -712,6 +712,57 @@ type EvaluationRetentionConfig struct {
 	Interval time.Duration `mapstructure:"interval"`
 }
 
+// RuntimeConfig holds the distributed-inference-runtime settings (feature
+// #47, Section 9). The controller consumes collectInterval, the scheme and
+// model-change consumers, and the aibrix block; the server consumes the
+// remaining consumers.
+type RuntimeConfig struct {
+	// CollectInterval is the controller's runtime-component and ModelClaim
+	// collection period; the full snapshot is published on this interval
+	// (AD4). Default 30s.
+	CollectInterval time.Duration `mapstructure:"collectInterval"`
+	// SchemeBroadcastInterval is how often the runtime service re-broadcasts
+	// the persisted scheme so a restarted controller reconverges (AD6).
+	// Default 30s.
+	SchemeBroadcastInterval time.Duration `mapstructure:"schemeBroadcastInterval"`
+	// SchemeConsumer configures the controller's scheme consumer.
+	SchemeConsumer RuntimeConsumerConfig `mapstructure:"schemeConsumer"`
+	// HealthConsumer configures the runtime service's snapshot consumer.
+	HealthConsumer RuntimeHealthConsumerConfig `mapstructure:"healthConsumer"`
+	// ModelChangeConsumer configures the controller's model-change consumer.
+	ModelChangeConsumer RuntimeConsumerConfig `mapstructure:"modelChangeConsumer"`
+	// AIBrix names the installed AIBrix control plane's namespace and the
+	// Envoy AI Gateway Deployment observed for health.
+	AIBrix RuntimeAIBrixConfig `mapstructure:"aibrix"`
+}
+
+// RuntimeConsumerConfig holds a runtime consumer's kill switch.
+type RuntimeConsumerConfig struct {
+	// Enabled turns the consumer Runner on or off (incident-triage kill
+	// switch).
+	Enabled bool `mapstructure:"enabled"`
+}
+
+// RuntimeHealthConsumerConfig holds the runtime service's snapshot
+// consumer Runner settings (feature #47, AD4).
+type RuntimeHealthConsumerConfig struct {
+	// Enabled turns the snapshot consumer Runner on or off
+	// (incident-triage kill switch).
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent snapshot handlers.
+	Workers int `mapstructure:"workers"`
+}
+
+// RuntimeAIBrixConfig names the installed AIBrix control plane.
+type RuntimeAIBrixConfig struct {
+	// Namespace is the namespace of the AIBrix control-plane Deployments.
+	// Default "aibrix-system".
+	Namespace string `mapstructure:"namespace"`
+	// Gateway is the Envoy AI Gateway Deployment observed for health.
+	// Default "envoy-aibrix-system-aibrix-eg".
+	Gateway string `mapstructure:"gateway"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -785,6 +836,7 @@ type Configuration struct {
 	Batch           BatchConfig           `mapstructure:"batch"`
 	Prompt          PromptConfig          `mapstructure:"prompt"`
 	Evaluation      EvaluationConfig      `mapstructure:"evaluation"`
+	Runtime         RuntimeConfig         `mapstructure:"runtime"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -848,6 +900,13 @@ func (c *Configuration) Validate() error {
 	}
 	if c.LoadTest.ProgressInterval < 0 {
 		return &FieldError{Field: "loadtest.progressInterval", Reason: "must not be negative"}
+	}
+	// Feature #47: the runtime intervals must not be negative.
+	if c.Runtime.CollectInterval < 0 {
+		return &FieldError{Field: "runtime.collectInterval", Reason: "must not be negative"}
+	}
+	if c.Runtime.SchemeBroadcastInterval < 0 {
+		return &FieldError{Field: "runtime.schemeBroadcastInterval", Reason: "must not be negative"}
 	}
 	if c.LoadTest.Retention < 0 {
 		return &FieldError{Field: "loadtest.retention", Reason: "must not be negative"}

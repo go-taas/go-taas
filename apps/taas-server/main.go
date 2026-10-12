@@ -34,6 +34,7 @@ import (
 	"github.com/go-taas/go-taas/services/observability"
 	"github.com/go-taas/go-taas/services/prompt"
 	"github.com/go-taas/go-taas/services/resourcemetrics"
+	"github.com/go-taas/go-taas/services/runtime"
 	"github.com/go-taas/go-taas/services/tenancy"
 	"github.com/go-taas/go-taas/services/tracing"
 	"github.com/go-taas/go-taas/services/webhook"
@@ -160,6 +161,16 @@ func main() {
 	clusterSvc := cluster.New(srv.Components())
 	clusterSvc.SetDefaultClusterID(cfg.Cluster.DefaultClusterID)
 	srv.RegisterService(clusterSvc)
+	// Feature #47: the runtime service owns the platform serving scheme and
+	// the runtime-component + registered-model projections (admin-only).
+	// The cache is constructed once and shared with the snapshot consumer
+	// so the consumer's Replace() populates the same cache the RPCs read.
+	// The service also carries the shared components so its
+	// runtime_settings schema migrates (BUG dev: it previously took the
+	// cache only and failed service migration at startup).
+	runtimeCache := runtime.NewProjectionCache()
+	runtimeSvc := runtime.NewWithCache(srv.Components(), runtimeCache)
+	srv.RegisterService(runtimeSvc)
 	// Feature #41: the account service owns the data-export job lifecycle
 	// and the account-data bundle (end-user-only).
 	accountSvc := account.New(srv.Components())
@@ -184,6 +195,10 @@ func main() {
 	// through the synthetic platform credential, AD11/AD12) and is
 	// registered as a server runner below.
 	var loadTestRunner *infer.LoadTestRunner
+
+	// Feature #47: the runtime scheme broadcaster is constructed once the
+	// database is available and registered as a server runner below.
+	var runtimeBroadcaster *runtime.SchemeBroadcaster
 
 	// The delete-model and delete-image reference guards need the infer
 	// repository; wire them after both services are registered (AC3,
@@ -374,6 +389,27 @@ func main() {
 			batchSvc.SetAuditRecorder(auditRecorder)
 			promptSvc.SetAuditRecorder(auditRecorder)
 			evaluationSvc.SetAuditRecorder(auditRecorder)
+			runtimeSvc.SetAuditRecorder(auditRecorder)
+
+			// Feature #47: the runtime service resolves the session's
+			// active org and caller, gates the admin runtime RPCs by the
+			// caller's role (AD1, AD10), publishes model changes to the
+			// controller (AD5) and re-broadcasts the persisted scheme so a
+			// restarted controller reconverges (AD6).
+			runtimeSvc.SetSessionOrgResolver(authSvc)
+			runtimeSvc.SetSessionUserResolver(authSvc)
+			runtimeSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			if mqComponent := srv.Components().MQ(); mqComponent != nil {
+				if mqClient, ok := mqComponent.Client().(mq.Client); ok {
+					runtimeSvc.SetPublisher(mqClient)
+				}
+			}
+			runtimeBroadcaster = runtime.NewSchemeBroadcasterRunner(
+				srv.Components(),
+				runtime.NewRuntimeRepository(gormDB),
+				cfg.Runtime.SchemeBroadcastInterval,
+			)
+			runtimeSvc.SetSchemeBroadcaster(runtimeBroadcaster)
 
 			// The auth session derives roles/accessible orgs from
 			// org_members (feature #10, AD2/AD11).
@@ -452,6 +488,15 @@ func main() {
 	// in-memory projection cache the cluster RPCs read (AD4).
 	if runner := cluster.NewSnapshotConsumerRunner(srv.Components(), clusterCache); runner != nil {
 		srv.AddRunner(runner)
+	}
+	// Feature #47: the runtime health snapshot consumer maintains the
+	// in-memory projection cache the runtime RPCs read (AD4), and the
+	// scheme broadcaster re-publishes the persisted scheme (AD6).
+	if runner := runtime.NewHealthConsumerRunner(srv.Components(), runtimeCache, cfg.Runtime.HealthConsumer.Enabled); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runtimeBroadcaster != nil {
+		srv.AddRunner(runtimeBroadcaster)
 	}
 	// Feature #20: the load-test runner recovers interrupted runs and
 	// executes queued load tests.

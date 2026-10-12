@@ -210,6 +210,16 @@ services:
       CONFIG_EVALUATION_MAXCASESPERRUN: ${EVALUATION_MAX_CASES_PER_RUN:-50}
       CONFIG_EVALUATION_MAXVARIABLEVALUELENGTH: ${EVALUATION_MAX_VARIABLE_VALUE_LENGTH:-10000}
       CONFIG_EVALUATION_MAXINFLIGHTRUNSPERORG: ${EVALUATION_MAX_IN_FLIGHT_RUNS_PER_ORG:-10}
+      # Feature #47: the distributed inference runtime. The snapshot
+      # consumer maintains the in-memory runtime projection the admin
+      # runtime page reads; the scheme broadcaster re-publishes the
+      # persisted serving scheme so the DB-less controller reconverges.
+      # The AIBrix namespace/gateway default to the shipped cluster's
+      # control plane.
+      CONFIG_RUNTIME_SCHEMEBROADCASTINTERVAL: ${RUNTIME_SCHEME_BROADCAST_INTERVAL:-30s}
+      CONFIG_RUNTIME_HEALTHCONSUMER_ENABLED: ${RUNTIME_HEALTH_CONSUMER_ENABLED:-true}
+      CONFIG_RUNTIME_AIBRIX_NAMESPACE: ${RUNTIME_AIBRIX_NAMESPACE:-aibrix-system}
+      CONFIG_RUNTIME_AIBRIX_GATEWAY: ${RUNTIME_AIBRIX_GATEWAY:-envoy-aibrix-system-aibrix-eg}
     volumes:
       - type: bind
         source: ${JUICE_FS_HOST_MOUNT:-/var/lib/go-taas/juicefs}
@@ -259,6 +269,16 @@ services:
       CONFIG_DB_MASTER_USER: taas
       CONFIG_DB_MASTER_PASSWORD: taas
       CONFIG_DB_MASTER_SSLMODE: disable
+      # Feature #47: the runtime collector publishes the component +
+      # ModelClaim snapshot the admin runtime page reads, and the scheme
+      # and model-change consumers reconcile the serving scheme and the
+      # registered models into AIBrix ModelClaims. The AIBrix
+      # namespace/gateway name the observed control plane.
+      CONFIG_RUNTIME_COLLECTINTERVAL: ${RUNTIME_COLLECT_INTERVAL:-30s}
+      CONFIG_RUNTIME_SCHEMECONSUMER_ENABLED: ${RUNTIME_SCHEME_CONSUMER_ENABLED:-true}
+      CONFIG_RUNTIME_MODELCHANGECONSUMER_ENABLED: ${RUNTIME_MODEL_CHANGE_CONSUMER_ENABLED:-true}
+      CONFIG_RUNTIME_AIBRIX_NAMESPACE: ${RUNTIME_AIBRIX_NAMESPACE:-aibrix-system}
+      CONFIG_RUNTIME_AIBRIX_GATEWAY: ${RUNTIME_AIBRIX_GATEWAY:-envoy-aibrix-system-aibrix-eg}
     volumes:
       - ${KUBECONFIG:-$HOME/.kube/config}:/etc/taas/kubeconfig:ro
 
