@@ -201,6 +201,24 @@ var messages = map[Code]string{
 	CodeRuntimeEngineUnsupported: "unsupported inference engine",
 	CodeRuntimeReplicasInvalid:   "invalid replica count",
 	CodeRuntimeModelNameInvalid:  "invalid model name",
+
+	// provider (feature #48, AD9)
+	CodeProviderNotFound:             "provider not found",
+	CodeProviderNameConflict:         "provider name already exists",
+	CodeProviderNameInvalid:          "invalid provider name",
+	CodeProviderBaseURLInvalid:       "invalid provider base url",
+	CodeProviderTypeInvalid:          "unsupported provider type",
+	CodeProviderAPIKeyRequired:       "provider api key required",
+	CodeProviderSecretUnavailable:    "provider secret unavailable",
+	CodeProviderModelNotFound:        "provider model not found",
+	CodeProviderModelExists:          "provider model already exists",
+	CodeProviderModelInvalid:         "invalid provider model",
+	CodeProviderDisabled:             "provider disabled",
+	CodeProviderUpstreamUnauthorized: "upstream credentials rejected",
+	CodeProviderUpstreamUnavailable:  "upstream provider unavailable",
+	CodeProviderPublishConflict:      "model name already exists",
+	CodeProviderNotPublished:         "model not published",
+	CodeProviderInUse:                "provider in use",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

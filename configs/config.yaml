@@ -107,6 +107,27 @@ runtime:
     namespace: aibrix-system
     gateway: envoy-aibrix-system-aibrix-eg
 
+# External model providers (feature #48). The provider module owns the
+# third-party LLM provider registry, the encrypted write-only API keys,
+# upstream-model curation, publishing into the model catalog and the
+# scheduled connectivity probe.
+provider:
+  # secretEncryptionKey is the AES-256-GCM master key for provider-key
+  # encryption at rest. Empty falls back to a dev-only key derived from
+  # the MQ namespace; production must set it (mirrors the webhook rule).
+  secretEncryptionKey: ""
+  # probeInterval is the scheduled connectivity-probe period for enabled
+  # providers.
+  probeInterval: 60s
+  # probeWorker configures the scheduled probe worker runner.
+  probeWorker:
+    # enabled is the incident-triage kill switch.
+    enabled: true
+    workers: 2
+  # defaultRequestTimeoutSeconds is the default per-provider request
+  # timeout when a request omits one (range 1-120).
+  defaultRequestTimeoutSeconds: 10
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.

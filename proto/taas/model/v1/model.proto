@@ -150,6 +150,19 @@ message ModelSummary {
   // restricted is true iff the model has at least one grant row
   // (feature-13). Always populated so the catalog can render the badge.
   bool restricted = 6;
+  // external is true for a published external model (feature #48). An
+  // external model has no version row (latest_version is empty).
+  bool external = 7;
+  // provider_name is the owning external provider's name; empty unless
+  // external.
+  string provider_name = 8;
+  // provider_id and upstream_model_id are admin-only (feature #48); the
+  // masked user projection never carries them.
+  string provider_id = 9;
+  string upstream_model_id = 10;
+  // published is false for an unpublished external model (admin sees
+  // unpublished external models with an "Unpublished" marker).
+  bool published = 11;
 }
 
 message GetModelRequest {
@@ -222,6 +235,11 @@ message AvailableModel {
   // engine/card-type combos (e.g. "vLLM · A800, H800"). Empty when the
   // model has no supported/experimental combos.
   string compatibility = 5;
+  // external is true for a published external model (feature #48); the
+  // masked user projection carries only external and provider_name — it
+  // never carries provider_id, upstream_model_id, base_url or the key.
+  bool external = 6;
+  string provider_name = 7;
 }
 message ListAvailableModelsResponse {
   taas.common.v1.Response response = 1;
@@ -286,7 +304,7 @@ message ListModelVersionsResponse {
 // active version (feature #32, AD5).
 message ActivateModelVersionRequest {
   string model_id = 1; // path
-  string version = 2;  // path
+  string version = 2; // path
 }
 
 message ActivateModelVersionResponse {

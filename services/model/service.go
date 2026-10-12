@@ -119,6 +119,15 @@ func (f CompatibilityProviderFunc) ModelCompatibilitySummary(ctx context.Context
 	return f(ctx, modelID)
 }
 
+// ProviderNameResolver resolves an external model's provider name for the
+// catalog projections (feature #48). It is implemented by the provider
+// module and injected at wiring time, keeping the model module free of a
+// provider dependency.
+type ProviderNameResolver interface {
+	// ProviderName returns the provider's name, or "" when unknown.
+	ProviderName(ctx context.Context, providerID string) (string, error)
+}
+
 // Service implements the model registry gRPC service.
 type Service struct {
 	modelv1.UnimplementedModelServiceServer
@@ -164,6 +173,13 @@ type Service struct {
 	// for the user-realm catalog (feature #19, AD12). Nil until wired:
 	// the summary is omitted.
 	compatibilityProvider CompatibilityProvider
+
+	// providerNameResolver resolves an external model's provider name for
+	// the catalog projections (feature #48). It is implemented by the
+	// provider module and injected at wiring time, keeping the model
+	// module free of a provider dependency. Nil until wired: the provider
+	// name is omitted.
+	providerNameResolver ProviderNameResolver
 
 	// downloader downloads model weights from a model hub (ModelScope /
 	// HuggingFace) into the weights directory. Nil until wired: the
@@ -254,6 +270,11 @@ func (s *Service) SetAutoscalingProvider(p AutoscalingProvider) { s.autoscalingP
 // provider (feature #19, AD12). Production wires the image module; unit
 // tests may inject a fake.
 func (s *Service) SetCompatibilityProvider(p CompatibilityProvider) { s.compatibilityProvider = p }
+
+// SetProviderNameResolver injects the provider-name resolver used by the
+// external-model catalog projections (feature #48). Production wires the
+// provider module; unit tests may inject a fake.
+func (s *Service) SetProviderNameResolver(r ProviderNameResolver) { s.providerNameResolver = r }
 
 // SetModelDownloader injects the model-hub downloader used by the
 // source-based registration path. Production wires the modelhub
@@ -620,6 +641,13 @@ func (s *Service) ListModels(ctx context.Context, req *modelv1.ListModelsRequest
 			Name:       row.Name,
 			CreatedAt:  row.CreatedAt.Unix(),
 			Restricted: restricted[row.ID],
+			// Feature #48: the external marker plus the admin-only provider
+			// and upstream id; an external model is version-less.
+			External:        row.External,
+			ProviderName:    s.providerName(ctx, row),
+			ProviderId:      row.ProviderID,
+			UpstreamModelId: row.UpstreamModelID,
+			Published:       row.Published,
 		}
 		// latest_version and its weight_path come from the first row of
 		// the version ordering. A per-row lookup is acceptable at catalog
@@ -692,6 +720,11 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 		summary := &modelv1.AvailableModel{
 			ModelId: row.ID,
 			Name:    row.Name,
+			// Feature #48: the masked user projection carries only the
+			// external marker and the provider name (never provider_id,
+			// upstream_model_id, base URL or the key).
+			External:     row.External,
+			ProviderName: s.providerName(ctx, row),
 		}
 		if latest, latestErr := repo.LatestVersion(ctx, row.ID); latestErr == nil && latest != nil {
 			summary.LatestVersion = latest.Version
@@ -748,8 +781,10 @@ func (s *Service) GetAvailableModel(ctx context.Context, req *modelv1.GetAvailab
 	}
 
 	summary := &modelv1.AvailableModel{
-		ModelId: found.ID,
-		Name:    found.Name,
+		ModelId:      found.ID,
+		Name:         found.Name,
+		External:     found.External,
+		ProviderName: s.providerName(ctx, found),
 	}
 	if latest, latestErr := repo.LatestVersion(ctx, found.ID); latestErr == nil && latest != nil {
 		summary.LatestVersion = latest.Version
@@ -808,12 +843,16 @@ func (s *Service) GetModel(ctx context.Context, req *modelv1.GetModelRequest) (*
 	if err != nil {
 		return nil, err
 	}
-
 	summary := &modelv1.ModelSummary{
-		ModelId:    m.ID,
-		Name:       m.Name,
-		CreatedAt:  m.CreatedAt.Unix(),
-		Restricted: restricted > 0,
+		ModelId:         m.ID,
+		Name:            m.Name,
+		CreatedAt:       m.CreatedAt.Unix(),
+		Restricted:      restricted > 0,
+		External:        m.External,
+		ProviderName:    s.providerName(ctx, m),
+		ProviderId:      m.ProviderID,
+		UpstreamModelId: m.UpstreamModelID,
+		Published:       m.Published,
 	}
 	versionStrings := make([]string, 0, len(versions))
 	for i, v := range versions {

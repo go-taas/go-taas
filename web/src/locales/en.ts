@@ -92,6 +92,7 @@ export const en: Record<string, string> = {
   'nav.inferenceServices': 'Inference Services',
   'nav.clusters': 'Clusters',
   'nav.runtime': 'Runtime',
+  'nav.providers': 'Providers',
   'nav.deployments': 'Deployments',
   'nav.images': 'Images',
   'nav.pricing': 'Pricing',

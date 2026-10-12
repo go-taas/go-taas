@@ -114,6 +114,11 @@ export default function ModelsPage() {
                 >
                   <td>
                     <strong>{m.name}</strong>
+                    {m.external && (
+                      <span className="badge external" data-testid="model-external-badge">
+                        External
+                      </span>
+                    )}
                     {m.restricted && (
                       <span
                         className="badge restricted"
@@ -124,8 +129,8 @@ export default function ModelsPage() {
                       </span>
                     )}
                   </td>
-                  <td className="mono">{m.latestVersion}</td>
-                  <td className="mono muted">{m.weightPath}</td>
+                  <td className="mono">{m.external ? '—' : m.latestVersion}</td>
+                  <td className="mono muted">{m.external ? `${m.providerName} · ${m.upstreamModelId}` : m.weightPath}</td>
                   <td>{formatTime(m.createdAt)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
                     <button

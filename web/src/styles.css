@@ -455,6 +455,13 @@ table.table tbody tr:hover {
   margin-left: 8px;
 }
 
+/* Published external model marker (feature #48): a neutral teal chip. */
+.badge.external {
+  background: var(--accent-soft, rgba(0, 127, 134, 0.12));
+  color: var(--accent, #007f86);
+  margin-left: 8px;
+}
+
 /* ---- autoscaling badges (feature #16) ---- */
 .badge.autoscaled {
   background: var(--ok-soft);

@@ -65,6 +65,11 @@ export default function ModelDetailPage() {
         <div>
           <h1 data-testid="model-detail-name">
             {model.model.name}
+            {model.model.external && (
+              <span className="badge external" data-testid="model-detail-external-marker">
+                External
+              </span>
+            )}
             {model.model.restricted && (
               <span
                 className="badge restricted"
@@ -75,7 +80,15 @@ export default function ModelDetailPage() {
               </span>
             )}
           </h1>
-          <div className="subtitle mono">{model.model.modelId}</div>
+          <div className="subtitle mono">
+            {model.model.modelId}
+            {model.model.external && (
+              <span data-testid="model-detail-provider-name">
+                {' '}
+                · Provided by {model.model.providerName} (external)
+              </span>
+            )}
+          </div>
         </div>
         <a
           className="secondary"

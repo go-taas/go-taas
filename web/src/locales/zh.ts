@@ -92,6 +92,7 @@ export const zh: Record<string, string> = {
   'nav.inferenceServices': '推理服务',
   'nav.clusters': '集群',
   'nav.runtime': '运行时',
+  'nav.providers': '模型提供方',
   'nav.deployments': '部署历史',
   'nav.images': '镜像',
   'nav.pricing': '定价',

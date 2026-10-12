@@ -16,6 +16,19 @@ type Model struct {
 	Name string `gorm:"size:128;not null;uniqueIndex"`
 	// Description is a free-text description, at most 1024 chars.
 	Description string `gorm:"size:1024;not null;default:''"`
+	// External marks a published external model (feature #48). An external
+	// model has no model_versions row and stays version-less.
+	External bool `gorm:"not null;default:false"`
+	// ProviderID is the owning external provider's id (empty for a
+	// self-hosted model). It is a plain string column (not uuid) so the
+	// empty default is valid on PostgreSQL.
+	ProviderID string `gorm:"size:64;not null;default:'';index"`
+	// UpstreamModelID is the provider's model id for an external model.
+	UpstreamModelID string `gorm:"size:128;not null;default:''"`
+	// Published is false for an unpublished external model. It defaults to
+	// true so every existing self-hosted model keeps today's behavior with
+	// no backfill (feature #48, Section 4.3).
+	Published bool `gorm:"not null;default:true"`
 	// CreatedAt is the first registration time (UTC).
 	CreatedAt time.Time
 	// UpdatedAt is the last touch (new version registered).

@@ -178,6 +178,13 @@ export interface ModelSummary {
   // restricted is true iff the model has at least one authorization grant
   // (feature #13): it is then usable only by the granted organizations.
   restricted?: boolean;
+  // Feature #48: the external marker. An external model has no version row.
+  external?: boolean;
+  providerName?: string;
+  // providerId and upstreamModelId are admin-only.
+  providerId?: string;
+  upstreamModelId?: string;
+  published?: boolean;
 }
 
 // AvailableModel is the masked user-realm catalog projection (feature-17
@@ -190,6 +197,9 @@ export interface AvailableModel {
   autoscaling?: ModelAutoscaling;
   // Feature #19 masked compatibility summary (e.g. "vLLM · A800, H800").
   compatibility?: string;
+  // Feature #48: the masked external marker (external + provider_name only).
+  external?: boolean;
+  providerName?: string;
 }
 
 export interface InferenceServiceSummary {

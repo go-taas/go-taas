@@ -162,6 +162,12 @@ services:
       # Feature #23: the webhook secret-at-rest encryption key (AD3).
       # Read from the .env file; empty falls back to a dev-only key.
       CONFIG_WEBHOOK_SECRETENCRYPTIONKEY: ${WEBHOOK_SECRET_ENCRYPTION_KEY:-}
+      # Feature #48: the provider secret-at-rest encryption key (AD3/AD12).
+      # Read from the .env file; empty falls back to a dev-only key. The
+      # probe worker and its interval default from configs/config.yaml.
+      CONFIG_PROVIDER_SECRETENCRYPTIONKEY: ${PROVIDER_SECRET_ENCRYPTION_KEY:-}
+      CONFIG_PROVIDER_PROBEWORKER_ENABLED: ${PROVIDER_PROBE_WORKER_ENABLED:-true}
+      CONFIG_PROVIDER_PROBEINTERVAL: ${PROVIDER_PROBE_INTERVAL:-60s}
       # Feature #24: the observability max range (92 days by default,
       # AD7). Read from the .env file; empty falls back to the default.
       CONFIG_OBSERVABILITY_MAXRANGESECONDS: ${OBSERVABILITY_MAX_RANGE_SECONDS:-7948800}

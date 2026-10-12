@@ -2,7 +2,9 @@ package infer
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -37,7 +39,8 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	if err != nil {
 		return nil, err
 	}
-	if _, err := modelRepo.GetModel(ctx, req.GetModelId()); err != nil {
+	m, err := modelRepo.GetModel(ctx, req.GetModelId())
+	if err != nil {
 		return nil, err
 	}
 	// Feature-13 data-plane predicate: a restricted model may only be
@@ -48,6 +51,14 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	}
 	if !authorized {
 		return nil, apierrors.New(apierrors.CodeModelUnauthorized)
+	}
+
+	// Feature #48 (AD14): a published external model has no inference
+	// service; it is proxied to its provider on the metered path through
+	// the injected ExternalModelProxy. The resolver fails closed with
+	// 13011/13015/13007 and maps upstream failures to 13012/13013.
+	if m.External {
+		return s.playExternalModel(ctx, req, orgID, m.ID)
 	}
 
 	repo, err := s.repository()
@@ -74,4 +85,82 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 		Response:  okResponse(),
 		RequestId: uuid.NewString(),
 	}, nil
+}
+
+// playExternalModel proxies a published external model to its provider on
+// the metered path (feature #48, AD14). The proxy resolves the provider,
+// injects the upstream model id, performs the OpenAI-compatible call,
+// emits a metering event and returns the parsed completion.
+func (s *Service) playExternalModel(ctx context.Context, req *inferv1.PlaygroundModelRequest, orgID, modelID string) (*inferv1.PlaygroundModelResponse, error) {
+	if s.externalProxy == nil {
+		// No proxy wired: fail closed (no self-hosted service exists for an
+		// external model).
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	body, err := buildExternalChatBody(req.GetPrompt(), req.GetTemperature(), req.GetMaxTokens())
+	if err != nil {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	start := time.Now()
+	respBody, err := s.externalProxy.ProxyExternalChat(ctx, modelID, orgID, req.GetApiKeyId(), body)
+	latency := time.Since(start).Milliseconds()
+	if err != nil {
+		return nil, err
+	}
+	completion, promptTokens, completionTokens := parseChatCompletion(respBody)
+	return &inferv1.PlaygroundModelResponse{
+		Response:         okResponse(),
+		RequestId:        uuid.NewString(),
+		Completion:       completion,
+		PromptTokens:     promptTokens,
+		CompletionTokens: completionTokens,
+		LatencyMs:        latency,
+	}, nil
+}
+
+// externalChatRequest is the OpenAI-compatible chat request the proxy sends
+// upstream. The proxy overwrites model with the upstream model id.
+type externalChatRequest struct {
+	Messages    []externalChatMessage `json:"messages"`
+	Temperature float64               `json:"temperature,omitempty"`
+	MaxTokens   int32                 `json:"max_tokens,omitempty"`
+}
+
+// externalChatMessage is one OpenAI-compatible chat message.
+type externalChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// buildExternalChatBody renders the OpenAI-compatible chat request body for
+// an external playground call.
+func buildExternalChatBody(prompt string, temperature float64, maxTokens int32) ([]byte, error) {
+	return json.Marshal(externalChatRequest{
+		Messages:    []externalChatMessage{{Role: "user", Content: prompt}},
+		Temperature: temperature,
+		MaxTokens:   maxTokens,
+	})
+}
+
+// parseChatCompletion extracts the completion text and token usage from an
+// OpenAI-compatible response best-effort.
+func parseChatCompletion(body []byte) (completion string, promptTokens, completionTokens int64) {
+	var envelope struct {
+		Choices []struct {
+			Message struct {
+				Content string `json:"content"`
+			} `json:"message"`
+		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int64 `json:"prompt_tokens"`
+			CompletionTokens int64 `json:"completion_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return "", 0, 0
+	}
+	if len(envelope.Choices) > 0 {
+		completion = envelope.Choices[0].Message.Content
+	}
+	return completion, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens
 }

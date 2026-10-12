@@ -1018,3 +1018,76 @@ runtime:
 		t.Fatalf("runtime aibrix.namespace env override = %q, want aibrix-custom", cfg.Runtime.AIBrix.Namespace)
 	}
 }
+
+func TestProviderDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Provider.ProbeInterval != 60*time.Second {
+		t.Fatalf("provider probeInterval default = %v, want 60s", cfg.Provider.ProbeInterval)
+	}
+	if cfg.Provider.ProbeWorker.Workers != 2 {
+		t.Fatalf("provider probeWorker.workers default = %d, want 2", cfg.Provider.ProbeWorker.Workers)
+	}
+	if cfg.Provider.DefaultRequestTimeoutSeconds != 10 {
+		t.Fatalf("provider defaultRequestTimeoutSeconds default = %d, want 10", cfg.Provider.DefaultRequestTimeoutSeconds)
+	}
+}
+
+func TestValidateProviderConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Provider.ProbeInterval = -time.Second
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("negative provider probeInterval should fail validation")
+	}
+	cfg.Provider.ProbeInterval = 60 * time.Second
+	cfg.Provider.DefaultRequestTimeoutSeconds = 500
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("out-of-range provider defaultRequestTimeoutSeconds should fail validation")
+	}
+	cfg.Provider.DefaultRequestTimeoutSeconds = 10
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid provider config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsProviderSectionAndEnvOverride(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+provider:
+  secretEncryptionKey: ""
+  probeInterval: 100s
+  probeWorker:
+    enabled: true
+    workers: 3
+  defaultRequestTimeoutSeconds: 20
+`)
+	// The provider keys are overridable by the CONFIG_ env prefix (feature
+	// #48, Section 9); the key must also be present in the merged config for
+	// the override to take effect.
+	t.Setenv("CONFIG_PROVIDER_SECRETENCRYPTIONKEY", "prod-provider-key")
+	t.Setenv("CONFIG_PROVIDER_PROBEINTERVAL", "45s")
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Provider.SecretEncryptionKey != "prod-provider-key" {
+		t.Fatalf("provider secretEncryptionKey env override = %q, want prod-provider-key", cfg.Provider.SecretEncryptionKey)
+	}
+	if cfg.Provider.ProbeInterval != 45*time.Second {
+		t.Fatalf("provider probeInterval env override = %v, want 45s", cfg.Provider.ProbeInterval)
+	}
+	if cfg.Provider.ProbeWorker.Workers != 3 {
+		t.Fatalf("provider probeWorker.workers = %d, want 3", cfg.Provider.ProbeWorker.Workers)
+	}
+	if cfg.Provider.DefaultRequestTimeoutSeconds != 20 {
+		t.Fatalf("provider defaultRequestTimeoutSeconds = %d, want 20", cfg.Provider.DefaultRequestTimeoutSeconds)
+	}
+}

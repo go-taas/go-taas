@@ -390,6 +390,19 @@ func (c *Configuration) applyDefaults() {
 	if c.Runtime.AIBrix.Gateway == "" {
 		c.Runtime.AIBrix.Gateway = "envoy-aibrix-system-aibrix-eg"
 	}
+	// Feature #48: external-model-provider defaults (Section 9). The probe
+	// worker's enabled flag ships as true in configs/config.yaml (the
+	// repo's convention for boolean kill switches); here we default the
+	// scalar fields.
+	if c.Provider.ProbeInterval == 0 {
+		c.Provider.ProbeInterval = 60 * time.Second
+	}
+	if c.Provider.ProbeWorker.Workers == 0 {
+		c.Provider.ProbeWorker.Workers = 2
+	}
+	if c.Provider.DefaultRequestTimeoutSeconds == 0 {
+		c.Provider.DefaultRequestTimeoutSeconds = 10
+	}
 }
 
 // String returns a string representation of the configuration for logging.

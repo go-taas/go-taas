@@ -91,8 +91,20 @@ export default function ModelDetailPage() {
       <BackLink to="/models" label={t('umodeldetail.back')} />
       <div className="page-header">
         <div>
-          <h1 data-testid="model-detail-name">{m.name}</h1>
-          <div className="subtitle mono">{m.modelId}</div>
+          <h1 data-testid="model-detail-name">
+            {m.name}
+            {m.external && (
+              <span className="badge external" data-testid="model-detail-external-marker">
+                External
+              </span>
+            )}
+          </h1>
+          <div className="subtitle mono">
+            {m.modelId}
+            {m.external && (
+              <span data-testid="model-detail-provider-name"> · Provided by {m.providerName} (external)</span>
+            )}
+          </div>
         </div>
       </div>
 

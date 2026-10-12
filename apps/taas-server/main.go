@@ -33,6 +33,7 @@ import (
 	"github.com/go-taas/go-taas/services/notification"
 	"github.com/go-taas/go-taas/services/observability"
 	"github.com/go-taas/go-taas/services/prompt"
+	"github.com/go-taas/go-taas/services/provider"
 	"github.com/go-taas/go-taas/services/resourcemetrics"
 	"github.com/go-taas/go-taas/services/runtime"
 	"github.com/go-taas/go-taas/services/tenancy"
@@ -99,6 +100,13 @@ func main() {
 		modelSvc.SetWeightsDir(cfg.Model.WeightsDir)
 		modelSvc.SetModelDownloader(modelhub.NewHTTPDownloader(modelhub.Options{}))
 	}
+	// Feature #48: the provider service owns the external-provider
+	// registry, the encrypted write-only keys, upstream-model curation, the
+	// publish linkage into the model catalog and the connectivity probe. It
+	// migrates after model (its publish target) and before infer (which
+	// proxies external models through it).
+	providerSvc := provider.New(srv.Components())
+	srv.RegisterService(providerSvc)
 	imageSvc := image.New(srv.Components())
 	srv.RegisterService(imageSvc)
 	// Feature: image import. The importer copies an engine image from a
@@ -390,6 +398,20 @@ func main() {
 			promptSvc.SetAuditRecorder(auditRecorder)
 			evaluationSvc.SetAuditRecorder(auditRecorder)
 			runtimeSvc.SetAuditRecorder(auditRecorder)
+			providerSvc.SetAuditRecorder(auditRecorder)
+
+			// Feature #48: the provider service resolves the session's
+			// active org and caller, gates the admin provider RPCs by the
+			// caller's role, publishes/re-enables external catalog models
+			// through the model module (AD4) and proxies external models on
+			// the metered path (AD14). The catalog projections resolve the
+			// provider name back through the same module.
+			providerSvc.SetSessionOrgResolver(authSvc)
+			providerSvc.SetSessionUserResolver(authSvc)
+			providerSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			providerSvc.SetModelCatalog(modelSvc)
+			modelSvc.SetProviderNameResolver(providerSvc)
+			inferSvc.SetExternalModelProxy(providerSvc)
 
 			// Feature #47: the runtime service resolves the session's
 			// active org and caller, gates the admin runtime RPCs by the
@@ -494,6 +516,12 @@ func main() {
 	// scheme broadcaster re-publishes the persisted scheme (AD6).
 	if runner := runtime.NewHealthConsumerRunner(srv.Components(), runtimeCache, cfg.Runtime.HealthConsumer.Enabled); runner != nil {
 		srv.AddRunner(runner)
+	}
+	// Feature #48: the provider probe worker refreshes the five-state
+	// connectivity result of every enabled provider on the configured
+	// interval (design FR3.6). The kill switch is a startup decision.
+	if cfg.Provider.ProbeWorker.Enabled {
+		srv.AddRunner(provider.NewProbeWorker(providerSvc, cfg.Provider.ProbeInterval, cfg.Provider.ProbeWorker.Workers))
 	}
 	if runtimeBroadcaster != nil {
 		srv.AddRunner(runtimeBroadcaster)

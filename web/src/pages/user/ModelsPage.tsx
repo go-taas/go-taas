@@ -57,8 +57,13 @@ export default function ModelsPage() {
               >
                 <td>
                   <strong>{m.name}</strong>
+                  {m.external && (
+                    <span className="badge external" data-testid="models-external-badge">
+                      External
+                    </span>
+                  )}
                 </td>
-                <td className="muted">{m.latestVersion}</td>
+                <td className="muted">{m.external ? '—' : m.latestVersion}</td>
                 <td>
                   <AutoscalingIndicator autoscaling={m.autoscaling} />
                 </td>

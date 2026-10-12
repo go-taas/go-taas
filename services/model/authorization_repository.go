@@ -103,10 +103,11 @@ func (r *Repository) RestrictedModelIDs(ctx context.Context, modelIDs []string) 
 
 // ListModelsForOrganization returns one page of the models the
 // organization may use, newest first, with the total count (AC11): every
-// model with zero grants, plus the restricted models the organization is
-// granted.
+// published model with zero grants, plus the restricted models the
+// organization is granted. Feature #48: an unpublished external model is
+// hidden from this user projection.
 func (r *Repository) ListModelsForOrganization(ctx context.Context, organizationID string, offset, limit int) ([]*Model, int64, error) {
-	const cond = `NOT EXISTS (SELECT 1 FROM model_authorizations a WHERE a.model_id = models.id)` +
-		` OR EXISTS (SELECT 1 FROM model_authorizations a WHERE a.model_id = models.id AND a.organization_id = ?)`
-	return r.Paginate(ctx, offset, limit, []any{cond, organizationID}, "created_at DESC", "id DESC")
+	const cond = `published = ? AND (NOT EXISTS (SELECT 1 FROM model_authorizations a WHERE a.model_id = models.id)` +
+		` OR EXISTS (SELECT 1 FROM model_authorizations a WHERE a.model_id = models.id AND a.organization_id = ?))`
+	return r.Paginate(ctx, offset, limit, []any{cond, true, organizationID}, "created_at DESC", "id DESC")
 }

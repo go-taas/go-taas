@@ -763,6 +763,36 @@ type RuntimeAIBrixConfig struct {
 	Gateway string `mapstructure:"gateway"`
 }
 
+// ProviderConfig holds the external-model-provider module settings
+// (feature #48, Section 9). The provider module owns the registry, the
+// encrypted write-only keys, upstream-model curation, publishing, the
+// connectivity-probe worker and the external chat proxy.
+type ProviderConfig struct {
+	// SecretEncryptionKey is the AES-256-GCM master key for provider-key
+	// encryption at rest (AD3/AD12). Empty falls back to a dev-only key
+	// derived from the MQ namespace; production must set it. Mirrors the
+	// webhook rule so there is one key-resolution convention.
+	SecretEncryptionKey string `mapstructure:"secretEncryptionKey"`
+	// ProbeInterval is the scheduled connectivity-probe period for
+	// enabled providers (design FR3.6). Default 60s.
+	ProbeInterval time.Duration `mapstructure:"probeInterval"`
+	// ProbeWorker configures the scheduled probe worker runner.
+	ProbeWorker ProviderProbeWorkerConfig `mapstructure:"probeWorker"`
+	// DefaultRequestTimeoutSeconds is the default per-provider request
+	// timeout when a request omits one (range 1-120). Default 10.
+	DefaultRequestTimeoutSeconds int `mapstructure:"defaultRequestTimeoutSeconds"`
+}
+
+// ProviderProbeWorkerConfig holds the provider probe worker settings
+// (feature #48, Section 9).
+type ProviderProbeWorkerConfig struct {
+	// Enabled turns the scheduled probe worker on or off (incident-triage
+	// kill switch). The shipped default is true.
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the number of concurrent probe handlers. Default 2.
+	Workers int `mapstructure:"workers"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -837,6 +867,7 @@ type Configuration struct {
 	Prompt          PromptConfig          `mapstructure:"prompt"`
 	Evaluation      EvaluationConfig      `mapstructure:"evaluation"`
 	Runtime         RuntimeConfig         `mapstructure:"runtime"`
+	Provider        ProviderConfig        `mapstructure:"provider"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -907,6 +938,17 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Runtime.SchemeBroadcastInterval < 0 {
 		return &FieldError{Field: "runtime.schemeBroadcastInterval", Reason: "must not be negative"}
+	}
+	// Feature #48: the provider probe interval must not be negative and the
+	// default request timeout must be within 1-120 when set.
+	if c.Provider.ProbeInterval < 0 {
+		return &FieldError{Field: "provider.probeInterval", Reason: "must not be negative"}
+	}
+	if c.Provider.ProbeWorker.Workers < 0 {
+		return &FieldError{Field: "provider.probeWorker.workers", Reason: "must not be negative"}
+	}
+	if c.Provider.DefaultRequestTimeoutSeconds < 0 || c.Provider.DefaultRequestTimeoutSeconds > 120 {
+		return &FieldError{Field: "provider.defaultRequestTimeoutSeconds", Reason: "must be within 1-120"}
 	}
 	if c.LoadTest.Retention < 0 {
 		return &FieldError{Field: "loadtest.retention", Reason: "must not be negative"}

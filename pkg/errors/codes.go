@@ -347,3 +347,27 @@ const (
 	CodeRuntimeReplicasInvalid   Code = 12906 // RUNTIME_REPLICAS_INVALID
 	CodeRuntimeModelNameInvalid  Code = 12907 // RUNTIME_MODEL_NAME_INVALID
 )
+
+// provider module error codes (feature #48, AD9). The provider module
+// owns the external-provider registry, the encrypted write-only keys,
+// upstream-model curation, the publish linkage into the model catalog,
+// the connectivity probe and the external chat proxy. The block is
+// 13001-13016, the next free block after runtime's 129xx.
+const (
+	CodeProviderNotFound             Code = 13001 // PROVIDER_NOT_FOUND
+	CodeProviderNameConflict         Code = 13002 // PROVIDER_NAME_CONFLICT
+	CodeProviderNameInvalid          Code = 13003 // PROVIDER_NAME_INVALID
+	CodeProviderBaseURLInvalid       Code = 13004 // PROVIDER_BASE_URL_INVALID
+	CodeProviderTypeInvalid          Code = 13005 // PROVIDER_TYPE_INVALID
+	CodeProviderAPIKeyRequired       Code = 13006 // PROVIDER_API_KEY_REQUIRED
+	CodeProviderSecretUnavailable    Code = 13007 // PROVIDER_SECRET_UNAVAILABLE
+	CodeProviderModelNotFound        Code = 13008 // PROVIDER_MODEL_NOT_FOUND
+	CodeProviderModelExists          Code = 13009 // PROVIDER_MODEL_EXISTS
+	CodeProviderModelInvalid         Code = 13010 // PROVIDER_MODEL_INVALID
+	CodeProviderDisabled             Code = 13011 // PROVIDER_DISABLED
+	CodeProviderUpstreamUnauthorized Code = 13012 // PROVIDER_UPSTREAM_UNAUTHORIZED
+	CodeProviderUpstreamUnavailable  Code = 13013 // PROVIDER_UPSTREAM_UNAVAILABLE
+	CodeProviderPublishConflict      Code = 13014 // PROVIDER_PUBLISH_CONFLICT
+	CodeProviderNotPublished         Code = 13015 // PROVIDER_NOT_PUBLISHED
+	CodeProviderInUse                Code = 13016 // PROVIDER_IN_USE
+)

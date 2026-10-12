@@ -1,0 +1,316 @@
+syntax = "proto3";
+
+package taas.provider.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/provider/v1;providerv1";
+
+// ProviderService serves the external model-provider registry, the
+// connectivity probe and upstream-model curation (feature #48).
+// Admin-surface API: served under /api/v1/admin/providers.
+service ProviderService {
+  // ListProviders returns the registered providers with masked key hints,
+  // the last probe result and model counts. Supports pagination, a name
+  // search and type/enabled/probe-status filters.
+  rpc ListProviders(ListProvidersRequest) returns (ListProvidersResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/providers"};
+  }
+
+  // CreateProvider registers a provider. api_key is required on create.
+  rpc CreateProvider(CreateProviderRequest) returns (CreateProviderResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/providers"
+      body: "*"
+    };
+  }
+
+  // GetProvider returns one provider, masked. Unknown id -> 13001.
+  rpc GetProvider(GetProviderRequest) returns (GetProviderResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/providers/{provider_id}"};
+  }
+
+  // UpdateProvider edits mutable fields. An omitted or empty api_key keeps
+  // the existing credential; a non-empty key rotates it.
+  rpc UpdateProvider(UpdateProviderRequest) returns (UpdateProviderResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/providers/{provider_id}"
+      body: "*"
+    };
+  }
+
+  // DeleteProvider removes a provider and its curated models. Blocked while
+  // any curated model is published -> 13016.
+  rpc DeleteProvider(DeleteProviderRequest) returns (DeleteProviderResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/providers/{provider_id}"};
+  }
+
+  // TestProvider runs a synchronous connectivity probe and returns the
+  // persisted five-state ProbeResult. A probe is always allowed.
+  rpc TestProvider(TestProviderRequest) returns (TestProviderResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/providers/{provider_id}:test"
+      body: "*"
+    };
+  }
+
+  // ListProviderModels returns the curated upstream models with their
+  // published/catalog binding.
+  rpc ListProviderModels(ListProviderModelsRequest) returns (ListProviderModelsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/providers/{provider_id}/models"};
+  }
+
+  // AddProviderModel adds a curated upstream model row.
+  rpc AddProviderModel(AddProviderModelRequest) returns (AddProviderModelResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/providers/{provider_id}/models"
+      body: "*"
+    };
+  }
+
+  // UpdateProviderModel edits display name, context window and enabled.
+  // The upstream id is immutable.
+  rpc UpdateProviderModel(UpdateProviderModelRequest) returns (UpdateProviderModelResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/providers/{provider_id}/models/{model_id}"
+      body: "*"
+    };
+  }
+
+  // RemoveProviderModel removes a curated row. Blocked while published -> 13016.
+  rpc RemoveProviderModel(RemoveProviderModelRequest) returns (RemoveProviderModelResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/providers/{provider_id}/models/{model_id}"};
+  }
+
+  // PublishProviderModel publishes a curated, enabled row as a catalog
+  // model (external=true). A live name conflict -> 13014. Idempotent.
+  rpc PublishProviderModel(PublishProviderModelRequest) returns (PublishProviderModelResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/providers/{provider_id}/models/{model_id}:publish"
+      body: "*"
+    };
+  }
+
+  // UnpublishProviderModel marks the catalog model unpublished. Grants are
+  // retained but inert. Idempotent.
+  rpc UnpublishProviderModel(UnpublishProviderModelRequest) returns (UnpublishProviderModelResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/providers/{provider_id}/models/{model_id}:unpublish"
+      body: "*"
+    };
+  }
+
+  // ResolveExternalModel resolves a catalog model to its provider, the
+  // decrypted key and the upstream model id, or a fail-closed code. This
+  // is an INTERNAL RPC: it has no google.api.http annotation and is never
+  // reachable through the gateway. It is called by the data-plane gateway
+  // and by infer.PlaygroundModel.
+  rpc ResolveExternalModel(ResolveExternalModelRequest) returns (ResolveExternalModelResponse) {}
+}
+
+message Provider {
+  string provider_id = 1;
+  string name = 2;
+  string type = 3; // deepseek | openai | openai_compatible
+  string base_url = 4;
+  bool enabled = 5;
+  int64 request_timeout_seconds = 6;
+  repeated string extra_header_names = 7; // names only, never values
+  string api_key_hint = 8; // masked, e.g. "••••3f9a"
+  ProbeResult last_probe = 9;
+  int64 upstream_model_count = 10;
+  int64 published_model_count = 11;
+  int64 created_at = 12;
+  int64 updated_at = 13;
+}
+
+message ProbeResult {
+  string status = 1; // unknown | ok | unauthorized | unreachable | error
+  int64 latency_ms = 2;
+  int32 http_status = 3; // 0 when no response was received
+  string message = 4; // sanitized, never the key or the upstream body
+  int64 checked_at = 5; // 0 before the first probe
+}
+
+message ListProvidersRequest {
+  taas.common.v1.PageRequest page = 1;
+  string name = 2; // name substring search
+  string type = 3; // deepseek | openai | openai_compatible
+  string enabled = 4; // "" | "true" | "false"
+  string probe_status = 5; // unknown | ok | unauthorized | unreachable | error
+}
+
+message ListProvidersResponse {
+  taas.common.v1.Response response = 1;
+  repeated Provider providers = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message CreateProviderRequest {
+  string name = 1;
+  string type = 2;
+  string base_url = 3;
+  string api_key = 4; // write-only, required on create
+  bool enabled = 5;
+  int64 request_timeout_seconds = 6; // 0 -> default 10
+  map<string, string> extra_headers = 7;
+}
+
+message CreateProviderResponse {
+  taas.common.v1.Response response = 1;
+  Provider provider = 2;
+}
+
+message GetProviderRequest {
+  string provider_id = 1;
+}
+
+message GetProviderResponse {
+  taas.common.v1.Response response = 1;
+  Provider provider = 2;
+}
+
+message UpdateProviderRequest {
+  string provider_id = 1;
+  string name = 2;
+  string type = 3;
+  string base_url = 4;
+  // api_key is optional: omitted or empty keeps the existing credential;
+  // a non-empty value rotates it. Never returned by any read.
+  string api_key = 5;
+  bool enabled = 6;
+  int64 request_timeout_seconds = 7;
+  map<string, string> extra_headers = 8;
+}
+
+message UpdateProviderResponse {
+  taas.common.v1.Response response = 1;
+  Provider provider = 2;
+}
+
+message DeleteProviderRequest {
+  string provider_id = 1;
+}
+message DeleteProviderResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message TestProviderRequest {
+  string provider_id = 1;
+}
+
+message TestProviderResponse {
+  taas.common.v1.Response response = 1;
+  ProbeResult probe = 2;
+}
+
+message ProviderModel {
+  string model_id = 1; // the platform's curated row id
+  string upstream_model_id = 2;
+  string display_name = 3;
+  int64 context_window = 4; // 0 = unknown
+  bool enabled = 5;
+  bool published = 6;
+  string catalog_model_id = 7;
+  string catalog_model_name = 8;
+  int64 created_at = 9;
+  int64 updated_at = 10;
+}
+
+message ListProviderModelsRequest {
+  string provider_id = 1;
+  taas.common.v1.PageRequest page = 2;
+  string upstream_model_id = 3;
+  string enabled = 4; // "" | "true" | "false"
+  string published = 5; // "" | "true" | "false"
+}
+
+message ListProviderModelsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ProviderModel models = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message AddProviderModelRequest {
+  string provider_id = 1;
+  string upstream_model_id = 2;
+  string display_name = 3;
+  int64 context_window = 4;
+  // enabled is optional and defaults to true when omitted.
+  optional bool enabled = 5;
+}
+
+message AddProviderModelResponse {
+  taas.common.v1.Response response = 1;
+  ProviderModel model = 2;
+}
+
+message UpdateProviderModelRequest {
+  string provider_id = 1;
+  string model_id = 2;
+  string display_name = 3;
+  int64 context_window = 4;
+  // enabled is optional; omitted keeps the current value.
+  optional bool enabled = 5;
+}
+
+message UpdateProviderModelResponse {
+  taas.common.v1.Response response = 1;
+  ProviderModel model = 2;
+}
+
+message RemoveProviderModelRequest {
+  string provider_id = 1;
+  string model_id = 2;
+}
+message RemoveProviderModelResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message PublishProviderModelRequest {
+  string provider_id = 1;
+  string model_id = 2;
+  // tenant_facing_name defaults to display_name, else upstream_model_id.
+  string tenant_facing_name = 3;
+}
+
+message PublishProviderModelResponse {
+  taas.common.v1.Response response = 1;
+  string catalog_model_id = 2;
+  string catalog_model_name = 3;
+  ProviderModel model = 4;
+}
+
+message UnpublishProviderModelRequest {
+  string provider_id = 1;
+  string model_id = 2;
+}
+message UnpublishProviderModelResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// ResolveExternalModel is internal (no HTTP annotation). It is called by
+// the data-plane gateway and by infer.PlaygroundModel.
+message ResolveExternalModelRequest {
+  string model_id = 1; // the catalog model id (preferred)
+  string model_name = 2; // the catalog model name (fallback)
+}
+
+message ResolvedExternalModel {
+  string provider_id = 1;
+  string provider_name = 2;
+  string base_url = 3;
+  string upstream_model_id = 4;
+  int64 request_timeout_seconds = 5;
+  // api_key and extra_headers are returned ONLY on this internal RPC and
+  // exist in memory for the duration of the request. No admin read RPC
+  // ever carries them.
+  string api_key = 6;
+  map<string, string> extra_headers = 7;
+}
+
+message ResolveExternalModelResponse {
+  taas.common.v1.Response response = 1;
+  ResolvedExternalModel model = 2;
+}

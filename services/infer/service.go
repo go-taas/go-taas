@@ -151,6 +151,26 @@ type Service struct {
 	// publication outbox (feature #45, §4.1). Wired lazily from the
 	// shared components.
 	routingPolicyRepo *RoutingPolicyRepository
+
+	// externalProxy proxies a published external model on the metered path
+	// (feature #48, AD14). It is implemented by the provider module and
+	// injected at wiring time. Nil until wired: an external playground
+	// request fails closed.
+	externalProxy ExternalModelProxy
+}
+
+// ExternalModelProxy proxies a published external model on the metered path
+// (feature #48, AD14). It is implemented by the provider module and injected
+// at wiring time — the same setter pattern as SetModelAuthorizer. The
+// production data plane (Envoy + Wasm) consumes the frozen
+// ResolveExternalModel contract instead.
+type ExternalModelProxy interface {
+	// ProxyExternalChat resolves the catalog model, proxies an
+	// OpenAI-compatible chat completion to the provider with the decrypted
+	// key, emits a metering event (success or failure) and returns the
+	// upstream body. Upstream 401/403 -> 13012; upstream 5xx/timeout ->
+	// 13013; a disabled provider -> 13011; an unpublished model -> 13015.
+	ProxyExternalChat(ctx context.Context, modelID, orgID, apiKeyID string, body []byte) ([]byte, error)
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -215,6 +235,11 @@ func (s *Service) SetLoadTestRunner(r *LoadTestRunner) { s.loadTestRunner = r }
 // AD2). Production wires the controller-backed implementation; unit
 // tests may inject a fake. Without it the log RPCs fail closed.
 func (s *Service) SetLogFetcher(f LogFetcher) { s.logFetcher = f }
+
+// SetExternalModelProxy installs the external-model proxy seam (feature
+// #48, AD14). Production wires the provider module; unit tests may inject
+// a fake. Without it an external playground request fails closed.
+func (s *Service) SetExternalModelProxy(p ExternalModelProxy) { s.externalProxy = p }
 
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.
