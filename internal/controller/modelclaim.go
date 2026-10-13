@@ -157,13 +157,19 @@ func deleteModelClaim(ctx context.Context, dyn dynamic.Interface, namespace, nam
 	return nil
 }
 
-// applyPodAutoscaler creates or updates the AIBrix PodAutoscaler for a
-// change event with autoscaling enabled (feature #47, §13.5, AD13).
-func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, deployment, name string, minReplicas, maxReplicas int32) error {
-	if dyn == nil {
-		return fmt.Errorf("controller: dynamic client unavailable")
-	}
-	desired := &unstructured.Unstructured{Object: map[string]any{
+// podAutoscalerScalingStrategy is the AIBrix scaling strategy the controller
+// requests. The PodAutoscaler CRD requires spec.scalingStrategy to be one of
+// "HPA", "KPA", "APA"; an empty value is rejected with a 422. The controller
+// drives replica counts from CPU/metric thresholds exactly like the plain
+// Kubernetes HPA path, so "HPA" is the strategy that preserves the existing
+// autoscaling semantics (feature #47, AD13).
+const podAutoscalerScalingStrategy = "HPA"
+
+// buildPodAutoscaler composes the AIBrix PodAutoscaler for a change event
+// with autoscaling enabled (feature #47, §13.5, AD13). The spec must satisfy
+// every CRD-required field: scaleTargetRef, maxReplicas and scalingStrategy.
+func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxReplicas int32) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "autoscaling.aibrix.ai/v1alpha1",
 		"kind":       "PodAutoscaler",
 		"metadata": map[string]any{
@@ -177,10 +183,20 @@ func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, d
 				"kind":       "Deployment",
 				"name":       deployment,
 			},
-			"minReplicas": int64(minReplicas),
-			"maxReplicas": int64(maxReplicas),
+			"minReplicas":     int64(minReplicas),
+			"maxReplicas":     int64(maxReplicas),
+			"scalingStrategy": podAutoscalerScalingStrategy,
 		},
 	}}
+}
+
+// applyPodAutoscaler creates or updates the AIBrix PodAutoscaler for a
+// change event with autoscaling enabled (feature #47, §13.5, AD13).
+func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, deployment, name string, minReplicas, maxReplicas int32) error {
+	if dyn == nil {
+		return fmt.Errorf("controller: dynamic client unavailable")
+	}
+	desired := buildPodAutoscaler(namespace, deployment, name, minReplicas, maxReplicas)
 	existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, hpaName(name), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Create(ctx, desired, metav1.CreateOptions{})

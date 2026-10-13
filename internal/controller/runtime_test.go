@@ -120,6 +120,76 @@ func TestApplyPodAutoscaler(t *testing.T) {
 	deletePodAutoscaler(ctx, dyn, reconcileNamespace, "demo")
 }
 
+// TestBuildPodAutoscalerSatisfiesCRD asserts the built PodAutoscaler object
+// carries every field the AIBrix PodAutoscaler CRD marks required
+// (spec.maxReplicas, spec.scaleTargetRef, spec.scalingStrategy) and that
+// scalingStrategy is a supported enum value. This is a golden-object
+// assertion on the built spec, so a fake dynamic client (which performs no
+// schema validation) can no longer hide a missing required field — the
+// regression behind the row-47 bug report.
+func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
+	pa := buildPodAutoscaler(reconcileNamespace, "demo-deploy", "demo", 1, 5)
+
+	assert.Equal(t, "PodAutoscaler", pa.GetKind())
+	assert.Equal(t, "autoscaling.aibrix.ai/v1alpha1", pa.GetAPIVersion())
+	assert.Equal(t, hpaName("demo"), pa.GetName())
+	assert.Equal(t, reconcileNamespace, pa.GetNamespace())
+	assert.Equal(t, managedByValue, pa.GetLabels()[mcLabelManagedBy])
+
+	// CRD spec.required = [maxReplicas, scaleTargetRef, scalingStrategy].
+	max, found, err := unstructured.NestedInt64(pa.Object, "spec", "maxReplicas")
+	require.NoError(t, err)
+	require.True(t, found, "spec.maxReplicas is CRD-required and must be set")
+	assert.Equal(t, int64(5), max)
+
+	min, found, err := unstructured.NestedInt64(pa.Object, "spec", "minReplicas")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, int64(1), min)
+
+	ref, found, err := unstructured.NestedMap(pa.Object, "spec", "scaleTargetRef")
+	require.NoError(t, err)
+	require.True(t, found, "spec.scaleTargetRef is CRD-required and must be set")
+	assert.Equal(t, map[string]any{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"name":       "demo-deploy",
+	}, ref)
+
+	// spec.scalingStrategy is a CRD-required string enum: HPA | KPA | APA.
+	strategy, found, err := unstructured.NestedString(pa.Object, "spec", "scalingStrategy")
+	require.NoError(t, err)
+	require.True(t, found, "spec.scalingStrategy is CRD-required and must be set")
+	assert.Contains(t, []string{"HPA", "KPA", "APA"}, strategy,
+		"spec.scalingStrategy must be a supported CRD enum value")
+	assert.NotEmpty(t, strategy, "an empty scalingStrategy is rejected by the CRD with a 422")
+}
+
+// TestApplyPodAutoscalerWritesScalingStrategy asserts the object persisted
+// through the dynamic client keeps the required scalingStrategy (the fake
+// client round-trips the spec verbatim, so this catches a builder that
+// drops the field before the write).
+func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
+	dyn := newFakeDynamic()
+	ctx := context.Background()
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8))
+	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, err)
+	strategy, found, err := unstructured.NestedString(got.Object, "spec", "scalingStrategy")
+	require.NoError(t, err)
+	require.True(t, found, "persisted PodAutoscaler must carry spec.scalingStrategy")
+	assert.Equal(t, podAutoscalerScalingStrategy, strategy)
+
+	// Idempotent re-apply keeps the strategy on the update path too.
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8))
+	got, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, err)
+	strategy, _, err = unstructured.NestedString(got.Object, "spec", "scalingStrategy")
+	require.NoError(t, err)
+	assert.Equal(t, podAutoscalerScalingStrategy, strategy)
+	deletePodAutoscaler(ctx, dyn, reconcileNamespace, "demo")
+}
+
 // newAIBrixFakeReconciler builds a reconciler over the fake clientset and
 // a fake dynamic client with the aibrix scheme active.
 func newAIBrixFakeReconciler(dyn *dynamicfake.FakeDynamicClient) (Reconciler, *fake.Clientset, *SchemeCache) {
