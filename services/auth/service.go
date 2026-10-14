@@ -87,6 +87,12 @@ type Service struct {
 	// model IDs are accepted (transitional fail-open).
 	modelExistenceChecker ModelExistenceChecker
 
+	// groupExistenceChecker resolves whether a routing group ID exists
+	// (feature #49, AD13): the widened write-time validation of key
+	// scope lists, which may now carry group ids. Nil until wired:
+	// catalog-only validation.
+	groupExistenceChecker GroupExistenceChecker
+
 	// modelAuthCache caches the per-(org, model) authorization verdict
 	// (feature-13, AD6). Wired lazily from the Redis component, or
 	// directly by unit tests; nil means the check runs uncached.
@@ -737,6 +743,29 @@ func (s *Service) UpdateAPIKeyScope(ctx context.Context, req *authv1.UpdateAPIKe
 		Response: okResponse(),
 		Key:      summarizeAPIKey(row),
 	}, nil
+}
+
+// APIKeyModels returns the key's model-scope list (feature #49, the
+// routing module's KeyScopeLister seam): the ids the key is restricted
+// to — catalog model ids and, since feature #49, routing group ids.
+// Empty means unscoped. An unknown key id returns an empty list (the
+// resolver treats it as unscoped; the data plane rejects the key
+// itself).
+func (s *Service) APIKeyModels(ctx context.Context, apiKeyID string) ([]string, error) {
+	if apiKeyID == "" {
+		return nil, nil
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	var row APIKey
+	if err := repo.DB(ctx).Select("models").Where("id = ?", apiKeyID).First(&row).Error; err != nil {
+		// A miss or a soft-deleted key behaves as unscoped to the
+		// resolver; the data plane rejects the key itself.
+		return nil, nil
+	}
+	return decodeModelIDs(row.Models), nil
 }
 
 // VerifyAPIKey authenticates an inference request by its API key digest.

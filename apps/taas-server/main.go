@@ -35,6 +35,7 @@ import (
 	"github.com/go-taas/go-taas/services/prompt"
 	"github.com/go-taas/go-taas/services/provider"
 	"github.com/go-taas/go-taas/services/resourcemetrics"
+	"github.com/go-taas/go-taas/services/routing"
 	"github.com/go-taas/go-taas/services/runtime"
 	"github.com/go-taas/go-taas/services/tenancy"
 	"github.com/go-taas/go-taas/services/tracing"
@@ -107,6 +108,12 @@ func main() {
 	// proxies external models through it).
 	providerSvc := provider.New(srv.Components())
 	srv.RegisterService(providerSvc)
+	// Feature #49: the routing service owns the routing groups, their
+	// candidates/rules/grants and the decision trail. It migrates after
+	// model (its catalog target) and before infer (which resolves virtual
+	// models through it).
+	routingSvc := routing.New(srv.Components())
+	srv.RegisterService(routingSvc)
 	imageSvc := image.New(srv.Components())
 	srv.RegisterService(imageSvc)
 	// Feature: image import. The importer copies an engine image from a
@@ -413,6 +420,24 @@ func main() {
 			modelSvc.SetProviderNameResolver(providerSvc)
 			inferSvc.SetExternalModelProxy(providerSvc)
 
+			// Feature #49: the routing service resolves the session's
+			// active org and caller, gates the admin routing RPCs by the
+			// caller's role, reads the model catalog and key scopes, and
+			// serves the virtual-model resolution to the infer module
+			// (AD12/AD13/AD14). The model module's grant RPCs and catalog
+			// projections route group ids through the same seams, and the
+			// auth module's key-scope validation accepts group ids.
+			routingSvc.SetSessionOrgResolver(authSvc)
+			routingSvc.SetSessionUserResolver(authSvc)
+			routingSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			routingSvc.SetAuditRecorder(auditRecorder)
+			routingSvc.SetModelCatalog(modelSvc)
+			routingSvc.SetKeyScopeLister(authSvc)
+			modelSvc.SetGroupAuthorization(routingSvc)
+			modelSvc.SetVirtualModelLister(routingSvc)
+			authSvc.SetGroupExistenceChecker(routingSvc)
+			inferSvc.SetRoutingResolver(routingSvc)
+
 			// Feature #47: the runtime service resolves the session's
 			// active org and caller, gates the admin runtime RPCs by the
 			// caller's role (AD1, AD10), publishes model changes to the
@@ -522,6 +547,13 @@ func main() {
 	// interval (design FR3.6). The kill switch is a startup decision.
 	if cfg.Provider.ProbeWorker.Enabled {
 		srv.AddRunner(provider.NewProbeWorker(providerSvc, cfg.Provider.ProbeInterval, cfg.Provider.ProbeWorker.Workers))
+	}
+	// Feature #49: the decision-retention runner prunes the routing
+	// decision trail past the configured retention window (AD12). The
+	// kill switch is a startup decision; a disabled switch leaves the
+	// runner unwired.
+	if runner := routing.NewDecisionRetentionRunnerFromComponents(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
 	}
 	if runtimeBroadcaster != nil {
 		srv.AddRunner(runtimeBroadcaster)

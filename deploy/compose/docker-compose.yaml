@@ -226,6 +226,15 @@ services:
       CONFIG_RUNTIME_HEALTHCONSUMER_ENABLED: ${RUNTIME_HEALTH_CONSUMER_ENABLED:-true}
       CONFIG_RUNTIME_AIBRIX_NAMESPACE: ${RUNTIME_AIBRIX_NAMESPACE:-aibrix-system}
       CONFIG_RUNTIME_AIBRIX_GATEWAY: ${RUNTIME_AIBRIX_GATEWAY:-envoy-aibrix-system-aibrix-eg}
+      # Feature #49: intelligent model routing. The decision-log
+      # retention runner is enabled by default; the retention window
+      # and the latency_priority sampling window are read from the
+      # .env file (empty falls back to the shipped defaults).
+      CONFIG_ROUTING_DECISIONRETENTIONDAYS: ${ROUTING_DECISION_RETENTION_DAYS:-7}
+      CONFIG_ROUTING_RETENTION_ENABLED: ${ROUTING_RETENTION_ENABLED:-true}
+      CONFIG_ROUTING_RETENTION_BATCHSIZE: ${ROUTING_RETENTION_BATCH_SIZE:-1000}
+      CONFIG_ROUTING_RETENTION_INTERVAL: ${ROUTING_RETENTION_INTERVAL:-1h}
+      CONFIG_ROUTING_LATENCYWINDOW: ${ROUTING_LATENCY_WINDOW:-15m}
     volumes:
       - type: bind
         source: ${JUICE_FS_HOST_MOUNT:-/var/lib/go-taas/juicefs}

@@ -793,6 +793,34 @@ type ProviderProbeWorkerConfig struct {
 	Workers int `mapstructure:"workers"`
 }
 
+// RoutingConfig holds the intelligent-model-routing module settings
+// (feature #49, Section 9). The routing module owns the routing-group
+// registry, the request-time virtual-name resolver and the decision
+// log.
+type RoutingConfig struct {
+	// DecisionRetentionDays is how long decision-log entries are kept
+	// before deletion (AD11). Default 7, range 1-90.
+	DecisionRetentionDays int `mapstructure:"decisionRetentionDays"`
+	// Retention configures the decision-log retention runner.
+	Retention RoutingRetentionConfig `mapstructure:"retention"`
+	// LatencyWindow is the observed-latency sampling window for the
+	// latency_priority strategy (AD3): the p50 of successful request
+	// logs within this window. Default 15m.
+	LatencyWindow time.Duration `mapstructure:"latencyWindow"`
+}
+
+// RoutingRetentionConfig holds the decision-log retention runner
+// settings (feature #49, Section 9).
+type RoutingRetentionConfig struct {
+	// Enabled turns the decision retention runner on or off
+	// (incident-triage kill switch). The shipped default is true.
+	Enabled bool `mapstructure:"enabled"`
+	// BatchSize is the number of rows deleted per retention pass.
+	BatchSize int `mapstructure:"batchSize"`
+	// Interval is the ticker period between retention passes.
+	Interval time.Duration `mapstructure:"interval"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -868,6 +896,7 @@ type Configuration struct {
 	Evaluation      EvaluationConfig      `mapstructure:"evaluation"`
 	Runtime         RuntimeConfig         `mapstructure:"runtime"`
 	Provider        ProviderConfig        `mapstructure:"provider"`
+	Routing         RoutingConfig         `mapstructure:"routing"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -949,6 +978,21 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Provider.DefaultRequestTimeoutSeconds < 0 || c.Provider.DefaultRequestTimeoutSeconds > 120 {
 		return &FieldError{Field: "provider.defaultRequestTimeoutSeconds", Reason: "must be within 1-120"}
+	}
+	// Feature #49: the routing decision retention days must be within
+	// 1-90 when set (applyDefaults fills the default before Validate in
+	// the production path; a raw zero-value config is allowed through).
+	if c.Routing.DecisionRetentionDays < 0 || c.Routing.DecisionRetentionDays > 90 {
+		return &FieldError{Field: "routing.decisionRetentionDays", Reason: "must be within 1-90"}
+	}
+	if c.Routing.Retention.BatchSize < 0 {
+		return &FieldError{Field: "routing.retention.batchSize", Reason: "must not be negative"}
+	}
+	if c.Routing.Retention.Interval < 0 {
+		return &FieldError{Field: "routing.retention.interval", Reason: "must not be negative"}
+	}
+	if c.Routing.LatencyWindow < 0 {
+		return &FieldError{Field: "routing.latencyWindow", Reason: "must not be negative"}
 	}
 	if c.LoadTest.Retention < 0 {
 		return &FieldError{Field: "loadtest.retention", Reason: "must not be negative"}

@@ -154,17 +154,46 @@ type ModelExistenceChecker interface {
 // leave it nil so unknown IDs stay accepted.
 func (s *Service) SetModelExistenceChecker(c ModelExistenceChecker) { s.modelExistenceChecker = c }
 
+// GroupExistenceChecker resolves whether a routing group ID exists
+// (feature #49, AD13). It is implemented by the routing module and
+// injected at wiring time next to the model checker, so key scope
+// writes accept both catalog model ids and routing group ids. Nil until
+// wired: catalog-only validation.
+type GroupExistenceChecker interface {
+	// GroupExists returns true when the routing group ID is present.
+	GroupExists(ctx context.Context, groupID string) (bool, error)
+}
+
+// SetGroupExistenceChecker injects the routing-group existence check
+// (feature #49, AD13). Production and FVT wire the routing module; unit
+// tests leave it nil so group ids stay rejected.
+func (s *Service) SetGroupExistenceChecker(c GroupExistenceChecker) { s.groupExistenceChecker = c }
+
 // checkModelsExist validates that every model ID of a scope list exists
 // in the catalog (feature #46, AD6). A nil checker accepts the list
-// (transitional fail-open); a checker error fails the write.
+// (transitional fail-open); a checker error fails the write. Feature
+// #49 (AD13): a catalog miss falls through to the group checker, so a
+// scope list may carry routing group ids; both miss → the existing
+// 10008 invalid-scope error.
 func (s *Service) checkModelsExist(ctx context.Context, modelIDs []string) error {
-	if s.modelExistenceChecker == nil || len(modelIDs) == 0 {
+	if (s.modelExistenceChecker == nil && s.groupExistenceChecker == nil) || len(modelIDs) == 0 {
 		return nil
 	}
 	for _, id := range modelIDs {
-		exists, err := s.modelExistenceChecker.ModelExists(ctx, id)
-		if err != nil {
-			return err
+		exists := false
+		if s.modelExistenceChecker != nil {
+			modelExists, err := s.modelExistenceChecker.ModelExists(ctx, id)
+			if err != nil {
+				return err
+			}
+			exists = modelExists
+		}
+		if !exists && s.groupExistenceChecker != nil {
+			groupExists, err := s.groupExistenceChecker.GroupExists(ctx, id)
+			if err != nil {
+				return err
+			}
+			exists = groupExists
 		}
 		if !exists {
 			return apierrors.Newf(apierrors.CodeModelNotFound, "auth: model %q not found", id)

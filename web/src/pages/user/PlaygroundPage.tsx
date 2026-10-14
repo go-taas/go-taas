@@ -89,6 +89,7 @@ export default function PlaygroundPage() {
               {models.map((m) => (
                 <option key={m.modelId} value={m.modelId}>
                   {m.name}
+                  {m.virtual ? ` ${t('uplayground.autoSuffix')}` : ''}
                 </option>
               ))}
             </select>
@@ -108,6 +109,11 @@ export default function PlaygroundPage() {
           {response && (
             <div className="response" data-testid="playground-response">
               <pre>{response.completion || t('uplayground.noCompletion')}</pre>
+              {response.servedModel && (
+                <div data-testid="playground-served-model">
+                  {t('uplayground.servedBy', { model: response.servedModel })}
+                </div>
+              )}
               <div>
                 {t('uplayground.response', {
                   prompt: response.promptTokens,

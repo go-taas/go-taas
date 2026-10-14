@@ -9,8 +9,11 @@ import (
 	"github.com/google/uuid"
 
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
+	routingv1 "github.com/go-taas/go-taas/proto/taas/routing/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/services/model"
+	"github.com/go-taas/go-taas/services/routing"
 )
 
 // PlaygroundModel sends a test inference for a model on the user surface
@@ -41,7 +44,13 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	}
 	m, err := modelRepo.GetModel(ctx, req.GetModelId())
 	if err != nil {
-		return nil, err
+		// Feature #49 (AD14): a catalog miss with a wired resolver is a
+		// virtual model: the id is a routing group name. Resolve the
+		// group, serve the first attempt and record the decision.
+		if apierrors.CodeOf(err) != apierrors.CodeModelNotFound || s.routingResolver == nil {
+			return nil, err
+		}
+		return s.playVirtualModel(ctx, req, orgID)
 	}
 	// Feature-13 data-plane predicate: a restricted model may only be
 	// played by a granted organization (AC20).
@@ -115,6 +124,88 @@ func (s *Service) playExternalModel(ctx context.Context, req *inferv1.Playground
 		PromptTokens:     promptTokens,
 		CompletionTokens: completionTokens,
 		LatencyMs:        latency,
+	}, nil
+}
+
+// playVirtualModel serves a routing group through the playground
+// (feature #49, AD14): resolve the group name, serve the first attempt
+// (external via the provider proxy, self-hosted via a ready inference
+// service) and record the decision trail. The response names the served
+// model so the user sees which candidate answered.
+func (s *Service) playVirtualModel(ctx context.Context, req *inferv1.PlaygroundModelRequest, orgID string) (*inferv1.PlaygroundModelResponse, error) {
+	res, err := s.routingResolver.ResolveRoutingGroup(ctx, &routingv1.ResolveRoutingGroupRequest{
+		GroupName: req.GetModelId(),
+		Prompt:    req.GetPrompt(),
+		OrgId:     orgID,
+		ApiKeyId:  req.GetApiKeyId(),
+	})
+	if err != nil {
+		return nil, err
+	}
+	if len(res.GetAttemptModelIds()) == 0 {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+
+	requestID := uuid.NewString()
+	modelRepo, err := s.modelRepository()
+	if err != nil {
+		return nil, err
+	}
+	outcomes := map[string]string{}
+	var resp *inferv1.PlaygroundModelResponse
+	var servedID, servedName string
+	for i, id := range res.GetAttemptModelIds() {
+		name := ""
+		if i < len(res.GetAttemptModelNames()) {
+			name = res.GetAttemptModelNames()[i]
+		}
+		attempt, attemptErr := s.playCandidate(ctx, req, orgID, id, modelRepo)
+		if attemptErr != nil {
+			outcomes[id] = routing.OutcomeFailedRetryable
+			continue
+		}
+		outcomes[id] = routing.OutcomeServed
+		resp = attempt
+		servedID, servedName = id, name
+		break
+	}
+	if resp == nil {
+		// Every attempt failed: record the trail and fail closed.
+		_ = s.routingResolver.RecordDecision(ctx, res, requestID, req.GetModelId(), "", "", outcomes)
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	resp.ServedModel = servedName
+	// Record the decision trail best-effort (AD12): a recorder failure
+	// never fails the served response.
+	_ = s.routingResolver.RecordDecision(ctx, res, requestID, req.GetModelId(), servedID, servedName, outcomes)
+	return resp, nil
+}
+
+// playCandidate serves one routing attempt for a virtual playground
+// request (feature #49, AD14): an external candidate through the
+// provider proxy, a self-hosted one through a ready inference service.
+func (s *Service) playCandidate(ctx context.Context, req *inferv1.PlaygroundModelRequest, orgID, modelID string, modelRepo *model.Repository) (*inferv1.PlaygroundModelResponse, error) {
+	m, err := modelRepo.GetModel(ctx, modelID)
+	if err != nil {
+		return nil, err
+	}
+	if m.External {
+		return s.playExternalModel(ctx, req, orgID, m.ID)
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	svc, err := repo.FindBlockingServiceByModel(ctx, modelID)
+	if err != nil {
+		return nil, err
+	}
+	if svc == nil || svc.State != StateRunning {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	return &inferv1.PlaygroundModelResponse{
+		Response:  okResponse(),
+		RequestId: uuid.NewString(),
 	}, nil
 }
 

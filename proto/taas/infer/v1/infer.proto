@@ -401,6 +401,10 @@ message PlaygroundModelResponse {
   int64 prompt_tokens = 4;
   int64 completion_tokens = 5;
   int64 latency_ms = 6;
+  // served_model is the served real model's name when the request named
+  // a routing group's virtual name (feature #49, AD14). Empty when the
+  // request named a real model, so existing callers are unaffected.
+  string served_model = 7;
 }
 
 // CompareModels runs the same prompt against multiple models (feature

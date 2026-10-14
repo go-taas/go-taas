@@ -19,6 +19,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/modelhub"
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/audit"
+	"github.com/go-taas/go-taas/services/routing"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 
@@ -128,6 +129,39 @@ type ProviderNameResolver interface {
 	ProviderName(ctx context.Context, providerID string) (string, error)
 }
 
+// GroupAuthorization is the seam to the routing module's group grants
+// (feature #49, AD12). Group grants live in routing_group_grants — never
+// in model_authorizations — so the #13 default-allow rule over that table
+// stays intact. The grant/revoke/list RPCs route a group id to this seam
+// when the catalog lookup misses. It is implemented by the routing
+// module and injected at wiring time. Nil until wired: catalog-only.
+type GroupAuthorization interface {
+	// GroupExists reports whether the routing group id is present.
+	GroupExists(ctx context.Context, groupID string) (bool, error)
+	// GrantGroupAccess adds an organization to the group's grant list.
+	GrantGroupAccess(ctx context.Context, groupID, organizationID, grantedBy string) error
+	// RevokeGroupAccess removes an organization from the group's grant
+	// list.
+	RevokeGroupAccess(ctx context.Context, groupID, organizationID string) error
+	// ListGroupAuthorizations returns one page of the group's grant rows,
+	// newest first, with the total count.
+	ListGroupAuthorizations(ctx context.Context, groupID string, offset, limit int) ([]*routing.GroupGrantRow, int64, error)
+	// CountGroupGrants returns the number of grant rows of the group.
+	CountGroupGrants(ctx context.Context, groupID string) (int64, error)
+}
+
+// VirtualModelLister is the seam to the routing module's granted groups
+// (feature #49, AD12). The user-realm catalog appends the organization's
+// granted groups as virtual entries after the catalog models. It is
+// implemented by the routing module and injected at wiring time. Nil
+// until wired: unchanged output.
+type VirtualModelLister interface {
+	// ListGrantedGroups returns the organization's granted groups as
+	// masked virtual entries, honoring the default-allow rule (zero
+	// grants = all groups).
+	ListGrantedGroups(ctx context.Context, organizationID string) ([]*routing.VirtualModelEntry, error)
+}
+
 // Service implements the model registry gRPC service.
 type Service struct {
 	modelv1.UnimplementedModelServiceServer
@@ -180,6 +214,15 @@ type Service struct {
 	// module free of a provider dependency. Nil until wired: the provider
 	// name is omitted.
 	providerNameResolver ProviderNameResolver
+
+	// groupAuthorization routes group grants to the routing module
+	// (feature #49, AD12). Nil until wired: catalog-only grants.
+	groupAuthorization GroupAuthorization
+
+	// virtualModelLister appends the org's granted routing groups to the
+	// user-realm catalog as virtual entries (feature #49, AD12). Nil
+	// until wired: unchanged output.
+	virtualModelLister VirtualModelLister
 
 	// downloader downloads model weights from a model hub (ModelScope /
 	// HuggingFace) into the weights directory. Nil until wired: the
@@ -275,6 +318,16 @@ func (s *Service) SetCompatibilityProvider(p CompatibilityProvider) { s.compatib
 // external-model catalog projections (feature #48). Production wires the
 // provider module; unit tests may inject a fake.
 func (s *Service) SetProviderNameResolver(r ProviderNameResolver) { s.providerNameResolver = r }
+
+// SetGroupAuthorization injects the routing-module group-grant seam
+// (feature #49, AD12). Production wires the routing module; unit tests
+// may inject a fake. Nil until wired: catalog-only grants.
+func (s *Service) SetGroupAuthorization(a GroupAuthorization) { s.groupAuthorization = a }
+
+// SetVirtualModelLister injects the routing-module virtual-model seam
+// (feature #49, AD12). Production wires the routing module; unit tests
+// may inject a fake. Nil until wired: unchanged catalog output.
+func (s *Service) SetVirtualModelLister(l VirtualModelLister) { s.virtualModelLister = l }
 
 // SetModelDownloader injects the model-hub downloader used by the
 // source-based registration path. Production wires the modelhub
@@ -742,6 +795,22 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 		}
 		models = append(models, summary)
 	}
+	// Feature #49 (AD12): append the org's granted routing groups as
+	// virtual entries after the catalog models.
+	if s.virtualModelLister != nil {
+		groups, gErr := s.virtualModelLister.ListGrantedGroups(ctx, orgID)
+		if gErr != nil {
+			return nil, gErr
+		}
+		for _, g := range groups {
+			models = append(models, &modelv1.AvailableModel{
+				ModelId: g.ID,
+				Name:    g.Name,
+				Virtual: true,
+			})
+		}
+		total += int64(len(groups))
+	}
 	return &modelv1.ListAvailableModelsResponse{
 		Response: okResponse(),
 		Models:   models,
@@ -777,6 +846,26 @@ func (s *Service) GetAvailableModel(ctx context.Context, req *modelv1.GetAvailab
 		}
 	}
 	if found == nil {
+		// Feature #49 (AD12): a granted routing group's id resolves to a
+		// virtual entry through the seam.
+		if s.virtualModelLister != nil {
+			groups, gErr := s.virtualModelLister.ListGrantedGroups(ctx, orgID)
+			if gErr != nil {
+				return nil, gErr
+			}
+			for _, g := range groups {
+				if g.ID == req.GetModelId() {
+					return &modelv1.GetAvailableModelResponse{
+						Response: okResponse(),
+						Model: &modelv1.AvailableModel{
+							ModelId: g.ID,
+							Name:    g.Name,
+							Virtual: true,
+						},
+					}, nil
+				}
+			}
+		}
 		return nil, apierrors.New(apierrors.CodeModelNotFound)
 	}
 
@@ -910,6 +999,9 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 // an idempotent no-op (AC2). Unknown model → 10101, unknown organization
 // → 10005. The RPC is platform-global: every organization's grants are
 // managed from one admin console, so it takes no org context.
+// Feature #49 (AD12): when the path id is not a catalog model but is a
+// routing group, the grant routes to the group grant list through the
+// GroupAuthorization seam.
 func (s *Service) GrantModelAccess(ctx context.Context, req *modelv1.GrantModelAccessRequest) (*modelv1.GrantModelAccessResponse, error) {
 	repo, err := s.repository()
 	if err != nil {
@@ -918,8 +1010,19 @@ func (s *Service) GrantModelAccess(ctx context.Context, req *modelv1.GrantModelA
 	if strings.TrimSpace(req.GetModelId()) == "" {
 		return nil, apierrors.New(apierrors.CodeModelNotFound)
 	}
+	isGroup := false
 	if _, err := repo.GetModel(ctx, req.GetModelId()); err != nil {
-		return nil, err
+		if apierrors.CodeOf(err) != apierrors.CodeModelNotFound || s.groupAuthorization == nil {
+			return nil, err
+		}
+		exists, gErr := s.groupAuthorization.GroupExists(ctx, req.GetModelId())
+		if gErr != nil {
+			return nil, gErr
+		}
+		if !exists {
+			return nil, apierrors.New(apierrors.CodeModelNotFound)
+		}
+		isGroup = true
 	}
 	orgID := strings.TrimSpace(req.GetOrganizationId())
 	if orgID == "" {
@@ -929,7 +1032,11 @@ func (s *Service) GrantModelAccess(ctx context.Context, req *modelv1.GrantModelA
 		return nil, err
 	}
 
-	if err := repo.GrantAccess(ctx, req.GetModelId(), orgID, s.grantedBy(ctx)); err != nil {
+	if isGroup {
+		if err := s.groupAuthorization.GrantGroupAccess(ctx, req.GetModelId(), orgID, s.grantedBy(ctx)); err != nil {
+			return nil, err
+		}
+	} else if err := repo.GrantAccess(ctx, req.GetModelId(), orgID, s.grantedBy(ctx)); err != nil {
 		return nil, err
 	}
 	// Feature #15: record the successful grant best-effort.
@@ -949,7 +1056,8 @@ func (s *Service) GrantModelAccess(ctx context.Context, req *modelv1.GrantModelA
 // Revoking a grant that does not exist is an idempotent no-op (AC4), and
 // revoking the last grant returns the model to default-allow (AC3). The
 // organization is not required to exist: a grant left behind by a
-// removed organization must still be revocable.
+// removed organization must still be revocable. Feature #49 (AD12): a
+// routing-group id routes to the group grant list through the seam.
 func (s *Service) RevokeModelAccess(ctx context.Context, req *modelv1.RevokeModelAccessRequest) (*modelv1.RevokeModelAccessResponse, error) {
 	repo, err := s.repository()
 	if err != nil {
@@ -958,15 +1066,30 @@ func (s *Service) RevokeModelAccess(ctx context.Context, req *modelv1.RevokeMode
 	if strings.TrimSpace(req.GetModelId()) == "" {
 		return nil, apierrors.New(apierrors.CodeModelNotFound)
 	}
+	isGroup := false
 	if _, err := repo.GetModel(ctx, req.GetModelId()); err != nil {
-		return nil, err
+		if apierrors.CodeOf(err) != apierrors.CodeModelNotFound || s.groupAuthorization == nil {
+			return nil, err
+		}
+		exists, gErr := s.groupAuthorization.GroupExists(ctx, req.GetModelId())
+		if gErr != nil {
+			return nil, gErr
+		}
+		if !exists {
+			return nil, apierrors.New(apierrors.CodeModelNotFound)
+		}
+		isGroup = true
 	}
 	orgID := strings.TrimSpace(req.GetOrganizationId())
 	if orgID == "" {
 		return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
 	}
 
-	if err := repo.RevokeAccess(ctx, req.GetModelId(), orgID); err != nil {
+	if isGroup {
+		if err := s.groupAuthorization.RevokeGroupAccess(ctx, req.GetModelId(), orgID); err != nil {
+			return nil, err
+		}
+	} else if err := repo.RevokeAccess(ctx, req.GetModelId(), orgID); err != nil {
 		return nil, err
 	}
 	// Feature #15: record the successful revoke best-effort.
@@ -983,7 +1106,8 @@ func (s *Service) RevokeModelAccess(ctx context.Context, req *modelv1.RevokeMode
 }
 
 // ListModelAuthorizations returns one page of the model's grant rows,
-// newest first (AC10). Unknown model → 10101.
+// newest first (AC10). Unknown model → 10101. Feature #49 (AD12): a
+// routing-group id routes to the group grant list through the seam.
 func (s *Service) ListModelAuthorizations(ctx context.Context, req *modelv1.ListModelAuthorizationsRequest) (*modelv1.ListModelAuthorizationsResponse, error) {
 	repo, err := s.repository()
 	if err != nil {
@@ -992,14 +1116,44 @@ func (s *Service) ListModelAuthorizations(ctx context.Context, req *modelv1.List
 	if strings.TrimSpace(req.GetModelId()) == "" {
 		return nil, apierrors.New(apierrors.CodeModelNotFound)
 	}
+	isGroup := false
 	if _, err := repo.GetModel(ctx, req.GetModelId()); err != nil {
-		return nil, err
+		if apierrors.CodeOf(err) != apierrors.CodeModelNotFound || s.groupAuthorization == nil {
+			return nil, err
+		}
+		exists, gErr := s.groupAuthorization.GroupExists(ctx, req.GetModelId())
+		if gErr != nil {
+			return nil, gErr
+		}
+		if !exists {
+			return nil, apierrors.New(apierrors.CodeModelNotFound)
+		}
+		isGroup = true
 	}
 
 	offset, limit := normalizePagination(req.GetPage())
-	rows, total, err := repo.ListAuthorizations(ctx, req.GetModelId(), offset, limit)
-	if err != nil {
-		return nil, err
+	var rows []*Authorization
+	var total int64
+	if isGroup {
+		groupRows, groupTotal, err := s.groupAuthorization.ListGroupAuthorizations(ctx, req.GetModelId(), offset, limit)
+		if err != nil {
+			return nil, err
+		}
+		total = groupTotal
+		rows = make([]*Authorization, 0, len(groupRows))
+		for _, g := range groupRows {
+			rows = append(rows, &Authorization{
+				ModelID:        req.GetModelId(),
+				OrganizationID: g.OrganizationID,
+				GrantedBy:      g.GrantedBy,
+				CreatedAt:      g.CreatedAt,
+			})
+		}
+	} else {
+		rows, total, err = repo.ListAuthorizations(ctx, req.GetModelId(), offset, limit)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	authorizations := make([]*modelv1.ModelAuthorization, 0, len(rows))

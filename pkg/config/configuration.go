@@ -403,6 +403,22 @@ func (c *Configuration) applyDefaults() {
 	if c.Provider.DefaultRequestTimeoutSeconds == 0 {
 		c.Provider.DefaultRequestTimeoutSeconds = 10
 	}
+	// Feature #49: intelligent-model-routing defaults (Section 9). The
+	// retention runner's enabled flag ships as true in
+	// configs/config.yaml (the repo's convention for boolean kill
+	// switches); here we default the scalar fields.
+	if c.Routing.DecisionRetentionDays == 0 {
+		c.Routing.DecisionRetentionDays = 7
+	}
+	if c.Routing.Retention.BatchSize == 0 {
+		c.Routing.Retention.BatchSize = 1000
+	}
+	if c.Routing.Retention.Interval == 0 {
+		c.Routing.Retention.Interval = time.Hour
+	}
+	if c.Routing.LatencyWindow == 0 {
+		c.Routing.LatencyWindow = 15 * time.Minute
+	}
 }
 
 // String returns a string representation of the configuration for logging.

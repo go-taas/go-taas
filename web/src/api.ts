@@ -200,6 +200,9 @@ export interface AvailableModel {
   // Feature #48: the masked external marker (external + provider_name only).
   external?: boolean;
   providerName?: string;
+  // Feature #49: the virtual (routing-group) marker. A virtual entry has
+  // no version row; the platform selects the serving model per request.
+  virtual?: boolean;
 }
 
 export interface InferenceServiceSummary {
@@ -734,6 +737,8 @@ export interface PlaygroundInferResponse {
   cachedTokens: string;
   reasoningTokens: string;
   latencyMs: string;
+  // Feature #49: the real model that served a virtual-name request.
+  servedModel?: string;
 }
 
 // ---- inference endpoint (feature #21, SDK / Quickstart) ----
@@ -1306,4 +1311,122 @@ export interface DownloadDataExportResponse {
   file: string;
   contentType: string;
   filename: string;
+}
+
+// ---- intelligent model routing (feature #49, admin surface) ----
+
+export interface RoutingGroup {
+  groupId: string;
+  name: string;
+  description: string;
+  strategy: string; // manual | weighted | cost_priority | latency_priority
+  enabled: boolean;
+  candidateCount: number;
+  ruleCount: number;
+  requestCount24h: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface RoutingGroupCandidate {
+  candidateId: string;
+  modelId: string;
+  modelName: string;
+  weight: number;
+  costTier: number;
+  latencyTier: number;
+  pinned: boolean;
+  position: number;
+}
+
+export interface RoutingGroupRule {
+  ruleId: string;
+  name: string;
+  matchType: string; // keyword | regex
+  pattern: string;
+  targetModelId: string;
+  targetModelName: string;
+  enabled: boolean;
+  position: number;
+}
+
+export interface ListRoutingGroupsResponse {
+  response: ResponseEnvelope;
+  groups: RoutingGroup[];
+  pageMeta?: PageMeta;
+}
+
+export interface CreateRoutingGroupResponse {
+  response: ResponseEnvelope;
+  group: RoutingGroup;
+}
+
+export interface GetRoutingGroupResponse {
+  response: ResponseEnvelope;
+  group: RoutingGroup;
+  candidates: RoutingGroupCandidate[];
+  rules: RoutingGroupRule[];
+}
+
+export interface UpdateRoutingGroupResponse {
+  response: ResponseEnvelope;
+  group: RoutingGroup;
+}
+
+export interface ReplaceRoutingGroupCandidatesResponse {
+  response: ResponseEnvelope;
+  candidates: RoutingGroupCandidate[];
+}
+
+export interface ReplaceRoutingGroupRulesResponse {
+  response: ResponseEnvelope;
+  rules: RoutingGroupRule[];
+}
+
+export interface SkippedCandidate {
+  modelId: string;
+  modelName: string;
+  reason: string; // skipped_unavailable | skipped_unauthorized
+}
+
+export interface TestRoutingResolutionResponse {
+  response: ResponseEnvelope;
+  matchedRuleId: string;
+  matchedRuleName: string;
+  attempts: RoutingGroupCandidate[];
+  skipped: SkippedCandidate[];
+}
+
+export interface DecisionCandidate {
+  modelId: string;
+  modelName: string;
+  outcome: string; // served | skipped_unavailable | skipped_unauthorized | failed_retryable | not_attempted
+  detail: string;
+}
+
+export interface RoutingDecision {
+  decisionId: string;
+  requestId: string;
+  groupId: string;
+  groupName: string;
+  strategy: string;
+  matchedRuleId: string;
+  matchedRuleName: string;
+  selectedModelId: string;
+  selectedModelName: string;
+  candidatesConsidered: DecisionCandidate[];
+  apiKeyId: string;
+  organizationId: string;
+  createdAt: number;
+}
+
+export interface ListRoutingDecisionsResponse {
+  response: ResponseEnvelope;
+  decisions: RoutingDecision[];
+  pageMeta?: PageMeta;
+}
+
+export interface GetRoutingDecisionResponse {
+  response: ResponseEnvelope;
+  decision: RoutingDecision;
 }

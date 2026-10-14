@@ -371,3 +371,23 @@ const (
 	CodeProviderNotPublished         Code = 13015 // PROVIDER_NOT_PUBLISHED
 	CodeProviderInUse                Code = 13016 // PROVIDER_IN_USE
 )
+
+// routing module error codes (feature #49, design D12). The routing
+// module owns the routing-group registry (candidates, intent rules),
+// the request-time virtual-name resolver and the decision log. The
+// block is 13101-13113, the next free block after provider's 130xx;
+// 13105 is intentionally unallocated (the design's table skips it).
+const (
+	CodeRoutingGroupNotFound            Code = 13101 // ROUTING_GROUP_NOT_FOUND
+	CodeRoutingGroupNameConflict        Code = 13102 // ROUTING_GROUP_NAME_CONFLICT
+	CodeRoutingGroupNameInvalid         Code = 13103 // ROUTING_GROUP_NAME_INVALID
+	CodeRoutingGroupCandidateInvalid    Code = 13104 // ROUTING_GROUP_CANDIDATE_INVALID
+	CodeRoutingGroupCandidateExists     Code = 13106 // ROUTING_GROUP_CANDIDATE_EXISTS
+	CodeRoutingGroupStrategyInvalid     Code = 13107 // ROUTING_GROUP_STRATEGY_INVALID
+	CodeRoutingGroupRuleInvalid         Code = 13108 // ROUTING_GROUP_RULE_INVALID
+	CodeRoutingGroupNoEligibleCandidate Code = 13109 // ROUTING_GROUP_NO_ELIGIBLE_CANDIDATE
+	CodeRoutingGroupDisabled            Code = 13110 // ROUTING_GROUP_DISABLED
+	CodeRoutingGroupInUse               Code = 13111 // ROUTING_GROUP_IN_USE
+	CodeRoutingGroupRuleExists          Code = 13112 // ROUTING_GROUP_RULE_EXISTS
+	CodeRoutingGroupNameReserved        Code = 13113 // ROUTING_GROUP_NAME_RESERVED
+)

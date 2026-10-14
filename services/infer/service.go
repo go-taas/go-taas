@@ -19,6 +19,7 @@ import (
 
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
+	routingv1 "github.com/go-taas/go-taas/proto/taas/routing/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
@@ -157,6 +158,12 @@ type Service struct {
 	// injected at wiring time. Nil until wired: an external playground
 	// request fails closed.
 	externalProxy ExternalModelProxy
+
+	// routingResolver resolves a routing group name to an ordered
+	// attempt list (feature #49, AD14). It is implemented by the routing
+	// module and injected at wiring time. Nil until wired: a virtual
+	// playground request fails closed.
+	routingResolver RoutingResolver
 }
 
 // ExternalModelProxy proxies a published external model on the metered path
@@ -171,6 +178,21 @@ type ExternalModelProxy interface {
 	// upstream body. Upstream 401/403 -> 13012; upstream 5xx/timeout ->
 	// 13013; a disabled provider -> 13011; an unpublished model -> 13015.
 	ProxyExternalChat(ctx context.Context, modelID, orgID, apiKeyID string, body []byte) ([]byte, error)
+}
+
+// RoutingResolver resolves a routing group name to an ordered attempt
+// list (feature #49, AD14). It is implemented by the routing module and
+// injected at wiring time — the same setter pattern as
+// SetExternalModelProxy.
+type RoutingResolver interface {
+	// ResolveRoutingGroup resolves the group name against the caller's
+	// org/key context and returns the ordered attempt list with the
+	// matched rule and skipped candidates. Unknown group -> 13101;
+	// disabled -> 13110; no eligible candidate -> 13109.
+	ResolveRoutingGroup(ctx context.Context, req *routingv1.ResolveRoutingGroupRequest) (*routingv1.ResolveRoutingGroupResponse, error)
+	// RecordDecision persists the decision trail for the decisions page
+	// (feature #49, AD12). Best-effort: the caller never fails on it.
+	RecordDecision(ctx context.Context, res *routingv1.ResolveRoutingGroupResponse, requestID, groupName, selectedModelID, selectedModelName string, outcomes map[string]string) error
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -240,6 +262,11 @@ func (s *Service) SetLogFetcher(f LogFetcher) { s.logFetcher = f }
 // #48, AD14). Production wires the provider module; unit tests may inject
 // a fake. Without it an external playground request fails closed.
 func (s *Service) SetExternalModelProxy(p ExternalModelProxy) { s.externalProxy = p }
+
+// SetRoutingResolver installs the routing-group resolver seam (feature
+// #49, AD14). Production wires the routing module; unit tests may inject
+// a fake. Without it a virtual playground request fails closed.
+func (s *Service) SetRoutingResolver(r RoutingResolver) { s.routingResolver = r }
 
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.

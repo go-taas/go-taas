@@ -62,8 +62,15 @@ export default function ModelsPage() {
                       External
                     </span>
                   )}
+                  {m.virtual && (
+                    <span className="badge" data-testid="models-auto-badge">
+                      {t('umodels.auto')}
+                    </span>
+                  )}
                 </td>
-                <td className="muted">{m.external ? '—' : m.latestVersion}</td>
+                <td className="muted">
+                  {m.external || m.virtual ? '—' : m.latestVersion}
+                </td>
                 <td>
                   <AutoscalingIndicator autoscaling={m.autoscaling} />
                 </td>

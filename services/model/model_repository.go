@@ -71,8 +71,15 @@ func (r *Repository) ListModels(ctx context.Context, offset, limit int) ([]*Mode
 }
 
 // GetModel returns the model with the given id. A miss maps to
-// CodeModelNotFound.
+// CodeModelNotFound. A non-UUID id can never match the uuid-typed
+// primary key (Postgres rejects the comparison with SQLSTATE 22P02),
+// so it is a plain miss too — the ModelExists uuid.Parse guard
+// precedent. Feature #49 (AD14) relies on this: the playground treats
+// a catalog miss as a virtual (routing-group) name.
 func (r *Repository) GetModel(ctx context.Context, id string) (*Model, error) {
+	if _, err := uuid.Parse(id); err != nil {
+		return nil, apierrors.New(apierrors.CodeModelNotFound)
+	}
 	row, err := r.GetByID(ctx, id)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, apierrors.New(apierrors.CodeModelNotFound)

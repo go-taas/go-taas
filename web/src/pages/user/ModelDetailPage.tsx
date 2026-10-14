@@ -85,6 +85,9 @@ export default function ModelDetailPage() {
   const entries = compat?.entries || [];
   const supported = parseInt(compat?.supportedCount || '0', 10) || 0;
   const experimental = parseInt(compat?.experimentalCount || '0', 10) || 0;
+  // Feature #49: virtual (Auto) entries are routed by the platform, so
+  // autoscaling/compatibility/load-test projections do not apply.
+  const virtual = m.virtual === true;
 
   return (
     <div className="page" data-testid="model-detail-page">
@@ -98,6 +101,11 @@ export default function ModelDetailPage() {
                 External
               </span>
             )}
+            {virtual && (
+              <span className="badge" data-testid="model-detail-auto-marker">
+                {t('umodeldetail.auto')}
+              </span>
+            )}
           </h1>
           <div className="subtitle mono">
             {m.modelId}
@@ -105,14 +113,20 @@ export default function ModelDetailPage() {
               <span data-testid="model-detail-provider-name"> · Provided by {m.providerName} (external)</span>
             )}
           </div>
+          {virtual && (
+            <div className="subtitle" data-testid="model-detail-virtual-note">
+              {t('umodeldetail.virtualNote')}
+            </div>
+          )}
         </div>
       </div>
 
-      <div className="panel" style={{ marginBottom: 16 }}>
-        <h3 style={{ marginTop: 0 }}>{t('umodeldetail.autoscaling')}</h3>
-        {!as ? (
-          <p className="muted" data-testid="model-autoscaling-none">{t('umodeldetail.asEmpty')}</p>
-        ) : (
+      {!virtual && (
+        <div className="panel" style={{ marginBottom: 16 }}>
+          <h3 style={{ marginTop: 0 }}>{t('umodeldetail.autoscaling')}</h3>
+          {!as ? (
+            <p className="muted" data-testid="model-autoscaling-none">{t('umodeldetail.asEmpty')}</p>
+          ) : (
           <div className="detail-grid" data-testid="model-autoscaling-summary">
             <div className="detail-item">
               <div className="label">{t('umodeldetail.status')}</div>
@@ -147,10 +161,12 @@ export default function ModelDetailPage() {
             {t('umodeldetail.warmingHint')}
           </p>
         )}
-      </div>
+        </div>
+      )}
 
-      <div className="panel" data-testid="model-detail-compatibility">
-        <h3 style={{ marginTop: 0 }}>{t('umodeldetail.compatibility')}</h3>
+      {!virtual && (
+        <div className="panel" data-testid="model-detail-compatibility">
+          <h3 style={{ marginTop: 0 }}>{t('umodeldetail.compatibility')}</h3>
         {compatError ? (
           <div className="error" data-testid="model-detail-compat-error">{compatError}</div>
         ) : entries.length === 0 ? (
@@ -193,10 +209,12 @@ export default function ModelDetailPage() {
             <p className="muted">{t('umodeldetail.compatMuted')}</p>
           </>
         )}
-      </div>
+        </div>
+      )}
 
-      <div className="panel" data-testid="model-detail-performance">
-        <h3 style={{ marginTop: 0 }}>{t('umodeldetail.performance')}</h3>
+      {!virtual && (
+        <div className="panel" data-testid="model-detail-performance">
+          <h3 style={{ marginTop: 0 }}>{t('umodeldetail.performance')}</h3>
         <p className="muted">
           <a
             href={`/models/${id}/observability`}
@@ -241,7 +259,8 @@ export default function ModelDetailPage() {
             </tbody>
           </table>
         )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }

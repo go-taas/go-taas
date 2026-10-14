@@ -219,6 +219,20 @@ var messages = map[Code]string{
 	CodeProviderPublishConflict:      "model name already exists",
 	CodeProviderNotPublished:         "model not published",
 	CodeProviderInUse:                "provider in use",
+
+	// routing (feature #49, design D12)
+	CodeRoutingGroupNotFound:            "routing group not found",
+	CodeRoutingGroupNameConflict:        "routing group name already exists",
+	CodeRoutingGroupNameInvalid:         "invalid routing group name",
+	CodeRoutingGroupCandidateInvalid:    "invalid routing group candidate",
+	CodeRoutingGroupCandidateExists:     "routing group candidate already exists",
+	CodeRoutingGroupStrategyInvalid:     "invalid routing group strategy",
+	CodeRoutingGroupRuleInvalid:         "invalid routing group rule",
+	CodeRoutingGroupNoEligibleCandidate: "no eligible routing group candidate",
+	CodeRoutingGroupDisabled:            "routing group disabled",
+	CodeRoutingGroupInUse:               "routing group in use",
+	CodeRoutingGroupRuleExists:          "routing group rule already exists",
+	CodeRoutingGroupNameReserved:        "routing group name reserved by a model",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

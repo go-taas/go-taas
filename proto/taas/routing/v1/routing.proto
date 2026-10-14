@@ -1,0 +1,302 @@
+syntax = "proto3";
+
+package taas.routing.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/routing/v1;routingv1";
+
+// RoutingService serves the routing-group registry, the candidate and
+// rule lists, the dry-run resolver and the decision log (feature #49).
+// Admin-surface API: served under /api/v1/admin/routing-groups.
+service RoutingService {
+  // ListRoutingGroups returns the groups with strategy, candidate and
+  // rule counts and the 24h request count. Supports pagination, a name
+  // search and strategy/enabled filters.
+  rpc ListRoutingGroups(ListRoutingGroupsRequest) returns (ListRoutingGroupsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-groups"};
+  }
+
+  // CreateRoutingGroup creates a disabled group. Candidates and rules
+  // are configured afterwards on the detail page.
+  rpc CreateRoutingGroup(CreateRoutingGroupRequest) returns (CreateRoutingGroupResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/routing-groups"
+      body: "*"
+    };
+  }
+
+  // GetRoutingGroup returns one group with its ordered candidate and
+  // rule lists. Unknown id -> 13101.
+  rpc GetRoutingGroup(GetRoutingGroupRequest) returns (GetRoutingGroupResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-groups/{group_id}"};
+  }
+
+  // UpdateRoutingGroup edits name, description, strategy and enabled.
+  // Enabling requires >= 1 candidate; enabling a manual group requires
+  // exactly one pinned candidate -> 13107. A name change re-validates
+  // the reserved-name rules.
+  rpc UpdateRoutingGroup(UpdateRoutingGroupRequest) returns (UpdateRoutingGroupResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/routing-groups/{group_id}"
+      body: "*"
+    };
+  }
+
+  // DeleteRoutingGroup removes the group. Blocked while any
+  // organization grant references it -> 13111. Decision-log entries
+  // survive (they denormalize the group name).
+  rpc DeleteRoutingGroup(DeleteRoutingGroupRequest) returns (DeleteRoutingGroupResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/routing-groups/{group_id}"};
+  }
+
+  // ReplaceRoutingGroupCandidates atomically replaces the ordered
+  // candidate list (1-20 entries). Each entry must reference a real
+  // catalog model; duplicates -> 13106; invalid fields -> 13104.
+  rpc ReplaceRoutingGroupCandidates(ReplaceRoutingGroupCandidatesRequest) returns (ReplaceRoutingGroupCandidatesResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/routing-groups/{group_id}/candidates"
+      body: "*"
+    };
+  }
+
+  // ReplaceRoutingGroupRules atomically replaces the ordered rule list
+  // (0-50 entries). A duplicate name -> 13112; an invalid pattern,
+  // regex or target -> 13108.
+  rpc ReplaceRoutingGroupRules(ReplaceRoutingGroupRulesRequest) returns (ReplaceRoutingGroupRulesResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/routing-groups/{group_id}/rules"
+      body: "*"
+    };
+  }
+
+  // TestRoutingResolution is a dry run: given a prompt, it returns the
+  // matched rule (or none), the attempt list and the skipped candidates
+  // with reasons — without executing inference and without writing a
+  // decision-log entry.
+  rpc TestRoutingResolution(TestRoutingResolutionRequest) returns (TestRoutingResolutionResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/routing-groups/{group_id}:resolve"
+      body: "*"
+    };
+  }
+
+  // ListRoutingDecisions returns the decision log. Supports pagination
+  // and group/strategy/matched-rule/selected-model/outcome/range
+  // filters.
+  rpc ListRoutingDecisions(ListRoutingDecisionsRequest) returns (ListRoutingDecisionsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-groups/decisions"};
+  }
+
+  // GetRoutingDecision returns one decision with the candidates
+  // considered. Unknown id -> 13101.
+  rpc GetRoutingDecision(GetRoutingDecisionRequest) returns (GetRoutingDecisionResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/routing-groups/decisions/{decision_id}"};
+  }
+
+  // ResolveRoutingGroup resolves a virtual name to an ordered attempt
+  // list plus the skipped candidates with reasons, or a fail-closed
+  // code (13101 unknown, 13110 disabled, 13109 no eligible candidate).
+  // This is an INTERNAL RPC: it has no google.api.http annotation and is
+  // never reachable through the gateway. It is called by the data-plane
+  // gateway and by infer.PlaygroundModel.
+  rpc ResolveRoutingGroup(ResolveRoutingGroupRequest) returns (ResolveRoutingGroupResponse) {}
+}
+
+message RoutingGroup {
+  string group_id = 1;
+  string name = 2;
+  string description = 3;
+  string strategy = 4; // manual | weighted | cost_priority | latency_priority
+  bool enabled = 5;
+  int64 candidate_count = 6;
+  int64 rule_count = 7;
+  int64 request_count_24h = 8;
+  int64 created_at = 9;
+  int64 updated_at = 10;
+}
+
+message RoutingGroupCandidate {
+  string candidate_id = 1;
+  string model_id = 2;
+  string model_name = 3;
+  int32 weight = 4; // 1-100, default 10
+  int32 cost_tier = 5; // 1-5, 0 = undeclared
+  int32 latency_tier = 6; // 1-5, 0 = undeclared
+  bool pinned = 7;
+  int32 position = 8;
+}
+
+message RoutingGroupRule {
+  string rule_id = 1;
+  string name = 2;
+  string match_type = 3; // keyword | regex
+  string pattern = 4;
+  string target_model_id = 5;
+  string target_model_name = 6;
+  bool enabled = 7;
+  int32 position = 8;
+}
+
+message ListRoutingGroupsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string name = 2; // substring search
+  string strategy = 3; // optional filter
+  string enabled = 4; // "" | "true" | "false"
+}
+message ListRoutingGroupsResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingGroup groups = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message CreateRoutingGroupRequest {
+  string name = 1;
+  string description = 2;
+  string strategy = 3; // default weighted
+}
+message CreateRoutingGroupResponse {
+  taas.common.v1.Response response = 1;
+  RoutingGroup group = 2;
+}
+
+message GetRoutingGroupRequest {
+  string group_id = 1;
+}
+message GetRoutingGroupResponse {
+  taas.common.v1.Response response = 1;
+  RoutingGroup group = 2;
+  repeated RoutingGroupCandidate candidates = 3;
+  repeated RoutingGroupRule rules = 4;
+}
+
+message UpdateRoutingGroupRequest {
+  string group_id = 1;
+  string name = 2;
+  string description = 3;
+  string strategy = 4;
+  bool enabled = 5;
+}
+message UpdateRoutingGroupResponse {
+  taas.common.v1.Response response = 1;
+  RoutingGroup group = 2;
+}
+
+message DeleteRoutingGroupRequest {
+  string group_id = 1;
+}
+message DeleteRoutingGroupResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message RoutingGroupCandidateInput {
+  string model_id = 1;
+  int32 weight = 2;
+  int32 cost_tier = 3;
+  int32 latency_tier = 4;
+  bool pinned = 5;
+}
+message ReplaceRoutingGroupCandidatesRequest {
+  string group_id = 1;
+  repeated RoutingGroupCandidateInput candidates = 2;
+}
+message ReplaceRoutingGroupCandidatesResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingGroupCandidate candidates = 2;
+}
+
+message RoutingGroupRuleInput {
+  string name = 1;
+  string match_type = 2;
+  string pattern = 3;
+  string target_model_id = 4;
+  bool enabled = 5;
+}
+message ReplaceRoutingGroupRulesRequest {
+  string group_id = 1;
+  repeated RoutingGroupRuleInput rules = 2;
+}
+message ReplaceRoutingGroupRulesResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingGroupRule rules = 2;
+}
+
+message TestRoutingResolutionRequest {
+  string group_id = 1;
+  string prompt = 2;
+}
+message TestRoutingResolutionResponse {
+  taas.common.v1.Response response = 1;
+  string matched_rule_id = 2; // empty when none matched
+  string matched_rule_name = 3;
+  repeated RoutingGroupCandidate attempts = 4; // <= 3, ordered
+  repeated SkippedCandidate skipped = 5;
+}
+message SkippedCandidate {
+  string model_id = 1;
+  string model_name = 2;
+  string reason = 3; // skipped_unavailable | skipped_unauthorized
+}
+
+message DecisionCandidate {
+  string model_id = 1;
+  string model_name = 2;
+  string outcome = 3; // served | skipped_unavailable | skipped_unauthorized | failed_retryable | not_attempted
+  string detail = 4;
+}
+
+message RoutingDecision {
+  string decision_id = 1;
+  string request_id = 2;
+  string group_id = 3;
+  string group_name = 4;
+  string strategy = 5;
+  string matched_rule_id = 6;
+  string matched_rule_name = 7;
+  string selected_model_id = 8;
+  string selected_model_name = 9;
+  repeated DecisionCandidate candidates_considered = 10;
+  string api_key_id = 11;
+  string organization_id = 12;
+  int64 created_at = 13;
+}
+
+message ListRoutingDecisionsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string group_id = 2;
+  string strategy = 3;
+  string matched_rule = 4; // name search
+  string selected_model = 5; // name search
+  string outcome = 6; // served | failed
+  string range = 7; // 1h | 24h | 7d
+}
+message ListRoutingDecisionsResponse {
+  taas.common.v1.Response response = 1;
+  repeated RoutingDecision decisions = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetRoutingDecisionRequest {
+  string decision_id = 1;
+}
+message GetRoutingDecisionResponse {
+  taas.common.v1.Response response = 1;
+  RoutingDecision decision = 2;
+}
+
+message ResolveRoutingGroupRequest {
+  string group_name = 1;
+  string prompt = 2;
+  string org_id = 3;
+  string api_key_id = 4;
+}
+message ResolveRoutingGroupResponse {
+  taas.common.v1.Response response = 1;
+  repeated string attempt_model_ids = 2; // <= 3, ordered
+  repeated string attempt_model_names = 3; // parallel to attempt_model_ids
+  repeated SkippedCandidate skipped = 4;
+  string matched_rule_id = 5;
+  string matched_rule_name = 6;
+  string strategy = 7;
+}

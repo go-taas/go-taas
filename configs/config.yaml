@@ -128,6 +128,26 @@ provider:
   # timeout when a request omits one (range 1-120).
   defaultRequestTimeoutSeconds: 10
 
+# Intelligent model routing (feature #49). The routing module owns the
+# routing-group registry (candidates, intent rules), the request-time
+# virtual-name resolver and the decision log.
+routing:
+  # decisionRetentionDays is how long decision-log entries are kept
+  # before deletion (range 1-90).
+  decisionRetentionDays: 7
+  # retention configures the decision-log retention runner.
+  retention:
+    # enabled is the incident-triage kill switch.
+    enabled: true
+    # batchSize is the number of rows deleted per retention pass.
+    batchSize: 1000
+    # interval is the ticker period between retention passes.
+    interval: 1h
+  # latencyWindow is the observed-latency sampling window for the
+  # latency_priority strategy: the p50 of successful request logs
+  # within this window.
+  latencyWindow: 15m
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.
