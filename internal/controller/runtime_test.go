@@ -112,7 +112,7 @@ func TestApplyAndDeleteModelClaim(t *testing.T) {
 func TestApplyPodAutoscaler(t *testing.T) {
 	dyn := newFakeDynamic()
 	ctx := context.Background()
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5))
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
 	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	max, _, _ := unstructured.NestedInt64(got.Object, "spec", "maxReplicas")
@@ -128,7 +128,7 @@ func TestApplyPodAutoscaler(t *testing.T) {
 // schema validation) can no longer hide a missing required field — the
 // regression behind the row-47 bug report.
 func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
-	pa := buildPodAutoscaler(reconcileNamespace, "demo-deploy", "demo", 1, 5)
+	pa := buildPodAutoscaler(reconcileNamespace, "demo-deploy", "demo", 1, 5, 48)
 
 	assert.Equal(t, "PodAutoscaler", pa.GetKind())
 	assert.Equal(t, "autoscaling.aibrix.ai/v1alpha1", pa.GetAPIVersion())
@@ -163,6 +163,34 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 	assert.Contains(t, []string{"HPA", "KPA", "APA"}, strategy,
 		"spec.scalingStrategy must be a supported CRD enum value")
 	assert.NotEmpty(t, strategy, "an empty scalingStrategy is rejected by the CRD with a 422")
+
+	// spec.metricsSources is enforced by the AIBrix admission webhook
+	// (minItems: 1 on the CRD property, not listed in spec.required — the
+	// regression behind the row-47 metricsSources bug report). Each entry
+	// must carry its required per-item fields: metricSourceType (enum
+	// pod|resource|custom|external|domain), targetMetric, targetValue.
+	sources, found, err := unstructured.NestedSlice(pa.Object, "spec", "metricsSources")
+	require.NoError(t, err)
+	require.True(t, found, "spec.metricsSources must be set (admission webhook requires minItems: 1)")
+	require.NotEmpty(t, sources, "spec.metricsSources must carry at least one entry")
+	entry, ok := sources[0].(map[string]any)
+	require.True(t, ok, "metricsSources entries must be objects")
+	assert.Contains(t, []string{"pod", "resource", "custom", "external", "domain"},
+		entry["metricSourceType"], "metricSourceType must be a supported CRD enum value")
+	assert.Equal(t, podAutoscalerTargetMetric, entry["targetMetric"],
+		"targetMetric must mirror the plain HPA path's concurrency metric")
+	assert.Equal(t, "48", entry["targetValue"],
+		"targetValue must be the target concurrency rendered as a string")
+
+	// A non-positive target concurrency falls back to the platform default
+	// (mirrors buildHPA's clamp), never an empty targetValue.
+	defaulted := buildPodAutoscaler(reconcileNamespace, "demo-deploy", "demo", 1, 5, 0)
+	ds, found, err := unstructured.NestedSlice(defaulted.Object, "spec", "metricsSources")
+	require.NoError(t, err)
+	require.True(t, found)
+	de, ok := ds[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "32", de["targetValue"], "a zero target concurrency must default to 32")
 }
 
 // TestApplyPodAutoscalerWritesScalingStrategy asserts the object persisted
@@ -172,7 +200,7 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
 	dyn := newFakeDynamic()
 	ctx := context.Background()
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8))
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 32))
 	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	strategy, found, err := unstructured.NestedString(got.Object, "spec", "scalingStrategy")
@@ -181,7 +209,7 @@ func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
 	assert.Equal(t, podAutoscalerScalingStrategy, strategy)
 
 	// Idempotent re-apply keeps the strategy on the update path too.
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8))
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 32))
 	got, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	strategy, _, err = unstructured.NestedString(got.Object, "spec", "scalingStrategy")

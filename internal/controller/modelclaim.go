@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -165,10 +166,27 @@ func deleteModelClaim(ctx context.Context, dyn dynamic.Interface, namespace, nam
 // autoscaling semantics (feature #47, AD13).
 const podAutoscalerScalingStrategy = "HPA"
 
+// podAutoscalerMetricSourceType is the metricsSources entry type the
+// controller requests. The CRD enum is pod|resource|custom|external|domain;
+// "pod" scopes the metric to the target pods, matching the plain HPA
+// path's per-pod concurrency object metric (feature #47, AD13).
+const podAutoscalerMetricSourceType = "pod"
+
+// podAutoscalerTargetMetric is the concurrency metric the plain HPA path
+// scales on (reconciler buildHPA); the AIBrix PodAutoscaler scales on the
+// same metric so both schemes preserve the platform's autoscaling contract.
+const podAutoscalerTargetMetric = "taas-infer-concurrency"
+
 // buildPodAutoscaler composes the AIBrix PodAutoscaler for a change event
 // with autoscaling enabled (feature #47, §13.5, AD13). The spec must satisfy
-// every CRD-required field: scaleTargetRef, maxReplicas and scalingStrategy.
-func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxReplicas int32) *unstructured.Unstructured {
+// every CRD-required field (scaleTargetRef, maxReplicas, scalingStrategy)
+// and the admission webhook's constraint that spec.metricsSources carries at
+// least one entry with its required per-item fields (metricSourceType,
+// targetMetric, targetValue).
+func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxReplicas int32, targetConcurrency int32) *unstructured.Unstructured {
+	if targetConcurrency < 1 {
+		targetConcurrency = 32
+	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "autoscaling.aibrix.ai/v1alpha1",
 		"kind":       "PodAutoscaler",
@@ -186,17 +204,22 @@ func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxRepl
 			"minReplicas":     int64(minReplicas),
 			"maxReplicas":     int64(maxReplicas),
 			"scalingStrategy": podAutoscalerScalingStrategy,
+			"metricsSources": []any{map[string]any{
+				"metricSourceType": podAutoscalerMetricSourceType,
+				"targetMetric":     podAutoscalerTargetMetric,
+				"targetValue":      strconv.FormatInt(int64(targetConcurrency), 10),
+			}},
 		},
 	}}
 }
 
 // applyPodAutoscaler creates or updates the AIBrix PodAutoscaler for a
-// change event with autoscaling enabled (feature #47, §13.5, AD13).
-func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, deployment, name string, minReplicas, maxReplicas int32) error {
+// change event with autoscaling enabled (feature #47, §13.5).
+func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, deployment, name string, minReplicas, maxReplicas, targetConcurrency int32) error {
 	if dyn == nil {
 		return fmt.Errorf("controller: dynamic client unavailable")
 	}
-	desired := buildPodAutoscaler(namespace, deployment, name, minReplicas, maxReplicas)
+	desired := buildPodAutoscaler(namespace, deployment, name, minReplicas, maxReplicas, targetConcurrency)
 	existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, hpaName(name), metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
 		_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Create(ctx, desired, metav1.CreateOptions{})

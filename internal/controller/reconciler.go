@@ -593,7 +593,7 @@ func (r *k8sReconciler) aibrixScheme() bool {
 func (r *k8sReconciler) applyAIBrixAutoscaler(ctx context.Context, evt changeEvent) error {
 	policy := evt.Autoscaling
 	if policy == nil {
-		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10}
+		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10, TargetConcurrency: 32}
 	}
 	minReplicas := clampReplicas(policy.MinReplicas)
 	if minReplicas < 0 {
@@ -603,7 +603,11 @@ func (r *k8sReconciler) applyAIBrixAutoscaler(ctx context.Context, evt changeEve
 	if maxReplicas < 1 {
 		maxReplicas = 1
 	}
-	return applyPodAutoscaler(ctx, r.dynamic, r.namespace, deploymentName(evt.Name), evt.Name, minReplicas, maxReplicas)
+	target := clampReplicas(policy.TargetConcurrency)
+	if target < 1 {
+		target = 32
+	}
+	return applyPodAutoscaler(ctx, r.dynamic, r.namespace, deploymentName(evt.Name), evt.Name, minReplicas, maxReplicas, target)
 }
 
 // pinDeploymentReplicas sets the Deployment's replicas to the fixed
