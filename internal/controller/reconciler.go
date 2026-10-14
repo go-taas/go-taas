@@ -530,6 +530,12 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		if err := r.applyAIBrixAutoscaler(ctx, evt); err != nil {
 			logger.S().Warnw("controller: aibrix podautoscaler write failed, falling back to HPA",
 				"service_id", evt.ServiceID, "name", evt.Name, "err", err)
+			// Remove any stale PodAutoscaler before falling back: a
+			// leftover object keeps the AIBrix controller driving its own
+			// derived HPA against the same Deployment, so two autoscalers
+			// would fight over the replica count (observed as a status
+			// write storm on both sides).
+			deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
 		} else {
 			useAIBrixAutoscaler = true
 			// Remove any plain HPA so autoscaling is not applied twice.

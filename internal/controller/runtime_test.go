@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	k8sruntime "k8s.io/apimachinery/pkg/runtime"
@@ -168,7 +169,10 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 	// (minItems: 1 on the CRD property, not listed in spec.required — the
 	// regression behind the row-47 metricsSources bug report). Each entry
 	// must carry its required per-item fields: metricSourceType (enum
-	// pod|resource|custom|external|domain), targetMetric, targetValue.
+	// pod|resource|custom|external|domain), targetMetric, targetValue, and
+	// for metricSourceType=pod the per-type fields protocolType, port and
+	// path (AIBrix pkg/webhook validatePodMetricSource rejects a pod entry
+	// missing any of the three — the second half of the row-47 bug report).
 	sources, found, err := unstructured.NestedSlice(pa.Object, "spec", "metricsSources")
 	require.NoError(t, err)
 	require.True(t, found, "spec.metricsSources must be set (admission webhook requires minItems: 1)")
@@ -177,8 +181,15 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 	require.True(t, ok, "metricsSources entries must be objects")
 	assert.Contains(t, []string{"pod", "resource", "custom", "external", "domain"},
 		entry["metricSourceType"], "metricSourceType must be a supported CRD enum value")
+	assert.Contains(t, []string{"http", "https"}, entry["protocolType"],
+		"protocolType is required for metricSourceType=pod and must be a CRD enum value")
+	assert.Equal(t, podAutoscalerProtocolType, entry["protocolType"])
+	assert.Equal(t, podAutoscalerMetricsPort, entry["port"],
+		"port is required for metricSourceType=pod and must match the engine container's metrics port")
+	assert.Equal(t, podAutoscalerMetricsPath, entry["path"],
+		"path is required for metricSourceType=pod and must match the engine's metrics path")
 	assert.Equal(t, podAutoscalerTargetMetric, entry["targetMetric"],
-		"targetMetric must mirror the plain HPA path's concurrency metric")
+		"targetMetric must be an AIBrix registry engine-agnostic name so the runtime fetcher can resolve it")
 	assert.Equal(t, "48", entry["targetValue"],
 		"targetValue must be the target concurrency rendered as a string")
 
@@ -215,6 +226,64 @@ func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
 	strategy, _, err = unstructured.NestedString(got.Object, "spec", "scalingStrategy")
 	require.NoError(t, err)
 	assert.Equal(t, podAutoscalerScalingStrategy, strategy)
+	deletePodAutoscaler(ctx, dyn, reconcileNamespace, "demo")
+}
+
+// TestApplyPodAutoscalerRetriesOnConflict asserts the update path survives
+// a resourceVersion conflict: the AIBrix controller mutates the object
+// concurrently (status, labels), so a stale read can fail the update with
+// "the object has been modified". The retry loop must re-read the live
+// object and reapply the desired spec until the write lands.
+func TestApplyPodAutoscalerRetriesOnConflict(t *testing.T) {
+	dyn := newFakeDynamic()
+	ctx := context.Background()
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
+
+	// Fail the first update with a conflict, then let the retry succeed.
+	var conflicts int
+	dyn.PrependReactor("update", "podautoscalers", func(_ k8stesting.Action) (bool, k8sruntime.Object, error) {
+		if conflicts == 0 {
+			conflicts++
+			return true, nil, apierrors.NewConflict(
+				schema.GroupResource{Group: "autoscaling.aibrix.ai", Resource: "podautoscalers"},
+				hpaName("demo"), errors.New("the object has been modified"))
+		}
+		return false, nil, nil
+	})
+
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 48))
+	assert.Equal(t, 1, conflicts, "exactly one injected conflict must have been absorbed")
+	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, err)
+	max, found, err := unstructured.NestedInt64(got.Object, "spec", "maxReplicas")
+	require.NoError(t, err)
+	require.True(t, found)
+	assert.Equal(t, int64(8), max, "the retried write must land the desired spec")
+	sources, _, err := unstructured.NestedSlice(got.Object, "spec", "metricsSources")
+	require.NoError(t, err)
+	entry, ok := sources[0].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "48", entry["targetValue"], "the retried write must land the new target")
+	deletePodAutoscaler(ctx, dyn, reconcileNamespace, "demo")
+}
+
+// TestApplyPodAutoscalerGivesUpAfterRepeatedConflicts asserts the retry
+// loop is bounded: persistent conflicts surface as an error instead of
+// spinning forever.
+func TestApplyPodAutoscalerGivesUpAfterRepeatedConflicts(t *testing.T) {
+	dyn := newFakeDynamic()
+	ctx := context.Background()
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
+
+	dyn.PrependReactor("update", "podautoscalers", func(_ k8stesting.Action) (bool, k8sruntime.Object, error) {
+		return true, nil, apierrors.NewConflict(
+			schema.GroupResource{Group: "autoscaling.aibrix.ai", Resource: "podautoscalers"},
+			hpaName("demo"), errors.New("the object has been modified"))
+	})
+
+	err := applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 48)
+	require.Error(t, err, "persistent conflicts must surface as an error")
+	assert.True(t, apierrors.IsConflict(err), "the surfaced error must be the conflict")
 	deletePodAutoscaler(ctx, dyn, reconcileNamespace, "demo")
 }
 
@@ -270,6 +339,44 @@ func TestApplyUpsertFallsBackWhenModelClaimWriteFails(t *testing.T) {
 	// The Deployment was still reconciled despite the ModelClaim failure.
 	_, err = clientset.AppsV1().Deployments(reconcileNamespace).Get(context.Background(), "demo", metav1.GetOptions{})
 	require.NoError(t, err)
+}
+
+// TestApplyUpsertFallsBackAndCleansStalePodAutoscaler asserts the HPA
+// fallback path deletes a leftover AIBrix PodAutoscaler: a stale object
+// keeps the AIBrix controller driving its own derived HPA against the
+// same Deployment, so two autoscalers would fight over the replica count
+// (observed live as a status write storm on both sides).
+func TestApplyUpsertFallsBackAndCleansStalePodAutoscaler(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, clientset, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
+
+	// Seed a stale PodAutoscaler from an earlier successful write.
+	evt := testChangeEvent("upsert", "demo")
+	evt.Autoscaling = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 5, TargetConcurrency: 32}
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
+	_, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, err, "seed PodAutoscaler must exist")
+
+	// Make every subsequent PodAutoscaler write fail with a conflict so
+	// the reconciler takes the HPA fallback path.
+	dyn.PrependReactor("update", "podautoscalers", func(_ k8stesting.Action) (bool, k8sruntime.Object, error) {
+		return true, nil, apierrors.NewConflict(
+			schema.GroupResource{Group: "autoscaling.aibrix.ai", Resource: "podautoscalers"},
+			hpaName("demo"), errors.New("the object has been modified"))
+	})
+
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
+
+	// The stale PodAutoscaler must be gone: the fallback owns autoscaling
+	// via the plain HPA alone.
+	_, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.Error(t, err, "stale PodAutoscaler must be deleted on HPA fallback")
+	assert.True(t, apierrors.IsNotFound(err))
+
+	// The plain HPA must exist and own the autoscaling.
+	_, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, err, "fallback HPA must be created")
 }
 
 func TestRuntimeSchemeConsumerSetsScheme(t *testing.T) {

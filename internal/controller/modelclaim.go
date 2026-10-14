@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -172,17 +173,39 @@ const podAutoscalerScalingStrategy = "HPA"
 // path's per-pod concurrency object metric (feature #47, AD13).
 const podAutoscalerMetricSourceType = "pod"
 
-// podAutoscalerTargetMetric is the concurrency metric the plain HPA path
-// scales on (reconciler buildHPA); the AIBrix PodAutoscaler scales on the
-// same metric so both schemes preserve the platform's autoscaling contract.
-const podAutoscalerTargetMetric = "taas-infer-concurrency"
+// podAutoscalerTargetMetric is the AIBrix engine-agnostic concurrency
+// metric name (AIBrix pkg/metrics NumRequestsRunning). The AIBrix pod
+// fetcher resolves it through the central metric registry to the engine's
+// raw Prometheus name (vllm:num_requests_running, exported by the vLLM
+// api_server on the engine container's metrics port), so the autoscaler
+// scales on per-pod running requests — the same per-pod concurrency
+// contract as the plain HPA path's taas-infer-concurrency object metric
+// (reconciler buildHPA). A name outside the registry (e.g. the plain
+// path's taas-infer-concurrency) passes the admission webhook but fails
+// every runtime fetch with "not found in central registry", leaving the
+// autoscaler unable to ever scale.
+const podAutoscalerTargetMetric = "num_requests_running"
+
+// The AIBrix admission webhook requires protocolType, port and path on
+// every metricSourceType=pod entry (AIBrix pkg/webhook
+// podautoscaler_webhook.go validatePodMetricSource). The runtime fetcher
+// always scrapes plain HTTP at pod_ip:port on the engine's metrics path
+// (vllm serves /metrics), and the engine container built by
+// buildDeployment exposes container port 8000, so these constants mirror
+// that endpoint exactly.
+const (
+	podAutoscalerProtocolType = "http"
+	podAutoscalerMetricsPort  = "8000"
+	podAutoscalerMetricsPath  = "/metrics"
+)
 
 // buildPodAutoscaler composes the AIBrix PodAutoscaler for a change event
 // with autoscaling enabled (feature #47, §13.5, AD13). The spec must satisfy
 // every CRD-required field (scaleTargetRef, maxReplicas, scalingStrategy)
 // and the admission webhook's constraint that spec.metricsSources carries at
 // least one entry with its required per-item fields (metricSourceType,
-// targetMetric, targetValue).
+// targetMetric, targetValue) plus the per-type fields the webhook demands for
+// metricSourceType=pod (protocolType, port, path).
 func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxReplicas int32, targetConcurrency int32) *unstructured.Unstructured {
 	if targetConcurrency < 1 {
 		targetConcurrency = 32
@@ -206,6 +229,9 @@ func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxRepl
 			"scalingStrategy": podAutoscalerScalingStrategy,
 			"metricsSources": []any{map[string]any{
 				"metricSourceType": podAutoscalerMetricSourceType,
+				"protocolType":     podAutoscalerProtocolType,
+				"port":             podAutoscalerMetricsPort,
+				"path":             podAutoscalerMetricsPath,
 				"targetMetric":     podAutoscalerTargetMetric,
 				"targetValue":      strconv.FormatInt(int64(targetConcurrency), 10),
 			}},
@@ -214,23 +240,44 @@ func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxRepl
 }
 
 // applyPodAutoscaler creates or updates the AIBrix PodAutoscaler for a
-// change event with autoscaling enabled (feature #47, §13.5).
+// change event with autoscaling enabled (feature #47, §13.5). The update
+// path re-reads the live object and reapplies the desired spec on
+// conflict: the AIBrix controller mutates the object concurrently
+// (status writes at up to ~20/s while reconciling), so a stale
+// resourceVersion fails with "the object has been modified" and the
+// retry re-reads the fresh object after a short backoff until the write
+// lands or the bounded attempts are exhausted.
 func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, deployment, name string, minReplicas, maxReplicas, targetConcurrency int32) error {
 	if dyn == nil {
 		return fmt.Errorf("controller: dynamic client unavailable")
 	}
 	desired := buildPodAutoscaler(namespace, deployment, name, minReplicas, maxReplicas, targetConcurrency)
-	existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, hpaName(name), metav1.GetOptions{})
-	if apierrors.IsNotFound(err) {
-		_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Create(ctx, desired, metav1.CreateOptions{})
+	const maxAttempts = 5
+	for attempt := 0; ; attempt++ {
+		existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, hpaName(name), metav1.GetOptions{})
+		if apierrors.IsNotFound(err) {
+			_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Create(ctx, desired, metav1.CreateOptions{})
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		desired.SetResourceVersion(existing.GetResourceVersion())
+		_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Update(ctx, desired, metav1.UpdateOptions{})
+		if err == nil {
+			return nil
+		}
+		if apierrors.IsConflict(err) && attempt < maxAttempts-1 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("controller: podautoscaler %s update abandoned: %w", name, ctx.Err())
+			case <-time.After(time.Duration(attempt+1) * 100 * time.Millisecond):
+				// backoff 100ms, 200ms, 300ms, 400ms before re-reading
+			}
+			continue
+		}
 		return err
 	}
-	if err != nil {
-		return err
-	}
-	desired.SetResourceVersion(existing.GetResourceVersion())
-	_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Update(ctx, desired, metav1.UpdateOptions{})
-	return err
 }
 
 // deletePodAutoscaler deletes the AIBrix PodAutoscaler by name, ignoring
