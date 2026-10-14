@@ -1,3 +1,10 @@
+## [1.53.1](https://github.com/go-taas/go-taas/compare/v1.53.0...v1.53.1) (2026-10-14)
+
+
+### Bug Fixes
+
+* **controller:** set CRD-required metricsSources on AIBrix PodAutoscaler ([53dca36](https://github.com/go-taas/go-taas/commit/53dca369a33bab85a592225f017249a548470630))
+
 # [1.53.0](https://github.com/go-taas/go-taas/compare/v1.52.1...v1.53.0) (2026-10-14)
 
 
