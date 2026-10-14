@@ -1,3 +1,10 @@
+## [1.53.2](https://github.com/go-taas/go-taas/compare/v1.53.1...v1.53.2) (2026-10-14)
+
+
+### Bug Fixes
+
+* **controller:** complete pod metricsSource fields and harden AIBrix PodAutoscaler writes ([5cd648a](https://github.com/go-taas/go-taas/commit/5cd648a49cd25a9813b80a823b57ce1c0b97ed8f))
+
 ## [1.53.1](https://github.com/go-taas/go-taas/compare/v1.53.0...v1.53.1) (2026-10-14)
 
 
