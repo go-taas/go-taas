@@ -1,3 +1,10 @@
+# [1.53.0](https://github.com/go-taas/go-taas/compare/v1.52.1...v1.53.0) (2026-10-14)
+
+
+### Features
+
+* **routing:** intelligent model routing groups and decision log ([197b0b4](https://github.com/go-taas/go-taas/commit/197b0b47bf6da353ae7a586b4ed08bd8ebc3f048))
+
 ## [1.52.1](https://github.com/go-taas/go-taas/compare/v1.52.0...v1.52.1) (2026-10-13)
 
 
