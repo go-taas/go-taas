@@ -1,3 +1,10 @@
+# [1.55.0](https://github.com/go-taas/go-taas/compare/v1.54.0...v1.55.0) (2026-10-15)
+
+
+### Features
+
+* **quota:** add per-organization service quota management ([b78b394](https://github.com/go-taas/go-taas/commit/b78b39493104d4bdf9b1bd5c73f199c83c1fdf50))
+
 # [1.54.0](https://github.com/go-taas/go-taas/compare/v1.53.2...v1.54.0) (2026-10-15)
 
 
