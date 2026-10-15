@@ -1,0 +1,268 @@
+syntax = "proto3";
+
+package taas.optimization.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/optimization/v1;optimizationv1";
+
+// OptimizationService serves the cost-optimization worklist (feature
+// #50): the rule engine's snapshot (overview + ranked recommendations),
+// the dismiss/restore lifecycle and the refresh trigger. Admin-surface
+// RPCs are served under /api/v1/admin/optimization; user-surface RPCs
+// under /api/v1/optimization (org-scoped, masked: R1/R2/R4 only).
+service OptimizationService {
+  // GetOptimizationOverview returns the fleet summary cards: total
+  // estimated monthly saving (active), count by rule, dismissed count,
+  // last refresh time and the top org by estimated saving.
+  rpc GetOptimizationOverview(GetOptimizationOverviewRequest) returns (GetOptimizationOverviewResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/optimization"};
+  }
+
+  // ListOptimizationRecommendations returns the ranked recommendations
+  // with pagination and rule/status/org/model/min-saving filters.
+  rpc ListOptimizationRecommendations(ListOptimizationRecommendationsRequest) returns (ListOptimizationRecommendationsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/optimization/recommendations"};
+  }
+
+  // GetOptimizationRecommendation returns one recommendation with its
+  // full inputs, arithmetic, alternatives and dismiss state. Unknown
+  // id -> 13201.
+  rpc GetOptimizationRecommendation(GetOptimizationRecommendationRequest) returns (GetOptimizationRecommendationResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/optimization/recommendations/{recommendation_id}"};
+  }
+
+  // DismissRecommendation records a dismissal with a required reason
+  // (not_applicable | planned | other; other requires a note <= 256
+  // chars). Double dismiss -> 13202; invalid reason/note -> 13203.
+  rpc DismissRecommendation(DismissRecommendationRequest) returns (DismissRecommendationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/optimization/recommendations/{recommendation_id}:dismiss"
+      body: "*"
+    };
+  }
+
+  // RestoreRecommendation moves a dismissed recommendation back to
+  // active. Restoring an active one -> 13204.
+  rpc RestoreRecommendation(RestoreRecommendationRequest) returns (RestoreRecommendationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/optimization/recommendations/{recommendation_id}:restore"
+      body: "*"
+    };
+  }
+
+  // RefreshOptimization triggers an immediate engine run and returns
+  // the new summary. Audited (optimization.refreshed).
+  rpc RefreshOptimization(RefreshOptimizationRequest) returns (RefreshOptimizationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/optimization:refresh"
+      body: "*"
+    };
+  }
+
+  // GetMyOptimization returns the caller org's own summary and ranked
+  // active recommendations (R1/R2/R4 only, masked projection).
+  rpc GetMyOptimization(GetMyOptimizationRequest) returns (GetMyOptimizationResponse) {
+    option (google.api.http) = {get: "/api/v1/optimization"};
+  }
+
+  // ListMyOptimizationRecommendations returns the caller org's own
+  // ranked recommendations with rule/status/min-saving filters.
+  rpc ListMyOptimizationRecommendations(ListMyOptimizationRecommendationsRequest) returns (ListMyOptimizationRecommendationsResponse) {
+    option (google.api.http) = {get: "/api/v1/optimization/recommendations"};
+  }
+
+  // GetMyOptimizationRecommendation returns one of the caller org's
+  // recommendations (another org's id -> 13201).
+  rpc GetMyOptimizationRecommendation(GetMyOptimizationRecommendationRequest) returns (GetMyOptimizationRecommendationResponse) {
+    option (google.api.http) = {get: "/api/v1/optimization/recommendations/{recommendation_id}"};
+  }
+
+  // DismissMyRecommendation records the tenant's own dismissal
+  // (surface-scoped state, same codes and audit events).
+  rpc DismissMyRecommendation(DismissMyRecommendationRequest) returns (DismissMyRecommendationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/optimization/recommendations/{recommendation_id}:dismiss"
+      body: "*"
+    };
+  }
+
+  // RestoreMyRecommendation undoes the tenant's own dismissal.
+  rpc RestoreMyRecommendation(RestoreMyRecommendationRequest) returns (RestoreMyRecommendationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/optimization/recommendations/{recommendation_id}:restore"
+      body: "*"
+    };
+  }
+}
+
+// Recommendation is the full worklist projection (design FR1.1).
+// status and the dismissed_* fields are derived per requesting surface
+// (AD11); acting_page carries the requesting surface's variant (AD16).
+message Recommendation {
+  string recommendation_id = 1;
+  string rule = 2; // r1_substitution | r2_batch | r3_idle_service | r4_cache
+  string target_type = 3; // org_model | api_key | service
+  string target_id = 4;
+  string target_display = 5;
+  string suggestion = 6;
+  string estimated_monthly_saving = 7; // decimal string, 2 places
+  string currency = 8;
+  string inputs_json = 9; // rule-specific inputs object
+  string arithmetic = 10;
+  ActingPage acting_page = 11; // the requesting surface's variant (AD16)
+  string status = 12; // active | dismissed (derived)
+  string dismissed_reason = 13; // not_applicable | planned | other
+  string dismissed_note = 14;
+  string dismissed_by = 15;
+  int64 dismissed_at = 16;
+  string fingerprint = 17;
+  int64 first_seen_at = 18;
+  int64 last_computed_at = 19;
+  repeated AlternativeModel alternatives = 20; // R1 only
+}
+
+// ActingPage is the one-click acting link (route + label).
+message ActingPage {
+  string route = 1;
+  string label = 2;
+}
+
+// AlternativeModel is an R1 runner-up candidate with its prices.
+message AlternativeModel {
+  string model_id = 1;
+  string model_name = 2;
+  string estimated_monthly_saving = 3; // decimal string, 2 places
+  string input_price_per_million = 4; // decimal string
+  string output_price_per_million = 5; // decimal string
+}
+
+// RuleCount is one rule's active count in the overview.
+message RuleCount {
+  string rule = 1;
+  int64 count = 2;
+}
+
+// OptimizationOverview is the summary-card payload (FR2.2 / FR4.1).
+message OptimizationOverview {
+  string total_estimated_monthly_saving = 1; // decimal string, 2 places
+  string currency = 2;
+  int64 active_count = 3;
+  repeated RuleCount count_by_rule = 4;
+  int64 dismissed_count = 5;
+  int64 last_refresh_at = 6; // unix seconds, last successful run
+  string top_organization_id = 7; // admin only, empty on the user surface
+  string top_organization_name = 8;
+  string top_organization_saving = 9;
+}
+
+message GetOptimizationOverviewRequest {}
+
+message GetOptimizationOverviewResponse {
+  taas.common.v1.Response response = 1;
+  OptimizationOverview overview = 2;
+}
+
+message ListOptimizationRecommendationsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string rule = 2; // empty = all
+  string status = 3; // active (default) | dismissed | all
+  string organization_id = 4; // empty = all orgs (admin filter)
+  string model_id = 5; // empty = all models (admin filter)
+  string min_saving = 6; // decimal string, empty = no floor
+}
+
+message ListOptimizationRecommendationsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Recommendation recommendations = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetOptimizationRecommendationRequest {
+  string recommendation_id = 1;
+}
+
+message GetOptimizationRecommendationResponse {
+  taas.common.v1.Response response = 1;
+  Recommendation recommendation = 2;
+}
+
+message DismissRecommendationRequest {
+  string recommendation_id = 1;
+  string reason = 2; // not_applicable | planned | other
+  string note = 3; // required for other, max 256 chars
+}
+
+message DismissRecommendationResponse {
+  taas.common.v1.Response response = 1;
+  Recommendation recommendation = 2; // the updated projection
+}
+
+message RestoreRecommendationRequest {
+  string recommendation_id = 1;
+}
+
+message RestoreRecommendationResponse {
+  taas.common.v1.Response response = 1;
+  Recommendation recommendation = 2;
+}
+
+message RefreshOptimizationRequest {}
+
+message RefreshOptimizationResponse {
+  taas.common.v1.Response response = 1;
+  OptimizationOverview overview = 2; // the new summary
+}
+
+// ---- user surface (org-scoped, masked: R1/R2/R4 only) ----
+
+message GetMyOptimizationRequest {}
+
+message GetMyOptimizationResponse {
+  taas.common.v1.Response response = 1;
+  OptimizationOverview overview = 2;
+  repeated Recommendation recommendations = 3; // the ranked first page
+}
+
+message ListMyOptimizationRecommendationsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string rule = 2; // empty = all (r1/r2/r4 only)
+  string status = 3; // active (default) | dismissed | all
+  string min_saving = 4; // decimal string
+}
+
+message ListMyOptimizationRecommendationsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Recommendation recommendations = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetMyOptimizationRecommendationRequest {
+  string recommendation_id = 1;
+}
+
+message GetMyOptimizationRecommendationResponse {
+  taas.common.v1.Response response = 1;
+  Recommendation recommendation = 2;
+}
+
+message DismissMyRecommendationRequest {
+  string recommendation_id = 1;
+  string reason = 2;
+  string note = 3;
+}
+
+message DismissMyRecommendationResponse {
+  taas.common.v1.Response response = 1;
+  Recommendation recommendation = 2;
+}
+
+message RestoreMyRecommendationRequest {
+  string recommendation_id = 1;
+}
+
+message RestoreMyRecommendationResponse {
+  taas.common.v1.Response response = 1;
+  Recommendation recommendation = 2;
+}

@@ -32,6 +32,7 @@ import (
 	"github.com/go-taas/go-taas/services/model"
 	"github.com/go-taas/go-taas/services/notification"
 	"github.com/go-taas/go-taas/services/observability"
+	"github.com/go-taas/go-taas/services/optimization"
 	"github.com/go-taas/go-taas/services/prompt"
 	"github.com/go-taas/go-taas/services/provider"
 	"github.com/go-taas/go-taas/services/resourcemetrics"
@@ -114,6 +115,12 @@ func main() {
 	// models through it).
 	routingSvc := routing.New(srv.Components())
 	srv.RegisterService(routingSvc)
+	// Feature #50: the optimization service owns the cost-optimization
+	// rule engine, the recommendation store and the dismiss/restore
+	// lifecycle. It reads sibling data read-only and writes only its
+	// own tables.
+	optimizationSvc := optimization.New(srv.Components())
+	srv.RegisterService(optimizationSvc)
 	imageSvc := image.New(srv.Components())
 	srv.RegisterService(imageSvc)
 	// Feature: image import. The importer copies an engine image from a
@@ -438,6 +445,17 @@ func main() {
 			authSvc.SetGroupExistenceChecker(routingSvc)
 			inferSvc.SetRoutingResolver(routingSvc)
 
+			// Feature #50: the optimization service resolves the
+			// session's active org and caller, gates the admin
+			// optimization RPCs by the caller's role, records
+			// audit events and reads the fleet card-type set for
+			// the idle-service rule (AD10/AD14).
+			optimizationSvc.SetSessionOrgResolver(authSvc)
+			optimizationSvc.SetSessionUserResolver(authSvc)
+			optimizationSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			optimizationSvc.SetAuditRecorder(auditRecorder)
+			optimizationSvc.SetCardTypeLister(accelerator.NewCardTypeListerAdapter(acceleratorCache))
+
 			// Feature #47: the runtime service resolves the session's
 			// active org and caller, gates the admin runtime RPCs by the
 			// caller's role (AD1, AD10), publishes model changes to the
@@ -553,6 +571,12 @@ func main() {
 	// kill switch is a startup decision; a disabled switch leaves the
 	// runner unwired.
 	if runner := routing.NewDecisionRetentionRunnerFromComponents(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
+	// Feature #50: the optimization refresh runner recomputes the
+	// recommendation snapshot on the configured interval (AD6). A
+	// failed pass keeps the previous snapshot served.
+	if runner := optimization.NewRefreshRunnerFromComponents(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 	if runtimeBroadcaster != nil {

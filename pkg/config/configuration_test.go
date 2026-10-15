@@ -1091,3 +1091,175 @@ provider:
 		t.Fatalf("provider defaultRequestTimeoutSeconds = %d, want 20", cfg.Provider.DefaultRequestTimeoutSeconds)
 	}
 }
+
+func TestOptimizationDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	if cfg.Optimization.RefreshIntervalMinutes != 60 {
+		t.Fatalf("refreshIntervalMinutes default = %d, want 60", cfg.Optimization.RefreshIntervalMinutes)
+	}
+	if cfg.Optimization.WindowDays != 30 {
+		t.Fatalf("windowDays default = %d, want 30", cfg.Optimization.WindowDays)
+	}
+	if cfg.Optimization.TopNPerOrg != 50 {
+		t.Fatalf("topNPerOrg default = %d, want 50", cfg.Optimization.TopNPerOrg)
+	}
+	if cfg.Optimization.Currency != "CNY" {
+		t.Fatalf("currency default = %q, want CNY", cfg.Optimization.Currency)
+	}
+	if cfg.Optimization.R1.MinRequests != 1000 || cfg.Optimization.R1.MinBilledTokens != 10000000 {
+		t.Fatalf("r1 eligibility defaults = %+v", cfg.Optimization.R1)
+	}
+	if cfg.Optimization.R1.ContextRatio != 0.8 || cfg.Optimization.R1.MinSaving != 100 {
+		t.Fatalf("r1 thresholds defaults = %+v", cfg.Optimization.R1)
+	}
+	if cfg.Optimization.R2.MinRequests != 1000 || cfg.Optimization.R2.OfflineRatio != 0.9 || cfg.Optimization.R2.PromptTokenFloor != 512 {
+		t.Fatalf("r2 defaults = %+v", cfg.Optimization.R2)
+	}
+	if cfg.Optimization.R3.IdleRequestsPerDay != 10 || cfg.Optimization.R3.IdleWindowDays != 7 {
+		t.Fatalf("r3 defaults = %+v", cfg.Optimization.R3)
+	}
+	if cfg.Optimization.R4.MinPromptTokens != 1000000 || cfg.Optimization.R4.MaxCacheHitRate != 0.05 || cfg.Optimization.R4.DefaultHitAssumption != 0.5 {
+		t.Fatalf("r4 defaults = %+v", cfg.Optimization.R4)
+	}
+	if len(cfg.Optimization.PeakHours) != 1 || cfg.Optimization.PeakHours[0] != "09:00-18:00" {
+		t.Fatalf("peakHours default = %v", cfg.Optimization.PeakHours)
+	}
+	// peakWeekdaysOnly defaults to true through the viper SetDefault in
+	// ParseConfigs (the seedOnBoot pattern: applyDefaults cannot tell an
+	// unset false from an explicit false), so it is asserted by the
+	// parse test, not here.
+	if cfg.Optimization.Timezone != "UTC" {
+		t.Fatalf("timezone default = %q, want UTC", cfg.Optimization.Timezone)
+	}
+	if len(cfg.Optimization.PrefixCacheEngines) != 2 {
+		t.Fatalf("prefixCacheEngines default = %v", cfg.Optimization.PrefixCacheEngines)
+	}
+	// An explicit refresh interval is preserved.
+	cfg.Optimization.RefreshIntervalMinutes = 15
+	cfg.applyDefaults()
+	if cfg.Optimization.RefreshIntervalMinutes != 15 {
+		t.Fatalf("explicit refreshIntervalMinutes overwritten: %d", cfg.Optimization.RefreshIntervalMinutes)
+	}
+}
+
+func TestValidateOptimizationConfig(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Optimization.RefreshIntervalMinutes = 5
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("out-of-range refreshIntervalMinutes should fail validation")
+	}
+	cfg.Optimization.RefreshIntervalMinutes = 60
+	cfg.Optimization.WindowDays = 200
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("out-of-range windowDays should fail validation")
+	}
+	cfg.Optimization.WindowDays = 30
+	cfg.Optimization.TopNPerOrg = 500
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("out-of-range topNPerOrg should fail validation")
+	}
+	cfg.Optimization.TopNPerOrg = 50
+	if err := cfg.Validate(); err != nil {
+		t.Fatalf("valid optimization config rejected: %v", err)
+	}
+}
+
+func TestParseConfigsOptimizationSectionAndEnvOverride(t *testing.T) {
+	path := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+optimization:
+  refreshIntervalMinutes: 30
+  windowDays: 14
+  topNPerOrg: 20
+  currency: CNY
+  r1:
+    minRequests: 500
+    minBilledTokens: 5000000
+    contextRatio: 0.9
+    minSaving: 50
+  r2:
+    minRequests: 200
+    offlineRatio: 0.8
+    promptTokenFloor: 256
+  r3:
+    idleRequestsPerDay: 5
+    idleWindowDays: 3
+  r4:
+    minPromptTokens: 500000
+    maxCacheHitRate: 0.1
+    defaultHitAssumption: 0.4
+  modelContextLengths:
+    qwen-72b: 131072
+    qwen-7b: 131072
+  cardHourlyCosts:
+    A800: 12.5
+  peakHours: ["08:00-20:00"]
+  peakWeekdaysOnly: false
+  timezone: Asia/Shanghai
+  prefixCacheEngines: ["vllm"]
+`)
+	// The optimization keys are overridable by the CONFIG_ env prefix
+	// (feature #50, Section 9); the key must also be present in the merged
+	// config for the override to take effect.
+	t.Setenv("CONFIG_OPTIMIZATION_REFRESHINTERVALMINUTES", "45")
+	ParseConfigs(path)
+	cfg := GetConfig()
+	if cfg == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if cfg.Optimization.RefreshIntervalMinutes != 45 {
+		t.Fatalf("optimization refreshIntervalMinutes env override = %d, want 45", cfg.Optimization.RefreshIntervalMinutes)
+	}
+	if cfg.Optimization.WindowDays != 14 {
+		t.Fatalf("optimization windowDays = %d, want 14", cfg.Optimization.WindowDays)
+	}
+	if cfg.Optimization.R1.ContextRatio != 0.9 {
+		t.Fatalf("optimization r1.contextRatio = %v, want 0.9", cfg.Optimization.R1.ContextRatio)
+	}
+	if cfg.Optimization.ModelContextLengths["qwen-72b"] != 131072 {
+		t.Fatalf("optimization modelContextLengths = %v", cfg.Optimization.ModelContextLengths)
+	}
+	// Viper lowercases config map keys on unmarshal, so the parsed
+	// card-cost map is keyed "a800"; the optimization engine resolves
+	// card types case-insensitively (AD14) so the shipped uppercase
+	// card types (A800, H800) still match.
+	if cfg.Optimization.CardHourlyCosts["a800"] != 12.5 {
+		t.Fatalf("optimization cardHourlyCosts = %v", cfg.Optimization.CardHourlyCosts)
+	}
+	if cfg.Optimization.PeakWeekdaysOnly {
+		t.Fatal("optimization peakWeekdaysOnly should be false from the config file")
+	}
+	if cfg.Optimization.Timezone != "Asia/Shanghai" {
+		t.Fatalf("optimization timezone = %q, want Asia/Shanghai", cfg.Optimization.Timezone)
+	}
+
+	// An absent peakWeekdaysOnly still defaults to true (the viper
+	// SetDefault in ParseConfigs, the seedOnBoot pattern).
+	path2 := writeTempConfig(t, `
+db:
+  master:
+    host: localhost
+    port: 5432
+    dbName: taas
+    user: taas
+    password: secret
+optimization:
+  refreshIntervalMinutes: 30
+`)
+	ParseConfigs(path2)
+	cfg2 := GetConfig()
+	if cfg2 == nil {
+		t.Fatal("GetConfig returned nil after ParseConfigs")
+	}
+	if !cfg2.Optimization.PeakWeekdaysOnly {
+		t.Fatal("absent optimization peakWeekdaysOnly should default to true")
+	}
+}

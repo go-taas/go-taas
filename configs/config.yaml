@@ -148,6 +148,53 @@ routing:
   # within this window.
   latencyWindow: 15m
 
+# Cost optimization recommendations (feature #50). The optimization
+# module owns the rule engine, the recommendation store and the
+# refresh runner. All thresholds are config constants (design D3).
+optimization:
+  # refreshIntervalMinutes is the engine ticker period (FR1.2), range
+  # 10-1440.
+  refreshIntervalMinutes: 60
+  # windowDays is the settled-data window every rule reads (D4), range
+  # 7-90.
+  windowDays: 30
+  # topNPerOrg bounds the per-org persisted worklist (AD5), range
+  # 10-200.
+  topNPerOrg: 50
+  # currency is the platform's single settlement currency.
+  currency: CNY
+  r1:
+    minRequests: 1000
+    minBilledTokens: 10000000
+    contextRatio: 0.8
+    minSaving: 100
+  r2:
+    minRequests: 1000
+    offlineRatio: 0.9
+    promptTokenFloor: 512
+  r3:
+    idleRequestsPerDay: 10
+    idleWindowDays: 7
+  r4:
+    minPromptTokens: 1000000
+    maxCacheHitRate: 0.05
+    defaultHitAssumption: 0.5
+  # modelContextLengths maps model name to max context tokens (AD12).
+  # R1 only proposes substitutions between annotated models.
+  modelContextLengths: {}
+  # cardHourlyCosts maps accelerator type to hourly GPU cost (AD14).
+  # R3 only prices services whose card type is annotated here.
+  cardHourlyCosts: {}
+  # peakHours is R2's peak-window list, each "HH:MM-HH:MM" (AD13).
+  peakHours: ["09:00-18:00"]
+  # peakWeekdaysOnly restricts the peak windows to Monday-Friday.
+  peakWeekdaysOnly: true
+  # timezone is the IANA name the peak windows are evaluated in.
+  timezone: UTC
+  # prefixCacheEngines lists the engines that support prefix caching
+  # (AD15).
+  prefixCacheEngines: ["vllm", "sglang"]
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.

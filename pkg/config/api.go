@@ -821,6 +821,92 @@ type RoutingRetentionConfig struct {
 	Interval time.Duration `mapstructure:"interval"`
 }
 
+// OptimizationConfig holds the cost-optimization-recommendations module
+// settings (feature #50, Section 9). The optimization module owns the
+// rule engine, the recommendation store and the refresh runner. All
+// rule thresholds are config constants (design D3).
+type OptimizationConfig struct {
+	// RefreshIntervalMinutes is the engine ticker period (FR1.2).
+	// Default 60, range 10-1440.
+	RefreshIntervalMinutes int `mapstructure:"refreshIntervalMinutes"`
+	// WindowDays is the settled-data window every rule reads (D4).
+	// Default 30, range 7-90.
+	WindowDays int `mapstructure:"windowDays"`
+	// TopNPerOrg bounds the per-org persisted worklist (AD5).
+	// Default 50, range 10-200.
+	TopNPerOrg int `mapstructure:"topNPerOrg"`
+	// Currency is the platform's single settlement currency.
+	Currency string `mapstructure:"currency"`
+	// R1 configures the cheaper-model-substitution rule.
+	R1 OptimizationR1Config `mapstructure:"r1"`
+	// R2 configures the batch-migration rule.
+	R2 OptimizationR2Config `mapstructure:"r2"`
+	// R3 configures the idle-service scale-to-zero rule.
+	R3 OptimizationR3Config `mapstructure:"r3"`
+	// R4 configures the cache-hit-improvement rule.
+	R4 OptimizationR4Config `mapstructure:"r4"`
+	// ModelContextLengths maps model name to max context tokens (AD12).
+	// R1 only proposes substitutions between annotated models.
+	ModelContextLengths map[string]int64 `mapstructure:"modelContextLengths"`
+	// CardHourlyCosts maps accelerator type to hourly GPU cost in
+	// Currency (AD14). R3 only prices services whose card type is
+	// annotated here.
+	CardHourlyCosts map[string]float64 `mapstructure:"cardHourlyCosts"`
+	// PeakHours is R2's peak-window list, each "HH:MM-HH:MM" (AD13).
+	PeakHours []string `mapstructure:"peakHours"`
+	// PeakWeekdaysOnly restricts the peak windows to Monday-Friday.
+	PeakWeekdaysOnly bool `mapstructure:"peakWeekdaysOnly"`
+	// Timezone is the IANA name the peak windows are evaluated in.
+	Timezone string `mapstructure:"timezone"`
+	// PrefixCacheEngines lists the engines that support prefix caching
+	// (AD15).
+	PrefixCacheEngines []string `mapstructure:"prefixCacheEngines"`
+}
+
+// OptimizationR1Config holds the cheaper-model-substitution rule
+// thresholds (feature #50, FR1.3).
+type OptimizationR1Config struct {
+	// MinRequests is the per-(org, model) request floor.
+	MinRequests int `mapstructure:"minRequests"`
+	// MinBilledTokens is the per-(org, model) billed-token floor.
+	MinBilledTokens int64 `mapstructure:"minBilledTokens"`
+	// ContextRatio is the minimum B-context/A-context ratio.
+	ContextRatio float64 `mapstructure:"contextRatio"`
+	// MinSaving is the monthly saving floor in Currency.
+	MinSaving float64 `mapstructure:"minSaving"`
+}
+
+// OptimizationR2Config holds the batch-migration rule thresholds
+// (feature #50, FR1.4).
+type OptimizationR2Config struct {
+	// MinRequests is the per-(org, key, model) request floor.
+	MinRequests int `mapstructure:"minRequests"`
+	// OfflineRatio is the offline-shape threshold.
+	OfflineRatio float64 `mapstructure:"offlineRatio"`
+	// PromptTokenFloor is the non-interactive prompt-size floor.
+	PromptTokenFloor int64 `mapstructure:"promptTokenFloor"`
+}
+
+// OptimizationR3Config holds the idle-service scale-to-zero rule
+// thresholds (feature #50, FR1.5).
+type OptimizationR3Config struct {
+	// IdleRequestsPerDay is the idle-traffic ceiling.
+	IdleRequestsPerDay int64 `mapstructure:"idleRequestsPerDay"`
+	// IdleWindowDays is the idle-observation window.
+	IdleWindowDays int `mapstructure:"idleWindowDays"`
+}
+
+// OptimizationR4Config holds the cache-hit-improvement rule thresholds
+// (feature #50, FR1.6).
+type OptimizationR4Config struct {
+	// MinPromptTokens is the per-(org, model) prompt-token floor.
+	MinPromptTokens int64 `mapstructure:"minPromptTokens"`
+	// MaxCacheHitRate is the cache-hit-rate ceiling.
+	MaxCacheHitRate float64 `mapstructure:"maxCacheHitRate"`
+	// DefaultHitAssumption is the assumed hit rate for the estimate.
+	DefaultHitAssumption float64 `mapstructure:"defaultHitAssumption"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -897,6 +983,7 @@ type Configuration struct {
 	Runtime         RuntimeConfig         `mapstructure:"runtime"`
 	Provider        ProviderConfig        `mapstructure:"provider"`
 	Routing         RoutingConfig         `mapstructure:"routing"`
+	Optimization    OptimizationConfig    `mapstructure:"optimization"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -993,6 +1080,22 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Routing.LatencyWindow < 0 {
 		return &FieldError{Field: "routing.latencyWindow", Reason: "must not be negative"}
+	}
+	// Feature #50: the optimization engine bounds (Section 9).
+	// applyDefaults fills the defaults before Validate in the
+	// production path, so a zero value here means "unset" and passes;
+	// any explicit value must sit inside the documented range.
+	if c.Optimization.RefreshIntervalMinutes != 0 &&
+		(c.Optimization.RefreshIntervalMinutes < 10 || c.Optimization.RefreshIntervalMinutes > 1440) {
+		return &FieldError{Field: "optimization.refreshIntervalMinutes", Reason: "must be within 10-1440"}
+	}
+	if c.Optimization.WindowDays != 0 &&
+		(c.Optimization.WindowDays < 7 || c.Optimization.WindowDays > 90) {
+		return &FieldError{Field: "optimization.windowDays", Reason: "must be within 7-90"}
+	}
+	if c.Optimization.TopNPerOrg != 0 &&
+		(c.Optimization.TopNPerOrg < 10 || c.Optimization.TopNPerOrg > 200) {
+		return &FieldError{Field: "optimization.topNPerOrg", Reason: "must be within 10-200"}
 	}
 	if c.LoadTest.Retention < 0 {
 		return &FieldError{Field: "loadtest.retention", Reason: "must not be negative"}

@@ -71,6 +71,13 @@ func ParseConfigs(pathPattern string) {
 	// preserved, while an absent key still defaults to true.
 	v.SetDefault("loadtest.systemCredentialEnabled", true)
 
+	// Feature #50: the optimization peak windows apply Monday-Friday
+	// by default (AD13). Applied here (not in applyDefaults) so an
+	// explicit `peakWeekdaysOnly: false` in a config file or a
+	// CONFIG_OPTIMIZATION_PEAKWEEKDAYSONLY=false override is
+	// preserved, while an absent key still defaults to true.
+	v.SetDefault("optimization.peakWeekdaysOnly", true)
+
 	for _, configFile := range matches {
 		// Skip hidden files such as editor backups.
 		if strings.HasPrefix(filepath.Base(configFile), ".") {
@@ -418,6 +425,67 @@ func (c *Configuration) applyDefaults() {
 	}
 	if c.Routing.LatencyWindow == 0 {
 		c.Routing.LatencyWindow = 15 * time.Minute
+	}
+	// Feature #50: cost-optimization-recommendations defaults (Section
+	// 9). All rule thresholds are config constants (design D3); the
+	// maps default empty (R1/R3 activate only for annotated models and
+	// card types, AD12/AD14).
+	if c.Optimization.RefreshIntervalMinutes == 0 {
+		c.Optimization.RefreshIntervalMinutes = 60
+	}
+	if c.Optimization.WindowDays == 0 {
+		c.Optimization.WindowDays = 30
+	}
+	if c.Optimization.TopNPerOrg == 0 {
+		c.Optimization.TopNPerOrg = 50
+	}
+	if c.Optimization.Currency == "" {
+		c.Optimization.Currency = "CNY"
+	}
+	if c.Optimization.R1.MinRequests == 0 {
+		c.Optimization.R1.MinRequests = 1000
+	}
+	if c.Optimization.R1.MinBilledTokens == 0 {
+		c.Optimization.R1.MinBilledTokens = 10000000
+	}
+	if c.Optimization.R1.ContextRatio == 0 {
+		c.Optimization.R1.ContextRatio = 0.8
+	}
+	if c.Optimization.R1.MinSaving == 0 {
+		c.Optimization.R1.MinSaving = 100
+	}
+	if c.Optimization.R2.MinRequests == 0 {
+		c.Optimization.R2.MinRequests = 1000
+	}
+	if c.Optimization.R2.OfflineRatio == 0 {
+		c.Optimization.R2.OfflineRatio = 0.9
+	}
+	if c.Optimization.R2.PromptTokenFloor == 0 {
+		c.Optimization.R2.PromptTokenFloor = 512
+	}
+	if c.Optimization.R3.IdleRequestsPerDay == 0 {
+		c.Optimization.R3.IdleRequestsPerDay = 10
+	}
+	if c.Optimization.R3.IdleWindowDays == 0 {
+		c.Optimization.R3.IdleWindowDays = 7
+	}
+	if c.Optimization.R4.MinPromptTokens == 0 {
+		c.Optimization.R4.MinPromptTokens = 1000000
+	}
+	if c.Optimization.R4.MaxCacheHitRate == 0 {
+		c.Optimization.R4.MaxCacheHitRate = 0.05
+	}
+	if c.Optimization.R4.DefaultHitAssumption == 0 {
+		c.Optimization.R4.DefaultHitAssumption = 0.5
+	}
+	if len(c.Optimization.PeakHours) == 0 {
+		c.Optimization.PeakHours = []string{"09:00-18:00"}
+	}
+	if c.Optimization.Timezone == "" {
+		c.Optimization.Timezone = "UTC"
+	}
+	if len(c.Optimization.PrefixCacheEngines) == 0 {
+		c.Optimization.PrefixCacheEngines = []string{"vllm", "sglang"}
 	}
 }
 

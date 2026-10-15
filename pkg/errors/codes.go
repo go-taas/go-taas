@@ -391,3 +391,16 @@ const (
 	CodeRoutingGroupRuleExists          Code = 13112 // ROUTING_GROUP_RULE_EXISTS
 	CodeRoutingGroupNameReserved        Code = 13113 // ROUTING_GROUP_NAME_RESERVED
 )
+
+// optimization module error codes (feature #50, design D9). The
+// optimization module owns the cost-optimization rule engine, the
+// recommendation store and the dismiss/restore lifecycle. The block is
+// 13201-13205, the next free block after routing's 131xx; 13206-13299
+// are reserved for future optimization codes.
+const (
+	CodeRecommendationNotFound             Code = 13201 // RECOMMENDATION_NOT_FOUND
+	CodeRecommendationDismissed            Code = 13202 // RECOMMENDATION_DISMISSED
+	CodeRecommendationDismissReasonInvalid Code = 13203 // RECOMMENDATION_DISMISS_REASON_INVALID
+	CodeRecommendationRestoreInvalid       Code = 13204 // RECOMMENDATION_RESTORE_INVALID
+	CodeOptimizationRangeInvalid           Code = 13205 // OPTIMIZATION_RANGE_INVALID
+)

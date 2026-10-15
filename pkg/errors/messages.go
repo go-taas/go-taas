@@ -233,6 +233,13 @@ var messages = map[Code]string{
 	CodeRoutingGroupInUse:               "routing group in use",
 	CodeRoutingGroupRuleExists:          "routing group rule already exists",
 	CodeRoutingGroupNameReserved:        "routing group name reserved by a model",
+
+	// optimization (feature #50, design D9)
+	CodeRecommendationNotFound:             "recommendation not found",
+	CodeRecommendationDismissed:            "recommendation already dismissed",
+	CodeRecommendationDismissReasonInvalid: "invalid dismiss reason or note",
+	CodeRecommendationRestoreInvalid:       "recommendation is not dismissed",
+	CodeOptimizationRangeInvalid:           "invalid optimization filter or range",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

@@ -19,6 +19,7 @@ import {
   DownloadSimple,
   TextT,
   ChartBar,
+  TrendDown,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -42,6 +43,7 @@ export const USER_NAV_ITEMS: { path: string; labelKey: string; testid: string; i
   { path: '/usage/keys', labelKey: 'nav.usageKeys', testid: 'user-nav-usage-keys', icon: Key },
   { path: '/cost', labelKey: 'nav.cost', testid: 'user-nav-cost', icon: ChartLine },
   { path: '/forecast', labelKey: 'nav.forecast', testid: 'user-nav-forecast', icon: ChartLine },
+  { path: '/optimization', labelKey: 'nav.optimization', testid: 'user-nav-optimization', icon: TrendDown },
   { path: '/api-keys', labelKey: 'nav.apiKeys', testid: 'user-nav-api-keys', icon: Key },
   { path: '/request-logs', labelKey: 'nav.requestLogs', testid: 'user-nav-request-logs', icon: ListMagnifyingGlass },
   { path: '/playground', labelKey: 'nav.playground', testid: 'user-nav-playground', icon: Play },

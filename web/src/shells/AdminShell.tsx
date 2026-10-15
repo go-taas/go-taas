@@ -29,6 +29,7 @@ import {
   ArrowsSplit,
   Shuffle,
   Pulse,
+  TrendDown,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -58,6 +59,7 @@ export const ADMIN_NAV_ITEMS: { path: string; labelKey: string; testid: string; 
   { path: '/admin/usage/keys', labelKey: 'nav.usageKeys', testid: 'nav-usage-keys', icon: Key },
   { path: '/admin/cost', labelKey: 'nav.cost', testid: 'nav-cost', icon: ChartLine },
   { path: '/admin/forecast', labelKey: 'nav.forecast', testid: 'nav-forecast', icon: ChartLine },
+  { path: '/admin/optimization', labelKey: 'nav.optimization', testid: 'nav-optimization', icon: TrendDown },
   { path: '/admin/pricing', labelKey: 'nav.pricing', testid: 'nav-pricing', icon: Tag },
   { path: '/admin/billing', labelKey: 'nav.bills', testid: 'nav-bills', icon: Receipt },
   { path: '/admin/billing/accounts', labelKey: 'nav.accounts', testid: 'nav-accounts', icon: UserCircle },

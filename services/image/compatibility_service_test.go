@@ -74,7 +74,7 @@ func TestServiceListCompatibilityMatrix(t *testing.T) {
 	assert.Equal(t, int64(0), resp.GetPageMeta().GetTotal())
 
 	// Filter by model.
-	resp, err = svc.ListCompatibilityMatrix(ctx, &imagev1.ListCompatibilityMatrixRequest{ModelId: "model-qwen"})
+	resp, err = svc.ListCompatibilityMatrix(ctx, &imagev1.ListCompatibilityMatrixRequest{ModelId: testModelID})
 	require.NoError(t, err)
 	assert.Equal(t, int64(4), resp.GetPageMeta().GetTotal())
 }
@@ -105,7 +105,7 @@ func TestServiceListCompatibilityDimensionsDepartedCardType(t *testing.T) {
 	require.NoError(t, err)
 
 	// Curate a cell for M100 so it has a stored cell.
-	_, err = svc.compatRepo.SetStatus(ctx, "model-qwen", "sglang", "M100", StatusSupported, "validated", testCardTypes, StatusExperimental)
+	_, err = svc.compatRepo.SetStatus(ctx, testModelID, "sglang", "M100", StatusSupported, "validated", testCardTypes, StatusExperimental)
 	require.NoError(t, err)
 
 	// Simulate M100 leaving the fleet: the provider now returns only A800.
@@ -134,7 +134,7 @@ func TestServiceSetCompatibilityStatus(t *testing.T) {
 
 	// AC4: set a cell's status and note.
 	resp, err := svc.SetCompatibilityStatus(ctx, &imagev1.SetCompatibilityStatusRequest{
-		ModelId: "model-qwen", Engine: "vllm", CardType: "A800",
+		ModelId: testModelID, Engine: "vllm", CardType: "A800",
 		Status: StatusSupported, Note: "validated",
 	})
 	require.NoError(t, err)
@@ -143,7 +143,7 @@ func TestServiceSetCompatibilityStatus(t *testing.T) {
 
 	// Invalid status → 10210.
 	_, err = svc.SetCompatibilityStatus(ctx, &imagev1.SetCompatibilityStatusRequest{
-		ModelId: "model-qwen", Engine: "vllm", CardType: "A800", Status: "bogus",
+		ModelId: testModelID, Engine: "vllm", CardType: "A800", Status: "bogus",
 	})
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
@@ -166,8 +166,8 @@ func TestServiceBulkSetCompatibilityStatus(t *testing.T) {
 
 	resp, err := svc.BulkSetCompatibilityStatus(ctx, &imagev1.BulkSetCompatibilityStatusRequest{
 		Cells: []*imagev1.CompatibilityCellRef{
-			{ModelId: "model-qwen", Engine: "vllm", CardType: "A800"},
-			{ModelId: "model-qwen", Engine: "vllm", CardType: "M100"},
+			{ModelId: testModelID, Engine: "vllm", CardType: "A800"},
+			{ModelId: testModelID, Engine: "vllm", CardType: "M100"},
 		},
 		Status: StatusSupported, Note: "bulk",
 	})
@@ -181,7 +181,7 @@ func TestServiceGetCompatibilityCell(t *testing.T) {
 
 	// A missing cell is materialized lazily (AC4).
 	resp, err := svc.GetCompatibilityCell(ctx, &imagev1.GetCompatibilityCellRequest{
-		ModelId: "model-qwen", Engine: "vllm", CardType: "A800",
+		ModelId: testModelID, Engine: "vllm", CardType: "A800",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, StatusExperimental, resp.GetCell().GetStatus())
@@ -203,11 +203,11 @@ func TestServiceGetModelCompatibility(t *testing.T) {
 	_, err := svc.compatRepo.SeedIfEmpty(ctx, testCardTypes, StatusExperimental)
 	require.NoError(t, err)
 	// Curate one supported.
-	_, err = svc.compatRepo.SetStatus(ctx, "model-qwen", "vllm", "A800", StatusSupported, "", testCardTypes, StatusExperimental)
+	_, err = svc.compatRepo.SetStatus(ctx, testModelID, "vllm", "A800", StatusSupported, "", testCardTypes, StatusExperimental)
 	require.NoError(t, err)
 
 	// AC7: masked projection returns only supported/experimental.
-	resp, err := svc.GetModelCompatibility(ctx, &imagev1.GetModelCompatibilityRequest{ModelId: "model-qwen"})
+	resp, err := svc.GetModelCompatibility(ctx, &imagev1.GetModelCompatibilityRequest{ModelId: testModelID})
 	require.NoError(t, err)
 	assert.Equal(t, int64(1), resp.GetSupportedCount())
 	assert.Equal(t, int64(1), resp.GetExperimentalCount())
@@ -229,7 +229,7 @@ func TestServiceGetCompatibilityStatusNarrow(t *testing.T) {
 	ctx := context.Background()
 
 	// The narrow interface materializes a default row lazily.
-	status, err := svc.GetCompatibilityStatus(ctx, "model-qwen", "vllm", "A800")
+	status, err := svc.GetCompatibilityStatus(ctx, testModelID, "vllm", "A800")
 	require.NoError(t, err)
 	assert.Equal(t, StatusExperimental, status)
 
@@ -245,11 +245,11 @@ func TestServiceModelCompatibilitySummary(t *testing.T) {
 	_, err := svc.compatRepo.SeedIfEmpty(ctx, testCardTypes, StatusExperimental)
 	require.NoError(t, err)
 	// Curate vllm/A800 to supported.
-	_, err = svc.compatRepo.SetStatus(ctx, "model-qwen", "vllm", "A800", StatusSupported, "", testCardTypes, StatusExperimental)
+	_, err = svc.compatRepo.SetStatus(ctx, testModelID, "vllm", "A800", StatusSupported, "", testCardTypes, StatusExperimental)
 	require.NoError(t, err)
 
 	// The summary groups card types by engine.
-	summary, err := svc.ModelCompatibilitySummary(ctx, "model-qwen")
+	summary, err := svc.ModelCompatibilitySummary(ctx, testModelID)
 	require.NoError(t, err)
 	assert.Contains(t, summary, "vllm")
 	assert.Contains(t, summary, "A800")
@@ -262,7 +262,7 @@ func TestNewCompatibilityChecker(t *testing.T) {
 	checker := NewCompatibilityChecker(svc)
 	require.NotNil(t, checker)
 	// The checker resolves the status through the narrow interface.
-	status, err := checker(ctx, "model-qwen", "vllm", "A800")
+	status, err := checker(ctx, testModelID, "vllm", "A800")
 	require.NoError(t, err)
 	assert.Equal(t, StatusExperimental, status)
 }
@@ -274,7 +274,7 @@ func TestNewModelCompatibilitySummaryProvider(t *testing.T) {
 	provider := NewModelCompatibilitySummaryProvider(svc)
 	require.NotNil(t, provider)
 	// The provider resolves the masked summary through the narrow read.
-	summary, err := provider.ModelCompatibilitySummary(ctx, "model-qwen")
+	summary, err := provider.ModelCompatibilitySummary(ctx, testModelID)
 	require.NoError(t, err)
 	assert.Equal(t, "", summary, "no curated cells yet")
 }

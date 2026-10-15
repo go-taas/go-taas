@@ -1430,3 +1430,90 @@ export interface GetRoutingDecisionResponse {
   response: ResponseEnvelope;
   decision: RoutingDecision;
 }
+
+// ---- Cost optimization recommendations (feature #50) ----
+
+export interface ActingPage {
+  route: string;
+  label: string;
+}
+
+export interface AlternativeModel {
+  modelId: string;
+  modelName: string;
+  estimatedMonthlySaving: string; // decimal string, 2 places
+  inputPricePerMillion: string;
+  outputPricePerMillion: string;
+}
+
+export interface OptimizationRecommendation {
+  recommendationId: string;
+  rule: string; // r1_substitution | r2_batch | r3_idle_service | r4_cache
+  targetType: string; // org_model | api_key | service
+  targetId: string;
+  targetDisplay: string;
+  suggestion: string;
+  estimatedMonthlySaving: string; // decimal string, 2 places
+  currency: string;
+  inputsJson: string; // rule-specific inputs object
+  arithmetic: string;
+  actingPage?: ActingPage;
+  status: string; // active | dismissed (derived)
+  dismissedReason: string;
+  dismissedNote: string;
+  dismissedBy: string;
+  dismissedAt: string;
+  fingerprint: string;
+  firstSeenAt: string;
+  lastComputedAt: string;
+  alternatives: AlternativeModel[]; // R1 only
+}
+
+export interface RuleCount {
+  rule: string;
+  count: string; // int64 serializes as a decimal string
+}
+
+export interface OptimizationOverview {
+  totalEstimatedMonthlySaving: string; // decimal string, 2 places
+  currency: string;
+  activeCount: string; // int64 serializes as a decimal string
+  countByRule: RuleCount[];
+  dismissedCount: string;
+  lastRefreshAt: string; // unix seconds
+  topOrganizationId: string; // admin only
+  topOrganizationName: string;
+  topOrganizationSaving: string;
+}
+
+export interface GetOptimizationOverviewResponse {
+  response: ResponseEnvelope;
+  overview: OptimizationOverview;
+}
+
+export interface ListOptimizationRecommendationsResponse {
+  response: ResponseEnvelope;
+  recommendations: OptimizationRecommendation[];
+  pageMeta?: PageMeta;
+}
+
+export interface GetOptimizationRecommendationResponse {
+  response: ResponseEnvelope;
+  recommendation: OptimizationRecommendation;
+}
+
+export interface DismissRecommendationResponse {
+  response: ResponseEnvelope;
+  recommendation: OptimizationRecommendation;
+}
+
+export interface RefreshOptimizationResponse {
+  response: ResponseEnvelope;
+  overview: OptimizationOverview;
+}
+
+export interface GetMyOptimizationResponse {
+  response: ResponseEnvelope;
+  overview: OptimizationOverview;
+  recommendations: OptimizationRecommendation[];
+}

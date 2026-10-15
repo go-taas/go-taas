@@ -1657,3 +1657,108 @@ select option {
   align-items: center;
   gap: 4px;
 }
+
+/* ============================================================
+   Cost optimization recommendations (feature #50)
+   ============================================================ */
+
+.cards-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.card-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.card-row .card,
+.cards-row .card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.card-label {
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.card-note {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.card-row-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.clickable {
+  cursor: pointer;
+}
+
+.clickable:hover {
+  border-color: var(--primary);
+}
+
+.chevron {
+  color: var(--muted);
+  font-size: 16px;
+}
+
+.radio-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  cursor: pointer;
+}
+
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(560px, 92vw);
+  max-height: 100vh;
+  overflow-y: auto;
+  margin: 0;
+  border-radius: 0;
+}
+
+.badge.dismissed {
+  background: var(--muted);
+  color: #fff;
+}
+
+.badge.rule-r1_substitution {
+  background: #6366f1;
+  color: #fff;
+}
+
+.badge.rule-r2_batch {
+  background: #059669;
+  color: #fff;
+}
+
+.badge.rule-r3_idle_service {
+  background: #d97706;
+  color: #fff;
+}
+
+.badge.rule-r4_cache {
+  background: #0ea5e9;
+  color: #fff;
+}
