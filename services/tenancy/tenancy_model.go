@@ -24,7 +24,10 @@ const (
 
 // Organization is a tenant row. The id is caller-supplied and
 // immutable; display name and description are mutable; state moves
-// only through the disable/enable endpoints (D1/D2).
+// only through the disable/enable endpoints (D1/D2). The six quota
+// columns (feature #51, AD11) hold the org's resource quotas; they are
+// written only through UpdateOrganizationQuota, which also stamps the
+// updated-by/at columns and audits.
 type Organization struct {
 	ID          string    `gorm:"primaryKey;size:64"`
 	DisplayName string    `gorm:"size:128;not null"`
@@ -32,6 +35,15 @@ type Organization struct {
 	State       string    `gorm:"size:16;not null;default:'active'"`
 	CreatedAt   time.Time `gorm:"index"`
 	UpdatedAt   time.Time
+
+	// Service quotas (feature #51, AD11). 0 = unlimited; when set the
+	// values sit inside the documented ranges (design D2).
+	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
+	MaxInferenceServices      int64     `gorm:"not null;default:0"`
+	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
+	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
+	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`
+	QuotaUpdatedAt            time.Time `gorm:"default:null"`
 }
 
 // TableName implements the GORM Tabler interface.

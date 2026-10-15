@@ -42,6 +42,17 @@ func (r *Repository) InsertBatchJob(ctx context.Context, job *BatchJob) (string,
 	return job.BatchID, nil
 }
 
+// CountJobsSince counts the org's batch jobs created at or after since
+// (feature #51, AD15). Canceled and failed jobs count — the guard is on
+// submissions, not successes.
+func (r *Repository) CountJobsSince(ctx context.Context, orgID string, since time.Time) (int64, error) {
+	var count int64
+	err := r.db.DB(ctx).Model(&BatchJob{}).
+		Where("organization_id = ? AND created_at >= ?", orgID, since).
+		Count(&count).Error
+	return count, err
+}
+
 // FindBatchJobByID returns the batch job with the given id scoped to the
 // org. A miss maps to 12601 (AC2).
 func (r *Repository) FindBatchJobByID(ctx context.Context, orgID, batchID string) (*BatchJob, error) {

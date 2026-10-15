@@ -425,6 +425,14 @@ message VerifyAPIKeyResponse {
   int64 rate_limit_rpm = 5;
   // rate_limit_tpm is the max tokens per minute; 0 = unlimited.
   int64 rate_limit_tpm = 6;
+  // max_concurrent_requests is the org's in-flight request cap; 0 =
+  // unlimited (feature #51, design D3). The gateway enforces it
+  // locally after the rate-limit check.
+  int64 max_concurrent_requests = 7;
+  // max_output_tokens_per_request is the org's per-request output
+  // token cap; 0 = unlimited. The gateway validates or clamps the
+  // request's max_tokens against it before dispatch.
+  int64 max_output_tokens_per_request = 8;
 }
 
 // ---- SSO federation (feature #7) ----

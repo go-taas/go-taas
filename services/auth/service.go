@@ -62,6 +62,11 @@ type Service struct {
 	// skip validation; main.go and FVT always wire it.
 	orgGuard *tenancy.OrgGuard
 
+	// orgQuotaReader reads an org's resource quotas for the VerifyAPIKey
+	// verdict (feature #51, AD12). Nil until wired: the verdict's quota
+	// fields read 0 = unlimited (the transitional seam convention).
+	orgQuotaReader tenancy.OrgQuotaReader
+
 	// ssoRepo persists SSO providers, identity bindings, and users
 	// (feature #7). Wired lazily from the shared components.
 	ssoRepo *SSORepository
@@ -306,6 +311,10 @@ func (s *Service) Login(_ context.Context, _ *authv1.LoginRequest) (*authv1.Logi
 // pattern). Production and FVT wire it; unit tests leave it nil so
 // checkOrg no-ops.
 func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
+
+// SetOrgQuotaReader injects the tenancy org-quota reader (feature #51,
+// AD12). Nil reads as unlimited (existing FVT setups unchanged).
+func (s *Service) SetOrgQuotaReader(r tenancy.OrgQuotaReader) { s.orgQuotaReader = r }
 
 // SetSessionStore injects the Redis-backed session store (feature #7).
 // Production and FVT wire it; unit tests leave it nil so session RPCs
@@ -824,6 +833,20 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 			RateLimitTPM:   row.RateLimitTPM,
 			Models:         decodeModelIDs(row.Models),
 		}
+		// Feature #51 (AD12): the org's hot-path quota caps ride the
+		// verdict. A quota-read error logs a warning and degrades to
+		// unlimited (fail-open) — an auth outage over a quota-display
+		// hiccup would stop all inference.
+		if s.orgQuotaReader != nil {
+			q, err := s.orgQuotaReader.OrgQuota(ctx, row.OrganizationID)
+			if err != nil {
+				logger.S().Warnw("auth: org quota read failed, degrading to unlimited",
+					"org", row.OrganizationID, "err", err)
+			} else {
+				verdict.MaxConcurrentRequests = q.MaxConcurrentRequests
+				verdict.MaxOutputTokensPerRequest = q.MaxOutputTokensPerRequest
+			}
+		}
 		if err := cache.Set(ctx, digest, verdict, s.apiKeyCacheTTL()); err != nil {
 			// A cache write failure only costs performance, not security.
 			logger.S().Warnw("auth: cache verdict write failed", "key_id", row.ID, "err", err)
@@ -858,12 +881,14 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 	}
 
 	return &authv1.VerifyAPIKeyResponse{
-		Response:       okResponse(),
-		OrganizationId: verdict.OrganizationID,
-		KeyId:          verdict.KeyID,
-		Role:           verdict.Role,
-		RateLimitRpm:   verdict.RateLimitRPM,
-		RateLimitTpm:   verdict.RateLimitTPM,
+		Response:                  okResponse(),
+		OrganizationId:            verdict.OrganizationID,
+		KeyId:                     verdict.KeyID,
+		Role:                      verdict.Role,
+		RateLimitRpm:              verdict.RateLimitRPM,
+		RateLimitTpm:              verdict.RateLimitTPM,
+		MaxConcurrentRequests:     verdict.MaxConcurrentRequests,
+		MaxOutputTokensPerRequest: verdict.MaxOutputTokensPerRequest,
 	}, nil
 }
 

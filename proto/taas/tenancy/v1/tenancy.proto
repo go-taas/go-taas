@@ -180,6 +180,41 @@ service TenancyService {
       body: "*"
     };
   }
+
+  // ---- service quotas (feature #51) ----
+
+  // ListOrganizationQuotas returns every organization's quota row with
+  // best-effort live usage, pagination, a name search and a limit-state
+  // filter (admin surface, requireAdminRole).
+  rpc ListOrganizationQuotas(ListOrganizationQuotasRequest) returns (ListOrganizationQuotasResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/quotas"};
+  }
+
+  // GetOrganizationQuota returns one organization's quota, live usage
+  // and the last 20 change-history entries (admin surface). An unknown
+  // organization returns 13306.
+  rpc GetOrganizationQuota(GetOrganizationQuotaRequest) returns (GetOrganizationQuotaResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/quotas/{organization_id}"};
+  }
+
+  // UpdateOrganizationQuota sets any subset of the four dimensions
+  // (proto3 optional tracks presence; an explicit 0 means unlimited).
+  // Out-of-range values return 13305 with the dimension named. Audited
+  // as quota.updated; tightening below current usage is allowed and
+  // non-destructive.
+  rpc UpdateOrganizationQuota(UpdateOrganizationQuotaRequest) returns (UpdateOrganizationQuotaResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/quotas/{organization_id}"
+      body: "*"
+    };
+  }
+
+  // GetMyQuota returns the caller's own organization quota with live
+  // usage (user surface; the org is resolved from the session, never
+  // from a client-supplied id).
+  rpc GetMyQuota(GetMyQuotaRequest) returns (GetMyQuotaResponse) {
+    option (google.api.http) = {get: "/api/v1/quotas"};
+  }
 }
 
 message CreateOrganizationRequest {
@@ -473,4 +508,88 @@ message RejectInvitationRequest {
 
 message RejectInvitationResponse {
   taas.common.v1.Response response = 1;
+}
+
+// OrganizationQuota is the FR1.1 projection. All max_* fields are
+// int64 with 0 = unlimited.
+message OrganizationQuota {
+  string organization_id = 1;
+  string organization_name = 2;
+  int64 max_concurrent_requests = 3;
+  int64 max_inference_services = 4;
+  int64 max_batch_jobs_per_day = 5;
+  int64 max_output_tokens_per_request = 6;
+  int64 updated_at = 7; // unix seconds, 0 = never updated
+  string updated_by = 8; // "" = never updated
+}
+
+// QuotaUsage is the best-effort live-usage snapshot (FR1.2/FR4.1).
+message QuotaUsage {
+  int64 concurrent_requests = 1; // gateway in-flight snapshot (AD14)
+  int64 inference_services = 2; // non-terminated service count
+  int64 batch_jobs_today = 3; // COUNT since local midnight (AD15)
+}
+
+// QuotaChangeEntry is one flattened dimension change (AD16).
+message QuotaChangeEntry {
+  int64 changed_at = 1; // unix seconds
+  string operator = 2; // acting user id
+  string dimension = 3; // max_concurrent_requests | max_inference_services | max_batch_jobs_per_day | max_output_tokens_per_request
+  int64 old_value = 4;
+  int64 new_value = 5;
+}
+
+// OrganizationQuotaRow is one list row: the quota plus its usage.
+message OrganizationQuotaRow {
+  OrganizationQuota quota = 1;
+  QuotaUsage usage = 2;
+}
+
+message ListOrganizationQuotasRequest {
+  taas.common.v1.PageRequest page = 1;
+  string name = 2; // display-name/id substring search, case-insensitive
+  string limit_state = 3; // all (default) | limited | unlimited
+}
+
+message ListOrganizationQuotasResponse {
+  taas.common.v1.Response response = 1;
+  repeated OrganizationQuotaRow quotas = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetOrganizationQuotaRequest {
+  string organization_id = 1;
+}
+
+message GetOrganizationQuotaResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationQuota quota = 2;
+  QuotaUsage usage = 3;
+  repeated QuotaChangeEntry changes = 4; // newest first, last 20
+}
+
+message UpdateOrganizationQuotaRequest {
+  string organization_id = 1;
+  // optional tracks presence: absent = unchanged, explicit 0 = unlimited.
+  optional int64 max_concurrent_requests = 2;
+  optional int64 max_inference_services = 3;
+  optional int64 max_batch_jobs_per_day = 4;
+  optional int64 max_output_tokens_per_request = 5;
+}
+
+message UpdateOrganizationQuotaResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationQuota quota = 2;
+  QuotaUsage usage = 3;
+}
+
+message GetMyQuotaRequest {}
+
+message GetMyQuotaResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationQuota quota = 2;
+  QuotaUsage usage = 3;
+  // request_increase_email is the configured operator mailbox for the
+  // Request-increase mailto (AD18); empty hides the button.
+  string request_increase_email = 4;
 }

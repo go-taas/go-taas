@@ -50,6 +50,15 @@ type Service struct {
 	// the auth module; nil until wired.
 	sessionResolver SessionResolver
 
+	// sessionOrgResolver resolves the session's active organization for
+	// the quota RPCs (feature #51, AD13). Implemented by the auth
+	// module; nil until wired.
+	sessionOrgResolver SessionOrgResolver
+
+	// concurrency holds the gateway in-flight snapshot consumer
+	// (feature #51, AD14). Nil-safe: a nil consumer answers 0.
+	concurrency *ConcurrencyConsumer
+
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
@@ -63,7 +72,6 @@ type AuditRecorder interface {
 	// error.
 	Record(ctx context.Context, ev *audit.AuditEvent)
 }
-
 
 // New constructs the tenancy service. The repository is wired lazily
 // on first use from the shared components (the database component is
@@ -89,6 +97,15 @@ func (s *Service) SetRoleGuard(g *RoleGuard) { s.roleGuard = g }
 // resolution no-ops.
 func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r }
 
+// SetSessionOrgResolver injects the session active-org resolver
+// (feature #51, AD13). Production and FVT wire it; unit tests leave it
+// nil so org resolution falls back to the transitional header.
+func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+
+// SetConcurrencyConsumer injects the gateway in-flight snapshot
+// consumer (feature #51, AD14). Nil-safe: a nil consumer answers 0.
+func (s *Service) SetConcurrencyConsumer(c *ConcurrencyConsumer) { s.concurrency = c }
+
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
@@ -101,7 +118,6 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 	}
 	s.auditRecorder.Record(ctx, ev)
 }
-
 
 // MigrateSchemaForFVT applies the tenancy schema (organizations,
 // projects, org_members, invitations) onto a caller-provided database

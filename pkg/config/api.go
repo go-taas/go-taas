@@ -907,6 +907,35 @@ type OptimizationR4Config struct {
 	DefaultHitAssumption float64 `mapstructure:"defaultHitAssumption"`
 }
 
+// QuotaConfig holds the service-quota-management module settings
+// (feature #51, Section 9). The four org quota dimensions live on the
+// organization row; the gateway enforces the hot-path dimensions from
+// the VerifyAPIKey verdict (contract pinned in the architecture doc),
+// the control plane enforces the lifecycle dimensions at create.
+type QuotaConfig struct {
+	// Timezone is the IANA name the batch daily counter's local
+	// midnight is evaluated in (AD15). Default "UTC".
+	Timezone string `mapstructure:"timezone"`
+	// RequestIncreaseTo is the operator mailbox the tenant
+	// Request-increase button mails to (AD18); empty hides the button.
+	RequestIncreaseTo string `mapstructure:"requestIncreaseTo"`
+	// ConcurrencyConsumer configures the gateway in-flight report
+	// consumer runner (AD14).
+	ConcurrencyConsumer QuotaConcurrencyConsumerConfig `mapstructure:"concurrencyConsumer"`
+}
+
+// QuotaConcurrencyConsumerConfig holds the in-flight report consumer
+// runner settings (feature #51, AD14).
+type QuotaConcurrencyConsumerConfig struct {
+	// Enabled turns the gateway in-flight report consumer on or off.
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the concurrent report handler count.
+	Workers int `mapstructure:"workers"`
+	// StaleAfter is how old a gateway in-flight report may be before
+	// the snapshot reads as 0 (best-effort, FR2.4).
+	StaleAfter time.Duration `mapstructure:"staleAfter"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -984,6 +1013,7 @@ type Configuration struct {
 	Provider        ProviderConfig        `mapstructure:"provider"`
 	Routing         RoutingConfig         `mapstructure:"routing"`
 	Optimization    OptimizationConfig    `mapstructure:"optimization"`
+	Quota           QuotaConfig           `mapstructure:"quota"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -1096,6 +1126,20 @@ func (c *Configuration) Validate() error {
 	if c.Optimization.TopNPerOrg != 0 &&
 		(c.Optimization.TopNPerOrg < 10 || c.Optimization.TopNPerOrg > 200) {
 		return &FieldError{Field: "optimization.topNPerOrg", Reason: "must be within 10-200"}
+	}
+	// Feature #51: the quota consumer settings (Section 9). The
+	// timezone must be a valid IANA name when set; the worker count
+	// must be positive and the stale window non-negative.
+	if c.Quota.Timezone != "" {
+		if _, err := time.LoadLocation(c.Quota.Timezone); err != nil {
+			return &FieldError{Field: "quota.timezone", Reason: "must be a valid IANA timezone name"}
+		}
+	}
+	if c.Quota.ConcurrencyConsumer.Workers < 0 {
+		return &FieldError{Field: "quota.concurrencyConsumer.workers", Reason: "must not be negative"}
+	}
+	if c.Quota.ConcurrencyConsumer.StaleAfter < 0 {
+		return &FieldError{Field: "quota.concurrencyConsumer.staleAfter", Reason: "must not be negative"}
 	}
 	if c.LoadTest.Retention < 0 {
 		return &FieldError{Field: "loadtest.retention", Reason: "must not be negative"}

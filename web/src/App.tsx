@@ -85,6 +85,7 @@ import UsageKeyDetailPage from './pages/UsageKeyDetailPage';
 import CostAnalyticsPage from './pages/CostAnalyticsPage';
 import CostDetailPage from './pages/CostDetailPage';
 import ForecastPage from './pages/ForecastPage';
+import QuotasPage from './pages/QuotasPage';
 import OptimizationPage from './pages/OptimizationPage';
 import SystemStatusPage from './pages/SystemStatusPage';
 import ErrorAnalysisPage from './pages/ErrorAnalysisPage';
@@ -102,6 +103,7 @@ import AdminPromptsPage from './pages/AdminPromptsPage';
 import UserCostAnalyticsPage from './pages/user/UserCostAnalyticsPage';
 import UserCostDetailPage from './pages/user/UserCostDetailPage';
 import UserForecastPage from './pages/user/UserForecastPage';
+import UserQuotasPage from './pages/user/UserQuotasPage';
 import UserOptimizationPage from './pages/user/UserOptimizationPage';
 import DataExportPage from './pages/DataExportPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -166,6 +168,7 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/cost" element={<UserCostAnalyticsPage />} />
               <Route path="/cost/:dimension/:value" element={<UserCostDetailPage />} />
               <Route path="/forecast" element={<UserForecastPage />} />
+              <Route path="/quotas" element={<UserQuotasPage />} />
               <Route path="/optimization" element={<UserOptimizationPage />} />
               <Route path="/errors" element={<UserErrorAnalysisPage />} />
               <Route path="/errors/:errorCode" element={<UserErrorDetailPage />} />
@@ -249,6 +252,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/cost" element={<CostAnalyticsPage />} />
               <Route path="/admin/cost/:dimension/:value" element={<CostDetailPage />} />
               <Route path="/admin/forecast" element={<ForecastPage />} />
+              <Route path="/admin/quotas" element={<QuotasPage />} />
               <Route path="/admin/optimization" element={<OptimizationPage />} />
               <Route path="/admin/status" element={<SystemStatusPage />} />
               <Route path="/admin/errors" element={<ErrorAnalysisPage />} />

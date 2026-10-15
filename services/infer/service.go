@@ -105,6 +105,11 @@ type Service struct {
 	// skip validation; main.go and FVT always wire it.
 	orgGuard *tenancy.OrgGuard
 
+	// orgQuotaReader reads an org's resource quotas for the
+	// CreateInferenceService service-count check (feature #51, AD13).
+	// Nil until wired: the check reads as unlimited.
+	orgQuotaReader tenancy.OrgQuotaReader
+
 	// sessionOrgResolver resolves the session's active organization for
 	// the user-realm playground (feature-17 AD6). Nil until wired: the
 	// transitional X-Organization-Id header is used.
@@ -215,6 +220,10 @@ func New(components server.Components) *Service {
 // checkOrg no-ops.
 func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
 
+// SetOrgQuotaReader injects the tenancy org-quota reader (feature #51,
+// AD13). Nil reads as unlimited (existing FVT setups unchanged).
+func (s *Service) SetOrgQuotaReader(r tenancy.OrgQuotaReader) { s.orgQuotaReader = r }
+
 // SetSessionOrgResolver injects the session-organization resolver used
 // by the user-realm playground (feature-17 AD6). Production and FVT wire
 // the auth service; unit tests may inject a fake.
@@ -301,6 +310,37 @@ func (s *Service) checkOrg(ctx context.Context, orgID string, requireActive bool
 		return s.orgGuard.RequireActive(ctx, orgID)
 	}
 	return s.orgGuard.RequireExists(ctx, orgID)
+}
+
+// checkServiceQuota enforces the org's max_inference_services quota at
+// create time (feature #51, FR3.1). A nil reader or an unlimited quota
+// skips the check; at the limit the create is rejected with 13302
+// naming the current count and the limit. Existing services are never
+// deleted by a tightening (D6).
+func (s *Service) checkServiceQuota(ctx context.Context, orgID string) error {
+	if s.orgQuotaReader == nil {
+		return nil
+	}
+	q, err := s.orgQuotaReader.OrgQuota(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if q.MaxInferenceServices == 0 {
+		return nil
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return err
+	}
+	count, err := repo.CountActiveServicesByOrg(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if count >= q.MaxInferenceServices {
+		return apierrors.Newf(apierrors.CodeQuotaServiceCountExceeded,
+			"your organization has reached its limit of %d inference services; request an increase or remove an unused service", q.MaxInferenceServices)
+	}
+	return nil
 }
 
 // requireAdminRole enforces the minimum org role on the admin infer RPCs
@@ -522,6 +562,12 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	// A disabled organization cannot deploy new services (FR3.2,
 	// 10017).
 	if err := s.checkOrg(ctx, orgID, true); err != nil {
+		return nil, err
+	}
+
+	// Feature #51 (FR3.1): the org's inference-service quota is checked
+	// as soon as the org context is validated, before any payload work.
+	if err := s.checkServiceQuota(ctx, orgID); err != nil {
 		return nil, err
 	}
 

@@ -1517,3 +1517,61 @@ export interface GetMyOptimizationResponse {
   overview: OptimizationOverview;
   recommendations: OptimizationRecommendation[];
 }
+
+// ---- Service quotas (feature #51) ----
+
+export interface OrganizationQuota {
+  organizationId: string;
+  organizationName: string;
+  maxConcurrentRequests: string; // int64 -> decimal string; 0 = unlimited
+  maxInferenceServices: string;
+  maxBatchJobsPerDay: string;
+  maxOutputTokensPerRequest: string;
+  updatedAt: string; // unix seconds, 0 = never updated
+  updatedBy: string; // "" = never updated
+}
+
+export interface QuotaUsage {
+  concurrentRequests: string; // gateway in-flight snapshot
+  inferenceServices: string;
+  batchJobsToday: string;
+}
+
+export interface QuotaChangeEntry {
+  changedAt: string;
+  operator: string;
+  dimension: string;
+  oldValue: string;
+  newValue: string;
+}
+
+export interface OrganizationQuotaRow {
+  quota: OrganizationQuota;
+  usage: QuotaUsage;
+}
+
+export interface ListOrganizationQuotasResponse {
+  response: ResponseEnvelope;
+  quotas: OrganizationQuotaRow[];
+  pageMeta?: PageMeta;
+}
+
+export interface GetOrganizationQuotaResponse {
+  response: ResponseEnvelope;
+  quota: OrganizationQuota;
+  usage: QuotaUsage;
+  changes: QuotaChangeEntry[];
+}
+
+export interface UpdateOrganizationQuotaResponse {
+  response: ResponseEnvelope;
+  quota: OrganizationQuota;
+  usage: QuotaUsage;
+}
+
+export interface GetMyQuotaResponse {
+  response: ResponseEnvelope;
+  quota: OrganizationQuota;
+  usage: QuotaUsage;
+  requestIncreaseEmail: string;
+}

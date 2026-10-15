@@ -22,6 +22,13 @@ type keyVerdict struct {
 	// without a DB hit per request.
 	RateLimitRPM int64 `json:"rate_limit_rpm"`
 	RateLimitTPM int64 `json:"rate_limit_tpm"`
+	// MaxConcurrentRequests is the org's in-flight request cap; 0 =
+	// unlimited (feature #51, design D3). Carried so the gateway
+	// enforces it from the cache without a DB hit per request.
+	MaxConcurrentRequests int64 `json:"max_concurrent_requests"`
+	// MaxOutputTokensPerRequest is the org's per-request output token
+	// cap; 0 = unlimited (feature #51, design D3).
+	MaxOutputTokensPerRequest int64 `json:"max_output_tokens_per_request"`
 	// Models is the key's model allow-list (feature #46, AD2): empty or
 	// nil = all org-granted models. Carried so the data plane enforces
 	// the scope from the cache without a DB hit per request, on both

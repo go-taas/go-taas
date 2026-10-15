@@ -195,6 +195,26 @@ optimization:
   # (AD15).
   prefixCacheEngines: ["vllm", "sglang"]
 
+# Service quotas (feature #51). The four org quota dimensions live on
+# the organization row; the gateway enforces the hot-path dimensions
+# from the VerifyAPIKey verdict (contract pinned in the architecture
+# doc), the control plane enforces the lifecycle dimensions at create.
+quota:
+  # timezone is the platform timezone the batch daily counter's local
+  # midnight is evaluated in (AD15).
+  timezone: UTC
+  # requestIncreaseTo is the operator mailbox the tenant
+  # Request-increase button mails to (AD18); empty hides the button.
+  requestIncreaseTo: ""
+  concurrencyConsumer:
+    # enabled turns the gateway in-flight report consumer on or off.
+    enabled: true
+    # workers is the concurrent report handler count.
+    workers: 2
+    # staleAfter is how old a gateway in-flight report may be before
+    # the snapshot reads as 0 (best-effort, FR2.4).
+    staleAfter: 2m
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.

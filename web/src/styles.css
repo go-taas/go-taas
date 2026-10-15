@@ -1762,3 +1762,66 @@ select option {
   background: #0ea5e9;
   color: #fff;
 }
+
+/* ============================================================
+   Service quotas (feature #51)
+   ============================================================ */
+
+.quota-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--border);
+  overflow: hidden;
+  margin-top: 8px;
+}
+
+.quota-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  background: var(--primary);
+  transition: width 0.2s ease;
+}
+
+.quota-bar-fill.quota-bar-warn {
+  background: #d97706;
+}
+
+.quota-bar-fill.quota-bar-full {
+  background: #dc2626;
+}
+
+.quota-bar-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.quota-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.quota-chip.quota-chip-warn {
+  border-color: #d97706;
+  color: #d97706;
+}
+
+.quota-chip.quota-chip-full {
+  border-color: #dc2626;
+  color: #dc2626;
+}
+
+.error-text {
+  display: block;
+  color: #dc2626;
+  font-size: 12px;
+  margin-top: 2px;
+}

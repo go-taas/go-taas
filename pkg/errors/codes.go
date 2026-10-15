@@ -404,3 +404,17 @@ const (
 	CodeRecommendationRestoreInvalid       Code = 13204 // RECOMMENDATION_RESTORE_INVALID
 	CodeOptimizationRangeInvalid           Code = 13205 // OPTIMIZATION_RANGE_INVALID
 )
+
+// quota module error codes (feature #51, design D4). The block holds
+// the org resource-quota failure modes; 13307-13399 are reserved for
+// future quota codes. 13301/13304 are rendered by the Inference
+// Gateway (429/400) per the pinned contract; the rest surface through
+// grpc-gateway as the unified envelope.
+const (
+	CodeQuotaConcurrencyExceeded  Code = 13301 // QUOTA_CONCURRENCY_EXCEEDED
+	CodeQuotaServiceCountExceeded Code = 13302 // QUOTA_SERVICE_COUNT_EXCEEDED
+	CodeQuotaBatchJobsExceeded    Code = 13303 // QUOTA_BATCH_JOBS_EXCEEDED
+	CodeQuotaOutputTokensExceeded Code = 13304 // QUOTA_OUTPUT_TOKENS_EXCEEDED
+	CodeQuotaInvalid              Code = 13305 // QUOTA_INVALID
+	CodeQuotaNotFound             Code = 13306 // QUOTA_NOT_FOUND
+)

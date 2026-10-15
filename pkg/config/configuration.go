@@ -78,6 +78,13 @@ func ParseConfigs(pathPattern string) {
 	// preserved, while an absent key still defaults to true.
 	v.SetDefault("optimization.peakWeekdaysOnly", true)
 
+	// Feature #51: the quota in-flight report consumer is enabled by
+	// default (AD14). Applied here (not in applyDefaults) so an
+	// explicit `concurrencyConsumer.enabled: false` in a config file or
+	// a CONFIG_QUOTA_CONCURRENCYCONSUMER_ENABLED=false override is
+	// preserved, while an absent key still defaults to true.
+	v.SetDefault("quota.concurrencyConsumer.enabled", true)
+
 	for _, configFile := range matches {
 		// Skip hidden files such as editor backups.
 		if strings.HasPrefix(filepath.Base(configFile), ".") {
@@ -486,6 +493,18 @@ func (c *Configuration) applyDefaults() {
 	}
 	if len(c.Optimization.PrefixCacheEngines) == 0 {
 		c.Optimization.PrefixCacheEngines = []string{"vllm", "sglang"}
+	}
+	// Feature #51: service-quota-management defaults (Section 9). The
+	// four org quota dimensions default to 0 = unlimited (design D2);
+	// the consumer runner is on by default (AD14).
+	if c.Quota.Timezone == "" {
+		c.Quota.Timezone = "UTC"
+	}
+	if c.Quota.ConcurrencyConsumer.Workers == 0 {
+		c.Quota.ConcurrencyConsumer.Workers = 2
+	}
+	if c.Quota.ConcurrencyConsumer.StaleAfter == 0 {
+		c.Quota.ConcurrencyConsumer.StaleAfter = 2 * time.Minute
 	}
 }
 

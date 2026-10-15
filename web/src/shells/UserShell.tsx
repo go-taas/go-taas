@@ -20,6 +20,7 @@ import {
   TextT,
   ChartBar,
   TrendDown,
+  Gauge,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -27,6 +28,7 @@ import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
 import { realmLoginPath } from '../surface-routes';
 import { OrgSwitcher } from '../org';
+import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
@@ -43,6 +45,7 @@ export const USER_NAV_ITEMS: { path: string; labelKey: string; testid: string; i
   { path: '/usage/keys', labelKey: 'nav.usageKeys', testid: 'user-nav-usage-keys', icon: Key },
   { path: '/cost', labelKey: 'nav.cost', testid: 'user-nav-cost', icon: ChartLine },
   { path: '/forecast', labelKey: 'nav.forecast', testid: 'user-nav-forecast', icon: ChartLine },
+  { path: '/quotas', labelKey: 'nav.quotas', testid: 'user-nav-quotas', icon: Gauge },
   { path: '/optimization', labelKey: 'nav.optimization', testid: 'user-nav-optimization', icon: TrendDown },
   { path: '/api-keys', labelKey: 'nav.apiKeys', testid: 'user-nav-api-keys', icon: Key },
   { path: '/request-logs', labelKey: 'nav.requestLogs', testid: 'user-nav-request-logs', icon: ListMagnifyingGlass },
@@ -166,6 +169,7 @@ export function UserShell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <OrgSwitcher />
+        <QuotaBar />
         <NotificationBell path="/api/v1/notifications" testId="user-bell-badge" />
         <button
           className="lang-switch"

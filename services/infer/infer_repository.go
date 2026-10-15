@@ -46,6 +46,17 @@ func (r *InferenceServiceRepository) Create(ctx context.Context, svc *InferenceS
 	return nil
 }
 
+// CountActiveServicesByOrg counts the org's non-terminated inference
+// services (feature #51, FR3.1). It is the authoritative enforcement
+// count for the service-count quota check.
+func (r *InferenceServiceRepository) CountActiveServicesByOrg(ctx context.Context, orgID string) (int64, error) {
+	var count int64
+	err := r.db.DB(ctx).Model(&InferenceService{}).
+		Where("organization_id = ? AND state != ?", orgID, StateTerminated).
+		Count(&count).Error
+	return count, err
+}
+
 // AcceleratorTypesByServiceIDs returns the accelerator type of the
 // given inference service ids. Missing ids are simply absent from the
 // result (terminated services resolve to the "default" sentinel

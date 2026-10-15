@@ -76,6 +76,10 @@ type Service struct {
 	roleGuard RoleGuard
 	// auditRecorder records batch actions best-effort (AD9).
 	auditRecorder AuditRecorder
+	// orgQuotaReader reads an org's resource quotas for the
+	// CreateBatchJob daily-jobs check (feature #51, AD13). Nil until
+	// wired: the check reads as unlimited.
+	orgQuotaReader tenancy.OrgQuotaReader
 }
 
 // New constructs the batch service.
@@ -87,6 +91,10 @@ func New(components server.Components) *Service {
 
 // SetSessionOrgResolver injects the session-organization resolver.
 func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgResolver = r }
+
+// SetOrgQuotaReader injects the tenancy org-quota reader (feature #51,
+// AD13). Nil reads as unlimited (existing FVT setups unchanged).
+func (s *Service) SetOrgQuotaReader(r tenancy.OrgQuotaReader) { s.orgQuotaReader = r }
 
 // SetSessionUserResolver injects the session-user resolver.
 func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserResolver = r }
@@ -229,6 +237,52 @@ func (s *Service) requireAdminRole(ctx context.Context, orgID string) error {
 	return s.roleGuard.RequireRole(ctx, orgID, userID, roleMember)
 }
 
+// checkBatchQuota enforces the org's max_batch_jobs_per_day quota at
+// create time (feature #51, FR3.2, AD15). A nil reader or an unlimited
+// quota skips the check; at the limit the create is rejected with 13303
+// naming today's count and the limit. Canceled and failed jobs count —
+// the guard is on submissions, not successes.
+func (s *Service) checkBatchQuota(ctx context.Context, orgID string) error {
+	if s.orgQuotaReader == nil {
+		return nil
+	}
+	q, err := s.orgQuotaReader.OrgQuota(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	if q.MaxBatchJobsPerDay == 0 {
+		return nil
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return err
+	}
+	count, err := repo.CountJobsSince(ctx, orgID, todayAtMidnight())
+	if err != nil {
+		return err
+	}
+	if count >= q.MaxBatchJobsPerDay {
+		return apierrors.Newf(apierrors.CodeQuotaBatchJobsExceeded,
+			"your organization has reached its daily limit of %d batch jobs; new submissions resume at midnight", q.MaxBatchJobsPerDay)
+	}
+	return nil
+}
+
+// todayAtMidnight returns the local midnight of today in the configured
+// quota timezone (feature #51, AD15). The timezone defaults to UTC.
+func todayAtMidnight() time.Time {
+	tzName := "UTC"
+	if cfg := config.GetConfig(); cfg != nil && cfg.Quota.Timezone != "" {
+		tzName = cfg.Quota.Timezone
+	}
+	loc, err := time.LoadLocation(tzName)
+	if err != nil {
+		loc = time.UTC
+	}
+	now := time.Now().In(loc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, loc).UTC()
+}
+
 func (s *Service) recordAudit(ctx context.Context, action, orgID, batchID string) {
 	if s.auditRecorder == nil {
 		return
@@ -249,6 +303,13 @@ func (s *Service) recordAudit(ctx context.Context, action, orgID, batchID string
 func (s *Service) CreateBatchJob(ctx context.Context, req *batchv1.CreateBatchJobRequest) (*batchv1.CreateBatchJobResponse, error) {
 	orgID, err := s.resolveOrg(ctx)
 	if err != nil {
+		return nil, err
+	}
+	// Feature #51 (FR3.2): the org's daily batch-job quota is checked as
+	// soon as the org context is resolved, before the completion-window
+	// and payload validation (fail fast — do not parse an upload that
+	// will be rejected).
+	if err := s.checkBatchQuota(ctx, orgID); err != nil {
 		return nil, err
 	}
 	window, err := validateCompletionWindow(req.GetCompletionWindow())

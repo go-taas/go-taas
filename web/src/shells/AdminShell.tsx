@@ -30,6 +30,7 @@ import {
   Shuffle,
   Pulse,
   TrendDown,
+  SlidersHorizontal,
   type Icon,
 } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
@@ -46,6 +47,7 @@ export const ADMIN_NAV_ITEMS: { path: string; labelKey: string; testid: string; 
   { path: '/admin/projects', labelKey: 'nav.projects', testid: 'nav-projects', icon: Folder },
   { path: '/admin/members', labelKey: 'nav.members', testid: 'nav-members', icon: Users },
   { path: '/admin/invitations', labelKey: 'nav.invitations', testid: 'nav-invitations', icon: Envelope },
+  { path: '/admin/quotas', labelKey: 'nav.quotas', testid: 'nav-quotas', icon: SlidersHorizontal },
   { path: '/admin/sso', labelKey: 'nav.ssoProviders', testid: 'nav-sso-providers', icon: Key },
   { path: '/admin/identity-bindings', labelKey: 'nav.identityBindings', testid: 'nav-identity-bindings', icon: LinkSimple },
   { path: '/admin/models', labelKey: 'nav.models', testid: 'nav-models', icon: Cube },

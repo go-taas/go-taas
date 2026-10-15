@@ -15,3 +15,15 @@ type SessionResolver interface {
 	// error when there is no valid session.
 	SessionUserEmail(ctx context.Context) (string, error)
 }
+
+// SessionOrgResolver resolves the session's active organization
+// (feature #51, AD13). It is implemented by the auth module and
+// injected into the tenancy service at wiring time so the quota RPCs
+// can resolve the caller's org (GetMyQuota) and the admin role gate.
+// Nil until wired: the transitional X-Organization-Id header is the
+// fallback.
+type SessionOrgResolver interface {
+	// SessionActiveOrg returns the session's active organization, or an
+	// error (CodeSessionInvalid) when there is no valid session.
+	SessionActiveOrg(ctx context.Context) (string, error)
+}

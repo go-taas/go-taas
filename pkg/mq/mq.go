@@ -121,6 +121,11 @@ type Subjects struct {
 	// changes the controller reconciles into AIBrix ModelClaims
 	// (feature #47, AD5).
 	RuntimeModelChanges string
+	// QuotaOrgsConcurrency carries per-org in-flight request counts
+	// reported by the Inference Gateway (feature #51, AD14). The tenancy
+	// quota consumer keeps the latest snapshot per org for the usage
+	// display; zero counts are included so stale entries clear.
+	QuotaOrgsConcurrency string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -140,7 +145,8 @@ func DefaultSubjects() Subjects {
 		InferRoutingPolicies:    "infer.routing.policies",
 		RuntimeHealth:           "runtime.health",
 		RuntimeScheme:           "runtime.scheme",
-		RuntimeModelChanges:     "runtime.models.changes"}
+		RuntimeModelChanges:     "runtime.models.changes",
+		QuotaOrgsConcurrency:    "quota.orgs.concurrency"}
 }
 
 // NewFake returns an in-memory Client for unit tests and local development

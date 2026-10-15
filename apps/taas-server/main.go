@@ -284,6 +284,13 @@ func main() {
 			// service resolve the authenticated caller (feature #10).
 			tenancySvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			tenancySvc.SetSessionResolver(authSvc)
+			// Feature #51 (AD13): the org quota seams. Tenancy owns the
+			// quota columns; auth rides them on the VerifyAPIKey verdict,
+			// infer and batch check them at create time.
+			tenancySvc.SetSessionOrgResolver(authSvc)
+			authSvc.SetOrgQuotaReader(tenancySvc)
+			inferSvc.SetOrgQuotaReader(tenancySvc)
+			batchSvc.SetOrgQuotaReader(tenancySvc)
 			// The audit service (feature #15) resolves the session's
 			// active org and caller for the admin/end-user audit reads,
 			// and gates the admin audit RPCs by the caller's role.
@@ -542,6 +549,13 @@ func main() {
 	}
 	if runner := infer.NewConcurrencyConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
+	}
+	// Feature #51 (AD14): the quota in-flight report consumer keeps the
+	// per-org snapshot the quota RPCs surface. Gated by config.
+	if cfg.Quota.ConcurrencyConsumer.Enabled {
+		if runner := tenancy.NewConcurrencyConsumerRunner(srv.Components()); runner != nil {
+			srv.AddRunner(runner)
+		}
 	}
 	if runner := image.NewWarmupStatusConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)

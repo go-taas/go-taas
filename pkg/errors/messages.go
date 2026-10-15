@@ -240,6 +240,14 @@ var messages = map[Code]string{
 	CodeRecommendationDismissReasonInvalid: "invalid dismiss reason or note",
 	CodeRecommendationRestoreInvalid:       "recommendation is not dismissed",
 	CodeOptimizationRangeInvalid:           "invalid optimization filter or range",
+
+	// quota (feature #51, design D4)
+	CodeQuotaConcurrencyExceeded:  "organization concurrency limit exceeded",
+	CodeQuotaServiceCountExceeded: "organization inference-service limit reached",
+	CodeQuotaBatchJobsExceeded:    "organization daily batch-job limit reached",
+	CodeQuotaOutputTokensExceeded: "max_tokens exceeds the organization cap",
+	CodeQuotaInvalid:              "invalid quota value",
+	CodeQuotaNotFound:             "organization quota not found",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a
