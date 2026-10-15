@@ -1,3 +1,10 @@
+# [1.54.0](https://github.com/go-taas/go-taas/compare/v1.53.2...v1.54.0) (2026-10-15)
+
+
+### Features
+
+* **optimization:** add cost optimization recommendations engine and console pages ([ff21027](https://github.com/go-taas/go-taas/commit/ff21027f8b1ffdd82ad90fa40a8925f01a8ae040))
+
 ## [1.53.2](https://github.com/go-taas/go-taas/compare/v1.53.1...v1.53.2) (2026-10-14)
 
 
