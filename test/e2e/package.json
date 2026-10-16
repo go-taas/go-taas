@@ -47,7 +47,10 @@
     "test:data-export-privacy": "nightwatch --tag data-export-privacy",
     "test:prompt-evaluation": "nightwatch --tag prompt-evaluation",
     "test:distributed-inference-runtime": "nightwatch --tag distributed-inference-runtime",
-    "test:external-model-providers": "nightwatch --tag external-model-providers"
+    "test:external-model-providers": "nightwatch --tag external-model-providers",
+    "test:intelligent-model-routing": "nightwatch --tag intelligent-model-routing",
+    "test:cost-optimization-recommendations": "nightwatch --tag cost-optimization-recommendations",
+    "test:service-quota-management": "nightwatch --tag service-quota-management"
   },
   "license": "Apache-2.0",
   "devDependencies": {

@@ -29,6 +29,9 @@ const os = require('os');
 const fs = require('fs');
 
 const baseUrl = process.env.E2E_BASE_URL || 'http://127.0.0.1:9091';
+// The chromedriver port. Overridable so a stale driver holding the
+// default port does not block a run.
+const driverPort = parseInt(process.env.E2E_DRIVER_PORT || '9515', 10);
 
 // Snap-confined Chromium redirects --user-data-dir under /tmp into its
 // private ~/snap/chromium/common/chromium profile, so chromedriver can
@@ -89,7 +92,7 @@ module.exports = {
       webdriver: {
         start_process: true,
         server_path: chromedriverPath,
-        port: 9515,
+        port: driverPort,
         cli_args: []
       },
       desiredCapabilities: {

@@ -235,6 +235,11 @@ services:
       CONFIG_ROUTING_RETENTION_BATCHSIZE: ${ROUTING_RETENTION_BATCH_SIZE:-1000}
       CONFIG_ROUTING_RETENTION_INTERVAL: ${ROUTING_RETENTION_INTERVAL:-1h}
       CONFIG_ROUTING_LATENCYWINDOW: ${ROUTING_LATENCY_WINDOW:-15m}
+      # Feature #51: service quota management. The request-increase
+      # mailbox the tenant Request-increase mailto mails to (AD18); the
+      # e2e suite exercises the mailto link (AC8), so the compose stack
+      # sets it to a fixed operator address.
+      CONFIG_QUOTA_REQUESTINCREASETO: ${QUOTA_REQUEST_INCREASE_TO:-ops@go-taas.example}
     volumes:
       - type: bind
         source: ${JUICE_FS_HOST_MOUNT:-/var/lib/go-taas/juicefs}

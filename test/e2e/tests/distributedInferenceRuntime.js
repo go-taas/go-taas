@@ -739,5 +739,148 @@ module.exports = {
     browser.click('[data-testid="runtime-refresh"]');
     browser.waitForElementPresent('[data-testid="runtime-overview"]', 10000, 'AC12: overview after refresh');
     browser.waitForElementPresent('[data-testid="runtime-components-table"]', 15000, 'AC12: components after refresh');
+  },
+
+  // ---- AC13: AIBrix PodAutoscaler metricsSources (bugfix 5cd648a) ----
+
+  // Regression case for the AIBrix PodAutoscaler metricsSources bug
+  // (20261013T115001Z-test-bug-report-aibrix-podautoscaler-metricssources,
+  // fixed in 5cd648a). Under scheme=aibrix with autoscaling enabled, the
+  // controller must create a PodAutoscaler whose pod metricsSource carries
+  // protocolType/port/path and the AIBrix-registry metric name
+  // num_requests_running, with min/max/targetValue matching the requested
+  // policy, and no plain HPA may coexist with the PA.
+  'AC13: aibrix autoscaling creates a PodAutoscaler with a complete pod metricsSource and no plain HPA': function (browser) {
+    const org = browser.globals.orgA;
+    const name = `rt-e2e-pa-${browser.globals.runId}`;
+    ensureAibrix(browser, org);
+
+    // Register a catalog model, then create an inference service with
+    // autoscaling enabled under the aibrix scheme.
+    api.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/models',
+      org,
+      sessionRealm: ADMIN_REALM,
+      body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
+    }, (res) => {
+      const model = api.assertOk(browser, res, 'AC13: register model');
+      const modelId = model.modelId;
+      browser.assert.ok(modelId, 'AC13: modelId returned');
+
+      // Create the inference service with autoscaling enabled.
+      api.request(browser, {
+        method: 'POST',
+        path: '/api/v1/admin/inference-services',
+        org,
+        sessionRealm: ADMIN_REALM,
+        body: {
+          name,
+          modelId,
+          modelVersion: 'v1',
+          imageId: 'img-vllm-nvidia-v063',
+          replicas: '1',
+          accelerator: 'nvidia',
+          acceleratorType: 'gpu',
+          autoscaling: {
+            enabled: true, minReplicas: 1, maxReplicas: 4,
+            targetConcurrency: 48, scaleToZero: false, cooldownSeconds: 300
+          }
+        }
+      }, (res2) => {
+        const created = api.assertOk(browser, res2, 'AC13: create service');
+        const serviceId = created.serviceId;
+        browser.assert.ok(serviceId, 'AC13: serviceId returned');
+
+        // Re-trigger the autoscaling change event so the controller
+        // reconciles the PodAutoscaler (the MQ handler has no retry).
+        api.request(browser, {
+          method: 'POST',
+          path: `/api/v1/admin/inference-services/${serviceId}:autoscaling`,
+          org,
+          sessionRealm: ADMIN_REALM,
+          body: {
+            policy: {
+              enabled: true, minReplicas: 1, maxReplicas: 4,
+              targetConcurrency: 48, scaleToZero: false, cooldownSeconds: 300
+            }
+          }
+        }, (res3) => {
+          api.assertOk(browser, res3, 'AC13: re-trigger autoscaling');
+
+          // Poll the cluster for a PodAutoscaler with the complete pod
+          // metricsSource (protocolType/port/path + the AIBrix-registry
+          // metric name) and no coexisting plain HPA. The controller
+          // reconcile is asynchronous against the live cluster, so poll
+          // for up to 3 minutes.
+          browser.perform((done) => {
+            const deadline = Date.now() + 180000;
+            let pa = null;
+            let hpaCount = 0;
+            for (;;) {
+              try {
+                // Find any PodAutoscaler whose metricsSource is complete.
+                const paOut = execSync(
+                  `kubectl -n taas get podautoscalers.autoscaling.aibrix.ai -o json`,
+                  {stdio: ['ignore', 'pipe', 'ignore'], timeout: 30000}
+                ).toString();
+                const paList = JSON.parse(paOut);
+                const items = (paList.items || []).filter((p) => {
+                  const ms = (p.spec && p.spec.metricsSources) || [];
+                  return ms.some((m) =>
+                    m.metricSourceType === 'pod' &&
+                    m.protocolType === 'http' &&
+                    m.port === '8000' &&
+                    m.path === '/metrics' &&
+                    m.targetMetric === 'num_requests_running'
+                  );
+                });
+                if (items.length > 0) {
+                  pa = items[0];
+                }
+                // Count plain HPAs for THIS service (exact name match,
+                // excluding the AIBrix-derived `-hpa` suffix). Other
+                // suites leave their own plain HPAs in the namespace, so
+                // only the service's own plain HPA matters.
+                const hpaOut = execSync(
+                  `kubectl -n taas get hpa -o name | grep -c '^horizontalpodautoscaler.autoscaling/hpa-${name}$' || true`,
+                  {stdio: ['ignore', 'pipe', 'ignore'], timeout: 30000}
+                ).toString().trim();
+                hpaCount = parseInt(hpaOut, 10) || 0;
+                if (pa) {
+                  break;
+                }
+              } catch (e) {
+                // PA not yet present; keep polling.
+              }
+              if (Date.now() > deadline) {
+                break;
+              }
+              sleepSync(3000);
+            }
+            browser.assert.ok(pa, 'AC13: a PodAutoscaler with a complete pod metricsSource exists');
+            if (pa) {
+              const spec = pa.spec || {};
+              browser.assert.equal(spec.minReplicas, 1, 'AC13: minReplicas matches policy');
+              browser.assert.equal(spec.maxReplicas, 4, 'AC13: maxReplicas matches policy');
+              browser.assert.equal(spec.scalingStrategy, 'HPA', 'AC13: scalingStrategy HPA');
+              const ms = spec.metricsSources || [];
+              browser.assert.ok(ms.length >= 1, 'AC13: metricsSources non-empty');
+              const pod = ms[0] || {};
+              browser.assert.equal(pod.metricSourceType, 'pod', 'AC13: metricSourceType pod');
+              browser.assert.equal(pod.protocolType, 'http', 'AC13: protocolType http');
+              browser.assert.equal(pod.port, '8000', 'AC13: port 8000');
+              browser.assert.equal(pod.path, '/metrics', 'AC13: path /metrics');
+              browser.assert.equal(pod.targetMetric, 'num_requests_running', 'AC13: targetMetric num_requests_running');
+              browser.assert.equal(pod.targetValue, '48', 'AC13: targetValue matches policy');
+            }
+            // No plain HPA may coexist with the PA (the reconciler deletes
+            // the stale HPA so AIBrix does not drive a second autoscaler).
+            browser.assert.equal(hpaCount, 0, 'AC13: no plain HPA coexists with the PA');
+            done();
+          });
+        });
+      });
+    });
   }
 };

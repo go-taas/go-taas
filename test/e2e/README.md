@@ -41,6 +41,9 @@ against the local docker compose stack.
 | Data export & privacy | feature-41 `data-export-privacy` | `tests/dataExportPrivacy.js` |
 | Distributed inference runtime | feature-47 `distributed-inference-runtime` | `tests/distributedInferenceRuntime.js` |
 | External model providers | feature-48 `external-model-providers` | `tests/externalModelProviders.js` |
+| Intelligent model routing | feature-49 `intelligent-model-routing` | `tests/intelligentModelRouting.js` |
+| Cost optimization recommendations | feature-50 `cost-optimization-recommendations` | `tests/costOptimization.js` |
+| Service quota management | feature-51 `service-quota-management` | `tests/serviceQuota.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md`,
@@ -105,6 +108,9 @@ npm run test:multi-cluster-management # feature-40 only
 npm run test:data-export-privacy      # feature-41 only
 npm run test:distributed-inference-runtime # feature-47 only
 npm run test:external-model-providers    # feature-48 only
+npm run test:intelligent-model-routing   # feature-49 only
+npm run test:cost-optimization-recommendations # feature-50 only
+npm run test:service-quota-management    # feature-51 only
 ```
 
 Environment overrides:
