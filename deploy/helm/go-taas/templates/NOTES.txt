@@ -1,0 +1,56 @@
+{{- if .Values.taasServer.enabled }}
+The go-taas control plane is installed in namespace {{ .Release.Namespace }}.
+
+Endpoints:
+{{- if .Values.taasServer.service.monitor.enabled }}
+  # The console, its REST API and the metrics/health port:
+{{- end }}
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "go-taas.server.name" . }} {{ .Values.taasServer.service.gateway.port }}:{{ .Values.taasServer.service.gateway.port }}
+  console:  http://127.0.0.1:{{ .Values.taasServer.service.gateway.port }}/
+  REST API: http://127.0.0.1:{{ .Values.taasServer.service.gateway.port }}/api/v1/...
+{{- if .Values.taasServer.service.grpc.enabled }}
+  gRPC:     {{ include "go-taas.server.name" . }}.{{ .Release.Namespace }}.svc:{{ .Values.taasServer.service.grpc.port }}
+{{- end }}
+{{- if .Values.taasServer.service.monitor.enabled }}
+  metrics:  http://{{ include "go-taas.server.name" . }}.{{ .Release.Namespace }}.svc:{{ .Values.taasServer.service.monitor.port }}/metrics
+{{- end }}
+
+Dependencies:
+  PostgreSQL: {{ if eq .Values.dependencies.postgresql.mode "internal" }}provisioned by this release ({{ include "go-taas.postgresql.name" . }}.{{ .Release.Namespace }}.svc:5432){{ else }}external — {{ .Values.dependencies.postgresql.external.host }}:{{ .Values.dependencies.postgresql.external.port }}{{ end }}
+  Redis:      {{ if eq .Values.dependencies.redis.mode "internal" }}provisioned by this release ({{ include "go-taas.redis.name" . }}.{{ .Release.Namespace }}.svc:6379){{ else }}external — {{ .Values.dependencies.redis.external.host }}:{{ .Values.dependencies.redis.external.port }}{{ end }}
+  NATS:       {{ if eq .Values.dependencies.nats.mode "internal" }}provisioned by this release ({{ include "go-taas.nats.name" . }}.{{ .Release.Namespace }}.svc:{{ .Values.dependencies.nats.internal.port }}){{ else }}external — {{ .Values.dependencies.nats.external.url }}{{ end }}
+
+{{- if eq .Values.dependencies.postgresql.mode "internal" }}
+{{- if not .Values.dependencies.postgresql.internal.persistence.enabled }}
+
+WARNING: the in-cluster PostgreSQL runs without persistence (emptyDir), so
+all platform data is lost when its pod is rescheduled. Enable
+dependencies.postgresql.internal.persistence.enabled or switch to an
+external database for anything but a throwaway installation.
+{{- end }}
+{{- end }}
+{{- if .Values.controller.enabled }}
+{{- if .Values.controller.createNamespace }}
+
+{{ include "go-taas.controller.name" . }} manages inference workloads in the
+namespace "{{ .Values.controller.config.controller.namespace }}"; the
+model-weights PersistentVolumeClaim is created there on first use from the
+StorageClass "{{ .Values.controller.config.controller.weights.storageClass | default "<cluster default>" }}".
+{{- end }}
+{{- if not .Values.controller.config.controller.weights.storageClass }}
+
+NOTE: controller.config.controller.weights.storageClass is empty, so the
+shared model-weights PVC is provisioned from the cluster's default
+StorageClass. Inference pods and the control plane must read the same model
+weights, which requires a ReadWriteMany-capable (e.g. JuiceFS-backed)
+StorageClass shared by both.
+{{- end }}
+{{- end }}
+
+{{- if not .Values.secrets.existingSecret }}
+
+Credentials live in Secret {{ include "go-taas.secretName" . }} (annotated
+helm.sh/resource-policy: keep). Retrieve one with:
+  kubectl --namespace {{ .Release.Namespace }} get secret {{ include "go-taas.secretName" . }} -o jsonpath='{.data.REPLACE_ME}' | base64 -d
+{{- end }}
+{{- end }}

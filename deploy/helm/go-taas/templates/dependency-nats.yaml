@@ -1,0 +1,128 @@
+{{- if eq .Values.dependencies.nats.mode "internal" }}
+{{- $dep := .Values.dependencies.nats }}
+{{- $name := include "go-taas.nats.name" . }}
+{{- $labels := printf "%s\n%s" (include "go-taas.labels" .) "app.kubernetes.io/component: nats" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: client
+      port: {{ $dep.internal.port }}
+      targetPort: client
+      protocol: TCP
+    - name: monitor
+      port: {{ $dep.internal.monitorPort }}
+      targetPort: monitor
+      protocol: TCP
+  selector:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: nats
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "go-taas.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: nats
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+      {{- with $dep.internal.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      containers:
+        - name: nats
+          image: {{ printf "%s:%s" $dep.internal.image.repository $dep.internal.image.tag }}
+          imagePullPolicy: {{ $dep.internal.image.pullPolicy }}
+          args:
+            {{- if $dep.internal.jetstream }}
+            - -js
+            {{- end }}
+            - -m
+            - {{ $dep.internal.monitorPort | toString }}
+            - -sd
+            - /data
+          ports:
+            - name: client
+              containerPort: {{ $dep.internal.port }}
+              protocol: TCP
+            - name: monitor
+              containerPort: {{ $dep.internal.monitorPort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $dep.internal.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if $dep.internal.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $dep.internal.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $dep.internal.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $dep.internal.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if $dep.internal.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $dep.internal.persistence.storageClass }}
+  storageClassName: {{ $dep.internal.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $dep.internal.persistence.size }}
+{{- end }}
+{{- end }}

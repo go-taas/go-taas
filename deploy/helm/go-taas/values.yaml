@@ -1,0 +1,474 @@
+# Default values for the go-taas chart.
+#
+# The chart deploys the control plane — `taas-server` (gRPC, the REST
+# gateway and the embedded admin console) and `controller` (the Kubernetes
+# reconciler) — and turns every third-party dependency connection into a
+# value. There are three configuration mechanisms, in decreasing priority:
+#
+#   1. `dependencies.*` — structured connectivity for PostgreSQL, Redis and
+#      NATS. Each block has a `mode`:
+#
+#        internal: the chart provisions a single-replica instance and wires
+#                  the control plane to it automatically (default).
+#        external: the chart provisions nothing; the control plane is
+#                  pointed at an operator-managed instance (RDS, Cloud SQL,
+#                  ElastiCache, a hosted NATS, ...) through the `external`
+#                  block.
+#
+#      Mixed modes are supported, e.g. internal Redis next to an external
+#      PostgreSQL.
+#
+#   2. `<component>.config` / `<component>.secretConfig` — overrides for the
+#      `configs/*.yaml` files baked into the image, rendered as `CONFIG_*`
+#      environment variables (`db.master.host` → `CONFIG_DB_MASTER_HOST`).
+#      `secretConfig` values are written to the chart's Secret and consumed
+#      through `secretKeyRef`. Only scalar leaves (string/int/bool) are
+#      supported because the platform reads them from the environment.
+#
+#   3. `configOverrides` — a raw configuration file mounted into every
+#      workload and merged after the shipped `configs/*.yaml`. Use it for
+#      values a single environment variable cannot express (lists, maps),
+#      e.g. `auth.adminRoles` or `image.registry`.
+#
+# Precedence, highest first: `<component>.config` and
+# `<component>.secretConfig` → `configOverrides` → the `configs/*.yaml`
+# defaults baked into the image. See the chart README for a walk-through.
+
+# -- Override the chart name (used in resource names and labels).
+nameOverride: ""
+# -- Override the fully qualified release name (used in resource names).
+fullnameOverride: ""
+
+image:
+  # -- Image registry. Set to "" for a registry-less (Docker Hub style) repository.
+  registry: ghcr.io
+  # -- Repository path; the component name (`taas-server`, `controller`) is appended.
+  repository: go-taas/go-taas
+  # -- Image tag for both components. Empty defaults to `v<Chart.appVersion>`.
+  tag: ""
+  # -- Image pull policy for both components.
+  pullPolicy: IfNotPresent
+
+# -- Image pull secrets for both components.
+imagePullSecrets: []
+
+# Credential material owned by this chart. When `existingSecret` is set the
+# chart creates no Secret and reads the keys listed below from that Secret
+# instead, so operators can manage credentials with their own tooling
+# (External Secrets, Sealed Secrets, Vault, ...):
+#
+#   postgresql-password              the PostgreSQL password
+#   redis-password                   the Redis password ("" when Redis has no auth)
+#   webhook-secret-encryption-key    webhook secret-at-rest master key
+#   provider-secret-encryption-key   provider key-at-rest master key
+#
+# Keys referenced by the chart but missing from an `existingSecret` are
+# optional *only* for the two encryption keys: the platform then falls back
+# to the documented development key, so production installs must provide
+# them (here, in the Secret, or through `secretConfig`).
+secrets:
+  # -- Name of a pre-existing Secret to read credentials from. Empty creates and manages one.
+  existingSecret: ""
+  # -- Master key for webhook signing secrets at rest. Empty generates a random key.
+  webhookSecretEncryptionKey: ""
+  # -- Master key for external-provider API keys at rest. Empty generates a random key.
+  providerSecretEncryptionKey: ""
+
+# Third-party dependencies. See the file header for the `mode` semantics.
+dependencies:
+  postgresql:
+    # -- `internal` provisions PostgreSQL with this chart; `external` connects to an existing instance.
+    mode: internal
+    # -- Maximum number of open connections per control-plane replica (`db.master.maxOpenConns`).
+    maxOpenConns: 32
+    # -- Maximum number of idle connections (`db.master.maxIdleConns`).
+    maxIdleConns: 8
+    # -- Maximum connection lifetime (`db.master.connMaxLifetime`).
+    connMaxLifetime: 30m
+    # -- Enable GORM statement logging (`db.master.debug`).
+    debug: false
+
+    # Connection used when `mode: external`. `host`, `database` and
+    # `username` are required; the password must be set here or supplied by
+    # `secrets.existingSecret` (key `postgresql-password`).
+    external:
+      # -- PostgreSQL host (DNS name or IP).
+      host: ""
+      # -- PostgreSQL port.
+      port: 5432
+      # -- Database name.
+      database: taas
+      # -- Database user.
+      username: taas
+      # -- Database password. Empty requires `secrets.existingSecret`.
+      password: ""
+      # -- SSL mode: `disable`, `require`, `verify-ca` or `verify-full`.
+      sslMode: disable
+
+    # The instance this chart provisions when `mode: internal`. It is a
+    # single-replica Deployment with a PersistentVolumeClaim: suitable for
+    # development, evaluation and small installs, not for HA production use.
+    internal:
+      image:
+        # -- PostgreSQL image repository.
+        repository: postgres
+        # -- PostgreSQL image tag.
+        tag: "16-alpine"
+        # -- PostgreSQL image pull policy.
+        pullPolicy: IfNotPresent
+      auth:
+        # -- Database superuser the control plane connects as.
+        username: taas
+        # -- Database password. Empty generates and stores a random password.
+        password: ""
+        # -- Database created on first start.
+        database: taas
+      # Storage for the PostgreSQL data directory. Disabling it uses an
+      # emptyDir, which loses all data when the pod is rescheduled.
+      persistence:
+        # -- Persist the PostgreSQL data directory on a PersistentVolumeClaim.
+        enabled: true
+        # -- Requested volume size.
+        size: 10Gi
+        # -- StorageClass to provision from. Empty uses the cluster default.
+        storageClass: ""
+      # -- Resource requests/limits for the PostgreSQL container.
+      resources: {}
+      # -- Extra annotations for the PostgreSQL pod.
+      podAnnotations: {}
+      # -- Node selector for the PostgreSQL pod.
+      nodeSelector: {}
+      # -- Tolerations for the PostgreSQL pod.
+      tolerations: []
+      # -- Affinity for the PostgreSQL pod.
+      affinity: {}
+
+  redis:
+    # -- `internal` provisions Redis with this chart; `external` connects to an existing instance.
+    mode: internal
+    # -- Logical database index the control plane uses (`redis.db`).
+    database: 0
+    # -- Maximum idle connections (`redis.maxIdle`).
+    maxIdle: 8
+    # -- Maximum active connections (`redis.maxActive`).
+    maxActive: 64
+    # -- Idle connection timeout (`redis.idleTimeout`).
+    idleTimeout: 5m
+
+    # Connection used when `mode: external`.
+    external:
+      # -- Redis host (DNS name or IP).
+      host: ""
+      # -- Redis port.
+      port: 6379
+      # -- Redis password. Empty means the instance requires no authentication.
+      password: ""
+
+    # The instance this chart provisions when `mode: internal`.
+    internal:
+      image:
+        # -- Redis image repository.
+        repository: redis
+        # -- Redis image tag (Redis or a compatible server such as Valkey).
+        tag: "7-alpine"
+        # -- Redis image pull policy.
+        pullPolicy: IfNotPresent
+      auth:
+        # -- Require a password (`requirepass`). Strongly recommended.
+        enabled: true
+        # -- Redis password. Empty generates and stores a random password.
+        password: ""
+      # Storage for the append-only file. Disabling it uses an emptyDir.
+      persistence:
+        # -- Persist the Redis data on a PersistentVolumeClaim.
+        enabled: true
+        # -- Requested volume size.
+        size: 8Gi
+        # -- StorageClass to provision from. Empty uses the cluster default.
+        storageClass: ""
+      # -- Resource requests/limits for the Redis container.
+      resources: {}
+      # -- Extra annotations for the Redis pod.
+      podAnnotations: {}
+      # -- Node selector for the Redis pod.
+      nodeSelector: {}
+      # -- Tolerations for the Redis pod.
+      tolerations: []
+      # -- Affinity for the Redis pod.
+      affinity: {}
+
+  nats:
+    # -- `internal` provisions NATS with this chart; `external` connects to an existing instance.
+    mode: internal
+    # -- Message-queue driver: `nats` (only `fake`, an in-process no-op, is also implemented).
+    driver: nats
+    # -- Subject/topic namespace that isolates this environment (`mq.namespace`).
+    namespace: taas
+    # Connection used when `mode: external`. The URL may embed credentials,
+    # e.g. `nats://user:password@nats.example.com:4222`; for a credential-free
+    # URL use `controller.extraEnv`/`taasServer.extraEnv` with a
+    # `secretKeyRef` instead.
+    external:
+      # -- NATS connection URL. Required when `mode: external`.
+      url: ""
+    # The instance this chart provisions when `mode: internal`.
+    internal:
+      image:
+        # -- NATS image repository.
+        repository: nats
+        # -- NATS image tag.
+        tag: "2-alpine"
+        # -- NATS image pull policy.
+        pullPolicy: IfNotPresent
+      # -- Enable JetStream (required by the metering and billing streams).
+      jetstream: true
+      # -- Client port.
+      port: 4222
+      # -- Monitoring port (health and metrics).
+      monitorPort: 8222
+      # Storage for JetStream. Disabling it uses an emptyDir.
+      persistence:
+        # -- Persist the JetStream store on a PersistentVolumeClaim.
+        enabled: true
+        # -- Requested volume size.
+        size: 8Gi
+        # -- StorageClass to provision from. Empty uses the cluster default.
+        storageClass: ""
+      # -- Resource requests/limits for the NATS container.
+      resources: {}
+      # -- Extra annotations for the NATS pod.
+      podAnnotations: {}
+      # -- Node selector for the NATS pod.
+      nodeSelector: {}
+      # -- Tolerations for the NATS pod.
+      tolerations: []
+      # -- Affinity for the NATS pod.
+      affinity: {}
+
+# taas-server: the unified control-plane server (gRPC on 9090, the REST
+# gateway and admin console on 9091, metrics/health on 9092).
+taasServer:
+  # -- Deploy the control-plane server.
+  enabled: true
+  # -- Number of server replicas. Every replica serves the same API and runs the platform runners.
+  replicaCount: 1
+  image:
+    # -- Image name appended to `image.repository` (the Dockerfile build target).
+    name: taas-server
+    # -- Image tag for this component. Empty uses `image.tag`, then `v<Chart.appVersion>`.
+    tag: ""
+    # -- Image pull policy for this component. Empty uses `image.pullPolicy`.
+    pullPolicy: ""
+  # -- Extra container arguments. The chart always passes the configuration
+  # path (`--config-path=/etc/taas/configs/*.yaml`) and the serving ports.
+  args: []
+  serviceAccount:
+    # -- Create a ServiceAccount for the server.
+    create: true
+    # -- ServiceAccount name. Empty uses the chart's full name.
+    name: ""
+    # -- Annotations for the ServiceAccount (e.g. IRSA/workload identity).
+    annotations: {}
+  service:
+    # -- Service type: `ClusterIP`, `NodePort` or `LoadBalancer`.
+    type: ClusterIP
+    # -- Annotations for the Service (e.g. a cloud load-balancer configuration).
+    annotations: {}
+    gateway:
+      # -- Port of the REST gateway and embedded admin console.
+      port: 9091
+    grpc:
+      # -- Publish the gRPC port on the Service.
+      enabled: true
+      # -- gRPC port.
+      port: 9090
+    monitor:
+      # -- Publish the metrics/health port on the Service (Prometheus scraping).
+      enabled: true
+      # -- Metrics, health and pprof port.
+      port: 9092
+  # -- Extra annotations for the server pod.
+  podAnnotations: {}
+  # -- Extra labels for the server pod.
+  podLabels: {}
+  # -- Pod-level security context. The image already runs as uid/gid 65532 (nonroot).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+  # -- Container-level security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests/limits for the server container.
+  resources: {}
+  # -- Node selector for the server pod.
+  nodeSelector: {}
+  # -- Tolerations for the server pod.
+  tolerations: []
+  # -- Affinity for the server pod.
+  affinity: {}
+  livenessProbe:
+    # -- Enable the liveness probe (HTTP GET /healthz on the monitor port).
+    enabled: true
+    # -- Seconds to wait before the first liveness probe.
+    initialDelaySeconds: 15
+    # -- Liveness probe period.
+    periodSeconds: 20
+    # -- Liveness probe timeout.
+    timeoutSeconds: 5
+    # -- Consecutive liveness failures before the container restarts.
+    failureThreshold: 3
+  readinessProbe:
+    # -- Enable the readiness probe (HTTP GET /healthz on the monitor port).
+    enabled: true
+    # -- Seconds to wait before the first readiness probe.
+    initialDelaySeconds: 5
+    # -- Readiness probe period.
+    periodSeconds: 10
+    # -- Readiness probe timeout.
+    timeoutSeconds: 3
+    # -- Consecutive readiness failures before the pod leaves the Service endpoints.
+    failureThreshold: 3
+  # Config overrides for `configs/*.yaml`, rendered as `CONFIG_*` env vars.
+  # Keys mirror the config-file paths, e.g.:
+  #   config:
+  #     infer:
+  #       endpointBaseURL: https://infer.example.com   # CONFIG_INFER_ENDPOINTBASEURL
+  #     model:
+  #       weightsDir: /data/weights                    # CONFIG_MODEL_WEIGHTSDIR
+  #     image:
+  #       harbor:
+  #         url: hub.example.com                       # CONFIG_IMAGE_HARBOR_URL
+  #         username: admin                            # CONFIG_IMAGE_HARBOR_USERNAME
+  #         project: taas                              # CONFIG_IMAGE_HARBOR_PROJECT
+  #     webhook:
+  #       delivery:
+  #         workers: 8                                 # CONFIG_WEBHOOK_DELIVERY_WORKERS
+  config: {}
+  # Secret config overrides, written to the chart's Secret and consumed via
+  # `secretKeyRef`, e.g. `image.harbor.password` or `oauth.clientSecret`.
+  secretConfig: {}
+  # -- Extra environment variables appended to the server container (full env entries).
+  extraEnv: []
+  # -- Extra volumes for the server pod (e.g. a shared model-weights filesystem).
+  extraVolumes: []
+  # -- Extra volume mounts for the server container.
+  extraVolumeMounts: []
+  # -- Grace period for the server to drain in-flight requests.
+  terminationGracePeriodSeconds: 30
+
+# controller: the reconciliation loop that turns desired-state messages into
+# Kubernetes resources (Deployments, Services, HPAs, ModelClaims) inside the
+# inference namespace it manages.
+controller:
+  # -- Deploy the controller.
+  enabled: true
+  # -- Number of controller replicas. Each replica consumes the full desired-state stream.
+  replicaCount: 1
+  image:
+    # -- Image name appended to `image.repository` (the Dockerfile build target).
+    name: controller
+    # -- Image tag for this component. Empty uses `image.tag`, then `v<Chart.appVersion>`.
+    tag: ""
+    # -- Image pull policy for this component. Empty uses `image.pullPolicy`.
+    pullPolicy: ""
+  # -- Extra container arguments. The chart always passes the configuration
+  # path (`--config-path=/etc/taas/configs/*.yaml`).
+  args: []
+  serviceAccount:
+    # -- Create a ServiceAccount for the controller.
+    create: true
+    # -- ServiceAccount name. Empty uses the chart's full name.
+    name: ""
+  rbac:
+    # -- Create the ClusterRole and ClusterRoleBinding the controller needs.
+    create: true
+    # -- ClusterRole/Binding name. Empty uses the chart's full name.
+    name: ""
+    # -- Name of a pre-existing ClusterRole to bind instead of creating one.
+    existingClusterRole: ""
+  # Create the inference namespace (`controller.config.controller.namespace`)
+  # when it does not exist. The controller itself only creates the resources
+  # inside it, so the namespace must exist before the controller runs. It is
+  # annotated with `helm.sh/resource-policy: keep` so `helm uninstall` never
+  # deletes running inference workloads.
+  createNamespace: true
+  # -- Extra annotations for the controller pod.
+  podAnnotations: {}
+  # -- Extra labels for the controller pod.
+  podLabels: {}
+  # -- Pod-level security context. The image already runs as uid/gid 65532 (nonroot).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+  # -- Container-level security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests/limits for the controller container.
+  resources: {}
+  # -- Node selector for the controller pod.
+  nodeSelector: {}
+  # -- Tolerations for the controller pod.
+  tolerations: []
+  # -- Affinity for the controller pod.
+  affinity: {}
+  # Config overrides for `configs/*.yaml`, rendered as `CONFIG_*` env vars.
+  # The defaults below are the keys a Kubernetes deployment usually changes;
+  # everything else follows the shipped defaults.
+  config:
+    controller:
+      # -- Namespace the controller manages inference resources in (`controller.namespace`).
+      namespace: taas-infer
+      weights:
+        # -- Name of the shared model-weights PVC the controller ensures (`controller.weights.pvcName`).
+        pvcName: model-weights
+        # -- Path the weights volume is mounted at inside inference pods (`controller.weights.mountPath`).
+        mountPath: /data/weights
+        # -- JuiceFS-backed StorageClass for the weights PVC (`controller.weights.storageClass`). Empty uses the cluster default.
+        storageClass: ""
+    # The AIBrix control plane observed by the runtime collector. Set the
+    # namespace/gateway of your installation:
+    # runtime:
+    #   aibrix:
+    #     namespace: aibrix-system                     # CONFIG_RUNTIME_AIBRIX_NAMESPACE
+    #     gateway: envoy-aibrix-system-aibrix-eg       # CONFIG_RUNTIME_AIBRIX_GATEWAY
+  # Secret config overrides, written to the chart's Secret and consumed via
+  # `secretKeyRef`.
+  secretConfig: {}
+  # -- Extra environment variables appended to the controller container (full env entries).
+  extraEnv: []
+  # -- Extra volumes for the controller pod (e.g. an explicit kubeconfig).
+  extraVolumes: []
+  # -- Extra volume mounts for the controller container.
+  extraVolumeMounts: []
+  # -- Grace period for the controller to finish in-flight reconciliations.
+  terminationGracePeriodSeconds: 30
+
+# Raw configuration file merged after the shipped `configs/*.yaml` in every
+# workload (mounted as `/etc/taas/configs/zz-go-taas-overrides.yaml`). Use it
+# for values an environment variable cannot express, e.g.:
+#
+#   configOverrides:
+#     auth:
+#       adminRoles: ["platform-admin", "org-admin", "admin", "owner"]
+#     billing:
+#       currency: "CNY"
+#     image:
+#       registry:
+#         - imageId: "img-vllm-nvidia-v063"
+#           name: "ghcr.io/go-taas/vllm"
+#           tag: "v0.6.3"
+#           accelerator: "nvidia"
+#           engine: "vllm"
+configOverrides: {}

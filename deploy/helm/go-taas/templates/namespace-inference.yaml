@@ -1,0 +1,21 @@
+{{- if and .Values.controller.enabled .Values.controller.createNamespace }}
+{{- $namespace := .Values.controller.config.controller.namespace }}
+{{- if and $namespace (ne $namespace .Release.Namespace) }}
+{{/*
+The namespace the controller manages inference resources in. The controller
+creates the PVC and the workloads inside it but never the namespace itself,
+so it must exist first. `resource-policy: keep` keeps `helm uninstall` from
+deleting running inference workloads.
+*/}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace }}
+  labels:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/part-of: go-taas
+    app.kubernetes.io/component: inference
+  annotations:
+    helm.sh/resource-policy: keep
+{{- end }}
+{{- end }}

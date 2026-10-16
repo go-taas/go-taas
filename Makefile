@@ -13,6 +13,14 @@
 # limitations under the License.
 
 GO ?= go
+HELM ?= helm
+
+# ---- Helm chart variables ---------------------------------------------
+# The Kubernetes chart for the control plane; its values file drives every
+# third-party dependency connection (see deploy/helm/go-taas/README.md).
+HELM_CHART ?= deploy/helm/go-taas
+HELM_RELEASE ?= go-taas
+HELM_NAMESPACE ?= taas
 
 # ---- Docker image build variables -------------------------------------
 # Override on the command line, e.g.:
@@ -49,7 +57,8 @@ DOCKER_NETWORK ?= --network=host
 
 .PHONY: all pbgen pbgen-ensure deps lint ut fvt build test clean \
 	docker-build docker-push docker-build-multi compose-up compose-down \
-	compose-ps compose-logs compose-cluster-up compose-cluster-down
+	compose-ps compose-logs compose-cluster-up compose-cluster-down \
+	helm-lint helm-template
 
 all: build
 
@@ -177,3 +186,23 @@ docker-build-multi:
 			-f $(DOCKERFILE) -t "$(IMAGE_REPO)/$${target}:$(IMAGE_TAG)" \
 			--push . || exit 1; \
 	done
+
+## helm-lint: lint the Kubernetes chart (values schema included)
+helm-lint:
+	$(HELM) lint $(HELM_CHART)
+
+## helm-template: render the Kubernetes chart with the default values,
+## verifying every manifest against the cluster API when one is reachable
+helm-template:
+	$(HELM) template $(HELM_RELEASE) $(HELM_CHART)
+
+## helm-install: install the chart from a local checkout (the release
+## namespace is created if needed)
+helm-install:
+	$(HELM) upgrade --install $(HELM_RELEASE) $(HELM_CHART) \
+		--namespace $(HELM_NAMESPACE) --create-namespace
+
+## helm-uninstall: remove the chart release (the generated credentials
+## Secret and the managed inference namespace are kept)
+helm-uninstall:
+	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)

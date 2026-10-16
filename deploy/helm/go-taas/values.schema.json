@@ -1,0 +1,513 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "go-taas chart values",
+  "description": "Values for the go-taas control-plane chart. Cross-field rules that a JSON schema cannot express (for example: an external dependency needs a host, or an external database needs a password unless secrets.existingSecret is set) are enforced by the templates with actionable error messages.",
+  "type": "object",
+  "properties": {
+    "nameOverride": {
+      "type": "string"
+    },
+    "fullnameOverride": {
+      "type": "string"
+    },
+    "image": {
+      "type": "object",
+      "properties": {
+        "registry": {
+          "type": "string"
+        },
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "imagePullSecrets": {
+      "type": "array"
+    },
+    "secrets": {
+      "type": "object",
+      "properties": {
+        "existingSecret": {
+          "type": "string"
+        },
+        "webhookSecretEncryptionKey": {
+          "type": "string"
+        },
+        "providerSecretEncryptionKey": {
+          "type": "string"
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "properties": {
+        "postgresql": {
+          "$ref": "#/definitions/postgresql"
+        },
+        "redis": {
+          "$ref": "#/definitions/redis"
+        },
+        "nats": {
+          "$ref": "#/definitions/nats"
+        }
+      }
+    },
+    "taasServer": {
+      "$ref": "#/definitions/component"
+    },
+    "controller": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/component"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rbac": {
+              "type": "object",
+              "properties": {
+                "create": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "existingClusterRole": {
+                  "type": "string"
+                }
+              }
+            },
+            "createNamespace": {
+              "type": "boolean"
+            }
+          }
+        }
+      ]
+    },
+    "configOverrides": {
+      "type": "object"
+    }
+  },
+  "definitions": {
+    "mode": {
+      "type": "string",
+      "description": "internal provisions the dependency with this chart; external connects to an operator-managed instance.",
+      "enum": ["internal", "external"]
+    },
+    "persistence": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "size": {
+          "type": "string"
+        },
+        "storageClass": {
+          "type": "string"
+        }
+      }
+    },
+    "internalImage": {
+      "type": "object",
+      "properties": {
+        "repository": {
+          "type": "string"
+        },
+        "tag": {
+          "type": "string"
+        },
+        "pullPolicy": {
+          "type": "string",
+          "enum": ["Always", "IfNotPresent", "Never"]
+        }
+      }
+    },
+    "scheduling": {
+      "type": "object",
+      "properties": {
+        "resources": {
+          "type": "object"
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "affinity": {
+          "type": "object"
+        }
+      }
+    },
+    "probe": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "initialDelaySeconds": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "periodSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "timeoutSeconds": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "failureThreshold": {
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "component": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "replicaCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            },
+            "pullPolicy": {
+              "type": "string",
+              "enum": ["", "Always", "IfNotPresent", "Never"]
+            }
+          }
+        },
+        "args": {
+          "type": "array"
+        },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            },
+            "annotations": {
+              "type": "object"
+            }
+          }
+        },
+        "service": {
+          "type": "object",
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+            },
+            "annotations": {
+              "type": "object"
+            },
+            "gateway": {
+              "type": "object",
+              "properties": {
+                "port": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 65535
+                }
+              }
+            },
+            "grpc": {
+              "$ref": "#/definitions/servicePort"
+            },
+            "monitor": {
+              "$ref": "#/definitions/servicePort"
+            }
+          }
+        },
+        "podAnnotations": {
+          "type": "object"
+        },
+        "podLabels": {
+          "type": "object"
+        },
+        "podSecurityContext": {
+          "type": "object"
+        },
+        "securityContext": {
+          "type": "object"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "affinity": {
+          "type": "object"
+        },
+        "livenessProbe": {
+          "$ref": "#/definitions/probe"
+        },
+        "readinessProbe": {
+          "$ref": "#/definitions/probe"
+        },
+        "config": {
+          "type": "object",
+          "description": "configs/*.yaml overrides, rendered as CONFIG_* environment variables (scalar leaves only)."
+        },
+        "secretConfig": {
+          "type": "object",
+          "description": "configs/*.yaml overrides stored in the chart Secret and consumed through secretKeyRef (scalar leaves only)."
+        },
+        "extraEnv": {
+          "type": "array"
+        },
+        "extraVolumes": {
+          "type": "array"
+        },
+        "extraVolumeMounts": {
+          "type": "array"
+        },
+        "terminationGracePeriodSeconds": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "servicePort": {
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "port": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65535
+        }
+      }
+    },
+    "postgresql": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/definitions/mode"
+        },
+        "maxOpenConns": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "maxIdleConns": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "connMaxLifetime": {
+          "type": "string"
+        },
+        "debug": {
+          "type": "boolean"
+        },
+        "external": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "database": {
+              "type": "string"
+            },
+            "username": {
+              "type": "string"
+            },
+            "password": {
+              "type": "string"
+            },
+            "sslMode": {
+              "type": "string",
+              "enum": ["", "disable", "require", "verify-ca", "verify-full"]
+            }
+          }
+        },
+        "internal": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "$ref": "#/definitions/internalImage"
+            },
+            "auth": {
+              "type": "object",
+              "properties": {
+                "username": {
+                  "type": "string",
+                  "minLength": 1
+                },
+                "password": {
+                  "type": "string"
+                },
+                "database": {
+                  "type": "string",
+                  "minLength": 1
+                }
+              },
+              "required": ["username", "database"]
+            },
+            "persistence": {
+              "$ref": "#/definitions/persistence"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/scheduling"
+            }
+          ]
+        }
+      }
+    },
+    "redis": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/definitions/mode"
+        },
+        "database": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxIdle": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "maxActive": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "idleTimeout": {
+          "type": "string"
+        },
+        "external": {
+          "type": "object",
+          "properties": {
+            "host": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "password": {
+              "type": "string"
+            }
+          }
+        },
+        "internal": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "$ref": "#/definitions/internalImage"
+            },
+            "auth": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "password": {
+                  "type": "string"
+                }
+              }
+            },
+            "persistence": {
+              "$ref": "#/definitions/persistence"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/scheduling"
+            }
+          ]
+        }
+      }
+    },
+    "nats": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/definitions/mode"
+        },
+        "driver": {
+          "type": "string",
+          "enum": ["nats", "fake"]
+        },
+        "namespace": {
+          "type": "string"
+        },
+        "external": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string"
+            }
+          }
+        },
+        "internal": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "$ref": "#/definitions/internalImage"
+            },
+            "jetstream": {
+              "type": "boolean"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "monitorPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "persistence": {
+              "$ref": "#/definitions/persistence"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/scheduling"
+            }
+          ]
+        }
+      }
+    }
+  }
+}

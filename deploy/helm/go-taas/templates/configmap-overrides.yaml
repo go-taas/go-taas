@@ -1,0 +1,16 @@
+{{- if include "go-taas.hasConfigOverrides" . }}
+{{/*
+Raw configuration overrides. The file name sorts after the `configs/*.yaml`
+files baked into the image, so its values win; `CONFIG_*` environment
+variables still take precedence over it.
+*/}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "go-taas.configOverrides.name" . }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+data:
+  zz-go-taas-overrides.yaml: |
+    {{- toYaml .Values.configOverrides | nindent 4 }}
+{{- end }}

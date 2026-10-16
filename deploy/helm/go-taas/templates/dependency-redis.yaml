@@ -1,0 +1,143 @@
+{{- if eq .Values.dependencies.redis.mode "internal" }}
+{{- $dep := .Values.dependencies.redis }}
+{{- $auth := $dep.internal.auth }}
+{{- $name := include "go-taas.redis.name" . }}
+{{- $labels := printf "%s\n%s" (include "go-taas.labels" .) "app.kubernetes.io/component: redis" }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+      protocol: TCP
+  selector:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: redis
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "go-taas.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: redis
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+      {{- with $dep.internal.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      containers:
+        - name: redis
+          image: {{ printf "%s:%s" $dep.internal.image.repository $dep.internal.image.tag }}
+          imagePullPolicy: {{ $dep.internal.image.pullPolicy }}
+          command:
+            - /bin/sh
+            - -c
+          args:
+            {{- if $auth.enabled }}
+            - exec redis-server --appendonly yes --requirepass "$REDIS_PASSWORD"
+            {{- else }}
+            - exec redis-server --appendonly yes
+            {{- end }}
+          ports:
+            - name: redis
+              containerPort: 6379
+              protocol: TCP
+          {{- if $auth.enabled }}
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-taas.secretName" . }}
+                  key: redis-password
+          {{- end }}
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                {{- if $auth.enabled }}
+                - redis-cli -a "$REDIS_PASSWORD" ping | grep -q PONG
+                {{- else }}
+                - redis-cli ping | grep -q PONG
+                {{- end }}
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 12
+          livenessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                {{- if $auth.enabled }}
+                - redis-cli -a "$REDIS_PASSWORD" ping | grep -q PONG
+                {{- else }}
+                - redis-cli ping | grep -q PONG
+                {{- end }}
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $dep.internal.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /data
+      volumes:
+        - name: data
+          {{- if $dep.internal.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $dep.internal.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $dep.internal.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $dep.internal.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if $dep.internal.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $dep.internal.persistence.storageClass }}
+  storageClassName: {{ $dep.internal.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $dep.internal.persistence.size }}
+{{- end }}
+{{- end }}

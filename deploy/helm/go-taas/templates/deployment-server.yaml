@@ -1,0 +1,153 @@
+{{- if .Values.taasServer.enabled }}
+{{- $secretName := include "go-taas.secretName" . }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "go-taas.server.name" . }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+spec:
+  replicas: {{ .Values.taasServer.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "go-taas.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: server
+  template:
+    metadata:
+      labels:
+        {{- include "go-taas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: server
+        {{- with .Values.taasServer.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        checksum/config-overrides: {{ include "go-taas.configOverrides.checksum" . }}
+        {{- with .Values.taasServer.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "go-taas.server.serviceAccountName" . }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.taasServer.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.taasServer.terminationGracePeriodSeconds }}
+      containers:
+        - name: server
+          image: {{ include "go-taas.image" (dict "root" . "name" "taas-server" "image" .Values.taasServer.image) }}
+          imagePullPolicy: {{ .Values.taasServer.image.pullPolicy | default .Values.image.pullPolicy }}
+          args:
+            - --config-path=/etc/taas/configs/*.yaml
+            - --service-port={{ .Values.taasServer.service.grpc.port }}
+            - --gateway-port={{ .Values.taasServer.service.gateway.port }}
+            - --monitor-port={{ .Values.taasServer.service.monitor.port }}
+            {{- range .Values.taasServer.args }}
+            - {{ . }}
+            {{- end }}
+          ports:
+            - name: grpc
+              containerPort: {{ .Values.taasServer.service.grpc.port }}
+              protocol: TCP
+            - name: gateway
+              containerPort: {{ .Values.taasServer.service.gateway.port }}
+              protocol: TCP
+            - name: monitor
+              containerPort: {{ .Values.taasServer.service.monitor.port }}
+              protocol: TCP
+          env:
+            {{- include "go-taas.postgresql.env" . | nindent 12 }}
+            {{- include "go-taas.redis.env" . | nindent 12 }}
+            {{- include "go-taas.mq.env" . | nindent 12 }}
+            {{- with .Values.taasServer.config }}
+            {{- include "go-taas.configEnv" (dict "prefix" "CONFIG" "values" . "indent" 12) }}
+            {{- end }}
+            {{- with .Values.taasServer.secretConfig }}
+            {{- include "go-taas.secretConfigEnv" (dict "prefix" "CONFIG" "values" . "secretName" $secretName "indent" 12) }}
+            {{- end }}
+            {{- if not (dig "webhook" "secretEncryptionKey" "" .Values.taasServer.secretConfig) }}
+            # Master key for webhook signing secrets at rest. Optional so an
+            # existing Secret may omit it (the platform then falls back to its
+            # documented development key, which production must not use).
+            - name: CONFIG_WEBHOOK_SECRETENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: webhook-secret-encryption-key
+                  optional: true
+            {{- end }}
+            {{- if not (dig "provider" "secretEncryptionKey" "" .Values.taasServer.secretConfig) }}
+            # Master key for external-provider API keys at rest.
+            - name: CONFIG_PROVIDER_SECRETENCRYPTIONKEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: provider-secret-encryption-key
+                  optional: true
+            {{- end }}
+            {{- with .Values.taasServer.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.taasServer.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: {{ .Values.taasServer.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.taasServer.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.taasServer.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.taasServer.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.taasServer.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: monitor
+            initialDelaySeconds: {{ .Values.taasServer.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.taasServer.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.taasServer.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.taasServer.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.taasServer.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.taasServer.securityContext | nindent 12 }}
+          {{- if or (include "go-taas.hasConfigOverrides" .) .Values.taasServer.extraVolumeMounts }}
+          volumeMounts:
+            {{- if include "go-taas.hasConfigOverrides" . }}
+            # subPath keeps the configs baked into the image readable next to it.
+            - name: config-overrides
+              mountPath: /etc/taas/configs/zz-go-taas-overrides.yaml
+              subPath: zz-go-taas-overrides.yaml
+              readOnly: true
+            {{- end }}
+            {{- with .Values.taasServer.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or (include "go-taas.hasConfigOverrides" .) .Values.taasServer.extraVolumes }}
+      volumes:
+        {{- if include "go-taas.hasConfigOverrides" . }}
+        - name: config-overrides
+          configMap:
+            name: {{ include "go-taas.configOverrides.name" . }}
+        {{- end }}
+        {{- with .Values.taasServer.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.taasServer.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.taasServer.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.taasServer.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -1,0 +1,358 @@
+{{/* Helpers shared by every template in the chart. */}}
+
+{{/* ---- names and labels ------------------------------------------------ */}}
+
+{{/* Chart name, overridable through nameOverride. */}}
+{{- define "go-taas.name" -}}
+{{- default .Chart.Name .Values.nameOverride | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/* Fully qualified release name, used as the prefix of every resource. */}}
+{{- define "go-taas.fullname" -}}
+{{- if .Values.fullnameOverride -}}
+{{- .Values.fullnameOverride | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- $name := default .Chart.Name .Values.nameOverride -}}
+{{- if contains $name .Release.Name -}}
+{{- .Release.Name | trunc 63 | trimSuffix "-" -}}
+{{- else -}}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Chart name and version, as used by the helm.sh/chart label. */}}
+{{- define "go-taas.chart" -}}
+{{- printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
+{{/* Labels applied to every resource. */}}
+{{- define "go-taas.labels" -}}
+helm.sh/chart: {{ include "go-taas.chart" . }}
+{{ include "go-taas.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/part-of: go-taas
+{{- end -}}
+
+{{/* Selector labels shared by a component's workload and its Service. */}}
+{{- define "go-taas.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "go-taas.name" . }}
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{/* ---- resource names -------------------------------------------------- */}}
+
+{{- define "go-taas.server.name" -}}
+{{- printf "%s-server" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{- define "go-taas.controller.name" -}}
+{{- printf "%s-controller" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{- define "go-taas.postgresql.name" -}}
+{{- printf "%s-postgresql" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{- define "go-taas.redis.name" -}}
+{{- printf "%s-redis" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{- define "go-taas.nats.name" -}}
+{{- printf "%s-nats" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{- define "go-taas.configOverrides.name" -}}
+{{- printf "%s-config-overrides" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{/* ---- service accounts ------------------------------------------------ */}}
+
+{{- define "go-taas.server.serviceAccountName" -}}
+{{- if .Values.taasServer.serviceAccount.create -}}
+{{- default (include "go-taas.server.name" .) .Values.taasServer.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.taasServer.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{- define "go-taas.controller.serviceAccountName" -}}
+{{- if .Values.controller.serviceAccount.create -}}
+{{- default (include "go-taas.controller.name" .) .Values.controller.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.controller.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---- images ---------------------------------------------------------- */}}
+
+{{/* Control-plane image reference. Call with (dict "root" $ "name" "taas-server" "image" .Values.taasServer.image). */}}
+{{- define "go-taas.image" -}}
+{{- $tag := .image.tag | default .root.Values.image.tag | default (printf "v%s" .root.Chart.AppVersion) -}}
+{{- $repository := printf "%s/%s" .root.Values.image.repository .name -}}
+{{- if .root.Values.image.registry -}}
+{{- printf "%s/%s:%s" .root.Values.image.registry $repository $tag -}}
+{{- else -}}
+{{- printf "%s:%s" $repository $tag -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---- credentials ----------------------------------------------------- */}}
+
+{{/* Name of the Secret carrying the credential material. */}}
+{{- define "go-taas.secretName" -}}
+{{- default (printf "%s-secrets" (include "go-taas.fullname" .)) .Values.secrets.existingSecret -}}
+{{- end -}}
+
+{{/*
+Generated credential value. The live Secret is looked up first so an upgrade
+or rollback never rotates a password the running services already use; when
+the Secret (or the key) does not exist yet a random value is generated.
+Call with (dict "root" $ "key" "postgresql-password").
+*/}}
+{{- define "go-taas.generatedSecret" -}}
+{{- $name := include "go-taas.secretName" .root -}}
+{{- $existing := lookup "v1" "Secret" .root.Release.Namespace $name -}}
+{{- $value := "" -}}
+{{- if and $existing $existing.data (hasKey $existing.data .key) -}}
+{{- $value = (index $existing.data .key | b64dec) -}}
+{{- end -}}
+{{- if $value -}}
+{{- $value -}}
+{{- else -}}
+{{- randAlphaNum 32 -}}
+{{- end -}}
+{{- end -}}
+
+{{/* PostgreSQL password: configured, or generated for an in-cluster instance. */}}
+{{- define "go-taas.postgresql.password" -}}
+{{- $dep := .Values.dependencies.postgresql -}}
+{{- if eq $dep.mode "external" -}}
+{{- if and (not $dep.external.password) (not .Values.secrets.existingSecret) -}}
+{{- fail "go-taas: dependencies.postgresql.mode=external needs dependencies.postgresql.external.password, or secrets.existingSecret providing the postgresql-password key" -}}
+{{- end -}}
+{{- $dep.external.password -}}
+{{- else -}}
+{{- $password := $dep.internal.auth.password -}}
+{{- if $password -}}
+{{- $password -}}
+{{- else -}}
+{{- include "go-taas.generatedSecret" (dict "root" . "key" "postgresql-password") -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Redis password: "" whenever the instance runs without authentication. */}}
+{{- define "go-taas.redis.password" -}}
+{{- $dep := .Values.dependencies.redis -}}
+{{- if eq $dep.mode "external" -}}
+{{- $dep.external.password -}}
+{{- else if $dep.internal.auth.enabled -}}
+{{- $password := $dep.internal.auth.password -}}
+{{- if $password -}}
+{{- $password -}}
+{{- else -}}
+{{- include "go-taas.generatedSecret" (dict "root" . "key" "redis-password") -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Webhook secret-at-rest master key: configured, or generated. */}}
+{{- define "go-taas.webhookEncryptionKey" -}}
+{{- $key := .Values.secrets.webhookSecretEncryptionKey -}}
+{{- if $key -}}
+{{- $key -}}
+{{- else -}}
+{{- include "go-taas.generatedSecret" (dict "root" . "key" "webhook-secret-encryption-key") -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Provider key-at-rest master key: configured, or generated. */}}
+{{- define "go-taas.providerEncryptionKey" -}}
+{{- $key := .Values.secrets.providerSecretEncryptionKey -}}
+{{- if $key -}}
+{{- $key -}}
+{{- else -}}
+{{- include "go-taas.generatedSecret" (dict "root" . "key" "provider-secret-encryption-key") -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---- configuration rendering ----------------------------------------- */}}
+
+{{/*
+Render a nested config map as plain `CONFIG_*` environment variables, e.g.
+(dict "prefix" "CONFIG" "values" .Values.taasServer.config) turns
+`infer.endpointBaseURL` into CONFIG_INFER_ENDPOINTBASEURL. Only scalar leaves
+are supported: the platform reads lists and maps from files, so they belong in
+configOverrides.
+*/}}
+{{- define "go-taas.configEnv" -}}
+{{- $prefix := .prefix -}}
+{{- $indent := .indent -}}
+{{- range $key, $value := .values -}}
+{{- $entry := printf "%s_%s" $prefix $key -}}
+{{- if kindIs "map" $value -}}
+{{- include "go-taas.configEnv" (dict "prefix" $entry "values" $value "indent" $indent) -}}
+{{- else if kindIs "slice" $value -}}
+{{- fail (printf "go-taas: %s is a list and cannot be an environment variable — move it to configOverrides" $entry) -}}
+{{- else -}}
+{{ printf "- name: %s\n  value: %s" ($entry | replace "." "_" | upper) ($value | toString | quote) | nindent ($indent | int) }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render a nested config map as `CONFIG_*` environment variables backed by the
+chart Secret, e.g. (dict "prefix" "CONFIG" "secretName" $name
+"values" .Values.taasServer.secretConfig). Keys are derived from the variable
+name, so CONFIG_IMAGE_HARBOR_PASSWORD is stored as config-image-harbor-password.
+*/}}
+{{- define "go-taas.secretConfigEnv" -}}
+{{- $prefix := .prefix -}}
+{{- $secretName := .secretName -}}
+{{- $indent := .indent -}}
+{{- range $key, $value := .values -}}
+{{- $entry := printf "%s_%s" $prefix $key -}}
+{{- if kindIs "map" $value -}}
+{{- include "go-taas.secretConfigEnv" (dict "prefix" $entry "values" $value "secretName" $secretName "indent" $indent) -}}
+{{- else if kindIs "slice" $value -}}
+{{- fail (printf "go-taas: %s is a list and cannot be an environment variable — move it to configOverrides" $entry) -}}
+{{- else -}}
+{{- $envName := $entry | replace "." "_" | upper -}}
+{{- $secretKey := $entry | replace "." "_" | lower | replace "_" "-" -}}
+{{ printf "- name: %s\n  valueFrom:\n    secretKeyRef:\n      name: %s\n      key: %s" $envName $secretName $secretKey | nindent ($indent | int) }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/*
+Render a nested secret-config map as `stringData` entries of the chart Secret,
+using the same key derivation as go-taas.secretConfigEnv.
+*/}}
+{{- define "go-taas.secretConfigData" -}}
+{{- $prefix := .prefix -}}
+{{- $indent := .indent -}}
+{{- range $key, $value := .values -}}
+{{- $entry := printf "%s_%s" $prefix $key -}}
+{{- if kindIs "map" $value -}}
+{{- include "go-taas.secretConfigData" (dict "prefix" $entry "values" $value "indent" $indent) -}}
+{{- else -}}
+{{ printf "%s: %s" ($entry | replace "." "_" | lower | replace "_" "-") ($value | toString | quote) | nindent ($indent | int) }}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* ---- dependency connectivity ----------------------------------------- */}}
+
+{{/*
+PostgreSQL environment shared by the server and the controller: the
+connection either names the instance this chart provisioned or the external
+instance from the values file.
+*/}}
+{{- define "go-taas.postgresql.env" -}}
+{{- $root := . -}}
+{{- $dep := .Values.dependencies.postgresql -}}
+{{- $host := "" -}}
+{{- $port := 5432 -}}
+{{- $database := "" -}}
+{{- $username := "" -}}
+{{- $sslMode := "disable" -}}
+{{- if eq $dep.mode "external" -}}
+{{- $host = required "go-taas: dependencies.postgresql.external.host is required when dependencies.postgresql.mode=external" $dep.external.host -}}
+{{- $port = $dep.external.port -}}
+{{- $database = required "go-taas: dependencies.postgresql.external.database is required when dependencies.postgresql.mode=external" $dep.external.database -}}
+{{- $username = required "go-taas: dependencies.postgresql.external.username is required when dependencies.postgresql.mode=external" $dep.external.username -}}
+{{- $sslMode = $dep.external.sslMode -}}
+{{- else -}}
+{{- $host = include "go-taas.postgresql.name" $root -}}
+{{- $port = 5432 -}}
+{{- $database = required "go-taas: dependencies.postgresql.internal.auth.database is required" $dep.internal.auth.database -}}
+{{- $username = required "go-taas: dependencies.postgresql.internal.auth.username is required" $dep.internal.auth.username -}}
+{{- end -}}
+- name: CONFIG_DB_MASTER_HOST
+  value: {{ $host | quote }}
+- name: CONFIG_DB_MASTER_PORT
+  value: {{ $port | toString | quote }}
+- name: CONFIG_DB_MASTER_DBNAME
+  value: {{ $database | quote }}
+- name: CONFIG_DB_MASTER_USER
+  value: {{ $username | quote }}
+- name: CONFIG_DB_MASTER_SSLMODE
+  value: {{ $sslMode | quote }}
+- name: CONFIG_DB_MASTER_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "go-taas.secretName" $root }}
+      key: postgresql-password
+- name: CONFIG_DB_MASTER_MAXOPENCONNS
+  value: {{ $dep.maxOpenConns | toString | quote }}
+- name: CONFIG_DB_MASTER_MAXIDLECONNS
+  value: {{ $dep.maxIdleConns | toString | quote }}
+- name: CONFIG_DB_MASTER_CONNMAXLIFETIME
+  value: {{ $dep.connMaxLifetime | quote }}
+- name: CONFIG_DB_MASTER_DEBUG
+  value: {{ $dep.debug | toString | quote }}
+{{- end -}}
+
+{{/* Redis environment (the server's cache, the data-plane verdict store). */}}
+{{- define "go-taas.redis.env" -}}
+{{- $root := . -}}
+{{- $dep := .Values.dependencies.redis -}}
+{{- $host := "" -}}
+{{- $port := 6379 -}}
+{{- if eq $dep.mode "external" -}}
+{{- $host = required "go-taas: dependencies.redis.external.host is required when dependencies.redis.mode=external" $dep.external.host -}}
+{{- $port = $dep.external.port -}}
+{{- else -}}
+{{- $host = include "go-taas.redis.name" $root -}}
+{{- $port = 6379 -}}
+{{- end -}}
+- name: CONFIG_REDIS_HOST
+  value: {{ $host | quote }}
+- name: CONFIG_REDIS_PORT
+  value: {{ $port | toString | quote }}
+- name: CONFIG_REDIS_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ include "go-taas.secretName" $root }}
+      key: redis-password
+- name: CONFIG_REDIS_DB
+  value: {{ $dep.database | toString | quote }}
+- name: CONFIG_REDIS_MAXIDLE
+  value: {{ $dep.maxIdle | toString | quote }}
+- name: CONFIG_REDIS_MAXACTIVE
+  value: {{ $dep.maxActive | toString | quote }}
+- name: CONFIG_REDIS_IDLETIMEOUT
+  value: {{ $dep.idleTimeout | quote }}
+{{- end -}}
+
+{{/* Message-queue environment shared by the server and the controller. */}}
+{{- define "go-taas.mq.env" -}}
+{{- $root := . -}}
+{{- $dep := .Values.dependencies.nats -}}
+{{- $url := "" -}}
+{{- if eq $dep.mode "external" -}}
+{{- $url = required "go-taas: dependencies.nats.external.url is required when dependencies.nats.mode=external" $dep.external.url -}}
+{{- else -}}
+{{- $url = printf "nats://%s:%v" (include "go-taas.nats.name" $root) $dep.internal.port -}}
+{{- end -}}
+- name: CONFIG_MQ_DRIVER
+  value: {{ $dep.driver | quote }}
+- name: CONFIG_MQ_URL
+  value: {{ $url | quote }}
+- name: CONFIG_MQ_NAMESPACE
+  value: {{ $dep.namespace | quote }}
+{{- end -}}
+
+{{/* ---- misc ------------------------------------------------------------ */}}
+
+{{/* True when a raw config-overrides file must be mounted. */}}
+{{- define "go-taas.hasConfigOverrides" -}}
+{{- if .Values.configOverrides -}}true{{- end -}}
+{{- end -}}
+
+{{/* Checksum of the config-overrides file, to roll pods when it changes. */}}
+{{- define "go-taas.configOverrides.checksum" -}}
+{{- toYaml .Values.configOverrides | sha256sum -}}
+{{- end -}}

@@ -1,0 +1,28 @@
+apiVersion: v2
+name: go-taas
+description: |
+  Go TaaS control plane: the taas-server (gRPC + REST gateway + embedded
+  console) and the controller that reconciles inference workloads into
+  Kubernetes. Every third-party dependency (PostgreSQL, Redis, NATS) is
+  configured through this chart's values: the chart either provisions a
+  single-replica instance in-cluster or connects to an operator-managed one.
+type: application
+version: 0.1.0
+# appVersion tracks the released platform version; the image tag defaults to
+# v<appVersion>.
+appVersion: "1.55.0"
+kubeVersion: ">=1.25.0-0"
+home: https://github.com/go-taas/go-taas
+sources:
+  - https://github.com/go-taas/go-taas
+keywords:
+  - llm
+  - inference
+  - gateway
+  - taas
+  - ai-platform
+maintainers:
+  - name: The go-taas Authors
+    url: https://github.com/go-taas/go-taas
+annotations:
+  category: AI/MachineLearning

@@ -1,0 +1,38 @@
+{{- if .Values.taasServer.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go-taas.server.name" . }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+  {{- with .Values.taasServer.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.taasServer.service.type }}
+  ports:
+    # REST gateway and embedded admin console.
+    - name: gateway
+      port: {{ .Values.taasServer.service.gateway.port }}
+      targetPort: gateway
+      protocol: TCP
+    {{- if .Values.taasServer.service.grpc.enabled }}
+    # gRPC API used by SDKs and the data plane.
+    - name: grpc
+      port: {{ .Values.taasServer.service.grpc.port }}
+      targetPort: grpc
+      protocol: TCP
+    {{- end }}
+    {{- if .Values.taasServer.service.monitor.enabled }}
+    # Prometheus metrics, /healthz and pprof.
+    - name: monitor
+      port: {{ .Values.taasServer.service.monitor.port }}
+      targetPort: monitor
+      protocol: TCP
+    {{- end }}
+  selector:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+{{- end }}

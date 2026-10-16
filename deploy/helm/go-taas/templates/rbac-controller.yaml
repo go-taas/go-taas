@@ -1,0 +1,69 @@
+{{- if and .Values.controller.enabled .Values.controller.rbac.create }}
+{{- $name := default (include "go-taas.controller.name" .) .Values.controller.rbac.name }}
+{{/*
+The controller drives Kubernetes directly: it creates the inference
+Deployments/Services/HPAs and the shared model-weights PVC, runs one-shot
+image-warmup pods, reads pod logs and metrics, and observes the AIBrix
+control plane (which lives in its own namespace, hence the cluster-wide
+permissions).
+*/}}
+{{- if not .Values.controller.rbac.existingClusterRole }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+rules:
+  # Node inventory and accelerator capacity, plus the inference namespace lookup.
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces"]
+    verbs: ["get", "list", "watch"]
+  # Inference pods, their logs, the per-service Services and the model-weights PVC.
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "create", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["services", "persistentvolumeclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Inference workloads and their autoscalers. Deployments are also listed
+  # cluster-wide to locate the AIBrix gateway.
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling"]
+    resources: ["horizontalpodautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Per-pod CPU/memory samples from the metrics-server (resource metrics feature).
+  - apiGroups: ["metrics.k8s.io"]
+    resources: ["pods"]
+    verbs: ["get", "list"]
+  # AIBrix serving scheme: ModelClaims and PodAutoscalers.
+  - apiGroups: ["model.aibrix.ai"]
+    resources: ["modelclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["autoscaling.aibrix.ai"]
+    resources: ["podautoscalers"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: controller
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ default $name .Values.controller.rbac.existingClusterRole }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "go-taas.controller.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
