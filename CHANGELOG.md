@@ -1,3 +1,10 @@
+# [1.57.0](https://github.com/go-taas/go-taas/compare/v1.56.0...v1.57.0) (2026-10-16)
+
+
+### Features
+
+* **site:** add bilingual documentation browser and move docs into site ([4130c3a](https://github.com/go-taas/go-taas/commit/4130c3a7ec7e7c0263e35deadbad304daba10d91))
+
 # [1.56.0](https://github.com/go-taas/go-taas/compare/v1.55.0...v1.56.0) (2026-10-16)
 
 
