@@ -1,3 +1,10 @@
+# [1.56.0](https://github.com/go-taas/go-taas/compare/v1.55.0...v1.56.0) (2026-10-16)
+
+
+### Features
+
+* **deploy:** add helm chart with values-driven dependency configuration ([9930c17](https://github.com/go-taas/go-taas/commit/9930c175ecbedc9f2804c968ee8176351ee977d9))
+
 # [1.55.0](https://github.com/go-taas/go-taas/compare/v1.54.0...v1.55.0) (2026-10-15)
 
 
