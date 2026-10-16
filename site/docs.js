@@ -60,6 +60,10 @@
     byId: new Map(),
     uiLang: "en",
     docLang: "en",
+    // The document language the reader explicitly asked for (the
+    // document-language button, a dl= deep link, or a link that names a language
+    // variant). When null, the document follows the UI language.
+    docLangPinned: null,
     doc: null,
     variant: null,
     markdown: "",
@@ -361,8 +365,18 @@
   async function load(doc, options) {
     options = options || {};
     if (options.anchor !== undefined) state.anchor = options.anchor || null;
+
+    // Pin the document language only when the reader asked for it; otherwise the
+    // document follows the UI language, so toggling the language switches both
+    // the chrome and the document body.
+    if (options.pin && LANGS.indexOf(options.docLang) >= 0) {
+      state.docLangPinned = options.docLang;
+    } else if (!options.keepPin) {
+      state.docLangPinned = null;
+    }
+    state.docLang = state.docLangPinned || state.uiLang;
+
     state.doc = doc;
-    state.docLang = options.docLang && LANGS.indexOf(options.docLang) >= 0 ? options.docLang : state.uiLang;
     var token = ++state.token;
 
     hideArticle();
@@ -597,7 +611,7 @@
       link.addEventListener("click", function (event) {
         event.preventDefault();
         closeNav();
-        load(state.byId.get(targetId), { docLang: docLang, anchor: anchor || null });
+        load(state.byId.get(targetId), { docLang: docLang, pin: true, anchor: anchor || null });
       });
     });
   }
@@ -978,7 +992,7 @@
     dom.langBtn.hidden = false;
     dom.langLabel.textContent = t("docs.otherLanguage");
     dom.langBtn.onclick = function () {
-      load(doc, { docLang: other, anchor: state.anchor });
+      load(doc, { docLang: other, pin: true, anchor: state.anchor });
     };
   }
 
@@ -1303,18 +1317,27 @@
       applyAttributeLabels();
       if (!state.doc) return;
 
-      var wanted = state.docLang === state.uiLang ? state.uiLang : state.docLang;
+      var wanted = state.docLangPinned || state.uiLang;
       var variant = pickVariant(state.doc, wanted);
       if (variant && state.variant && variant.path === state.variant.path && state.markdown) {
         // Same source document: re-render the chrome in the new language.
+        state.docLang = variant.lang;
         renderArticle(state.doc, variant, state.markdown);
         state.anchor = null;
       } else {
-        load(state.doc, { docLang: wanted, silent: true, anchor: null });
+        load(state.doc, {
+          docLang: wanted,
+          pin: Boolean(state.docLangPinned),
+          silent: true,
+          anchor: null
+        });
       }
       renderCrumbs(state.doc);
       renderPager(state.doc);
       markSidebarCurrent();
+      // Keep the URL in step with the chrome so a shared link reopens the same
+      // way (lang= is the UI language, dl= the pinned document language).
+      writeHash(true);
     });
   }
 
@@ -1324,8 +1347,14 @@
       if (!hash.doc) return;
       var doc = state.byId.get(hash.doc);
       if (!doc) return;
-      var docLang = hash.dl && LANGS.indexOf(hash.dl) >= 0 ? hash.dl : state.docLang;
-      load(doc, { anchor: hash.h || null, docLang: docLang, silent: true });
+      if (hash.lang && LANGS.indexOf(hash.lang) >= 0) state.uiLang = hash.lang;
+      var pinned = Boolean(hash.dl && LANGS.indexOf(hash.dl) >= 0);
+      load(doc, {
+        anchor: hash.h || null,
+        docLang: pinned ? hash.dl : state.uiLang,
+        pin: pinned,
+        silent: true
+      });
     });
 
     // A hash-only edit (a pasted or hand-edited link, or a cross-page jump) is a
@@ -1337,9 +1366,10 @@
       if (hash.lang && LANGS.indexOf(hash.lang) >= 0) state.uiLang = hash.lang;
       var doc = hash.doc ? state.byId.get(hash.doc) : null;
       if (!doc) return;
-      var docLang = hash.dl && LANGS.indexOf(hash.dl) >= 0 ? hash.dl : state.uiLang;
+      var pinned = Boolean(hash.dl && LANGS.indexOf(hash.dl) >= 0);
+      var docLang = pinned ? hash.dl : state.uiLang;
       if (state.doc && state.doc.id === doc.id && docLang === state.docLang && !hash.h) return;
-      load(doc, { anchor: hash.h || null, docLang: docLang, silent: true });
+      load(doc, { anchor: hash.h || null, docLang: docLang, pin: pinned, silent: true });
     });
   }
 
@@ -1349,7 +1379,6 @@
     var hash = readHash();
     state.uiLang = global.SITE_LANG ? global.SITE_LANG.get() : "en";
     if (hash.lang && LANGS.indexOf(hash.lang) >= 0) state.uiLang = hash.lang;
-    state.docLang = state.uiLang;
 
     setupSearch();
     setupProgress();
@@ -1376,8 +1405,8 @@
       showError(docId);
       return;
     }
-    var docLang = hash.dl && LANGS.indexOf(hash.dl) >= 0 ? hash.dl : null;
-    load(doc, { anchor: hash.h || null, docLang: docLang, replace: true });
+    var pinned = Boolean(hash.dl && LANGS.indexOf(hash.dl) >= 0);
+    load(doc, { anchor: hash.h || null, docLang: pinned ? hash.dl : null, pin: pinned, replace: true });
   }
 
   if (document.readyState === "loading") {
