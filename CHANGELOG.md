@@ -1,3 +1,10 @@
+## [1.57.1](https://github.com/go-taas/go-taas/compare/v1.57.0...v1.57.1) (2026-10-16)
+
+
+### Bug Fixes
+
+* **site:** follow the UI language in the documentation browser ([7de14d4](https://github.com/go-taas/go-taas/commit/7de14d444d470c9691b6e92ec5c53d0e089b0813))
+
 # [1.57.0](https://github.com/go-taas/go-taas/compare/v1.56.0...v1.57.0) (2026-10-16)
 
 
