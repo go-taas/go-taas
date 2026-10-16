@@ -28,6 +28,23 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+
+      - name: Generate the documentation manifest
+        # site/docs/manifest.json indexes the documents the browser renders. It
+        # is regenerated here so the deployed site always matches site/docs/**,
+        # including the OpenAPI specs when they were generated in this run.
+        run: node site/scripts/build-docs-manifest.mjs
+
+      - name: Verify the vendored browser libraries
+        # The documentation browser renders Markdown, Mermaid diagrams and
+        # syntax highlighting from site/vendor/. Fail the deploy if the
+        # vendored tree drifted from the pinned versions.
+        run: node site/scripts/vendor.mjs --check
+
       - name: Configure Pages
         uses: actions/configure-pages@v5
 

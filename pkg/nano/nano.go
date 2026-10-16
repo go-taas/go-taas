@@ -243,7 +243,7 @@ func share(tokens uint64, ratePerM Amount) *big.Int {
 // metering layer records (feature #4's counters). It prices prompt tokens
 // and cached tokens at their own rates and prices reasoning tokens at the
 // output rate, matching the D2 contract
-// (docs/design/pricing.md prices reasoning_tokens at the output rate).
+// (site/docs/design/pricing.md prices reasoning_tokens at the output rate).
 // Unlike the card rail — whose 2-decimal cents rounding (see
 // billing.pricing.computeAmount) writes off any charge below $0.005 — this
 // keeps the full 30-decimal raw precision, so a sub-cent cached read or

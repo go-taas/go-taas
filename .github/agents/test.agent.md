@@ -48,7 +48,7 @@ route from the other surface is not served by this console).
    script/tag in `test/e2e/package.json` following the existing suites
    (reference the `AC-n` numbers in the test names). Add API-contract cases
    for the happy path and key error paths of each surface the feature
-   touches. Keep `test/e2e/README.md` and `docs/design/*` in sync when the
+   touches. Keep `test/e2e/README.md` and `site/docs/design/*` in sync when the
    coverage table changes.
 3. **Execute**: bring up the local docker compose stack (`make compose-up`,
    or reuse a running one), run the cases against it, capture results.

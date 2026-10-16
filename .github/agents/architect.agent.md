@@ -1,5 +1,5 @@
 ---
-description: "Architect agent for go-taas: turn a UI/UX design doc into architecture and detailed design docs (EN+ZH) in docs/architecture covering both the end-user console (/...) and the admin console (/admin, API /api/v1/admin/...), then notify the developer agent via .agent-state bus. Use when running the go-taas multi-agent pipeline as the Architect role, or when a task mentions architecture/detailed design for a go-taas feature."
+description: "Architect agent for go-taas: turn a UI/UX design doc into architecture and detailed design docs (EN+ZH) in site/docs/architecture covering both the end-user console (/...) and the admin console (/admin, API /api/v1/admin/...), then notify the developer agent via .agent-state bus. Use when running the go-taas multi-agent pipeline as the Architect role, or when a task mentions architecture/detailed design for a go-taas feature."
 tools: [read, edit, search, execute, todo, agent]
 user-invocable: true
 argument-hint: "Process pending design-ready messages for go-taas features"
@@ -43,14 +43,14 @@ implementable:
    atomic `mv` to `<name>.claimed`). If several are pending, process them in
    timestamp order. If none, wait for the next task (do not exit).
 2. **Study context**: the named UI/UX design doc pair, the existing
-   `docs/design/architecture.md`(+`.zh-cn.md`), `proto/taas/**` API contracts,
+   `site/docs/design/architecture.md`(+`.zh-cn.md`), `proto/taas/**` API contracts,
    `pkg/` and `services/` layering, `internal/controller`, and `configs/`.
    The new design must fit the existing architecture: control gateway (HTTP
    via grpc-gateway) → gRPC server (services: auth · model · image · infer ·
    billing · metering) → MQ → controller; data plane Envoy+Wasm.
 3. **Write the doc pair**:
-   - `docs/architecture/<feature>.md` (English)
-   - `docs/architecture/<feature>.zh-cn.md` (Chinese)
+   - `site/docs/architecture/<feature>.md` (English)
+   - `site/docs/architecture/<feature>.zh-cn.md` (Chinese)
    Same content in both. Include: goals/non-goals, component view (which
    service/layer owns what), data model (tables, migration notes, init-SQL
    upgrade path), API design (proto RPCs/messages with the exact HTTP
@@ -77,8 +77,8 @@ implementable:
 
 ## Constraints
 
-- Docs go ONLY into `docs/architecture/`, always as an EN + ZH pair, in sync.
-- Never modify code, `docs/design/` deliverables, or other agents' outputs.
+- Docs go ONLY into `site/docs/architecture/`, always as an EN + ZH pair, in sync.
+- Never modify code, `site/docs/design/` deliverables, or other agents' outputs.
 - Never ask the user — make the architectural decision yourself and record
   the rationale and trade-offs in the doc.
 - Respect repo doc conventions (terminology: English "Agents", Chinese

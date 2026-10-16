@@ -23,8 +23,10 @@
 
   function langFromHash() {
     // location.hash includes the leading "#" — strip it before matching.
+    // Hash parameters are separated by "," / ";" on the landing page and by
+    // "&" on the documentation browser, which carries several parameters.
     var hash = String(global.location.hash || "").replace(/^#/, "");
-    var match = /(?:^|[,;])lang=(zh-CN|en)(?:$|[,;])/.exec(hash);
+    var match = /(?:^|[,;&])lang=(zh-CN|en)(?:$|[,;&])/.exec(hash);
     return match ? match[1] : null;
   }
 
@@ -66,6 +68,26 @@
       }
     }
 
+    // Nodes that hold markup (they set their own content) and inputs that
+    // carry placeholder copy are handled here so pages stay declarative.
+    var htmlNodes = document.querySelectorAll("[data-i18n-html]");
+    for (var h = 0; h < htmlNodes.length; h++) {
+      var htmlNode = htmlNodes[h];
+      var htmlValue = table[htmlNode.getAttribute("data-i18n-html")];
+      if (typeof htmlValue === "string") {
+        htmlNode.innerHTML = htmlValue;
+      }
+    }
+
+    var placeholders = document.querySelectorAll("[data-i18n-placeholder]");
+    for (var p = 0; p < placeholders.length; p++) {
+      var field = placeholders[p];
+      var placeholder = table[field.getAttribute("data-i18n-placeholder")];
+      if (typeof placeholder === "string") {
+        field.setAttribute("placeholder", placeholder);
+      }
+    }
+
     document.documentElement.setAttribute("lang", lang);
     if (toggleBtn) {
       toggleBtn.textContent = lang === "zh-CN" ? "English" : "中文";
@@ -77,6 +99,12 @@
     } catch (e) {
       /* ignore storage failures */
     }
+
+    // Other scripts (for example the documentation browser) re-render their
+    // own content when the language changes.
+    document.dispatchEvent(
+      new CustomEvent("go-taas:lang", { detail: { lang: lang, dict: table } })
+    );
   }
 
   function toggleLang() {
@@ -98,6 +126,17 @@
       }
     });
   }
+
+  // Pages that need to switch the language programmatically (the documentation
+  // browser swaps to the matching document variant) use this small surface
+  // instead of poking at the toggle button.
+  global.SITE_LANG = {
+    get: function () {
+      return state.lang;
+    },
+    set: applyLang,
+    supported: SUPPORTED.slice()
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", init);

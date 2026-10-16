@@ -58,11 +58,11 @@ make build   # build the binary
 - All code must pass `golangci-lint v2` checks; fix linter findings rather than suppressing them.
 - Follow standard Go conventions ([Effective Go](https://go.dev/doc/effective_go), `gofmt`/`goimports` formatting).
 - New code requires unit tests. Critical modules (billing, protocol conversion) must cover edge cases; the project targets at least 80% unit test coverage.
-- Protobuf contracts are the source of truth for APIs: change the `.proto` files first, then regenerate with `make pbgen`. Generated code (`*.pb.go`, `*.pb.gw.go`, `docs/api/`) is **not** committed — only `*.proto` files are tracked.
+- Protobuf contracts are the source of truth for APIs: change the `.proto` files first, then regenerate with `make pbgen`. Generated code (`*.pb.go`, `*.pb.gw.go`, `site/docs/api/`) is **not** committed — only `*.proto` files are tracked.
 
 ### Documentation
 
-- User-facing and design documentation is bilingual: English documents live under `docs/`, Chinese versions use the `.zh-cn.md` suffix. When you change terminology or architecture diagrams, update both sides, including Mermaid node labels.
+- User-facing and design documentation is bilingual: English documents live under `site/docs/`, Chinese versions use the `.zh-cn.md` suffix. When you change terminology or architecture diagrams, update both sides, including Mermaid node labels.
 
 ## Commit Conventions
 

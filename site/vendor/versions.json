@@ -1,0 +1,7 @@
+{
+  "marked": "18.1.1",
+  "mermaid": "12.2.0",
+  "highlight.js": "11.12.0",
+  "esbuild": "0.28.2",
+  "generatedBy": "site/scripts/vendor.mjs"
+}

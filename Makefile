@@ -63,7 +63,7 @@ DOCKER_NETWORK ?= --network=host
 all: build
 
 ## pbgen: regenerate protobuf code
-## Generated code (*.pb.go, *.pb.gw.go, docs/api/) is NOT committed;
+## Generated code (*.pb.go, *.pb.gw.go, site/docs/api/) is NOT committed;
 ## only *.proto files are tracked. Regenerate after every proto change.
 ## buf generate resolves the googleapis dependency from the checked-in
 ## buf.lock, so it does not need to reach the buf remote (BSR).

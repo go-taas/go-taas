@@ -20,6 +20,7 @@
       <nav class="nav" aria-label="Primary">
         <a href="#features" data-i18n="nav.features">Features</a>
         <a href="#architecture" data-i18n="nav.architecture">Architecture</a>
+        <a href="docs.html" data-i18n="nav.docs">Docs</a>
         <a href="#quickstart" data-i18n="nav.quickstart">Quick Start</a>
         <a href="#usage" data-i18n="nav.usage">Usage</a>
         <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
@@ -49,8 +50,8 @@
         </h1>
         <p class="hero-sub" data-i18n="hero.subtitle">
           An open-source LLM inference and metering/billing platform built on Kubernetes.
-          Deploy Qwen, DeepSeek, LLaMA and more on heterogeneous accelerators, expose an
-          OpenAI-compatible API, meter per token, and settle per API Key.
+          Deploy Qwen, DeepSeek, LLaMA and more on multiple heterogeneous accelerators,
+          expose an OpenAI-compatible API, meter per token, and settle per API Key.
         </p>
         <div class="hero-cta">
           <a class="btn btn-primary" href="#quickstart" data-i18n="hero.cta1">Get Started</a>
@@ -77,7 +78,7 @@
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
             </div>
             <h3 data-i18n="features.f1.t">Heterogeneous Compute</h3>
-            <p data-i18n="features.f1.d">Unified support for NVIDIA GPU, Iluvatar CoreX, and MetaX. Node labeling, Device Plugins, and driver deployment are handled by each vendor's GPU Operator.</p>
+            <p data-i18n="features.f1.d">Unified management of multiple heterogeneous accelerator cards (vendor-agnostic). Node labeling, Device Plugins, and driver deployment are handled by each vendor's GPU Operator, with a live accelerator inventory and a model × engine × card-type compatibility matrix.</p>
           </article>
           <article class="card">
             <div class="card-icon" aria-hidden="true">
@@ -98,7 +99,7 @@
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
             </div>
             <h3 data-i18n="features.f4.t">Inference Image Management</h3>
-            <p data-i18n="features.f4.d">Register, version, and map engine images across NVIDIA / CoreX / MetaX, with node-level pre-pulling to shorten cold starts.</p>
+            <p data-i18n="features.f4.d">Register, version, and map engine images across the supported accelerator cards, with node-level pre-pulling to shorten cold starts.</p>
           </article>
           <article class="card">
             <div class="card-icon" aria-hidden="true">
@@ -184,6 +185,48 @@
             <h3 data-i18n="features.f16.t">Data Governance</h3>
             <p data-i18n="features.f16.d">Audit logging and activity export, deployment history &amp; audit, and GDPR-style data export of usage, billing, and request logs as JSON / CSV.</p>
           </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="4"/></svg>
+            </div>
+            <h3 data-i18n="features.f17.t">Distributed Inference Runtime</h3>
+            <p data-i18n="features.f17.d">Choose the platform serving scheme — plain Kubernetes Deployments (default) or an AIBrix-managed distributed runtime — and inspect runtime component health and the models registered with the runtime.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="10" cy="17" r="1.6"/></svg>
+            </div>
+            <h3 data-i18n="features.f18.t">External Model Providers</h3>
+            <p data-i18n="features.f18.d">Register third-party providers (DeepSeek / OpenAI / OpenAI-compatible), probe connectivity with five states (ok / unauthorized / unreachable / error / unknown), curate upstream models, and publish them into the catalog — consumed through the same metered gateway.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l3 6 3-6h6"/><path d="M3 18h6l3-6 3 6h6"/></svg>
+            </div>
+            <h3 data-i18n="features.f19.t">Intelligent Model Routing</h3>
+            <p data-i18n="features.f19.d">Routing groups expose virtual model names (e.g. auto-chat) over an ordered candidate list of real models, with weighted, cost-priority, and latency-priority strategies plus keyword intent rules — and a logged decision trail.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 6.5a4 4 0 0 0-4-2.5h-2a3.5 3.5 0 0 0 0 7h3a3.5 3.5 0 0 1 0 7H10a4 4 0 0 1-4-2.6"/></svg>
+            </div>
+            <h3 data-i18n="features.f20.t">Cost Optimization</h3>
+            <p data-i18n="features.f20.d">A deterministic, rule-based engine turns settled usage, price, and deployment data into ranked, quantified, dismissible savings recommendations, each linking straight to the page where the operator can act.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V8M10 20V4M16 20v-8M22 20V10"/></svg>
+            </div>
+            <h3 data-i18n="features.f21.t">Service Quotas</h3>
+            <p data-i18n="features.f21.d">Per-organization quotas on concurrent requests, inference services, batch jobs per day, and max output tokens per request — with tier presets, fail-closed enforcement, and an audited change history.</p>
+          </article>
+          <article class="card">
+            <div class="card-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>
+            </div>
+            <h3 data-i18n="features.f22.t">Multi-cluster Management</h3>
+            <p data-i18n="features.f22.d">Register and manage inference clusters, view cluster health and workload placement, and route model deployments across clusters.</p>
+          </article>
         </div>
       </div>
     </section>
@@ -199,23 +242,62 @@
           <div class="arch-diagram" aria-label="Go TaaS architecture diagram">
             <div class="arch-box arch-external">
               <div class="arch-node arch-consumer"><span data-i18n="arch.agents">Agents / SDK</span></div>
-              <div class="arch-node arch-consumer"><span data-i18n="arch.admin">Admin Console / CLI</span></div>
+              <div class="arch-node arch-consumer"><span data-i18n="arch.admin">End-user console (/) · Admin console (/admin)</span></div>
             </div>
             <div class="arch-arrow" aria-hidden="true">↓</div>
             <div class="arch-box arch-k8s">
               <div class="arch-label" data-i18n="arch.k8s">Kubernetes Cluster</div>
+
+              <div class="arch-zone arch-net">
+                <div class="arch-label" data-i18n="arch.net">Cluster Network</div>
+                <div class="arch-row arch-net-row">
+                  <div class="arch-node arch-chip"><span data-i18n="arch.net1">Pod network (CNI) — ClusterIP · CoreDNS</span></div>
+                  <div class="arch-node arch-chip"><span data-i18n="arch.net2">Ingress / NodePort — TLS entry</span></div>
+                  <div class="arch-node arch-chip"><span data-i18n="arch.net3">NetworkPolicy — namespace isolation</span></div>
+                  <div class="arch-node arch-chip"><span data-i18n="arch.net4">RDMA fabric (RoCE / InfiniBand) — optional</span></div>
+                </div>
+              </div>
+
               <div class="arch-row">
                 <div class="arch-zone arch-cp">
                   <div class="arch-label" data-i18n="arch.cp">Control Plane · standard network</div>
-                  <div class="arch-node arch-edge"><span data-i18n="arch.cgw">Control Gateway (HTTP)</span></div>
-                  <div class="arch-node arch-core"><span data-i18n="arch.grpc">gRPC Server — 20 microservices: auth · model · infer · billing · metering · …</span></div>
+                  <div class="arch-node arch-edge"><span data-i18n="arch.cgw">Control Gateway (HTTP · grpc-gateway)</span></div>
                   <div class="arch-node arch-svc"><span data-i18n="arch.mq">Message Queue (Kafka / NATS)</span></div>
                   <div class="arch-node arch-svc"><span data-i18n="arch.ctrl">Controller (K8s reconciliation)</span></div>
                 </div>
                 <div class="arch-zone arch-dp">
                   <div class="arch-label" data-i18n="arch.dp">Data Plane · RDMA network</div>
                   <div class="arch-node arch-dpg"><span data-i18n="arch.dgw">Inference Gateway — Envoy + Wasm</span></div>
-                  <div class="arch-node arch-gpu"><span data-i18n="arch.engines">Inference Services — vLLM / SGLang / CoreX / MetaX</span></div>
+                  <div class="arch-node arch-gpu"><span data-i18n="arch.engines">Inference Services — vLLM / SGLang / TensorRT-LLM on heterogeneous accelerators</span></div>
+                </div>
+              </div>
+              <div class="arch-services">
+                <div class="arch-services-head" data-i18n="arch.services">gRPC Server — one Deployment, 24 microservices</div>
+                <div class="arch-services-grid">
+                  <span class="arch-svc-chip" data-i18n="arch.s1">auth — authn · SSO · API keys</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s2">tenancy — org isolation · RBAC · quotas</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s3">account — account-data export</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s4">model — catalog · versions · weights · authorization</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s5">image — engine images · pre-pull · compatibility matrix</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s6">infer — lifecycle · autoscaling · routing · playground</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s7">runtime — AIBrix serving runtime</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s8">routing — routing groups · decision trail</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s9">provider — external model providers</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s10">metering — token metering · usage · request logs</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s11">billing — pricing · bills · payments · reports</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s12">batch — batch inference jobs</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s13">audit — audit log · activity export</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s14">webhook — outbound events · delivery log</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s15">notification — notification center · alerts</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s16">observability — dashboards · health · errors</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s17">tracing — request traces · latency</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s18">resourcemetrics — CPU / memory / GPU</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s19">accelerator — accelerator inventory · health</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s20">cluster — multi-cluster registry</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s21">optimization — cost optimization</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s22">prompt — prompt library</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s23">evaluation — prompt evaluation</span>
+                  <span class="arch-svc-chip" data-i18n="arch.s24">docs — API docs catalog</span>
                 </div>
               </div>
               <div class="arch-zone arch-store">
@@ -231,12 +313,13 @@
             </div>
           </div>
           <ul class="arch-points">
-            <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm).</li>
+            <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Ingress / NodePort with TLS).</li>
             <li data-i18n="arch.p2">The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.</li>
-            <li data-i18n="arch.p3">All microservice gRPC servers run in a single Deployment and hand work to the Controller through a message queue (Kafka / NATS), decoupling API serving from Kubernetes reconciliation.</li>
+            <li data-i18n="arch.p3">All 24 microservice gRPC servers run in a single Deployment — auth, tenancy, account, model, image, infer, runtime, routing, provider, metering, billing, batch, audit, webhook, notification, observability, tracing, resourcemetrics, accelerator, cluster, optimization, prompt, evaluation, and docs — handing work to the Controller through a message queue (Kafka / NATS).</li>
             <li data-i18n="arch.p4">Authentication, metering, and routing run in Wasm plugins at the Inference Gateway, so inference traffic never passes through business processes.</li>
             <li data-i18n="arch.p5">The Inference Gateway verifies every API Key by calling the auth module over gRPC, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or auth unavailability it fails closed.</li>
-            <li data-i18n="arch.p6">Inference services and the control plane share one Kubernetes cluster, isolated through Namespaces, node labels, and taints/tolerations.</li>
+            <li data-i18n="arch.p6">Cluster networking: pods talk over the CNI network with ClusterIP Services and CoreDNS discovery, north-south traffic enters through Ingress / NodePort with TLS, NetworkPolicies isolate the control plane, data plane, and tenant namespaces, and the inference data path can ride an optional RDMA fabric.</li>
+            <li data-i18n="arch.p7">Inference services and the control plane share one Kubernetes cluster, isolated through Namespaces, node labels, and taints/tolerations.</li>
           </ul>
         </div>
       </div>
@@ -357,14 +440,14 @@ print(resp.choices[0].message.content)</code></pre>
             <div class="timeline-dot"></div>
             <div class="timeline-body">
               <h3><span data-i18n="roadmap.p3t">Phase 3 — Heterogeneous Accelerators</span> <span class="timeline-status" data-i18n="roadmap.done">Shipped</span></h3>
-              <p data-i18n="roadmap.p3d">Accelerator inventory &amp; health, Iluvatar / MetaX engine and image adaptation, model × engine × card-type compatibility matrix.</p>
+              <p data-i18n="roadmap.p3d">Accelerator inventory &amp; health, multi-vendor engine and image adaptation, model × engine × card-type compatibility matrix.</p>
             </div>
           </li>
           <li class="timeline-item timeline-item--done">
             <div class="timeline-dot"></div>
             <div class="timeline-body">
               <h3><span data-i18n="roadmap.p4t">Phase 4 — Productionization</span> <span class="timeline-status" data-i18n="roadmap.done">Shipped</span></h3>
-              <p data-i18n="roadmap.p4d">Autoscaling, routing policies, load testing, observability &amp; tracing, webhooks, notification center, prompt library &amp; evaluation, batch inference, multi-cluster management, API docs explorer, data export.</p>
+              <p data-i18n="roadmap.p4d">Autoscaling, routing policies, load testing, observability &amp; tracing, webhooks, notification center, prompt library &amp; evaluation, batch inference, multi-cluster management, API docs explorer, data export, distributed inference runtime (AIBrix), external model providers, intelligent model routing, cost optimization, service quota management.</p>
             </div>
           </li>
           <li class="timeline-item timeline-item--planned">
@@ -399,7 +482,7 @@ print(resp.choices[0].message.content)</code></pre>
       </div>
       <nav class="footer-nav" aria-label="Footer">
         <a href="https://github.com/go-taas/go-taas/blob/main/README.md" target="_blank" rel="noopener">README</a>
-        <a href="https://github.com/go-taas/go-taas/blob/main/docs/design/architecture.md" target="_blank" rel="noopener" data-i18n="footer.arch">Architecture</a>
+        <a href="docs.html?doc=design/architecture" data-i18n="footer.arch">Architecture</a>
         <a href="https://github.com/go-taas/go-taas/blob/main/CONTRIBUTING.md" target="_blank" rel="noopener" data-i18n="footer.contributing">Contributing</a>
         <a href="https://github.com/go-taas/go-taas/blob/main/LICENSE" target="_blank" rel="noopener">Apache-2.0</a>
       </nav>

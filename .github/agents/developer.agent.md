@@ -66,7 +66,7 @@ session token, or reuse a page component across realms.
    them, before implementing.
 2. After code changes `make lint`, `make ut`, fvt (if present) and
    commitlint must pass. Generated protobuf code (`*.pb.go`,
-   `*.pb.gw.go`, `docs/api/`) is never committed — only `*.proto`
+   `*.pb.gw.go`, `site/docs/api/`) is never committed — only `*.proto`
    files are tracked; regenerate locally with `make pbgen` before
    building or testing after a proto change.
 3. Keep the code structure consistent with the existing code layout
