@@ -190,7 +190,7 @@ func TestRepositoryApplyStatus(t *testing.T) {
 	svc := seedService(t, repo, "org", "svc", StateDeploying, time.Now())
 
 	// running with endpoints.
-	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil, nil))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil, nil, nil))
 	row, err := repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StateRunning, row.State)
@@ -199,7 +199,7 @@ func TestRepositoryApplyStatus(t *testing.T) {
 
 	// failed with reason.
 	reason := "image pull backoff"
-	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateFailed, nil, &reason, nil))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateFailed, nil, &reason, nil, nil))
 	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, StateFailed, row.State)
@@ -207,13 +207,13 @@ func TestRepositoryApplyStatus(t *testing.T) {
 	assert.Equal(t, reason, *row.FailureReason)
 
 	// back to running clears the reason.
-	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil, nil))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://e"}, nil, nil, nil))
 	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	require.Nil(t, row.FailureReason)
 
 	// Unknown service: 10301.
-	err = repo.ApplyStatus(ctx, "missing", StateRunning, nil, nil, nil)
+	err = repo.ApplyStatus(ctx, "missing", StateRunning, nil, nil, nil, nil)
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)

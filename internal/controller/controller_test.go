@@ -27,6 +27,8 @@ func (f *fakeReconciler) ApplyImageWarmup(_ context.Context, msg mq.Message) err
 	return nil
 }
 
+func (f *fakeReconciler) SetVGPUConfig(string, string, map[string]string) {}
+
 func TestControllerDispatchesSubjects(t *testing.T) {
 	client := mq.NewFake()
 	rec := &fakeReconciler{}

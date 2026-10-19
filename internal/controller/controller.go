@@ -23,6 +23,10 @@ type Reconciler interface {
 
 	// ApplyImageWarmup applies one image pre-pull task.
 	ApplyImageWarmup(ctx context.Context, msg mq.Message) error
+
+	// SetVGPUConfig installs the vGPU slicing-pool HAMI contract
+	// (feature #52, AD13). It must be called before serving.
+	SetVGPUConfig(policyAnnotation, placementPolicy string, poolSelector map[string]string)
 }
 
 // Controller wires the message queue subscriptions to a Reconciler.

@@ -69,6 +69,24 @@ type InferenceService struct {
 	AutoscalingLastScalingEventAt *time.Time
 	// AutoscalingErrorReason is the failure reason when state=error.
 	AutoscalingErrorReason string `gorm:"size:512;not null;default:''"`
+	// PoolID is the vGPU slicing pool the service opted into (feature
+	// #52, AD2). Empty = whole card.
+	PoolID string `gorm:"column:pool_id;size:64;not null;default:'';index"`
+	// SliceTemplateID is the slice template the service requested
+	// (feature #52, AD2). Empty = whole card.
+	SliceTemplateID string `gorm:"column:slice_template_id;size:64;not null;default:''"`
+	// SliceNodeID is the physical node the service's slices landed on
+	// once HAMI schedules them (feature #52, AD14). Empty before
+	// scheduling.
+	SliceNodeID string `gorm:"column:slice_node_id;size:64;not null;default:''"`
+	// SliceGPUIndex is the physical GPU index the slices landed on
+	// (feature #52, AD14). -1 before scheduling.
+	SliceGPUIndex int `gorm:"column:slice_gpu_index;not null;default:-1"`
+	// SliceMemoryGiB is the assigned slice memory (feature #52, AD14).
+	SliceMemoryGiB int64 `gorm:"column:slice_memory_gib;not null;default:0"`
+	// SliceComputePct is the assigned slice compute percentage (feature
+	// #52, AD14).
+	SliceComputePct int64 `gorm:"column:slice_compute_pct;not null;default:0"`
 	// CreatedAt is the creation time (UTC).
 	CreatedAt time.Time
 	// UpdatedAt is the last state change.

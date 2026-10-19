@@ -235,7 +235,7 @@ func TestRollbackDeployment(t *testing.T) {
 	// Drive to running.
 	repo, err := svc.repository()
 	require.NoError(t, err)
-	require.NoError(t, repo.ApplyStatus(context.Background(), serviceID, StateRunning, []string{"https://infer.example.com/demo/v1"}, nil, nil))
+	require.NoError(t, repo.ApplyStatus(context.Background(), serviceID, StateRunning, []string{"https://infer.example.com/demo/v1"}, nil, nil, nil))
 
 	// Scale to 4 replicas → records a scale event.
 	_, err = svc.ScaleInferenceService(orgContext("org-1"), &inferv1.ScaleInferenceServiceRequest{
@@ -385,7 +385,7 @@ func TestLifecycleEventRecording(t *testing.T) {
 	// Scale → before has old replicas, after has new replicas.
 	repo, err := svc.repository()
 	require.NoError(t, err)
-	require.NoError(t, repo.ApplyStatus(context.Background(), serviceID, StateRunning, []string{"https://infer.example.com/demo/v1"}, nil, nil))
+	require.NoError(t, repo.ApplyStatus(context.Background(), serviceID, StateRunning, []string{"https://infer.example.com/demo/v1"}, nil, nil, nil))
 	_, err = svc.ScaleInferenceService(orgContext("org-1"), &inferv1.ScaleInferenceServiceRequest{
 		ServiceId: serviceID, Replicas: 4,
 	})

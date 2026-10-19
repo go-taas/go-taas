@@ -215,6 +215,21 @@ quota:
     # the snapshot reads as 0 (best-effort, FR2.4).
     staleAfter: 2m
 
+# Feature #52: vGPU slicing pools. The vgpu module owns the pool
+# configuration; membership and capacity are projections of the
+# accelerator-inventory snapshot and the HAMI-reported device state.
+vgpu:
+  # membershipInterval bounds the freshness of the pool membership and
+  # capacity projection (the accelerator-inventory interval, AD12).
+  membershipInterval: 30s
+  hami:
+    # The HAMI resource/annotation names are configurable so a HAMI
+    # version change is a config change, not a code change (Section 5.3).
+    memResource: "nvidia.com/gpumem"
+    coreResource: "nvidia.com/gpucores"
+    policyAnnotation: "hami.io/gpu-scheduler-policy"
+    poolLabelPrefix: "go-taas.io/vgpu-pool"
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.

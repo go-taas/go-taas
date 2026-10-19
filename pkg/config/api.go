@@ -936,6 +936,33 @@ type QuotaConcurrencyConsumerConfig struct {
 	StaleAfter time.Duration `mapstructure:"staleAfter"`
 }
 
+// VGPUConfig holds the vGPU slicing-pool module settings (feature #52,
+// Section 9). The vgpu module owns the pool configuration; membership
+// and capacity are projections of the accelerator-inventory snapshot
+// and the HAMI-reported device state.
+type VGPUConfig struct {
+	// MembershipInterval bounds the freshness of the pool membership
+	// and capacity projection (the accelerator-inventory interval,
+	// AD12). Default 30s.
+	MembershipInterval time.Duration `mapstructure:"membershipInterval"`
+	// HAMI holds the pinned HAMI resource/annotation names (Section
+	// 5.3). A HAMI version change is a config change, not a code change.
+	HAMI VGPUHAMIConfig `mapstructure:"hami"`
+}
+
+// VGPUHAMIConfig holds the pinned HAMI contract names (feature #52,
+// Section 5.3).
+type VGPUHAMIConfig struct {
+	// MemResource is the HAMI memory resource name.
+	MemResource string `mapstructure:"memResource"`
+	// CoreResource is the HAMI compute resource name.
+	CoreResource string `mapstructure:"coreResource"`
+	// PolicyAnnotation is the placement-policy annotation name.
+	PolicyAnnotation string `mapstructure:"policyAnnotation"`
+	// PoolLabelPrefix is the default pool label key prefix.
+	PoolLabelPrefix string `mapstructure:"poolLabelPrefix"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -1014,6 +1041,7 @@ type Configuration struct {
 	Routing         RoutingConfig         `mapstructure:"routing"`
 	Optimization    OptimizationConfig    `mapstructure:"optimization"`
 	Quota           QuotaConfig           `mapstructure:"quota"`
+	VGPU            VGPUConfig            `mapstructure:"vgpu"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -1296,6 +1324,10 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Prompt.MaxContentLength < 0 {
 		return &FieldError{Field: "prompt.maxContentLength", Reason: "must not be negative"}
+	}
+	// Feature #52: the vGPU membership interval must not be negative.
+	if c.VGPU.MembershipInterval < 0 {
+		return &FieldError{Field: "vgpu.membershipInterval", Reason: "must not be negative"}
 	}
 	return nil
 }

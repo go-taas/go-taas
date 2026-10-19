@@ -27,7 +27,22 @@ type statusReport struct {
 	// (feature #16, §6.2). Nil when the report carries no autoscaling
 	// status.
 	Autoscaling *autoscalingStatusReport `json:"autoscaling,omitempty"`
-	ReportedAt  string                   `json:"reported_at"`
+	// AssignedSlice is the assigned physical GPU once HAMI schedules the
+	// slice (feature #52, AD14). Nil for whole-card services or before
+	// scheduling.
+	AssignedSlice *assignedSliceReport `json:"assigned_slice,omitempty"`
+	ReportedAt    string               `json:"reported_at"`
+}
+
+// assignedSliceReport is the assigned physical GPU inside a status
+// report (feature #52, AD14).
+type assignedSliceReport struct {
+	PoolID       string `json:"pool_id"`
+	TemplateName string `json:"template_name"`
+	MemoryGiB    int64  `json:"memory_gib"`
+	ComputePct   int64  `json:"compute_pct"`
+	NodeID       string `json:"node_id"`
+	GPUIndex     int64  `json:"gpu_index"`
 }
 
 // autoscalingStatusReport is the autoscaling status block inside a
@@ -128,7 +143,7 @@ func (c *StatusConsumer) handle(ctx context.Context, msg mq.Message) error {
 		return nil
 	}
 
-	if err := c.repo.ApplyStatus(ctx, report.ServiceID, report.State, report.Endpoints, report.FailureReason, report.Autoscaling); err != nil {
+	if err := c.repo.ApplyStatus(ctx, report.ServiceID, report.State, report.Endpoints, report.FailureReason, report.Autoscaling, report.AssignedSlice); err != nil {
 		if ae, ok := apierrors.As(err); ok && ae.Code == apierrors.CodeInferServiceNotFound {
 			// Late report for a deleted service: skip, do not retry.
 			logger.S().Infow("infer: status report for unknown service, skipping",

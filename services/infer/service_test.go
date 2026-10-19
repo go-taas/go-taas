@@ -86,6 +86,87 @@ func TestCreateInferenceServiceHappyPath(t *testing.T) {
 	assert.Equal(t, StatePending, stored.State)
 }
 
+// fakeSliceValidator validates slice requests.
+type fakeSliceValidator struct {
+	info SliceTemplateInfo
+	err  error
+}
+
+func (f fakeSliceValidator) ValidateSlice(_ context.Context, _, _, _ string) (SliceTemplateInfo, error) {
+	return f.info, f.err
+}
+
+func TestCreateInferenceServiceSliceValidation(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	// A slice request with a nil validator fails closed (13403).
+	_, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "slice-svc", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		PoolId: "pool-a", SliceTemplateId: "small",
+	})
+	assert.EqualValues(t, apierrors.CodeVGPUSliceUnavailable, apierrors.CodeOf(err))
+
+	// A valid slice request persists the slice fields and publishes them.
+	svc.SetSliceValidator(fakeSliceValidator{info: SliceTemplateInfo{MemoryGiB: 8, ComputePct: 25}})
+	_, err = svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "slice-svc", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		PoolId: "pool-a", SliceTemplateId: "small",
+	})
+	require.NoError(t, err)
+	require.Len(t, client.published, 1)
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, "pool-a", evt.PoolID)
+	assert.Equal(t, "small", evt.SliceTemplateID)
+	assert.Equal(t, int64(8*1024), evt.SliceMemoryMiB)
+	assert.Equal(t, int64(25), evt.SliceComputePct)
+
+	// A validator error propagates.
+	svc.SetSliceValidator(fakeSliceValidator{err: apierrors.New(apierrors.CodeVGPUSliceUnavailable)})
+	_, err = svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "slice-svc2", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		PoolId: "pool-a", SliceTemplateId: "small",
+	})
+	assert.EqualValues(t, apierrors.CodeVGPUSliceUnavailable, apierrors.CodeOf(err))
+
+	// Only one of pool_id/slice_template_id present -> 13403.
+	_, err = svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "slice-svc3", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		PoolId: "pool-a",
+	})
+	assert.EqualValues(t, apierrors.CodeVGPUSliceUnavailable, apierrors.CodeOf(err))
+}
+
+func TestGetInferenceServiceAssignedSlice(t *testing.T) {
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+	ctx := context.Background()
+	svc := seedService(t, repo, "org-a", "svc-slice", StateRunning, time.Now())
+	// Set the slice fields on the row.
+	require.NoError(t, repo.DB(ctx).Model(&InferenceService{}).Where("id = ?", svc.ID).Updates(map[string]any{
+		"pool_id": "pool-a", "slice_template_id": "small",
+		"slice_node_id": "node-a", "slice_gpu_index": 0,
+		"slice_memory_gib": 8, "slice_compute_pct": 25,
+	}).Error)
+
+	svc2, _, _ := newInferTestService(t)
+	// Reuse the same db so the row is visible.
+	svc2.repo = repo
+	resp, err := svc2.GetInferenceService(orgContext("org-a"), &inferv1.GetInferenceServiceRequest{ServiceId: svc.ID})
+	require.NoError(t, err)
+	require.NotNil(t, resp.GetAssignedSlice())
+	assert.Equal(t, "pool-a", resp.GetAssignedSlice().GetPoolId())
+	assert.Equal(t, "small", resp.GetAssignedSlice().GetTemplateName())
+	assert.Equal(t, "node-a", resp.GetAssignedSlice().GetNodeId())
+	assert.Equal(t, int64(0), resp.GetAssignedSlice().GetGpuIndex())
+}
+
 func TestCreateInferenceServiceValidationMatrix(t *testing.T) {
 	seedImageRegistry(t)
 	svc, client, db := newInferTestService(t)
@@ -222,7 +303,7 @@ func TestListAndGetInferenceServices(t *testing.T) {
 	// Drive to running via the status consumer path: endpoints appear.
 	repo, err := svc.repository()
 	require.NoError(t, err)
-	require.NoError(t, repo.ApplyStatus(context.Background(), id1, StateRunning, []string{"http://demo/v1"}, nil, nil))
+	require.NoError(t, repo.ApplyStatus(context.Background(), id1, StateRunning, []string{"http://demo/v1"}, nil, nil, nil))
 	get, err = svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: id1})
 	require.NoError(t, err)
 	assert.Equal(t, StateRunning, get.GetService().GetState())

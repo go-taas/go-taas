@@ -199,7 +199,7 @@ func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, orgID, 
 // failure_reason and the autoscaling status block. Last-write-wins is
 // acceptable (the controller is the only publisher). failure_reason is
 // cleared on any non-failed state.
-func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string, autoscaling *autoscalingStatusReport) error {
+func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string, autoscaling *autoscalingStatusReport, assignedSlice *assignedSliceReport) error {
 	if endpoints == nil {
 		endpoints = []string{}
 	}
@@ -229,6 +229,14 @@ func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID,
 		if ts, err := time.Parse(time.RFC3339, autoscaling.LastScalingEventAt); err == nil {
 			fields["autoscaling_last_scaling_event_at"] = ts
 		}
+	}
+	// Feature #52 (AD14): the assigned-slice report. When present, the
+	// physical GPU the service's slices landed on is stored on the row.
+	if assignedSlice != nil {
+		fields["slice_node_id"] = assignedSlice.NodeID
+		fields["slice_gpu_index"] = assignedSlice.GPUIndex
+		fields["slice_memory_gib"] = assignedSlice.MemoryGiB
+		fields["slice_compute_pct"] = assignedSlice.ComputePct
 	}
 	res := r.DB(ctx).
 		Model(&InferenceService{}).

@@ -1,0 +1,197 @@
+syntax = "proto3";
+
+package taas.vgpu.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/vgpu/v1;vgpuv1";
+
+// VGPUService manages the HAMI-based vGPU slicing pools (feature #52).
+// Pool CRUD is admin-surface (/api/v1/admin/vgpu-pools/*); the
+// tenant-visible pool list for the deploy form is user-surface
+// (/api/v1/vgpu-pools).
+service VGPUService {
+  // ListVGPUPools returns the pool list with search, policy filter and
+  // pagination (admin surface).
+  rpc ListVGPUPools(ListVGPUPoolsRequest) returns (ListVGPUPoolsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/vgpu-pools"};
+  }
+
+  // GetVGPUPool returns one pool's full projection: node membership,
+  // per-GPU slice allocation, and the services using slices (admin
+  // surface).
+  rpc GetVGPUPool(GetVGPUPoolRequest) returns (GetVGPUPoolResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/vgpu-pools/{pool_id}"};
+  }
+
+  // CreateVGPUPool creates a pool (admin surface). Audited as
+  // pool.created; 13401/13402 on invalid input.
+  rpc CreateVGPUPool(CreateVGPUPoolRequest) returns (CreateVGPUPoolResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/vgpu-pools"
+      body: "*"
+    };
+  }
+
+  // UpdateVGPUPool updates the placement policy, slice templates and
+  // node-label selector (admin surface). Audited as pool.updated;
+  // 13402 on invalid templates.
+  rpc UpdateVGPUPool(UpdateVGPUPoolRequest) returns (UpdateVGPUPoolResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/vgpu-pools/{pool_id}"
+      body: "*"
+    };
+  }
+
+  // DeleteVGPUPool deletes a pool (admin surface). 13405 if services
+  // use it; audited as pool.deleted.
+  rpc DeleteVGPUPool(DeleteVGPUPoolRequest) returns (DeleteVGPUPoolResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/vgpu-pools/{pool_id}"};
+  }
+
+  // ListTenantVGPUPools returns the pools the caller's org may use,
+  // with their slice templates, for the deploy form (user surface; the
+  // org is resolved from the session, never from a client-supplied id).
+  rpc ListTenantVGPUPools(ListTenantVGPUPoolsRequest) returns (ListTenantVGPUPoolsResponse) {
+    option (google.api.http) = {get: "/api/v1/vgpu-pools"};
+  }
+}
+
+// SliceTemplate is one bounded carve-up of a physical GPU (AD3).
+message SliceTemplate {
+  string name = 1;        // unique within the pool, e.g. "small"
+  int64 memory_gib = 2;   // 1 - card memory
+  int64 compute_pct = 3;  // 5 - 100
+  string description = 4; // optional
+}
+
+// VGPUPool is the FR1.1 projection.
+message VGPUPool {
+  string pool_id = 1;
+  string name = 2;
+  string label_key = 3;
+  string label_value = 4;
+  string placement_policy = 5; // binpack | spread | mutex
+  repeated SliceTemplate templates = 6;
+  int64 node_count = 7;        // derived from the inventory snapshot (AD12)
+  repeated TemplateAllocation allocation = 8; // aggregate per template
+  int64 utilization_pct = 9;   // allocated memory / total pool memory
+}
+
+// TemplateAllocation is one template's aggregate allocation (FR3.2).
+message TemplateAllocation {
+  string template_name = 1;
+  int64 allocated = 2;
+  int64 free = 3;
+}
+
+// PoolNode is one member node's projection (AD12).
+message PoolNode {
+  string node_id = 1;
+  string name = 2;
+  repeated PoolGPU gpus = 3;
+  string health = 4; // from the accelerator inventory
+}
+
+// PoolGPU is one physical GPU's slice allocation (FR3.1).
+message PoolGPU {
+  int64 index = 1;
+  string model = 2;
+  repeated SliceAllocation slices = 3;
+  bool full = 4; // no template fits in the remaining capacity
+}
+
+// SliceAllocation is one allocated slice on a physical GPU.
+message SliceAllocation {
+  string template_name = 1;
+  string service_id = 2;
+  int64 memory_gib = 3;
+  int64 compute_pct = 4;
+}
+
+message ListVGPUPoolsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string name = 2;        // name substring search, case-insensitive
+  string placement_policy = 3; // binpack | spread | mutex | empty = all
+}
+
+message ListVGPUPoolsResponse {
+  taas.common.v1.Response response = 1;
+  repeated VGPUPool pools = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message CreateVGPUPoolRequest {
+  string name = 1;
+  string label_key = 2;
+  string label_value = 3;
+  string placement_policy = 4; // default binpack
+  repeated SliceTemplate templates = 5;
+}
+
+message CreateVGPUPoolResponse {
+  taas.common.v1.Response response = 1;
+  VGPUPool pool = 2;
+}
+
+message GetVGPUPoolRequest {
+  string pool_id = 1;
+}
+
+message GetVGPUPoolResponse {
+  taas.common.v1.Response response = 1;
+  VGPUPool pool = 2;
+  repeated PoolNode nodes = 3;
+  repeated SliceService services = 4; // services using slices
+}
+
+// SliceService is one service using a slice of the pool.
+message SliceService {
+  string service_id = 1;
+  string name = 2;
+  string template_name = 3;
+  string node_id = 4;
+  int64 gpu_index = 5;
+  int64 memory_gib = 6;
+  int64 compute_pct = 7;
+  string state = 8;
+}
+
+message UpdateVGPUPoolRequest {
+  string pool_id = 1;
+  // optional tracks presence: absent = unchanged.
+  optional string placement_policy = 2;
+  repeated SliceTemplate templates = 3; // full replacement when present
+  optional string label_key = 4;
+  optional string label_value = 5;
+}
+
+message UpdateVGPUPoolResponse {
+  taas.common.v1.Response response = 1;
+  VGPUPool pool = 2;
+}
+
+message DeleteVGPUPoolRequest {
+  string pool_id = 1;
+}
+
+message DeleteVGPUPoolResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message ListTenantVGPUPoolsRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListTenantVGPUPoolsResponse {
+  taas.common.v1.Response response = 1;
+  repeated TenantVGPUPool pools = 2;
+}
+
+// TenantVGPUPool is the grant-filtered deploy-time projection (AD10).
+message TenantVGPUPool {
+  string pool_id = 1;
+  string name = 2;
+  repeated SliceTemplate templates = 3;
+}

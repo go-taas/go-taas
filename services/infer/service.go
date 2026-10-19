@@ -169,6 +169,29 @@ type Service struct {
 	// module and injected at wiring time. Nil until wired: a virtual
 	// playground request fails closed.
 	routingResolver RoutingResolver
+
+	// sliceValidator validates a vGPU slice request at deploy time
+	// (feature #52, AD13). It is implemented by the vgpu module and
+	// injected at wiring time. Nil until wired: a slice request fails
+	// closed (13403).
+	sliceValidator SliceValidator
+}
+
+// SliceValidator validates a vGPU slice request at deploy time (feature
+// #52, AD13). It is implemented by the vgpu module and injected at
+// wiring time.
+type SliceValidator interface {
+	// ValidateSlice returns the resolved slice template (memory GiB,
+	// compute %) when the pool exists, is granted to the org, and the
+	// template exists in the pool. It returns 13403 otherwise.
+	ValidateSlice(ctx context.Context, orgID, poolID, templateID string) (SliceTemplateInfo, error)
+}
+
+// SliceTemplateInfo is the resolved slice template for a deploy
+// (feature #52, AD13).
+type SliceTemplateInfo struct {
+	MemoryGiB  int64
+	ComputePct int64
 }
 
 // ExternalModelProxy proxies a published external model on the metered path
@@ -240,6 +263,10 @@ func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// SetSliceValidator injects the vGPU slice validator (feature #52,
+// AD13). Production wires the vgpu module; unit tests may inject a fake.
+func (s *Service) SetSliceValidator(v SliceValidator) { s.sliceValidator = v }
 
 // SetCompatibilityChecker installs the compatibility matrix checker for
 // deploy-time enforcement (feature #19, AD13). It must be called before
@@ -638,6 +665,27 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, err
 	}
 
+	// Feature #52 (AD13): the vGPU slice request is validated before any
+	// write or publish. Both pool_id and slice_template_id must be
+	// present together; absent = whole card. A slice request with a nil
+	// validator fails closed (13403).
+	poolID := strings.TrimSpace(req.GetPoolId())
+	sliceTemplateID := strings.TrimSpace(req.GetSliceTemplateId())
+	var sliceInfo SliceTemplateInfo
+	if (poolID == "") != (sliceTemplateID == "") {
+		return nil, apierrors.New(apierrors.CodeVGPUSliceUnavailable)
+	}
+	if poolID != "" {
+		if s.sliceValidator == nil {
+			return nil, apierrors.New(apierrors.CodeVGPUSliceUnavailable)
+		}
+		info, err := s.sliceValidator.ValidateSlice(ctx, orgID, poolID, sliceTemplateID)
+		if err != nil {
+			return nil, err
+		}
+		sliceInfo = info
+	}
+
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -672,6 +720,11 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		State:           StatePending,
 		Endpoints:       []string{},
 		Autoscaling:     autoscalingJSON,
+		PoolID:          poolID,
+		SliceTemplateID: sliceTemplateID,
+		SliceGPUIndex:   -1,
+		SliceMemoryGiB:  sliceInfo.MemoryGiB,
+		SliceComputePct: sliceInfo.ComputePct,
 	}
 	if err := repo.Create(ctx, svc); err != nil {
 		return nil, err
@@ -798,7 +851,25 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		Endpoints:         endpoints,
 		Autoscaling:       policyToProto(effective),
 		AutoscalingStatus: autoscalingStatusFromRow(row),
+		AssignedSlice:     assignedSliceFromRow(row),
 	}, nil
+}
+
+// assignedSliceFromRow returns the assigned-slice projection for a
+// shared-GPU service, or nil for a whole-card service or before
+// scheduling (feature #52, AD14).
+func assignedSliceFromRow(row *InferenceService) *inferv1.AssignedSlice {
+	if row.PoolID == "" {
+		return nil
+	}
+	return &inferv1.AssignedSlice{
+		PoolId:       row.PoolID,
+		TemplateName: row.SliceTemplateID,
+		MemoryGib:    row.SliceMemoryGiB,
+		ComputePct:   row.SliceComputePct,
+		NodeId:       row.SliceNodeID,
+		GpuIndex:     int64(row.SliceGPUIndex),
+	}
 }
 
 // globalAutoscalingDefault resolves the global default policy, falling

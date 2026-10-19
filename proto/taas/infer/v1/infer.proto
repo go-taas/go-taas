@@ -275,6 +275,11 @@ message CreateInferenceServiceRequest {
   // autoscaling is the per-service autoscaling policy (feature #16,
   // AD2). Empty means "inherit the global default".
   AutoscalingPolicy autoscaling = 8;
+  // pool_id + slice_template_id opt the service into shared-GPU mode
+  // (feature #52, AD2). Both must be present together; absent = whole
+  // card. 13403 if the pool/template is invalid or not granted.
+  string pool_id = 9;
+  string slice_template_id = 10;
 }
 
 message CreateInferenceServiceResponse {
@@ -335,6 +340,21 @@ message GetInferenceServiceResponse {
   // autoscaling_status is the live autoscaling status block (feature
   // #16, FR3.2).
   AutoscalingStatus autoscaling_status = 5;
+  // assigned_slice is the physical GPU the service's slices landed on
+  // once HAMI schedules them (feature #52, AD14). Nil for whole-card
+  // services or before scheduling.
+  AssignedSlice assigned_slice = 6;
+}
+
+// AssignedSlice is the assigned physical GPU (AD14).
+message AssignedSlice {
+  string pool_id = 1;
+  string pool_name = 2;
+  string template_name = 3;
+  int64 memory_gib = 4;
+  int64 compute_pct = 5;
+  string node_id = 6;
+  int64 gpu_index = 7;
 }
 
 message ScaleInferenceServiceRequest {

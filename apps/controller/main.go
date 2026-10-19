@@ -58,11 +58,20 @@ func main() {
 	// controller reconverges without a database.
 	schemeCache := controller.NewSchemeCache()
 
-	ctrl := controller.New(mqClient, controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, controller.WeightsConfig{
+	reconciler := controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, controller.WeightsConfig{
 		StorageClass: cfg.Controller.Weights.StorageClass,
 		PVCName:      cfg.Controller.Weights.PVCName,
 		MountPath:    cfg.Controller.Weights.MountPath,
-	}, schemeCache))
+	}, schemeCache)
+	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
+	// placement-policy annotation, the pool's scheduling hint, and the
+	// pool's node label selector are config-driven.
+	reconciler.SetVGPUConfig(
+		cfg.VGPU.HAMI.PolicyAnnotation,
+		"binpack",
+		map[string]string{cfg.VGPU.HAMI.PoolLabelPrefix: "pool-a"},
+	)
+	ctrl := controller.New(mqClient, reconciler)
 	// Feature #18: the accelerator inventory collector lists nodes and
 	// publishes the full snapshot on the configured interval.
 	ctrl.SetInventoryCollector(controller.NewInventoryCollector(

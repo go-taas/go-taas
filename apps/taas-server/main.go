@@ -39,6 +39,7 @@ import (
 	"github.com/go-taas/go-taas/services/routing"
 	"github.com/go-taas/go-taas/services/runtime"
 	"github.com/go-taas/go-taas/services/tenancy"
+	"github.com/go-taas/go-taas/services/vgpu"
 	"github.com/go-taas/go-taas/services/tracing"
 	"github.com/go-taas/go-taas/services/webhook"
 )
@@ -166,6 +167,14 @@ func main() {
 	acceleratorCache := accelerator.NewProjectionCache()
 	acceleratorSvc := accelerator.NewWithCache(acceleratorCache)
 	srv.RegisterService(acceleratorSvc)
+	// Feature #52: the vGPU slicing-pool service. The membership
+	// projection consumes the same accelerator.inventory snapshot the
+	// accelerator service consumes (AD12); the projection is constructed
+	// once and shared with the membership consumer.
+	vgpuProjection := vgpu.NewMembershipProjection()
+	vgpuSvc := vgpu.New(srv.Components())
+	vgpuSvc.SetMembership(vgpuProjection)
+	srv.RegisterService(vgpuSvc)
 	// Feature #37: the resourcemetrics service serves the read-only
 	// per-service CPU/memory/GPU utilization aggregation over the
 	// service_resource_metrics table (admin-only).
@@ -265,6 +274,15 @@ func main() {
 			inferSvc.SetSessionOrgResolver(authSvc)
 			meteringSvc.SetSessionOrgResolver(authSvc)
 			billingSvc.SetSessionOrgResolver(authSvc)
+			// Feature #52 (AD10/AD13/AD15/AD16): the vGPU slicing-pool
+			// seams. The vgpu service resolves the session's active org
+			// and caller, gates the admin RPCs by the caller's role, and
+			// validates slice requests at deploy time through the infer
+			// service's SliceValidator seam.
+			vgpuSvc.SetSessionOrgResolver(authSvc)
+			vgpuSvc.SetSessionResolver(authSvc)
+			vgpuSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			inferSvc.SetSliceValidator(vgpuSvc)
 			// Features #32/#33/#34/#35: the infer service resolves the
 			// session's active org and caller, and gates the admin
 			// model-version/service-log/deployment and the user-realm
@@ -413,6 +431,7 @@ func main() {
 			billingSvc.SetAuditRecorder(auditRecorder)
 			imageSvc.SetAuditRecorder(auditRecorder)
 			tenancySvc.SetAuditRecorder(auditRecorder)
+			vgpuSvc.SetAuditRecorder(auditRecorder)
 			webhookSvc.SetAuditRecorder(auditRecorder)
 			notificationSvc.SetAuditRecorder(auditRecorder)
 			batchSvc.SetAuditRecorder(auditRecorder)
@@ -561,6 +580,12 @@ func main() {
 		srv.AddRunner(runner)
 	}
 	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components(), acceleratorCache); runner != nil {
+		srv.AddRunner(runner)
+	}
+	// Feature #52 (AD12): the vGPU membership consumer maintains the
+	// pool membership/capacity projection from the same
+	// accelerator.inventory snapshot the accelerator service consumes.
+	if runner := vgpu.NewMembershipConsumerRunner(srv.Components(), vgpuProjection); runner != nil {
 		srv.AddRunner(runner)
 	}
 	// Feature #40: the cluster health snapshot consumer maintains the

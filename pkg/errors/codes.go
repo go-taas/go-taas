@@ -418,3 +418,15 @@ const (
 	CodeQuotaInvalid              Code = 13305 // QUOTA_INVALID
 	CodeQuotaNotFound             Code = 13306 // QUOTA_NOT_FOUND
 )
+
+// vgpu module error codes (feature #52, design D4). The block holds
+// the vGPU slicing-pool failure modes; 13407-13499 are reserved for
+// future vgpu codes. All 134xx codes surface through grpc-gateway as
+// the unified envelope; the HAMI contract is verified synthetically.
+const (
+	CodeVGPUPoolInvalid          Code = 13401 // VGPU_POOL_INVALID
+	CodeVGPUSliceTemplateInvalid Code = 13402 // VGPU_SLICE_TEMPLATE_INVALID
+	CodeVGPUSliceUnavailable     Code = 13403 // VGPU_SLICE_UNAVAILABLE
+	CodeVGPUPoolInUse            Code = 13405 // VGPU_POOL_IN_USE
+	CodeVGPUPoolNotFound         Code = 13406 // VGPU_POOL_NOT_FOUND
+)

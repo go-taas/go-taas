@@ -47,6 +47,18 @@ type changeEvent struct {
 	// Autoscaling is the effective autoscaling policy (feature #16,
 	// §6.1). Nil means autoscaling is disabled.
 	Autoscaling *autoscalingPolicy `json:"autoscaling,omitempty"`
+	// PoolID is the vGPU slicing pool the service opted into (feature
+	// #52, AD13). Empty = whole card.
+	PoolID string `json:"pool_id,omitempty"`
+	// SliceTemplateID is the slice template the service requested
+	// (feature #52, AD13). Empty = whole card.
+	SliceTemplateID string `json:"slice_template_id,omitempty"`
+	// SliceMemoryMiB is the resolved slice memory in MiB (feature #52,
+	// AD13). Set only for shared-GPU services.
+	SliceMemoryMiB int64 `json:"slice_memory_mib,omitempty"`
+	// SliceComputePct is the resolved slice compute percentage (feature
+	// #52, AD13). Set only for shared-GPU services.
+	SliceComputePct int64 `json:"slice_compute_pct,omitempty"`
 }
 
 // autoscalingPolicy is the effective autoscaling policy carried in a
@@ -103,6 +115,13 @@ type k8sReconciler struct {
 	// scheme is the shared serving-scheme cache (feature #47, AD6). Nil
 	// defaults to plain.
 	scheme *SchemeCache
+	// Feature #52 (AD13): the pinned HAMI contract names and the pool
+	// placement policy. policyAnnotation is the HAMI placement-policy
+	// annotation name; placementPolicy is the pool's scheduling hint;
+	// poolSelector is the pool's node label selector.
+	policyAnnotation string
+	placementPolicy  string
+	poolSelector     map[string]string
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -152,6 +171,16 @@ func newReconcilerWithClientset(clientset kubernetes.Interface, dyn dynamic.Inte
 		dynamic:         dyn,
 		scheme:          scheme,
 	}
+}
+
+// SetVGPUConfig installs the vGPU slicing-pool HAMI contract (feature
+// #52, AD13): the placement-policy annotation name, the pool's
+// placement policy, and the pool's node label selector. It must be
+// called before serving.
+func (r *k8sReconciler) SetVGPUConfig(policyAnnotation, placementPolicy string, poolSelector map[string]string) {
+	r.policyAnnotation = policyAnnotation
+	r.placementPolicy = placementPolicy
+	r.poolSelector = poolSelector
 }
 
 // ApplyInferServiceChange implements Reconciler.
@@ -777,6 +806,20 @@ func (r *k8sReconciler) ensureWeightsPVC(ctx context.Context) error {
 // image, replicas, weight-volume mount and accelerator node selector.
 func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
 	labels := resourceLabels(evt)
+	// Feature #52 (AD13): a shared-GPU service requests a HAMI slice
+	// instead of a whole card. The engine container requests the HAMI
+	// extended resources, the pod carries the placement-policy
+	// annotation, and the nodeSelector is constrained to the pool's
+	// label selector so HAMI schedules only onto pool nodes.
+	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
+	annotations := map[string]string{}
+	nodeSelector := acceleratorNodeSelector(evt.Accelerator, evt.AcceleratorType)
+	resources := engineResources(evt.Accelerator)
+	if slice {
+		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
+		annotations[r.policyAnnotation] = r.placementPolicy
+		nodeSelector = mergeSelectors(nodeSelector, r.poolSelector)
+	}
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      deploymentName(evt.Name),
@@ -787,7 +830,7 @@ func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
 			Replicas: ptr(clampReplicas(evt.Replicas)),
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels},
+				ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: annotations},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
 						Name:  "engine",
@@ -797,7 +840,7 @@ func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
 						// extended resource so the scheduler places it on a
 						// node with free capacity and the device plugin
 						// exposes the device to the container.
-						Resources: engineResources(evt.Accelerator),
+						Resources: resources,
 						// The engine command points at the model's weights
 						// directory (the whole JuiceFS filesystem is mounted
 						// at the weights mount path; the model lives in a
@@ -817,7 +860,7 @@ func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
 							},
 						},
 					}},
-					NodeSelector: acceleratorNodeSelector(evt.Accelerator, evt.AcceleratorType),
+					NodeSelector: nodeSelector,
 				},
 			},
 		},
@@ -857,6 +900,71 @@ func engineResources(accelerator string) corev1.ResourceRequirements {
 			corev1.ResourceName(name): resource.MustParse("1"),
 		},
 	}
+}
+
+// sliceResources returns the container resource requests for a
+// shared-GPU service (feature #52, AD13): the HAMI extended resources
+// (memory MiB + compute percentage) instead of a whole card. Unknown
+// accelerators get no resource request.
+func sliceResources(accelerator string, memMiB, computePct int64) corev1.ResourceRequirements {
+	memName := gpuMemResourceName(accelerator)
+	coreName := gpuCoreResourceName(accelerator)
+	if memName == "" || coreName == "" {
+		return corev1.ResourceRequirements{}
+	}
+	return corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{
+			corev1.ResourceName(memName):  resource.MustParse(fmt.Sprintf("%dMi", memMiB)),
+			corev1.ResourceName(coreName): resource.MustParse(fmt.Sprintf("%d", computePct)),
+		},
+		Requests: corev1.ResourceList{
+			corev1.ResourceName(memName):  resource.MustParse(fmt.Sprintf("%dMi", memMiB)),
+			corev1.ResourceName(coreName): resource.MustParse(fmt.Sprintf("%d", computePct)),
+		},
+	}
+}
+
+// gpuMemResourceName maps an accelerator to the HAMI memory resource
+// name (feature #52, Section 5.3). Unknown accelerators map to "".
+func gpuMemResourceName(accelerator string) string {
+	switch accelerator {
+	case "nvidia":
+		return "nvidia.com/gpumem"
+	case "iluvatar":
+		return "iluvatar.ai/vgpu-mem"
+	case "metax":
+		return "metax-tech.com/gpu-mem"
+	default:
+		return ""
+	}
+}
+
+// gpuCoreResourceName maps an accelerator to the HAMI compute resource
+// name (feature #52, Section 5.3). Unknown accelerators map to "".
+func gpuCoreResourceName(accelerator string) string {
+	switch accelerator {
+	case "nvidia":
+		return "nvidia.com/gpucores"
+	case "iluvatar":
+		return "iluvatar.ai/vgpu-cores"
+	case "metax":
+		return "metax-tech.com/gpu-cores"
+	default:
+		return ""
+	}
+}
+
+// mergeSelectors merges two node-selector maps (the pool selector wins
+// on key conflicts).
+func mergeSelectors(base, extra map[string]string) map[string]string {
+	out := make(map[string]string, len(base)+len(extra))
+	for k, v := range base {
+		out[k] = v
+	}
+	for k, v := range extra {
+		out[k] = v
+	}
+	return out
 }
 
 // engineCommand builds the engine container command that serves the

@@ -54,7 +54,19 @@ type changeEvent struct {
 	// §6.1). Nil when autoscaling is not configured (the controller
 	// treats it as disabled).
 	Autoscaling *AutoscalingPolicy `json:"autoscaling,omitempty"`
-	PublishedAt time.Time          `json:"published_at"`
+	// PoolID is the vGPU slicing pool the service opted into (feature
+	// #52, AD13). Empty = whole card.
+	PoolID string `json:"pool_id,omitempty"`
+	// SliceTemplateID is the slice template the service requested
+	// (feature #52, AD13). Empty = whole card.
+	SliceTemplateID string `json:"slice_template_id,omitempty"`
+	// SliceMemoryMiB is the resolved slice memory in MiB (feature #52,
+	// AD13). Set only for shared-GPU services.
+	SliceMemoryMiB int64 `json:"slice_memory_mib,omitempty"`
+	// SliceComputePct is the resolved slice compute percentage (feature
+	// #52, AD13). Set only for shared-GPU services.
+	SliceComputePct int64 `json:"slice_compute_pct,omitempty"`
+	PublishedAt     time.Time `json:"published_at"`
 }
 
 // buildChangeEvent composes the change event for a service row with its
@@ -78,6 +90,10 @@ func buildChangeEvent(eventType string, svc *InferenceService, weightPath, image
 		Replicas:        svc.Replicas,
 		Accelerator:     svc.Accelerator,
 		AcceleratorType: svc.AcceleratorType,
+		PoolID:          svc.PoolID,
+		SliceTemplateID: svc.SliceTemplateID,
+		SliceMemoryMiB:  svc.SliceMemoryGiB * 1024,
+		SliceComputePct: svc.SliceComputePct,
 		PublishedAt:     time.Now().UTC(),
 	}
 }

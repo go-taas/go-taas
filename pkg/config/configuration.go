@@ -506,6 +506,24 @@ func (c *Configuration) applyDefaults() {
 	if c.Quota.ConcurrencyConsumer.StaleAfter == 0 {
 		c.Quota.ConcurrencyConsumer.StaleAfter = 2 * time.Minute
 	}
+	// Feature #52: vGPU slicing-pool defaults (Section 9). The
+	// membership projection is as fresh as the accelerator-inventory
+	// interval; the HAMI contract names are the pinned defaults.
+	if c.VGPU.MembershipInterval == 0 {
+		c.VGPU.MembershipInterval = 30 * time.Second
+	}
+	if c.VGPU.HAMI.MemResource == "" {
+		c.VGPU.HAMI.MemResource = "nvidia.com/gpumem"
+	}
+	if c.VGPU.HAMI.CoreResource == "" {
+		c.VGPU.HAMI.CoreResource = "nvidia.com/gpucores"
+	}
+	if c.VGPU.HAMI.PolicyAnnotation == "" {
+		c.VGPU.HAMI.PolicyAnnotation = "hami.io/gpu-scheduler-policy"
+	}
+	if c.VGPU.HAMI.PoolLabelPrefix == "" {
+		c.VGPU.HAMI.PoolLabelPrefix = "go-taas.io/vgpu-pool"
+	}
 }
 
 // String returns a string representation of the configuration for logging.

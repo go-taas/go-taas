@@ -248,6 +248,13 @@ var messages = map[Code]string{
 	CodeQuotaOutputTokensExceeded: "max_tokens exceeds the organization cap",
 	CodeQuotaInvalid:              "invalid quota value",
 	CodeQuotaNotFound:             "organization quota not found",
+
+	// vgpu (feature #52, design D4)
+	CodeVGPUPoolInvalid:          "invalid vGPU pool",
+	CodeVGPUSliceTemplateInvalid: "invalid slice template",
+	CodeVGPUSliceUnavailable:     "the requested slice is unavailable or not granted",
+	CodeVGPUPoolInUse:            "services are using this pool",
+	CodeVGPUPoolNotFound:         "vGPU pool not found",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a
