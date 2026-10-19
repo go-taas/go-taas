@@ -175,6 +175,31 @@ type Service struct {
 	// injected at wiring time. Nil until wired: a slice request fails
 	// closed (13403).
 	sliceValidator SliceValidator
+
+	// incidentReader reads a service's active incident for the tenant
+	// status banner (feature #53, AD10). It is implemented by the fault
+	// module and injected at wiring time. Nil until wired: the status
+	// reports healthy.
+	incidentReader IncidentReader
+}
+
+// IncidentReader reads a service's active incident for the tenant
+// status banner (feature #53, AD10). It is implemented by the fault
+// module and injected at wiring time.
+type IncidentReader interface {
+	// ActiveIncidentForService returns the active incident for a
+	// service, or nil when healthy.
+	ActiveIncidentForService(ctx context.Context, serviceID string) (ServiceIncident, bool, error)
+}
+
+// ServiceIncident is the masked incident projection for the tenant
+// banner (feature #53, AD10).
+type ServiceIncident struct {
+	IncidentID string
+	Severity   string
+	Status     string
+	RootCause  string
+	Message    string
 }
 
 // SliceValidator validates a vGPU slice request at deploy time (feature
@@ -267,6 +292,11 @@ func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
 // SetSliceValidator injects the vGPU slice validator (feature #52,
 // AD13). Production wires the vgpu module; unit tests may inject a fake.
 func (s *Service) SetSliceValidator(v SliceValidator) { s.sliceValidator = v }
+
+// SetIncidentReader injects the fault incident reader (feature #53,
+// AD10). Production wires the fault module; unit tests may inject a
+// fake.
+func (s *Service) SetIncidentReader(r IncidentReader) { s.incidentReader = r }
 
 // SetCompatibilityChecker installs the compatibility matrix checker for
 // deploy-time enforcement (feature #19, AD13). It must be called before
@@ -1482,6 +1512,35 @@ func (s *Service) actorFor(_ context.Context, orgID string) string {
 		return orgID
 	}
 	return "system"
+}
+
+// RecordDeploymentEvent implements the fault module's DeploymentTrail
+// seam (feature #53, AD16). It records a recovery action in the
+// deployment-history trail. Best-effort: a failure is logged and never
+// fails the recovery.
+func (s *Service) RecordDeploymentEvent(ctx context.Context, serviceID, eventType, actor, _ string) error {
+	repo, err := s.repository()
+	if err != nil {
+		return err
+	}
+	row, err := repo.FindByID(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+	evtRepo, err := s.deploymentEventRepository()
+	if err != nil {
+		return err
+	}
+	beforeJSON, afterJSON := specDiff(row, row)
+	_ = evtRepo.RecordEvent(ctx, &DeploymentEvent{
+		ServiceID:   row.ID,
+		ServiceName: row.Name,
+		EventType:   eventType,
+		Actor:       actor,
+		Before:      beforeJSON,
+		After:       afterJSON,
+	})
+	return nil
 }
 
 // resolveOrganizationID reads the organization id from the incoming

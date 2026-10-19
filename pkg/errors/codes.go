@@ -430,3 +430,14 @@ const (
 	CodeVGPUPoolInUse            Code = 13405 // VGPU_POOL_IN_USE
 	CodeVGPUPoolNotFound         Code = 13406 // VGPU_POOL_NOT_FOUND
 )
+
+// fault module error codes (feature #53, design D4). The block holds
+// the incident-lifecycle failure modes; 13507-13599 are reserved for
+// future fault codes. All 135xx codes surface through grpc-gateway as
+// the unified envelope; the fault contract is verified synthetically.
+const (
+	CodeFaultPolicyInvalid    Code = 13502 // FAULT_POLICY_INVALID
+	CodeFaultRecoveryInvalid  Code = 13503 // FAULT_RECOVERY_INVALID
+	CodeFaultNoActionInFlight Code = 13504 // FAULT_NO_ACTION_IN_FLIGHT
+	CodeFaultNotFound         Code = 13506 // FAULT_NOT_FOUND
+)

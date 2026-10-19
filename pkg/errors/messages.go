@@ -255,6 +255,12 @@ var messages = map[Code]string{
 	CodeVGPUSliceUnavailable:     "the requested slice is unavailable or not granted",
 	CodeVGPUPoolInUse:            "services are using this pool",
 	CodeVGPUPoolNotFound:         "vGPU pool not found",
+
+	// fault (feature #53, design D4)
+	CodeFaultPolicyInvalid:    "invalid fault policy",
+	CodeFaultRecoveryInvalid:  "invalid recovery action",
+	CodeFaultNoActionInFlight: "no recovery action is in flight",
+	CodeFaultNotFound:         "incident not found",
 }
 
 // Message returns the canonical message for a code. Unknown codes get a

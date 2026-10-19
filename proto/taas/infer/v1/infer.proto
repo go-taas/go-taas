@@ -106,6 +106,14 @@ service InferServiceService {
     option (google.api.http) = {get: "/api/v1/inference-endpoint"};
   }
 
+  // GetServiceStatus returns the service's status including any active
+  // incident (user surface; the org is resolved from the session, never
+  // from a client-supplied service id — only the caller's own service's
+  // incident is returned, feature #53, AD10).
+  rpc GetServiceStatus(GetServiceStatusRequest) returns (GetServiceStatusResponse) {
+    option (google.api.http) = {get: "/api/v1/inference-services/{service_id}/status"};
+  }
+
   // GetAutoscalingPolicy returns the global default autoscaling policy
   // applied to new inference services (feature #16, FR1.4).
   // Admin-surface API: served under /api/v1/admin.
@@ -355,6 +363,27 @@ message AssignedSlice {
   int64 compute_pct = 5;
   string node_id = 6;
   int64 gpu_index = 7;
+}
+
+message GetServiceStatusRequest {
+  string service_id = 1;
+}
+
+message GetServiceStatusResponse {
+  taas.common.v1.Response response = 1;
+  string state = 2;      // pending | deploying | running | failed | terminated
+  bool degraded = 3;     // true when an active incident exists
+  ServiceIncident incident = 4; // null when healthy
+}
+
+// ServiceIncident is the masked incident projection for the tenant
+// banner (AD10).
+message ServiceIncident {
+  string incident_id = 1;
+  string severity = 2;
+  string status = 3;
+  string root_cause = 4;
+  string message = 5; // plain-language banner copy
 }
 
 message ScaleInferenceServiceRequest {

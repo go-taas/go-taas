@@ -126,6 +126,14 @@ type Subjects struct {
 	// quota consumer keeps the latest snapshot per org for the usage
 	// display; zero counts are included so stale entries clear.
 	QuotaOrgsConcurrency string
+	// FaultSignals carries the controller's structured failure signals
+	// (feature #53, AD12). The fault module consumes them to create and
+	// diagnose incidents.
+	FaultSignals string
+	// FaultActions carries recovery actions for node/accelerator targets
+	// (feature #53, AD14). The controller consumes them to execute
+	// reschedule/drain.
+	FaultActions string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -146,7 +154,9 @@ func DefaultSubjects() Subjects {
 		RuntimeHealth:           "runtime.health",
 		RuntimeScheme:           "runtime.scheme",
 		RuntimeModelChanges:     "runtime.models.changes",
-		QuotaOrgsConcurrency:    "quota.orgs.concurrency"}
+		QuotaOrgsConcurrency:    "quota.orgs.concurrency",
+		FaultSignals:            "fault.signals",
+		FaultActions:            "fault.actions"}
 }
 
 // NewFake returns an in-memory Client for unit tests and local development

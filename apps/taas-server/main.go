@@ -38,6 +38,7 @@ import (
 	"github.com/go-taas/go-taas/services/resourcemetrics"
 	"github.com/go-taas/go-taas/services/routing"
 	"github.com/go-taas/go-taas/services/runtime"
+	"github.com/go-taas/go-taas/services/fault"
 	"github.com/go-taas/go-taas/services/tenancy"
 	"github.com/go-taas/go-taas/services/vgpu"
 	"github.com/go-taas/go-taas/services/tracing"
@@ -175,6 +176,10 @@ func main() {
 	vgpuSvc := vgpu.New(srv.Components())
 	vgpuSvc.SetMembership(vgpuProjection)
 	srv.RegisterService(vgpuSvc)
+	// Feature #53: the fault-diagnosis service. It owns the incident
+	// lifecycle, the classifier and the recovery actions.
+	faultSvc := fault.New(srv.Components())
+	srv.RegisterService(faultSvc)
 	// Feature #37: the resourcemetrics service serves the read-only
 	// per-service CPU/memory/GPU utilization aggregation over the
 	// service_resource_metrics table (admin-only).
@@ -283,6 +288,16 @@ func main() {
 			vgpuSvc.SetSessionResolver(authSvc)
 			vgpuSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			inferSvc.SetSliceValidator(vgpuSvc)
+			// Feature #53 (AD10/AD15/AD16): the fault-diagnosis seams.
+			// The fault service resolves the session's active org and
+			// caller, gates the admin RPCs by the caller's role, and
+			// exposes the tenant service-status incident reader to the
+			// infer module.
+			faultSvc.SetSessionOrgResolver(authSvc)
+			faultSvc.SetSessionResolver(authSvc)
+			faultSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			faultSvc.SetDeploymentTrail(inferSvc)
+			inferSvc.SetIncidentReader(faultSvc)
 			// Features #32/#33/#34/#35: the infer service resolves the
 			// session's active org and caller, and gates the admin
 			// model-version/service-log/deployment and the user-realm
@@ -432,6 +447,7 @@ func main() {
 			imageSvc.SetAuditRecorder(auditRecorder)
 			tenancySvc.SetAuditRecorder(auditRecorder)
 			vgpuSvc.SetAuditRecorder(auditRecorder)
+			faultSvc.SetAuditRecorder(auditRecorder)
 			webhookSvc.SetAuditRecorder(auditRecorder)
 			notificationSvc.SetAuditRecorder(auditRecorder)
 			batchSvc.SetAuditRecorder(auditRecorder)
@@ -586,6 +602,10 @@ func main() {
 	// pool membership/capacity projection from the same
 	// accelerator.inventory snapshot the accelerator service consumes.
 	if runner := vgpu.NewMembershipConsumerRunner(srv.Components(), vgpuProjection); runner != nil {
+		srv.AddRunner(runner)
+	}
+	// Feature #53 (AD13): the fault detection-signal consumer.
+	if runner := fault.NewSignalConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
 	// Feature #40: the cluster health snapshot consumer maintains the

@@ -524,6 +524,34 @@ func (c *Configuration) applyDefaults() {
 	if c.VGPU.HAMI.PoolLabelPrefix == "" {
 		c.VGPU.HAMI.PoolLabelPrefix = "go-taas.io/vgpu-pool"
 	}
+	// Feature #53: fault-diagnosis defaults (Section 9). The debounce
+	// windows, the retention window, and the default auto-recovery
+	// toggles.
+	if c.Fault.Debounce.CrashLoopRestarts == 0 {
+		c.Fault.Debounce.CrashLoopRestarts = 3
+	}
+	if c.Fault.Debounce.CrashLoopWindow == 0 {
+		c.Fault.Debounce.CrashLoopWindow = 3 * time.Minute
+	}
+	if c.Fault.Retention == 0 {
+		c.Fault.Retention = 720 * time.Hour
+	}
+	if len(c.Fault.Recovery.AutoRestart) == 0 {
+		c.Fault.Recovery.AutoRestart = map[string]bool{
+			"service_crash_loop": true,
+			"oom":                true,
+			"image_pull_failure": true,
+		}
+	}
+	if len(c.Fault.Recovery.AutoReschedule) == 0 {
+		c.Fault.Recovery.AutoReschedule = map[string]bool{
+			"node_not_ready":                    true,
+			"accelerator_device_plugin_failure": true,
+		}
+	}
+	if c.Fault.SignalsConsumer.Workers == 0 {
+		c.Fault.SignalsConsumer.Workers = 2
+	}
 }
 
 // String returns a string representation of the configuration for logging.

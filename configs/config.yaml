@@ -230,6 +230,29 @@ vgpu:
     policyAnnotation: "hami.io/gpu-scheduler-policy"
     poolLabelPrefix: "go-taas.io/vgpu-pool"
 
+# Feature #53: fault diagnosis & automatic fault tolerance. The fault
+# module owns the incident lifecycle, the deterministic root-cause
+# classifier, and the recovery actions.
+fault:
+  # Debounce windows per signal type (FR3.2).
+  debounce:
+    crashLoopRestarts: 3
+    crashLoopWindow: 3m
+  # Incident retention window (FR1.4).
+  retention: 720h
+  recovery:
+    # Default auto-recovery toggles (FR4.1); the policy page edits them.
+    autoRestart:
+      service_crash_loop: true
+      oom: true
+      image_pull_failure: true
+    autoReschedule:
+      node_not_ready: true
+      accelerator_device_plugin_failure: true
+  signalsConsumer:
+    enabled: true
+    workers: 2
+
 billing:
   # currency is the single platform billing currency (D4); price
   # entries, charge records and bills carry it.

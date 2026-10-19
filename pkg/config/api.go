@@ -963,6 +963,48 @@ type VGPUHAMIConfig struct {
 	PoolLabelPrefix string `mapstructure:"poolLabelPrefix"`
 }
 
+// FaultConfig holds the fault-diagnosis module settings (feature #53,
+// Section 9). The fault module owns the incident lifecycle, the
+// deterministic root-cause classifier, and the recovery actions.
+type FaultConfig struct {
+	// Debounce holds the per-signal debounce windows (FR3.2).
+	Debounce FaultDebounceConfig `mapstructure:"debounce"`
+	// Retention is the incident retention window (FR1.4). Default 720h.
+	Retention time.Duration `mapstructure:"retention"`
+	// Recovery holds the default auto-recovery toggles (FR4.1).
+	Recovery FaultRecoveryConfig `mapstructure:"recovery"`
+	// SignalsConsumer configures the detection-signal consumer runner
+	// (AD13).
+	SignalsConsumer FaultSignalsConsumerConfig `mapstructure:"signalsConsumer"`
+}
+
+// FaultDebounceConfig holds the per-signal debounce windows (feature
+// #53, FR3.2).
+type FaultDebounceConfig struct {
+	// CrashLoopRestarts is the crash-loop restart threshold.
+	CrashLoopRestarts int `mapstructure:"crashLoopRestarts"`
+	// CrashLoopWindow is the crash-loop window.
+	CrashLoopWindow time.Duration `mapstructure:"crashLoopWindow"`
+}
+
+// FaultRecoveryConfig holds the default auto-recovery toggles (feature
+// #53, FR4.1).
+type FaultRecoveryConfig struct {
+	// AutoRestart is the per-category auto-restart toggle map.
+	AutoRestart map[string]bool `mapstructure:"autoRestart"`
+	// AutoReschedule is the per-category auto-reschedule toggle map.
+	AutoReschedule map[string]bool `mapstructure:"autoReschedule"`
+}
+
+// FaultSignalsConsumerConfig holds the detection-signal consumer runner
+// settings (feature #53, AD13).
+type FaultSignalsConsumerConfig struct {
+	// Enabled turns the detection-signal consumer on or off.
+	Enabled bool `mapstructure:"enabled"`
+	// Workers is the concurrent signal handler count.
+	Workers int `mapstructure:"workers"`
+}
+
 // TracingConfig holds tracing-module specific settings (feature #27,
 // Section 9).
 type TracingConfig struct {
@@ -1042,6 +1084,7 @@ type Configuration struct {
 	Optimization    OptimizationConfig    `mapstructure:"optimization"`
 	Quota           QuotaConfig           `mapstructure:"quota"`
 	VGPU            VGPUConfig            `mapstructure:"vgpu"`
+	Fault           FaultConfig           `mapstructure:"fault"`
 	Log             LogConfig             `mapstructure:"log"`
 }
 
@@ -1328,6 +1371,20 @@ func (c *Configuration) Validate() error {
 	// Feature #52: the vGPU membership interval must not be negative.
 	if c.VGPU.MembershipInterval < 0 {
 		return &FieldError{Field: "vgpu.membershipInterval", Reason: "must not be negative"}
+	}
+	// Feature #53: the fault debounce/retention windows must not be
+	// negative and the crash-loop restart threshold must be positive.
+	if c.Fault.Debounce.CrashLoopRestarts < 0 {
+		return &FieldError{Field: "fault.debounce.crashLoopRestarts", Reason: "must not be negative"}
+	}
+	if c.Fault.Debounce.CrashLoopWindow < 0 {
+		return &FieldError{Field: "fault.debounce.crashLoopWindow", Reason: "must not be negative"}
+	}
+	if c.Fault.Retention < 0 {
+		return &FieldError{Field: "fault.retention", Reason: "must not be negative"}
+	}
+	if c.Fault.SignalsConsumer.Workers < 0 {
+		return &FieldError{Field: "fault.signalsConsumer.workers", Reason: "must not be negative"}
 	}
 	return nil
 }

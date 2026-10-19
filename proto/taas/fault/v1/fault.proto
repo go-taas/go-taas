@@ -1,0 +1,161 @@
+syntax = "proto3";
+
+package taas.fault.v1;
+
+import "google/api/annotations.proto";
+import "taas/common/v1/common.proto";
+
+option go_package = "github.com/go-taas/go-taas/proto/taas/fault/v1;faultv1";
+
+// FaultService manages the incident lifecycle, root-cause diagnosis and
+// automatic recovery (feature #53). All RPCs are admin-surface.
+service FaultService {
+  // ListIncidents returns incidents, newest first, with severity,
+  // status, root cause, target and times (admin surface,
+  // requireAdminRole).
+  rpc ListIncidents(ListIncidentsRequest) returns (ListIncidentsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/faults"};
+  }
+
+  // GetIncident returns one incident's full detail: the diagnosis
+  // timeline, the root-cause evidence, and the recovery actions
+  // (admin surface). An unknown incident returns 13506.
+  rpc GetIncident(GetIncidentRequest) returns (GetIncidentResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/faults/{incident_id}"};
+  }
+
+  // UpdateAutoRecoveryPolicy sets the per-category auto-recovery
+  // toggles (admin surface). Audited; 13502 on bad input.
+  rpc UpdateAutoRecoveryPolicy(UpdateAutoRecoveryPolicyRequest) returns (UpdateAutoRecoveryPolicyResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/faults/policy"
+      body: "*"
+    };
+  }
+
+  // GetAutoRecoveryPolicy returns the current policy (admin surface).
+  rpc GetAutoRecoveryPolicy(GetAutoRecoveryPolicyRequest) returns (GetAutoRecoveryPolicyResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/faults/policy"};
+  }
+
+  // TriggerRecoveryAction manually triggers a restart/reschedule/drain
+  // on an incident (admin surface). Drain requires a confirm flag;
+  // 13503 if invalid.
+  rpc TriggerRecoveryAction(TriggerRecoveryActionRequest) returns (TriggerRecoveryActionResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/faults/{incident_id}:recover"
+      body: "*"
+    };
+  }
+
+  // OverrideRecoveryAction cancels an in-flight recovery action (admin
+  // surface). 13504 if none is in flight.
+  rpc OverrideRecoveryAction(OverrideRecoveryActionRequest) returns (OverrideRecoveryActionResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/faults/{incident_id}:override"
+      body: "*"
+    };
+  }
+}
+
+// Incident is the FR1.1 projection.
+message Incident {
+  string incident_id = 1;
+  string severity = 2;    // critical | warning | info
+  string status = 3;      // detected | diagnosing | recovering | resolved | failed
+  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin_failure | oom | image_pull_failure | unknown
+  string target_type = 5; // service | node | accelerator
+  string target_name = 6;
+  int64 started_at = 7;   // unix seconds
+  int64 resolved_at = 8;  // unix seconds, 0 = active
+  bool auto_recovered = 9;
+}
+
+// IncidentStep is one diagnosis-timeline step (AD11).
+message IncidentStep {
+  string step_type = 1; // detected | diagnosed | recovery_started | recovery_succeeded | recovery_failed | resolved | overridden | manual_action
+  string actor = 2;     // system or an operator user id
+  string detail = 3;
+  int64 created_at = 4; // unix seconds
+}
+
+// RecoveryAction is one recovery action taken or pending.
+message RecoveryAction {
+  string action = 1;    // restart | reschedule | drain
+  string status = 2;    // pending | running | succeeded | failed | overridden
+  string actor = 3;     // system or an operator user id
+  int64 created_at = 4; // unix seconds
+}
+
+message ListIncidentsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string status = 2;      // detected | diagnosing | recovering | resolved | failed | empty = all
+  string severity = 3;    // critical | warning | info | empty = all
+  string root_cause = 4;  // empty = all
+  string target_type = 5; // service | node | accelerator | empty = all
+  string search = 6;      // target-name substring search
+}
+
+message ListIncidentsResponse {
+  taas.common.v1.Response response = 1;
+  repeated Incident incidents = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetIncidentRequest {
+  string incident_id = 1;
+}
+
+message GetIncidentResponse {
+  taas.common.v1.Response response = 1;
+  Incident incident = 2;
+  repeated IncidentStep steps = 3;      // the diagnosis timeline, oldest first
+  repeated RecoveryAction actions = 4;  // the recovery actions taken or pending
+}
+
+message UpdateAutoRecoveryPolicyRequest {
+  // auto_restart / auto_reschedule are per-category toggles; absent
+  // categories are unchanged.
+  map<string, bool> auto_restart = 1;
+  map<string, bool> auto_reschedule = 2;
+}
+
+message UpdateAutoRecoveryPolicyResponse {
+  taas.common.v1.Response response = 1;
+  AutoRecoveryPolicy policy = 2;
+}
+
+message GetAutoRecoveryPolicyRequest {}
+
+message GetAutoRecoveryPolicyResponse {
+  taas.common.v1.Response response = 1;
+  AutoRecoveryPolicy policy = 2;
+}
+
+// AutoRecoveryPolicy is the per-category auto-recovery configuration
+// (AD15).
+message AutoRecoveryPolicy {
+  map<string, bool> auto_restart = 1;
+  map<string, bool> auto_reschedule = 2;
+  bool drain_always_confirm = 3; // always true (FR4.4)
+}
+
+message TriggerRecoveryActionRequest {
+  string incident_id = 1;
+  string action = 2;    // restart | reschedule | drain
+  bool confirm = 3;     // required for drain (FR4.4)
+}
+
+message TriggerRecoveryActionResponse {
+  taas.common.v1.Response response = 1;
+  RecoveryAction action = 2;
+}
+
+message OverrideRecoveryActionRequest {
+  string incident_id = 1;
+}
+
+message OverrideRecoveryActionResponse {
+  taas.common.v1.Response response = 1;
+  RecoveryAction action = 2; // the overridden action
+}

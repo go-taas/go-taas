@@ -167,6 +167,44 @@ func TestGetInferenceServiceAssignedSlice(t *testing.T) {
 	assert.Equal(t, int64(0), resp.GetAssignedSlice().GetGpuIndex())
 }
 
+// fakeIncidentReader returns a fixed incident or healthy.
+type fakeIncidentReader struct {
+	incident ServiceIncident
+	ok       bool
+}
+
+func (f fakeIncidentReader) ActiveIncidentForService(context.Context, string) (ServiceIncident, bool, error) {
+	return f.incident, f.ok, nil
+}
+
+func TestGetServiceStatus(t *testing.T) {
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+	svc := seedService(t, repo, "org-a", "svc-status", StateRunning, time.Now())
+
+	svc2, _, _ := newInferTestService(t)
+	svc2.repo = repo
+
+	// Healthy: no incident.
+	resp, err := svc2.GetServiceStatus(orgContext("org-a"), &inferv1.GetServiceStatusRequest{ServiceId: svc.ID})
+	require.NoError(t, err)
+	assert.Equal(t, StateRunning, resp.GetState())
+	assert.False(t, resp.GetDegraded())
+	assert.Nil(t, resp.GetIncident())
+
+	// Degraded: an active incident is returned.
+	svc2.SetIncidentReader(fakeIncidentReader{
+		incident: ServiceIncident{IncidentID: "inc-1", Severity: "warning", Status: "recovering", RootCause: "service_crash_loop", Message: "recovering"},
+		ok:       true,
+	})
+	resp, err = svc2.GetServiceStatus(orgContext("org-a"), &inferv1.GetServiceStatusRequest{ServiceId: svc.ID})
+	require.NoError(t, err)
+	assert.True(t, resp.GetDegraded())
+	require.NotNil(t, resp.GetIncident())
+	assert.Equal(t, "inc-1", resp.GetIncident().GetIncidentId())
+	assert.Equal(t, "service_crash_loop", resp.GetIncident().GetRootCause())
+}
+
 func TestCreateInferenceServiceValidationMatrix(t *testing.T) {
 	seedImageRegistry(t)
 	svc, client, db := newInferTestService(t)
