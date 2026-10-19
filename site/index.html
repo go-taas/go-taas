@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Go TaaS — Token as a Service</title>
-  <meta name="description" content="Go TaaS is an open-source LLM inference and metering/billing platform for AI agents and SDKs, built on Kubernetes." />
+  <meta name="description" content="Go TaaS is an open-source LLM inference and metering/billing platform for AI agents and applications, built on Kubernetes." />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <link rel="stylesheet" href="styles.css" />
 </head>
@@ -23,7 +23,6 @@
         <a href="docs.html" data-i18n="nav.docs">Docs</a>
         <a href="#quickstart" data-i18n="nav.quickstart">Quick Start</a>
         <a href="#usage" data-i18n="nav.usage">Usage</a>
-        <a href="#roadmap" data-i18n="nav.roadmap">Roadmap</a>
       </nav>
       <div class="header-actions">
         <button id="lang-toggle" class="lang-toggle" type="button" aria-label="Switch language">中文</button>
@@ -46,7 +45,7 @@
         </div>
         <h1 class="hero-title">
           <span data-i18n="hero.title1">Token as a Service</span><br />
-          <span class="grad" data-i18n="hero.title2">for AI Agents &amp; SDKs</span>
+          <span class="grad" data-i18n="hero.title2">for AI Agents &amp; Applications</span>
         </h1>
         <p class="hero-sub" data-i18n="hero.subtitle">
           An open-source LLM inference and metering/billing platform built on Kubernetes.
@@ -252,7 +251,7 @@
                 <div class="arch-label" data-i18n="arch.net">Cluster Network</div>
                 <div class="arch-row arch-net-row">
                   <div class="arch-node arch-chip"><span data-i18n="arch.net1">Pod network (CNI) — ClusterIP · CoreDNS</span></div>
-                  <div class="arch-node arch-chip"><span data-i18n="arch.net2">Ingress / NodePort — TLS entry</span></div>
+                  <div class="arch-node arch-chip"><span data-i18n="arch.net2">Envoy Gateway — TLS entry</span></div>
                   <div class="arch-node arch-chip"><span data-i18n="arch.net3">NetworkPolicy — namespace isolation</span></div>
                   <div class="arch-node arch-chip"><span data-i18n="arch.net4">RDMA fabric (RoCE / InfiniBand) — optional</span></div>
                 </div>
@@ -313,12 +312,12 @@
             </div>
           </div>
           <ul class="arch-points">
-            <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Ingress / NodePort with TLS).</li>
+            <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS).</li>
             <li data-i18n="arch.p2">The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.</li>
             <li data-i18n="arch.p3">All 24 microservice gRPC servers run in a single Deployment — auth, tenancy, account, model, image, infer, runtime, routing, provider, metering, billing, batch, audit, webhook, notification, observability, tracing, resourcemetrics, accelerator, cluster, optimization, prompt, evaluation, and docs — handing work to the Controller through a message queue (Kafka / NATS).</li>
             <li data-i18n="arch.p4">Authentication, metering, and routing run in Wasm plugins at the Inference Gateway, so inference traffic never passes through business processes.</li>
             <li data-i18n="arch.p5">The Inference Gateway verifies every API Key by calling the auth module over gRPC, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or auth unavailability it fails closed.</li>
-            <li data-i18n="arch.p6">Cluster networking: pods talk over the CNI network with ClusterIP Services and CoreDNS discovery, north-south traffic enters through Ingress / NodePort with TLS, NetworkPolicies isolate the control plane, data plane, and tenant namespaces, and the inference data path can ride an optional RDMA fabric.</li>
+            <li data-i18n="arch.p6">Cluster networking: pods talk over the CNI network with ClusterIP Services and CoreDNS discovery, north-south traffic enters through Envoy Gateway with TLS, NetworkPolicies isolate the control plane, data plane, and tenant namespaces, and the inference data path can ride an optional RDMA fabric.</li>
             <li data-i18n="arch.p7">Inference services and the control plane share one Kubernetes cluster, isolated through Namespaces, node labels, and taints/tolerations.</li>
           </ul>
         </div>
@@ -330,7 +329,7 @@
       <div class="container">
         <div class="section-head">
           <h2 data-i18n="qs.title">Quick Start</h2>
-          <p data-i18n="qs.subtitle">A one-command experience environment with Docker Compose.</p>
+          <p data-i18n="qs.subtitle">One Helm chart deploys the whole stack on Kubernetes — control plane, consoles, and dependencies.</p>
         </div>
         <div class="qs-grid">
           <div class="qs-steps">
@@ -345,18 +344,19 @@ cd go-taas</code></pre>
             <div class="qs-step">
               <div class="qs-num">2</div>
               <div>
-                <h3 data-i18n="qs.s2t">Start the local stack</h3>
-                <pre class="code-block"><code>make compose-up</code></pre>
-                <p class="qs-note" data-i18n="qs.s2d">Builds the images (console included) and starts the control plane, PostgreSQL, Redis, and the message queue.</p>
+                <h3 data-i18n="qs.s2t">Install with Helm</h3>
+                <pre class="code-block"><code>helm install taas deploy/helm/go-taas \
+  --namespace taas --create-namespace</code></pre>
+                <p class="qs-note" data-i18n="qs.s2d">With no overrides, the chart provisions in-cluster PostgreSQL, Redis, and NATS and wires their credentials to the control plane.</p>
               </div>
             </div>
             <div class="qs-step">
               <div class="qs-num">3</div>
               <div>
                 <h3 data-i18n="qs.s3t">Open a console</h3>
-                <pre class="code-block"><code>http://localhost:9091/          # end-user console
-http://localhost:9091/admin     # admin console</code></pre>
-                <p class="qs-note" data-i18n="qs.s3d">Each console has its own session. End-user APIs live under /api/v1/*; management APIs live under /api/v1/admin/*.</p>
+                <pre class="code-block"><code>kubectl --namespace taas port-forward svc/taas-server 9091:9091</code></pre>
+                <p class="qs-note" data-i18n="qs.s3note">End-user console: http://127.0.0.1:9091/ · Admin console: http://127.0.0.1:9091/admin</p>
+                <p class="qs-note" data-i18n="qs.s3note2">Each console has its own session. End-user APIs live under /api/v1/*; management APIs live under /api/v1/admin/*.</p>
               </div>
             </div>
           </div>
@@ -368,10 +368,10 @@ http://localhost:9091/admin     # admin console</code></pre>
               <li><code>9092</code> — <span data-i18n="qs.port3">metrics / healthz</span></li>
             </ul>
             <h3 data-i18n="qs.more">More commands</h3>
-            <pre class="code-block"><code>make compose-ps    # stack status
-make compose-logs  # follow logs
-make compose-down  # stop &amp; remove</code></pre>
-            <p class="qs-note" data-i18n="qs.mirror">On restricted networks, point the build at local mirrors: make compose-up GOPROXY=… NPM_REGISTRY=…</p>
+            <pre class="code-block"><code>make helm-lint      # lint the chart
+make helm-template  # render templates
+helm uninstall taas # remove the release</code></pre>
+            <p class="qs-note" data-i18n="qs.mirror">For sizing, external PostgreSQL / Redis / NATS, and TLS, see the chart values: deploy/helm/go-taas/values.yaml.</p>
           </div>
         </div>
       </div>
@@ -411,53 +411,6 @@ print(resp.choices[0].message.content)</code></pre>
   }'</code></pre>
           </div>
         </div>
-      </div>
-    </section>
-
-    <!-- Roadmap -->
-    <section id="roadmap" class="section">
-      <div class="container">
-        <div class="section-head">
-          <h2 data-i18n="roadmap.title">Roadmap</h2>
-          <p data-i18n="roadmap.subtitle">From single-cluster MVP to production-grade heterogeneous platform.</p>
-        </div>
-        <ol class="timeline">
-          <li class="timeline-item timeline-item--done">
-            <div class="timeline-dot"></div>
-            <div class="timeline-body">
-              <h3><span data-i18n="roadmap.p1t">Phase 1 — MVP</span> <span class="timeline-status" data-i18n="roadmap.done">Shipped</span></h3>
-              <p data-i18n="roadmap.p1d">Model catalog &amp; one-click deployment, API Key lifecycle, control/inference gateway split, gateway-side auth and metering.</p>
-            </div>
-          </li>
-          <li class="timeline-item timeline-item--done">
-            <div class="timeline-dot"></div>
-            <div class="timeline-body">
-              <h3><span data-i18n="roadmap.p2t">Phase 2 — Billing &amp; Multi-tenancy</span> <span class="timeline-status" data-i18n="roadmap.done">Shipped</span></h3>
-              <p data-i18n="roadmap.p2d">Price matrix, balance/quota, tiered pricing, async settlement, usage/cost analytics, payments/invoices/auto-recharge, audit logging, RBAC, notifications.</p>
-            </div>
-          </li>
-          <li class="timeline-item timeline-item--done">
-            <div class="timeline-dot"></div>
-            <div class="timeline-body">
-              <h3><span data-i18n="roadmap.p3t">Phase 3 — Heterogeneous Accelerators</span> <span class="timeline-status" data-i18n="roadmap.done">Shipped</span></h3>
-              <p data-i18n="roadmap.p3d">Accelerator inventory &amp; health, multi-vendor engine and image adaptation, model × engine × card-type compatibility matrix.</p>
-            </div>
-          </li>
-          <li class="timeline-item timeline-item--done">
-            <div class="timeline-dot"></div>
-            <div class="timeline-body">
-              <h3><span data-i18n="roadmap.p4t">Phase 4 — Productionization</span> <span class="timeline-status" data-i18n="roadmap.done">Shipped</span></h3>
-              <p data-i18n="roadmap.p4d">Autoscaling, routing policies, load testing, observability &amp; tracing, webhooks, notification center, prompt library &amp; evaluation, batch inference, multi-cluster management, API docs explorer, data export, distributed inference runtime (AIBrix), external model providers, intelligent model routing, cost optimization, service quota management.</p>
-            </div>
-          </li>
-          <li class="timeline-item timeline-item--planned">
-            <div class="timeline-dot"></div>
-            <div class="timeline-body">
-              <h3><span data-i18n="roadmap.p5t">Next — Operational hardening</span> <span class="timeline-status timeline-status--planned" data-i18n="roadmap.planned">Planned</span></h3>
-              <p data-i18n="roadmap.p5d">Helm one-click install, RDMA networking, and community operations (no standalone console surface; tracked outside the feature backlog).</p>
-            </div>
-          </li>
-        </ol>
       </div>
     </section>
 

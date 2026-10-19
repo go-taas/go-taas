@@ -4,7 +4,7 @@
 
 # Go TaaS
 
-**Token as a Service —— 基于 Kubernetes、面向智能体与 SDK 的开源大模型推理服务与计量计费平台**
+**Token as a Service —— 基于 Kubernetes、面向智能体与应用的开源大模型推理服务与计量计费平台**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://golang.org/)
@@ -40,7 +40,7 @@
 | 异构算力 | 统一纳管多种异构加速卡（厂商无关）；节点打标、Device Plugin 与驱动部署由各厂商 GPU Operator 完成。**加速器清单**实时上报各节点加速器机队健康状态，**兼容性矩阵**记录「模型 × 引擎 × 卡型」的支持情况。 |
 | 控制面 / 数据面分离 | 管理 API 与推理 API 由两个独立网关承载，推理链路扩缩容、升级或降级时平台管理能力不受影响。 |
 | 双控制台，一致体验 | 面向租户的**普通用户控制台**位于 `/`（API `/api/v1/*`），面向运维的 **admin 控制台**位于 `/admin`（API `/api/v1/admin/*`），各自独立会话、独立登录与基于角色的路由。 |
-| 存储与网络分层 | Longhorn 承载集群状态，MinIO + JuiceFS 承载权重与镜像；集群内运行 CNI Pod 网络，提供 ClusterIP Service 与 CoreDNS 服务发现、Ingress / NodePort + TLS 入口与 NetworkPolicy 隔离；控制面走常规以太网，推理可选 RDMA（RoCE / InfiniBand）。 |
+| 存储与网络分层 | Longhorn 承载集群状态，MinIO + JuiceFS 承载权重与镜像；集群内运行 CNI Pod 网络，提供 ClusterIP Service 与 CoreDNS 服务发现、Envoy Gateway + TLS 入口与 NetworkPolicy 隔离；控制面走常规以太网，推理可选 RDMA（RoCE / InfiniBand）。 |
 
 **模型与推理**
 
@@ -114,7 +114,7 @@ flowchart TD
         subgraph net["集群网络"]
             direction LR
             CNI["Pod 网络（CNI）<br/>ClusterIP Service · CoreDNS 服务发现"]
-            ING["Ingress / NodePort<br/>TLS 终结 · 南北向入口"]
+            ING["Envoy Gateway<br/>TLS 终结 · 南北向入口"]
             NPOL["NetworkPolicy<br/>命名空间隔离（控制面 / 数据面 / 租户）"]
             RDMA["RDMA 网络（RoCE / InfiniBand）<br/>可选，仅数据面"]
         end
@@ -209,13 +209,13 @@ flowchart TD
     style store fill:#F5F8F9,stroke:#BCC9CD,stroke-width:1.5px,color:#47595E
 ```
 
-- 流量按受众分流：管理员经**控制面 Gateway**（HTTP，由 `grpc-gateway` 从 Protobuf 契约生成）进入，智能体与 SDK 调用**推理 Gateway**（Envoy + Wasm）；两者都通过集群的南北向入口（Ingress / NodePort + TLS 终结）对外暴露。
+- 流量按受众分流：管理员经**控制面 Gateway**（HTTP，由 `grpc-gateway` 从 Protobuf 契约生成）进入，智能体与 SDK 调用**推理 Gateway**（Envoy + Wasm）；两者都通过集群的南北向入口（Envoy Gateway + TLS 终结）对外暴露。
 - 两个网关作为独立工作负载部署，控制面 API 与推理 API 的扩缩容、升级与故障域完全隔离。
 - API 按受众分区：普通用户控制台及其租户调用 `/api/v1/*`，`/api/v1/admin/*` 专供 admin 控制台；携带错误面会话的请求会在进入任何 handler 之前被拒绝。
 - **gRPC Server 以单个 Deployment 承载全部 24 个微服务** —— `auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`docs` —— 模块间进程内调用，并经**消息队列**（Kafka / NATS）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
 - 鉴权、计量与路由运行在推理 Gateway 的 **Wasm 插件**中，推理流量不经过业务进程。
 - 推理 Gateway 通过 **gRPC 调用 `auth` 模块**校验每个 API Key，两级缓存（Wasm 本地 TTL 缓存 → Redis）支撑；超时或 `auth` 不可用时按 fail-closed 拒绝。
-- **集群网络**：Pod 之间经集群 CNI 网络通信并使用 ClusterIP Service 与 CoreDNS 服务发现；南北向流量经 Ingress / NodePort + TLS 终结进入；NetworkPolicy 隔离控制面、数据面与租户命名空间；推理数据链路可选走 **RDMA 网络**（RoCE / InfiniBand），控制面保持常规以太网。
+- **集群网络**：Pod 之间经集群 CNI 网络通信并使用 ClusterIP Service 与 CoreDNS 服务发现；南北向流量经 Envoy Gateway + TLS 终结进入；NetworkPolicy 隔离控制面、数据面与租户命名空间；推理数据链路可选走 **RDMA 网络**（RoCE / InfiniBand），控制面保持常规以太网。
 - 推理服务与控制面共享**同一个 Kubernetes 集群**，通过 Namespace、节点标签与污点/容忍度隔离。
 
 组件职责、网关设计与协作流程详见[架构设计文档](./site/docs/design/architecture.zh-cn.md)。
@@ -229,13 +229,25 @@ flowchart TD
 | 控制面网关 | grpc-gateway —— 从 Protobuf 生成 HTTP/JSON 与 OpenAPI |
 | 数据面网关 | Envoy + Wasm |
 | 存储 | Longhorn 承载集群状态；MinIO + JuiceFS 承载推理权重与镜像 |
-| 网络 | 集群 CNI Pod 网络 + ClusterIP Service + CoreDNS 服务发现；Ingress / NodePort + TLS 终结承载南北向入口；NetworkPolicy 提供命名空间隔离。控制面走常规以太网；推理可选 RDMA（RoCE / InfiniBand） |
+| 网络 | 集群 CNI Pod 网络 + ClusterIP Service + CoreDNS 服务发现；Envoy Gateway + TLS 终结承载南北向入口；NetworkPolicy 提供命名空间隔离。控制面走常规以太网；推理可选 RDMA（RoCE / InfiniBand） |
 | 编排 | Kubernetes + client-go |
 | 推理引擎 | vLLM / SGLang / TensorRT-LLM 等主流引擎，适配多种异构加速卡 |
 | 前端（`web/`） | React 18 + TypeScript + Vite + Phosphor Icons —— 单一 SPA，同时承载普通用户与 admin 两套控制台 |
 | 测试 | Go 单元测试与 FVT 套件（`test/fvt`）、Nightwatch 浏览器端到端套件（`test/e2e`） |
 
 ## 快速开始
+
+### 一键部署（Helm）
+
+使用自研 [Helm Chart](./deploy/helm/go-taas) 把整套栈部署到 Kubernetes（要求 Kubernetes 1.25+ 与 Helm 3.8+）：
+
+```bash
+helm install taas deploy/helm/go-taas --namespace taas --create-namespace
+kubectl --namespace taas port-forward svc/taas-server 9091:9091
+# 控制台：http://127.0.0.1:9091/ · /admin
+```
+
+默认配置下，Chart 会在集群内置备 PostgreSQL、Redis 与 NATS（每个依赖均可切换为外部实例），并把凭据接线到控制面。完整的 values 参考、外部依赖接线方式与生产检查清单见 Chart 的 [README](./deploy/helm/go-taas/README.zh-cn.md)（英文版 [README.md](./deploy/helm/go-taas/README.md)）。
 
 ### 环境要求
 

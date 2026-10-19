@@ -4,7 +4,7 @@
 
 # Go TaaS
 
-**Token as a Service — an open-source LLM inference and metering/billing platform for AI agents and SDKs, built on Kubernetes**
+**Token as a Service — an open-source LLM inference and metering/billing platform for AI agents and applications, built on Kubernetes**
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://golang.org/)
@@ -41,7 +41,7 @@ console and is covered by an end-to-end test suite.
 | Heterogeneous compute | Unified management of multiple heterogeneous accelerator cards (vendor-agnostic): node labeling, Device Plugins, and driver deployment are delegated to each vendor's GPU Operator. A live **accelerator inventory** reports per-node accelerator fleet health, and a **compatibility matrix** records which model × engine × card-type combinations are supported. |
 | Control plane / data plane separation | Management APIs and inference APIs are served by separate gateways, so platform operations stay available while the inference path scales, upgrades, or degrades. |
 | Two consoles, one product | A dedicated **end-user console** at `/` (API `/api/v1/*`) for tenants, and a separate **admin console** at `/admin` (API `/api/v1/admin/*`) for operators — each with its own session, login flow, and role-based routing. |
-| Tiered storage and networking | Longhorn for cluster state, MinIO + JuiceFS for weights and images; the cluster runs a CNI pod network with ClusterIP Services and CoreDNS discovery, Ingress / NodePort entry with TLS, and NetworkPolicy isolation; standard Ethernet for the control plane, optional RDMA (RoCE / InfiniBand) for inference. |
+| Tiered storage and networking | Longhorn for cluster state, MinIO + JuiceFS for weights and images; the cluster runs a CNI pod network with ClusterIP Services and CoreDNS discovery, Envoy Gateway entry with TLS, and NetworkPolicy isolation; standard Ethernet for the control plane, optional RDMA (RoCE / InfiniBand) for inference. |
 
 **Models and inference**
 
@@ -115,7 +115,7 @@ flowchart TD
         subgraph net["Cluster Network"]
             direction LR
             CNI["Pod network (CNI)<br/>ClusterIP Services · CoreDNS discovery"]
-            ING["Ingress / NodePort<br/>TLS termination · north-south entry"]
+            ING["Envoy Gateway<br/>TLS termination · north-south entry"]
             NPOL["NetworkPolicy<br/>namespace isolation (control / data / tenant)"]
             RDMA["RDMA fabric (RoCE / InfiniBand)<br/>optional, data plane only"]
         end
@@ -210,13 +210,13 @@ flowchart TD
     style store fill:#F5F8F9,stroke:#BCC9CD,stroke-width:1.5px,color:#47595E
 ```
 
-- Traffic is split by audience: administrators enter through the **Control Gateway** (HTTP, generated from the Protobuf contract by `grpc-gateway`), while agents and SDKs call the **Inference Gateway** (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Ingress / NodePort with TLS termination).
+- Traffic is split by audience: administrators enter through the **Control Gateway** (HTTP, generated from the Protobuf contract by `grpc-gateway`), while agents and SDKs call the **Inference Gateway** (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS termination).
 - The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.
 - APIs are partitioned by audience: the end-user console and its tenants call `/api/v1/*`, while `/api/v1/admin/*` is reserved for the admin console. A request that carries a session from the wrong surface is rejected before any handler runs.
 - The **gRPC Server's single Deployment hosts all 24 microservices** — `auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, and `docs` — which call each other in-process and hand work to the Controller through a **message queue** (Kafka / NATS), decoupling API serving from Kubernetes reconciliation.
 - Authentication, metering, and routing run in **Wasm plugins** at the Inference Gateway, so inference traffic never passes through business processes.
 - The Inference Gateway verifies every API Key by **calling the `auth` module over gRPC**, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or `auth` unavailability it fails closed.
-- **Cluster networking**: pods communicate over the cluster CNI network with ClusterIP Services and CoreDNS-based service discovery; north-south traffic enters through an Ingress / NodePort with TLS termination; NetworkPolicies isolate the control plane, data plane, and tenant namespaces; and the inference data path can be placed on an optional **RDMA fabric** (RoCE / InfiniBand) while the control plane stays on standard Ethernet.
+- **Cluster networking**: pods communicate over the cluster CNI network with ClusterIP Services and CoreDNS-based service discovery; north-south traffic enters through an Envoy Gateway with TLS termination; NetworkPolicies isolate the control plane, data plane, and tenant namespaces; and the inference data path can be placed on an optional **RDMA fabric** (RoCE / InfiniBand) while the control plane stays on standard Ethernet.
 - Inference services and the control plane share **one Kubernetes cluster**, isolated through Namespaces, node labels, and taints/tolerations.
 
 See the [Architecture Design](./site/docs/design/architecture.md) for component responsibilities, gateway design, and collaboration flows.
@@ -230,13 +230,25 @@ See the [Architecture Design](./site/docs/design/architecture.md) for component 
 | Control plane gateway | grpc-gateway — HTTP/JSON and OpenAPI generated from Protobuf |
 | Data plane gateway | Envoy + Wasm |
 | Storage | Longhorn for cluster state; MinIO + JuiceFS for inference weights and images |
-| Network | Cluster CNI pod network with ClusterIP Services and CoreDNS discovery; Ingress / NodePort with TLS termination for north-south entry; NetworkPolicy namespace isolation. Standard Ethernet for the control plane; RDMA (RoCE / InfiniBand) optional for inference |
+| Network | Cluster CNI pod network with ClusterIP Services and CoreDNS discovery; Envoy Gateway with TLS termination for north-south entry; NetworkPolicy namespace isolation. Standard Ethernet for the control plane; RDMA (RoCE / InfiniBand) optional for inference |
 | Orchestration | Kubernetes + client-go |
 | Inference engines | vLLM / SGLang / TensorRT-LLM and other mainstream engines, adapted to multiple heterogeneous accelerator cards |
 | Frontend (`web/`) | React 18 + TypeScript + Vite + Phosphor Icons — a single SPA serving both the end-user and admin consoles |
 | Testing | Go unit tests + FVT suites (`test/fvt`) and Nightwatch browser end-to-end suites (`test/e2e`) |
 
 ## Getting Started
+
+### Quick Start with Helm
+
+Deploy the full stack to Kubernetes with the self-hosted [Helm chart](./deploy/helm/go-taas) (requires Kubernetes 1.25+ and Helm 3.8+):
+
+```bash
+helm install taas deploy/helm/go-taas --namespace taas --create-namespace
+kubectl --namespace taas port-forward svc/taas-server 9091:9091
+# console: http://127.0.0.1:9091/ · /admin
+```
+
+With no overrides the chart provisions in-cluster PostgreSQL, Redis, and NATS (each switchable to an external instance) and wires their credentials to the control plane. For the full values reference, external-dependency wiring, and the production checklist, see the chart's [README](./deploy/helm/go-taas/README.md) ([Chinese mirror](./deploy/helm/go-taas/README.zh-cn.md)).
 
 ### Prerequisites
 

@@ -25,7 +25,7 @@ flowchart TD
         subgraph net["Cluster Network"]
             direction LR
             CNI["Pod network (CNI)<br/>ClusterIP Services · CoreDNS discovery"]
-            ING["Ingress / NodePort<br/>TLS termination · north-south entry"]
+            ING["Envoy Gateway<br/>TLS termination · north-south entry"]
             NPOL["NetworkPolicy<br/>namespace isolation (control / data / tenant)"]
             RDMA["RDMA fabric (RoCE / InfiniBand)<br/>optional, data plane only"]
         end
@@ -136,7 +136,7 @@ flowchart TD
 ### 1.3 Deployment and Resource Model
 
 - **Single cluster**: inference services and the control plane are deployed in the **same Kubernetes cluster**, sharing one control plane, message queue, and observability stack;
-- **Cluster networking**: the cluster runs a CNI pod network with ClusterIP Services and CoreDNS service discovery for east-west traffic; north-south traffic enters through an Ingress / NodePort with TLS termination; NetworkPolicies isolate the control plane, data plane, and tenant namespaces; an optional RDMA fabric (RoCE / InfiniBand) carries the inference data path while the control plane stays on standard Ethernet (see §5.2);
+- **Cluster networking**: the cluster runs a CNI pod network with ClusterIP Services and CoreDNS service discovery for east-west traffic; north-south traffic enters through an Envoy Gateway with TLS termination; NetworkPolicies isolate the control plane, data plane, and tenant namespaces; an optional RDMA fabric (RoCE / InfiniBand) carries the inference data path while the control plane stays on standard Ethernet (see §5.2);
 - **Quota and admission control**: the platform does not introduce a standalone quota microservice; admission control lives where the traffic is — per-API-key request-rate limits and per-organization service quotas (max concurrent inference requests, max inference services, max batch jobs per day, max output tokens per request) are enforced at the inference gateway and on the control-plane create paths, and organization spend limits are enforced by the billing chain. Within those bounds, administrators create inference services against the **cluster's available resources**, and cluster capacity is naturally bounded by the Kubernetes scheduler and node resources;
 - **Workload isolation**: inference workloads and control plane workloads are isolated through Namespaces, node labels, and taints/tolerations, so they coexist stably within one cluster.
 
@@ -556,13 +556,13 @@ topology diagram. It has four concerns:
 | --- | --- | --- |
 | **Pod network (east-west)** | Pod-to-pod and pod-to-service traffic | A standard CNI plugin provides the flat pod network and IPAM; every microservice, the Controller, the gateways, and the inference instances live on it |
 | **Service discovery** | Stable addressing for the 24 microservice modules and the Controller | ClusterIP Services per exposure unit (gRPC server, gateways, message queue, Redis, PostgreSQL) resolved through CoreDNS; modules call each other in-process, so service discovery is only needed between workloads |
-| **North-south entry** | Console and API access from outside the cluster | An Ingress (or NodePort where no ingress controller is installed) terminates TLS and routes `/` (end-user console), `/admin` (admin console), `/v1/*` (inference API), and `/api/v1/*` to the Control Gateway or the Inference Gateway |
+| **North-south entry** | Console and API access from outside the cluster | An Envoy Gateway terminates TLS and routes `/` (end-user console), `/admin` (admin console), `/v1/*` (inference API), and `/api/v1/*` to the Control Gateway or the Inference Gateway |
 | **Isolation & policy** | Blast-radius containment between the control plane, the data plane, and tenants | Namespace separation plus NetworkPolicies that allow only the flows in the topology diagram (consoles → gateways, gateways → gRPC server/data plane, gRPC server ↔ message queue, Controller → Kubernetes API, inference → weight storage); egress from the `provider` module to external LLM endpoints and from `webhook` to customer endpoints is explicitly allow-listed |
 | **Transport tiers** | Separate high-bandwidth inference traffic from management traffic | The control plane uses the standard Ethernet network; the inference data path (requests/responses, KV Cache transfer, multi-card communication) can be placed on an optional RDMA fabric (RoCE / InfiniBand) |
 
 - **Physical/logical separation**: inference's high-volume, low-latency traffic goes over RDMA while the control plane uses the standard network, avoiding mutual interference;
 - **On-demand enablement**: RDMA is an enhancement of the inference network; where RDMA is not deployed, inference traffic can fall back to the standard network;
-- **Failure containment**: because the Control Gateway and the Inference Gateway are separate Ingress backends with independent Services and Deployments, a network or upgrade fault on the inference path never blocks platform management traffic and vice versa;
+- **Failure containment**: because the Control Gateway and the Inference Gateway are separate Envoy Gateway-backed, with independent Services and Deployments, a network or upgrade fault on the inference path never blocks platform management traffic and vice versa;
 - **External egress**: only two modules need outbound internet access — `provider` (external LLM providers, connect-only probes with a five-state result) and `webhook` (customer HTTPS endpoints) — plus `model` for model-hub downloads; everything else stays inside the cluster network.
 
 ---
@@ -579,7 +579,7 @@ topology diagram. It has four concerns:
 | Kubernetes | Controller | Creation and reconciliation of inference workloads, image pre-pulling, accelerator snapshots and resource-metric samples |
 | Kafka / NATS | Microservice gRPC servers · Controller | Message passing between the gRPC servers and the Controller (deployments, image pre-pulls, runtime scheme, accelerator/cluster snapshots, metering events) |
 | Envoy | Inference Gateway (data plane) | Authentication, metering, and proxying of inference requests |
-| Ingress controller / CNI / CoreDNS | All in-cluster workloads | North-south entry with TLS, pod networking and service discovery (see §5.2) |
+| Envoy Gateway / CNI / CoreDNS | All in-cluster workloads | North-south entry with TLS, pod networking and service discovery (see §5.2) |
 | Image registry (Harbor) | image | Source and destination of imported inference engine images |
 | External LLM providers (DeepSeek / OpenAI-compatible) | provider · infer | Upstream inference endpoints for published external models; connectivity is probed with a five-state result |
 | External identity providers (LDAP / OIDC / SAML / WeChat) | auth | Third-party SSO federated login and the source of user attributes |

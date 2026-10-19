@@ -25,7 +25,7 @@ flowchart TD
         subgraph net["集群网络"]
             direction LR
             CNI["Pod 网络（CNI）<br/>ClusterIP Service · CoreDNS 服务发现"]
-            ING["Ingress / NodePort<br/>TLS 终结 · 南北向入口"]
+            ING["Envoy Gateway<br/>TLS 终结 · 南北向入口"]
             NPOL["NetworkPolicy<br/>命名空间隔离（控制面 / 数据面 / 租户）"]
             RDMA["RDMA 网络（RoCE / InfiniBand）<br/>可选，仅数据面"]
         end
@@ -136,7 +136,7 @@ flowchart TD
 ### 1.3 部署与资源形态
 
 - **单一集群**：推理服务与控制面部署在**同一个 Kubernetes 集群**内，共享一套控制面、消息队列与可观测性设施；
-- **集群网络**：集群内运行 CNI Pod 网络，并通过 ClusterIP Service 与 CoreDNS 提供东西向服务发现；南北向流量经 Ingress / NodePort + TLS 终结进入；NetworkPolicy 对控制面、数据面与租户命名空间做隔离；推理数据链路可选走 RDMA 网络（RoCE / InfiniBand），控制面保持常规以太网（详见 §5.2）；
+- **集群网络**：集群内运行 CNI Pod 网络，并通过 ClusterIP Service 与 CoreDNS 提供东西向服务发现；南北向流量经 Envoy Gateway + TLS 终结进入；NetworkPolicy 对控制面、数据面与租户命名空间做隔离；推理数据链路可选走 RDMA 网络（RoCE / InfiniBand），控制面保持常规以太网（详见 §5.2）；
 - **配额与准入控制**：平台不引入独立的配额微服务，准入控制落在流量所在的位置——按 API Key 的请求限流与按组织的服务配额（最大并发推理请求数、推理服务数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制。在上述约束内，管理员按**集群可用资源**创建推理服务，集群容量由 Kubernetes 调度器与节点资源自然约束；
 - **负载隔离**：推理工作负载与控制面工作负载通过 Namespace、节点标签与污点/容忍度隔离，可在同一集群内稳定共存。
 
@@ -553,13 +553,13 @@ sequenceDiagram
 | --- | --- | --- |
 | **Pod 网络（东西向）** | Pod 之间与 Pod 到 Service 的流量 | 由标准 CNI 插件提供扁平 Pod 网络与 IPAM；24 个微服务、Controller、两个 Gateway 与推理实例都运行在该网络之上 |
 | **服务发现** | 为 24 个微服务模块与 Controller 提供稳定寻址 | 按暴露单元（gRPC Server、两个 Gateway、消息队列、Redis、PostgreSQL）各建一个 ClusterIP Service，经 CoreDNS 解析；模块间为进程内调用，服务发现只用于工作负载之间 |
-| **南北向入口** | 集群外访问控制台与 API | 由 Ingress（未安装 Ingress Controller 时用 NodePort）终结 TLS，并把 `/`（普通用户控制台）、`/admin`（管理控制台）、`/v1/*`（推理 API）、`/api/v1/*` 路由到控制面 Gateway 或推理 Gateway |
+| **南北向入口** | 集群外访问控制台与 API | 由 Envoy Gateway 终结 TLS，并把 `/`（普通用户控制台）、`/admin`（管理控制台）、`/v1/*`（推理 API）、`/api/v1/*` 路由到控制面 Gateway 或推理 Gateway |
 | **隔离与策略** | 控制面、数据面与租户之间的爆炸半径收敛 | 命名空间隔离 + NetworkPolicy 只放行拓扑图中的流量（控制台 → Gateway、Gateway → gRPC Server/数据面、gRPC Server ↔ 消息队列、Controller → Kubernetes API、推理服务 → 权重存储）；`provider` 到外部大模型端点、`webhook` 到客户端的出向流量显式放行 |
 | **传输分层** | 将高带宽推理流量与管理流量分离 | 控制面使用常规以太网；推理数据链路（请求/响应、KV Cache 传输、多卡通信）可选走 RDMA 网络（RoCE / InfiniBand） |
 
 - **物理/逻辑分离**：推理的大流量与低时延诉求走 RDMA，控制面走常规网络，避免相互干扰；
 - **按需启用**：RDMA 是推理网络的增强能力，未部署 RDMA 时推理流量可回落至常规网络；
-- **故障收敛**：控制面 Gateway 与推理 Gateway 是相互独立的 Ingress 后端，拥有各自的 Service 与 Deployment，推理链路的网络或升级故障不会阻塞平台管理流量，反之亦然；
+- **故障收敛**：控制面 Gateway 与推理 Gateway 是相互独立的 Envoy Gateway 后端，拥有各自的 Service 与 Deployment，推理链路的网络或升级故障不会阻塞平台管理流量，反之亦然；
 - **出向访问**：只有 `provider`（外部大模型提供方，只做 connect 式五态探测）、`webhook`（客户 HTTPS 端点）与 `model`（模型仓库下载）需要访问集群外网络，其余组件全部停留在集群网络内部。
 
 ---
@@ -576,7 +576,7 @@ sequenceDiagram
 | Kubernetes | Controller | 推理负载、镜像预热、加速器快照与资源指标采样的创建与调谐 |
 | Kafka / NATS | 微服务 gRPC server · Controller | gRPC server 与 Controller 之间的消息传递（部署、镜像预热、运行时形态、加速器/集群快照、计量事件） |
 | Envoy | 推理 Gateway（数据面） | 推理请求的鉴权、计量与代理转发 |
-| Ingress Controller / CNI / CoreDNS | 集群内全部工作负载 | 南北向入口与 TLS 终结、Pod 网络与服务发现（见 §5.2） |
+| Envoy Gateway / CNI / CoreDNS | 集群内全部工作负载 | 南北向入口与 TLS 终结、Pod 网络与服务发现（见 §5.2） |
 | 镜像仓库（Harbor） | image | 推理引擎镜像导入的源与目标仓库 |
 | 外部大模型提供方（DeepSeek / OpenAI 兼容） | provider · infer | 已发布外部模型的上游推理端点；连通性以五态结果探测 |
 | 外部身份提供方（LDAP / OIDC / SAML / 微信） | auth | 第三方 SSO 联邦登录与用户属性来源 |
