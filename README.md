@@ -27,6 +27,7 @@
 - [Roadmap](#roadmap)
 - [Contributing](#contributing)
 - [Community](#community)
+- [Acknowledgements](#acknowledgements)
 - [License](#license)
 
 ## Features
@@ -428,6 +429,16 @@ Contributions of all kinds are welcome — code, documentation, bug reports, and
 
 - [GitHub Issues](https://github.com/go-taas/go-taas/issues) — bug reports and feature requests
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) — questions and open discussion
+
+## Acknowledgements
+
+Go TaaS stands on the shoulders of the open-source community. We gratefully
+acknowledge:
+
+- [Kubernetes](https://kubernetes.io) — the container-orchestration foundation the whole platform runs on
+- [AIBrix](https://github.com/vllm-project/aibrix) — serving runtime and autoscaling building blocks integrated by the platform (ModelClaim, PodAutoscaler)
+- [Volcano](https://github.com/volcano-sh/volcano) — batch/gang scheduling reference for heterogeneous cluster workloads
+- [HAMi](https://github.com/Project-HAMi/HAMi) — heterogeneous GPU sharing & virtualization inspiration for the accelerator tier
 
 ## License
 

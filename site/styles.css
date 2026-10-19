@@ -429,6 +429,10 @@ img { max-width: 100%; }
 
 .footer-copy { margin-left: auto; color: var(--ink-400); font-size: 13.5px; }
 
+.footer-ack { margin-top: 18px; color: var(--ink-400); font-size: 13.5px; }
+.footer-ack a { color: var(--ink-500); }
+.footer-ack a:hover { color: var(--teal-600); }
+
 /* ---------- responsive ---------- */
 @media (max-width: 960px) {
   .features-grid { grid-template-columns: repeat(2, 1fr); }

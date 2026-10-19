@@ -175,7 +175,8 @@
 
       "footer.arch": "Architecture",
       "footer.contributing": "Contributing",
-      "footer.made": "Built with Go and Kubernetes"
+      "footer.made": "Built with Go and Kubernetes",
+      "footer.ack": "Standing on the shoulders of the <a href='https://kubernetes.io' target='_blank' rel='noopener'>Kubernetes</a>, <a href='https://github.com/vllm-project/aibrix' target='_blank' rel='noopener'>AIBrix</a>, <a href='https://github.com/volcano-sh/volcano' target='_blank' rel='noopener'>Volcano</a>, and <a href='https://github.com/Project-HAMi/HAMi' target='_blank' rel='noopener'>HAMi</a> communities."
     },
 
     "zh-CN": {
@@ -349,7 +350,8 @@
 
       "footer.arch": "架构设计",
       "footer.contributing": "参与贡献",
-      "footer.made": "基于 Go 与 Kubernetes 构建"
+      "footer.made": "基于 Go 与 Kubernetes 构建",
+      "footer.ack": "站在 <a href='https://kubernetes.io' target='_blank' rel='noopener'>Kubernetes</a>、<a href='https://github.com/vllm-project/aibrix' target='_blank' rel='noopener'>AIBrix</a>、<a href='https://github.com/volcano-sh/volcano' target='_blank' rel='noopener'>Volcano</a>、<a href='https://github.com/Project-HAMi/HAMi' target='_blank' rel='noopener'>HAMi</a> 社区的肩膀上。"
     }
   };
 

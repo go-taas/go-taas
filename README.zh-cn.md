@@ -27,6 +27,7 @@
 - [路线图](#路线图)
 - [参与贡献](#参与贡献)
 - [社区](#社区)
+- [致谢](#致谢)
 - [许可证](#许可证)
 
 ## 特性
@@ -414,6 +415,15 @@ curl https://<your-taas-host>/v1/chat/completions \
 
 - [GitHub Issues](https://github.com/go-taas/go-taas/issues) —— 缺陷报告与功能请求
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) —— 问题与开放讨论
+
+## 致谢
+
+Go TaaS 站在开源社区的肩膀上。感谢以下上游社区：
+
+- [Kubernetes](https://kubernetes.io) —— 整个平台运行的容器编排基座
+- [AIBrix](https://github.com/vllm-project/aibrix) —— 平台对接的推理服务运行时与弹性伸缩组件（ModelClaim、PodAutoscaler）
+- [Volcano](https://github.com/volcano-sh/volcano) —— 面向异构集群的批量/gang 调度实践参考
+- [HAMi](https://github.com/Project-HAMi/HAMi) —— 异构 GPU 共享与虚拟化思路参考
 
 ## 许可证
 
