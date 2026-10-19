@@ -1,3 +1,10 @@
+## [1.57.2](https://github.com/go-taas/go-taas/compare/v1.57.1...v1.57.2) (2026-10-19)
+
+
+### Bug Fixes
+
+* **site:** fit diagrams to the page and let readers zoom them ([384a649](https://github.com/go-taas/go-taas/commit/384a64994d07ac2f15e73ae309d285ce3b4e48c3))
+
 ## [1.57.1](https://github.com/go-taas/go-taas/compare/v1.57.0...v1.57.1) (2026-10-16)
 
 
