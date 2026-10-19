@@ -1,3 +1,10 @@
+# [1.58.0](https://github.com/go-taas/go-taas/compare/v1.57.2...v1.58.0) (2026-10-19)
+
+
+### Features
+
+* **vgpu:** HAMI-based vGPU slicing pool (row 52) ([f174584](https://github.com/go-taas/go-taas/commit/f17458492944c9b7deb64f2fa30e23eef9db181b))
+
 ## [1.57.2](https://github.com/go-taas/go-taas/compare/v1.57.1...v1.57.2) (2026-10-19)
 
 
