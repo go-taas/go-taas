@@ -429,9 +429,12 @@ img { max-width: 100%; }
 
 .footer-copy { margin-left: auto; color: var(--ink-400); font-size: 13.5px; }
 
-.footer-ack { margin-top: 18px; color: var(--ink-400); font-size: 13.5px; }
-.footer-ack a { color: var(--ink-500); }
-.footer-ack a:hover { color: var(--teal-600); }
+.built-section { padding: 40px 0 64px; }
+.built-inner { text-align: center; }
+.built-line { margin: 0 0 10px; color: var(--ink-600); font-size: 15px; font-weight: 600; }
+.built-ack { margin: 0; color: var(--ink-400); font-size: 13.5px; }
+.built-ack a { color: var(--ink-500); }
+.built-ack a:hover { color: var(--teal-600); }
 
 /* ---------- responsive ---------- */
 @media (max-width: 960px) {
