@@ -20,6 +20,7 @@ import {
   usePolling,
 } from '../components';
 import { useI18n } from '../i18n';
+import ServiceStatusBanner from '../components/ServiceStatusBanner';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -108,6 +109,7 @@ export default function InferenceServicesPage() {
                 >
                   <td>
                     <strong>{s.name}</strong>
+                    <ServiceStatusBanner serviceId={s.serviceId} />
                   </td>
                   <td className="mono muted">
                     {s.modelId.slice(0, 8)}… @ {s.modelVersion}

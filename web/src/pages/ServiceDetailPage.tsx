@@ -21,6 +21,7 @@ import {
 } from '../components';
 import { useI18n } from '../i18n';
 import { navigate } from '../router';
+import ServiceStatusBanner from '../components/ServiceStatusBanner';
 
 interface ServiceResponse {
   response: { code: number; message: string };
@@ -82,6 +83,7 @@ export default function ServiceDetailPage() {
   return (
     <div>
       <BackLink to="/admin/inference-services" label={t('service.back')} />
+      <ServiceStatusBanner serviceId={s.serviceId} />
       <div className="page-header">
         <div>
           <h1 data-testid="service-detail-name">{s.name}</h1>

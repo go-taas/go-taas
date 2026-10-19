@@ -1668,3 +1668,70 @@ export interface ListTenantVGPUPoolsResponse {
   response: ResponseEnvelope;
   pools: TenantVGPUPool[];
 }
+
+// ---- Fault diagnosis & auto recovery (feature #53) ----
+
+export interface Incident {
+  incidentId: string;
+  severity: string;
+  status: string;
+  rootCause: string;
+  targetType: string;
+  targetName: string;
+  startedAt: string;
+  resolvedAt: string;
+  autoRecovered: boolean;
+}
+
+export interface IncidentStep {
+  stepType: string;
+  actor: string;
+  detail: string;
+  createdAt: string;
+}
+
+export interface RecoveryAction {
+  action: string;
+  status: string;
+  actor: string;
+  createdAt: string;
+}
+
+export interface AutoRecoveryPolicy {
+  autoRestart: Record<string, boolean>;
+  autoReschedule: Record<string, boolean>;
+  drainAlwaysConfirm: boolean;
+}
+
+export interface ServiceIncident {
+  incidentId: string;
+  severity: string;
+  status: string;
+  rootCause: string;
+  message: string;
+}
+
+export interface ServiceStatus {
+  response: ResponseEnvelope;
+  state: string;
+  degraded: boolean;
+  incident?: ServiceIncident;
+}
+
+export interface ListIncidentsResponse {
+  response: ResponseEnvelope;
+  incidents: Incident[];
+  pageMeta?: PageMeta;
+}
+
+export interface GetIncidentResponse {
+  response: ResponseEnvelope;
+  incident: Incident;
+  steps: IncidentStep[];
+  actions: RecoveryAction[];
+}
+
+export interface GetAutoRecoveryPolicyResponse {
+  response: ResponseEnvelope;
+  policy: AutoRecoveryPolicy;
+}
