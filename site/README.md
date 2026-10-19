@@ -49,8 +49,11 @@ block on the `file:` scheme.
   scope and heading text; `/` focuses the search box, and the sidebar filters as
   you type.
 - **Reading** — rendered Markdown, syntax-highlighted code with copy buttons,
-  Mermaid diagrams (with a fullscreen view), the document's own metadata card,
-  an in-page table of contents with scroll tracking and a reading-progress bar.
+  Mermaid diagrams that start fitted to the reading column (so a wide diagram
+  never dominates the article) and can be zoomed and panned freely — toolbar
+  buttons, Ctrl/⌘ + wheel, pinch, drag, `+` / `−` / `0`, double-click, and a
+  fullscreen view — plus the document's own metadata card, an in-page table of
+  contents with scroll tracking and a reading-progress bar.
 - **Language** — the header toggle switches the whole UI; each document also has
   a button that pins *that document* to the other language, and cross-references
   between the two sets navigate to the matching variant.
@@ -66,6 +69,25 @@ Mermaid; Mermaid loads only for documents that contain a diagram), so the site
 has no runtime CDN dependency and works offline. See
 [`vendor/README.md`](./vendor/README.md) for the pinned versions and how to
 refresh them.
+
+### Diagram sizing and zoom
+
+Mermaid renders at its natural size, which for the architecture diagrams is
+several thousand pixels wide. Each diagram is therefore shown inside a bounded
+viewport that:
+
+- **starts fitted to the reading column** (never enlarged past 100%), so it
+  occupies a sensible amount of the page and the article stays readable;
+- **zooms freely** from 5% to 800% — toolbar `−` / percentage / `+`, **Fit width**
+  and **Actual size**, Ctrl/⌘ + wheel around the pointer, trackpad pinch, and
+  `+` / `−` / `0` when the diagram has focus;
+- **pans** by dragging, with the wheel scrolling the page as usual unless Ctrl/⌘
+  is held;
+- **re-fits on resize** only while the reader has not zoomed manually;
+- opens in a **fullscreen** overlay that fits the viewport and carries the same
+  controls (`Esc`, the close button, or a click on the backdrop closes it).
+
+If Mermaid cannot be loaded, the diagram falls back to its highlighted source.
 
 ### Regenerating the document index
 

@@ -493,7 +493,7 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px 7px 14px;
+  padding: 6px 8px 6px 14px;
   border-bottom: 1px solid var(--line);
   background: var(--teal-50);
   font-size: 11.5px;
@@ -501,31 +501,58 @@
   letter-spacing: 0.06em;
   color: var(--teal-600);
 }
-.docs-diagram-kind { text-transform: uppercase; }
+.docs-diagram-kind { text-transform: uppercase; flex: none; }
 
-.docs-diagram-max {
-  margin-left: auto;
+.docs-diagram-tools { margin-left: auto; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.docs-diagram-btn {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
+  gap: 5px;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
   border: 1px solid var(--teal-100);
   background: var(--surface);
   color: var(--teal-600);
-  border-radius: 999px;
-  padding: 3px 10px;
+  border-radius: 7px;
   font: inherit;
-  font-size: 11.5px;
+  font-size: 12.5px;
   font-weight: 600;
   letter-spacing: 0;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: background 0.14s, border-color 0.14s, color 0.14s;
 }
-.docs-diagram-max:hover { background: var(--teal-100); border-color: #7fb6b9; }
+.docs-diagram-btn:hover:not([disabled]) { background: var(--teal-100); border-color: #7fb6b9; }
+.docs-diagram-btn[disabled] { opacity: 0.4; cursor: default; }
+.docs-diagram-btn.is-active { background: var(--teal-600); border-color: var(--teal-700); color: #fff; }
+.docs-diagram-level {
+  min-width: 56px;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+.docs-diagram-divider { width: 1px; height: 16px; background: var(--teal-100); margin: 0 2px; }
 
-.docs-diagram-body { padding: 18px 14px; overflow-x: auto; text-align: center; }
-.docs-diagram-body svg { max-width: none; height: auto; }
-.docs-diagram--scroll .docs-diagram-body { max-height: 78vh; overscroll-behavior: contain; }
-.docs-diagram[data-failed="true"] .docs-diagram-body { text-align: left; }
+/* The body is the pan/zoom viewport: it clips (and scrolls) the diagram instead
+   of letting a wide diagram stretch the article. */
+.docs-diagram-body {
+  position: relative;
+  display: flex;
+  max-height: 64vh;
+  padding: 16px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  cursor: grab;
+  touch-action: pan-x pan-y;
+  scrollbar-width: thin;
+}
+.docs-diagram-body.is-panning { cursor: grabbing; }
+.docs-diagram-body:focus-visible { outline: 2px solid var(--teal-600); outline-offset: -2px; }
+.docs-diagram-zoom { margin: auto; transform-origin: top left; flex: none; }
+.docs-diagram-body svg { display: block; max-width: none; height: auto; }
+
+.docs-diagram[data-failed="true"] .docs-diagram-body { align-items: flex-start; cursor: default; max-height: none; }
+.docs-diagram[data-failed="true"] .docs-diagram-body > pre { flex: 1; min-width: 0; }
 .docs-diagram-note {
   margin: 0;
   padding: 8px 14px 10px;
@@ -547,48 +574,31 @@
 .docs-lightbox-panel {
   margin: auto;
   width: 100%;
-  max-width: 1600px;
-  max-height: 94vh;
+  max-width: 1680px;
+  height: 94vh;
   display: flex;
-  flex-direction: column;
   background: var(--surface);
   border-radius: 14px;
   overflow: hidden;
   box-shadow: 0 24px 60px rgba(11, 56, 61, 0.35);
 }
-.docs-lightbox-bar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--teal-50);
-  border-bottom: 1px solid var(--line);
-  font-family: var(--mono);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--teal-600);
-  font-weight: 700;
-}
+.docs-diagram--lightbox { display: flex; flex-direction: column; width: 100%; margin: 0; border: 0; border-radius: 0; }
+.docs-diagram--lightbox .docs-diagram-bar { padding-right: 6px; }
+.docs-diagram-body--lightbox { flex: 1; max-height: none; background: #fbfdfd; }
 .docs-lightbox-close {
-  margin-left: auto;
+  flex: none;
+  width: 30px;
+  height: 30px;
   border: 0;
   background: transparent;
   color: var(--ink-500);
   font-size: 22px;
   line-height: 1;
-  padding: 0 6px;
+  padding: 0;
   cursor: pointer;
+  border-radius: 7px;
 }
-.docs-lightbox-close:hover { color: var(--coral-500); }
-.docs-lightbox-stage {
-  flex: 1;
-  overflow: auto;
-  padding: 22px;
-  text-align: center;
-  background: #fbfdfd;
-}
-.docs-lightbox-stage svg { max-width: none; height: auto; }
+.docs-lightbox-close:hover { color: var(--coral-500); background: rgba(240, 100, 69, 0.1); }
 
 /* ---------- pager ---------- */
 .docs-pager { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 44px; }
@@ -743,6 +753,11 @@
   .docs-pager { grid-template-columns: 1fr; }
   .docs-body { font-size: 15px; }
   .docs-anchor { display: none; }
+  /* The toolbar keeps the icons and the level readout; the text labels would
+     crowd out the diagram itself. */
+  .docs-diagram-tools .docs-diagram-btn span { display: none; }
+  .docs-diagram-tools .docs-diagram-btn { padding: 0 7px; }
+  .docs-diagram-body { padding: 10px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -755,4 +770,6 @@
   .docs-main { display: block; padding: 0; }
   .docs-article { border: 0; box-shadow: none; padding: 0; }
   .docs-code { break-inside: avoid; }
+  .docs-diagram-tools { display: none !important; }
+  .docs-diagram-body { max-height: none; overflow: visible; }
 }

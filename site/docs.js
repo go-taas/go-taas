@@ -71,6 +71,7 @@
     anchor: null,
     tocLinks: new Map(),
     mermaid: null,
+    zoomControllers: new Set(),
     token: 0
   };
 
@@ -348,6 +349,7 @@
   }
 
   function hideArticle() {
+    disposeZoom();
     dom.body.hidden = true;
     dom.body.innerHTML = "";
     dom.head.hidden = true;
@@ -741,6 +743,13 @@
 
       var body = document.createElement("div");
       body.className = "docs-diagram-body";
+      body.tabIndex = 0;
+      body.setAttribute("role", "group");
+      body.setAttribute("aria-label", t("docs.diagramLabel"));
+      body.title = t("docs.zoomHint");
+      var canvas = document.createElement("div");
+      canvas.className = "docs-diagram-zoom";
+      body.appendChild(canvas);
       figure.appendChild(body);
 
       paragraph.parentNode.replaceChild(figure, paragraph);
@@ -753,8 +762,324 @@
     return match ? match[1] : "diagram";
   }
 
+  /** Builds the zoom toolbar shown in a diagram's title bar. */
+  function buildDiagramTools(withFullscreen) {
+    var tools = document.createElement("div");
+    tools.className = "docs-diagram-tools";
+
+    function button(action, label, text) {
+      var el = document.createElement("button");
+      el.type = "button";
+      el.className = "docs-diagram-btn";
+      el.dataset.act = action;
+      el.title = label;
+      el.setAttribute("aria-label", label);
+      if (text) el.textContent = text;
+      return el;
+    }
+
+    var out = button("out", t("docs.zoomOut"), "−");
+    var level = button("level", t("docs.zoomReset"), "100%");
+    level.classList.add("docs-diagram-level");
+    var inc = button("in", t("docs.zoomIn"), "+");
+
+    var divider = document.createElement("span");
+    divider.className = "docs-diagram-divider";
+    divider.setAttribute("aria-hidden", "true");
+
+    var fit = button("fit", t("docs.zoomFit"));
+    fit.innerHTML = ICONS.fit + "<span>" + t("docs.zoomFit") + "</span>";
+
+    var actual = button("actual", t("docs.zoomActual"));
+    actual.innerHTML = ICONS.actual + "<span>" + t("docs.zoomActual") + "</span>";
+
+    [out, level, inc, divider, fit, actual].forEach(function (el) {
+      tools.appendChild(el);
+    });
+
+    var full = null;
+    if (withFullscreen) {
+      full = button("fullscreen", t("docs.fullscreen"));
+      full.innerHTML = ICONS.expand + "<span>" + t("docs.fullscreen") + "</span>";
+      tools.appendChild(full);
+    }
+
+    return { el: tools, level: level, out: out, inc: inc, fit: fit, actual: actual, full: full };
+  }
+
+  var ICONS = {
+    fit:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+      'stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg>',
+    actual:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+      'stroke-linecap="round" aria-hidden="true"><path d="M3 8h18M3 16h18"/><path d="M8 4v16M16 4v16" opacity=".5"/></svg>',
+    expand:
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" ' +
+      'stroke-linecap="round" aria-hidden="true"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>'
+  };
+
+  /** Natural (unscaled) size of a rendered Mermaid SVG. */
+  function naturalSize(svg) {
+    var box = svg.getAttribute("viewBox");
+    if (box) {
+      var parts = box.split(/[\s,]+/).map(parseFloat);
+      if (parts.length === 4 && parts[2] > 0 && parts[3] > 0) return { w: parts[2], h: parts[3] };
+    }
+    var width = parseFloat(svg.getAttribute("width"));
+    var height = parseFloat(svg.getAttribute("height"));
+    if (width > 0 && height > 0) return { w: width, h: height };
+    var rect = svg.getBoundingClientRect();
+    return { w: rect.width || 800, h: rect.height || 600 };
+  }
+
+  /**
+   * Makes a diagram zoomable: it starts fitted to its container (so a wide
+   * diagram never dominates the article), and the reader can zoom and pan it
+   * with the toolbar, Ctrl/⌘ + wheel, a pinch, or the keyboard.
+   */
+  function attachZoom(figure, options) {
+    options = options || {};
+    var viewport = figure.querySelector(".docs-diagram-body");
+    var canvas = figure.querySelector(".docs-diagram-zoom");
+    var svg = canvas && canvas.querySelector("svg");
+    if (!viewport || !svg) return null;
+
+    var natural = naturalSize(svg);
+    svg.style.maxWidth = "none";
+    svg.style.width = natural.w + "px";
+    svg.style.height = natural.h + "px";
+    svg.style.transformOrigin = "top left";
+    svg.style.display = "block";
+
+    var tools = options.tools;
+    var mode = options.fit || "width";
+    var state = { scale: 1, fitted: true };
+    var MIN = 0.05;
+    var MAX = 8;
+    var STEP = 1.25;
+
+    function padding() {
+      var cs = getComputedStyle(viewport);
+      return {
+        left: parseFloat(cs.paddingLeft) || 0,
+        top: parseFloat(cs.paddingTop) || 0,
+        right: parseFloat(cs.paddingRight) || 0,
+        bottom: parseFloat(cs.paddingBottom) || 0
+      };
+    }
+
+    function fitScale() {
+      var pad = padding();
+      var width = Math.max(viewport.clientWidth - pad.left - pad.right, 80);
+      var scale = width / natural.w;
+      if (mode === "contain") {
+        var height = Math.max(viewport.clientHeight - pad.top - pad.bottom, 80);
+        scale = Math.min(scale, height / natural.h);
+      }
+      // Never blow a small diagram up past its natural size.
+      return clamp(Math.min(scale, 1));
+    }
+
+    function clamp(scale) {
+      return Math.min(Math.max(scale, MIN), MAX);
+    }
+
+    function apply() {
+      canvas.style.width = Math.round(natural.w * state.scale) + "px";
+      canvas.style.height = Math.round(natural.h * state.scale) + "px";
+      svg.style.transform = "scale(" + state.scale + ")";
+      if (tools) {
+        tools.level.textContent = Math.round(state.scale * 100) + "%";
+        tools.out.disabled = state.scale <= MIN + 1e-6;
+        tools.inc.disabled = state.scale >= MAX - 1e-6;
+        tools.fit.classList.toggle("is-active", state.fitted);
+        tools.actual.classList.toggle("is-active", !state.fitted && Math.abs(state.scale - 1) < 1e-6);
+      }
+    }
+
+    /** Rescales while keeping the content under (ax, ay) in place. */
+    function zoomTo(scale, ax, ay) {
+      var next = clamp(scale);
+      if (Math.abs(next - state.scale) < 1e-4) return;
+      var pad = padding();
+      var anchorX = ax === undefined ? viewport.clientWidth / 2 : ax;
+      var anchorY = ay === undefined ? viewport.clientHeight / 2 : ay;
+      var contentX = (viewport.scrollLeft + anchorX - pad.left) / state.scale;
+      var contentY = (viewport.scrollTop + anchorY - pad.top) / state.scale;
+
+      state.scale = next;
+      state.fitted = false;
+      apply();
+      viewport.scrollLeft = pad.left + contentX * next - anchorX;
+      viewport.scrollTop = pad.top + contentY * next - anchorY;
+    }
+
+    function fit() {
+      state.scale = fitScale();
+      state.fitted = true;
+      apply();
+      viewport.scrollLeft = 0;
+      viewport.scrollTop = 0;
+    }
+
+    function actualSize() {
+      state.fitted = false;
+      zoomTo(1, viewport.clientWidth / 2, viewport.clientHeight / 2);
+    }
+
+    function step(direction, ax, ay) {
+      zoomTo(state.scale * (direction > 0 ? STEP : 1 / STEP), ax, ay);
+    }
+
+    /* ---- toolbar ---- */
+    if (tools) {
+      tools.out.addEventListener("click", function () {
+        step(-1);
+      });
+      tools.inc.addEventListener("click", function () {
+        step(1);
+      });
+      tools.fit.addEventListener("click", fit);
+      tools.level.addEventListener("click", fit);
+      tools.actual.addEventListener("click", actualSize);
+    }
+
+    /* ---- wheel: Ctrl/⌘ + wheel zooms around the pointer ---- */
+    viewport.addEventListener(
+      "wheel",
+      function (event) {
+        if (!event.ctrlKey && !event.metaKey) return; // plain wheel keeps scrolling the page
+        event.preventDefault();
+        var rect = viewport.getBoundingClientRect();
+        step(event.deltaY < 0 ? 1 : -1, event.clientX - rect.left, event.clientY - rect.top);
+      },
+      { passive: false }
+    );
+
+    /* ---- drag to pan, pinch to zoom ---- */
+    var pointers = new Map();
+    var panning = false;
+    var lastX = 0;
+    var lastY = 0;
+    var pinchDistance = 0;
+
+    function pointerList() {
+      return Array.prototype.slice.call(pointers.values());
+    }
+
+    function distance() {
+      var list = pointerList();
+      var dx = list[0].x - list[1].x;
+      var dy = list[0].y - list[1].y;
+      return Math.sqrt(dx * dx + dy * dy);
+    }
+
+    viewport.addEventListener("pointerdown", function (event) {
+      if (event.button !== 0) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+      if (pointers.size === 1) {
+        panning = true;
+        lastX = event.clientX;
+        lastY = event.clientY;
+        viewport.classList.add("is-panning");
+        viewport.setPointerCapture(event.pointerId);
+      } else if (pointers.size === 2) {
+        pinchDistance = distance();
+      }
+    });
+
+    viewport.addEventListener("pointermove", function (event) {
+      if (!pointers.has(event.pointerId)) return;
+      pointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+
+      if (pointers.size >= 2) {
+        var next = distance();
+        if (pinchDistance > 0 && next > 0) {
+          var list = pointerList();
+          var rect = viewport.getBoundingClientRect();
+          var midX = (list[0].x + list[1].x) / 2 - rect.left;
+          var midY = (list[0].y + list[1].y) / 2 - rect.top;
+          zoomTo(state.scale * (next / pinchDistance), midX, midY);
+        }
+        pinchDistance = next;
+        return;
+      }
+
+      if (!panning) return;
+      viewport.scrollLeft -= event.clientX - lastX;
+      viewport.scrollTop -= event.clientY - lastY;
+      lastX = event.clientX;
+      lastY = event.clientY;
+    });
+
+    function releasePointer(event) {
+      pointers.delete(event.pointerId);
+      if (pointers.size < 2) pinchDistance = 0;
+      if (pointers.size === 0) {
+        panning = false;
+        viewport.classList.remove("is-panning");
+      }
+    }
+    viewport.addEventListener("pointerup", releasePointer);
+    viewport.addEventListener("pointercancel", releasePointer);
+
+    /* ---- keyboard: + / - / 0 while the diagram has focus ---- */
+    viewport.addEventListener("keydown", function (event) {
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault();
+        step(1);
+      } else if (event.key === "-" || event.key === "_") {
+        event.preventDefault();
+        step(-1);
+      } else if (event.key === "0") {
+        event.preventDefault();
+        fit();
+      }
+    });
+
+    viewport.addEventListener("dblclick", function () {
+      if (state.fitted || Math.abs(state.scale - 1) > 1e-6) actualSize();
+      else fit();
+    });
+
+    var onResize = function () {
+      if (state.fitted) fit();
+    };
+    global.addEventListener("resize", onResize);
+
+    fit();
+
+    var controller = {
+      fit: fit,
+      actualSize: actualSize,
+      zoomTo: zoomTo,
+      step: step,
+      scale: function () {
+        return state.scale;
+      },
+      destroy: function () {
+        global.removeEventListener("resize", onResize);
+      }
+    };
+    return controller;
+  }
+
+  /** Keeps track of the live zoom controllers so re-renders can dispose them. */
+  function trackZoom(controller) {
+    if (controller) state.zoomControllers.add(controller);
+  }
+
+  function disposeZoom() {
+    state.zoomControllers.forEach(function (controller) {
+      controller.destroy();
+    });
+    state.zoomControllers.clear();
+  }
+
   /** Renders every diagram in the current article, loading Mermaid lazily. */
   async function drawDiagrams() {
+    disposeZoom();
     var figures = Array.prototype.slice.call(dom.body.querySelectorAll(".docs-diagram"));
     if (figures.length === 0) return;
 
@@ -774,48 +1099,26 @@
       var source = figure.dataset.raw || "";
       try {
         var result = await mermaid.render("go-taas-diagram-" + figure.dataset.index + "-" + i, source);
-        figure.querySelector(".docs-diagram-body").innerHTML = result.svg;
-        capDiagramHeight(figure);
-        addDiagramActions(figure);
+        var canvas = figure.querySelector(".docs-diagram-zoom");
+        canvas.innerHTML = result.svg;
+
+        var tools = buildDiagramTools(true);
+        tools.full.addEventListener("click", (function (target) {
+          return function () {
+            openLightbox(target);
+          };
+        })(figure));
+        figure.querySelector(".docs-diagram-bar").appendChild(tools.el);
+
+        trackZoom(attachZoom(figure, { tools: tools, fit: "width" }));
       } catch (error) {
         showDiagramSource(figure, source);
       }
     }
   }
 
-  /**
-   * Diagrams wider or taller than the reading column keep their natural size and
-   * scroll, so labels stay legible; only very tall ones are height-capped to
-   * keep the article navigable.
-   */
-  function capDiagramHeight(figure) {
-    var svg = figure.querySelector(".docs-diagram-body svg");
-    if (!svg) return;
-    if (svg.getBoundingClientRect().height > global.innerHeight * 1.6) {
-      figure.classList.add("docs-diagram--scroll");
-    }
-  }
-
-  /** Adds the fullscreen affordance to a successfully rendered diagram. */
-  function addDiagramActions(figure) {
-    var bar = figure.querySelector(".docs-diagram-bar");
-    var button = document.createElement("button");
-    button.type = "button";
-    button.className = "docs-diagram-max";
-    button.title = t("docs.fullscreen");
-    button.setAttribute("aria-label", t("docs.fullscreen"));
-    button.innerHTML =
-      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.9" ' +
-      'stroke-linecap="round" aria-hidden="true"><path d="M4 9V4h5M20 15v5h-5M15 4h5v5M9 20H4v-5"/></svg>' +
-      "<span>" + t("docs.fullscreen") + "</span>";
-    button.addEventListener("click", function () {
-      openLightbox(figure);
-    });
-    bar.appendChild(button);
-  }
-
-  /** Shows one diagram at full size in an overlay. */
-  function openLightbox(figure) {
+  /** Shows one diagram at full size in an overlay, with the same zoom controls. */
+  function openLightbox(sourceFigure) {
     var overlay = document.createElement("div");
     overlay.className = "docs-lightbox";
     overlay.setAttribute("role", "dialog");
@@ -824,29 +1127,50 @@
     var panel = document.createElement("div");
     panel.className = "docs-lightbox-panel";
 
+    var figure = document.createElement("figure");
+    figure.className = "docs-diagram docs-diagram--lightbox";
+
     var bar = document.createElement("div");
-    bar.className = "docs-lightbox-bar";
+    bar.className = "docs-diagram-bar";
     var label = document.createElement("span");
-    label.textContent = figure.querySelector(".docs-diagram-kind").textContent;
+    label.className = "docs-diagram-kind";
+    label.textContent = sourceFigure.querySelector(".docs-diagram-kind").textContent;
     bar.appendChild(label);
+
+    var tools = buildDiagramTools(false);
+    bar.appendChild(tools.el);
 
     var close = document.createElement("button");
     close.type = "button";
     close.className = "docs-lightbox-close";
     close.setAttribute("aria-label", t("docs.closeMenu"));
+    close.title = t("docs.closeMenu");
     close.textContent = "×";
     bar.appendChild(close);
-    panel.appendChild(bar);
+    figure.appendChild(bar);
 
-    var stage = document.createElement("div");
-    stage.className = "docs-lightbox-stage";
-    var svg = figure.querySelector(".docs-diagram-body svg");
-    if (svg) stage.appendChild(svg.cloneNode(true));
-    panel.appendChild(stage);
+    var viewport = document.createElement("div");
+    viewport.className = "docs-diagram-body docs-diagram-body--lightbox";
+    viewport.tabIndex = 0;
+    viewport.setAttribute("role", "group");
+    viewport.setAttribute("aria-label", t("docs.diagramLabel"));
+    viewport.title = t("docs.zoomHint");
+    var canvas = document.createElement("div");
+    canvas.className = "docs-diagram-zoom";
+    var sourceSvg = sourceFigure.querySelector(".docs-diagram-zoom svg");
+    if (sourceSvg) canvas.appendChild(sourceSvg.cloneNode(true));
+    viewport.appendChild(canvas);
+    figure.appendChild(viewport);
+
+    panel.appendChild(figure);
     overlay.appendChild(panel);
     document.body.appendChild(overlay);
 
+    var controller = attachZoom(figure, { tools: tools, fit: "contain" });
+    viewport.focus();
+
     function dismiss() {
+      if (controller) controller.destroy();
       overlay.remove();
       document.removeEventListener("keydown", onKey);
       document.body.style.removeProperty("overflow");
@@ -860,13 +1184,6 @@
     });
     document.addEventListener("keydown", onKey);
     document.body.style.overflow = "hidden";
-    close.focus();
-    // Diagrams are usually wider than the viewport: start centered on the top
-    // edge instead of the top-left corner. The clone needs one layout pass
-    // before it can be scrolled, so this runs on the next frame.
-    global.requestAnimationFrame(function () {
-      stage.scrollLeft = Math.max((stage.scrollWidth - stage.clientWidth) / 2, 0);
-    });
   }
 
   function showDiagramSource(figure, source) {
