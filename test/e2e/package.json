@@ -50,7 +50,8 @@
     "test:external-model-providers": "nightwatch --tag external-model-providers",
     "test:intelligent-model-routing": "nightwatch --tag intelligent-model-routing",
     "test:cost-optimization-recommendations": "nightwatch --tag cost-optimization-recommendations",
-    "test:service-quota-management": "nightwatch --tag service-quota-management"
+    "test:service-quota-management": "nightwatch --tag service-quota-management",
+    "test:vgpu-slicing-pool": "nightwatch --tag vgpu-slicing-pool"
   },
   "license": "Apache-2.0",
   "devDependencies": {
