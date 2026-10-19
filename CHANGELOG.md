@@ -1,3 +1,10 @@
+# [1.59.0](https://github.com/go-taas/go-taas/compare/v1.58.0...v1.59.0) (2026-10-19)
+
+
+### Features
+
+* **web:** vGPU slicing-pool admin pages and shared-GPU deploy ([76caf4e](https://github.com/go-taas/go-taas/commit/76caf4ee8ed39c6f46de3e05a633db9478ab7e7f))
+
 # [1.58.0](https://github.com/go-taas/go-taas/compare/v1.57.2...v1.58.0) (2026-10-19)
 
 
