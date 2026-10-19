@@ -319,9 +319,26 @@ On restricted networks, point the image build at local mirrors:
 make compose-up GOPROXY=https://goproxy.cn,direct NPM_REGISTRY=https://registry.npmmirror.com
 ```
 
-### Production Deployment (planned)
+### Production Deployment (Helm)
 
-One-command deployment based on Kubernetes + Helm, supporting separation of the platform and inference clusters; see the dedicated deployment repository.
+For dedicated Kubernetes environments, deploy the control plane with the self-hosted Helm chart at [deploy/helm/go-taas](./deploy/helm/go-taas) (see the chart's [README](./deploy/helm/go-taas/README.md), with a Chinese mirror at [README.zh-cn.md](./deploy/helm/go-taas/README.zh-cn.md), for the full values reference, external-dependency wiring, and production checklist):
+
+```bash
+helm install taas deploy/helm/go-taas --namespace taas --create-namespace
+kubectl --namespace taas port-forward svc/taas-server 9091:9091
+# console: http://127.0.0.1:9091/
+```
+
+PostgreSQL, Redis and NATS link to the control plane via configurable
+strategies (per dependency) — either as chart-managed internal instances, or
+via external services the chart wires the credentials against. Use the secret
+generator, `existingSecret`, or both. Local validation renders and lints the
+chart:
+
+```bash
+make helm-lint        # lint the chart (values schema included)
+make helm-template    # render all templates with default values
+```
 
 ## Usage
 
@@ -385,7 +402,7 @@ feature backlog).
 | Phase 2 | ✅ Shipped | Price matrix, balance/quota, tiered pricing, async settlement, usage/cost analytics, payments/invoices/auto-recharge, audit logging, RBAC, notifications. |
 | Phase 3 | ✅ Shipped | Accelerator inventory & health, multi-vendor engine and image adaptation, model × engine × card-type compatibility matrix. |
 | Phase 4 | ✅ Shipped | Autoscaling, routing policies, load testing, observability & tracing, webhooks, notification center, prompt library & evaluation, batch inference, multi-cluster management, API docs explorer, data export, distributed inference runtime (AIBrix), external model providers, intelligent model routing, cost optimization, service quota management. |
-| Next | 🚧 Planned | Helm one-click install, RDMA networking, community operations (no standalone console surface, tracked separately from the feature backlog). |
+| Next | 🚧 Planned | RDMA networking, community operations (Helm one-click install has shipped via `deploy/helm/go-taas`; community operations remain tracked separately outside the feature backlog). |
 
 ## Contributing
 

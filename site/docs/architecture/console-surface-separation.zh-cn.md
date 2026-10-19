@@ -741,7 +741,7 @@ sequenceDiagram
 2. 在任何「逐字段重建配置结构」的 getter 中显式拷贝该字段；
 3. 仅当 compose 栈需要非默认值时才在 `deploy/compose/docker-compose.yaml` 中映射，并用测试证明其生效。
 
-本仓**没有 helm chart**，因此无需更新任何 `deploy/` 清单（`deploy/` 只放 compose 栈），也不新增 `.env` 键。
+本仓的 Helm chart（`deploy/helm/go-taas`）无需为此特性做任何改动 —— chart 只通过 `CONFIG_*` 接线既有配置键，不新增可部署组件——也不新增 `.env` 键。
 
 ---
 

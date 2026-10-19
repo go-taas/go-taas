@@ -741,7 +741,10 @@ Should a follow-up row need a key (for example a flag to require admin sessions)
 2. copy it explicitly in any getter that rebuilds a config struct field by field;
 3. map it in `deploy/compose/docker-compose.yaml` only if the compose stack needs a non-default value, and prove it with a test.
 
-There is **no helm chart** in this repository, so no `deploy/` manifest needs updating (`deploy/` holds the compose stack only), and no `.env` key is added.
+The Helm chart (`deploy/helm/go-taas`) needs no changes for this feature —
+the chart exposes server configuration only through `CONFIG_*` wiring of
+existing config-file keys, and this feature adds no new deployable component
+— and no `.env` key is added.
 
 ---
 
