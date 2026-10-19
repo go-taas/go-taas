@@ -13,7 +13,9 @@ import {
   ApiError,
   type AutoscalingPolicy,
   type GetAutoscalingPolicyResponse,
+  type ListTenantVGPUPoolsResponse,
   type ModelSummary,
+  type TenantVGPUPool,
 } from '../api';
 import { Dialog, ErrorBanner } from '../components';
 
@@ -79,6 +81,30 @@ export default function DeployDialog({
     cooldownSeconds: 300,
   });
   const [autoscalingErrors, setAutoscalingErrors] = useState<Record<string, string>>({});
+  // Feature #52 (AD2): the Shared GPU mode. When enabled, the deploy
+  // requests a vGPU slice instead of a whole card.
+  const [sharedGpu, setSharedGpu] = useState(false);
+  const [pools, setPools] = useState<TenantVGPUPool[]>([]);
+  const [poolId, setPoolId] = useState('');
+  const [sliceTemplateId, setSliceTemplateId] = useState('');
+  const [sliceError, setSliceError] = useState('');
+
+  useEffect(() => {
+    // Feature #52 (AD10): the grant-filtered pool list for the deploy
+    // form (user surface).
+    api
+      .get<ListTenantVGPUPoolsResponse>('/api/v1/vgpu-pools', orgId)
+      .then((data) => setPools(data.pools || []))
+      .catch(() => setPools([]));
+  }, [orgId]);
+
+  const selectedPool = pools.find((p) => p.poolId === poolId);
+
+  useEffect(() => {
+    if (selectedPool && !selectedPool.templates.some((t) => t.name === sliceTemplateId)) {
+      setSliceTemplateId(selectedPool.templates[0]?.name || '');
+    }
+  }, [selectedPool, sliceTemplateId]);
 
   useEffect(() => {
     // Load the global default policy to pre-fill the autoscaling section.
@@ -154,6 +180,14 @@ export default function DeployDialog({
       setError('Choose an image compatible with the accelerator.');
       return;
     }
+    // Feature #52 (AD2): validate the Shared GPU selection.
+    if (sharedGpu) {
+      if (!poolId || !sliceTemplateId) {
+        setSliceError('Choose a vGPU pool and a slice template.');
+        return;
+      }
+      setSliceError('');
+    }
     // Feature #16 FR1.3: validate the autoscaling section inline.
     const asErrs = validateAutoscaling(autoscaling);
     setAutoscalingErrors(asErrs);
@@ -173,6 +207,7 @@ export default function DeployDialog({
         acceleratorType: acceleratorType.trim(),
         replicas: String(r),
         autoscaling,
+        ...(sharedGpu ? { poolId, sliceTemplateId } : {}),
       });
       onDeployed(res.serviceId);
     } catch (e) {
@@ -287,6 +322,68 @@ export default function DeployDialog({
             onChange={(e) => setReplicas(e.target.value)}
           />
         </div>
+      </div>
+
+      <h4 style={{ marginBottom: 8 }}>Shared GPU</h4>
+      <div className="form-grid">
+        <div className="form-field">
+          <label htmlFor="deploy-shared-gpu">Shared GPU (vGPU slice)</label>
+          <input
+            id="deploy-shared-gpu"
+            data-testid="deploy-shared-gpu-toggle"
+            type="checkbox"
+            checked={sharedGpu}
+            disabled={pools.length === 0}
+            onChange={(e) => setSharedGpu(e.target.checked)}
+          />
+          {pools.length === 0 && (
+            <div className="muted" data-testid="deploy-pool-empty">
+              No shared-GPU pools are available for your organization
+            </div>
+          )}
+        </div>
+        {sharedGpu && (
+          <>
+            <div className="form-field">
+              <label htmlFor="deploy-pool">vGPU pool</label>
+              <select
+                id="deploy-pool"
+                data-testid="deploy-pool-select"
+                value={poolId}
+                onChange={(e) => setPoolId(e.target.value)}
+              >
+                <option value="">Select a pool</option>
+                {pools.map((p) => (
+                  <option key={p.poolId} value={p.poolId}>
+                    {p.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="deploy-slice-template">Slice template</label>
+              <select
+                id="deploy-slice-template"
+                data-testid="deploy-slice-template-select"
+                value={sliceTemplateId}
+                onChange={(e) => setSliceTemplateId(e.target.value)}
+              >
+                {(selectedPool?.templates || []).map((tpl) => (
+                  <option key={tpl.name} value={tpl.name}>
+                    {tpl.name} — {tpl.memoryGib} GiB / {tpl.computePct}% compute
+                  </option>
+                ))}
+              </select>
+              {sliceError && <div className="field-error">{sliceError}</div>}
+            </div>
+            <div className="form-field full">
+              <div className="muted" data-testid="deploy-shared-gpu-note">
+                This service will share a physical GPU with other services. Memory and compute
+                are isolated best-effort; performance is not guaranteed.
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
       <h4 style={{ marginBottom: 8 }}>Autoscaling</h4>

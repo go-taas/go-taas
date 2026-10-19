@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   formatTime,
+  type AssignedSlice,
   type AutoscalingPolicy,
   type AutoscalingStatus,
   type InferenceServiceSummary,
@@ -27,6 +28,7 @@ interface ServiceResponse {
   endpoints: string[];
   autoscaling?: AutoscalingPolicy;
   autoscalingStatus?: AutoscalingStatus;
+  assignedSlice?: AssignedSlice;
 }
 
 export default function ServiceDetailPage() {
@@ -142,6 +144,35 @@ export default function ServiceDetailPage() {
           </div>
         </div>
       </div>
+
+      {data.assignedSlice && (
+        <div className="panel" style={{ marginBottom: 16 }} data-testid="service-slice-card">
+          <h3 style={{ marginTop: 0 }}>{t('service.slice')}</h3>
+          <div className="detail-grid">
+            <div className="detail-item">
+              <div className="label">{t('service.slicePool')}</div>
+              <div className="value" data-testid="service-slice-pool">
+                {data.assignedSlice.poolName || data.assignedSlice.poolId}
+              </div>
+            </div>
+            <div className="detail-item">
+              <div className="label">{t('service.sliceTemplate')}</div>
+              <div className="value" data-testid="service-slice-template">
+                {data.assignedSlice.templateName} — {data.assignedSlice.memoryGib} GiB /{' '}
+                {data.assignedSlice.computePct}%
+              </div>
+            </div>
+            {data.assignedSlice.nodeId && (
+              <div className="detail-item">
+                <div className="label">{t('service.sliceGpu')}</div>
+                <div className="value" data-testid="service-slice-gpu">
+                  {data.assignedSlice.nodeId} · GPU {data.assignedSlice.gpuIndex}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {data.autoscaling && (
         <div className="panel" style={{ marginBottom: 16 }} data-testid="autoscaling-card">

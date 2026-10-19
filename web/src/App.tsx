@@ -87,6 +87,8 @@ import CostDetailPage from './pages/CostDetailPage';
 import ForecastPage from './pages/ForecastPage';
 import QuotasPage from './pages/QuotasPage';
 import OptimizationPage from './pages/OptimizationPage';
+import VGPUPoolsPage from './pages/VGPUPoolsPage';
+import VGPUPoolDetailPage from './pages/VGPUPoolDetailPage';
 import SystemStatusPage from './pages/SystemStatusPage';
 import ErrorAnalysisPage from './pages/ErrorAnalysisPage';
 import ErrorDetailPage from './pages/ErrorDetailPage';
@@ -254,6 +256,8 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/forecast" element={<ForecastPage />} />
               <Route path="/admin/quotas" element={<QuotasPage />} />
               <Route path="/admin/optimization" element={<OptimizationPage />} />
+              <Route path="/admin/vgpu-pools" element={<VGPUPoolsPage />} />
+              <Route path="/admin/vgpu-pools/:poolId" element={<VGPUPoolDetailPage />} />
               <Route path="/admin/status" element={<SystemStatusPage />} />
               <Route path="/admin/errors" element={<ErrorAnalysisPage />} />
               <Route path="/admin/errors/:errorCode" element={<ErrorDetailPage />} />

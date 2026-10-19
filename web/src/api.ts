@@ -1575,3 +1575,96 @@ export interface GetMyQuotaResponse {
   usage: QuotaUsage;
   requestIncreaseEmail: string;
 }
+
+// ---- vGPU slicing pool (feature #52) ----
+
+export interface SliceTemplate {
+  name: string;
+  memoryGib: string;
+  computePct: string;
+  description?: string;
+}
+
+export interface TemplateAllocation {
+  templateName: string;
+  allocated: string;
+  free: string;
+}
+
+export interface VGPUPool {
+  poolId: string;
+  name: string;
+  labelKey: string;
+  labelValue: string;
+  placementPolicy: string;
+  templates: SliceTemplate[];
+  nodeCount: string;
+  allocation: TemplateAllocation[];
+  utilizationPct: string;
+}
+
+export interface SliceAllocation {
+  templateName: string;
+  serviceId: string;
+  memoryGib: string;
+  computePct: string;
+}
+
+export interface PoolGPU {
+  index: string;
+  model: string;
+  slices: SliceAllocation[];
+  full: boolean;
+}
+
+export interface PoolNode {
+  nodeId: string;
+  name: string;
+  gpus: PoolGPU[];
+  health: string;
+}
+
+export interface SliceService {
+  serviceId: string;
+  name: string;
+  templateName: string;
+  nodeId: string;
+  gpuIndex: string;
+  memoryGib: string;
+  computePct: string;
+  state: string;
+}
+
+export interface TenantVGPUPool {
+  poolId: string;
+  name: string;
+  templates: SliceTemplate[];
+}
+
+export interface AssignedSlice {
+  poolId: string;
+  poolName: string;
+  templateName: string;
+  memoryGib: string;
+  computePct: string;
+  nodeId: string;
+  gpuIndex: string;
+}
+
+export interface ListVGPUPoolsResponse {
+  response: ResponseEnvelope;
+  pools: VGPUPool[];
+  pageMeta?: PageMeta;
+}
+
+export interface GetVGPUPoolResponse {
+  response: ResponseEnvelope;
+  pool: VGPUPool;
+  nodes: PoolNode[];
+  services: SliceService[];
+}
+
+export interface ListTenantVGPUPoolsResponse {
+  response: ResponseEnvelope;
+  pools: TenantVGPUPool[];
+}
