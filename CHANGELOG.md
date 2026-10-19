@@ -1,3 +1,11 @@
+# [1.60.0](https://github.com/go-taas/go-taas/compare/v1.59.0...v1.60.0) (2026-10-19)
+
+
+### Features
+
+* **fault:** fault diagnosis and automatic fault tolerance (row 53) ([bdb45f8](https://github.com/go-taas/go-taas/commit/bdb45f8b50bea8af3692feb57d02f05bcaff4f28))
+* **web:** fault diagnosis admin pages and tenant status banner ([4752e8e](https://github.com/go-taas/go-taas/commit/4752e8ebd040515806104d20b63dd9766e46a807))
+
 # [1.59.0](https://github.com/go-taas/go-taas/compare/v1.58.0...v1.59.0) (2026-10-19)
 
 
