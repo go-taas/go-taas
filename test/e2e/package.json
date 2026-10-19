@@ -51,7 +51,8 @@
     "test:intelligent-model-routing": "nightwatch --tag intelligent-model-routing",
     "test:cost-optimization-recommendations": "nightwatch --tag cost-optimization-recommendations",
     "test:service-quota-management": "nightwatch --tag service-quota-management",
-    "test:vgpu-slicing-pool": "nightwatch --tag vgpu-slicing-pool"
+    "test:vgpu-slicing-pool": "nightwatch --tag vgpu-slicing-pool",
+    "test:fault-diagnosis-auto-recovery": "nightwatch --tag fault-diagnosis-auto-recovery"
   },
   "license": "Apache-2.0",
   "devDependencies": {

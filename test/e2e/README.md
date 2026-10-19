@@ -45,6 +45,7 @@ against the local docker compose stack.
 | Cost optimization recommendations | feature-50 `cost-optimization-recommendations` | `tests/costOptimization.js` |
 | Service quota management | feature-51 `service-quota-management` | `tests/serviceQuota.js` |
 | HAMI-based vGPU slicing pool | feature-52 `vgpu-slicing-pool` | `tests/vgpuSlicingPool.js` |
+| Fault diagnosis & auto-recovery | feature-53 `fault-diagnosis-auto-recovery` | `tests/faultDiagnosis.js` |
 
 Cases are derived from the acceptance criteria in
 `docs/design/api-key-management.md`,
