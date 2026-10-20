@@ -1,3 +1,19 @@
+# [1.61.0](https://github.com/go-taas/go-taas/compare/v1.60.0...v1.61.0) (2026-10-20)
+
+
+### Bug Fixes
+
+* **e2e:** satisfy revive deep-exit rule in fault seed helper ([38b46ea](https://github.com/go-taas/go-taas/commit/38b46ea1a5af5bce675604b321f8c0ca4fab2d87))
+* **fault:** map malformed incident ids to not-found business code ([798daeb](https://github.com/go-taas/go-taas/commit/798daeb1bbd44a2eec9b1ae9b93f101c6e6950cc))
+* **vgpu:** map malformed pool ids to not-found business code ([70d6345](https://github.com/go-taas/go-taas/commit/70d634575e4101fe8da37a5fd1208d2a9e001dbe))
+* **web:** call admin-surface endpoints from admin pages ([d1c003e](https://github.com/go-taas/go-taas/commit/d1c003ee58eaae3e7f385893b2c046b7003b3096))
+* **web:** read ApiError code for permission-denied states ([7f17f51](https://github.com/go-taas/go-taas/commit/7f17f511d135094971984d0a503cc182915a3c66))
+
+
+### Features
+
+* **infer:** add admin-surface service status rpc and uuid guard ([e373dff](https://github.com/go-taas/go-taas/commit/e373dff65390514932f94159511eaa2571b1545e)), closes [#53](https://github.com/go-taas/go-taas/issues/53)
+
 # [1.60.0](https://github.com/go-taas/go-taas/compare/v1.59.0...v1.60.0) (2026-10-19)
 
 
