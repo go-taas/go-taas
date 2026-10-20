@@ -4,7 +4,7 @@
 | --- | --- |
 | Feature point | Fault diagnosis & automatic fault tolerance — detect inference-service / node / accelerator failures, diagnose root cause, and automatically recover (restart / reschedule / drain) with operator visibility (backlog row 53) |
 | Document scope | Architecture and detailed design for feature-53: the new `fault` module (incident lifecycle, deterministic root-cause classifier, recovery actions, auto-recovery policy), the `infer` status extension (service status with the active incident), the Controller's detection-signal publication and recovery execution, the 135xx error block, the admin pages `/admin/faults`, `/admin/faults/:incidentId` and `/admin/faults/policy`, the tenant service-status / incident banner, configuration, security, rollout, and a function-level task list per layer |
-| Owning modules | `fault` (new module — incident lifecycle, root-cause classifier, recovery actions, auto-recovery policy); `infer` (service status extension, incident banner data); `Controller` (detection signals, recovery execution); `k8s` (pod/node/accelerator state reads, restart/reschedule/drain actions); `audit` (recovery actions); `deployment-history` (recovery actions in the deployment trail); `pkg/server` gateway (admin + user prefix bindings); `pkg/errors` (the 135xx block); `pkg/config` (the `fault` section); `pkg/mq` (one new subject); `web` admin console (`FaultsPage`, `FaultDetailPage`, `FaultPolicyPage`) and end-user console (`ServiceStatusBanner`) |
+| Owning modules | `fault` (new module — incident lifecycle, root-cause classifier, recovery actions, auto-recovery policy); `infer` (service status extension, incident banner data); `Controller` (detection signals, recovery execution); `k8s` (pod/node/accelerator state reads, restart/reschedule/drain actions); `audit` (recovery actions); `deployment-history` (recovery actions in the deployment trail); `pkg/server` gateway (admin + user prefix bindings); `pkg/errors` (the 135xx block); `pkg/config` (the `fault` section); `pkg/mq` (one new subject); `web` admin console (`FaultsPage`, `FaultDetailPage`, `FaultPolicyPage`, `ServiceStatusBanner`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/fault-diagnosis-auto-recovery.md) · [Architecture Design](../design/architecture.md) §2.4 `infer`, §2.7 Controller · [System Health & Service Status](./system-health-status.md) (the component-health surface this feature's incident management extends; its non-goals explicitly deferred incident management and incident timelines here) · [Error Analysis](./error-analysis.md) (the aggregate error surface this feature's per-incident diagnosis complements) · [Accelerator Inventory & Health](./accelerator-inventory.md) (the accelerator failure signals this feature consumes) · [Deployment History & Audit](./deployment-history-audit.md) (the change-event trail recovery actions are recorded in) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the service lifecycle restart/reschedule targets) · [Inference Autoscaling](./inference-autoscaling.md) (why recovery reschedules rather than scales) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the masked-projection rule) |
 | Status | Architecture complete, handed to the Developer agent |
 
@@ -23,7 +23,7 @@ The core invariants: a dedicated `fault` module and `/admin/faults` surface (D1)
 - Three admin pages: `/admin/faults` (`FaultsPage` — incident table with severity, status, root cause, target, auto-recovered, times; filters, search, pagination), `/admin/faults/:incidentId` (`FaultDetailPage` — diagnosis timeline, root-cause evidence, recovery actions, override/manual controls), and `/admin/faults/policy` (`FaultPolicyPage` — per-category auto-recovery toggles), per design §5.1–§5.4.
 - The tenant service-status / incident banner (design §5.5): a compact degraded banner on the service list and detail pages when a service has an active incident.
 - A new `fault` module owning the incident lifecycle, the deterministic root-cause classifier, and the recovery actions, with its own error block **135xx** (design §6).
-- Six admin RPCs on `FaultService` bound under `/api/v1/admin/faults/*`, and one user-surface `GetServiceStatus` on `InferService` (design §6).
+- Six admin RPCs on `FaultService` bound under `/api/v1/admin/faults/*`, one user-surface `GetServiceStatus` on `InferService`, and its admin-surface twin `GetAdminServiceStatus` for the admin console's banner (design §6).
 - The Controller's detection-signal publication (crash-loop, OOMKilled, ImagePullBackOff, node `NotReady`, device-plugin unhealthy) and recovery execution (restart = delete pod, reschedule = delete pod with a node-anti-affinity hint, drain = cordon + drain) (design §6 notes 2–3).
 - Numbered acceptance criteria (AC1–AC13) testable in Nightwatch, FVT and unit tests; the fault contract verified synthetically (the established out-of-repository pattern).
 
@@ -49,7 +49,7 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D8) as implementation-leve
 | AD6 | **The tenant surface shows a service status / incident banner** — a compact banner on the service list and detail pages when a service is degraded or under recovery | Design D6. Tenants whose service is affected must see the degraded state; the banner is explicit, not hidden |
 | AD7 | **Predictive failure detection is out of scope.** The classifier reacts to observed failures, not predicted ones | Design D7. Keeps the feature bounded and honest; prediction is future work |
 | AD8 | **Self-healing of the control plane itself is out of scope.** The `fault` module recovers inference services, nodes, and accelerators — not the platform's own components | Design D8. The control plane's health is system-health's (#30) concern; this feature targets the inference data path |
-| AD9 | **Incident management is admin-only; the service status / banner is end-user.** Incident CRUD, diagnosis, recovery and policy are admin (`/admin/faults` + `/api/v1/admin/faults/*`); the service status / banner is end-user (`/api/v1/inference-services/{service_id}/status`). A user-realm session on an admin route gets **10038**; a session without the platform-admin role gets **10036** | Design FR6.1. Consistent with the console-surface separation; incident internals (fleet-wide diagnosis) are operator knowledge, the affected service's status is the tenant's |
+| AD9 | **Incident management is admin-only; the service status / banner is surface-split.** Incident CRUD, diagnosis, recovery and policy are admin (`/admin/faults` + `/api/v1/admin/faults/*`); the service status is user-surface (`/api/v1/inference-services/{service_id}/status`) with an admin-surface twin for the admin console's banner (`/api/v1/admin/inference-services/{service_id}/status`). A user-realm session on an admin route gets **10038**; a session without the platform-admin role gets **10036** | Design FR6.1. Consistent with the console-surface separation; incident internals (fleet-wide diagnosis) are operator knowledge, the affected service's status is the tenant's |
 | AD10 | **The tenant-visible `GetServiceStatus` enforces service scoping at the service layer.** The caller's org is resolved from the session, never from a client-supplied service id; it returns only the caller's own service's incident. The tenant surface exposes no incident mutation | Design FR5.3, §6 note 4. The banner must not leak another org's incident; the scoping check is server-side, never trusted from the client |
 | AD11 | **REFINEMENT of design D2/FR1.1 — the incident is a database table; the timeline is a child table.** The `fault` module owns an `incidents` table (incident_id, severity, status, root_cause, target_type, target_name, started_at, resolved_at, auto_recovered) and an `incident_steps` table (the diagnosis timeline: step_id, incident_id, step_type, actor, detail, created_at). The timeline is a child table so each step is independently timestamped and queryable | The design pins "every incident has a timeline of timestamped steps" without pinning the storage. A parent `incidents` table + a child `incident_steps` table is the smallest faithful reading: the incident's aggregate state is one row, and the timeline is an ordered list of steps. This keeps the timeline queryable (the detail page reads it in order) and the incident row compact |
 | AD12 | **REFINEMENT of design D3/FR2.1 — the classifier is a pure function over a structured signal.** The Controller publishes a structured failure signal (target_type, target_name, signal_type, detail, observed_at); the `fault` module's classifier maps `signal_type` to a root-cause category via a deterministic switch. The evidence is the signal's `detail` field, stored verbatim on the incident | The design says "the classifier maps a failure signal to a root-cause category" without pinning the signal shape. A structured signal (not free text) keeps the classifier a pure, testable function; the `detail` field is the evidence the detail page shows (FR2.2) |
@@ -70,7 +70,7 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D8) as implementation-leve
 | **Gateway (`pkg/server`)** | HTTP composition: `RealmGuard` → `withConsole` → `runtime.ServeMux`; the unified error renderer; the SPA fallback | No change — the new RPCs bind under `/api/v1/admin/faults/*` (admin) and `/api/v1/inference-services/{service_id}/status` (user), and the realm guard already classifies those prefixes |
 | **grpc-gateway mux** | Path → RPC routing from `google.api.http` annotations | New bindings for the seven new RPCs (Section 5) |
 | **`fault` (new)** | The `incidents` + `incident_steps` tables, the incident lifecycle, the deterministic classifier, the recovery runner, the auto-recovery policy | New service: `services/fault` |
-| **`infer`** | The service status extension, the incident banner data | `GetServiceStatus` returns the service's status with any active incident |
+| **`infer`** | The service status extension, the incident banner data | `GetServiceStatus` (user surface) and `GetAdminServiceStatus` (admin surface) return the service's status with any active incident |
 | **`internal/controller`** | Kubernetes reconciliation; detection-signal publication; recovery execution | Publishes failure signals on `fault.signals`; executes restart/reschedule/drain actions |
 | **`pkg/k8s`** | The Kubernetes client (clientset + dynamic) | No change — the Controller uses the existing clientset |
 | **`pkg/mq`** | The canonical subjects | Two new subjects: `fault.signals`, `fault.actions` |
@@ -85,7 +85,7 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D8) as implementation-leve
 flowchart TD
     subgraph browsers["Browsers"]
         AC["Admin console<br/>/admin/faults<br/>/admin/faults/:incidentId<br/>/admin/faults/policy<br/>key go-taas.admin.session-token"]
-        UC["End-user console<br/>/services, /services/:serviceId (banner)<br/>key go-taas.user.session-token"]
+        UC["End-user console<br/>(future /services pages)<br/>key go-taas.user.session-token"]
     end
 
     subgraph gateway["taas-server HTTP (one port)"]
@@ -223,10 +223,11 @@ Seven RPCs are new (six admin, one user). No RPC is dual-bound: the admin RPCs a
 | `TriggerRecoveryAction` | `POST /api/v1/admin/faults/{incident_id}:recover` | admin | **new** | Manually trigger restart/reschedule/drain; drain requires a confirm flag; 13503 if invalid |
 | `OverrideRecoveryAction` | `POST /api/v1/admin/faults/{incident_id}:override` | admin | **new** | Cancel an in-flight recovery action; 13504 if none in flight |
 | `GetServiceStatus` (`taas.infer.v1`) | `GET /api/v1/inference-services/{service_id}/status` | user | **new** | Service status with any active incident (masked — own service only) |
+| `GetAdminServiceStatus` (`taas.infer.v1`) | `GET /api/v1/admin/inference-services/{service_id}/status` | admin | **new** | Same projection for the admin console's banner (org-scoped) |
 
-Gateway routing notes: `GET /api/v1/admin/faults` (collection root), `GET /api/v1/admin/faults/{incident_id}` and `GET /api/v1/admin/faults/policy` are distinct paths — no wildcard conflict (the `policy` literal is matched before the `{incident_id}` wildcard). The `:recover` and `:override` custom verbs follow the existing `:scale` / `:playground` convention on the same mux. The user-surface `GET /api/v1/inference-services/{service_id}/status` is a distinct user-prefix path, so the realm guard classifies it as the user surface.
+Gateway routing notes: `GET /api/v1/admin/faults` (collection root), `GET /api/v1/admin/faults/{incident_id}` and `GET /api/v1/admin/faults/policy` are distinct paths — no wildcard conflict (the `policy` literal is matched before the `{incident_id}` wildcard). The `:recover` and `:override` custom verbs follow the existing `:scale` / `:playground` convention on the same mux. The user-surface `GET /api/v1/inference-services/{service_id}/status` is a distinct user-prefix path, and its admin twin `GET /api/v1/admin/inference-services/{service_id}/status` a distinct admin-prefix path, so the realm guard classifies each to its own surface.
 
-**Surface decision (recorded)**: the design doc's §4 table assigns the tenant banner to the end-user surface (`/services`, `/services/:serviceId`), but the existing service list/detail pages are admin-surface (`/admin/inference-services`, `/admin/inference-services/:id`). Consistent with the existing architecture, the `GetServiceStatus` RPC is a **new user-surface** RPC (as the design specifies, enforcing service scoping), and the tenant banner extends the **existing admin** `InferenceServicesPage` and `ServiceDetailPage`. This preserves the design's intent (a tenant-visible degraded banner) while keeping the service pages where they actually live. The design's `/services` end-user routes are not created.
+**Surface decision (recorded)**: the design doc's §4 table assigns the tenant banner to the end-user surface (`/services`, `/services/:serviceId`), but the existing service list/detail pages are admin-surface (`/admin/inference-services`, `/admin/inference-services/:id`). Consistent with the existing architecture, the `GetServiceStatus` RPC is a **new user-surface** RPC (as the design specifies, enforcing service scoping), and the banner extends the **existing admin** `InferenceServicesPage` and `ServiceDetailPage` via its admin-surface twin `GetAdminServiceStatus` (`GET /api/v1/admin/inference-services/{service_id}/status`, same projection and org scoping) so the admin pages never call a user-surface route. This preserves the design's intent (a degraded banner on the service pages) while keeping the service pages where they actually live and the two console surfaces strictly separated. The design's `/services` end-user routes are not created.
 
 ### 5.2 Proto contract
 
@@ -395,7 +396,7 @@ message OverrideRecoveryActionResponse {
 }
 ```
 
-**Change to `proto/taas/infer/v1/infer.proto`** — a new `GetServiceStatus` RPC and its messages:
+**Change to `proto/taas/infer/v1/infer.proto`** — a new `GetServiceStatus` RPC (user surface) and its admin-surface twin `GetAdminServiceStatus` (same projection, admin prefix, for the admin console's banner):
 
 ```proto
   // GetServiceStatus returns the service's status including any active
@@ -404,6 +405,16 @@ message OverrideRecoveryActionResponse {
   // incident is returned, feature #53, AD10).
   rpc GetServiceStatus(GetServiceStatusRequest) returns (GetServiceStatusResponse) {
     option (google.api.http) = {get: "/api/v1/inference-services/{service_id}/status"};
+  }
+
+  // GetAdminServiceStatus returns the service's status including any
+  // active incident for the admin console's degraded banner (feature
+  // #53, AD10). Same projection as GetServiceStatus but served on the
+  // admin surface so the admin pages never call the user-surface
+  // route; the org is resolved from the session and the read is scoped
+  // to the caller's organization.
+  rpc GetAdminServiceStatus(GetAdminServiceStatusRequest) returns (GetAdminServiceStatusResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/inference-services/{service_id}/status"};
   }
 
 message GetServiceStatusRequest {
@@ -468,11 +479,11 @@ Serialization conventions unchanged: HTTP 200 on success, business errors as `{"
 | `FaultsPage` (new, `web/src/pages/FaultsPage.tsx`) | `/admin/faults` | `/api/v1/admin/faults` | admin |
 | `FaultDetailPage` (new, `web/src/pages/FaultDetailPage.tsx`) | `/admin/faults/:incidentId` | `/api/v1/admin/faults` | admin |
 | `FaultPolicyPage` (new, `web/src/pages/FaultPolicyPage.tsx`) | `/admin/faults/policy` | `/api/v1/admin/faults` | admin |
-| `ServiceStatusBanner` (new, `web/src/components/ServiceStatusBanner.tsx`) | `InferenceServicesPage`, `ServiceDetailPage` (existing) | `/api/v1/inference-services/{service_id}/status` | user |
+| `ServiceStatusBanner` (new, `web/src/components/ServiceStatusBanner.tsx`) | `InferenceServicesPage`, `ServiceDetailPage` (existing) | `/api/v1/admin/inference-services/{service_id}/status` | admin |
 
-The admin pages contain **no `/api/v1/*` call**; the banner component calls the user-surface `GetServiceStatus` (AC11). Per the console-surface separation, the admin pages are admin-realm sources (`web/src/pages/*.tsx`) and the banner is a user-realm source (`web/src/components/**`).
+The admin pages contain **no `/api/v1/*` call**; the banner component calls the admin-surface `GetAdminServiceStatus` (AC11). Per the console-surface separation, the admin pages and the banner are admin-realm sources (`web/src/pages/*.tsx`, `web/src/components/**`).
 
-**Surface decision (recorded)**: the design doc's §4 table assigns the tenant banner to the end-user surface (`/services`, `/services/:serviceId`). Consistent with the existing architecture (the service list/detail are admin-surface today), the `ServiceStatusBanner` extends the **admin** `InferenceServicesPage` and `ServiceDetailPage`, calling the user-surface `GetServiceStatus`. This is the interpretation most consistent with the existing architecture; the design's `/services` end-user routes are not created.
+**Surface decision (recorded)**: the design doc's §4 table assigns the tenant banner to the end-user surface (`/services`, `/services/:serviceId`). Consistent with the existing architecture (the service list/detail are admin-surface today), the `ServiceStatusBanner` extends the **admin** `InferenceServicesPage` and `ServiceDetailPage`, calling the admin-surface `GetAdminServiceStatus` (`GET /api/v1/admin/inference-services/{service_id}/status`, same projection and org scoping as the user-surface read). The user-surface `GetServiceStatus` remains for future end-user service pages. This is the interpretation most consistent with the existing architecture and the console-surface separation; the design's `/services` end-user routes are not created.
 
 ### 6.2 Navigation placement
 
@@ -500,7 +511,7 @@ The admin pages contain **no `/api/v1/*` call**; the banner component calls the 
 ### 6.4 Auth guard per surface
 
 - `FaultsPage`, `FaultDetailPage` and `FaultPolicyPage` render inside `AdminShell`, whose shell guard enforces the admin session realm (`/admin/login`, token `go-taas.admin.session-token`); a user-realm session on an admin route gets **10038** from the realm guard. A session without the platform-admin role receives **10036** from `requireAdminRole`; the page renders the standard permission-denied state with a link back to `/admin` (AC12).
-- The `ServiceStatusBanner` calls the user-surface `GET /api/v1/inference-services/{service_id}/status`; the scoping is server-side (AD10) — the banner shows only the caller's own service's incident. The banner is informational and links to nothing on the user surface.
+- The `ServiceStatusBanner` calls the admin-surface `GET /api/v1/admin/inference-services/{service_id}/status`; the scoping is server-side (AD10) — the banner shows only the caller's own service's incident. The banner is informational and links to nothing on the user surface.
 
 ### 6.5 `data-testid` hooks (binding, kebab-case)
 
@@ -538,8 +549,8 @@ sequenceDiagram
     Op->>UI: /admin/faults/:incidentId
     UI->>FAULT: GET /api/v1/admin/faults/{incident_id}
     FAULT-->>UI: timeline, evidence, actions
-    Ten->>BAN: /services/:serviceId
-    BAN->>FAULT: GET /api/v1/inference-services/{service_id}/status
+    Ten->>BAN: /admin/inference-services/:serviceId
+    BAN->>FAULT: GET /api/v1/admin/inference-services/{service_id}/status
     FAULT-->>BAN: degraded banner (resolved -> hidden)
 ```
 
@@ -631,7 +642,7 @@ fault:
 
 ## 10. Security Considerations
 
-1. **Realm separation** (FR6.1, AC11): incident management is admin-only (`/api/v1/admin/faults/*`); the service status is user-surface (`/api/v1/inference-services/{service_id}/status`). A user-realm session on an admin route gets **10038**; a session without the platform-admin role gets **10036**. The admin pages contain no `/api/v1/*` call and the user pages no `/api/v1/admin/*` call.
+1. **Realm separation** (FR6.1, AC11): incident management is admin-only (`/api/v1/admin/faults/*`); the service status is user-surface (`/api/v1/inference-services/{service_id}/status`) with an admin-surface twin for the admin console's banner (`/api/v1/admin/inference-services/{service_id}/status`). A user-realm session on an admin route gets **10038**; a session without the platform-admin role gets **10036**. The admin pages contain no `/api/v1/*` call and the user pages no `/api/v1/admin/*` call.
 2. **Service scoping** (AD10, AC9): the tenant-visible `GetServiceStatus` enforces service scoping at the service layer — the caller's org is resolved from the session, never from a client-supplied service id. It returns only the caller's own service's incident; no other service's incident appears. The tenant surface has no incident mutation route.
 3. **Operator override** (D4, AC6): automatic recovery is bounded and override-able. The operator can disable auto-recovery per category, override an in-flight action, or manually trigger one. Drain always requires operator confirmation (FR4.4).
 4. **Audit** (D5, AC10): every recovery action and policy change is audited; recovery actions on services also appear in the deployment-history trail (`deployment.updated`, actor `recovery`). List/read RPCs are not audited, per the platform's read-path convention.
@@ -679,14 +690,14 @@ fault:
 | Module | File | Responsibility |
 | --- | --- | --- |
 | `proto/taas/fault/v1` | `fault.proto` (new) | The `FaultService` + messages (Section 5.2); regenerate |
-| `proto/taas/infer/v1` | `infer.proto` | The `GetServiceStatus` RPC + messages; regenerate |
+| `proto/taas/infer/v1` | `infer.proto` | The `GetServiceStatus` + `GetAdminServiceStatus` RPCs and messages; regenerate |
 | `services/fault` | `fault_model.go` (new) | The `Incident`, `IncidentStep`, `FaultPolicy` GORM models (Section 4) |
 | | `fault_repository.go` (new) | Incident CRUD, the timeline read, the policy read/update, the retention cleanup |
 | | `classifier.go` (new) | The deterministic root-cause classifier (AD12) |
 | | `fault_service.go` (new) | The six RPCs, `requireAdminRole`, the recovery runner |
 | | `signal_consumer.go` (new) | The detection-signal consumer runner + the debounce logic (AD13) |
 | | `recovery.go` (new) | The recovery-action execution and recording (AD14, AD16) |
-| `services/infer` | `service.go`, the infer repository | The `GetServiceStatus` RPC, the incident lookup |
+| `services/infer` | `service.go`, the infer repository | The `GetServiceStatus` + `GetAdminServiceStatus` RPCs, the incident lookup |
 | `internal/controller` | `fault_detection.go` (new) | The detection collector that publishes failure signals (AD13) |
 | | `reconciler.go` | The recovery-action execution (restart/reschedule/drain) |
 | `pkg/errors` | `codes.go`, `messages.go` | The 135xx block after the vgpu block |
@@ -782,7 +793,7 @@ CodeFaultNotFound          Code = 13506 // FAULT_NOT_FOUND
 - **`FaultsPage`** (`/admin/faults`): loads `GET /api/v1/admin/faults?{page, status, severity, root_cause, target_type, search}`; renders the incident table — Severity (badge: critical red / warning amber / info blue), Status (detected / diagnosing / recovering / resolved / failed), Root cause (category chip), Target ("service: chat-7b" / "node: node-a" / "accelerator: node-a GPU 0"), Auto-recovered (checkmark or dash), Started (relative), Resolved (relative or dash). Filter bar: status, severity, root-cause, target-type filters, search, pagination. Row click opens the detail. States: loading skeletons; empty ("No incidents — the platform is healthy"); error (stale with retry); permission-denied (10036, link to `/admin`).
 - **`FaultDetailPage`** (`/admin/faults/:incidentId`): loads `GET /api/v1/admin/faults/{incident_id}`; renders the incident header (severity badge, status, root-cause category, target, started/resolved times, auto-recovered flag), the `IncidentTimeline` (vertical, each step with timestamp, actor, detail; a `failed` step in red), the root-cause evidence card (the classifier's inputs; for `unknown`, a note that no signal matched and a manual reclassify control), and the recovery-actions card (the action taken or pending, its status, and controls: **Override** to cancel an in-flight action and **Manual action** restart/reschedule/drain buttons). A drain button opens a confirm dialog naming the node and affected services. States: loading; error; permission-denied; a resolved incident shows a "Resolved" banner and no active action controls.
 - **`FaultPolicyPage`** (`/admin/faults/policy`): loads `GET /api/v1/admin/faults/policy`; renders per-category rows — each root-cause category with its default action and toggles (Auto-restart on/off, Auto-reschedule on/off) and a global "Drain always requires confirmation" toggle (always on, shown for transparency). Changing a toggle → `PATCH /api/v1/admin/faults/policy`; a **13502** response highlights the offending category; success shows a toast and is audited. States: loading; error; permission-denied.
-- **`ServiceStatusBanner`** (`InferenceServicesPage`, `ServiceDetailPage`): when a service has an active incident, a **degraded banner** appears at the top of the service row (list) or the service detail — a compact strip with the severity color, a plain-language message ("This service is being recovered — a failure was detected and the platform is restarting it"), and the root-cause category chip. It calls `GET /api/v1/inference-services/{service_id}/status` (user surface, AD10). The banner is informational and links to nothing on the user surface. It hides when the service is healthy; on a status-call error the banner is hidden and the service shows its normal state.
+- **`ServiceStatusBanner`** (`InferenceServicesPage`, `ServiceDetailPage`): when a service has an active incident, a **degraded banner** appears at the top of the service row (list) or the service detail — a compact strip with the severity color, a plain-language message ("This service is being recovered — a failure was detected and the platform is restarting it"), and the root-cause category chip. It calls `GET /api/v1/admin/inference-services/{service_id}/status` (admin surface, AD10). The banner is informational and links to nothing on the user surface. It hides when the service is healthy; on a status-call error the banner is hidden and the service shows its normal state.
 - **`api.ts`**: `Incident`, `IncidentStep`, `RecoveryAction`, `AutoRecoveryPolicy`, `ServiceStatus`, `ServiceIncident` types; the int64 fields typed as strings (the serialization convention).
 - **i18n**: `nav.faults` and the `fault.*` keys (table, detail, timeline, evidence, actions, policy, banner, states) in `en.ts`/`zh.ts` (the `routingGroups.*` convention).
 
@@ -817,7 +828,7 @@ Nil seams are safe everywhere: a nil deployment-trail seam skips the deployment-
 1. **`pkg/errors`**: the 135xx block + messages (category/action named where required).
 2. **`pkg/config`**: `FaultConfig` (+ `FaultDebounceConfig`, `FaultSignalsConsumerConfig`) + defaults + validation + the `configs/config.yaml` section.
 3. **`pkg/mq`**: `SubjectFaultSignals`, `SubjectFaultActions`.
-4. **`proto/taas/fault/v1/fault.proto`**: the `FaultService` + messages; **`proto/taas/infer/v1/infer.proto`**: the `GetServiceStatus` RPC + messages; regenerate.
+4. **`proto/taas/fault/v1/fault.proto`**: the `FaultService` + messages; **`proto/taas/infer/v1/infer.proto`**: the `GetServiceStatus` + `GetAdminServiceStatus` RPCs and messages; regenerate.
 5. **`services/fault/fault_model.go`**: the `Incident`, `IncidentStep`, `FaultPolicy` GORM models.
 6. **`services/fault/fault_repository.go`**: incident CRUD, the timeline read, the policy read/update, the retention cleanup.
 7. **`services/fault/classifier.go`**: the deterministic root-cause classifier.

@@ -4,7 +4,7 @@
 | --- | --- |
 | 功能点 | 故障诊断与自动容错 — 检测推理服务 / 节点 / 加速器故障、诊断根因、自动恢复（重启 / 重调度 / 排空）并带运营者可见性（backlog 第 53 行） |
 | 文档范围 | 功能-53 的架构与详细设计：新 `fault` 模块（事件生命周期、确定性根因分类器、恢复动作、自动恢复策略）、`infer` 状态扩展（带活动事件的服务状态）、Controller 的检测信号发布与恢复执行、135xx 错误块、管理页面 `/admin/faults`、`/admin/faults/:incidentId` 与 `/admin/faults/policy`、租户服务状态 / 事件横幅、配置、安全、上线，以及按层的函数级任务清单 |
-| 负责模块 | `fault`（新模块 — 事件生命周期、根因分类器、恢复动作、自动恢复策略）；`infer`（服务状态扩展、事件横幅数据）；`Controller`（检测信号、恢复执行）；`k8s`（Pod/节点/加速器状态读取、重启/重调度/排空动作）；`audit`（恢复动作）；`deployment-history`（部署轨迹中的恢复动作）；`pkg/server` 网关（管理 + 用户前缀绑定）；`pkg/errors`（135xx 块）；`pkg/config`（`fault` 段）；`pkg/mq`（一个新主题）；`web` 管理控制台（`FaultsPage`、`FaultDetailPage`、`FaultPolicyPage`）与终端用户控制台（`ServiceStatusBanner`） |
+| 负责模块 | `fault`（新模块 — 事件生命周期、根因分类器、恢复动作、自动恢复策略）；`infer`（服务状态扩展、事件横幅数据）；`Controller`（检测信号、恢复执行）；`k8s`（Pod/节点/加速器状态读取、重启/重调度/排空动作）；`audit`（恢复动作）；`deployment-history`（部署轨迹中的恢复动作）；`pkg/server` 网关（管理 + 用户前缀绑定）；`pkg/errors`（135xx 块）；`pkg/config`（`fault` 段）；`pkg/mq`（一个新主题）；`web` 管理控制台（`FaultsPage`、`FaultDetailPage`、`FaultPolicyPage`、`ServiceStatusBanner`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/fault-diagnosis-auto-recovery.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.4 `infer`、§2.7 Controller · [系统健康与服务状态](./system-health-status.zh-cn.md)（本功能事件管理所扩展的组件健康表面；其非目标明确把事件管理与事件时间线延迟到这里）· [错误分析](./error-analysis.zh-cn.md)（本功能按事件诊断所补充的聚合错误表面）· [加速器清单与健康](./accelerator-inventory.zh-cn.md)（本功能消费的加速器故障信号）· [部署历史与审计](./deployment-history-audit.zh-cn.md)（恢复动作记录其中的变更事件轨迹）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（重启/重调度的服务生命周期目标）· [推理弹性伸缩](./inference-autoscaling.zh-cn.md)（为何恢复重调度而非扩容）· [控制台表面分离](./console-surface-separation.zh-cn.md)（两个表面、脱敏投影规则） |
 | 状态 | 架构完成，已移交开发者 agent |
 
@@ -23,7 +23,7 @@
 - 三个管理页面：`/admin/faults`（`FaultsPage` — 带严重度、状态、根因、目标、自动恢复、时间的事件表格；过滤、搜索、分页）、`/admin/faults/:incidentId`（`FaultDetailPage` — 诊断时间线、根因证据、恢复动作、覆盖/手动控制）、`/admin/faults/policy`（`FaultPolicyPage` — 按类别自动恢复开关），按设计 §5.1–§5.4。
 - 租户服务状态 / 事件横幅（设计 §5.5）：服务有活动事件时，服务列表与详情页顶部出现紧凑降级横幅。
 - 新 `fault` 模块拥有事件生命周期、确定性根因分类器与恢复动作，带自己的错误块 **135xx**（设计 §6）。
-- `FaultService` 上六个管理 RPC 绑定在 `/api/v1/admin/faults/*` 下，`InferService` 上一个用户面 `GetServiceStatus`（设计 §6）。
+- `FaultService` 上六个管理 RPC 绑定在 `/api/v1/admin/faults/*` 下，`InferService` 上一个用户面 `GetServiceStatus`，以及供管理控制台横幅使用的管理面孪生 `GetAdminServiceStatus`（设计 §6）。
 - Controller 的检测信号发布（崩溃循环、OOMKilled、ImagePullBackOff、节点 `NotReady`、设备插件不健康）与恢复执行（重启 = 删除 Pod、重调度 = 带节点反亲和提示删除 Pod、排空 = cordon + drain 节点）（设计 §6 注 2–3）。
 - 编号验收标准（AC1–AC13）可在 Nightwatch、FVT 与单元测试中测试；故障契约合成验证（既有的仓库外模式）。
 
@@ -49,7 +49,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 | AD6 | **租户表面显示服务状态 / 事件横幅** — 服务降级或恢复中时，服务列表与详情页出现紧凑横幅 | 设计 D6。受影响服务的租户必须看到降级状态；横幅是显式的，不隐藏 |
 | AD7 | **预测性故障检测超出范围。** 分类器对观测故障反应，不对预测故障反应 | 设计 D7。保持功能有界诚实；预测是后续工作 |
 | AD8 | **控制面自身的自愈超出范围。** `fault` 模块恢复推理服务、节点与加速器 — 而非平台自身组件 | 设计 D8。控制面健康是系统健康（#30）的关注点；本功能针对推理数据路径 |
-| AD9 | **事件管理仅限管理面；服务状态 / 横幅在终端用户面。** 事件 CRUD、诊断、恢复与策略在管理面（`/admin/faults` + `/api/v1/admin/faults/*`）；服务状态 / 横幅在终端用户面（`/api/v1/inference-services/{service_id}/status`）。用户域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036** | 设计 FR6.1。与控制台表面分离一致；事件内部（机群诊断）是运营者知识，受影响服务的状态是租户的 |
+| AD9 | **事件管理仅限管理面；服务状态 / 横幅按表面分离。** 事件 CRUD、诊断、恢复与策略在管理面（`/admin/faults` + `/api/v1/admin/faults/*`）；服务状态在用户面（`/api/v1/inference-services/{service_id}/status`），并为管理控制台横幅提供管理面孪生（`/api/v1/admin/inference-services/{service_id}/status`）。用户域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036** | 设计 FR6.1。与控制台表面分离一致；事件内部（机群诊断）是运营者知识，受影响服务的状态是租户的 |
 | AD10 | **租户可见 `GetServiceStatus` 在服务层强制服务范围。** 调用者组织从会话解析，绝不从客户端提供的服务 id；只返回调用者自己服务的事件。租户表面无事件变更路由 | 设计 FR5.3、§6 注 4。横幅不得泄露另一组织的事件；范围检查在服务端，绝不信任客户端 |
 | AD11 | **细化设计 D2/FR1.1 — 事件是数据库表；时间线是子表。** `fault` 模块拥有 `incidents` 表（incident_id、severity、status、root_cause、target_type、target_name、started_at、resolved_at、auto_recovered）与 `incident_steps` 表（诊断时间线：step_id、incident_id、step_type、actor、detail、created_at）。时间线是子表，因此每步独立带时间戳且可查询 | 设计钉死"每个事件有带时间戳步骤的时间线"而未钉死存储。父 `incidents` 表 + 子 `incident_steps` 表是最小忠实解读：事件的聚合状态是一行，时间线是有序步骤列表。这让时间线可查询（详情页按序读）且事件行紧凑 |
 | AD12 | **细化设计 D3/FR2.1 — 分类器是对结构化信号的纯函数。** Controller 发布结构化故障信号（target_type、target_name、signal_type、detail、observed_at）；`fault` 模块的分类器经确定性 switch 把 `signal_type` 映射到根因类别。证据是信号的 `detail` 字段，原样存到事件 | 设计说"分类器把故障信号映射到根因类别"而未钉死信号形态。结构化信号（非自由文本）让分类器成为纯、可测试函数；`detail` 字段是详情页显示的证据（FR2.2） |
@@ -70,7 +70,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 | **网关（`pkg/server`）** | HTTP 组合：`RealmGuard` → `withConsole` → `runtime.ServeMux`；统一错误渲染器；SPA 回退 | 无变更 — 新 RPC 绑定在 `/api/v1/admin/faults/*`（管理）与 `/api/v1/inference-services/{service_id}/status`（用户）下，域守卫已分类这些前缀 |
 | **grpc-gateway mux** | 从 `google.api.http` 注解做路径 → RPC 路由 | 七个新 RPC 的新绑定（第 5 节） |
 | **`fault`（新）** | `incidents` + `incident_steps` 表、事件生命周期、确定性分类器、恢复运行器、自动恢复策略 | 新服务：`services/fault` |
-| **`infer`** | 服务状态扩展、事件横幅数据 | `GetServiceStatus` 返回带任何活动事件的服务状态 |
+| **`infer`** | 服务状态扩展、事件横幅数据 | `GetServiceStatus`（用户面）与 `GetAdminServiceStatus`（管理面）返回带任何活动事件的服务状态 |
 | **`internal/controller`** | Kubernetes 协调；检测信号发布；恢复执行 | 在 `fault.signals` 上发布故障信号；执行重启/重调度/排空动作 |
 | **`pkg/k8s`** | Kubernetes 客户端（clientset + dynamic） | 无变更 — Controller 用既有 clientset |
 | **`pkg/mq`** | 规范主题 | 两个新主题：`fault.signals`、`fault.actions` |
@@ -85,7 +85,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 flowchart TD
     subgraph browsers["浏览器"]
         AC["管理控制台<br/>/admin/faults<br/>/admin/faults/:incidentId<br/>/admin/faults/policy<br/>key go-taas.admin.session-token"]
-        UC["终端用户控制台<br/>/services、/services/:serviceId（横幅）<br/>key go-taas.user.session-token"]
+        UC["终端用户控制台<br/>（未来 /services 页面）<br/>key go-taas.user.session-token"]
     end
 
     subgraph gateway["taas-server HTTP（单端口）"]
@@ -223,10 +223,11 @@ flowchart TD
 | `TriggerRecoveryAction` | `POST /api/v1/admin/faults/{incident_id}:recover` | 管理 | **新** | 手动触发重启/重调度/排空；排空需确认标志；非法 13503 |
 | `OverrideRecoveryAction` | `POST /api/v1/admin/faults/{incident_id}:override` | 管理 | **新** | 取消进行中的恢复动作；无进行中则 13504 |
 | `GetServiceStatus`（`taas.infer.v1`） | `GET /api/v1/inference-services/{service_id}/status` | 用户 | **新** | 带任何活动事件的服务状态（脱敏 — 仅自己服务） |
+| `GetAdminServiceStatus`（`taas.infer.v1`） | `GET /api/v1/admin/inference-services/{service_id}/status` | 管理 | **新** | 供管理控制台横幅的同一投影（组织范围） |
 
-网关路由说明：`GET /api/v1/admin/faults`（集合根）、`GET /api/v1/admin/faults/{incident_id}` 与 `GET /api/v1/admin/faults/policy` 是不同路径 — 无通配符冲突（`policy` 字面量在 `{incident_id}` 通配符之前匹配）。`:recover` 与 `:override` 自定义动词遵循同一 mux 上既有 `:scale` / `:playground` 约定。用户面 `GET /api/v1/inference-services/{service_id}/status` 是不同用户前缀路径，因此域守卫把它分类为用户表面。
+网关路由说明：`GET /api/v1/admin/faults`（集合根）、`GET /api/v1/admin/faults/{incident_id}` 与 `GET /api/v1/admin/faults/policy` 是不同路径 — 无通配符冲突（`policy` 字面量在 `{incident_id}` 通配符之前匹配）。`:recover` 与 `:override` 自定义动词遵循同一 mux 上既有 `:scale` / `:playground` 约定。用户面 `GET /api/v1/inference-services/{service_id}/status` 是不同用户前缀路径，其管理孪生 `GET /api/v1/admin/inference-services/{service_id}/status` 是不同管理前缀路径，域守卫把各自分类到自己的表面。
 
-**表面决策（记录）**：设计文档 §4 表把租户横幅分配到终端用户面（`/services`、`/services/:serviceId`），但既有服务列表/详情页在管理面（`/admin/inference-services`、`/admin/inference-services/:id`）。与既有架构一致，`GetServiceStatus` RPC 是**新用户面** RPC（按设计，强制服务范围），租户横幅扩展**既有管理** `InferenceServicesPage` 与 `ServiceDetailPage`。这保留设计意图（租户可见降级横幅），同时让服务页面留在它们实际所在处。设计中的 `/services` 终端用户路由不创建。
+**表面决策（记录）**：设计文档 §4 表把租户横幅分配到终端用户面（`/services`、`/services/:serviceId`），但既有服务列表/详情页在管理面（`/admin/inference-services`、`/admin/inference-services/:id`）。与既有架构一致，`GetServiceStatus` RPC 是**新用户面** RPC（按设计，强制服务范围），横幅经其管理面孪生 `GetAdminServiceStatus`（`GET /api/v1/admin/inference-services/{service_id}/status`，同一投影与组织范围）扩展**既有管理** `InferenceServicesPage` 与 `ServiceDetailPage`，使管理页面绝不调用用户面路由。这保留设计意图（服务页面上的降级横幅），同时让服务页面留在它们实际所在处并严格分离两个控制台表面。设计中的 `/services` 终端用户路由不创建。
 
 ### 5.2 Proto 契约
 
@@ -390,7 +391,7 @@ message OverrideRecoveryActionResponse {
 }
 ```
 
-**变更 `proto/taas/infer/v1/infer.proto`** — 新 `GetServiceStatus` RPC 及其消息：
+**变更 `proto/taas/infer/v1/infer.proto`** — 新 `GetServiceStatus` RPC（用户面）及其管理面孪生 `GetAdminServiceStatus`（同一投影，管理前缀，供管理控制台横幅）：
 
 ```proto
   // GetServiceStatus 返回服务状态，含任何活动事件（用户面；组织从
@@ -398,6 +399,14 @@ message OverrideRecoveryActionResponse {
   // 事件，功能 #53，AD10）。
   rpc GetServiceStatus(GetServiceStatusRequest) returns (GetServiceStatusResponse) {
     option (google.api.http) = {get: "/api/v1/inference-services/{service_id}/status"};
+  }
+
+  // GetAdminServiceStatus 返回服务状态，含任何活动事件，供管理控制台
+  // 的降级横幅（功能 #53，AD10）。与 GetServiceStatus 同一投影，但服务
+  // 在管理面，使管理页面绝不调用用户面路由；组织从会话解析，读取范围
+  // 限定为调用者的组织。
+  rpc GetAdminServiceStatus(GetAdminServiceStatusRequest) returns (GetAdminServiceStatusResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/inference-services/{service_id}/status"};
   }
 
 message GetServiceStatusRequest {
@@ -461,11 +470,11 @@ Controller 在本仓库，但下面的检测/恢复契约对数据面轨道有�
 | `FaultsPage`（新，`web/src/pages/FaultsPage.tsx`） | `/admin/faults` | `/api/v1/admin/faults` | 管理 |
 | `FaultDetailPage`（新，`web/src/pages/FaultDetailPage.tsx`） | `/admin/faults/:incidentId` | `/api/v1/admin/faults` | 管理 |
 | `FaultPolicyPage`（新，`web/src/pages/FaultPolicyPage.tsx`） | `/admin/faults/policy` | `/api/v1/admin/faults` | 管理 |
-| `ServiceStatusBanner`（新，`web/src/components/ServiceStatusBanner.tsx`） | `InferenceServicesPage`、`ServiceDetailPage`（既有） | `/api/v1/inference-services/{service_id}/status` | 用户 |
+| `ServiceStatusBanner`（新，`web/src/components/ServiceStatusBanner.tsx`） | `InferenceServicesPage`、`ServiceDetailPage`（既有） | `/api/v1/admin/inference-services/{service_id}/status` | 管理 |
 
-管理页面**无 `/api/v1/*` 调用**；横幅组件调用用户面 `GetServiceStatus`（AC11）。按控制台表面分离，管理页面是管理域源（`web/src/pages/*.tsx`），横幅是用户域源（`web/src/components/**`）。
+管理页面**无 `/api/v1/*` 调用**；横幅组件调用管理面 `GetAdminServiceStatus`（AC11）。按控制台表面分离，管理页面与横幅是管理域源（`web/src/pages/*.tsx`、`web/src/components/**`）。
 
-**表面决策（记录）**：设计文档 §4 表把租户横幅分配到终端用户面（`/services`、`/services/:serviceId`）。与既有架构一致（服务列表/详情今天在管理面），`ServiceStatusBanner` 扩展**管理** `InferenceServicesPage` 与 `ServiceDetailPage`，调用用户面 `GetServiceStatus`。这是与既有架构最一致的解读；设计中的 `/services` 终端用户路由不创建。
+**表面决策（记录）**：设计文档 §4 表把租户横幅分配到终端用户面（`/services`、`/services/:serviceId`）。与既有架构一致（服务列表/详情今天在管理面），`ServiceStatusBanner` 扩展**管理** `InferenceServicesPage` 与 `ServiceDetailPage`，调用管理面 `GetAdminServiceStatus`（`GET /api/v1/admin/inference-services/{service_id}/status`，与用户面读取同一投影与组织范围）。用户面 `GetServiceStatus` 留给未来终端用户服务页面。这是与既有架构及控制台表面分离最一致的解读；设计中的 `/services` 终端用户路由不创建。
 
 ### 6.2 导航放置
 
@@ -493,7 +502,7 @@ Controller 在本仓库，但下面的检测/恢复契约对数据面轨道有�
 ### 6.4 每表面认证守卫
 
 - `FaultsPage`、`FaultDetailPage` 与 `FaultPolicyPage` 在 `AdminShell` 内渲染，其外壳守卫强制管理会话域（`/admin/login`，token `go-taas.admin.session-token`）；用户域会话访问管理路由从域守卫得到 **10038**。无平台管理员角色的会话从 `requireAdminRole` 得到 **10036**；页面渲染标准权限拒绝状态并链接回 `/admin`（AC12）。
-- `ServiceStatusBanner` 调用用户面 `GET /api/v1/inference-services/{service_id}/status`；范围在服务端（AD10）— 横幅只显示调用者自己服务的事件。横幅是信息性的，在用户面不链接任何东西。
+- `ServiceStatusBanner` 调用管理面 `GET /api/v1/admin/inference-services/{service_id}/status`；范围在服务端（AD10）— 横幅只显示调用者自己服务的事件。横幅是信息性的，在用户面不链接任何东西。
 
 ### 6.5 `data-testid` 钩子（约束性，kebab-case）
 
@@ -531,8 +540,8 @@ sequenceDiagram
     Op->>UI: /admin/faults/:incidentId
     UI->>FAULT: GET /api/v1/admin/faults/{incident_id}
     FAULT-->>UI: 时间线、证据、动作
-    Ten->>BAN: /services/:serviceId
-    BAN->>FAULT: GET /api/v1/inference-services/{service_id}/status
+    Ten->>BAN: /admin/inference-services/:serviceId
+    BAN->>FAULT: GET /api/v1/admin/inference-services/{service_id}/status
     FAULT-->>BAN: 降级横幅（resolved -> 隐藏）
 ```
 
@@ -623,7 +632,7 @@ fault:
 
 ## 10. 安全考虑
 
-1. **域分离**（FR6.1，AC11）：事件管理仅限管理面（`/api/v1/admin/faults/*`）；服务状态在用户面（`/api/v1/inference-services/{service_id}/status`）。用户域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036**。管理页面无 `/api/v1/*` 调用，用户页面无 `/api/v1/admin/*` 调用。
+1. **域分离**（FR6.1，AC11）：事件管理仅限管理面（`/api/v1/admin/faults/*`）；服务状态在用户面（`/api/v1/inference-services/{service_id}/status`），并为管理控制台横幅提供管理面孪生（`/api/v1/admin/inference-services/{service_id}/status`）。用户域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036**。管理页面无 `/api/v1/*` 调用，用户页面无 `/api/v1/admin/*` 调用。
 2. **服务范围**（AD10，AC9）：租户可见 `GetServiceStatus` 在服务层强制服务范围 — 调用者组织从会话解析，绝不从客户端提供的服务 id。只返回调用者自己服务的事件；不出现其他服务的事件。租户表面无事件变更路由。
 3. **运营者覆盖**（D4，AC6）：自动恢复有界且可覆盖。运营者可按类别禁用自动恢复、覆盖进行中的动作、或手动触发一个。排空始终要求运营者确认（FR4.4）。
 4. **审计**（D5，AC10）：每个恢复动作与策略变更都被审计；服务上的恢复动作也出现在部署历史轨迹（`deployment.updated`，actor `recovery`）。列表/读取 RPC 不审计，按平台读路径约定。
@@ -671,14 +680,14 @@ fault:
 | 模块 | 文件 | 职责 |
 | --- | --- | --- |
 | `proto/taas/fault/v1` | `fault.proto`（新） | `FaultService` + 消息（第 5.2 节）；重新生成 |
-| `proto/taas/infer/v1` | `infer.proto` | `GetServiceStatus` RPC + 消息；重新生成 |
+| `proto/taas/infer/v1` | `infer.proto` | `GetServiceStatus` + `GetAdminServiceStatus` RPC 与消息；重新生成 |
 | `services/fault` | `fault_model.go`（新） | `Incident`、`IncidentStep`、`FaultPolicy` GORM 模型（第 4 节） |
 | | `fault_repository.go`（新） | 事件 CRUD、时间线读取、策略读/更新、保留清理 |
 | | `classifier.go`（新） | 确定性根因分类器（AD12） |
 | | `fault_service.go`（新） | 六个 RPC、`requireAdminRole`、恢复运行器 |
 | | `signal_consumer.go`（新） | 检测信号消费者运行器 + 去抖逻辑（AD13） |
 | | `recovery.go`（新） | 恢复动作执行与记录（AD14、AD16） |
-| `services/infer` | `service.go`、infer 仓库 | `GetServiceStatus` RPC、事件查找 |
+| `services/infer` | `service.go`、infer 仓库 | `GetServiceStatus` + `GetAdminServiceStatus` RPC、事件查找 |
 | `internal/controller` | `fault_detection.go`（新） | 发布故障信号的检测采集器（AD13） |
 | | `reconciler.go` | 恢复动作执行（重启/重调度/排空） |
 | `pkg/errors` | `codes.go`、`messages.go` | vgpu 块之后的 135xx 块 |
@@ -773,7 +782,7 @@ CodeFaultNotFound          Code = 13506 // FAULT_NOT_FOUND
 - **`FaultsPage`**（`/admin/faults`）：加载 `GET /api/v1/admin/faults?{page, status, severity, root_cause, target_type, search}`；渲染事件表格 — 严重度（徽章：critical 红 / warning 琥珀 / info 蓝）、状态（detected / diagnosing / recovering / resolved / failed）、根因（类别芯片）、目标（"service: chat-7b" / "node: node-a" / "accelerator: node-a GPU 0"）、自动恢复（勾或横杠）、开始（相对）、解决（相对或横杠）。过滤条：状态、严重度、根因、目标类型过滤、搜索、分页。行点击打开详情。状态：加载骨架；空（"No incidents — the platform is healthy"）；错误（陈旧带重试）；权限拒绝（10036，链接 `/admin`）。
 - **`FaultDetailPage`**（`/admin/faults/:incidentId`）：加载 `GET /api/v1/admin/faults/{incident_id}`；渲染事件头部（严重度徽章、状态、根因类别、目标、开始/解决时间、自动恢复标志）、`IncidentTimeline`（垂直，每步带时间戳、actor、详情；`failed` 步骤红色）、根因证据卡片（分类器输入；对 `unknown`，说明无信号匹配并提供手动重分类控制）、恢复动作卡片（已采取或待处理的动作、其状态、控制：**Override** 取消进行中动作、**Manual action** 重启/重调度/排空按钮）。排空按钮打开确认对话框点名节点与受影响服务。状态：加载；错误；权限拒绝；已解决事件显示"Resolved"横幅且无活动动作控制。
 - **`FaultPolicyPage`**（`/admin/faults/policy`）：加载 `GET /api/v1/admin/faults/policy`；渲染按类别行 — 每个根因类别带默认动作与开关（Auto-restart 开/关、Auto-reschedule 开/关）与全局"Drain always requires confirmation"开关（始终开，为透明显示）。改开关 → `PATCH /api/v1/admin/faults/policy`；**13502** 响应高亮违规类别；成功显示 toast 并被审计。状态：加载；错误；权限拒绝。
-- **`ServiceStatusBanner`**（`InferenceServicesPage`、`ServiceDetailPage`）：服务有活动事件时，服务行（列表）或服务详情顶部出现**降级横幅** — 紧凑条带带严重度颜色、通俗消息（"This service is being recovered — a failure was detected and the platform is restarting it"）、根因类别芯片。它调用 `GET /api/v1/inference-services/{service_id}/status`（用户面，AD10）。横幅是信息性的，在用户面不链接任何东西。健康时隐藏；状态调用错误时横幅隐藏，服务显示正常状态。
+- **`ServiceStatusBanner`**（`InferenceServicesPage`、`ServiceDetailPage`）：服务有活动事件时，服务行（列表）或服务详情顶部出现**降级横幅** — 紧凑条带带严重度颜色、通俗消息（"This service is being recovered — a failure was detected and the platform is restarting it"）、根因类别芯片。它调用 `GET /api/v1/admin/inference-services/{service_id}/status`（管理面，AD10）。横幅是信息性的，在用户面不链接任何东西。健康时隐藏；状态调用错误时横幅隐藏，服务显示正常状态。
 - **`api.ts`**：`Incident`、`IncidentStep`、`RecoveryAction`、`AutoRecoveryPolicy`、`ServiceStatus`、`ServiceIncident` 类型；int64 字段类型化为字符串（序列化约定）。
 - **i18n**：`nav.faults` 与 `fault.*` 键（表格、详情、时间线、证据、动作、策略、横幅、状态）在 `en.ts`/`zh.ts`（`routingGroups.*` 约定）。
 
@@ -807,7 +816,7 @@ if runner := fault.NewSignalConsumer(srv.Components()); runner != nil {
 1. **`pkg/errors`**：135xx 块 + 消息（按要求点名类别/动作）。
 2. **`pkg/config`**：`FaultConfig`（+ `FaultDebounceConfig`、`FaultSignalsConsumerConfig`）+ 默认 + 校验 + `configs/config.yaml` 段。
 3. **`pkg/mq`**：`SubjectFaultSignals`、`SubjectFaultActions`。
-4. **`proto/taas/fault/v1/fault.proto`**：`FaultService` + 消息；**`proto/taas/infer/v1/infer.proto`**：`GetServiceStatus` RPC + 消息；重新生成。
+4. **`proto/taas/fault/v1/fault.proto`**：`FaultService` + 消息；**`proto/taas/infer/v1/infer.proto`**：`GetServiceStatus` + `GetAdminServiceStatus` RPC 与消息；重新生成。
 5. **`services/fault/fault_model.go`**：`Incident`、`IncidentStep`、`FaultPolicy` GORM 模型。
 6. **`services/fault/fault_repository.go`**：事件 CRUD、时间线读取、策略读/更新、保留清理。
 7. **`services/fault/classifier.go`**：确定性根因分类器。

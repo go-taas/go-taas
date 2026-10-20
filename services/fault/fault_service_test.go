@@ -142,6 +142,11 @@ func TestGetIncident(t *testing.T) {
 	// Unknown -> 13506.
 	_, err = svc.GetIncident(ctx, &faultv1.GetIncidentRequest{IncidentId: "missing"})
 	assert.EqualValues(t, apierrors.CodeFaultNotFound, apierrors.CodeOf(err))
+
+	// A malformed (non-UUID) id maps to the same business code instead
+	// of surfacing a postgres uuid cast error (bug FAULT-1).
+	_, err = svc.GetIncident(ctx, &faultv1.GetIncidentRequest{IncidentId: "not-a-uuid"})
+	assert.EqualValues(t, apierrors.CodeFaultNotFound, apierrors.CodeOf(err))
 }
 
 func TestUpdateAutoRecoveryPolicy(t *testing.T) {

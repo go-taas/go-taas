@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/go-taas/go-taas/pkg/database"
@@ -72,8 +73,13 @@ func (r *Repository) ListIncidents(ctx context.Context, filter IncidentListFilte
 }
 
 // GetIncident returns one incident row. gorm.ErrRecordNotFound passes
-// through; the caller maps it to CodeFaultNotFound.
+// through; the caller maps it to CodeFaultNotFound. A malformed
+// (non-UUID) id maps there too, because it can never match a stored row
+// and a raw comparison would surface a postgres uuid cast error.
 func (r *Repository) GetIncident(ctx context.Context, incidentID string) (*Incident, error) {
+	if _, err := uuid.Parse(incidentID); err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	var row Incident
 	err := r.db.DB(ctx).Where("id = ?", incidentID).First(&row).Error
 	if err != nil {
