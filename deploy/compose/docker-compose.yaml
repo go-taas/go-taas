@@ -94,6 +94,9 @@ services:
   #   - on the host it must resolve to 127.0.0.1 (add to /etc/hosts):
   #       127.0.0.1 keycloak
   # The admin console is at http://localhost:8080 (admin / admin).
+  # The host port is overridable (KEYCLOAK_HOST_PORT) so the stack can
+  # coexist with another local service on 8080; the issuer stays
+  # container-internal (http://keycloak:8080) either way.
   keycloak:
     image: quay.io/keycloak/keycloak:26.0
     command: ["start-dev", "--import-realm"]
@@ -102,7 +105,7 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_HEALTH_ENABLED: "true"
     ports:
-      - "8080:8080"
+      - "${KEYCLOAK_HOST_PORT:-8080}:8080"
     volumes:
       - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json:ro
     healthcheck:

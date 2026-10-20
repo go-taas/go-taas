@@ -40,13 +40,18 @@ IMAGE_TARGETS ?= taas-server controller console
 #   make compose-up GOPROXY=https://goproxy.cn,direct NPM_REGISTRY=https://registry.npmmirror.com
 GOPROXY ?= https://goproxy.cn,direct
 NPM_REGISTRY ?= https://registry.npmjs.org
+# Debian apt mirror for the taas-server runtime image; empty keeps the
+# upstream deb.debian.org sources. Override on restricted networks, e.g.
+#   make compose-up APT_MIRROR=http://mirrors.tuna.tsinghua.edu.cn
+APT_MIRROR ?=
 
 # Shared docker build flags (metadata + network proxies).
 DOCKER_BUILD_ARGS := --build-arg VERSION=$(IMAGE_TAG) \
 	--build-arg COMMIT=$$(git rev-parse --short HEAD 2>/dev/null || echo unknown) \
 	--build-arg BUILD_TIME=$$(date -u +%Y-%m-%dT%H:%M:%SZ) \
 	--build-arg GOPROXY=$(GOPROXY) \
-	--build-arg NPM_REGISTRY=$(NPM_REGISTRY)
+	--build-arg NPM_REGISTRY=$(NPM_REGISTRY) \
+	--build-arg APT_MIRROR=$(APT_MIRROR)
 
 # Docker build network. Defaults to the host network so the build container
 # can reach the module proxy / npm registry / buf remote on hosts whose

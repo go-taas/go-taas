@@ -17,6 +17,9 @@ ARG GOPROXY=https://proxy.golang.org,direct
 # npm registry mirror for the console build; override for restricted
 # networks, e.g. --build-arg NPM_REGISTRY=https://registry.npmmirror.com
 ARG NPM_REGISTRY=https://registry.npmjs.org
+# Debian apt mirror for the taas-server runtime stage; override for
+# restricted networks, e.g. --build-arg APT_MIRROR=http://mirrors.tuna.tsinghua.edu.cn
+ARG APT_MIRROR=
 
 # ---- Console (web/) build stage ---------------------------------------
 # Node 20 matches the documented minimum (README: "Node.js 20+").
@@ -107,11 +110,16 @@ FROM debian:bookworm-slim AS taas-server
 ARG VERSION
 ARG COMMIT
 ARG BUILD_TIME
+ARG APT_MIRROR
 LABEL org.opencontainers.image.title="taas-server" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${BUILD_TIME}"
-RUN apt-get update \
+# Point apt at a reachable mirror when requested (restricted networks).
+RUN if [ -n "$APT_MIRROR" ]; then \
+      sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}/debian|; s|http://deb.debian.org/debian-security|${APT_MIRROR}/debian-security|" /etc/apt/sources.list.d/debian.sources; \
+    fi && \
+    apt-get update \
     && apt-get install -y --no-install-recommends skopeo ca-certificates \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 65532 --create-home nonroot
