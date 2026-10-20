@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"gorm.io/gorm"
 
 	"github.com/go-taas/go-taas/pkg/database"
@@ -60,8 +61,13 @@ func (r *Repository) ListVGPUPools(ctx context.Context, filter PoolListFilter) (
 }
 
 // GetVGPUPool returns one pool row. gorm.ErrRecordNotFound passes
-// through; the caller maps it to CodeVGPUPoolNotFound.
+// through; the caller maps it to CodeVGPUPoolNotFound. A malformed
+// (non-UUID) id maps there too, because it can never match a stored row
+// and a raw comparison would surface a postgres uuid cast error.
 func (r *Repository) GetVGPUPool(ctx context.Context, poolID string) (*VGPUPool, error) {
+	if _, err := uuid.Parse(poolID); err != nil {
+		return nil, gorm.ErrRecordNotFound
+	}
 	var row VGPUPool
 	err := r.db.DB(ctx).Where("id = ?", poolID).First(&row).Error
 	if err != nil {

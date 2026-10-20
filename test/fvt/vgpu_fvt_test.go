@@ -235,6 +235,12 @@ func TestFVTvgpuAdminLifecycle(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, code, "unknown: %v", body)
 	assert.EqualValues(t, 13406, body["code"])
 
+	// Malformed (non-UUID) pool id -> 13406, not a uuid cast error
+	// (bug VGPU-1).
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/vgpu-pools/not-a-uuid", nil, true)
+	assert.NotEqual(t, http.StatusOK, code, "malformed: %v", body)
+	assert.EqualValues(t, 13406, body["code"])
+
 	// Delete the idle pool.
 	code, body = env.call(t, http.MethodDelete, "/api/v1/admin/vgpu-pools/"+poolID, nil, true)
 	require.Equal(t, http.StatusOK, code, "delete: %v", body)
@@ -326,5 +332,15 @@ func TestFVTvgpuDeploySliceValidation(t *testing.T) {
 		"poolId": "missing", "sliceTemplateId": "small",
 	}, true)
 	assert.NotEqual(t, http.StatusOK, code, "unknown pool: %v", body)
+	assert.EqualValues(t, 13403, body["code"])
+
+	// A slice request referencing a malformed (non-UUID) pool id -> 13403,
+	// not a uuid cast error (bug VGPU-1).
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
+		"name": "svc-2", "modelId": env.modelID, "modelVersion": "v1",
+		"imageId": "img-vllm-nvidia", "replicas": 1, "accelerator": "nvidia",
+		"poolId": "not-a-uuid", "sliceTemplateId": "small",
+	}, true)
+	assert.NotEqual(t, http.StatusOK, code, "malformed pool: %v", body)
 	assert.EqualValues(t, 13403, body["code"])
 }

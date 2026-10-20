@@ -196,6 +196,11 @@ func TestGetVGPUPoolNotFound(t *testing.T) {
 	svc := newTestEnv(t, true)
 	_, err := svc.GetVGPUPool(context.Background(), &vgpuv1.GetVGPUPoolRequest{PoolId: "missing"})
 	assert.EqualValues(t, apierrors.CodeVGPUPoolNotFound, apierrors.CodeOf(err))
+
+	// A malformed (non-UUID) id maps to the same business code instead
+	// of surfacing a postgres uuid cast error (bug VGPU-1).
+	_, err = svc.GetVGPUPool(context.Background(), &vgpuv1.GetVGPUPoolRequest{PoolId: "not-a-uuid"})
+	assert.EqualValues(t, apierrors.CodeVGPUPoolNotFound, apierrors.CodeOf(err))
 }
 
 func TestUpdateVGPUPool(t *testing.T) {

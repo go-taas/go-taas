@@ -4,7 +4,7 @@
 | --- | --- |
 | 功能点 | 基于 HAMI 的 vGPU 切片池 — 通过节点标签将多个节点指定为 vGPU 切片池，允许多个小推理任务共调度到同一块物理 GPU 上（backlog 第 52 行） |
 | 文档范围 | 功能-52 的架构与详细设计：新 `vgpu` 模块（池 CRUD、标签驱动节点成员、切片模板、容量核算、调度提示）、`infer` 扩展（共享 GPU 部署字段、服务详情的已分配切片投影）、Controller 的 HAMI 注解发出与池成员采集、134xx 错误块、管理页面 `/admin/vgpu-pools` 与 `/admin/vgpu-pools/:poolId`、部署表单共享 GPU 模式与服务详情切片卡片、配置、安全、上线，以及按层的函数级任务清单 |
-| 负责模块 | `vgpu`（新模块 — 池成员、切片模板、容量核算、调度提示）；`infer`（部署表单 vGPU 字段、服务切片分配）；`Controller`（将调度提示转为 HAMI 设备请求、采集池成员）；`k8s`（节点标签、扩展资源、HAMI 注解）；`pkg/server` 网关（管理 + 用户前缀绑定）；`pkg/errors`（134xx 块）；`pkg/config`（`vgpu` 段）；`pkg/mq`（无新主题）；`audit`（复用 — `pool.*` 事件）；`web` 管理控制台（`VGPUPoolsPage`、`VGPUPoolDetailPage`）与终端用户控制台（`DeployDialog` 共享 GPU 模式、`ServiceDetailPage` 切片卡片） |
+| 负责模块 | `vgpu`（新模块 — 池成员、切片模板、容量核算、调度提示）；`infer`（部署表单 vGPU 字段、服务切片分配）；`Controller`（将调度提示转为 HAMI 设备请求、采集池成员）；`k8s`（节点标签、扩展资源、HAMI 注解）；`pkg/server` 网关（管理 + 用户前缀绑定）；`pkg/errors`（134xx 块）；`pkg/config`（`vgpu` 段）；`pkg/mq`（无新主题）；`audit`（复用 — `pool.*` 事件）；`web` 管理控制台（`VGPUPoolsPage`、`VGPUPoolDetailPage`、`DeployDialog` 共享 GPU 模式、`ServiceDetailPage` 切片卡片） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/vgpu-slicing-pool.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.3 异构计算、§2.4 `infer`、§2.7 Controller · [加速器清单与健康](./accelerator-inventory.zh-cn.md)（本功能池节点是其带标签子集的按节点 GPU 机群视图；池成员所派生的投影模型）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（本功能扩展的部署表单、`inference_services` 表）· [推理弹性伸缩](./inference-autoscaling.zh-cn.md)（切片感知副本规模）· [服务配额管理](./service-quota-management.zh-cn.md)（切片数配额维度由此延迟而来）· [多集群管理](./multi-cluster-management.zh-cn.md)（跨集群池成员）· [控制台表面分离](./console-surface-separation.zh-cn.md)（两个表面、脱敏投影规则） |
 | 状态 | 架构完成，已移交开发者 agent |
 
@@ -21,7 +21,7 @@
 **目标**：
 
 - 两个管理页面：`/admin/vgpu-pools`（`VGPUPoolsPage` — 带选择器、策略、模板、节点、分配、利用率的池表格；创建对话框）与 `/admin/vgpu-pools/:poolId`（`VGPUPoolDetailPage` — 节点成员、按 GPU 分配、使用切片的服务、编辑对话框、删除流程），按设计 §5.1–§5.3。
-- 部署表单的**共享 GPU 模式**（设计 §5.4）：开关、池下拉（授权过滤）、切片模板下拉、共享 GPU 说明；服务详情的**切片卡片**（设计 §5.5）。
+- 部署表单的**共享 GPU 模式**（设计 §5.4）：开关、池下拉（平台范围，管理面读取）、切片模板下拉、共享 GPU 说明；服务详情的**切片卡片**（设计 §5.5）。
 - 新 `vgpu` 模块拥有池成员（标签选择器）、切片模板与容量核算，带自己的错误块 **134xx**（设计 §6）。
 - `VGPUService` 上五个管理 RPC 绑定在 `/api/v1/admin/vgpu-pools/*` 下，一个租户可见 `ListVGPUPools` 绑定在 `/api/v1/vgpu-pools` 下，以及 `infer` 扩展（`CreateInferenceService` 增加 `pool_id` + `slice_template_id`；`GetInferenceService` 增加已分配切片）（设计 §6）。
 - Controller 的 HAMI 注解发出（`nvidia.com/gpumem`、`nvidia.com/gpucores`、放置策略注解）与池成员采集（标签驱动，来自加速器清单快照）（设计 §6 注 2–4）。
@@ -49,7 +49,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 | AD6 | **无性能隔离保证。** 池页面与部署表单都说明共享 GPU 是共享资源；显存/算力隔离按 HAMI 后端尽力而为 | 设计 D6。对共享资源权衡诚实；避免向租户过度承诺 |
 | AD7 | **切片分配是容量遥测，不是计量。** 池的分配视图显示每个模板多少切片已分配/空闲；计费保持按请求 token 计（#4） | 设计 D7。不触碰计量链；池视图是运维表面 |
 | AD8 | **切片数作为配额维度延迟。** 服务配额功能（#51）交付四个维度；按组织切片数配额是后续工作 | 设计 D8。让本功能聚焦共享机制；配额集成是干净的后续 |
-| AD9 | **池管理仅限管理面；部署表单切片选择器在终端用户面。** 池 CRUD、模板与容量核算在管理面（`/admin/vgpu-pools` + `/api/v1/admin/vgpu-pools/*`）；部署表单的池/模板下拉与服务详情切片卡片在终端用户面（`/api/v1/vgpu-pools` + `/api/v1/infer/*` 扩展）。用户域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036** | 设计 D10/FR5.1。与控制台表面分离一致；池内部（机群容量）是运营者知识，部署时的切片选择是租户的 |
+| AD9 | **池管理仅限管理面；部署表单切片选择器在管理面。** 池 CRUD、模板与容量核算在管理面（`/admin/vgpu-pools` + `/api/v1/admin/vgpu-pools/*`）；部署表单的池/模板下拉与服务详情切片卡片也在管理面（`/api/v1/admin/vgpu-pools` + `/api/v1/admin/inference-services` 扩展）。用户域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036** | 设计 D10/FR5.1。与控制台表面分离一致；池内部（机群容量）是运营者知识，部署时的切片选择由管理部署表单完成（租户可见的授权过滤池列表留给未来终端用户部署表面） |
 | AD10 | **租户可见池列表在服务层授权过滤。** 组织仅当被授权访问池时才可用（镜像功能 #13 的模型授权模型）；调用者组织从会话解析，绝不信任客户端提供的 id。无授权的池隐藏 | 设计 FR5.3。部署表单的池下拉不得泄露组织不能用的池；授权检查在服务端，绝不信任客户端 |
 | AD11 | **细化设计 D1/FR1.1 — 池是数据库表；成员与容量是投影。** 池自身状态（名称、标签选择器、放置策略、切片模板）是 `vgpu` 模块拥有的 GORM 表 `vgpu_pools`。节点成员与按 GPU 切片分配**不存储** — 它们是加速器清单快照（已带节点标签与按 GPU 状态，功能 #18）加 Controller 采集的 HAMI 上报设备状态的投影（设计 FR3.3："容量是 HAMI 上报设备状态的投影，不是独立数据库表"） | 设计钉死"池成员是声明式的"与"容量是投影，不是数据库表"，但未钉死池自身状态放哪。`vgpu_pools` 表是最小忠实解读：池的 CRUD 状态（名称、选择器、策略、模板）持久且审计，而易变的成员/容量从集群派生。这避免容量的第二真相源，同时让池配置持久 |
 | AD12 | **细化设计 D1/FR1.1 — 池成员从加速器清单快照派生，而非独立节点观察。** `vgpu` 模块消费与加速器服务相同的 `accelerator.inventory` 快照（功能 #18）；当节点的 `labels` 映射含池的选择器键/值时，该节点是池成员。Controller 的清单采集器已发布节点标签（功能 #18，AD3）— 无需新节点观察 | 设计说"Controller 观察节点上的标签选择器并上报成员"（设计 §6 注 2）。清单采集器已按间隔列出节点并发布其标签；复用该快照是最小改动，保持一个节点采集循环。池成员视图因此与清单间隔一样新（默认 30 秒） |
@@ -84,7 +84,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 flowchart TD
     subgraph browsers["浏览器"]
         AC["管理控制台<br/>/admin/vgpu-pools<br/>/admin/vgpu-pools/:poolId<br/>key go-taas.admin.session-token"]
-        UC["终端用户控制台<br/>/deploy（共享 GPU 模式）<br/>/services/:serviceId（切片卡片）<br/>key go-taas.user.session-token"]
+        UC["终端用户控制台<br/>（未来 /deploy 页面）<br/>key go-taas.user.session-token"]
     end
 
     subgraph gateway["taas-server HTTP（单端口）"]
@@ -202,13 +202,13 @@ flowchart TD
 | `GetVGPUPool` | `GET /api/v1/admin/vgpu-pools/{pool_id}` | 管理 | **新** | 一个池的完整详情（节点、按 GPU 分配、服务）；未知池 → 13406 |
 | `UpdateVGPUPool` | `PATCH /api/v1/admin/vgpu-pools/{pool_id}` | 管理 | **新** | 更新策略/模板/选择器；审计；模板非法 13402 |
 | `DeleteVGPUPool` | `DELETE /api/v1/admin/vgpu-pools/{pool_id}` | 管理 | **新** | 删除池；有服务使用则 13405 |
-| `ListVGPUPools`（租户可见） | `GET /api/v1/vgpu-pools` | 用户 | **新** | 调用者组织可用的池（授权过滤），带模板 — 供部署表单 |
+| `ListVGPUPools`（租户可见） | `GET /api/v1/vgpu-pools` | 用户 | **新** | 调用者组织可用的池（授权过滤），带模板 — 留给未来终端用户部署表面 |
 | `CreateInferenceService`（`taas.infer.v1`） | `POST /api/v1/admin/inference-services` | 管理 | **变更** | 增加可选 `pool_id` + `slice_template_id`；池/模板非法或未授权 13403 |
 | `GetInferenceService`（`taas.infer.v1`） | `GET /api/v1/admin/inference-services/{service_id}` | 管理 | **变更** | 共享 GPU 时响应增加已分配切片（池、模板、物理 GPU） |
 
 网关路由说明：`GET /api/v1/admin/vgpu-pools`（集合根）与 `GET /api/v1/admin/vgpu-pools/{pool_id}` 是不同路径 — 无通配符冲突；PATCH 遵循同一 mux 上既有 `UpdateOrganization` 约定。租户可见 `GET /api/v1/vgpu-pools` 是不同用户前缀路径，因此域守卫把它分类为用户表面。
 
-**表面决策（记录）**：设计文档 §4 表把部署表单分配到终端用户面（`/deploy`、`/api/v1/infer/*`），但既有部署表单（功能 #2）在管理面 — `DeployDialog` 用于管理 `ModelsPage`/`ModelDetailPage` 并调用 `POST /api/v1/admin/inference-services`。与既有架构一致，共享 GPU 部署模式扩展**既有管理部署表单**；租户可见 `ListVGPUPools`（授权过滤）是**用户面** RPC，部署表单用它填充池下拉。服务详情切片卡片扩展既有管理 `ServiceDetailPage`。这保留设计意图（授权过滤、模板有界的切片选择器），同时让部署表单留在它实际所在处。设计中的 `/deploy` 终端用户路由不创建；部署表单保持管理面。
+**表面决策（记录）**：设计文档 §4 表把部署表单分配到终端用户面（`/deploy`、`/api/v1/infer/*`），但既有部署表单（功能 #2）在管理面 — `DeployDialog` 用于管理 `ModelsPage`/`ModelDetailPage` 并调用 `POST /api/v1/admin/inference-services`。与既有架构一致，共享 GPU 部署模式扩展**既有管理部署表单**；池下拉读取**管理面** `ListVGPUPools`（`GET /api/v1/admin/vgpu-pools`，平台范围），使管理部署表单绝不调用用户面路由。租户可见 `ListVGPUPools`（授权过滤，`GET /api/v1/vgpu-pools`）保持为**用户面** RPC，留给未来终端用户部署表面。服务详情切片卡片扩展既有管理 `ServiceDetailPage`。这保留设计意图（模板有界的切片选择器），同时让部署表单留在它实际所在处并严格分离两个控制台表面。设计中的 `/deploy` 终端用户路由不创建；部署表单保持管理面。
 
 ### 5.2 Proto 契约
 
@@ -262,7 +262,7 @@ service VGPUService {
   }
 
   // ListVGPUPools（租户可见）返回调用者组织可用的池及其切片模板，
-  // 供部署表单（用户面；组织从会话解析，绝不从客户端提供的 id）。
+  // 留给未来终端用户部署表面（用户面；组织从会话解析，绝不从客户端提供的 id）。
   rpc ListTenantVGPUPools(ListTenantVGPUPoolsRequest) returns (ListTenantVGPUPoolsResponse) {
     option (google.api.http) = {get: "/api/v1/vgpu-pools"};
   }
@@ -489,12 +489,12 @@ HAMI 不在本仓库；下面的契约对数据面轨道有约束力，并在 FV
 | --- | --- | --- | --- |
 | `VGPUPoolsPage`（新，`web/src/pages/VGPUPoolsPage.tsx`） | `/admin/vgpu-pools` | `/api/v1/admin/vgpu-pools` | 管理 |
 | `VGPUPoolDetailPage`（新，`web/src/pages/VGPUPoolDetailPage.tsx`） | `/admin/vgpu-pools/:poolId` | `/api/v1/admin/vgpu-pools` | 管理 |
-| `DeployDialog` 共享 GPU 模式（变更，`web/src/components/DeployDialog.tsx`） | `/admin/models`、`/admin/models/:id`（既有） | `/api/v1/vgpu-pools`（池下拉）+ `/api/v1/admin/inference-services`（创建） | 管理 |
+| `DeployDialog` 共享 GPU 模式（变更，`web/src/components/DeployDialog.tsx`） | `/admin/models`、`/admin/models/:id`（既有） | `/api/v1/admin/vgpu-pools`（池下拉）+ `/api/v1/admin/inference-services`（创建） | 管理 |
 | `ServiceDetailPage` 切片卡片（变更，`web/src/pages/ServiceDetailPage.tsx`） | `/admin/inference-services/:id`（既有） | `/api/v1/admin/inference-services` | 管理 |
 
-管理页面**无 `/api/v1/*` 调用**（除部署表单的授权过滤池下拉 — 这是管理部署表单合法使用的用户面读取）；用户页面**无 `/api/v1/admin/*` 调用**（AC11）。按控制台表面分离，管理页面是管理域源（`web/src/pages/*.tsx`）。
+管理页面**无 `/api/v1/*` 调用**；用户页面**无 `/api/v1/admin/*` 调用**（AC11）。按控制台表面分离，管理页面是管理域源（`web/src/pages/*.tsx`）。
 
-**表面决策（记录）**：设计文档 §4 表把部署表单与服务详情分配到终端用户面。与既有架构一致（部署表单与服务详情今天在管理面），共享 GPU 模式与切片卡片扩展**管理** `DeployDialog` 与 `ServiceDetailPage`。租户可见 `ListVGPUPools` 是部署表单池下拉使用的用户面 RPC。这是与既有架构最一致的解读；设计中的 `/deploy` 终端用户路由不创建。
+**表面决策（记录）**：设计文档 §4 表把部署表单与服务详情分配到终端用户面。与既有架构一致（部署表单与服务详情今天在管理面），共享 GPU 模式与切片卡片扩展**管理** `DeployDialog` 与 `ServiceDetailPage`。部署表单的池下拉读取**管理面** `ListVGPUPools`（`GET /api/v1/admin/vgpu-pools`，平台范围）；租户可见 `ListVGPUPools`（`GET /api/v1/vgpu-pools`，授权过滤）留给未来终端用户部署表面。这是与既有架构及控制台表面分离最一致的解读；设计中的 `/deploy` 终端用户路由不创建。
 
 ### 6.2 导航放置
 
@@ -521,7 +521,7 @@ HAMI 不在本仓库；下面的契约对数据面轨道有约束力，并在 FV
 ### 6.4 每表面认证守卫
 
 - `VGPUPoolsPage` 与 `VGPUPoolDetailPage` 在 `AdminShell` 内渲染，其外壳守卫强制管理会话域（`/admin/login`，token `go-taas.admin.session-token`）；用户域会话访问管理路由从域守卫得到 **10038**。无平台管理员角色的会话从 `requireAdminRole` 得到 **10036**；页面渲染标准权限拒绝状态并链接回 `/admin`（AC12）。
-- 部署表单的池下拉调用用户面 `GET /api/v1/vgpu-pools`；部署表单本身在管理面（既有 `DeployDialog`）。授权过滤在服务端（AD10）— 下拉只显示组织可用的池。
+- 部署表单的池下拉调用管理面 `GET /api/v1/admin/vgpu-pools`（平台范围）；部署表单本身在管理面（既有 `DeployDialog`）。下拉显示每个池及其模板；授权检查在部署时于服务端运行（AD10）— 引用未授权池的部署返回 **13403**。
 - `ServiceDetailPage` 在 `AdminShell` 内渲染（管理域）；切片卡片是信息性的，无需额外角色门。
 
 ### 6.5 `data-testid` 钩子（约束性，kebab-case）
@@ -562,8 +562,8 @@ sequenceDiagram
     Op->>UI: 用选择器给节点打标签（go-taas.io/vgpu-pool=pool-a）
     Note over ACC: 清单快照在间隔内（30 秒）拾取标签
     Ten->>DEP: 打开共享 GPU，选池 + 模板
-    DEP->>VGPU: GET /api/v1/vgpu-pools（授权过滤）
-    VGPU-->>DEP: 组织可用的池及其模板
+    DEP->>VGPU: GET /api/v1/admin/vgpu-pools（平台范围）
+    VGPU-->>DEP: 全部池及其模板
     DEP->>INF: POST /api/v1/admin/inference-services（pool_id、template）
     INF->>VGPU: 校验池 + 模板 + 授权 - 非法 13403
     INF->>INF: INSERT inference_services（pool_id、template、state=pending）
@@ -793,7 +793,7 @@ CodeVGPUPoolNotFound          Code = 13406 // VGPU_POOL_NOT_FOUND
 
 - **`VGPUPoolsPage`**（`/admin/vgpu-pools`）：加载 `GET /api/v1/admin/vgpu-pools?{page, name, placement_policy}`；渲染池表格 — 名称、节点标签选择器（"`go-taas.io/vgpu-pool=pool-a`"）、放置策略、模板（"small, medium, large"）、节点（数量）、分配（"small 12/20 · medium 3/8"）、利用率（条，琥珀 ≥ 80%、红 100%）。过滤条：名称搜索、放置策略过滤、分页。行点击打开详情。**创建对话框**：名称（必填、DNS 安全、1–63、唯一 — 内联校验）、节点标签选择器（键 + 值、必填）、放置策略（下拉、默认 binpack）、`SliceTemplateEditor`（加行：名称、显存 GiB、算力 %、描述；按 FR2.2 校验）。保存 → `POST /api/v1/admin/vgpu-pools`；**13401/13402** 响应高亮违规字段并带服务端文案；成功显示 toast 并导航到新池详情。状态：加载骨架；空（"No vGPU pools yet — create one to share GPUs across small inference jobs"）；错误（陈旧带重试）；权限拒绝（10036，链接 `/admin`）。
 - **`VGPUPoolDetailPage`**（`/admin/vgpu-pools/:poolId`）：加载 `GET /api/v1/admin/vgpu-pools/{pool_id}`；渲染池头部（名称、选择器、策略、聚合利用率条、编辑/删除操作）、节点成员表（节点、物理 GPU 型号 + 数量、按 GPU 分配带可展开行显示每块 GPU 的已分配切片：模板、服务、显存/算力已用 vs 空闲、来自加速器清单的健康；放不下任何模板时节点 `full`）、使用切片服务表（服务、模板、物理 GPU、显存/算力、状态、链接服务详情）。**编辑对话框**：放置策略 + `SliceTemplateEditor`；改选择器警告"成员将随新标签变化"；改模板警告"运行中服务保留其当前切片"。保存 → `PATCH /api/v1/admin/vgpu-pools/{pool_id}`。**删除流程**：删除打开确认对话框；若有服务使用池，服务端返回 **13405**，对话框显示"N 个服务正在使用此池。删除前请先迁移或删除这些服务。"并禁用删除。状态：加载；空（池无成员节点 — "No nodes carry this label yet"；提示给节点打标签）；错误；权限拒绝。
-- **`DeployDialog`**（共享 GPU 模式）：在加速器/卡型字段下方，一个**"共享 GPU"开关**（默认关）。关时无变化。开时：出现**池下拉**（来自 `GET /api/v1/vgpu-pools`，授权过滤 — AD10）；选池把加速器/卡型字段约束到池的节点；出现**切片模板下拉**（来自所选池），每个选项标注"small — 8 GiB / 25% compute"并带短描述；出现**共享 GPU 说明**（"This service will share a physical GPU with other services. Memory and compute are isolated best-effort; performance is not guaranteed."）。提交调用 `POST /api/v1/admin/inference-services` 并带 `pool_id` + `slice_template_id`；**13403** 响应显示内联文案。状态：加载（池获取中）；空（组织无可用池 — "No shared-GPU pools are available for your organization" 且开关禁用带 tooltip）；错误（陈旧带重试）。
+- **`DeployDialog`**（共享 GPU 模式）：在加速器/卡型字段下方，一个**"共享 GPU"开关**（默认关）。关时无变化。开时：出现**池下拉**（来自 `GET /api/v1/admin/vgpu-pools`，平台范围 — 管理面读取）；选池把加速器/卡型字段约束到池的节点；出现**切片模板下拉**（来自所选池），每个选项标注"small — 8 GiB / 25% compute"并带短描述；出现**共享 GPU 说明**（"This service will share a physical GPU with other services. Memory and compute are isolated best-effort; performance is not guaranteed."）。提交调用 `POST /api/v1/admin/inference-services` 并带 `pool_id` + `slice_template_id`；**13403** 响应显示内联文案。状态：加载（池获取中）；空（无共享 GPU 池 — "No shared-GPU pools are available for your organization" 且开关禁用带 tooltip）；错误（陈旧带重试）。
 - **`ServiceDetailPage`**（切片卡片）：服务为共享 GPU 时，规格区出现**切片卡片**：池名、模板（"small — 8 GiB / 25%"）、调度后分配的物理 GPU（"node-a · GPU 0"）。整卡服务无切片卡片。卡片在用户面不链接任何东西（池详情仅限管理面）；它是信息性的。
 - **`api.ts`**：`VGPUPool`、`SliceTemplate`、`TemplateAllocation`、`PoolNode`、`PoolGPU`、`SliceAllocation`、`SliceService`、`TenantVGPUPool`、`AssignedSlice` 类型；int64 字段类型化为字符串（序列化约定）。
 - **i18n**：`nav.vgpuPools` 与 `vgpu.*` 键（表格、对话框、模板、详情、部署、切片卡片、状态）在 `en.ts`/`zh.ts`（`routingGroups.*` 约定）。
