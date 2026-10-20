@@ -29,7 +29,7 @@ export default function FaultDetailPage() {
       const res = await api.get<GetIncidentResponse>(`/api/v1/admin/faults/${id}`, orgId);
       setData(res);
     } catch (e: any) {
-      if (e?.body?.code === 10036) setPermissionDenied(true);
+      if (e?.code === 10036) setPermissionDenied(true);
       else setError(e?.message || t('fault.loadFailed'));
     } finally {
       setLoading(false);
@@ -51,7 +51,7 @@ export default function FaultDetailPage() {
       setShowDrain(false);
       void load();
     } catch (e: any) {
-      setActionError(e?.body?.message || e?.message || t('fault.actionFailed'));
+      setActionError(e?.message || t('fault.actionFailed'));
     }
   };
 
@@ -65,7 +65,7 @@ export default function FaultDetailPage() {
       );
       void load();
     } catch (e: any) {
-      setActionError(e?.body?.message || e?.message || t('fault.actionFailed'));
+      setActionError(e?.message || t('fault.actionFailed'));
     }
   };
 

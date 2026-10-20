@@ -32,7 +32,7 @@ export default function FaultPolicyPage() {
       const res = await api.get<GetAutoRecoveryPolicyResponse>('/api/v1/admin/faults/policy', orgId);
       setPolicy(res.policy);
     } catch (e: any) {
-      if (e?.body?.code === 10036) setPermissionDenied(true);
+      if (e?.code === 10036) setPermissionDenied(true);
       else setError(e?.message || t('fault.loadFailed'));
     } finally {
       setLoading(false);
@@ -49,7 +49,7 @@ export default function FaultPolicyPage() {
       const res = await api.patch<GetAutoRecoveryPolicyResponse>('/api/v1/admin/faults/policy', orgId, patch);
       setPolicy(res.policy);
     } catch (e: any) {
-      setError(e?.body?.message || e?.message || t('fault.updateFailed'));
+      setError(e?.message || t('fault.updateFailed'));
     }
   };
 

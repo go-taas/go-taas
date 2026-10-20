@@ -60,7 +60,7 @@ export default function FaultsPage() {
       setIncidents(data.incidents || []);
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e: any) {
-      if (e?.body?.code === 10036) setPermissionDenied(true);
+      if (e?.code === 10036) setPermissionDenied(true);
       else setError(e?.message || t('fault.loadFailed'));
     } finally {
       setLoading(false);

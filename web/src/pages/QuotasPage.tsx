@@ -50,7 +50,7 @@ export default function QuotasPage() {
       setRows(data.quotas || []);
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e: any) {
-      if (e?.body?.code === 10036) setPermissionDenied(true);
+      if (e?.code === 10036) setPermissionDenied(true);
       else setError(e?.message || t('quota.loadFailed'));
     } finally {
       setLoading(false);
@@ -255,8 +255,8 @@ function QuotaEditDialog({
       await api.patch(`/api/v1/admin/quotas/${row.quota.organizationId}`, orgId, body);
       onSaved();
     } catch (e: any) {
-      if (e?.body?.code === 13305) {
-        setErrors({ maxConcurrentRequests: e?.body?.message || t('quota.invalidValue') });
+      if (e?.code === 13305) {
+        setErrors({ maxConcurrentRequests: e?.message || t('quota.invalidValue') });
       } else {
         setErrors({ maxConcurrentRequests: e?.message || t('quota.saveFailed') });
       }

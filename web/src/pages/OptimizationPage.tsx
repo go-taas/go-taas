@@ -71,7 +71,7 @@ export default function OptimizationPage() {
       setStale(false);
       setPermissionDenied(false);
     } catch (e: any) {
-      if (e?.body?.code === 10036) {
+      if (e?.code === 10036) {
         setPermissionDenied(true);
       } else {
         setError(e?.message || t('optimization.loadFailed'));

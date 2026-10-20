@@ -52,7 +52,7 @@ export default function VGPUPoolsPage() {
       setPools(data.pools || []);
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e: any) {
-      if (e?.body?.code === 10036) setPermissionDenied(true);
+      if (e?.code === 10036) setPermissionDenied(true);
       else setError(e?.message || t('vgpu.loadFailed'));
     } finally {
       setLoading(false);
@@ -240,8 +240,8 @@ function CreatePoolDialog({
       );
       onCreated(res.pool.poolId);
     } catch (e: any) {
-      if (e?.body?.code === 13401 || e?.body?.code === 13402) {
-        setError(e?.body?.message || t('vgpu.createFailed'));
+      if (e?.code === 13401 || e?.code === 13402) {
+        setError(e?.message || t('vgpu.createFailed'));
       } else {
         setError(e?.message || t('vgpu.createFailed'));
       }

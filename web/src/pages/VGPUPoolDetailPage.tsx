@@ -44,7 +44,7 @@ export default function VGPUPoolDetailPage() {
       );
       setData(res);
     } catch (e: any) {
-      if (e?.body?.code === 10036) setPermissionDenied(true);
+      if (e?.code === 10036) setPermissionDenied(true);
       else setError(e?.message || t('vgpu.loadFailed'));
     } finally {
       setLoading(false);
@@ -88,8 +88,8 @@ export default function VGPUPoolDetailPage() {
       );
       navigate('/admin/vgpu-pools');
     } catch (e: any) {
-      if (e?.body?.code === 13405) {
-        setDeleteBlocked(e?.body?.message || t('vgpu.deleteBlocked'));
+      if (e?.code === 13405) {
+        setDeleteBlocked(e?.message || t('vgpu.deleteBlocked'));
       } else {
         setError(e?.message || t('vgpu.deleteFailed'));
       }
@@ -302,7 +302,7 @@ function EditPoolDialog({
       );
       onSaved();
     } catch (e: any) {
-      setError(e?.body?.message || e?.message || t('vgpu.updateFailed'));
+      setError(e?.message || t('vgpu.updateFailed'));
     } finally {
       setSubmitting(false);
     }
