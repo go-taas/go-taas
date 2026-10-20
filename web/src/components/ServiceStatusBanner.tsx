@@ -1,7 +1,7 @@
-// ServiceStatusBanner: the tenant degraded banner (feature #53, AD10).
-// It calls the user-surface GetServiceStatus and shows a compact strip
-// when the service has an active incident. It hides when healthy or on
-// a status-call error.
+// ServiceStatusBanner: the degraded banner (feature #53, AD10).
+// It calls the admin-surface GetAdminServiceStatus and shows a compact
+// strip when the service has an active incident. It hides when healthy
+// or on a status-call error.
 
 import { useEffect, useState } from 'react';
 import { useApi } from '../surface';
@@ -16,7 +16,7 @@ export default function ServiceStatusBanner({ serviceId }: { serviceId: string }
   useEffect(() => {
     let cancelled = false;
     api
-      .get<ServiceStatus>(`/api/v1/inference-services/${serviceId}/status`, orgId)
+      .get<ServiceStatus>(`/api/v1/admin/inference-services/${serviceId}/status`, orgId)
       .then((res) => {
         if (!cancelled) setStatus(res);
       })

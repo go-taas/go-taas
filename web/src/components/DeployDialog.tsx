@@ -13,9 +13,10 @@ import {
   ApiError,
   type AutoscalingPolicy,
   type GetAutoscalingPolicyResponse,
-  type ListTenantVGPUPoolsResponse,
+  type ListVGPUPoolsResponse,
   type ModelSummary,
   type TenantVGPUPool,
+  type VGPUPool,
 } from '../api';
 import { Dialog, ErrorBanner } from '../components';
 
@@ -90,11 +91,23 @@ export default function DeployDialog({
   const [sliceError, setSliceError] = useState('');
 
   useEffect(() => {
-    // Feature #52 (AD10): the grant-filtered pool list for the deploy
-    // form (user surface).
+    // Feature #52 (AD2): the pool list for the deploy form. The deploy
+    // dialog lives on the admin surface, so it reads the admin-surface
+    // ListVGPUPools (platform-wide) and projects each pool onto the
+    // {poolId, name, templates} shape the form consumes.
     api
-      .get<ListTenantVGPUPoolsResponse>('/api/v1/vgpu-pools', orgId)
-      .then((data) => setPools(data.pools || []))
+      .get<ListVGPUPoolsResponse>('/api/v1/admin/vgpu-pools?page.limit=100', orgId)
+      .then((data) =>
+        setPools(
+          (data.pools || []).map(
+            (p: VGPUPool): TenantVGPUPool => ({
+              poolId: p.poolId,
+              name: p.name,
+              templates: p.templates || [],
+            })
+          )
+        )
+      )
       .catch(() => setPools([]));
   }, [orgId]);
 
