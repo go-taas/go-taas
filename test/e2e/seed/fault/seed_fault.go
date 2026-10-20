@@ -33,6 +33,7 @@ package main
 import (
 	"encoding/json"
 	"flag"
+	"fmt"
 	"log"
 	"time"
 
@@ -74,55 +75,68 @@ func main() {
 		ObservedAt: now,
 	}
 	for i := 0; i < 3; i++ {
-		publish(nc, *subject, crashLoop)
+		if err := publish(nc, *subject, crashLoop); err != nil {
+			log.Fatalf("publish: %v", err)
+		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
 	// A node NotReady incident (single signal).
-	publish(nc, *subject, faultSignal{
+	if err := publish(nc, *subject, faultSignal{
 		TargetType: "node",
 		TargetName: "node-not-ready",
 		SignalType: "node_not_ready",
 		Detail:     "node NotReady for 2 minutes",
 		ObservedAt: now,
-	})
+	}); err != nil {
+		log.Fatalf("publish: %v", err)
+	}
 
 	// An accelerator device-plugin failure incident (single signal).
-	publish(nc, *subject, faultSignal{
+	if err := publish(nc, *subject, faultSignal{
 		TargetType: "accelerator",
 		TargetName: "accel-device-plugin",
 		SignalType: "device_plugin_unhealthy",
 		Detail:     "device plugin unhealthy on node-a",
 		ObservedAt: now,
-	})
+	}); err != nil {
+		log.Fatalf("publish: %v", err)
+	}
 
 	// An OOMKilled incident (single signal).
-	publish(nc, *subject, faultSignal{
+	if err := publish(nc, *subject, faultSignal{
 		TargetType: "service",
 		TargetName: "svc-oom",
 		SignalType: "oom_killed",
 		Detail:     "container OOMKilled",
 		ObservedAt: now,
-	})
+	}); err != nil {
+		log.Fatalf("publish: %v", err)
+	}
 
 	// An ImagePullBackOff incident (single signal).
-	publish(nc, *subject, faultSignal{
+	if err := publish(nc, *subject, faultSignal{
 		TargetType: "service",
 		TargetName: "svc-image-pull",
 		SignalType: "image_pull_backoff",
 		Detail:     "image pull backoff",
 		ObservedAt: now,
-	})
+	}); err != nil {
+		log.Fatalf("publish: %v", err)
+	}
 
 	log.Println("seeded fault signals")
 }
 
-func publish(nc *nats.Conn, subject string, sig faultSignal) {
+// publish marshals and publishes one signal. The caller decides how a
+// failure terminates the one-shot seed.
+func publish(nc *nats.Conn, subject string, sig faultSignal) error {
 	body, err := json.Marshal(sig)
 	if err != nil {
-		log.Fatalf("marshal: %v", err)
+		return fmt.Errorf("marshal: %w", err)
 	}
 	if err := nc.Publish(subject, body); err != nil {
-		log.Fatalf("publish: %v", err)
+		return fmt.Errorf("publish: %w", err)
 	}
+	return nil
 }

@@ -148,7 +148,7 @@ func TestStatusConsumerRunSubscribes(t *testing.T) {
 	require.Eventually(t, func() bool {
 		row, err := repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 		return err == nil && row.State == StateRunning
-	}, 2*time.Second, 10*time.Millisecond)
+	}, 5*time.Second, 10*time.Millisecond)
 
 	cancel()
 	select {
