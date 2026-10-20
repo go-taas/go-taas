@@ -98,6 +98,10 @@
       "features.f21.d": "Per-organization quotas on concurrent requests, inference services, batch jobs per day, and max output tokens per request — with tier presets, fail-closed enforcement, and an audited change history.",
       "features.f22.t": "Multi-cluster Management",
       "features.f22.d": "Register and manage inference clusters, view cluster health and workload placement, and route model deployments across clusters.",
+      "features.f23.t": "vGPU Slicing Pools",
+      "features.f23.d": "HAMI-based vGPU slicing: label nodes into slicing pools, define slice templates, and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement.",
+      "features.f24.t": "Fault Diagnosis & Auto-Recovery",
+      "features.f24.d": "Detect service, node, and accelerator failures, classify the root cause deterministically, and recover automatically (restart / reschedule) with operator-confirmed drain — every incident a timeline in the admin console.",
 
       "arch.title": "Architecture",
       "arch.subtitle": "Control plane and data plane, all 24 microservices, and the cluster network.",
@@ -273,6 +277,10 @@
       "features.f21.d": "按组织限制并发请求数、推理服务数、每日批量作业数与单请求最大输出 token 数，支持档位预设、fail-closed 强制与可审计的变更历史。",
       "features.f22.t": "多集群管理",
       "features.f22.d": "注册并管理推理集群，查看集群健康与工作负载分布，并把模型部署路由到不同集群。",
+      "features.f23.t": "vGPU 切分池",
+      "features.f23.d": "基于 HAMI 的 vGPU 切分：通过标签把节点划入切分池，定义切片模板，让多个小推理作业以 binpack 或 spread 策略共调度到同一块物理 GPU。",
+      "features.f24.t": "故障诊断与自动容错",
+      "features.f24.d": "检测服务、节点与加速卡故障，确定性归类根因，自动执行恢复（重启 / 重新调度），排水需运维确认——每个事件在管理控制台都有完整时间线。",
 
       "arch.title": "架构",
       "arch.subtitle": "控制面与数据面、全部 24 个微服务，以及集群网络。",
