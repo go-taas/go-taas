@@ -360,6 +360,18 @@ module.exports = {
         }, (res4) => {
           api.assertBusinessError(browser, res4, 13403, 'AC7: unknown template -> 13403');
         });
+        // Malformed (non-UUID) poolId at deploy time -> 13403, not an
+        // internal error. (Regression VGPU-1: the pool id reached the
+        // postgres query unvalidated and surfaced as code 13.)
+        api.request(browser, {
+          method: 'POST',
+          path: '/api/v1/admin/inference-services',
+          org,
+          sessionRealm: 'admin',
+          body: Object.assign({}, base, {name: `${name}-malformed-pool`, poolId: 'missing', sliceTemplateId: 'small'})
+        }, (res5) => {
+          api.assertBusinessError(browser, res5, 13403, 'AC7: malformed poolId at deploy -> 13403');
+        });
       });
     });
   },

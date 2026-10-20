@@ -23,9 +23,15 @@
 // publishes three crash_loop signals for a service target; the other
 // signal types create an incident on a single signal.
 //
+// With -target <serviceId> the seed publishes a single oom_killed
+// signal for that service instead of the standard set, so the e2e suite
+// can drive the admin ServiceStatusBanner into its degraded state
+// (feature #53, AC8) for a real inference service.
+//
 // Usage:
 //
 //	go run ./test/e2e/seed/fault/seed_fault.go -url nats://nats:4222
+//	go run ./test/e2e/seed/fault/seed_fault.go -target <serviceId>
 //
 // The default URL targets the compose network (service name "nats").
 package main
@@ -55,6 +61,9 @@ func main() {
 	// (configs/config.yaml mq.namespace, default "taas-dev"), so the
 	// signal must be published to "<namespace>.fault.signals".
 	subject := flag.String("subject", "taas-dev.fault.signals", "NATS subject")
+	// A real service id: publish a single oom_killed signal for it
+	// (banner seed mode) instead of the standard incident set.
+	target := flag.String("target", "", "target service id (banner seed mode)")
 	flag.Parse()
 
 	nc, err := nats.Connect(*url)
@@ -64,6 +73,20 @@ func main() {
 	defer nc.Close()
 
 	now := time.Now().UTC().Format(time.RFC3339)
+
+	if *target != "" {
+		if err := publish(nc, *subject, faultSignal{
+			TargetType: "service",
+			TargetName: *target,
+			SignalType: "oom_killed",
+			Detail:     "container OOMKilled (e2e banner seed)",
+			ObservedAt: now,
+		}); err != nil {
+			log.Fatalf("publish: %v", err)
+		}
+		log.Printf("seeded oom_killed signal for service %s", *target)
+		return
+	}
 
 	// A service crash-loop incident: three signals to pass the debounce
 	// threshold (default 3 restarts in 3 minutes).

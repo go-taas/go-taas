@@ -54,6 +54,27 @@ function seedFaults(browser) {
   }
 }
 
+// Seed a single oom_killed signal for a real inference service so the
+// admin ServiceStatusBanner enters its degraded state (AC8).
+function seedServiceFault(browser, serviceId) {
+  const repoRoot = path.resolve(__dirname, '..', '..', '..');
+  const cmd = [
+    'docker run --rm --network go-taas_default',
+    '-e GOPROXY=https://goproxy.cn,direct',
+    '-v go-taas-go-mod-cache:/go/pkg/mod',
+    '-v go-taas-go-build-cache:/root/.cache/go-build',
+    `-v "${repoRoot}":/app`,
+    '-w /app/test/e2e/seed/fault',
+    'golang:1.26-alpine',
+    `sh -c "go run seed_fault.go -target ${serviceId}"`
+  ].join(' ');
+  try {
+    execSync(cmd, {stdio: 'pipe', timeout: 120000});
+  } catch (e) {
+    browser.assert.fail(`seedServiceFault failed: ${e.message}`);
+  }
+}
+
 module.exports = {
   '@tags': ['fault-diagnosis-auto-recovery', 'feature-53'],
 
@@ -307,6 +328,78 @@ module.exports = {
         }, (res3) => {
           const body3 = api.assertOk(browser, res3, 'AC9: service status');
           browser.assert.equal(body3.degraded, false, 'AC9: not degraded');
+        });
+      });
+    });
+  },
+
+  'AC2: a malformed (non-UUID) service id on the admin status read returns 10301, not an internal error': function (browser) {
+    // (Regression FAULT-1: the service id reached the postgres query
+    // unvalidated and surfaced as code 13 internal error instead of the
+    // not-found business code 10301.)
+    api.request(browser, {
+      method: 'GET',
+      path: '/api/v1/admin/inference-services/not-a-uuid/status',
+      org: browser.globals.orgA,
+      sessionRealm: 'admin'
+    }, (res) => {
+      api.assertBusinessError(browser, res, 10301, 'AC2: malformed service id on status -> 10301');
+    });
+  },
+
+  'AC8: the admin service pages render the degraded banner for a service with an active incident': function (browser) {
+    const org = browser.globals.orgA;
+    // Register a model + service, then seed an oom_killed signal for it
+    // so the ServiceStatusBanner must render on the admin service list
+    // and detail pages. (Regression FAULT-3: the banner used to call the
+    // user-surface status route and crash the whole admin app.)
+    const name = `svc-banner-${browser.globals.runId}-${browser.globals.testSeq}`;
+    api.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/models',
+      org,
+      body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
+    }, (res) => {
+      const model = api.assertOk(browser, res, 'AC8: register model');
+      api.request(browser, {
+        method: 'POST',
+        path: '/api/v1/admin/inference-services',
+        org,
+        sessionRealm: 'admin',
+        body: {
+          name,
+          modelId: model.modelId,
+          modelVersion: 'v1',
+          imageId: 'img-vllm-nvidia-v063',
+          replicas: '1',
+          accelerator: 'nvidia',
+          acceleratorType: 'gpu'
+        }
+      }, (res2) => {
+        const created = api.assertOk(browser, res2, 'AC8: create service');
+        const serviceId = created.serviceId;
+        seedServiceFault(browser, serviceId);
+        // Wait for the signal consumer to create the incident.
+        browser.pause(2000);
+        // The admin-surface status twin reports the degraded state.
+        api.request(browser, {
+          method: 'GET',
+          path: `/api/v1/admin/inference-services/${serviceId}/status`,
+          org,
+          sessionRealm: 'admin'
+        }, (res3) => {
+          const body3 = api.assertOk(browser, res3, 'AC8: admin status degraded');
+          browser.assert.equal(body3.degraded, true, 'AC8: degraded flag');
+          browser.assert.equal(body3.incident.rootCause, 'oom', 'AC8: incident root cause');
+          // The service list renders the banner without crashing.
+          browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${org}')`);
+          browser.url(browser.globals.baseUrl + '/admin/inference-services');
+          browser.waitForElementPresent('[data-testid="services-table"]', 15000, 'AC8: services table renders');
+          browser.waitForElementPresent(`[data-testid="service-status-banner-${serviceId}"]`, 15000, 'AC8: banner on service list');
+          // The service detail page renders the banner too.
+          browser.url(browser.globals.baseUrl + `/admin/inference-services/${serviceId}`);
+          browser.waitForElementPresent('[data-testid="service-detail-name"]', 15000, 'AC8: detail page renders');
+          browser.waitForElementPresent(`[data-testid="service-status-banner-${serviceId}"]`, 15000, 'AC8: banner on detail page');
         });
       });
     });
