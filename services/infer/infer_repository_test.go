@@ -112,6 +112,14 @@ func TestRepositoryCreateAndFindScoped(t *testing.T) {
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeInferServiceNotFound, ae.Code)
+
+	// A malformed (non-UUID) id maps to the same business code instead
+	// of surfacing a postgres uuid cast error (bug FAULT-3 guard).
+	_, err = repo.FindByIDAndOrganization(ctx, "org-a", "not-a-uuid")
+	require.Error(t, err)
+	ae, ok = apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInferServiceNotFound, ae.Code)
 }
 
 func TestRepositoryCreateDuplicate(t *testing.T) {

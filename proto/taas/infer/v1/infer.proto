@@ -114,6 +114,16 @@ service InferServiceService {
     option (google.api.http) = {get: "/api/v1/inference-services/{service_id}/status"};
   }
 
+  // GetAdminServiceStatus returns the service's status including any
+  // active incident for the admin console's degraded banner (feature
+  // #53, AD10). Same projection as GetServiceStatus but served on the
+  // admin surface so the admin pages never call the user-surface
+  // route; the org is resolved from the session and the read is scoped
+  // to the caller's organization.
+  rpc GetAdminServiceStatus(GetAdminServiceStatusRequest) returns (GetAdminServiceStatusResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/inference-services/{service_id}/status"};
+  }
+
   // GetAutoscalingPolicy returns the global default autoscaling policy
   // applied to new inference services (feature #16, FR1.4).
   // Admin-surface API: served under /api/v1/admin.
@@ -370,6 +380,17 @@ message GetServiceStatusRequest {
 }
 
 message GetServiceStatusResponse {
+  taas.common.v1.Response response = 1;
+  string state = 2;      // pending | deploying | running | failed | terminated
+  bool degraded = 3;     // true when an active incident exists
+  ServiceIncident incident = 4; // null when healthy
+}
+
+message GetAdminServiceStatusRequest {
+  string service_id = 1;
+}
+
+message GetAdminServiceStatusResponse {
   taas.common.v1.Response response = 1;
   string state = 2;      // pending | deploying | running | failed | terminated
   bool degraded = 3;     // true when an active incident exists

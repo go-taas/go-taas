@@ -205,6 +205,41 @@ func TestGetServiceStatus(t *testing.T) {
 	assert.Equal(t, "service_crash_loop", resp.GetIncident().GetRootCause())
 }
 
+func TestGetAdminServiceStatus(t *testing.T) {
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+	svc := seedService(t, repo, "org-a", "svc-admin-status", StateRunning, time.Now())
+
+	svc2, _, _ := newInferTestService(t)
+	svc2.repo = repo
+
+	// Healthy: no incident.
+	resp, err := svc2.GetAdminServiceStatus(orgContext("org-a"), &inferv1.GetAdminServiceStatusRequest{ServiceId: svc.ID})
+	require.NoError(t, err)
+	assert.Equal(t, StateRunning, resp.GetState())
+	assert.False(t, resp.GetDegraded())
+	assert.Nil(t, resp.GetIncident())
+
+	// Degraded: an active incident is returned.
+	svc2.SetIncidentReader(fakeIncidentReader{
+		incident: ServiceIncident{IncidentID: "inc-1", Severity: "warning", Status: "recovering", RootCause: "service_crash_loop", Message: "recovering"},
+		ok:       true,
+	})
+	resp, err = svc2.GetAdminServiceStatus(orgContext("org-a"), &inferv1.GetAdminServiceStatusRequest{ServiceId: svc.ID})
+	require.NoError(t, err)
+	assert.True(t, resp.GetDegraded())
+	require.NotNil(t, resp.GetIncident())
+	assert.Equal(t, "inc-1", resp.GetIncident().GetIncidentId())
+
+	// Another org's service: not found (no cross-org leak).
+	_, err = svc2.GetAdminServiceStatus(orgContext("org-b"), &inferv1.GetAdminServiceStatusRequest{ServiceId: svc.ID})
+	assert.EqualValues(t, apierrors.CodeInferServiceNotFound, apierrors.CodeOf(err))
+
+	// A malformed (non-UUID) id maps to not-found, not a uuid cast error.
+	_, err = svc2.GetAdminServiceStatus(orgContext("org-a"), &inferv1.GetAdminServiceStatusRequest{ServiceId: "not-a-uuid"})
+	assert.EqualValues(t, apierrors.CodeInferServiceNotFound, apierrors.CodeOf(err))
+}
+
 func TestCreateInferenceServiceValidationMatrix(t *testing.T) {
 	seedImageRegistry(t)
 	svc, client, db := newInferTestService(t)

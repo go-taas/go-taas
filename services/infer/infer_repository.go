@@ -87,8 +87,13 @@ func (r *InferenceServiceRepository) AcceleratorTypesByServiceIDs(ctx context.Co
 
 // FindByIDAndOrganization returns the service owned by orgID. A miss
 // (including a service of another organization) maps to
-// CodeInferServiceNotFound — no cross-org existence leak.
+// CodeInferServiceNotFound — no cross-org existence leak. A malformed
+// (non-UUID) id maps there too, because it can never match a stored row
+// and a raw comparison would surface a postgres uuid cast error.
 func (r *InferenceServiceRepository) FindByIDAndOrganization(ctx context.Context, orgID, serviceID string) (*InferenceService, error) {
+	if _, err := uuid.Parse(serviceID); err != nil {
+		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
 	var row InferenceService
 	err := r.DB(ctx).
 		Where("id = ? AND organization_id = ?", serviceID, orgID).

@@ -215,6 +215,12 @@ func TestFVTfaultAdminLifecycle(t *testing.T) {
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/faults/missing", nil, true)
 	assert.NotEqual(t, http.StatusOK, code, "unknown: %v", body)
 	assert.EqualValues(t, 13506, body["code"])
+
+	// Malformed (non-UUID) incident id -> 13506, not a uuid cast error
+	// (bug FAULT-1).
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/faults/not-a-uuid", nil, true)
+	assert.NotEqual(t, http.StatusOK, code, "malformed: %v", body)
+	assert.EqualValues(t, 13506, body["code"])
 }
 
 // TestFVTfaultRecoveryActions covers AC5/AC6: the trigger validation
@@ -284,4 +290,42 @@ func TestFVTfaultServiceStatus(t *testing.T) {
 	assert.True(t, body["degraded"].(bool))
 	inc, _ := body["incident"].(map[string]any)
 	assert.Equal(t, "service_crash_loop", inc["rootCause"])
+}
+
+// TestFVTfaultAdminServiceStatus covers the admin-surface service
+// status read used by the admin console's degraded banner (bug
+// FAULT-3): the admin pages must not call the user-surface status
+// route.
+func TestFVTfaultAdminServiceStatus(t *testing.T) {
+	env := newFaultFvtEnv(t)
+
+	// Seed a service and an incident for it.
+	require.NoError(t, env.db.Exec(`INSERT INTO inference_services (id, organization_id, name, model_id, model_version, image_id, replicas, accelerator, accelerator_type, state) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		"11111111-1111-1111-1111-111111111111", "org-fvt", "svc-a", "m1", "v1", "img1", 1, "nvidia", "A800", "running").Error)
+	env.seedIncident(t, fault.CauseServiceCrashLoop, fault.TargetService, "11111111-1111-1111-1111-111111111111")
+
+	// Admin surface: the status shows the degraded incident.
+	code, body := env.call(t, http.MethodGet, "/api/v1/admin/inference-services/11111111-1111-1111-1111-111111111111/status", nil, true)
+	require.Equal(t, http.StatusOK, code, "admin status: %v", body)
+	assert.True(t, body["degraded"].(bool))
+	inc, _ := body["incident"].(map[string]any)
+	assert.Equal(t, "service_crash_loop", inc["rootCause"])
+
+	// A malformed (non-UUID) service id -> 10301, not a uuid cast error.
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/not-a-uuid/status", nil, true)
+	assert.NotEqual(t, http.StatusOK, code, "malformed: %v", body)
+	assert.EqualValues(t, 10301, body["code"])
+
+	// A user-realm session token on the admin status route -> 10038.
+	env.realm.realms["user-token"] = "user"
+	req, err := http.NewRequest(http.MethodGet, env.gwSrv.URL+"/api/v1/admin/inference-services/11111111-1111-1111-1111-111111111111/status", nil)
+	require.NoError(t, err)
+	req.Header.Set("Authorization", "Bearer user-token")
+	resp, err := env.gwSrv.Client().Do(req)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	out := map[string]any{}
+	_ = json.NewDecoder(resp.Body).Decode(&out)
+	assert.NotEqual(t, http.StatusOK, resp.StatusCode, "realm: %v", out)
+	assert.EqualValues(t, 10038, out["code"])
 }
