@@ -20,7 +20,7 @@
 //
 // The compose stack has no Controller/Kubernetes, so the inventory is
 // empty by default. The suite first asserts the empty state (AC8), then
-// seeds a full snapshot into the accelerator.inventory NATS subject via
+// seeds a full snapshot into the accelerator.inventory RabbitMQ subject via
 // the seed program (test/e2e/seed/seed_accelerator.go) so the populated
 // states (AC5/AC6/AC7/AC10) can be exercised against the real UI.
 
@@ -29,7 +29,7 @@ const path = require('path');
 const api = require('../page-objects/api.js');
 
 // Seed the accelerator inventory by publishing a full snapshot to the
-// accelerator.inventory NATS subject inside the compose network. The
+// accelerator.inventory RabbitMQ subject inside the compose network. The
 // seed program mirrors the Controller's snapshot wire format.
 function seedInventory(browser) {
   const repoRoot = path.resolve(__dirname, '..', '..', '..');

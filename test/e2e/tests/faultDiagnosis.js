@@ -22,7 +22,7 @@
 // the states (AC13).
 //
 // The compose stack has no Controller/Kubernetes, so incidents are seeded
-// by publishing structured failure signals to the fault.signals NATS
+// by publishing structured failure signals to the fault.signals RabbitMQ
 // subject via the seed program (test/e2e/seed/fault/seed_fault.go). The
 // fault module debounces crash_loop signals (3 in 3 minutes), so the seed
 // publishes three crash_loop signals for a service target and one signal
@@ -32,7 +32,7 @@ const { execSync } = require('child_process');
 const path = require('path');
 const api = require('../page-objects/api.js');
 
-// Seed incidents by publishing failure signals to the fault.signals NATS
+// Seed incidents by publishing failure signals to the fault.signals RabbitMQ
 // subject inside the compose network. The seed program mirrors the
 // Controller's faultSignal wire format.
 function seedFaults(browser) {

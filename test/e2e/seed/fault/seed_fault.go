@@ -13,9 +13,9 @@
 // limitations under the License.
 
 // Command seed_fault publishes structured failure signals to the
-// fault.signals NATS subject so the e2e suite can exercise the populated
-// states of the admin Faults pages (feature #53) against the compose
-// stack, which has no Controller/Kubernetes.
+// fault.signals RabbitMQ subject so the e2e suite can exercise the
+// populated states of the admin Faults pages (feature #53) against the
+// compose stack, which has no Controller/Kubernetes.
 //
 // The signal mirrors the Controller's faultSignal wire format
 // (services/fault/signal_consumer.go). The fault module debounces
@@ -30,20 +30,21 @@
 //
 // Usage:
 //
-//	go run ./test/e2e/seed/fault/seed_fault.go -url nats://nats:4222
+//	go run ./test/e2e/seed/fault/seed_fault.go -url amqp://guest:guest@rabbitmq:5672/
 //	go run ./test/e2e/seed/fault/seed_fault.go -target <serviceId>
 //
-// The default URL targets the compose network (service name "nats").
+// The default URL targets the compose network (service name "rabbitmq").
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
 	"time"
 
-	"github.com/nats-io/nats.go"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // faultSignal mirrors the fault module's faultSignal wire format.
@@ -56,26 +57,34 @@ type faultSignal struct {
 }
 
 func main() {
-	url := flag.String("url", "nats://nats:4222", "NATS URL")
+	url := flag.String("url", "amqp://guest:guest@rabbitmq:5672/", "RabbitMQ URL")
 	// The MQ client prefixes subjects with the configured namespace
 	// (configs/config.yaml mq.namespace, default "taas-dev"), so the
 	// signal must be published to "<namespace>.fault.signals".
-	subject := flag.String("subject", "taas-dev.fault.signals", "NATS subject")
+	subject := flag.String("subject", "taas-dev.fault.signals", "RabbitMQ routing key")
 	// A real service id: publish a single oom_killed signal for it
 	// (banner seed mode) instead of the standard incident set.
 	target := flag.String("target", "", "target service id (banner seed mode)")
 	flag.Parse()
 
-	nc, err := nats.Connect(*url)
+	conn, err := amqp.Dial(*url)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
 	}
-	defer nc.Close()
+	defer func() { _ = conn.Close() }()
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("channel: %v", err)
+	}
+	defer func() { _ = ch.Close() }()
+	if err := ch.ExchangeDeclare("taas-dev", "topic", true, false, false, false, nil); err != nil {
+		log.Fatalf("declare exchange: %v", err)
+	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	if *target != "" {
-		if err := publish(nc, *subject, faultSignal{
+		if err := publish(ch, *subject, faultSignal{
 			TargetType: "service",
 			TargetName: *target,
 			SignalType: "oom_killed",
@@ -98,14 +107,14 @@ func main() {
 		ObservedAt: now,
 	}
 	for i := 0; i < 3; i++ {
-		if err := publish(nc, *subject, crashLoop); err != nil {
+		if err := publish(ch, *subject, crashLoop); err != nil {
 			log.Fatalf("publish: %v", err)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
 	// A node NotReady incident (single signal).
-	if err := publish(nc, *subject, faultSignal{
+	if err := publish(ch, *subject, faultSignal{
 		TargetType: "node",
 		TargetName: "node-not-ready",
 		SignalType: "node_not_ready",
@@ -116,7 +125,7 @@ func main() {
 	}
 
 	// An accelerator device-plugin failure incident (single signal).
-	if err := publish(nc, *subject, faultSignal{
+	if err := publish(ch, *subject, faultSignal{
 		TargetType: "accelerator",
 		TargetName: "accel-device-plugin",
 		SignalType: "device_plugin_unhealthy",
@@ -127,7 +136,7 @@ func main() {
 	}
 
 	// An OOMKilled incident (single signal).
-	if err := publish(nc, *subject, faultSignal{
+	if err := publish(ch, *subject, faultSignal{
 		TargetType: "service",
 		TargetName: "svc-oom",
 		SignalType: "oom_killed",
@@ -138,7 +147,7 @@ func main() {
 	}
 
 	// An ImagePullBackOff incident (single signal).
-	if err := publish(nc, *subject, faultSignal{
+	if err := publish(ch, *subject, faultSignal{
 		TargetType: "service",
 		TargetName: "svc-image-pull",
 		SignalType: "image_pull_backoff",
@@ -153,12 +162,19 @@ func main() {
 
 // publish marshals and publishes one signal. The caller decides how a
 // failure terminates the one-shot seed.
-func publish(nc *nats.Conn, subject string, sig faultSignal) error {
+func publish(ch *amqp.Channel, subject string, sig faultSignal) error {
 	body, err := json.Marshal(sig)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
-	if err := nc.Publish(subject, body); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := ch.PublishWithContext(ctx, "taas-dev", subject, false, false, amqp.Publishing{
+		ContentType:  "application/octet-stream",
+		Body:         body,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now(),
+	}); err != nil {
 		return fmt.Errorf("publish: %w", err)
 	}
 	return nil

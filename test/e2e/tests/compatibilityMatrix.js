@@ -21,7 +21,7 @@
 // The compose stack has no Controller/Kubernetes, so the accelerator
 // inventory is empty by default and the first-boot seed creates no rows.
 // The suite seeds a full inventory snapshot into the accelerator.inventory
-// NATS subject (test/e2e/seed/seed_accelerator.go) and registers a model so
+// RabbitMQ subject (test/e2e/seed/seed_accelerator.go) and registers a model so
 // the matrix has a non-empty cross product to exercise against the real UI.
 
 const { execSync } = require('child_process');
@@ -29,7 +29,7 @@ const path = require('path');
 const api = require('../page-objects/api.js');
 
 // Seed the accelerator inventory by publishing a full snapshot to the
-// accelerator.inventory NATS subject inside the compose network. The seed
+// accelerator.inventory RabbitMQ subject inside the compose network. The seed
 // program mirrors the Controller's snapshot wire format. `omitCard` drops
 // every node carrying the named card type so the not_in_fleet derivation
 // (AC6/AC10) can be exercised.

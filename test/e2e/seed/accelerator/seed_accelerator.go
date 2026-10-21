@@ -13,9 +13,9 @@
 // limitations under the License.
 
 // Command seed_accelerator publishes a full accelerator inventory snapshot
-// to the accelerator.inventory NATS subject so the e2e suite can exercise
-// the populated states of the admin Accelerators pages (feature #18) against
-// the compose stack, which has no Controller/Kubernetes.
+// to the accelerator.inventory RabbitMQ subject so the e2e suite can
+// exercise the populated states of the admin Accelerators pages (feature
+// #18) against the compose stack, which has no Controller/Kubernetes.
 //
 // The snapshot mirrors the Controller's inventorySnapshot wire format
 // (internal/controller/inventory.go) and the accelerator service's
@@ -25,9 +25,9 @@
 //
 // Usage:
 //
-//	go run ./test/e2e/seed/seed_accelerator.go -url nats://nats:4222
+//	go run ./test/e2e/seed/seed_accelerator.go -url amqp://guest:guest@rabbitmq:5672/
 //
-// The default URL targets the compose network (service name "nats").
+// The default URL targets the compose network (service name "rabbitmq").
 package main
 
 import (
@@ -37,7 +37,7 @@ import (
 	"log"
 	"time"
 
-	"github.com/nats-io/nats.go"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 // snapshotNode mirrors the accelerator service's snapshotNode wire format.
@@ -77,11 +77,11 @@ type snapshot struct {
 }
 
 func main() {
-	url := flag.String("url", "nats://nats:4222", "NATS URL")
+	url := flag.String("url", "amqp://guest:guest@rabbitmq:5672/", "RabbitMQ URL")
 	// The MQ client prefixes subjects with the configured namespace
 	// (configs/config.yaml mq.namespace, default "taas-dev"), so the
 	// snapshot must be published to "<namespace>.accelerator.inventory".
-	subject := flag.String("subject", "taas-dev.accelerator.inventory", "NATS subject")
+	subject := flag.String("subject", "taas-dev.accelerator.inventory", "RabbitMQ routing key")
 	// omitCard drops every node whose CardTypes contains the named card
 	// type, so the compatibility-matrix suite can exercise the
 	// not_in_fleet derivation (feature #19, AC6/AC10) by publishing a
@@ -89,12 +89,6 @@ func main() {
 	// cells for.
 	omitCard := flag.String("omitCard", "", "card type to omit from the snapshot")
 	flag.Parse()
-
-	nc, err := nats.Connect(*url)
-	if err != nil {
-		log.Fatalf("connect: %v", err)
-	}
-	defer nc.Close()
 
 	nodes := []snapshotNode{
 		// Healthy NVIDIA node with 8 A800 GPUs, 2 allocated / 6 free.
@@ -298,12 +292,29 @@ func main() {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := nc.Publish(*subject, body); err != nil {
+
+	conn, err := amqp.Dial(*url)
+	if err != nil {
+		log.Fatalf("connect: %v", err)
+	}
+	defer func() { _ = conn.Close() }()
+	ch, err := conn.Channel()
+	if err != nil {
+		log.Fatalf("channel: %v", err)
+	}
+	defer func() { _ = ch.Close() }()
+	// The MQ client declares the topic exchange with the namespace as its
+	// name; mirror that here so the seed reaches the same exchange.
+	if err := ch.ExchangeDeclare("taas-dev", "topic", true, false, false, false, nil); err != nil {
+		log.Fatalf("declare exchange: %v", err)
+	}
+	if err := ch.PublishWithContext(ctx, "taas-dev", *subject, false, false, amqp.Publishing{
+		ContentType:  "application/octet-stream",
+		Body:         body,
+		DeliveryMode: amqp.Persistent,
+		Timestamp:    time.Now(),
+	}); err != nil {
 		log.Fatalf("publish: %v", err)
 	}
-	if err := nc.Flush(); err != nil {
-		log.Fatalf("flush: %v", err)
-	}
-	_ = ctx
 	log.Printf("published %s snapshot with %d nodes", *subject, len(nodes))
 }
