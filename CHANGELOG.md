@@ -1,3 +1,10 @@
+## [1.62.2](https://github.com/go-taas/go-taas/compare/v1.62.1...v1.62.2) (2026-10-21)
+
+
+### Bug Fixes
+
+* **fault:** shorten accelerator device-plugin root cause to fit varchar(32) ([f82f5eb](https://github.com/go-taas/go-taas/commit/f82f5eb2663740a404cfeec98a4ee7549fef0f48))
+
 ## [1.62.1](https://github.com/go-taas/go-taas/compare/v1.62.0...v1.62.1) (2026-10-21)
 
 
