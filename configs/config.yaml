@@ -29,10 +29,10 @@ redis:
   idleTimeout: 5m
 
 mq:
-  # Driver selects the broker: "nats" or "fake" (in-memory, for local
+  # Driver selects the broker: "rabbitmq" or "fake" (in-memory, for local
   # development without a broker).
-  driver: nats
-  url: nats://127.0.0.1:4222
+  driver: rabbitmq
+  url: amqp://guest:guest@127.0.0.1:5672/
   namespace: taas-dev
 
 auth:

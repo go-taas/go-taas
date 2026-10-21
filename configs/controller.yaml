@@ -6,8 +6,8 @@ log:
   encoding: console
 
 mq:
-  driver: nats
-  url: nats://127.0.0.1:4222
+  driver: rabbitmq
+  url: amqp://guest:guest@127.0.0.1:5672/
   namespace: taas-dev
 
 infer:
