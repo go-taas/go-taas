@@ -131,7 +131,7 @@ docker-push:
 
 ## compose-up: create the cluster resources, build the taas-server and
 ## controller images and start the local deployment-verification stack
-## (PostgreSQL, Redis, NATS, Keycloak, taas-server, controller). The admin
+## (PostgreSQL, Redis, RabbitMQ, Keycloak, taas-server, controller). The admin
 ## console is served by taas-server at http://localhost:9091/ — same origin
 ## as the API. Keycloak (the local OIDC IdP) is at http://localhost:8080
 ## (admin / admin); its realm, client and test user are imported from

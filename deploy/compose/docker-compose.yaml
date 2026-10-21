@@ -1,7 +1,7 @@
 # Local deployment-verification stack for go-taas.
 #
 # Brings up the full control plane (taas-server) with its backing
-# services (PostgreSQL, Redis, NATS, Keycloak) so features can be
+# services (PostgreSQL, Redis, RabbitMQ, Keycloak) so features can be
 # verified against a real deployment before they are handed downstream:
 #
 #   make compose-up     # build images and start the stack
@@ -38,11 +38,10 @@ services:
       timeout: 3s
       retries: 30
 
-  nats:
-    image: nats:2-alpine
-    command: ["-js"]
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
     healthcheck:
-      test: ["CMD-SHELL", "echo PING | nc -w 2 127.0.0.1 4222 | grep -q PONG"]
+      test: ["CMD-SHELL", "rabbitmq-diagnostics -q ping"]
       interval: 2s
       timeout: 3s
       retries: 30
@@ -133,7 +132,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-      nats:
+      rabbitmq:
         condition: service_healthy
       juicefs:
         condition: service_started
@@ -145,7 +144,7 @@ services:
       # network uses the service names.
       CONFIG_DB_MASTER_HOST: postgres
       CONFIG_REDIS_HOST: redis
-      CONFIG_MQ_URL: nats://nats:4222
+      CONFIG_MQ_URL: amqp://guest:guest@rabbitmq:5672/
       # Feature #21 (SDK/Quickstart): the inference gateway's public base
       # URL. The quickstart page reads it via GET /api/v1/inference-endpoint
       # and derives the OpenAI-compatible base URL (<base>/v1). In the
@@ -262,7 +261,7 @@ services:
       - "9091:9091" # gateway (HTTP/JSON)
       - "9092:9092" # monitor (metrics, healthz)
 
-  # The controller reconciles desired-state messages from NATS against a
+  # The controller reconciles desired-state messages from RabbitMQ against a
   # real Kubernetes cluster. It reads the host's kubeconfig (~/.kube/config)
   # so the compose stack can manage the cluster the operator is logged into.
   # The kubeconfig is mounted read-only at /etc/taas/kubeconfig and selected
@@ -271,10 +270,10 @@ services:
   controller:
     image: ghcr.io/go-taas/go-taas/controller:dev
     depends_on:
-      nats:
+      rabbitmq:
         condition: service_healthy
     environment:
-      CONFIG_MQ_URL: nats://nats:4222
+      CONFIG_MQ_URL: amqp://guest:guest@rabbitmq:5672/
       CONFIG_CONTROLLER_KUBECONFIG: /etc/taas/kubeconfig
       CONFIG_INFER_ENDPOINTBASEURL: https://infer.example.com
       # The namespace the controller manages inference resources in. The
