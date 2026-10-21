@@ -63,7 +63,7 @@ message Incident {
   string incident_id = 1;
   string severity = 2;    // critical | warning | info
   string status = 3;      // detected | diagnosing | recovering | resolved | failed
-  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin_failure | oom | image_pull_failure | unknown
+  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin | oom | image_pull_failure | unknown
   string target_type = 5; // service | node | accelerator
   string target_name = 6;
   int64 started_at = 7;   // unix seconds

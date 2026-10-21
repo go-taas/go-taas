@@ -47,7 +47,7 @@
 | --- | --- | --- |
 | D1 | **专用 `fault` 模块与 `/admin/faults` 表面。** 事件是带动作的有状态生命周期，区别于只读的系统健康聚合（#30）。 | 让事件生命周期、分类器与恢复动作在一个可审计的家；系统健康保持纯聚合。 |
 | D2 | **事件生命周期是检测 → 诊断 → 恢复 → 解决。** 每个事件有状态（`detected` → `diagnosing` → `recovering` → `resolved`，或恢复失败则 `failed`）与带时间戳步骤的时间线。 | 镜像行业标准事件生命周期（Datadog、PagerDuty），给运营者清晰的状态机。 |
-| D3 | **根因分类器是对观测信号的确定性规则**，不是 ML 模型。类别：`service_crash_loop`、`node_not_ready`、`accelerator_device_plugin_failure`、`oom`、`image_pull_failure`、`unknown`。 | 可审计可测；无隐藏裁判。每个类别映射到有界的恢复动作。 |
+| D3 | **根因分类器是对观测信号的确定性规则**，不是 ML 模型。类别：`service_crash_loop`、`node_not_ready`、`accelerator_device_plugin`、`oom`、`image_pull_failure`、`unknown`。 | 可审计可测；无隐藏裁判。每个类别映射到有界的恢复动作。 |
 | D4 | **自动恢复有界且运营者可覆盖。** 重启与重调度自动运行（按类别策略）；排空要求运营者确认。运营者可按类别禁用自动恢复、覆盖进行中的动作、或手动触发一个。 | 重启/重调度低风险可安全自动化；排空有破坏性必须确认。运营者覆盖防止自动化失控。 |
 | D5 | **恢复动作记录在部署历史轨迹**（`deployment.updated`，actor `recovery`）与审计轨迹。 | 恢复是部署变更；记录在现有轨迹（#17）保持服务变更单一事实源。 |
 | D6 | **租户面显示服务状态 / 事件横幅** — 服务列表与详情页在服务降级或恢复中时显示紧凑横幅，运营者链接到管理面事件视图。 | 服务受影响的租户必须看到降级状态（RunPod/Baseten 模式）；横幅显式而非隐藏。 |
@@ -93,7 +93,7 @@
 
 ### FR2 — 根因诊断（管理面）
 
-- **FR2.1** 分类器把故障信号映射到根因类别：`service_crash_loop`（容器反复重启）、`node_not_ready`（节点 `NotReady` 条件）、`accelerator_device_plugin_failure`（来自 #18 的设备插件不健康）、`oom`（OOMKilled）、`image_pull_failure`（ImagePullBackOff）、或 `unknown`。
+- **FR2.1** 分类器把故障信号映射到根因类别：`service_crash_loop`（容器反复重启）、`node_not_ready`（节点 `NotReady` 条件）、`accelerator_device_plugin`（来自 #18 的设备插件不健康）、`oom`（OOMKilled）、`image_pull_failure`（ImagePullBackOff）、或 `unknown`。
 - **FR2.2** 事件详情显示**根因证据**：驱动分类的信号（如"容器 3 分钟内重启 5 次"、"节点条件 NotReady 自 14:02"、"设备插件不健康"）。证据是分类器的输入，不是隐藏解释。
 - **FR2.3** `unknown` 根因仍创建事件并提供手动恢复动作；运营者可重新分类。
 
@@ -105,7 +105,7 @@
 
 ### FR4 — 自动恢复（管理面）
 
-- **FR4.1** 每个根因类别有默认恢复动作：`service_crash_loop` → **重启**（自动）、`oom` → **重启**（自动）、`image_pull_failure` → **重启**（自动，镜像修复后）、`node_not_ready` → **重调度**（自动）再 **排空**（运营者确认）、`accelerator_device_plugin_failure` → **重调度**（自动）再 **排空**（运营者确认）、`unknown` → **手动**。
+- **FR4.1** 每个根因类别有默认恢复动作：`service_crash_loop` → **重启**（自动）、`oom` → **重启**（自动）、`image_pull_failure` → **重启**（自动，镜像修复后）、`node_not_ready` → **重调度**（自动）再 **排空**（运营者确认）、`accelerator_device_plugin` → **重调度**（自动）再 **排空**（运营者确认）、`unknown` → **手动**。
 - **FR4.2** 自动恢复策略按类别可配置：自动重启开/关、自动重调度开/关、排空始终确认。策略页面（`/admin/faults/policy`）编辑这些；变更审计。
 - **FR4.3** 运营者可**覆盖**进行中的恢复动作（取消）或**手动触发**一个（重启 / 重调度 / 排空）作用于事件。手动动作以运营者为 actor 记录在时间线。
 - **FR4.4** 排空动作要求运营者确认（确认对话框点名节点与受影响服务）；绝不自动。
@@ -269,7 +269,7 @@ sequenceDiagram
 | --- | --- | --- |
 | AC1 | `/admin/faults` 渲染事件表格，含严重度、状态、根因、目标、自动恢复、开始与解决列，外加状态/严重度/根因/目标过滤、搜索与分页 | Nightwatch E2E |
 | AC2 | **事件生命周期（合成）**：崩溃循环信号创建事件并沿 detected → diagnosing → recovering → resolved 移动，每步在诊断时间线带时间戳；恢复失败则事件保持 `failed` | FVT（故障契约）+ Nightwatch E2E |
-| AC3 | **根因分类**：崩溃循环信号分类为 `service_crash_loop`、`NotReady` 节点为 `node_not_ready`、不健康设备插件为 `accelerator_device_plugin_failure`、OOMKilled 为 `oom`、ImagePullBackOff 为 `image_pull_failure`；事件详情显示分类器证据 | FVT + Nightwatch E2E |
+| AC3 | **根因分类**：崩溃循环信号分类为 `service_crash_loop`、`NotReady` 节点为 `node_not_ready`、不健康设备插件为 `accelerator_device_plugin`、OOMKilled 为 `oom`、ImagePullBackOff 为 `image_pull_failure`；事件详情显示分类器证据 | FVT + Nightwatch E2E |
 | AC4 | **自动恢复**：自动重启开时，崩溃循环事件自动触发重启并记录在时间线与部署历史轨迹（`deployment.updated`，actor `recovery`）；自动重启关时不运行动作且向运营者提供手动动作 | FVT + Nightwatch E2E |
 | AC5 | **排空要求确认**：排空动作绝不自动运行；确认对话框点名节点与受影响服务，服务器拒绝无确认标志的排空（**13503**） | FVT + Nightwatch E2E |
 | AC6 | **运营者覆盖与手动触发**：运营者可取消进行中的动作（无则 **13504**）并手动触发重启/重调度/排空；手动动作以运营者为 actor 记录 | FVT + Nightwatch E2E |

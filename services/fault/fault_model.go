@@ -8,11 +8,11 @@ import (
 
 // Incident lifecycle states (closed set, feature #53).
 const (
-	StatusDetected    = "detected"
-	StatusDiagnosing  = "diagnosing"
-	StatusRecovering  = "recovering"
-	StatusResolved    = "resolved"
-	StatusFailed      = "failed"
+	StatusDetected   = "detected"
+	StatusDiagnosing = "diagnosing"
+	StatusRecovering = "recovering"
+	StatusResolved   = "resolved"
+	StatusFailed     = "failed"
 )
 
 // Severity values (closed set).
@@ -24,12 +24,12 @@ const (
 
 // Root-cause categories (closed set, AD12).
 const (
-	CauseServiceCrashLoop              = "service_crash_loop"
-	CauseNodeNotReady                  = "node_not_ready"
-	CauseAcceleratorDevicePluginFailure = "accelerator_device_plugin_failure"
-	CauseOOM                           = "oom"
-	CauseImagePullFailure              = "image_pull_failure"
-	CauseUnknown                       = "unknown"
+	CauseServiceCrashLoop               = "service_crash_loop"
+	CauseNodeNotReady                   = "node_not_ready"
+	CauseAcceleratorDevicePluginFailure = "accelerator_device_plugin"
+	CauseOOM                            = "oom"
+	CauseImagePullFailure               = "image_pull_failure"
+	CauseUnknown                        = "unknown"
 )
 
 // Target types (closed set).

@@ -18,7 +18,7 @@ const SEVERITIES = ['critical', 'warning', 'info'];
 const ROOT_CAUSES = [
   'service_crash_loop',
   'node_not_ready',
-  'accelerator_device_plugin_failure',
+  'accelerator_device_plugin',
   'oom',
   'image_pull_failure',
   'unknown',

@@ -43,7 +43,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 | --- | --- | --- |
 | AD1 | **专用 `fault` 模块与 `/admin/faults` 表面。** 事件是带动作的有状态生命周期，区别于只读的系统健康聚合。`fault` 模块拥有事件生命周期、确定性根因分类器与恢复动作 | 设计 D1。系统健康是只读聚合；事件是带动作的有状态生命周期。专用模块与表面保持关注点分离 |
 | AD2 | **事件生命周期是检测 → 诊断 → 恢复 → 解决。** 每个事件有状态（`detected` → `diagnosing` → `recovering` → `resolved`，或恢复失败时 `failed`）与带时间戳步骤的时间线 | 设计 D2。镜像行业标准事件生命周期（Datadog、PagerDuty），给运营者清晰状态机 |
-| AD3 | **根因分类器是对观测信号的确定性规则**，而非 ML 模型。类别：`service_crash_loop`、`node_not_ready`、`accelerator_device_plugin_failure`、`oom`、`image_pull_failure`、`unknown` | 设计 D3。可审计可测试；无隐藏裁判。每类别映射到有界恢复动作 |
+| AD3 | **根因分类器是对观测信号的确定性规则**，而非 ML 模型。类别：`service_crash_loop`、`node_not_ready`、`accelerator_device_plugin`、`oom`、`image_pull_failure`、`unknown` | 设计 D3。可审计可测试；无隐藏裁判。每类别映射到有界恢复动作 |
 | AD4 | **自动恢复有界且可被运营者覆盖。** 重启与重调度自动运行（按类别策略）；排空需运营者确认。运营者可按类别禁用自动恢复、覆盖进行中的动作、或手动触发一个 | 设计 D4。重启/重调度低风险可安全自动化；排空有破坏性必须确认。运营者覆盖防止自动化失控 |
 | AD5 | **恢复动作记录在部署历史轨迹**（`deployment.updated`，actor `recovery`）与审计轨迹 | 设计 D5。恢复是部署变更；记录在既有轨迹（#17）保持服务变更的单一真相源 |
 | AD6 | **租户表面显示服务状态 / 事件横幅** — 服务降级或恢复中时，服务列表与详情页出现紧凑横幅 | 设计 D6。受影响服务的租户必须看到降级状态；横幅是显式的，不隐藏 |
@@ -148,7 +148,7 @@ flowchart TD
 | `id` | `uuid` | PRIMARY KEY | 服务端生成 UUID v4，暴露为 `incident_id` |
 | `severity` | `varchar(16)` | NOT NULL | `critical` / `warning` / `info` |
 | `status` | `varchar(16)` | NOT NULL DEFAULT 'detected' | `detected` / `diagnosing` / `recovering` / `resolved` / `failed` |
-| `root_cause` | `varchar(32)` | NOT NULL | `service_crash_loop` / `node_not_ready` / `accelerator_device_plugin_failure` / `oom` / `image_pull_failure` / `unknown` |
+| `root_cause` | `varchar(32)` | NOT NULL | `service_crash_loop` / `node_not_ready` / `accelerator_device_plugin` / `oom` / `image_pull_failure` / `unknown` |
 | `target_type` | `varchar(16)` | NOT NULL | `service` / `node` / `accelerator` |
 | `target_name` | `varchar(128)` | NOT NULL | 受影响服务名 / 节点名 / 加速器 id |
 | `started_at` | `timestamptz` | NOT NULL | 检测时间（UTC） |
@@ -189,7 +189,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `id` | `int` | PRIMARY KEY DEFAULT 1 | 单行策略（AD15） |
 | `auto_restart` | `jsonb` | NOT NULL DEFAULT '{}' | 按类别自动重启开关：`{"service_crash_loop": true, "oom": true, "image_pull_failure": true}` |
-| `auto_reschedule` | `jsonb` | NOT NULL DEFAULT '{}' | 按类别自动重调度开关：`{"node_not_ready": true, "accelerator_device_plugin_failure": true}` |
+| `auto_reschedule` | `jsonb` | NOT NULL DEFAULT '{}' | 按类别自动重调度开关：`{"node_not_ready": true, "accelerator_device_plugin": true}` |
 | `drain_always_confirm` | `boolean` | NOT NULL DEFAULT true | 始终 true（FR4.4）；为透明显示 |
 | `updated_at` | `timestamptz` | NOT NULL | 最后变更 |
 
@@ -295,7 +295,7 @@ message Incident {
   string incident_id = 1;
   string severity = 2;    // critical | warning | info
   string status = 3;      // detected | diagnosing | recovering | resolved | failed
-  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin_failure | oom | image_pull_failure | unknown
+  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin | oom | image_pull_failure | unknown
   string target_type = 5; // service | node | accelerator
   string target_name = 6;
   int64 started_at = 7;   // unix 秒
@@ -596,7 +596,7 @@ sequenceDiagram
 | `fault.debounce.crashLoopWindow` | duration | `3m` | 崩溃循环窗口 |
 | `fault.retention` | duration | `720h` | 事件保留窗口（30 天，FR1.4） |
 | `fault.recovery.autoRestart` | map | `{"service_crash_loop": true, "oom": true, "image_pull_failure": true}` | 默认自动重启开关（FR4.1） |
-| `fault.recovery.autoReschedule` | map | `{"node_not_ready": true, "accelerator_device_plugin_failure": true}` | 默认自动重调度开关（FR4.1） |
+| `fault.recovery.autoReschedule` | map | `{"node_not_ready": true, "accelerator_device_plugin": true}` | 默认自动重调度开关（FR4.1） |
 | `fault.signalsConsumer.enabled` | bool | `true` | 检测信号消费者运行器开关（AD13） |
 | `fault.signalsConsumer.workers` | int | `2` | 并发信号处理器 |
 
@@ -622,7 +622,7 @@ fault:
       image_pull_failure: true
     autoReschedule:
       node_not_ready: true
-      accelerator_device_plugin_failure: true
+      accelerator_device_plugin: true
   signalsConsumer:
     enabled: true
     workers: 2
@@ -659,7 +659,7 @@ fault:
 | --- | --- | --- |
 | AC1 管理事件表格（严重度、状态、根因、目标、自动恢复、开始、解决）+ 过滤 + 搜索 + 分页 | FR1.1、§5.3 | §5.1–5.2（`ListIncidents`）、§4.1、§6.1–6.3、§13.2–13.3、§13.8 |
 | AC2 事件生命周期（合成）：崩溃循环信号创建事件并移动 detected → diagnosing → recovering → resolved，每步带时间戳；恢复失败留 `failed` | FR1.3、D2 | §5.3（钉死契约）、AD11、AD13、§7.1、§13.4–13.5 |
-| AC3 根因分类：崩溃循环 → service_crash_loop、NotReady → node_not_ready、设备插件 → accelerator_device_plugin_failure、OOMKilled → oom、ImagePullBackOff → image_pull_failure；显示证据 | FR2.1–FR2.2 | AD12、§13.4、§13.8 |
+| AC3 根因分类：崩溃循环 → service_crash_loop、NotReady → node_not_ready、设备插件 → accelerator_device_plugin、OOMKilled → oom、ImagePullBackOff → image_pull_failure；显示证据 | FR2.1–FR2.2 | AD12、§13.4、§13.8 |
 | AC4 自动恢复：自动重启开触发重启并记录到时间线 + 部署历史轨迹；自动重启关提供手动 | FR4.1、D4 | AD14、AD16、§13.5、§7.1 |
 | AC5 排空需确认：绝不自动；确认对话框点名节点 + 服务；服务端拒绝无确认（13503） | FR4.4 | §5.4、§7.2、§13.5 |
 | AC6 运营者覆盖与手动触发：取消进行中动作（无则 13504）、手动触发重启/重调度/排空；手动动作以运营者记录 | FR4.3 | §5.4、§13.5、§7.2 |
@@ -736,7 +736,7 @@ fault:
 
 `classifier.go`：
 
-- `Classify(signalType string) string` — 确定性 switch：`crash_loop` → `service_crash_loop`、`node_not_ready` → `node_not_ready`、`device_plugin_unhealthy` → `accelerator_device_plugin_failure`、`oom_killed` → `oom`、`image_pull_backoff` → `image_pull_failure`、否则 `unknown`。信号的 `detail` 字段是证据，原样存到事件（FR2.2）。
+- `Classify(signalType string) string` — 确定性 switch：`crash_loop` → `service_crash_loop`、`node_not_ready` → `node_not_ready`、`device_plugin_unhealthy` → `accelerator_device_plugin`、`oom_killed` → `oom`、`image_pull_backoff` → `image_pull_failure`、否则 `unknown`。信号的 `detail` 字段是证据，原样存到事件（FR2.2）。
 
 `signal_consumer.go`：
 
@@ -749,7 +749,7 @@ fault:
 `recovery.go`：
 
 - `RecoveryRunner` — 持有策略存储、MQ 发布器、部署轨迹缝、审计记录器。
-- `Run(ctx, incident, category)` — 读策略；对 `service_crash_loop` / `oom` / `image_pull_failure`，若 `auto_restart[category]` 开，在 `infer.services.changes` 上发布重启（AD14）；对 `node_not_ready` / `accelerator_device_plugin_failure`，若 `auto_reschedule[category]` 开，在 `infer.services.changes`（服务目标）或 `fault.actions`（节点目标）上发布重调度；对 `unknown`，提供手动动作（无自动动作）。排空绝不自动（FR4.4）。
+- `Run(ctx, incident, category)` — 读策略；对 `service_crash_loop` / `oom` / `image_pull_failure`，若 `auto_restart[category]` 开，在 `infer.services.changes` 上发布重启（AD14）；对 `node_not_ready` / `accelerator_device_plugin`，若 `auto_reschedule[category]` 开，在 `infer.services.changes`（服务目标）或 `fault.actions`（节点目标）上发布重调度；对 `unknown`，提供手动动作（无自动动作）。排空绝不自动（FR4.4）。
 - `Trigger(ctx, incident, action, actor)` — 手动动作路径：校验动作、发布它、记录步骤。
 - `Override(ctx, incident)` — 取消进行中动作、记录步骤。
 - 每个动作都被记录：服务目标 `deploymentTrail.Record(ctx, serviceID, "deployment.updated", "recovery", detail)`（AD16），所有目标 `auditRecorder.Record(...)`。

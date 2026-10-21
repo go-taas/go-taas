@@ -43,7 +43,7 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D8) as implementation-leve
 | --- | --- | --- |
 | AD1 | **A dedicated `fault` module and `/admin/faults` surface.** Incidents are a stateful lifecycle with actions, distinct from the read-only system-health aggregation. The `fault` module owns the incident lifecycle, the deterministic root-cause classifier, and the recovery actions | Design D1. System-health is a read-only aggregation; incidents are a stateful lifecycle with actions. A dedicated module and surface keeps concerns separate |
 | AD2 | **The incident lifecycle is detect → diagnose → recover → resolve.** Every incident has a status (`detected` → `diagnosing` → `recovering` → `resolved`, or `failed` if recovery fails) and a timeline of timestamped steps | Design D2. Mirrors the industry-standard incident lifecycle (Datadog, PagerDuty) and gives the operator a clear state machine |
-| AD3 | **The root-cause classifier is deterministic rules over observed signals**, not an ML model. Categories: `service_crash_loop`, `node_not_ready`, `accelerator_device_plugin_failure`, `oom`, `image_pull_failure`, `unknown` | Design D3. Auditable and testable; no hidden judge. Each category maps to a bounded recovery action |
+| AD3 | **The root-cause classifier is deterministic rules over observed signals**, not an ML model. Categories: `service_crash_loop`, `node_not_ready`, `accelerator_device_plugin`, `oom`, `image_pull_failure`, `unknown` | Design D3. Auditable and testable; no hidden judge. Each category maps to a bounded recovery action |
 | AD4 | **Automatic recovery is bounded and operator-override-able.** Restart and reschedule run automatically (with a per-category policy); drain requires operator confirmation. The operator can disable auto-recovery per category, override an in-flight action, or manually trigger one | Design D4. Restart/reschedule are low-risk and safe to automate; drain is disruptive and must be confirmed. Operator override prevents runaway automation |
 | AD5 | **Recovery actions are recorded in the deployment-history trail** (`deployment.updated` with a `recovery` actor) and the audit trail | Design D5. Recovery is a deployment mutation; recording it in the existing trail (#17) keeps one source of truth for service changes |
 | AD6 | **The tenant surface shows a service status / incident banner** — a compact banner on the service list and detail pages when a service is degraded or under recovery | Design D6. Tenants whose service is affected must see the degraded state; the banner is explicit, not hidden |
@@ -148,7 +148,7 @@ flowchart TD
 | `id` | `uuid` | PRIMARY KEY | Server-generated UUID v4, exposed as `incident_id` |
 | `severity` | `varchar(16)` | NOT NULL | `critical` / `warning` / `info` |
 | `status` | `varchar(16)` | NOT NULL DEFAULT 'detected' | `detected` / `diagnosing` / `recovering` / `resolved` / `failed` |
-| `root_cause` | `varchar(32)` | NOT NULL | `service_crash_loop` / `node_not_ready` / `accelerator_device_plugin_failure` / `oom` / `image_pull_failure` / `unknown` |
+| `root_cause` | `varchar(32)` | NOT NULL | `service_crash_loop` / `node_not_ready` / `accelerator_device_plugin` / `oom` / `image_pull_failure` / `unknown` |
 | `target_type` | `varchar(16)` | NOT NULL | `service` / `node` / `accelerator` |
 | `target_name` | `varchar(128)` | NOT NULL | The affected service name / node name / accelerator id |
 | `started_at` | `timestamptz` | NOT NULL | Detection time (UTC) |
@@ -189,7 +189,7 @@ Indexes:
 | --- | --- | --- | --- |
 | `id` | `int` | PRIMARY KEY DEFAULT 1 | Single-row policy (AD15) |
 | `auto_restart` | `jsonb` | NOT NULL DEFAULT '{}' | Per-category auto-restart toggles: `{"service_crash_loop": true, "oom": true, "image_pull_failure": true}` |
-| `auto_reschedule` | `jsonb` | NOT NULL DEFAULT '{}' | Per-category auto-reschedule toggles: `{"node_not_ready": true, "accelerator_device_plugin_failure": true}` |
+| `auto_reschedule` | `jsonb` | NOT NULL DEFAULT '{}' | Per-category auto-reschedule toggles: `{"node_not_ready": true, "accelerator_device_plugin": true}` |
 | `drain_always_confirm` | `boolean` | NOT NULL DEFAULT true | Always true (FR4.4); shown for transparency |
 | `updated_at` | `timestamptz` | NOT NULL | Last change |
 
@@ -298,7 +298,7 @@ message Incident {
   string incident_id = 1;
   string severity = 2;    // critical | warning | info
   string status = 3;      // detected | diagnosing | recovering | resolved | failed
-  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin_failure | oom | image_pull_failure | unknown
+  string root_cause = 4;  // service_crash_loop | node_not_ready | accelerator_device_plugin | oom | image_pull_failure | unknown
   string target_type = 5; // service | node | accelerator
   string target_name = 6;
   int64 started_at = 7;   // unix seconds
@@ -605,7 +605,7 @@ New `fault` section in `pkg/config` (`FaultConfig`, mapped `mapstructure:"fault"
 | `fault.debounce.crashLoopWindow` | duration | `3m` | The crash-loop window |
 | `fault.retention` | duration | `720h` | Incident retention window (30 days, FR1.4) |
 | `fault.recovery.autoRestart` | map | `{"service_crash_loop": true, "oom": true, "image_pull_failure": true}` | Default auto-restart toggles (FR4.1) |
-| `fault.recovery.autoReschedule` | map | `{"node_not_ready": true, "accelerator_device_plugin_failure": true}` | Default auto-reschedule toggles (FR4.1) |
+| `fault.recovery.autoReschedule` | map | `{"node_not_ready": true, "accelerator_device_plugin": true}` | Default auto-reschedule toggles (FR4.1) |
 | `fault.signalsConsumer.enabled` | bool | `true` | The detection-signal consumer runner kill switch (AD13) |
 | `fault.signalsConsumer.workers` | int | `2` | Concurrent signal handlers |
 
@@ -632,7 +632,7 @@ fault:
       image_pull_failure: true
     autoReschedule:
       node_not_ready: true
-      accelerator_device_plugin_failure: true
+      accelerator_device_plugin: true
   signalsConsumer:
     enabled: true
     workers: 2
@@ -669,7 +669,7 @@ fault:
 | --- | --- | --- |
 | AC1 admin incident table (severity, status, root cause, target, auto-recovered, started, resolved) + filters + search + pagination | FR1.1, §5.3 | §5.1–5.2 (`ListIncidents`), §4.1, §6.1–6.3, §13.2–13.3, §13.8 |
 | AC2 incident lifecycle (synthetic): crash-loop signal creates an incident that moves detected → diagnosing → recovering → resolved, each step timestamped; a failed recovery leaves `failed` | FR1.3, D2 | §5.3 (pinned contract), AD11, AD13, §7.1, §13.4–13.5 |
-| AC3 root-cause classification: crash-loop → service_crash_loop, NotReady → node_not_ready, device-plugin → accelerator_device_plugin_failure, OOMKilled → oom, ImagePullBackOff → image_pull_failure; evidence shown | FR2.1–FR2.2 | AD12, §13.4, §13.8 |
+| AC3 root-cause classification: crash-loop → service_crash_loop, NotReady → node_not_ready, device-plugin → accelerator_device_plugin, OOMKilled → oom, ImagePullBackOff → image_pull_failure; evidence shown | FR2.1–FR2.2 | AD12, §13.4, §13.8 |
 | AC4 automatic recovery: auto-restart on triggers a restart and records it in the timeline + deployment-history trail; auto-restart off offers a manual one | FR4.1, D4 | AD14, AD16, §13.5, §7.1 |
 | AC5 drain requires confirmation: never automatic; confirm dialog names node + services; server rejects without confirm (13503) | FR4.4 | §5.4, §7.2, §13.5 |
 | AC6 operator override and manual trigger: cancel an in-flight action (13504 if none), manually trigger restart/reschedule/drain; manual actions recorded with the operator | FR4.3 | §5.4, §13.5, §7.2 |
@@ -746,7 +746,7 @@ Per-RPC responsibilities:
 
 `classifier.go`:
 
-- `Classify(signalType string) string` — a deterministic switch: `crash_loop` → `service_crash_loop`, `node_not_ready` → `node_not_ready`, `device_plugin_unhealthy` → `accelerator_device_plugin_failure`, `oom_killed` → `oom`, `image_pull_backoff` → `image_pull_failure`, else `unknown`. The signal's `detail` field is the evidence, stored verbatim on the incident (FR2.2).
+- `Classify(signalType string) string` — a deterministic switch: `crash_loop` → `service_crash_loop`, `node_not_ready` → `node_not_ready`, `device_plugin_unhealthy` → `accelerator_device_plugin`, `oom_killed` → `oom`, `image_pull_backoff` → `image_pull_failure`, else `unknown`. The signal's `detail` field is the evidence, stored verbatim on the incident (FR2.2).
 
 `signal_consumer.go`:
 
@@ -759,7 +759,7 @@ Per-RPC responsibilities:
 `recovery.go`:
 
 - `RecoveryRunner` — holds the policy store, the MQ publisher, the deployment-trail seam, and the audit recorder.
-- `Run(ctx, incident, category)` — read the policy; for `service_crash_loop` / `oom` / `image_pull_failure`, if `auto_restart[category]` is on, publish a restart on `infer.services.changes` (AD14); for `node_not_ready` / `accelerator_device_plugin_failure`, if `auto_reschedule[category]` is on, publish a reschedule on `infer.services.changes` (service target) or `fault.actions` (node target); for `unknown`, offer a manual action (no auto action). Drain is never automatic (FR4.4).
+- `Run(ctx, incident, category)` — read the policy; for `service_crash_loop` / `oom` / `image_pull_failure`, if `auto_restart[category]` is on, publish a restart on `infer.services.changes` (AD14); for `node_not_ready` / `accelerator_device_plugin`, if `auto_reschedule[category]` is on, publish a reschedule on `infer.services.changes` (service target) or `fault.actions` (node target); for `unknown`, offer a manual action (no auto action). Drain is never automatic (FR4.4).
 - `Trigger(ctx, incident, action, actor)` — the manual-action path: validate the action, publish it, record the step.
 - `Override(ctx, incident)` — cancel an in-flight action, record the step.
 - Every action is recorded: `deploymentTrail.Record(ctx, serviceID, "deployment.updated", "recovery", detail)` for service targets (AD16) and `auditRecorder.Record(...)` for all targets.

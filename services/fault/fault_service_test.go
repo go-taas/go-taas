@@ -106,6 +106,23 @@ func TestClassifier(t *testing.T) {
 	assert.Equal(t, CauseUnknown, c.Classify("bogus"))
 }
 
+// TestRootCauseValuesFitColumnWidth guards against a regression where a
+// root-cause category exceeds the incidents.root_cause varchar(32) column
+// (FAULT-ROOTCAUSE-1). Every category must fit within 32 characters so the
+// SignalConsumer can persist the incident without a DB truncation error.
+func TestRootCauseValuesFitColumnWidth(t *testing.T) {
+	for _, cause := range []string{
+		CauseServiceCrashLoop,
+		CauseNodeNotReady,
+		CauseAcceleratorDevicePluginFailure,
+		CauseOOM,
+		CauseImagePullFailure,
+		CauseUnknown,
+	} {
+		assert.LessOrEqual(t, len(cause), 32, "root cause %q exceeds varchar(32)", cause)
+	}
+}
+
 func TestListIncidents(t *testing.T) {
 	svc := newTestEnv(t, true)
 	ctx := context.Background()
@@ -372,8 +389,8 @@ func TestGetPolicySeedsDefaults(t *testing.T) {
 	repo := NewRepository(db)
 	ctx := context.Background()
 	policy, err := repo.GetPolicy(ctx, &FaultPolicy{
-		AutoRestart:       datatypes.JSON(`{"service_crash_loop":true}`),
-		AutoReschedule:    datatypes.JSON(`{"node_not_ready":true}`),
+		AutoRestart:        datatypes.JSON(`{"service_crash_loop":true}`),
+		AutoReschedule:     datatypes.JSON(`{"node_not_ready":true}`),
 		DrainAlwaysConfirm: true,
 	})
 	require.NoError(t, err)

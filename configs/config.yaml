@@ -248,7 +248,7 @@ fault:
       image_pull_failure: true
     autoReschedule:
       node_not_ready: true
-      accelerator_device_plugin_failure: true
+      accelerator_device_plugin: true
   signalsConsumer:
     enabled: true
     workers: 2

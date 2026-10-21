@@ -545,8 +545,8 @@ func (c *Configuration) applyDefaults() {
 	}
 	if len(c.Fault.Recovery.AutoReschedule) == 0 {
 		c.Fault.Recovery.AutoReschedule = map[string]bool{
-			"node_not_ready":                    true,
-			"accelerator_device_plugin_failure": true,
+			"node_not_ready":            true,
+			"accelerator_device_plugin": true,
 		}
 	}
 	if c.Fault.SignalsConsumer.Workers == 0 {
