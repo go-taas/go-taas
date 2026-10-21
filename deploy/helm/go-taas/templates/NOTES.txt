@@ -18,7 +18,7 @@ Endpoints:
 Dependencies:
   PostgreSQL: {{ if eq .Values.dependencies.postgresql.mode "internal" }}provisioned by this release ({{ include "go-taas.postgresql.name" . }}.{{ .Release.Namespace }}.svc:5432){{ else }}external — {{ .Values.dependencies.postgresql.external.host }}:{{ .Values.dependencies.postgresql.external.port }}{{ end }}
   Redis:      {{ if eq .Values.dependencies.redis.mode "internal" }}provisioned by this release ({{ include "go-taas.redis.name" . }}.{{ .Release.Namespace }}.svc:6379){{ else }}external — {{ .Values.dependencies.redis.external.host }}:{{ .Values.dependencies.redis.external.port }}{{ end }}
-  NATS:       {{ if eq .Values.dependencies.nats.mode "internal" }}provisioned by this release ({{ include "go-taas.nats.name" . }}.{{ .Release.Namespace }}.svc:{{ .Values.dependencies.nats.internal.port }}){{ else }}external — {{ .Values.dependencies.nats.external.url }}{{ end }}
+  RabbitMQ:   {{ if eq .Values.dependencies.rabbitmq.mode "internal" }}provisioned by this release ({{ include "go-taas.rabbitmq.name" . }}.{{ .Release.Namespace }}.svc:{{ .Values.dependencies.rabbitmq.internal.port }}){{ else }}external — {{ .Values.dependencies.rabbitmq.external.url }}{{ end }}
 
 {{- if eq .Values.dependencies.postgresql.mode "internal" }}
 {{- if not .Values.dependencies.postgresql.internal.persistence.enabled }}

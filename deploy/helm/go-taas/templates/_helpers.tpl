@@ -59,8 +59,8 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-redis" (include "go-taas.fullname" .) -}}
 {{- end -}}
 
-{{- define "go-taas.nats.name" -}}
-{{- printf "%s-nats" (include "go-taas.fullname" .) -}}
+{{- define "go-taas.rabbitmq.name" -}}
+{{- printf "%s-rabbitmq" (include "go-taas.fullname" .) -}}
 {{- end -}}
 
 {{- define "go-taas.configOverrides.name" -}}
@@ -330,12 +330,12 @@ instance from the values file.
 {{/* Message-queue environment shared by the server and the controller. */}}
 {{- define "go-taas.mq.env" -}}
 {{- $root := . -}}
-{{- $dep := .Values.dependencies.nats -}}
+{{- $dep := .Values.dependencies.rabbitmq -}}
 {{- $url := "" -}}
 {{- if eq $dep.mode "external" -}}
-{{- $url = required "go-taas: dependencies.nats.external.url is required when dependencies.nats.mode=external" $dep.external.url -}}
+{{- $url = required "go-taas: dependencies.rabbitmq.external.url is required when dependencies.rabbitmq.mode=external" $dep.external.url -}}
 {{- else -}}
-{{- $url = printf "nats://%s:%v" (include "go-taas.nats.name" $root) $dep.internal.port -}}
+{{- $url = printf "amqp://guest:guest@%s:%v/" (include "go-taas.rabbitmq.name" $root) $dep.internal.port -}}
 {{- end -}}
 - name: CONFIG_MQ_DRIVER
   value: {{ $dep.driver | quote }}

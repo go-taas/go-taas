@@ -1,6 +1,6 @@
 # go-taas Helm Chart
 
-将 Go TaaS 控制面部署到 Kubernetes，并把所有第三方依赖的连接方式变成 values 配置项：Chart 既可以自行置备单副本的 PostgreSQL / Redis / NATS，也可以让控制面连接运维托管的外部服务。
+将 Go TaaS 控制面部署到 Kubernetes，并把所有第三方依赖的连接方式变成 values 配置项：Chart 既可以自行置备单副本的 PostgreSQL / Redis / RabbitMQ，也可以让控制面连接运维托管的外部服务。
 
 ## Chart 部署的资源
 
@@ -13,7 +13,7 @@
 | `Namespace/<推理命名空间>` | `controller.createNamespace` | 控制器管理的命名空间，取自 `controller.config.controller.namespace` |
 | `Secret/<release>-secrets` | 未设置 `secrets.existingSecret` 时 | 依赖密码与静态加密主密钥 |
 | `ConfigMap/<release>-config-overrides` | `configOverrides` | 在镜像内置配置之后合并的原始配置文件 |
-| PostgreSQL / Redis / NATS 的 `Deployment` + `Service` + `PersistentVolumeClaim` | 各依赖 `mode: internal` 时 | 面向评估与小规模安装的单副本实例 |
+| PostgreSQL / Redis / RabbitMQ 的 `Deployment` + `Service` + `PersistentVolumeClaim` | 各依赖 `mode: internal` 时 | 面向评估与小规模安装的单副本实例 |
 
 Chart 不创建 Ingress。对外暴露方式由 `taasServer.service.type`（`ClusterIP`、`NodePort`、`LoadBalancer`）决定，或在网关端口前自行添加 Ingress。
 
@@ -29,14 +29,14 @@ helm install taas deploy/helm/go-taas \
   --namespace taas --create-namespace
 ```
 
-不做任何覆盖时，Release 会在集群内置备 PostgreSQL、Redis 与 NATS，把它们的凭据（以及两个加密主密钥）生成到 Chart Secret 中，并把控制面自动连上去。控制器管理的命名空间为 `taas-infer`。
+不做任何覆盖时，Release 会在集群内置备 PostgreSQL、Redis 与 RabbitMQ，把它们的凭据（以及两个加密主密钥）生成到 Chart Secret 中，并把控制面自动连上去。控制器管理的命名空间为 `taas-infer`。
 
 ```bash
 kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # 控制台：http://127.0.0.1:9091/
 ```
 
-服务端在依赖不可达时会快速失败退出，由 Kubernetes 重启；因此全新安装时，内置的 PostgreSQL、Redis、NATS 尚在启动期间服务端可能重启一两次，随后自动收敛。控制器不配置探针：它不提供 HTTP 服务，且镜像内没有 shell。
+服务端在依赖不可达时会快速失败退出，由 Kubernetes 重启；因此全新安装时，内置的 PostgreSQL、Redis、RabbitMQ 尚在启动期间服务端可能重启一两次，随后自动收敛。控制器不配置探针：它不提供 HTTP 服务，且镜像内没有 shell。
 
 ## 连接外部依赖
 
@@ -63,11 +63,11 @@ dependencies:
       port: 6379
       password: ""
 
-  nats:
+  rabbitmq:
     mode: external
     namespace: taas-prod        # 按环境隔离主题/主题空间
     external:
-      url: nats://nats.example.internal:4222
+      url: amqp://guest:guest@rabbitmq.example.internal:5672/
 ```
 
 此时 Chart 不再渲染这些依赖的任何资源，而是通过 `CONFIG_*` 环境变量把控制面指向配置的地址（`CONFIG_DB_MASTER_HOST`、`CONFIG_REDIS_HOST`、`CONFIG_MQ_URL` 等）。
@@ -126,10 +126,10 @@ secrets:
 | `dependencies.redis.maxIdle` / `maxActive` / `idleTimeout` | `8` / `64` / `5m` | 连接池参数，两种模式均生效 |
 | `dependencies.redis.external.*` | — | `host`、`port`、`password` |
 | `dependencies.redis.internal.auth.enabled` | `true` | 置备的实例是否要求密码 |
-| `dependencies.nats.mode` | `internal` | `internal` 或 `external` |
-| `dependencies.nats.driver` / `namespace` | `nats` / `taas` | 消息队列驱动与主题命名空间 |
-| `dependencies.nats.external.url` | — | 完整连接 URL（可内含凭据） |
-| `dependencies.nats.internal.jetstream` | `true` | 计量与计费消息流依赖 JetStream |
+| `dependencies.rabbitmq.mode` | `internal` | `internal` 或 `external` |
+| `dependencies.rabbitmq.driver` / `namespace` | `rabbitmq` / `taas` | 消息队列驱动与主题命名空间 |
+| `dependencies.rabbitmq.external.url` | — | 完整连接 URL（可内含凭据） |
+| `dependencies.rabbitmq.internal.port` | `5672` | AMQP 客户端端口 |
 | `dependencies.*.internal.persistence.enabled` / `size` / `storageClass` | `true` / `10Gi`-`8Gi` / `""` | 置备实例的存储配置 |
 | `secrets.existingSecret` | `""` | 保存上述凭据的已有 Secret |
 | `secrets.webhookSecretEncryptionKey` / `providerSecretEncryptionKey` | `""` | 为空时随机生成 |
@@ -158,10 +158,10 @@ secrets:
 
 ## 生产环境检查清单
 
-* PostgreSQL、Redis、NATS 使用 `dependencies.*.mode: external`（或由 Chart 之外的 Operator 管理）；内置实例是单副本且以 `Recreate` 策略重启。
+* PostgreSQL、Redis、RabbitMQ 使用 `dependencies.*.mode: external`（或由 Chart 之外的 Operator 管理）；内置实例是单副本且以 `Recreate` 策略重启。
 * 设置 `secrets.existingSecret`，并为其提供强随机的 `webhook-secret-encryption-key` 与 `provider-secret-encryption-key`——留空会让平台退回到其文档中说明的开发密钥。
 * 远程数据库设置 `dependencies.postgresql.external.sslMode` 为 `require` 或 `verify-full`。
-* 当 Redis/NATS 可被集群外部访问时，保持 `dependencies.redis.internal.auth.enabled: true`，或使用 `dependencies.nats.mode: external`（亦或带认证的内置实例）。
+* 当 Redis/RabbitMQ 可被集群外部访问时，保持 `dependencies.redis.internal.auth.enabled: true`，或使用 `dependencies.rabbitmq.mode: external`（亦或带认证的内置实例）。
 * 将 `controller.config.controller.weights.storageClass` 设置为支持 `ReadWriteMany` 的 StorageClass。
 * 为两个组件以及每个内置依赖设置 `resources` 的 requests/limits。
 * 控制台需要从集群外访问时，使用 `taasServer.service.type: LoadBalancer`（或 Ingress）并在网关前启用 TLS。

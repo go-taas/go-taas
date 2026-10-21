@@ -54,8 +54,8 @@
         "redis": {
           "$ref": "#/definitions/redis"
         },
-        "nats": {
-          "$ref": "#/definitions/nats"
+        "rabbitmq": {
+          "$ref": "#/definitions/rabbitmq"
         }
       }
     },
@@ -457,7 +457,7 @@
         }
       }
     },
-    "nats": {
+    "rabbitmq": {
       "type": "object",
       "properties": {
         "mode": {
@@ -465,7 +465,7 @@
         },
         "driver": {
           "type": "string",
-          "enum": ["nats", "fake"]
+          "enum": ["rabbitmq", "fake"]
         },
         "namespace": {
           "type": "string"
@@ -484,15 +484,12 @@
             "image": {
               "$ref": "#/definitions/internalImage"
             },
-            "jetstream": {
-              "type": "boolean"
-            },
             "port": {
               "type": "integer",
               "minimum": 1,
               "maximum": 65535
             },
-            "monitorPort": {
+            "managementPort": {
               "type": "integer",
               "minimum": 1,
               "maximum": 65535

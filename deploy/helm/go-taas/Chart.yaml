@@ -3,7 +3,7 @@ name: go-taas
 description: |
   Go TaaS control plane: the taas-server (gRPC + REST gateway + embedded
   console) and the controller that reconciles inference workloads into
-  Kubernetes. Every third-party dependency (PostgreSQL, Redis, NATS) is
+  Kubernetes. Every third-party dependency (PostgreSQL, Redis, RabbitMQ) is
   configured through this chart's values: the chart either provisions a
   single-replica instance in-cluster or connects to an operator-managed one.
 type: application

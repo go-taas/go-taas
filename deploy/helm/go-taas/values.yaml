@@ -6,13 +6,13 @@
 # value. There are three configuration mechanisms, in decreasing priority:
 #
 #   1. `dependencies.*` — structured connectivity for PostgreSQL, Redis and
-#      NATS. Each block has a `mode`:
+#      RabbitMQ. Each block has a `mode`:
 #
 #        internal: the chart provisions a single-replica instance and wires
 #                  the control plane to it automatically (default).
 #        external: the chart provisions nothing; the control plane is
 #                  pointed at an operator-managed instance (RDS, Cloud SQL,
-#                  ElastiCache, a hosted NATS, ...) through the `external`
+#                  ElastiCache, a hosted RabbitMQ, ...) through the `external`
 #                  block.
 #
 #      Mixed modes are supported, e.g. internal Redis next to an external
@@ -197,52 +197,51 @@ dependencies:
       # -- Affinity for the Redis pod.
       affinity: {}
 
-  nats:
-    # -- `internal` provisions NATS with this chart; `external` connects to an existing instance.
+  rabbitmq:
+    # -- `internal` provisions RabbitMQ with this chart; `external` connects to an existing instance.
     mode: internal
-    # -- Message-queue driver: `nats` (only `fake`, an in-process no-op, is also implemented).
-    driver: nats
+    # -- Message-queue driver: `rabbitmq` (only `fake`, an in-process no-op, is also implemented).
+    driver: rabbitmq
     # -- Subject/topic namespace that isolates this environment (`mq.namespace`).
     namespace: taas
     # Connection used when `mode: external`. The URL may embed credentials,
-    # e.g. `nats://user:password@nats.example.com:4222`; for a credential-free
-    # URL use `controller.extraEnv`/`taasServer.extraEnv` with a
-    # `secretKeyRef` instead.
+    # e.g. `amqp://guest:guest@rabbitmq.example.com:5672/`; for a
+    # credential-free URL use `controller.extraEnv`/`taasServer.extraEnv`
+    # with a `secretKeyRef` instead.
     external:
-      # -- NATS connection URL. Required when `mode: external`.
+      # -- RabbitMQ connection URL. Required when `mode: external`.
       url: ""
     # The instance this chart provisions when `mode: internal`.
     internal:
       image:
-        # -- NATS image repository.
-        repository: nats
-        # -- NATS image tag.
-        tag: "2-alpine"
-        # -- NATS image pull policy.
+        # -- RabbitMQ image repository.
+        repository: rabbitmq
+        # -- RabbitMQ image tag.
+        tag: "3-management-alpine"
+        # -- RabbitMQ image pull policy.
         pullPolicy: IfNotPresent
-      # -- Enable JetStream (required by the metering and billing streams).
-      jetstream: true
-      # -- Client port.
-      port: 4222
-      # -- Monitoring port (health and metrics).
-      monitorPort: 8222
-      # Storage for JetStream. Disabling it uses an emptyDir.
+      # -- AMQP client port.
+      port: 5672
+      # -- Management/health port.
+      managementPort: 15672
+      # Storage for the RabbitMQ data directory. Disabling it uses an
+      # emptyDir.
       persistence:
-        # -- Persist the JetStream store on a PersistentVolumeClaim.
+        # -- Persist the RabbitMQ data directory on a PersistentVolumeClaim.
         enabled: true
         # -- Requested volume size.
         size: 8Gi
         # -- StorageClass to provision from. Empty uses the cluster default.
         storageClass: ""
-      # -- Resource requests/limits for the NATS container.
+      # -- Resource requests/limits for the RabbitMQ container.
       resources: {}
-      # -- Extra annotations for the NATS pod.
+      # -- Extra annotations for the RabbitMQ pod.
       podAnnotations: {}
-      # -- Node selector for the NATS pod.
+      # -- Node selector for the RabbitMQ pod.
       nodeSelector: {}
-      # -- Tolerations for the NATS pod.
+      # -- Tolerations for the RabbitMQ pod.
       tolerations: []
-      # -- Affinity for the NATS pod.
+      # -- Affinity for the RabbitMQ pod.
       affinity: {}
 
 # taas-server: the unified control-plane server (gRPC on 9090, the REST

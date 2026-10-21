@@ -1,7 +1,7 @@
-{{- if eq .Values.dependencies.nats.mode "internal" }}
-{{- $dep := .Values.dependencies.nats }}
-{{- $name := include "go-taas.nats.name" . }}
-{{- $labels := printf "%s\n%s" (include "go-taas.labels" .) "app.kubernetes.io/component: nats" }}
+{{- if eq .Values.dependencies.rabbitmq.mode "internal" }}
+{{- $dep := .Values.dependencies.rabbitmq }}
+{{- $name := include "go-taas.rabbitmq.name" . }}
+{{- $labels := printf "%s\n%s" (include "go-taas.labels" .) "app.kubernetes.io/component: rabbitmq" }}
 ---
 apiVersion: v1
 kind: Service
@@ -12,17 +12,17 @@ metadata:
 spec:
   type: ClusterIP
   ports:
-    - name: client
+    - name: amqp
       port: {{ $dep.internal.port }}
-      targetPort: client
+      targetPort: amqp
       protocol: TCP
-    - name: monitor
-      port: {{ $dep.internal.monitorPort }}
-      targetPort: monitor
+    - name: management
+      port: {{ $dep.internal.managementPort }}
+      targetPort: management
       protocol: TCP
   selector:
     {{- include "go-taas.selectorLabels" . | nindent 4 }}
-    app.kubernetes.io/component: nats
+    app.kubernetes.io/component: rabbitmq
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -37,7 +37,7 @@ spec:
   selector:
     matchLabels:
       {{- include "go-taas.selectorLabels" . | nindent 6 }}
-      app.kubernetes.io/component: nats
+      app.kubernetes.io/component: rabbitmq
   template:
     metadata:
       labels:
@@ -48,36 +48,26 @@ spec:
       {{- end }}
     spec:
       containers:
-        - name: nats
+        - name: rabbitmq
           image: {{ printf "%s:%s" $dep.internal.image.repository $dep.internal.image.tag }}
           imagePullPolicy: {{ $dep.internal.image.pullPolicy }}
-          args:
-            {{- if $dep.internal.jetstream }}
-            - -js
-            {{- end }}
-            - -m
-            - {{ $dep.internal.monitorPort | toString }}
-            - -sd
-            - /data
           ports:
-            - name: client
+            - name: amqp
               containerPort: {{ $dep.internal.port }}
               protocol: TCP
-            - name: monitor
-              containerPort: {{ $dep.internal.monitorPort }}
+            - name: management
+              containerPort: {{ $dep.internal.managementPort }}
               protocol: TCP
           readinessProbe:
-            httpGet:
-              path: /healthz
-              port: monitor
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
             initialDelaySeconds: 5
             periodSeconds: 5
             timeoutSeconds: 3
             failureThreshold: 12
           livenessProbe:
-            httpGet:
-              path: /healthz
-              port: monitor
+            exec:
+              command: ["rabbitmq-diagnostics", "-q", "ping"]
             initialDelaySeconds: 30
             periodSeconds: 30
             timeoutSeconds: 5
@@ -86,7 +76,7 @@ spec:
             {{- toYaml $dep.internal.resources | nindent 12 }}
           volumeMounts:
             - name: data
-              mountPath: /data
+              mountPath: /var/lib/rabbitmq
       volumes:
         - name: data
           {{- if $dep.internal.persistence.enabled }}

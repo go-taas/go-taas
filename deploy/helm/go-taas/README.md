@@ -2,7 +2,7 @@
 
 Deploys the Go TaaS control plane into Kubernetes and makes every
 third-party dependency connection a value: the chart either provisions a
-single-replica PostgreSQL / Redis / NATS instance itself, or connects the
+single-replica PostgreSQL / Redis / RabbitMQ instance itself, or connects the
 control plane to an operator-managed service.
 
 ## What the chart deploys
@@ -16,7 +16,7 @@ control plane to an operator-managed service.
 | `Namespace/<inference namespace>` | `controller.createNamespace` | the namespace the controller manages, taken from `controller.config.controller.namespace` |
 | `Secret/<release>-secrets` | unless `secrets.existingSecret` | dependency passwords and the at-rest encryption keys |
 | `ConfigMap/<release>-config-overrides` | `configOverrides` | raw configuration file merged after the image defaults |
-| PostgreSQL / Redis / NATS `Deployment` + `Service` + `PersistentVolumeClaim` | per dependency `mode: internal` | single-replica instances for evaluation and small installs |
+| PostgreSQL / Redis / RabbitMQ `Deployment` + `Service` + `PersistentVolumeClaim` | per dependency `mode: internal` | single-replica instances for evaluation and small installs |
 
 The chart creates no Ingress. Choose the exposure mechanism with
 `taasServer.service.type` (`ClusterIP`, `NodePort`, `LoadBalancer`) or add
@@ -34,7 +34,7 @@ helm install taas deploy/helm/go-taas \
   --namespace taas --create-namespace
 ```
 
-With no overrides the release provisions PostgreSQL, Redis and NATS in
+With no overrides the release provisions PostgreSQL, Redis and RabbitMQ in
 cluster, generates their credentials (and the two encryption master keys)
 into the chart Secret, and wires the control plane to them. The namespace
 managed by the controller is `taas-infer`.
@@ -46,7 +46,7 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 
 The server fails fast when a dependency is unreachable and Kubernetes restarts
 it, so on a fresh install it may restart once or twice while the in-cluster
-PostgreSQL, Redis and NATS finish starting; the rollout converges without
+PostgreSQL, Redis and RabbitMQ finish starting; the rollout converges without
 intervention. The controller has no probes: it speaks no HTTP and its image
 carries no shell.
 
@@ -77,11 +77,11 @@ dependencies:
       port: 6379
       password: ""
 
-  nats:
+  rabbitmq:
     mode: external
     namespace: taas-prod        # isolates subjects/topics per environment
     external:
-      url: nats://nats.example.internal:4222
+      url: amqp://guest:guest@rabbitmq.example.internal:5672/
 ```
 
 The chart then renders nothing for those dependencies and points the control
@@ -156,10 +156,10 @@ Three mechanisms, highest precedence first:
 | `dependencies.redis.maxIdle` / `maxActive` / `idleTimeout` | `8` / `64` / `5m` | connection pool tuning, both modes |
 | `dependencies.redis.external.*` | — | `host`, `port`, `password` |
 | `dependencies.redis.internal.auth.enabled` | `true` | require a password on the provisioned instance |
-| `dependencies.nats.mode` | `internal` | `internal` or `external` |
-| `dependencies.nats.driver` / `namespace` | `nats` / `taas` | message-queue driver and subject namespace |
-| `dependencies.nats.external.url` | — | full connection URL (may embed credentials) |
-| `dependencies.nats.internal.jetstream` | `true` | required by the metering/billing streams |
+| `dependencies.rabbitmq.mode` | `internal` | `internal` or `external` |
+| `dependencies.rabbitmq.driver` / `namespace` | `rabbitmq` / `taas` | message-queue driver and subject namespace |
+| `dependencies.rabbitmq.external.url` | — | full connection URL (may embed credentials) |
+| `dependencies.rabbitmq.internal.port` | `5672` | AMQP client port |
 | `dependencies.*.internal.persistence.enabled` / `size` / `storageClass` | `true` / `10Gi`-`8Gi` / `""` | storage of the provisioned instance |
 | `secrets.existingSecret` | `""` | pre-existing Secret with the credentials above |
 | `secrets.webhookSecretEncryptionKey` / `providerSecretEncryptionKey` | `""` | empty generates a random key |
@@ -202,7 +202,7 @@ mount the same filesystem into the server with
 ## Production checklist
 
 * `dependencies.*.mode: external` (or a chart-external operator) for
-  PostgreSQL, Redis and NATS; the provisioned instances are single-replica
+  PostgreSQL, Redis and RabbitMQ; the provisioned instances are single-replica
   and restart with `Recreate`.
 * `secrets.existingSecret` set, with strong values for
   `webhook-secret-encryption-key` and `provider-secret-encryption-key` —
@@ -211,8 +211,8 @@ mount the same filesystem into the server with
 * `dependencies.postgresql.external.sslMode` set to `require` or
   `verify-full` for a remote database.
 * `dependencies.redis.internal.auth.enabled: true` and
-  `dependencies.nats.mode: external` (or an internal instance with
-  authentication) when Redis/NATS are reachable beyond the cluster.
+  `dependencies.rabbitmq.mode: external` (or an internal instance with
+  authentication) when Redis/RabbitMQ are reachable beyond the cluster.
 * `controller.config.controller.weights.storageClass` set to a
   `ReadWriteMany` StorageClass.
 * `resources` requests/limits set for both components and for every
