@@ -98,7 +98,7 @@ flowchart TD
 
     subgraph stores["State"]
         PG[("PostgreSQL<br/>compatibility_cells (new)")]
-        MQ[("NATS")]
+        MQ[("RabbitMQ")]
     end
 
     AC -->|"/api/v1/admin/compatibility/*"| GUARD

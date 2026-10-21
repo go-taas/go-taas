@@ -472,7 +472,7 @@ Runner/消费者侧的失败不是 RPC 错误：计费执行遇到瞬时数据�
 
 - **表结构**：首次启动经 AutoMigrate 新建三张表（`price_entries`、`usage_lines`、`charge_records`）；仅增量，不动既有数据。
 - **Proto**：增量变更（一个新 RPC、扩展消息、两个新消息类型）— 需 `make pbgen`；生成代码不入库。
-- **Subject**：`metering.events` 与 `billing.settlements` 均已存在于 `DefaultSubjects()`；无 MQ 变更。billing 的订阅是既有 subject 上的额外消费者 — NATS core 的扇出会独立投递给 metering 与 billing 两个订阅。
+- **Subject**：`metering.events` 与 `billing.settlements` 均已存在于 `DefaultSubjects()`；无 MQ 变更。billing 的订阅是既有 subject 上的额外消费者 — RabbitMQ 的扇出会独立投递给 metering 与 billing 两个订阅。
 - **接线**：`apps/taas-server/main.go` 已注册 billing 服务；在 `srv.Init()` 之后按计量模式新增三个 `srv.AddRunner(...)`。
 - **滚动更新顺序**：单独部署 `taas-server`；消费者开始排空（事件未流动前为空）、对账 runner 找不到明细、查询返回空。特性 #4 的计量管道不受影响 — 其结算事件只是多了一个消费者。
 - **升级兼容**：既有代码不读写新表；metering proto 变更是增量的（字段 8）；本特性纯增量。
@@ -594,7 +594,7 @@ type ChargeRecord struct {
 
 `event_consumer.go`：
 
-- `EventConsumer` 实现 `server.Runner`：订阅 `subjects.MeteringEvents`（billing 自己的订阅 — NATS 扇出投递给两个消费者）；JSON 解码错误与校验失败记日志并永久跳过；瞬时数据库错误返回以供 broker 重试（FR3.3）。配置：`billing.eventConsumer.{enabled,workers}`。
+- `EventConsumer` 实现 `server.Runner`：订阅 `subjects.MeteringEvents`（billing 自己的订阅 — RabbitMQ 扇出投递给两个消费者）；JSON 解码错误与校验失败记日志并永久跳过；瞬时数据库错误返回以供 broker 重试（FR3.3）。配置：`billing.eventConsumer.{enabled,workers}`。
 - `NewEventConsumerRunner(components) *EventConsumer` — 禁用或 MQ/DB 不可用时返回 nil（既有模式）。
 
 `settlements_consumer.go`：

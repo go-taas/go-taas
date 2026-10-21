@@ -428,7 +428,7 @@ Controller 侧失败不是 RPC 错误：它们经状态 subject 以任务 `state
 
 - **模式**：首启经 AutoMigrate 新增两表（`images`、`warmup_tasks`）；仅增量，不触碰既有数据。首启种子在 `Migrate` 钩子内紧随 AutoMigrate 执行。
 - **proto**：增量变更（五个新 RPC、扩展消息）— 需要 `make pbgen`。
-- **新 subject**：`image.warmup.status` 为增量；broker 基于 subject（NATS）故无迁移。
+- **新 subject**：`image.warmup.status` 为增量；broker 基于 subject（RabbitMQ）故无迁移。
 - **Controller**：`ApplyImageWarmup` 在既有 `Reconciler` 接口后替换当前桩 — 签名不变，基于 fake 的测试继续可用。
 - **滚动更新顺序**：先部署 `taas-server`（种子、服务 CRUD、发布任务并消费状态），再部署 controller。反序亦安全：controller 忽略无发布者的 subject。
 - **升级兼容**：引用种子 id（如 `img-vllm-nvidia-v063`）的既有推理服务继续通过校验 — 种子保留配置 id（D2、D4、AC3）。

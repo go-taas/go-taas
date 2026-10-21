@@ -429,7 +429,7 @@ Rules:
 
 - **Schema**: two new tables (`images`, `warmup_tasks`) via AutoMigrate on first start; additive only, no existing data touched. The first-boot seed runs immediately after AutoMigrate inside the same `Migrate` hook.
 - **Proto**: additive changes (five new RPCs, extended messages) — `make pbgen` required.
-- **New subject**: `image.warmup.status` is additive; brokers are subject-based (NATS) so no migration.
+- **New subject**: `image.warmup.status` is additive; brokers are subject-based (RabbitMQ) so no migration.
 - **Controller**: `ApplyImageWarmup` replaces the current stub behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
 - **Rolling update order**: deploy `taas-server` first (it seeds, serves CRUD, publishes tasks and consumes status), then the controller. The reverse order is safe too: the controller ignores subjects with no publishers.
 - **Upgrade compatibility**: existing inference services referencing seeded ids (e.g. `img-vllm-nvidia-v063`) keep validating — the seed preserves config ids (D2, D4, AC3).

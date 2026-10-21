@@ -97,7 +97,7 @@ flowchart TD
 
     subgraph stores["State"]
         PG[("PostgreSQL<br/>inference_services + autoscaling_policy")]
-        MQ[("NATS<br/>infer.services.changes · infer.services.status · infer.services.concurrency")]
+        MQ[("RabbitMQ<br/>infer.services.changes · infer.services.status · infer.services.concurrency")]
     end
 
     subgraph ctrl["Controller"]
@@ -656,7 +656,7 @@ Rules (same as the API Key feature):
 - **Schema**: `inference_services` gains `autoscaling` (jsonb, default `{}`); new `autoscaling_policy` singleton table seeded with defaults. Additive via AutoMigrate; no data migration.
 - **Configuration**: the `infer.autoscaling` section ships in `configs/config.yaml`, `configs/server.yaml`, and (for `statusReportInterval`) `configs/controller.yaml`. Custom configs without the section keep working (zero-value defaults).
 - **Proto**: additive changes — new messages, new RPCs, extended messages. `make pbgen` regenerates the gateway bindings.
-- **New subject**: `infer.services.concurrency` is additive; brokers are subject-based (NATS) so no migration.
+- **New subject**: `infer.services.concurrency` is additive; brokers are subject-based (RabbitMQ) so no migration.
 - **Controller**: the reconciler gains HPA lifecycle and the concurrency-metric consumer behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
 - **Rolling update order**: deploy `taas-server` first (it starts publishing policy-bearing changes and consuming status), then the controller. The reverse order is safe too: the controller ignores subjects with no publishers.
 - **Feature flags**: none needed — the new RPCs are additive; existing services with `autoscaling = '{}'` inherit the global default and existing behavior is unchanged until an operator edits a policy.

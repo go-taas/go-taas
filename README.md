@@ -126,7 +126,7 @@ flowchart TD
         subgraph cp["Control Plane (standard network)"]
             direction TB
             CGW["Control Gateway (HTTP · grpc-gateway)<br/>/api/v1/* · /api/v1/admin/* · static console"]
-            MQ["Message Queue (Kafka / NATS)"]
+            MQ["Message Queue (Kafka / RabbitMQ)"]
             CTRL["Controller<br/>(K8s resource reconciliation)"]
 
             subgraph grpc["gRPC Server — one Deployment, 24 microservices"]
@@ -216,7 +216,7 @@ flowchart TD
 - Traffic is split by audience: administrators enter through the **Control Gateway** (HTTP, generated from the Protobuf contract by `grpc-gateway`), while agents and SDKs call the **Inference Gateway** (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS termination).
 - The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.
 - APIs are partitioned by audience: the end-user console and its tenants call `/api/v1/*`, while `/api/v1/admin/*` is reserved for the admin console. A request that carries a session from the wrong surface is rejected before any handler runs.
-- The **gRPC Server's single Deployment hosts all 24 microservices** — `auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, and `docs` — which call each other in-process and hand work to the Controller through a **message queue** (Kafka / NATS), decoupling API serving from Kubernetes reconciliation.
+- The **gRPC Server's single Deployment hosts all 24 microservices** — `auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, and `docs` — which call each other in-process and hand work to the Controller through a **message queue** (Kafka / RabbitMQ), decoupling API serving from Kubernetes reconciliation.
 - Authentication, metering, and routing run in **Wasm plugins** at the Inference Gateway, so inference traffic never passes through business processes.
 - The Inference Gateway verifies every API Key by **calling the `auth` module over gRPC**, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or `auth` unavailability it fails closed.
 - **Cluster networking**: pods communicate over the cluster CNI network with ClusterIP Services and CoreDNS-based service discovery; north-south traffic enters through an Envoy Gateway with TLS termination; NetworkPolicies isolate the control plane, data plane, and tenant namespaces; and the inference data path can be placed on an optional **RDMA fabric** (RoCE / InfiniBand) while the control plane stays on standard Ethernet.
@@ -229,7 +229,7 @@ See the [Architecture Design](./site/docs/design/architecture.md) for component 
 | Layer | Choice |
 | --- | --- |
 | Backend | Go, gRPC + grpc-gateway, GORM |
-| Data | PostgreSQL, Redis (Valkey-compatible), Kafka / NATS |
+| Data | PostgreSQL, Redis (Valkey-compatible), Kafka / RabbitMQ |
 | Control plane gateway | grpc-gateway — HTTP/JSON and OpenAPI generated from Protobuf |
 | Data plane gateway | Envoy + Wasm |
 | Storage | Longhorn for cluster state; MinIO + JuiceFS for inference weights and images |
@@ -251,7 +251,7 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # console: http://127.0.0.1:9091/ · /admin
 ```
 
-With no overrides the chart provisions in-cluster PostgreSQL, Redis, and NATS (each switchable to an external instance) and wires their credentials to the control plane. For the full values reference, external-dependency wiring, and the production checklist, see the chart's [README](./deploy/helm/go-taas/README.md) ([Chinese mirror](./deploy/helm/go-taas/README.zh-cn.md)).
+With no overrides the chart provisions in-cluster PostgreSQL, Redis, and RabbitMQ (each switchable to an external instance) and wires their credentials to the control plane. For the full values reference, external-dependency wiring, and the production checklist, see the chart's [README](./deploy/helm/go-taas/README.md) ([Chinese mirror](./deploy/helm/go-taas/README.zh-cn.md)).
 
 ### Prerequisites
 
@@ -344,7 +344,7 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # console: http://127.0.0.1:9091/
 ```
 
-PostgreSQL, Redis and NATS link to the control plane via configurable
+PostgreSQL, Redis and RabbitMQ link to the control plane via configurable
 strategies (per dependency) — either as chart-managed internal instances, or
 via external services the chart wires the credentials against. Use the secret
 generator, `existingSecret`, or both. Local validation renders and lints the

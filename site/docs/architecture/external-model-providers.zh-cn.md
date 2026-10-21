@@ -104,7 +104,7 @@ flowchart TD
 
     subgraph stores["状态"]
         PG[("PostgreSQL<br/>providers + provider_models（新增）<br/>models + 外部列")]
-        MQ[("NATS<br/>metering.events（既有）")]
+        MQ[("RabbitMQ<br/>metering.events（既有）")]
     end
 
     AC -->|"/api/v1/admin/providers/*"| GUARD
@@ -169,7 +169,7 @@ flowchart LR
     PV -->|"POST chat/completions 带 Bearer 密钥"| PR
     PR -->|"401 或 403 -> 13012"| PV
     PR -->|"5xx 或超时 -> 13013"| PV
-    PV -->|"metering.events（成功与失败）"| MQ[("NATS")]
+    PV -->|"metering.events（成功与失败）"| MQ[("RabbitMQ")]
     classDef edge fill:#007F86,stroke:#00565C,stroke-width:2px,color:#FFFFFF
     classDef svc fill:#CFE9EA,stroke:#4E9CA0,stroke-width:1.5px,color:#0B383D
     classDef dpg fill:#F6CCC0,stroke:#C4623F,stroke-width:2px,color:#5F200A

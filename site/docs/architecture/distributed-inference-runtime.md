@@ -100,7 +100,7 @@ flowchart TD
     end
 
     subgraph stores["State"]
-        MQ[("NATS<br/>runtime.health / runtime.scheme / runtime.models.changes")]
+        MQ[("RabbitMQ<br/>runtime.health / runtime.scheme / runtime.models.changes")]
         PG[("PostgreSQL<br/>runtime_settings (new)")]
     end
 
@@ -556,7 +556,7 @@ sequenceDiagram
     participant RT as runtime module
     participant C as Controller
     participant K as Kubernetes
-    participant M as NATS
+    participant M as RabbitMQ
 
     C->>K: list Deployments in aibrix-system and ModelClaims (interval)
     C->>M: publish runtime.health full snapshot
@@ -584,7 +584,7 @@ sequenceDiagram
     participant G as Gateway
     participant RT as runtime module
     participant DB as PostgreSQL
-    participant M as NATS
+    participant M as RabbitMQ
     participant C as Controller
 
     B->>G: PUT /api/v1/admin/runtime/scheme (aibrix)
@@ -605,7 +605,7 @@ sequenceDiagram
     participant B as Admin browser
     participant G as Gateway
     participant RT as runtime module
-    participant M as NATS
+    participant M as RabbitMQ
     participant C as Controller
     participant K as Kubernetes
 

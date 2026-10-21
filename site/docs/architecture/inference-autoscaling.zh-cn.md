@@ -97,7 +97,7 @@ flowchart TD
 
     subgraph stores["状态"]
         PG[("PostgreSQL<br/>inference_services + autoscaling_policy")]
-        MQ[("NATS<br/>infer.services.changes · infer.services.status · infer.services.concurrency")]
+        MQ[("RabbitMQ<br/>infer.services.changes · infer.services.status · infer.services.concurrency")]
     end
 
     subgraph ctrl["Controller"]
@@ -656,7 +656,7 @@ infer:
 - **Schema**：`inference_services` 新增 `autoscaling`（jsonb，默认 `{}`）；新 `autoscaling_policy` 单例表以默认值播种。经 AutoMigrate 增量；无数据迁移。
 - **配置**：`infer.autoscaling` 区块出现在 `configs/config.yaml`、`configs/server.yaml`，以及（`statusReportInterval`）`configs/controller.yaml`。无该区块的自定义配置继续工作（零值默认）。
 - **Proto**：增量改动 —— 新消息、新 RPC、扩展消息。`make pbgen` 重新生成网关绑定。
-- **新主题**：`infer.services.concurrency` 是增量；broker 基于主题（NATS）故无迁移。
+- **新主题**：`infer.services.concurrency` 是增量；broker 基于主题（RabbitMQ）故无迁移。
 - **Controller**：调和器在既有 `Reconciler` 接口后新增 HPA 生命周期与并发指标消费者 —— 无签名变更，基于 fake 的测试继续工作。
 - **滚动更新顺序**：先部署 `taas-server`（它开始发布携带策略的变更并消费状态），再部署 controller。反向顺序也安全：controller 忽略无发布者的主题。
 - **特性开关**：无需 —— 新 RPC 是增量；`autoscaling = '{}'` 的既有服务继承全局默认，操作员编辑策略前既有行为不变。

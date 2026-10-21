@@ -99,7 +99,7 @@ flowchart TD
     subgraph stores["State"]
         REDIS[("Redis<br/>taas:auth:session:*<br/>+ realm")]
         PG[("PostgreSQL<br/>GORM AutoMigrate")]
-        MQ[("NATS")]
+        MQ[("RabbitMQ")]
     end
 
     UC -->|"/api/v1/*"| GUARD

@@ -96,7 +96,7 @@ flowchart TD
     end
 
     subgraph stores["状态"]
-        MQ[("NATS<br/>accelerator.inventory")]
+        MQ[("RabbitMQ<br/>accelerator.inventory")]
     end
 
     AC -->|"/api/v1/admin/accelerators/*"| GUARD
@@ -439,7 +439,7 @@ sequenceDiagram
     participant A as accelerator 服务
     participant C as Controller
     participant K as Kubernetes
-    participant M as NATS
+    participant M as RabbitMQ
 
     C->>K: 列出节点（按间隔）
     C->>M: 发布全量快照（accelerator.inventory）

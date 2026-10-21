@@ -96,7 +96,7 @@ flowchart TD
     end
 
     subgraph stores["State"]
-        MQ[("NATS<br/>accelerator.inventory")]
+        MQ[("RabbitMQ<br/>accelerator.inventory")]
     end
 
     AC -->|"/api/v1/admin/accelerators/*"| GUARD
@@ -441,7 +441,7 @@ sequenceDiagram
     participant A as accelerator service
     participant C as Controller
     participant K as Kubernetes
-    participant M as NATS
+    participant M as RabbitMQ
 
     C->>K: list nodes (interval)
     C->>M: publish full snapshot (accelerator.inventory)

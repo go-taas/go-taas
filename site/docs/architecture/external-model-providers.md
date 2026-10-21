@@ -104,7 +104,7 @@ flowchart TD
 
     subgraph stores["State"]
         PG[("PostgreSQL<br/>providers + provider_models (new)<br/>models + external columns")]
-        MQ[("NATS<br/>metering.events (existing)")]
+        MQ[("RabbitMQ<br/>metering.events (existing)")]
     end
 
     AC -->|"/api/v1/admin/providers/*"| GUARD
@@ -169,7 +169,7 @@ flowchart LR
     PV -->|"POST chat/completions with Bearer key"| PR
     PR -->|"401 or 403 -> 13012"| PV
     PR -->|"5xx or timeout -> 13013"| PV
-    PV -->|"metering.events (success and failure)"| MQ[("NATS")]
+    PV -->|"metering.events (success and failure)"| MQ[("RabbitMQ")]
     classDef edge fill:#007F86,stroke:#00565C,stroke-width:2px,color:#FFFFFF
     classDef svc fill:#CFE9EA,stroke:#4E9CA0,stroke-width:1.5px,color:#0B383D
     classDef dpg fill:#F6CCC0,stroke:#C4623F,stroke-width:2px,color:#5F200A

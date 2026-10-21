@@ -86,7 +86,7 @@ flowchart TD
 
     subgraph stores["状态"]
         PG[("PostgreSQL<br/>deployment_events · inference_services")]
-        MQ[("NATS<br/>infer.services.changes")]
+        MQ[("RabbitMQ<br/>infer.services.changes")]
     end
 
     AC -->|"/api/v1/admin/deployments/*"| GUARD

@@ -420,7 +420,7 @@ Rules:
 - **Proto**: additive changes (three new RPCs, extended messages) — `make pbgen` required; generated code is not committed.
 - **Subjects**: both `metering.events` and `billing.settlements` already exist in `DefaultSubjects()`; no MQ changes.
 - **Wiring**: `apps/taas-server/main.go` registers the metering service already; it gains `srv.AddRunner(...)` for the event consumer, settlement runner, and retention runner after `srv.Init()` (the warmup status consumer pattern). The metering service gains `GetServiceHandlerRegisterFn` (it currently lacks one — billing's pattern).
-- **Rolling update order**: deploy `taas-server` alone; the consumer starts draining `metering.events` (empty until the gateway exists), settlement finds no vouchers, retention no-ops. The data-plane gateway can be deployed before or after — events published before the consumer exists are lost (NATS core has no persistence); this is acceptable because the gateway track is not yet shipping.
+- **Rolling update order**: deploy `taas-server` alone; the consumer starts draining `metering.events` (empty until the gateway exists), settlement finds no vouchers, retention no-ops. The data-plane gateway can be deployed before or after — events published before the consumer exists are lost (RabbitMQ has no persistence); this is acceptable because the gateway track is not yet shipping.
 - **Upgrade compatibility**: nothing existing reads or writes the new tables; the feature is purely additive.
 - **Feature flags**: the `enabled` kill switches on both runners allow disabling settlement or retention without a redeploy (config hot-reload is dev-only; production restarts pods).
 

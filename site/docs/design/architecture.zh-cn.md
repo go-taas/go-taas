@@ -33,7 +33,7 @@ flowchart TD
         subgraph cp["控制面（常规网络）"]
             direction TB
             CGW["控制面 Gateway（HTTP · grpc-gateway）<br/>/api/v1/* · /api/v1/admin/* · 静态控制台"]
-            MQ["消息队列（Kafka / NATS）"]
+            MQ["消息队列（Kafka / RabbitMQ）"]
             CTRL["Controller<br/>（K8s 资源调谐）"]
 
             subgraph grpc["gRPC Server —— 单 Deployment，承载全部 24 个微服务"]
@@ -129,7 +129,7 @@ flowchart TD
 ### 1.2 服务形态与通信机制
 
 - **统一 gRPC 服务进程**：**全部 24 个微服务**（`auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`docs`）的 gRPC server 合并部署于同一个 Deployment，模块间在进程内直接调用，无需为每个模块单独部署进程；
-- **消息队列解耦 gRPC server 与 Controller**：消息队列（Kafka / NATS）承担**微服务 gRPC server 与 Controller 之间的消息传递**。gRPC server 只负责对外接口与期望状态写入并投递消息，Controller 消费消息后驱动 Kubernetes 资源，二者可独立扩缩容与重启；
+- **消息队列解耦 gRPC server 与 Controller**：消息队列（Kafka / RabbitMQ）承担**微服务 gRPC server 与 Controller 之间的消息传递**。gRPC server 只负责对外接口与期望状态写入并投递消息，Controller 消费消息后驱动 Kubernetes 资源，二者可独立扩缩容与重启；
 - **RESTful API 自动生成**：控制面 HTTP/JSON 接口与 OpenAPI 文档由 `grpc-gateway` 从 Protobuf 契约自动生成；
 - **数据面不经过业务进程**：推理请求由 Envoy 直接代理至推理实例，鉴权与计量在 Wasm 插件内完成，避免业务进程成为转发瓶颈，也避免流式响应的二次拷贝。
 
@@ -200,7 +200,7 @@ flowchart TD
     CGW --> mods
     DGW --> RT["推理服务"]
     DGW -.->|gRPC 校验 API Key| AUTH
-    DGW -.->|计量事件| MQ["消息队列（Kafka / NATS）"]
+    DGW -.->|计量事件| MQ["消息队列（Kafka / RabbitMQ）"]
 
     AUTH --> PG[(PostgreSQL)]
     AUTH --> RD[(Redis)]
@@ -357,7 +357,7 @@ flowchart TD
 - 生成防篡改的计量凭单；
 - 通过消息队列异步投递给计费链路，解耦推理链路与账务链路。
 
-**外部依赖：** Redis（计量缓冲）、消息队列（Kafka / NATS）
+**外部依赖：** Redis（计量缓冲）、消息队列（Kafka / RabbitMQ）
 
 ### 2.6 `billing` —— 计费与账务
 
@@ -574,7 +574,7 @@ sequenceDiagram
 | MinIO | model · image | 对象存储：模型权重与推理引擎镜像 |
 | JuiceFS | model · infer · Controller | 权重与镜像的多副本共享挂载 |
 | Kubernetes | Controller | 推理负载、镜像预热、加速器快照与资源指标采样的创建与调谐 |
-| Kafka / NATS | 微服务 gRPC server · Controller | gRPC server 与 Controller 之间的消息传递（部署、镜像预热、运行时形态、加速器/集群快照、计量事件） |
+| Kafka / RabbitMQ | 微服务 gRPC server · Controller | gRPC server 与 Controller 之间的消息传递（部署、镜像预热、运行时形态、加速器/集群快照、计量事件） |
 | Envoy | 推理 Gateway（数据面） | 推理请求的鉴权、计量与代理转发 |
 | Envoy Gateway / CNI / CoreDNS | 集群内全部工作负载 | 南北向入口与 TLS 终结、Pod 网络与服务发现（见 §5.2） |
 | 镜像仓库（Harbor） | image | 推理引擎镜像导入的源与目标仓库 |

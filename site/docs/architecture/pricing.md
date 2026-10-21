@@ -473,7 +473,7 @@ Rules:
 
 - **Schema**: three new tables (`price_entries`, `usage_lines`, `charge_records`) via AutoMigrate on first start; additive only, no existing data touched.
 - **Proto**: additive changes (one new RPC, extended messages, two new message types) — `make pbgen` required; generated code is not committed.
-- **Subjects**: both `metering.events` and `billing.settlements` already exist in `DefaultSubjects()`; no MQ changes. Billing's subscriptions are additional consumers on existing subjects — NATS core fan-out delivers to both metering's and billing's subscriptions independently.
+- **Subjects**: both `metering.events` and `billing.settlements` already exist in `DefaultSubjects()`; no MQ changes. Billing's subscriptions are additional consumers on existing subjects — RabbitMQ fan-out delivers to both metering's and billing's subscriptions independently.
 - **Wiring**: `apps/taas-server/main.go` already registers the billing service; it gains `srv.AddRunner(...)` for the event consumer, settlements consumer, and reconciliation runner after `srv.Init()` (the metering pattern).
 - **Rolling update order**: deploy `taas-server` alone; the consumers start draining (empty until events flow), the reconciliation runner finds no lines, queries return empty. Feature #4's metering pipeline is untouched — its settlement events simply gain a consumer.
 - **Upgrade compatibility**: nothing existing reads or writes the new tables; the metering proto change is additive (field 8); the feature is purely additive.
@@ -595,7 +595,7 @@ type ChargeRecord struct {
 
 `event_consumer.go`:
 
-- `EventConsumer` implements `server.Runner`: subscribes to `subjects.MeteringEvents` (billing's own subscription — NATS fan-out delivers to both consumers); JSON decode errors and validation failures are logged and permanently skipped; transient DB errors return for broker retry (FR3.3). Config: `billing.eventConsumer.{enabled,workers}`.
+- `EventConsumer` implements `server.Runner`: subscribes to `subjects.MeteringEvents` (billing's own subscription — RabbitMQ fan-out delivers to both consumers); JSON decode errors and validation failures are logged and permanently skipped; transient DB errors return for broker retry (FR3.3). Config: `billing.eventConsumer.{enabled,workers}`.
 - `NewEventConsumerRunner(components) *EventConsumer` — nil when disabled or MQ/DB unavailable (the established pattern).
 
 `settlements_consumer.go`:

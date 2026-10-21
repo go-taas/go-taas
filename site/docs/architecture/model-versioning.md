@@ -89,7 +89,7 @@ flowchart TD
 
     subgraph stores["State"]
         PG[("PostgreSQL<br/>model_versions · inference_services")]
-        MQ[("NATS<br/>infer.services.changes")]
+        MQ[("RabbitMQ<br/>infer.services.changes")]
     end
 
     AC -->|"/api/v1/admin/models/{model_id}/versions/*"| GUARD

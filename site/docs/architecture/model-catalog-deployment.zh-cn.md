@@ -451,7 +451,7 @@ infer:
 - **Schema**：首次启动经 AutoMigrate 新建三张表；纯增量，无存量数据。
 - **配置**：`infer` 节与过渡期 `image.registry` 种子写入 `configs/config.yaml`、`configs/server.yaml`，以及（`endpointBaseURL`）`configs/controller.yaml`。没有该节的自定义配置继续工作（零值默认）。
 - **Proto**：无变更 —— 九个 RPC 与消息均已存在；无需 `make pbgen`。
-- **新主题**：`infer.services.status` 是增量；broker 按主题（NATS）无需迁移。共享 broker 的环境靠既有 namespace 前缀保持隔离。
+- **新主题**：`infer.services.status` 是增量；broker 按主题（RabbitMQ）无需迁移。共享 broker 的环境靠既有 namespace 前缀保持隔离。
 - **Controller**：调和实现替换现有 TODO 桩，位于既有 `Reconciler` 接口之后 —— 签名不变，基于 fake 的测试继续有效。
 - **滚动更新顺序**：先部署 `taas-server`（开始发布变更并消费状态），再部署 controller。反序也安全：controller 忽略无发布者的主题。
 - **特性开关**：无需 —— RPC 是新实现的；无既有行为变更。

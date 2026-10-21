@@ -451,7 +451,7 @@ Rules (same as the API Key feature):
 - **Schema**: three new tables via AutoMigrate on first start; additive only, no existing data.
 - **Configuration**: the `infer` section and the transitional `image.registry` seed ship in `configs/config.yaml`, `configs/server.yaml`, and (for `endpointBaseURL`) `configs/controller.yaml`. Custom configs without the section keep working (zero-value defaults).
 - **Proto**: no changes — all nine RPCs and messages already exist; no `make pbgen` needed.
-- **New subject**: `infer.services.status` is additive; brokers are subject-based (NATS) so no migration. Environments sharing a broker keep isolation through the existing namespace prefix.
+- **New subject**: `infer.services.status` is additive; brokers are subject-based (RabbitMQ) so no migration. Environments sharing a broker keep isolation through the existing namespace prefix.
 - **Controller**: the reconcile implementation replaces the current TODO stub behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
 - **Rolling update order**: deploy `taas-server` first (it starts publishing changes and consuming status), then the controller. The reverse order is safe too: the controller ignores subjects with no publishers.
 - **Feature flags**: none needed — the RPCs are newly implemented; no existing behavior changes.

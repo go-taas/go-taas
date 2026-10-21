@@ -33,7 +33,7 @@ flowchart TD
         subgraph cp["Control Plane (standard network)"]
             direction TB
             CGW["Control Gateway (HTTP · grpc-gateway)<br/>/api/v1/* · /api/v1/admin/* · static console"]
-            MQ["Message Queue (Kafka / NATS)"]
+            MQ["Message Queue (Kafka / RabbitMQ)"]
             CTRL["Controller<br/>(K8s resource reconciliation)"]
 
             subgraph grpc["gRPC Server — one Deployment, 24 microservices"]
@@ -129,7 +129,7 @@ flowchart TD
 ### 1.2 Service Topology and Communication Mechanisms
 
 - **Unified gRPC service process**: the gRPC servers of **all 24 microservices** (`auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `docs`) are deployed together in a single Deployment; modules call each other in-process, with no separate process per module;
-- **Message queue decouples gRPC servers from the Controller**: the message queue (Kafka / NATS) carries **message passing between the microservice gRPC servers and the Controller**. gRPC servers only expose APIs, write desired state, and publish messages; the Controller consumes messages and drives Kubernetes resources, so the two can scale and restart independently;
+- **Message queue decouples gRPC servers from the Controller**: the message queue (Kafka / RabbitMQ) carries **message passing between the microservice gRPC servers and the Controller**. gRPC servers only expose APIs, write desired state, and publish messages; the Controller consumes messages and drives Kubernetes resources, so the two can scale and restart independently;
 - **Auto-generated RESTful APIs**: control plane HTTP/JSON APIs and OpenAPI documents are auto-generated from the Protobuf contract by `grpc-gateway`;
 - **The data plane bypasses business processes**: inference requests are proxied by Envoy directly to inference instances; authentication and metering happen inside Wasm plugins, so business processes never become a forwarding bottleneck and streaming responses are not copied twice.
 
@@ -200,7 +200,7 @@ flowchart TD
     CGW --> mods
     DGW --> RT["Inference services"]
     DGW -.->|gRPC verify API key| AUTH
-    DGW -.->|metering events| MQ["Message queue (Kafka / NATS)"]
+    DGW -.->|metering events| MQ["Message queue (Kafka / RabbitMQ)"]
 
     AUTH --> PG[(PostgreSQL)]
     AUTH --> RD[(Redis)]
@@ -359,7 +359,7 @@ below with its responsibility boundary and the feature points it implements
 - Generates tamper-proof metering vouchers;
 - Delivers them asynchronously to the billing chain through the message queue, decoupling the inference chain from the accounting chain.
 
-**External dependencies:** Redis (metering buffer), message queue (Kafka / NATS)
+**External dependencies:** Redis (metering buffer), message queue (Kafka / RabbitMQ)
 
 ### 2.6 `billing` — Billing and Accounting
 
@@ -577,7 +577,7 @@ topology diagram. It has four concerns:
 | MinIO | model · image | Object storage: model weights and inference engine images |
 | JuiceFS | model · infer · Controller | Shared multi-replica mounting of weights and images |
 | Kubernetes | Controller | Creation and reconciliation of inference workloads, image pre-pulling, accelerator snapshots and resource-metric samples |
-| Kafka / NATS | Microservice gRPC servers · Controller | Message passing between the gRPC servers and the Controller (deployments, image pre-pulls, runtime scheme, accelerator/cluster snapshots, metering events) |
+| Kafka / RabbitMQ | Microservice gRPC servers · Controller | Message passing between the gRPC servers and the Controller (deployments, image pre-pulls, runtime scheme, accelerator/cluster snapshots, metering events) |
 | Envoy | Inference Gateway (data plane) | Authentication, metering, and proxying of inference requests |
 | Envoy Gateway / CNI / CoreDNS | All in-cluster workloads | North-south entry with TLS, pod networking and service discovery (see §5.2) |
 | Image registry (Harbor) | image | Source and destination of imported inference engine images |

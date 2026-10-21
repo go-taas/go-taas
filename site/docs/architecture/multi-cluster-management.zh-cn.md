@@ -84,7 +84,7 @@ flowchart TD
     end
 
     subgraph stores["State"]
-        MQ[("NATS<br/>cluster.health")]
+        MQ[("RabbitMQ<br/>cluster.health")]
         PG[("PostgreSQL<br/>clusters (new)")]
     end
 

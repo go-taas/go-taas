@@ -421,7 +421,7 @@ sequenceDiagram
 - **Proto**：增量变更（三个新 RPC、扩展消息）—— 需要 `make pbgen`；生成代码不提交。
 - **主题**：`metering.events` 与 `billing.settlements` 均已存在于 `DefaultSubjects()`；无 MQ 变更。
 - **接线**：`apps/taas-server/main.go` 已注册 metering 服务；在 `srv.Init()` 之后为事件消费者、结算运行器、保留运行器增加 `srv.AddRunner(...)`（预热状态消费者模式）。metering 服务增加 `GetServiceHandlerRegisterFn`（当前缺失 —— billing 的模式）。
-- **滚动更新顺序**：单独部署 `taas-server`；消费者开始排空 `metering.events`（网关存在前为空）、结算找不到凭证、保留空转。数据面网关先后皆可 —— 消费者存在之前发布的事件会丢失（NATS core 无持久化）；这是可接受的，因为网关轨道尚未交付。
+- **滚动更新顺序**：单独部署 `taas-server`；消费者开始排空 `metering.events`（网关存在前为空）、结算找不到凭证、保留空转。数据面网关先后皆可 —— 消费者存在之前发布的事件会丢失（RabbitMQ 无持久化）；这是可接受的，因为网关轨道尚未交付。
 - **升级兼容**：没有任何既有代码读写新表；本特性纯增量。
 - **特性开关**：两个运行器的 `enabled` 开关允许不重新部署即禁用结算或保留（配置热重载仅限开发；生产重启 Pod）。
 

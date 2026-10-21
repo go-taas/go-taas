@@ -107,7 +107,7 @@ flowchart TD
 
     subgraph stores["State"]
         PG[("PostgreSQL<br/>routing_groups + candidates + rules<br/>+ grants + decisions (new)")]
-        MQ[("NATS<br/>metering.events (existing)")]
+        MQ[("RabbitMQ<br/>metering.events (existing)")]
     end
 
     AC -->|"/api/v1/admin/routing-groups/*"| GUARD

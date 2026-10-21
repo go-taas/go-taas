@@ -275,7 +275,7 @@
                 <div class="arch-zone arch-cp">
                   <div class="arch-label" data-i18n="arch.cp">Control Plane · standard network</div>
                   <div class="arch-node arch-edge"><span data-i18n="arch.cgw">Control Gateway (HTTP · grpc-gateway)</span></div>
-                  <div class="arch-node arch-svc"><span data-i18n="arch.mq">Message Queue (Kafka / NATS)</span></div>
+                  <div class="arch-node arch-svc"><span data-i18n="arch.mq">Message Queue (Kafka / RabbitMQ)</span></div>
                   <div class="arch-node arch-svc"><span data-i18n="arch.ctrl">Controller (K8s reconciliation)</span></div>
                 </div>
                 <div class="arch-zone arch-dp">
@@ -328,7 +328,7 @@
           <ul class="arch-points">
             <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS).</li>
             <li data-i18n="arch.p2">The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.</li>
-            <li data-i18n="arch.p3">All 24 microservice gRPC servers run in a single Deployment — auth, tenancy, account, model, image, infer, runtime, routing, provider, metering, billing, batch, audit, webhook, notification, observability, tracing, resourcemetrics, accelerator, cluster, optimization, prompt, evaluation, and docs — handing work to the Controller through a message queue (Kafka / NATS).</li>
+            <li data-i18n="arch.p3">All 24 microservice gRPC servers run in a single Deployment — auth, tenancy, account, model, image, infer, runtime, routing, provider, metering, billing, batch, audit, webhook, notification, observability, tracing, resourcemetrics, accelerator, cluster, optimization, prompt, evaluation, and docs — handing work to the Controller through a message queue (Kafka / RabbitMQ).</li>
             <li data-i18n="arch.p4">Authentication, metering, and routing run in Wasm plugins at the Inference Gateway, so inference traffic never passes through business processes.</li>
             <li data-i18n="arch.p5">The Inference Gateway verifies every API Key by calling the auth module over gRPC, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or auth unavailability it fails closed.</li>
             <li data-i18n="arch.p6">Cluster networking: pods talk over the CNI network with ClusterIP Services and CoreDNS discovery, north-south traffic enters through Envoy Gateway with TLS, NetworkPolicies isolate the control plane, data plane, and tenant namespaces, and the inference data path can ride an optional RDMA fabric.</li>
@@ -361,7 +361,7 @@ cd go-taas</code></pre>
                 <h3 data-i18n="qs.s2t">Install with Helm</h3>
                 <pre class="code-block"><code>helm install taas deploy/helm/go-taas \
   --namespace taas --create-namespace</code></pre>
-                <p class="qs-note" data-i18n="qs.s2d">With no overrides, the chart provisions in-cluster PostgreSQL, Redis, and NATS and wires their credentials to the control plane.</p>
+                <p class="qs-note" data-i18n="qs.s2d">With no overrides, the chart provisions in-cluster PostgreSQL, Redis, and RabbitMQ and wires their credentials to the control plane.</p>
               </div>
             </div>
             <div class="qs-step">
@@ -385,7 +385,7 @@ cd go-taas</code></pre>
             <pre class="code-block"><code>make helm-lint      # lint the chart
 make helm-template  # render templates
 helm uninstall taas # remove the release</code></pre>
-            <p class="qs-note" data-i18n="qs.mirror">For sizing, external PostgreSQL / Redis / NATS, and TLS, see the chart values: deploy/helm/go-taas/values.yaml.</p>
+            <p class="qs-note" data-i18n="qs.mirror">For sizing, external PostgreSQL / Redis / RabbitMQ, and TLS, see the chart values: deploy/helm/go-taas/values.yaml.</p>
           </div>
         </div>
       </div>

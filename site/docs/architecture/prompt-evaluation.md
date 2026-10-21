@@ -43,7 +43,7 @@ Non-goals: admin evaluation views or APIs, LLM-as-judge, manual review, online e
 | MQ / Controller / data plane | No new Controller messages. Each case uses the established model inference path; Envoy/Wasm and metering remain unchanged. |
 | Web | Four end-user screens in `UserShell`; no admin page, admin route, or admin RPC. |
 
-The runner claims work with a database lease/conditional state update so multiple server replicas cannot execute the same case concurrently. It persists each result before advancing and checks cancellation between cases. Database state is the source of truth; NATS is not used for run scheduling.
+The runner claims work with a database lease/conditional state update so multiple server replicas cannot execute the same case concurrently. It persists each result before advancing and checks cancellation between cases. Database state is the source of truth; the message queue is not used for run scheduling.
 
 ## 3. Data Model
 
