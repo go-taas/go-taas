@@ -1,3 +1,10 @@
+# [1.62.0](https://github.com/go-taas/go-taas/compare/v1.61.0...v1.62.0) (2026-10-21)
+
+
+### Features
+
+* **mq:** add RabbitMQ client and replace NATS driver ([ae0d06f](https://github.com/go-taas/go-taas/commit/ae0d06fecc97b0bd067ba81ed4c6c306ed06e724))
+
 # [1.61.0](https://github.com/go-taas/go-taas/compare/v1.60.0...v1.61.0) (2026-10-20)
 
 
