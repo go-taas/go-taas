@@ -34,6 +34,11 @@
 //	go run ./test/e2e/seed/fault/seed_fault.go -target <serviceId>
 //
 // The default URL targets the compose network (service name "rabbitmq").
+//
+// The MQ client (pkg/mq/rabbitmq.go) uses the subject directly as the
+// routing key and the namespace only as the topic exchange name, so the
+// seed publishes to exchange <namespace> with routing key <subject>. The
+// default subject is the bare "fault.signals" (not namespace-prefixed).
 package main
 
 import (
@@ -58,10 +63,12 @@ type faultSignal struct {
 
 func main() {
 	url := flag.String("url", "amqp://guest:guest@rabbitmq:5672/", "RabbitMQ URL")
-	// The MQ client prefixes subjects with the configured namespace
-	// (configs/config.yaml mq.namespace, default "taas-dev"), so the
-	// signal must be published to "<namespace>.fault.signals".
-	subject := flag.String("subject", "taas-dev.fault.signals", "RabbitMQ routing key")
+	// The MQ client (pkg/mq/rabbitmq.go) uses the subject directly as the
+	// routing key and the namespace only as the topic exchange name, so
+	// the seed publishes to exchange <namespace> with routing key
+	// <subject>. The default subject is the bare "fault.signals".
+	namespace := flag.String("namespace", "taas-dev", "MQ namespace (topic exchange name)")
+	subject := flag.String("subject", "fault.signals", "RabbitMQ routing key (bare subject)")
 	// A real service id: publish a single oom_killed signal for it
 	// (banner seed mode) instead of the standard incident set.
 	target := flag.String("target", "", "target service id (banner seed mode)")
@@ -77,14 +84,14 @@ func main() {
 		log.Fatalf("channel: %v", err)
 	}
 	defer func() { _ = ch.Close() }()
-	if err := ch.ExchangeDeclare("taas-dev", "topic", true, false, false, false, nil); err != nil {
+	if err := ch.ExchangeDeclare(*namespace, "topic", true, false, false, false, nil); err != nil {
 		log.Fatalf("declare exchange: %v", err)
 	}
 
 	now := time.Now().UTC().Format(time.RFC3339)
 
 	if *target != "" {
-		if err := publish(ch, *subject, faultSignal{
+		if err := publish(ch, *namespace, *subject, faultSignal{
 			TargetType: "service",
 			TargetName: *target,
 			SignalType: "oom_killed",
@@ -107,14 +114,14 @@ func main() {
 		ObservedAt: now,
 	}
 	for i := 0; i < 3; i++ {
-		if err := publish(ch, *subject, crashLoop); err != nil {
+		if err := publish(ch, *namespace, *subject, crashLoop); err != nil {
 			log.Fatalf("publish: %v", err)
 		}
 		time.Sleep(200 * time.Millisecond)
 	}
 
 	// A node NotReady incident (single signal).
-	if err := publish(ch, *subject, faultSignal{
+	if err := publish(ch, *namespace, *subject, faultSignal{
 		TargetType: "node",
 		TargetName: "node-not-ready",
 		SignalType: "node_not_ready",
@@ -125,7 +132,7 @@ func main() {
 	}
 
 	// An accelerator device-plugin failure incident (single signal).
-	if err := publish(ch, *subject, faultSignal{
+	if err := publish(ch, *namespace, *subject, faultSignal{
 		TargetType: "accelerator",
 		TargetName: "accel-device-plugin",
 		SignalType: "device_plugin_unhealthy",
@@ -136,7 +143,7 @@ func main() {
 	}
 
 	// An OOMKilled incident (single signal).
-	if err := publish(ch, *subject, faultSignal{
+	if err := publish(ch, *namespace, *subject, faultSignal{
 		TargetType: "service",
 		TargetName: "svc-oom",
 		SignalType: "oom_killed",
@@ -147,7 +154,7 @@ func main() {
 	}
 
 	// An ImagePullBackOff incident (single signal).
-	if err := publish(ch, *subject, faultSignal{
+	if err := publish(ch, *namespace, *subject, faultSignal{
 		TargetType: "service",
 		TargetName: "svc-image-pull",
 		SignalType: "image_pull_backoff",
@@ -160,16 +167,23 @@ func main() {
 	log.Println("seeded fault signals")
 }
 
-// publish marshals and publishes one signal. The caller decides how a
-// failure terminates the one-shot seed.
-func publish(ch *amqp.Channel, subject string, sig faultSignal) error {
+// publisher is the minimal broker surface the seed needs to publish a
+// signal. It is satisfied by *amqp.Channel and by the fake used in tests.
+type publisher interface {
+	PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+}
+
+// publish marshals and publishes one signal to the given exchange with
+// the subject as the routing key. The caller decides how a failure
+// terminates the one-shot seed.
+func publish(ch publisher, exchange, subject string, sig faultSignal) error {
 	body, err := json.Marshal(sig)
 	if err != nil {
 		return fmt.Errorf("marshal: %w", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if err := ch.PublishWithContext(ctx, "taas-dev", subject, false, false, amqp.Publishing{
+	if err := ch.PublishWithContext(ctx, exchange, subject, false, false, amqp.Publishing{
 		ContentType:  "application/octet-stream",
 		Body:         body,
 		DeliveryMode: amqp.Persistent,

@@ -28,6 +28,12 @@
 //	go run ./test/e2e/seed/seed_accelerator.go -url amqp://guest:guest@rabbitmq:5672/
 //
 // The default URL targets the compose network (service name "rabbitmq").
+//
+// The MQ client (pkg/mq/rabbitmq.go) uses the subject directly as the
+// routing key and the namespace only as the topic exchange name, so the
+// seed publishes to exchange <namespace> with routing key <subject>. The
+// default subject is the bare "accelerator.inventory" (not
+// namespace-prefixed).
 package main
 
 import (
@@ -78,10 +84,12 @@ type snapshot struct {
 
 func main() {
 	url := flag.String("url", "amqp://guest:guest@rabbitmq:5672/", "RabbitMQ URL")
-	// The MQ client prefixes subjects with the configured namespace
-	// (configs/config.yaml mq.namespace, default "taas-dev"), so the
-	// snapshot must be published to "<namespace>.accelerator.inventory".
-	subject := flag.String("subject", "taas-dev.accelerator.inventory", "RabbitMQ routing key")
+	// The MQ client (pkg/mq/rabbitmq.go) uses the subject directly as the
+	// routing key and the namespace only as the topic exchange name, so
+	// the seed publishes to exchange <namespace> with routing key
+	// <subject>. The default subject is the bare "accelerator.inventory".
+	namespace := flag.String("namespace", "taas-dev", "MQ namespace (topic exchange name)")
+	subject := flag.String("subject", "accelerator.inventory", "RabbitMQ routing key (bare subject)")
 	// omitCard drops every node whose CardTypes contains the named card
 	// type, so the compatibility-matrix suite can exercise the
 	// not_in_fleet derivation (feature #19, AC6/AC10) by publishing a
@@ -290,9 +298,6 @@ func main() {
 		log.Fatalf("marshal: %v", err)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
 	conn, err := amqp.Dial(*url)
 	if err != nil {
 		log.Fatalf("connect: %v", err)
@@ -305,16 +310,30 @@ func main() {
 	defer func() { _ = ch.Close() }()
 	// The MQ client declares the topic exchange with the namespace as its
 	// name; mirror that here so the seed reaches the same exchange.
-	if err := ch.ExchangeDeclare("taas-dev", "topic", true, false, false, false, nil); err != nil {
+	if err := ch.ExchangeDeclare(*namespace, "topic", true, false, false, false, nil); err != nil {
 		log.Fatalf("declare exchange: %v", err)
 	}
-	if err := ch.PublishWithContext(ctx, "taas-dev", *subject, false, false, amqp.Publishing{
+	if err := publishSnapshot(ch, *namespace, *subject, body); err != nil {
+		log.Fatalf("publish: %v", err)
+	}
+	log.Printf("published %s snapshot with %d nodes", *subject, len(nodes))
+}
+
+// publisher is the minimal broker surface the seed needs to publish a
+// snapshot. It is satisfied by *amqp.Channel and by the fake used in tests.
+type publisher interface {
+	PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
+}
+
+// publishSnapshot publishes the marshalled snapshot to the given exchange
+// with the subject as the routing key.
+func publishSnapshot(ch publisher, exchange, subject string, body []byte) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return ch.PublishWithContext(ctx, exchange, subject, false, false, amqp.Publishing{
 		ContentType:  "application/octet-stream",
 		Body:         body,
 		DeliveryMode: amqp.Persistent,
 		Timestamp:    time.Now(),
-	}); err != nil {
-		log.Fatalf("publish: %v", err)
-	}
-	log.Printf("published %s snapshot with %d nodes", *subject, len(nodes))
+	})
 }
