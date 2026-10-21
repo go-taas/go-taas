@@ -3,7 +3,7 @@
 // changes, the controller consumes them and drives Kubernetes resources.
 //
 // The interface is broker-agnostic; concrete implementations live in this
-// package (NATS today, Kafka planned) and tests use the in-memory fake.
+// package (RabbitMQ today, Kafka planned) and tests use the in-memory fake.
 package mq
 
 import (

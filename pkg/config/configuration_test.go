@@ -32,8 +32,8 @@ redis:
   host: localhost
   port: 6379
 mq:
-  driver: nats
-  url: nats://localhost:4222
+  driver: rabbitmq
+  url: amqp://guest:guest@localhost:5672/
 `)
 	ParseConfigs(path)
 	cfg := GetConfig()
@@ -43,7 +43,7 @@ mq:
 	if cfg.Databases.Master.Host != "localhost" {
 		t.Fatalf("unexpected db host: %s", cfg.Databases.Master.Host)
 	}
-	if cfg.MQ.Driver != "nats" {
+	if cfg.MQ.Driver != "rabbitmq" {
 		t.Fatalf("unexpected mq driver: %s", cfg.MQ.Driver)
 	}
 }

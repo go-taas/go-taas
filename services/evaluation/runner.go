@@ -20,8 +20,8 @@ import (
 // deterministic checks, persists each result before advancing, and
 // publishes one standard metering event per call so usage, cost,
 // request logs and organization/key attribution flow through the
-// normal metering path. The database is the source of truth; NATS is
-// not used for run scheduling.
+// normal metering path. The database is the source of truth; the message
+// queue is not used for run scheduling.
 type Runner struct {
 	svc *Service
 	// pollInterval overrides the configured interval (tests).

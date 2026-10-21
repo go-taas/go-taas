@@ -55,10 +55,10 @@ type Redis struct {
 }
 
 // MQConfig holds connection parameters for the message queue. The platform
-// targets Kafka/NATS as brokers; the wire details are hidden behind the
+// targets Kafka/RabbitMQ as brokers; the wire details are hidden behind the
 // pkg/mq abstraction.
 type MQConfig struct {
-	// Driver selects the broker implementation ("nats" / "kafka").
+	// Driver selects the broker implementation ("rabbitmq" / "kafka").
 	Driver string `mapstructure:"driver"`
 	// URL is the broker connection string.
 	URL string `mapstructure:"url"`

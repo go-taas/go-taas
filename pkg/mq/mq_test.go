@@ -65,9 +65,35 @@ func TestNewClientDriverSelection(t *testing.T) {
 	_, err = NewClient(&config.MQConfig{Driver: "pigeon"})
 	assert.Error(t, err)
 
-	// NATS with empty URL -> error (no network attempt).
-	_, err = NewClient(&config.MQConfig{Driver: "nats", URL: ""})
+	// RabbitMQ with empty URL -> error (no network attempt).
+	_, err = NewClient(&config.MQConfig{Driver: "rabbitmq", URL: ""})
 	assert.Error(t, err)
+}
+
+func TestNewRabbitMQClient(t *testing.T) {
+	// Empty URL -> error.
+	_, err := newRabbitMQClient(&config.MQConfig{Driver: "rabbitmq", URL: ""})
+	assert.Error(t, err)
+
+	// Valid URL -> client with the configured namespace.
+	c, err := newRabbitMQClient(&config.MQConfig{Driver: "rabbitmq", URL: "amqp://guest:guest@127.0.0.1:5672/", Namespace: "taas-dev"})
+	require.NoError(t, err)
+	assert.Equal(t, "taas-dev", c.exchange())
+	require.NoError(t, c.Close())
+
+	// Empty namespace -> default exchange name.
+	c, err = newRabbitMQClient(&config.MQConfig{Driver: "rabbitmq", URL: "amqp://guest:guest@127.0.0.1:5672/"})
+	require.NoError(t, err)
+	assert.Equal(t, "taas", c.exchange())
+	require.NoError(t, c.Close())
+}
+
+func TestRabbitMQClientClosed(t *testing.T) {
+	c, err := newRabbitMQClient(&config.MQConfig{Driver: "rabbitmq", URL: "amqp://guest:guest@127.0.0.1:5672/", Namespace: "taas-dev"})
+	require.NoError(t, err)
+	require.NoError(t, c.Close())
+	// Publish on a closed client returns an error without a network call.
+	assert.Error(t, c.Publish(context.Background(), "a.b", []byte("x"), nil))
 }
 
 func TestDefaultSubjects(t *testing.T) {

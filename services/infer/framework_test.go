@@ -177,8 +177,8 @@ redis:
   host: localhost
   port: 6379
 mq:
-  driver: nats
-  url: nats://localhost:4222
+  driver: rabbitmq
+  url: amqp://guest:guest@localhost:5672/
 infer:
   endpointBaseURL: ""
   statusConsumer:
