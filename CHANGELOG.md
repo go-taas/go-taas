@@ -1,3 +1,10 @@
+## [1.62.1](https://github.com/go-taas/go-taas/compare/v1.62.0...v1.62.1) (2026-10-21)
+
+
+### Bug Fixes
+
+* **e2e:** publish seeds with bare subject routing key ([134e5ed](https://github.com/go-taas/go-taas/commit/134e5edf6ed9fde01221d98469d2030925a0b337))
+
 # [1.62.0](https://github.com/go-taas/go-taas/compare/v1.61.0...v1.62.0) (2026-10-21)
 
 
