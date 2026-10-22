@@ -1234,7 +1234,7 @@
             signalColor: "#47595e",
             signalTextColor: "#17272b"
           },
-          flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: false },
+          flowchart: { curve: "basis", htmlLabels: true, useMaxWidth: false, wrappingWidth: 260 },
           sequence: { useMaxWidth: false, wrap: false, boxMargin: 8 },
           state: { useMaxWidth: false }
         });

@@ -105,112 +105,70 @@ console and is covered by an end-to-end test suite.
 ## Architecture
 
 ```mermaid
-flowchart TD
-    subgraph clients["Clients"]
-        direction LR
-        USER["Agents / SDK<br/>OpenAI-compatible callers"]
-        ADMIN["End-user console (/) · Admin console (/admin)<br/>CLI · automation"]
-    end
+flowchart TB
+subgraph L1["LAYER 01 · Access"]
+    direction LR
+    A1["REST API<br/>/api/v1 control plane · /v1 data plane · OpenAPI 3.1"]:::cell
+    A2["Console<br/>Web console · OIDC login · Guided deployment"]:::cell
+    A3["SDK<br/>Python / Go / Node · SSE streaming · Automatic retries"]:::cell
+    A4["CLI / Skill<br/>taas CLI · Agent Skill · GitOps"]:::cell
+    A1 ~~~ A2 ~~~ A3 ~~~ A4
+end
 
-    subgraph k8s["Kubernetes Cluster (control plane and inference services in one cluster)"]
+subgraph L2["LAYER 02 · Gateways"]
+    direction LR
+    G1["TaaS Gateway (control plane)<br/>TLS · AuthN · RBAC · Rate limiting · Audit · Request validation · Routing to TaaS Server"]:::cp
+    G2["Aibrix Gateway + TaaS Plugin (data plane)<br/>OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace"]:::dp
+    G1 ~~~ G2
+end
+
+subgraph L3["LAYER 03 · K8s cluster"]
+    direction TB
+    subgraph L3A["① Control plane + middleware"]
         direction TB
-
-        subgraph net["Cluster Network"]
+        subgraph L3A1["Control plane"]
             direction LR
-            CNI["Pod network (CNI)<br/>ClusterIP Services · CoreDNS discovery"]
-            ING["Envoy Gateway<br/>TLS termination · north-south entry"]
-            NPOL["NetworkPolicy<br/>namespace isolation (control / data / tenant)"]
-            RDMA["RDMA fabric (RoCE / InfiniBand)<br/>optional, data plane only"]
+            S1["TaaS Server<br/>Stateless business service: tenants, models, deployments, keys, pricing, metering, billing, quotas, audit"]:::cp
+            S2["TaaS Controller<br/>K8s Operator: CRD reconcile, workload orchestration, status and rollback"]:::cp
+            S3["TaaS Console<br/>Console service: static assets, BFF aggregation, guided flows (no direct database access)"]:::cp
+            S1 ~~~ S2 ~~~ S3
         end
-
-        subgraph cp["Control Plane (standard network)"]
-            direction TB
-            CGW["Control Gateway (HTTP · grpc-gateway)<br/>/api/v1/* · /api/v1/admin/* · static console"]
-            MQ["Message Queue (Kafka / RabbitMQ)"]
-            CTRL["Controller<br/>(K8s resource reconciliation)"]
-
-            subgraph grpc["gRPC Server — one Deployment, 24 microservices"]
-                direction TB
-                S_AUTH["auth<br/>authentication · SSO federation · API keys"]
-                S_TENANCY["tenancy<br/>org/project isolation · RBAC · org quotas"]
-                S_ACCOUNT["account<br/>account-data export"]
-                S_MODEL["model<br/>model catalog · versions · weights · authorization"]
-                S_IMAGE["image<br/>engine images · pre-pull · compatibility matrix"]
-                S_INFER["infer<br/>service lifecycle · autoscaling · routing policies · load tests"]
-                S_RUNTIME["runtime<br/>distributed serving runtime (AIBrix)"]
-                S_ROUTING["routing<br/>routing groups · virtual models · decision trail"]
-                S_PROVIDER["provider<br/>external model providers · connectivity probe"]
-                S_METERING["metering<br/>token metering · vouchers · usage aggregation"]
-                S_BILLING["billing<br/>pricing · charging · bills · payments · reports"]
-                S_BATCH["batch<br/>batch inference jobs"]
-                S_AUDIT["audit<br/>audit log · activity export"]
-                S_WEBHOOK["webhook<br/>outbound events · delivery log"]
-                S_NOTIFICATION["notification<br/>notification center · threshold alerts"]
-                S_OBSERVABILITY["observability<br/>model dashboards · system health · error analysis"]
-                S_TRACING["tracing<br/>request traces · latency breakdown"]
-                S_RESOURCEMETRICS["resourcemetrics<br/>per-service CPU / memory / GPU metrics"]
-                S_ACCELERATOR["accelerator<br/>accelerator inventory · health"]
-                S_CLUSTER["cluster<br/>multi-cluster registry · health"]
-                S_OPTIMIZATION["optimization<br/>cost optimization recommendations"]
-                S_PROMPT["prompt<br/>prompt library · versioning"]
-                S_EVALUATION["evaluation<br/>prompt evaluation · regression runs"]
-                S_DOCS["docs<br/>API docs catalog"]
-            end
-        end
-
-        subgraph dp["Data Plane (RDMA network)"]
-            direction TB
-            DGW["Inference Gateway<br/>Envoy + Wasm (auth · metering · routing)"]
-            E["Inference Services<br/>vLLM / SGLang / TensorRT-LLM<br/>on heterogeneous accelerator cards"]
-            DGW --> E
-        end
-
-        subgraph store["Storage and Stateful Components"]
+        subgraph L3A2["Middleware"]
             direction LR
-            LH[("Longhorn")]
-            PG[("PostgreSQL")]
-            RD[("Redis")]
-            MINIO[("MinIO")]
-            JFS[("JuiceFS")]
-            LH --- PG
-            LH --- RD
-            MINIO --> JFS
+            M1["PostgreSQL (CNPG)<br/>Source of truth: tenants, models, deployments, prices, usage ledger, audit"]:::mw
+            M2["Redis<br/>Cache, rate-limit counters, quota reservations, distributed locks, routing table"]:::mw
+            M3["RabbitMQ<br/>Deployment jobs, metering ingestion, settlement, batch processing, notifications; retries + DLQ"]:::mw
+            M1 ~~~ M2 ~~~ M3
         end
-
-        ING --> CGW
-        ING --> DGW
-        CGW --> grpc
-        grpc <-.-> MQ
-        MQ <-.-> CTRL
-        grpc -.-> store
-        CTRL --> E
+        L3A1 ~~~ L3A2
     end
+    subgraph L3B["② Third-party dependencies · Helm Chart"]
+        direction LR
+        B1["Aibrix<br/>Distributed runtime, KV cache"]:::dp
+        B2["HAMI<br/>Heterogeneous accelerator management, device plugin, scheduling"]:::dp
+        B3["Volcano<br/>Gang scheduling, queues and fair sharing"]:::dp
+        B4["GPU / NPU Operator<br/>Drivers, device plugin, topology and health"]:::cell
+        B5["Observability stack<br/>Prometheus / OTel / Loki"]:::cell
+        B1 ~~~ B2 ~~~ B3 ~~~ B4 ~~~ B5
+    end
+    subgraph L3C["③ Compute nodes · inference engines"]
+        direction LR
+        C1["vLLM<br/>PagedAttention · Continuous batching"]:::cp
+        C2["SGLang<br/>RadixAttention · Structured output · Parallelism"]:::cp
+        C3["TensorRT-LLM / MindIE<br/>NVIDIA / Ascend native inference stack"]:::cp
+        C4["In-house / other engines<br/>Integrated by image, unified OpenAI protocol"]:::cp
+        C1 ~~~ C2 ~~~ C3 ~~~ C4
+    end
+    L3A ~~~ L3B ~~~ L3C
+end
 
-    ADMIN --> ING
-    USER --> ING
-    DGW -.->|metering events| MQ
-    E -.->|mount weights| JFS
-    classDef consumer fill:#FFFFFF,stroke:#A9BABD,stroke-width:1.5px,color:#17272B
-    classDef edge fill:#007F86,stroke:#00565C,stroke-width:2px,color:#FFFFFF
-    classDef svc fill:#CFE9EA,stroke:#4E9CA0,stroke-width:1.5px,color:#0B383D
-    classDef store fill:#E7ECEE,stroke:#9AACB1,stroke-width:1.5px,color:#23343A
-    classDef net fill:#EFF3F5,stroke:#9AACB1,stroke-width:1.5px,color:#33454A
-    classDef gpu fill:#FADDD1,stroke:#D2704E,stroke-width:2px,color:#71260E
-    classDef dpg fill:#F6CCC0,stroke:#C4623F,stroke-width:2px,color:#5F200A
-    class ADMIN,USER consumer
-    class CGW,ING edge
-    class MQ,CTRL,S_AUTH,S_TENANCY,S_ACCOUNT,S_MODEL,S_IMAGE,S_INFER,S_RUNTIME,S_ROUTING,S_PROVIDER,S_METERING,S_BILLING,S_BATCH,S_AUDIT,S_WEBHOOK,S_NOTIFICATION,S_OBSERVABILITY,S_TRACING,S_RESOURCEMETRICS,S_ACCELERATOR,S_CLUSTER,S_OPTIMIZATION,S_PROMPT,S_EVALUATION,S_DOCS svc
-    class CNI,NPOL,RDMA net
-    class LH,PG,RD,MINIO,JFS store
-    class DGW dpg
-    class E gpu
-    style clients fill:#FAFCFC,stroke:#C6D2D4,stroke-width:1.5px,color:#3B4C50
-    style k8s fill:#F6FAFA,stroke:#B4C7CA,stroke-width:1.5px,color:#2F5B60
-    style net fill:#F2F6F7,stroke:#AFBEC2,stroke-width:1.5px,color:#3B4C50
-    style cp fill:#EDF7F7,stroke:#9CC7C9,stroke-width:1.5px,color:#2A6A6F
-    style grpc fill:#E3F1F2,stroke:#7FB6B9,stroke-width:1.5px,color:#0B383D
-    style dp fill:#FDF2ED,stroke:#E4A48B,stroke-width:1.5px,color:#8A3419
-    style store fill:#F5F8F9,stroke:#BCC9CD,stroke-width:1.5px,color:#47595E
+L1 -->|"HTTPS · SSE · OIDC · API Key<br/>split by traffic type"| L2
+L2 -->|"Control flow: REST / gRPC<br/>Data flow: OpenAI /v1 · SSE"| L3
+
+classDef cell fill:#ffffff,stroke:#c7ccd6,color:#1b2530
+classDef cp fill:#f4f3ff,stroke:#a9a4ea,color:#1f2340
+classDef dp fill:#eefaf3,stroke:#8fd6ae,color:#123a25
+classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 ```
 
 - Traffic is split by audience: administrators enter through the **Control Gateway** (HTTP, generated from the Protobuf contract by `grpc-gateway`), while agents and SDKs call the **Inference Gateway** (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS termination).

@@ -252,75 +252,59 @@
           <p data-i18n="arch.subtitle">Control plane and data plane, separated by audience and network.</p>
         </div>
         <div class="arch-layout">
-          <div class="arch-diagram" aria-label="Go TaaS architecture diagram">
-            <div class="arch-box arch-external">
-              <div class="arch-node arch-consumer"><span data-i18n="arch.agents">Agents / SDK</span></div>
-              <div class="arch-node arch-consumer"><span data-i18n="arch.admin">End-user console (/) · Admin console (/admin)</span></div>
+          <div class="arch mid">
+            <div class="alayer">
+              <div class="alabel"><span class="ln">LAYER 01</span><strong data-i18n="arch.l1.name">Access layer</strong></div>
+              <div class="abody"><div class="arow">
+                <div class="abox"><div class="t">REST API</div><div class="d" data-i18n="arch.l1.api.d">/api/v1 control plane · /v1 data plane · OpenAPI 3.1</div></div>
+                <div class="abox"><div class="t">Console</div><div class="d" data-i18n="arch.l1.console.d">Web console · OIDC login · Guided deployment</div></div>
+                <div class="abox"><div class="t">SDK</div><div class="d" data-i18n="arch.l1.sdk.d">Python / Go / Node · SSE streaming · Automatic retries</div></div>
+                <div class="abox"><div class="t">CLI / Skill</div><div class="d">taas CLI · Agent Skill · GitOps</div></div>
+              </div></div>
             </div>
-            <div class="arch-arrow" aria-hidden="true">↓</div>
-            <div class="arch-box arch-k8s">
-              <div class="arch-label" data-i18n="arch.k8s">Kubernetes Cluster</div>
-
-              <div class="arch-zone arch-net">
-                <div class="arch-label" data-i18n="arch.net">Cluster Network</div>
-                <div class="arch-row arch-net-row">
-                  <div class="arch-node arch-chip"><span data-i18n="arch.net1">Pod network (CNI) — ClusterIP · CoreDNS</span></div>
-                  <div class="arch-node arch-chip"><span data-i18n="arch.net2">Envoy Gateway — TLS entry</span></div>
-                  <div class="arch-node arch-chip"><span data-i18n="arch.net3">NetworkPolicy — namespace isolation</span></div>
-                  <div class="arch-node arch-chip"><span data-i18n="arch.net4">RDMA fabric (RoCE / InfiniBand) — optional</span></div>
+            <div class="abar"><span>HTTPS · SSE · OIDC · API Key</span><span class="arr">▼</span><span data-i18n="arch.l1.bar">Split by traffic type</span></div>
+            <div class="alayer">
+              <div class="alabel"><span class="ln">LAYER 02</span><strong data-i18n="arch.l2.name">Gateway layer</strong></div>
+              <div class="abody"><div class="arow two">
+                <div class="abox hi"><div class="t" data-i18n="arch.l2.cp.t">TaaS Gateway (control plane)</div><div class="d" data-i18n="arch.l2.cp.d">TLS · AuthN · RBAC · Rate limiting · Audit · Request validation · Routing to TaaS Server</div></div>
+                <div class="abox em"><div class="t" data-i18n="arch.l2.dp.t">Aibrix Gateway + TaaS Plugin (data plane)</div><div class="d" data-i18n="arch.l2.dp.d">OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace</div></div>
+              </div></div>
+            </div>
+            <div class="abar"><span data-i18n="arch.l2.bar1">Control flow: REST / gRPC</span><span class="arr">▼</span><span data-i18n="arch.l2.bar2">Data flow: OpenAI /v1 · SSE</span></div>
+            <div class="alayer">
+              <div class="alabel"><span class="ln">LAYER 03</span><strong data-i18n="arch.l3.name">K8s cluster</strong></div>
+              <div class="abody">
+                <div class="agroup">
+                  <div class="aglabel" data-i18n="arch.l3.g1">① Control plane + middleware</div>
+                  <div class="arow three">
+                    <div class="abox hi"><div class="t">TaaS Server</div><div class="d" data-i18n="arch.l3.server.d">Stateless business service: tenants, models, deployments, keys, pricing, metering, billing, quotas, audit</div></div>
+                    <div class="abox hi"><div class="t">TaaS Controller</div><div class="d" data-i18n="arch.l3.controller.d">K8s Operator: CRD reconcile, workload orchestration, status and rollback</div></div>
+                    <div class="abox hi"><div class="t">TaaS Console</div><div class="d" data-i18n="arch.l3.console.d">Console service: static assets, BFF aggregation, guided flows (no direct database access)</div></div>
+                  </div>
+                  <div class="arow three">
+                    <div class="abox am"><div class="t">PostgreSQL (CNPG)</div><div class="d" data-i18n="arch.l3.pg.d">Source of truth: tenants, models, deployments, prices, usage ledger, audit</div></div>
+                    <div class="abox am"><div class="t">Redis</div><div class="d" data-i18n="arch.l3.redis.d">Cache, rate-limit counters, quota reservations, distributed locks, routing table</div></div>
+                    <div class="abox am"><div class="t">RabbitMQ</div><div class="d" data-i18n="arch.l3.mq.d">Deployment jobs, metering ingestion, settlement, batch processing, notifications; retries + DLQ</div></div>
+                  </div>
                 </div>
-              </div>
-
-              <div class="arch-row">
-                <div class="arch-zone arch-cp">
-                  <div class="arch-label" data-i18n="arch.cp">Control Plane · standard network</div>
-                  <div class="arch-node arch-edge"><span data-i18n="arch.cgw">Control Gateway (HTTP · grpc-gateway)</span></div>
-                  <div class="arch-node arch-svc"><span data-i18n="arch.mq">Message Queue (Kafka / RabbitMQ)</span></div>
-                  <div class="arch-node arch-svc"><span data-i18n="arch.ctrl">Controller (K8s reconciliation)</span></div>
+                <div class="agroup">
+                  <div class="aglabel" data-i18n="arch.l3.g2">② Third-party dependencies · Helm Chart</div>
+                  <div class="arow five">
+                    <div class="abox em"><div class="t">Aibrix</div><div class="d" data-i18n="arch.l3.aibrix.d">Distributed runtime, KV cache</div></div>
+                    <div class="abox em"><div class="t">HAMI</div><div class="d" data-i18n="arch.l3.hami.d">Heterogeneous accelerator management, device plugin, scheduling</div></div>
+                    <div class="abox em"><div class="t">Volcano</div><div class="d" data-i18n="arch.l3.volcano.d">Gang scheduling, queues and fair sharing</div></div>
+                    <div class="abox"><div class="t">GPU / NPU Operator</div><div class="d" data-i18n="arch.l3.gpu.d">Drivers, device plugin, topology and health</div></div>
+                    <div class="abox"><div class="t" data-i18n="arch.l3.obs.t">Observability stack</div><div class="d">Prometheus / OTel / Loki</div></div>
+                  </div>
                 </div>
-                <div class="arch-zone arch-dp">
-                  <div class="arch-label" data-i18n="arch.dp">Data Plane · RDMA network</div>
-                  <div class="arch-node arch-dpg"><span data-i18n="arch.dgw">Inference Gateway — Envoy + Wasm</span></div>
-                  <div class="arch-node arch-gpu"><span data-i18n="arch.engines">Inference Services — vLLM / SGLang / TensorRT-LLM on heterogeneous accelerators</span></div>
-                </div>
-              </div>
-              <div class="arch-services">
-                <div class="arch-services-head" data-i18n="arch.services">gRPC Server — one Deployment, 24 microservices</div>
-                <div class="arch-services-grid">
-                  <span class="arch-svc-chip" data-i18n="arch.s1">auth — authn · SSO · API keys</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s2">tenancy — org isolation · RBAC · quotas</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s3">account — account-data export</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s4">model — catalog · versions · weights · authorization</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s5">image — engine images · pre-pull · compatibility matrix</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s6">infer — lifecycle · autoscaling · routing · playground</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s7">runtime — AIBrix serving runtime</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s8">routing — routing groups · decision trail</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s9">provider — external model providers</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s10">metering — token metering · usage · request logs</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s11">billing — pricing · bills · payments · reports</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s12">batch — batch inference jobs</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s13">audit — audit log · activity export</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s14">webhook — outbound events · delivery log</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s15">notification — notification center · alerts</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s16">observability — dashboards · health · errors</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s17">tracing — request traces · latency</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s18">resourcemetrics — CPU / memory / GPU</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s19">accelerator — accelerator inventory · health</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s20">cluster — multi-cluster registry</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s21">optimization — cost optimization</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s22">prompt — prompt library</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s23">evaluation — prompt evaluation</span>
-                  <span class="arch-svc-chip" data-i18n="arch.s24">docs — API docs catalog</span>
-                </div>
-              </div>
-              <div class="arch-zone arch-store">
-                <div class="arch-label" data-i18n="arch.store">Storage &amp; Stateful Components</div>
-                <div class="arch-row arch-store-row">
-                  <div class="arch-node">Longhorn</div>
-                  <div class="arch-node">PostgreSQL</div>
-                  <div class="arch-node">Redis</div>
-                  <div class="arch-node">MinIO</div>
-                  <div class="arch-node">JuiceFS</div>
+                <div class="agroup">
+                  <div class="aglabel" data-i18n="arch.l3.g3">③ Compute nodes · inference engines</div>
+                  <div class="arow">
+                    <div class="abox hi"><div class="t">vLLM</div><div class="d" data-i18n="arch.l3.vllm.d">PagedAttention · Continuous batching</div></div>
+                    <div class="abox hi"><div class="t">SGLang</div><div class="d" data-i18n="arch.l3.sglang.d">RadixAttention · Structured output · Parallelism</div></div>
+                    <div class="abox hi"><div class="t">TensorRT-LLM / MindIE</div><div class="d" data-i18n="arch.l3.tensorrt.d">NVIDIA / Ascend native inference stack</div></div>
+                    <div class="abox hi"><div class="t" data-i18n="arch.l3.other.t">In-house / other engines</div><div class="d" data-i18n="arch.l3.other.d">Integrated by image, unified OpenAI protocol</div></div>
+                  </div>
                 </div>
               </div>
             </div>

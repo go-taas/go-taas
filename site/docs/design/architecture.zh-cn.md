@@ -12,112 +12,70 @@
 ## 1. 架构总览与拓扑设计
 
 ```mermaid
-flowchart TD
-    subgraph clients["客户端"]
-        direction LR
-        USER["智能体 / SDK<br/>OpenAI 兼容调用方"]
-        ADMIN["普通用户控制台（/）· 管理控制台（/admin）<br/>CLI · 自动化脚本"]
-    end
+flowchart TB
+subgraph L1["LAYER 01 · 接入层"]
+    direction LR
+    A1["REST API<br/>/api/v1 控制面 · /v1 数据面 · OpenAPI 3.1"]:::cell
+    A2["Console<br/>Web 控制台 · OIDC 登录 · 引导式部署"]:::cell
+    A3["SDK<br/>Python / Go / Node · SSE 流式 · 自动重试"]:::cell
+    A4["CLI / Skill<br/>taas CLI · Agent Skill · GitOps"]:::cell
+    A1 ~~~ A2 ~~~ A3 ~~~ A4
+end
 
-    subgraph k8s["Kubernetes 集群（控制面与推理服务同集群部署）"]
+subgraph L2["LAYER 02 · 网关层"]
+    direction LR
+    G1["TaaS Gateway（控制面）<br/>TLS · 认证 · RBAC · 限流 · 审计 · 请求校验 · 路由到 TaaS Server"]:::cp
+    G2["Aibrix Gateway + TaaS Plugin（数据面）<br/>OpenAI API · 模型路由 · Token 感知负载均衡 · 同模型 failover · 计量 · Trace"]:::dp
+    G1 ~~~ G2
+end
+
+subgraph L3["LAYER 03 · K8s 集群"]
+    direction TB
+    subgraph L3A["① 控制面 + 中间件"]
         direction TB
-
-        subgraph net["集群网络"]
+        subgraph L3A1["控制面"]
             direction LR
-            CNI["Pod 网络（CNI）<br/>ClusterIP Service · CoreDNS 服务发现"]
-            ING["Envoy Gateway<br/>TLS 终结 · 南北向入口"]
-            NPOL["NetworkPolicy<br/>命名空间隔离（控制面 / 数据面 / 租户）"]
-            RDMA["RDMA 网络（RoCE / InfiniBand）<br/>可选，仅数据面"]
+            S1["TaaS Server<br/>无状态业务服务：租户、模型、部署、密钥、定价、计量、账单、配额、审计"]:::cp
+            S2["TaaS Controller<br/>K8s Operator：CRD Reconcile、工作负载编排、状态与回滚"]:::cp
+            S3["TaaS Console<br/>控制台服务：静态资源、BFF 聚合、引导式流程（不直连数据库）"]:::cp
+            S1 ~~~ S2 ~~~ S3
         end
-
-        subgraph cp["控制面（常规网络）"]
-            direction TB
-            CGW["控制面 Gateway（HTTP · grpc-gateway）<br/>/api/v1/* · /api/v1/admin/* · 静态控制台"]
-            MQ["消息队列（Kafka / RabbitMQ）"]
-            CTRL["Controller<br/>（K8s 资源调谐）"]
-
-            subgraph grpc["gRPC Server —— 单 Deployment，承载全部 24 个微服务"]
-                direction TB
-                S_AUTH["auth<br/>认证 · SSO 联邦 · API Key"]
-                S_TENANCY["tenancy<br/>组织/项目隔离 · RBAC · 组织配额"]
-                S_ACCOUNT["account<br/>账户数据导出"]
-                S_MODEL["model<br/>模型目录 · 版本 · 权重 · 授权"]
-                S_IMAGE["image<br/>引擎镜像 · 预热 · 兼容性矩阵"]
-                S_INFER["infer<br/>服务生命周期 · 弹性伸缩 · 路由策略 · 压测"]
-                S_RUNTIME["runtime<br/>分布式推理运行时（AIBrix）"]
-                S_ROUTING["routing<br/>路由组 · 虚拟模型 · 决策轨迹"]
-                S_PROVIDER["provider<br/>外部模型提供方 · 连通性探测"]
-                S_METERING["metering<br/>Token 计量 · 凭单 · 用量聚合"]
-                S_BILLING["billing<br/>定价 · 扣费 · 账单 · 支付 · 报表"]
-                S_BATCH["batch<br/>批量推理作业"]
-                S_AUDIT["audit<br/>审计日志 · 活动导出"]
-                S_WEBHOOK["webhook<br/>出站事件 · 投递日志"]
-                S_NOTIFICATION["notification<br/>通知中心 · 阈值告警"]
-                S_OBSERVABILITY["observability<br/>模型看板 · 系统健康 · 错误分析"]
-                S_TRACING["tracing<br/>请求链路 · 分阶段时延"]
-                S_RESOURCEMETRICS["resourcemetrics<br/>按服务 CPU / 内存 / GPU 指标"]
-                S_ACCELERATOR["accelerator<br/>加速器清单 · 健康状态"]
-                S_CLUSTER["cluster<br/>多集群注册 · 健康"]
-                S_OPTIMIZATION["optimization<br/>成本优化建议"]
-                S_PROMPT["prompt<br/>提示词库 · 版本管理"]
-                S_EVALUATION["evaluation<br/>提示词评测 · 回归运行"]
-                S_DOCS["docs<br/>API 文档目录"]
-            end
-        end
-
-        subgraph dp["数据面（RDMA 网络）"]
-            direction TB
-            DGW["推理 Gateway<br/>Envoy + Wasm（鉴权 · 计量 · 路由）"]
-            E["推理服务<br/>vLLM / SGLang / TensorRT-LLM<br/>运行于异构加速卡"]
-            DGW --> E
-        end
-
-        subgraph store["存储与状态组件"]
+        subgraph L3A2["中间件"]
             direction LR
-            LH[("Longhorn")]
-            PG[("PostgreSQL")]
-            RD[("Redis")]
-            MINIO[("MinIO")]
-            JFS[("JuiceFS")]
-            LH --- PG
-            LH --- RD
-            MINIO --> JFS
+            M1["PostgreSQL（CNPG）<br/>业务真源：租户、模型、部署、价格、用量账本、审计"]:::mw
+            M2["Redis<br/>缓存、限流计数、配额预留、分布式锁、路由表"]:::mw
+            M3["RabbitMQ<br/>部署任务、计量摄取、结算、批处理、通知；重试 + DLQ"]:::mw
+            M1 ~~~ M2 ~~~ M3
         end
-
-        ING --> CGW
-        ING --> DGW
-        CGW --> grpc
-        grpc <-.-> MQ
-        MQ <-.-> CTRL
-        grpc -.-> store
-        CTRL --> E
+        L3A1 ~~~ L3A2
     end
+    subgraph L3B["② 第三方依赖 · Helm Chart"]
+        direction LR
+        B1["Aibrix<br/>分布式运行时、KV Cache"]:::dp
+        B2["HAMI<br/>异构卡纳管、设备插件、调度"]:::dp
+        B3["Volcano<br/>Gang Scheduling、队列与公平共享"]:::dp
+        B4["GPU / NPU Operator<br/>驱动、设备插件、拓扑与健康"]:::cell
+        B5["可观测栈<br/>Prometheus / OTel / Loki"]:::cell
+        B1 ~~~ B2 ~~~ B3 ~~~ B4 ~~~ B5
+    end
+    subgraph L3C["③ 计算节点 · 推理引擎"]
+        direction LR
+        C1["vLLM<br/>PagedAttention · Continuous Batching"]:::cp
+        C2["SGLang<br/>RadixAttention · 结构化输出 · 并行"]:::cp
+        C3["TensorRT-LLM / MindIE<br/>NVIDIA / 昇腾原生推理栈"]:::cp
+        C4["自研 / 其他引擎<br/>按镜像接入，统一 OpenAI 协议"]:::cp
+        C1 ~~~ C2 ~~~ C3 ~~~ C4
+    end
+    L3A ~~~ L3B ~~~ L3C
+end
 
-    ADMIN --> ING
-    USER --> ING
-    DGW -.->|计量事件| MQ
-    E -.->|挂载权重| JFS
-    classDef consumer fill:#FFFFFF,stroke:#A9BABD,stroke-width:1.5px,color:#17272B
-    classDef edge fill:#007F86,stroke:#00565C,stroke-width:2px,color:#FFFFFF
-    classDef svc fill:#CFE9EA,stroke:#4E9CA0,stroke-width:1.5px,color:#0B383D
-    classDef store fill:#E7ECEE,stroke:#9AACB1,stroke-width:1.5px,color:#23343A
-    classDef net fill:#EFF3F5,stroke:#9AACB1,stroke-width:1.5px,color:#33454A
-    classDef gpu fill:#FADDD1,stroke:#D2704E,stroke-width:2px,color:#71260E
-    classDef dpg fill:#F6CCC0,stroke:#C4623F,stroke-width:2px,color:#5F200A
-    class ADMIN,USER consumer
-    class CGW,ING edge
-    class MQ,CTRL,S_AUTH,S_TENANCY,S_ACCOUNT,S_MODEL,S_IMAGE,S_INFER,S_RUNTIME,S_ROUTING,S_PROVIDER,S_METERING,S_BILLING,S_BATCH,S_AUDIT,S_WEBHOOK,S_NOTIFICATION,S_OBSERVABILITY,S_TRACING,S_RESOURCEMETRICS,S_ACCELERATOR,S_CLUSTER,S_OPTIMIZATION,S_PROMPT,S_EVALUATION,S_DOCS svc
-    class CNI,NPOL,RDMA net
-    class LH,PG,RD,MINIO,JFS store
-    class DGW dpg
-    class E gpu
-    style clients fill:#FAFCFC,stroke:#C6D2D4,stroke-width:1.5px,color:#3B4C50
-    style k8s fill:#F6FAFA,stroke:#B4C7CA,stroke-width:1.5px,color:#2F5B60
-    style net fill:#F2F6F7,stroke:#AFBEC2,stroke-width:1.5px,color:#3B4C50
-    style cp fill:#EDF7F7,stroke:#9CC7C9,stroke-width:1.5px,color:#2A6A6F
-    style grpc fill:#E3F1F2,stroke:#7FB6B9,stroke-width:1.5px,color:#0B383D
-    style dp fill:#FDF2ED,stroke:#E4A48B,stroke-width:1.5px,color:#8A3419
-    style store fill:#F5F8F9,stroke:#BCC9CD,stroke-width:1.5px,color:#47595E
+L1 -->|"HTTPS · SSE · OIDC · API Key<br/>按流量类型分流"| L2
+L2 -->|"控制流：REST / gRPC<br/>数据流：OpenAI /v1 · SSE"| L3
+
+classDef cell fill:#ffffff,stroke:#c7ccd6,color:#1b2530
+classDef cp fill:#f4f3ff,stroke:#a9a4ea,color:#1f2340
+classDef dp fill:#eefaf3,stroke:#8fd6ae,color:#123a25
+classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 ```
 
 ### 1.1 控制面与数据面分离
