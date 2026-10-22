@@ -392,6 +392,7 @@ Contributions of all kinds are welcome — code, documentation, bug reports, and
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) — questions and open discussion
 - [Governance](./GOVERNANCE.md) — roles, permissions, promotion, and decision-making
 - [Maintainers](./MAINTAINERS.md) — current role holders, area ownership, and review service levels
+- [Team & permission setup](./GITHUB-TEAMS.md) — how the organization teams, permissions, `CODEOWNERS`, and branch ruleset are configured
 - [Role ladder](./CONTRIBUTING.md#community-roles-and-growth) — how to grow from contributor to maintainer; non-code contributions count
 
 ## Acknowledgements

@@ -378,6 +378,7 @@ curl https://<your-taas-host>/v1/chat/completions \
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) —— 问题与开放讨论
 - [治理规则](./GOVERNANCE.zh-cn.md) —— 角色、权限、晋升与决策机制
 - [维护者名册](./MAINTAINERS.zh-cn.md) —— 当前角色持有者、领域归属与评审服务等级
+- [Team 与权限配置](./GITHUB-TEAMS.zh-cn.md) —— 组织 Team、仓库权限、`CODEOWNERS` 与分支规则集的配置方法
 - [角色阶梯](./CONTRIBUTING.zh-cn.md#社区角色与成长) —— 从贡献者成长为维护者的路径；非代码贡献同样计入
 
 ## 致谢

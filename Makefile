@@ -63,7 +63,7 @@ DOCKER_NETWORK ?= --network=host
 .PHONY: all pbgen pbgen-ensure deps lint ut fvt build test clean \
 	docker-build docker-push docker-build-multi compose-up compose-down \
 	compose-ps compose-logs compose-cluster-up compose-cluster-down \
-	helm-lint helm-template
+	helm-lint helm-template github-teams-plan github-teams-verify
 
 all: build
 
@@ -211,3 +211,13 @@ helm-install:
 ## Secret and the managed inference namespace are kept)
 helm-uninstall:
 	$(HELM) uninstall $(HELM_RELEASE) --namespace $(HELM_NAMESPACE)
+
+## github-teams-plan: preview the organization teams and repository
+## permissions required by GOVERNANCE.md (read-only; nothing is created)
+github-teams-plan:
+	./scripts/github/setup-teams.sh plan
+
+## github-teams-verify: check that the teams, repository permissions,
+## CODEOWNERS team references and default-branch ruleset match the docs
+github-teams-verify:
+	./scripts/github/setup-teams.sh verify

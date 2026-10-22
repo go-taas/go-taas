@@ -71,7 +71,9 @@ team per `GOVERNANCE.md` §12.
 ## 7. Teams to create
 
 The organization currently has no teams. Create these before relying on
-`CODEOWNERS`:
+`CODEOWNERS`. The step-by-step procedure (web UI and script), the ruleset
+settings, and the day-2 operations are in [GITHUB-TEAMS.md](./GITHUB-TEAMS.md);
+`scripts/github/setup-teams.sh plan` prints the current gap:
 
 | Team | Members | Repository permission | Purpose |
 | --- | --- | --- | --- |
@@ -107,7 +109,9 @@ a capacity signal, never a penalty.
 ## 9. Repository settings that back the rules
 
 Apply these in GitHub settings (or with `gh api` after confirmation). They are
-tracked here because `GOVERNANCE.md` relies on them.
+tracked here because `GOVERNANCE.md` relies on them. The exact commands, including
+the ruleset payload and the bootstrap-mode caveat, are in
+[GITHUB-TEAMS.md](./GITHUB-TEAMS.md).
 
 - [ ] Create the teams in §7 and grant the permissions listed.
 - [ ] Enable branch protection on `main`:

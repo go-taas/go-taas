@@ -62,7 +62,10 @@
 
 ## 7. 待创建的 Team
 
-组织目前没有 Team。在依赖 `CODEOWNERS` 之前先创建：
+组织目前没有 Team。在依赖 `CODEOWNERS` 之前先创建。完整的操作步骤（Web UI 与
+脚本）、规则集配置以及日常运维流程见
+[GITHUB-TEAMS.zh-cn.md](./GITHUB-TEAMS.zh-cn.md)；运行
+`scripts/github/setup-teams.sh plan` 可查看当前差距：
 
 | Team | 成员 | 仓库权限 | 用途 |
 | --- | --- | --- | --- |
@@ -95,7 +98,8 @@ Maintainer。这是容量信号，不是惩罚。
 ## 9. 支撑规则的仓库设置
 
 在 GitHub 设置中（或经确认后用 `gh api`）应用以下配置。它们记录在此，因为
-`GOVERNANCE.zh-cn.md` 依赖它们生效。
+`GOVERNANCE.zh-cn.md` 依赖它们生效。具体命令、规则集载荷以及 bootstrap 阶段的
+局限见 [GITHUB-TEAMS.zh-cn.md](./GITHUB-TEAMS.zh-cn.md)。
 
 - [ ] 创建 §7 中的 Team 并授予所列权限。
 - [ ] 为 `main` 启用分支保护：
