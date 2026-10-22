@@ -244,7 +244,7 @@ module.exports = {
         method: 'POST',
         path: `/api/v1/admin/images/${imageId}:warmup`,
         org,
-        body: {nodeSelector: {'taas.go-taas.github.io/accelerator': 'nvidia'}}
+        body: {nodeSelector: {'go-taas.com/accelerator': 'nvidia'}}
       }, (res2) => {
         const body = api.assertOk(browser, res2, 'trigger warmup');
         browser.assert.ok(Boolean(body.taskId), 'AC8: taskId returned');

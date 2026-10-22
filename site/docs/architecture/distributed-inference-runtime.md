@@ -862,9 +862,9 @@ metadata:
   namespace: <controller namespace>       # r.namespace (e.g. taas-infer)
   labels:
     app.kubernetes.io/managed-by: taas-controller
-    taas.go-taas.github.io/service-id: <evt.ServiceID>
-    taas.go-taas.github.io/model-id: <evt.Model.ModelID>
-    taas.go-taas.github.io/origin: service
+    go-taas.com/service-id: <evt.ServiceID>
+    go-taas.com/model-id: <evt.Model.ModelID>
+    go-taas.com/origin: service
 spec:
   modelName: <evt.Name>
   engine: <evt.Image.Engine>              # vllm | sglang
@@ -884,14 +884,14 @@ metadata:
   namespace: <controller namespace>
   labels:
     app.kubernetes.io/managed-by: taas-controller
-    taas.go-taas.github.io/origin: registration
+    go-taas.com/origin: registration
 spec:
   modelName: <model_name>
   engine: <engine>
   artifactURL: <artifact_url>
   replicas: <replicas>
   podSelector:
-    matchLabels: <pod_selector>            # user-supplied, else {taas.go-taas.github.io/model: <model_name>}
+    matchLabels: <pod_selector>            # user-supplied, else {go-taas.com/model: <model_name>}
   engineConfig:
     args: <engine_args>                    # omitted when empty
 ```
@@ -910,7 +910,7 @@ spec:
    - Read the Envoy AI Gateway Deployment `cfg.Runtime.AIBrix.Gateway` (`envoy-aibrix-system-aibrix-eg`) as a `gateway` component, same mapping.
    - `runtime_version` from the `aibrix-controller-manager` Deployment's image tag (best-effort, empty when unavailable).
    - `availability`: `available` when every expected component is `ready`; `degraded` when at least one is `progressing`/`degraded`/`unavailable` but at least one is `ready`; `unavailable` when none is `ready`.
-   - List `ModelClaim`s (dynamic client, the controller namespace and, when configured, the AIBrix namespace) and project each into a `RegisteredModel`: `engine` from `spec.engine`; `replicas` from `spec.replicas`; `ready_candidates` from `status.candidates`; `status`/`conditions` from `status.conditions` (Ready=True → `ready`; Ready=False with a failure reason → `failed`; no Ready condition but candidates > 0 → `progressing`; otherwise `degraded`/`unknown`); `created_at` from `metadata.creationTimestamp`; `origin` from the `taas.go-taas.github.io/origin` label.
+   - List `ModelClaim`s (dynamic client, the controller namespace and, when configured, the AIBrix namespace) and project each into a `RegisteredModel`: `engine` from `spec.engine`; `replicas` from `spec.replicas`; `ready_candidates` from `status.candidates`; `status`/`conditions` from `status.conditions` (Ready=True → `ready`; Ready=False with a failure reason → `failed`; no Ready condition but candidates > 0 → `progressing`; otherwise `degraded`/`unknown`); `created_at` from `metadata.creationTimestamp`; `origin` from the `go-taas.com/origin` label.
 3. `scheme=plain`: publish the fallback components — `go-taas-controller` (`fallback`, `ready` when the Controller is running, i.e. always when this snapshot is produced) and `kubernetes-api` (`fallback`, `ready` when the list call succeeded) — with an empty `models` array and `availability=available`.
 4. On a list/poll error: publish `availability=unavailable` (or `unknown` before the first successful snapshot), keep the **last-known** components and models in the Controller's memory, set `reason` to a short message, and continue on the next tick — **never** abort the loop.
 5. Publish the full snapshot to `subjects.RuntimeHealth` as JSON.

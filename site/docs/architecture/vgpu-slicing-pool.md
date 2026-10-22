@@ -41,7 +41,7 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D8) as implementation-leve
 
 | # | Decision | Rationale |
 | --- | --- | --- |
-| AD1 | **A pool is a named set of nodes designated by a node label.** The operator creates a pool, picks a label key/value (e.g. `go-taas.io/vgpu-pool=pool-a`), and any node carrying that label is a member. Membership is **declarative**: the Controller watches nodes for the label selector and reports membership; a node that loses the label leaves the pool (its slices drain naturally as services finish) | Design D1. Matches the architecture's node-labeling model (§2.3) and HAMI's own `gpu=on` opt-in; membership survives node churn (a new labeled node joins automatically) |
+| AD1 | **A pool is a named set of nodes designated by a node label.** The operator creates a pool, picks a label key/value (e.g. `go-taas.com/vgpu-pool=pool-a`), and any node carrying that label is a member. Membership is **declarative**: the Controller watches nodes for the label selector and reports membership; a node that loses the label leaves the pool (its slices drain naturally as services finish) | Design D1. Matches the architecture's node-labeling model (§2.3) and HAMI's own `gpu=on` opt-in; membership survives node churn (a new labeled node joins automatically) |
 | AD2 | **Sharing is opt-in per service, and only on pool nodes.** A deploy can choose "Shared GPU" mode; without it, the service gets a whole card as today. Non-pool nodes never share | Design D2. Sharing has isolation/performance trade-offs; tenants and operators must choose it deliberately |
 | AD3 | **Slice templates are the bounded vocabulary.** A pool defines named templates (e.g. `small` = 8 GiB / 25% compute, `medium` = 16 GiB / 50%, `large` = 24 GiB / 75%); a deploy picks a template, never raw memory/compute values | Design D3. Keeps capacity planning honest (the operator controls the carve-ups) and the deploy form simple (a dropdown, not two number fields) |
 | AD4 | **HAMI is the sharing mechanism; go-taas stays vendor-neutral.** The Controller emits HAMI annotations; HAMI handles NVIDIA (incl. MIG), Iluvatar, MetaX and other backends behind one resource model | Design D4. The platform already lists HAMI as an accelerator-tier inspiration; delegating device sharing to HAMI keeps go-taas vendor-neutral and avoids reimplementing device virtualization |
@@ -113,7 +113,7 @@ flowchart TD
 
     subgraph k8s["Kubernetes"]
         POD["Inference pod<br/>HAMI device annotations"]
-        NODE["Pool nodes<br/>go-taas.io/vgpu-pool=pool-a"]
+        NODE["Pool nodes<br/>go-taas.com/vgpu-pool=pool-a"]
     end
 
     AC --> GUARD
@@ -143,7 +143,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `id` | `uuid` | PRIMARY KEY | Server-generated UUID v4, exposed as `pool_id` |
 | `name` | `varchar(63)` | NOT NULL, UNIQUE | DNS-safe pool name, 1–63 chars (FR1.2) |
-| `label_key` | `varchar(128)` | NOT NULL | The node-label key, e.g. `go-taas.io/vgpu-pool` |
+| `label_key` | `varchar(128)` | NOT NULL | The node-label key, e.g. `go-taas.com/vgpu-pool` |
 | `label_value` | `varchar(128)` | NOT NULL | The node-label value, e.g. `pool-a` |
 | `placement_policy` | `varchar(16)` | NOT NULL DEFAULT 'binpack' | `binpack` / `spread` / `mutex` (AD15) |
 | `templates` | `jsonb` | NOT NULL DEFAULT '[]' | The slice-template array (name, memory_gib, compute_pct, description) |
@@ -462,7 +462,7 @@ HAMI is not in this repository; the contract below is binding for the data-plane
 
 1. **Resource requests**: the pod's engine container requests the HAMI extended resources instead of a whole card — `nvidia.com/gpumem` = the template's memory in MiB and `nvidia.com/gpucores` = the template's compute percentage (design §6 note 3). For non-NVIDIA accelerators, the equivalent HAMI resource names apply (the `gpuResourceName` mapping in the reconciler is extended).
 2. **Placement-policy annotation**: the pod carries `hami.io/gpu-scheduler-policy` = the pool's placement policy (`binpack` / `spread` / `mutex`) (design §6 note 3, AD15).
-3. **Node affinity**: the pod's `nodeSelector` is constrained to the pool's label selector (`go-taas.io/vgpu-pool=pool-a`) so HAMI schedules only onto pool nodes (AD2 — non-pool nodes never share).
+3. **Node affinity**: the pod's `nodeSelector` is constrained to the pool's label selector (`go-taas.com/vgpu-pool=pool-a`) so HAMI schedules only onto pool nodes (AD2 — non-pool nodes never share).
 4. **Assigned-slice report**: once HAMI schedules the slice, the Controller reads the pod's node and the HAMI device annotation and reports the assigned physical GPU (node + GPU index) on the `infer.services.status` subject (AD14).
 
 The contract, item by item:
@@ -566,7 +566,7 @@ sequenceDiagram
     VGPU->>VGPU: INSERT vgpu_pools
     VGPU->>AUD: pool.created (operator, old -> new)
     VGPU-->>UI: pool_id, success toast, navigate to detail
-    Op->>UI: Label nodes with the selector (go-taas.io/vgpu-pool=pool-a)
+    Op->>UI: Label nodes with the selector (go-taas.com/vgpu-pool=pool-a)
     Note over ACC: The inventory snapshot picks up the labels within the interval (30 s)
     Ten->>DEP: Toggle Shared GPU, pick pool + template
     DEP->>VGPU: GET /api/v1/admin/vgpu-pools (platform-wide)
@@ -634,7 +634,7 @@ New `vgpu` section in `pkg/config` (`VGPUConfig`, mapped `mapstructure:"vgpu"`),
 | `vgpu.hami.memResource` | string | `"nvidia.com/gpumem"` | The HAMI memory resource name (Section 5.3) |
 | `vgpu.hami.coreResource` | string | `"nvidia.com/gpucores"` | The HAMI compute resource name |
 | `vgpu.hami.policyAnnotation` | string | `"hami.io/gpu-scheduler-policy"` | The placement-policy annotation name |
-| `vgpu.hami.poolLabelPrefix` | string | `"go-taas.io/vgpu-pool"` | The default pool label key prefix |
+| `vgpu.hami.poolLabelPrefix` | string | `"go-taas.com/vgpu-pool"` | The default pool label key prefix |
 
 `configs/config.yaml` gains:
 
@@ -652,7 +652,7 @@ vgpu:
     memResource: "nvidia.com/gpumem"
     coreResource: "nvidia.com/gpucores"
     policyAnnotation: "hami.io/gpu-scheduler-policy"
-    poolLabelPrefix: "go-taas.io/vgpu-pool"
+    poolLabelPrefix: "go-taas.com/vgpu-pool"
 ```
 
 ---
@@ -800,7 +800,7 @@ CodeVGPUPoolNotFound          Code = 13406 // VGPU_POOL_NOT_FOUND
 
 ### 13.8 Frontend detailed design
 
-- **`VGPUPoolsPage`** (`/admin/vgpu-pools`): loads `GET /api/v1/admin/vgpu-pools?{page, name, placement_policy}`; renders the pool table — Name, Node label selector ("`go-taas.io/vgpu-pool=pool-a`"), Placement policy, Templates ("small, medium, large"), Nodes (count), Allocation ("small 12/20 · medium 3/8"), Utilization (bar, amber ≥ 80%, red 100%). Filter bar: name search, placement-policy filter, pagination. Row click opens the detail. **Create dialog**: Name (required, DNS-safe, 1–63, unique — inline validation), Node label selector (key + value, required), Placement policy (dropdown, default binpack), and the `SliceTemplateEditor` (add rows: name, memory GiB, compute %, description; validation per FR2.2). Save → `POST /api/v1/admin/vgpu-pools`; a **13401/13402** response highlights the offending field with the server copy; success shows a toast and navigates to the new pool's detail. States: loading skeletons; empty ("No vGPU pools yet — create one to share GPUs across small inference jobs"); error (stale with retry); permission-denied (10036, link to `/admin`).
+- **`VGPUPoolsPage`** (`/admin/vgpu-pools`): loads `GET /api/v1/admin/vgpu-pools?{page, name, placement_policy}`; renders the pool table — Name, Node label selector ("`go-taas.com/vgpu-pool=pool-a`"), Placement policy, Templates ("small, medium, large"), Nodes (count), Allocation ("small 12/20 · medium 3/8"), Utilization (bar, amber ≥ 80%, red 100%). Filter bar: name search, placement-policy filter, pagination. Row click opens the detail. **Create dialog**: Name (required, DNS-safe, 1–63, unique — inline validation), Node label selector (key + value, required), Placement policy (dropdown, default binpack), and the `SliceTemplateEditor` (add rows: name, memory GiB, compute %, description; validation per FR2.2). Save → `POST /api/v1/admin/vgpu-pools`; a **13401/13402** response highlights the offending field with the server copy; success shows a toast and navigates to the new pool's detail. States: loading skeletons; empty ("No vGPU pools yet — create one to share GPUs across small inference jobs"); error (stale with retry); permission-denied (10036, link to `/admin`).
 - **`VGPUPoolDetailPage`** (`/admin/vgpu-pools/:poolId`): loads `GET /api/v1/admin/vgpu-pools/{pool_id}`; renders the pool header (name, selector, policy, aggregate utilization bar, Edit/Delete actions), the node membership table (Node, Physical GPUs model + count, per-GPU allocation with expandable rows showing each GPU's allocated slices: template, service, memory/compute used vs free, Health from the accelerator inventory; a node is `full` when no template fits), and the services-using-slices table (Service, Template, Physical GPU, Memory/compute, State, links to the service detail). **Edit dialog**: placement policy + the `SliceTemplateEditor`; changing the selector warns "Membership will change to match the new label"; changing templates warns "Running services keep their current slices". Save → `PATCH /api/v1/admin/vgpu-pools/{pool_id}`. **Delete flow**: Delete opens a confirm dialog; if services use the pool, the server returns **13405** and the dialog shows "N services are using this pool. Move or delete them before deleting the pool." with delete disabled. States: loading; empty (pool has no member nodes — "No nodes carry this label yet"; a hint to label nodes); error; permission-denied.
 - **`DeployDialog`** (Shared GPU mode): below the accelerator/card-type fields, a **"Shared GPU" toggle** (default off). When off, nothing changes. When on: a **pool dropdown** appears (from `GET /api/v1/admin/vgpu-pools`, platform-wide — an admin-surface read); selecting a pool constrains the accelerator/card-type fields to the pool's nodes; a **slice-template dropdown** appears (from the selected pool), each option labeled "small — 8 GiB / 25% compute" with a short description; a **shared-GPU note** appears ("This service will share a physical GPU with other services. Memory and compute are isolated best-effort; performance is not guaranteed."). Submit calls `POST /api/v1/admin/inference-services` with `pool_id` + `slice_template_id`; a **13403** response shows inline copy. States: loading (pools fetching); empty (no pools — "No shared-GPU pools are available for your organization" and the toggle is disabled with a tooltip); error (stale with retry).
 - **`ServiceDetailPage`** (slice card): when the service is shared-GPU, a **slice card** appears in the spec section: Pool name, Template ("small — 8 GiB / 25%"), and once scheduled, the assigned physical GPU ("node-a · GPU 0"). A whole-card service shows no slice card. The card links to nothing on the user surface (pool detail is admin-only); it is informational.

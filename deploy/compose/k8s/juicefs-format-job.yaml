@@ -15,7 +15,7 @@ metadata:
   namespace: yunzhi
   labels:
     app.kubernetes.io/part-of: go-taas
-    go-taas.github.io/role: model-weights
+    go-taas.com/role: model-weights
 spec:
   backoffLimit: 3
   ttlSecondsAfterFinished: 300

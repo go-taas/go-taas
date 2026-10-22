@@ -14,7 +14,7 @@ metadata:
   namespace: yunzhi
   labels:
     app.kubernetes.io/part-of: go-taas
-    go-taas.github.io/role: juicefs-meta
+    go-taas.com/role: juicefs-meta
 spec:
   type: NodePort
   selector:

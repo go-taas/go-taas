@@ -6,6 +6,7 @@
 
 **Token as a Service — an open-source LLM inference and metering/billing platform for AI agents and applications, built on Kubernetes**
 
+[![Website](https://img.shields.io/badge/Website-go--taas.com-007F86.svg)](https://go-taas.com)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://golang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](./CONTRIBUTING.md)
@@ -346,7 +347,7 @@ curl https://<your-taas-host>/v1/chat/completions \
 
 ## Documentation
 
-Read the documentation in the **[documentation browser](https://go-taas.com/docs.html)** — a
+The project website is **[go-taas.com](https://go-taas.com)**. Read the documentation in the **[documentation browser](https://go-taas.com/docs.html)** — a
 searchable, bilingual reader with a table of contents and rendered diagrams — or open a
 document directly:
 
@@ -388,6 +389,7 @@ Contributions of all kinds are welcome — code, documentation, bug reports, and
 
 ## Community
 
+- [Website](https://go-taas.com) — project homepage and documentation browser
 - [GitHub Issues](https://github.com/go-taas/go-taas/issues) — bug reports and feature requests
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) — questions and open discussion
 - [Governance](./GOVERNANCE.md) — roles, permissions, promotion, and decision-making

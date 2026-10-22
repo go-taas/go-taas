@@ -7,4 +7,4 @@ metadata:
   name: taas
   labels:
     app.kubernetes.io/part-of: go-taas
-    go-taas.github.io/role: inference
+    go-taas.com/role: inference

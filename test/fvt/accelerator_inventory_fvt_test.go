@@ -157,7 +157,7 @@ func TestFVTAccleratorInventory(t *testing.T) {
 				{"index": 0, "model": "A800", "allocated": true, "free": false, "note": ""},
 				{"index": 1, "model": "A800", "allocated": false, "free": true, "note": ""},
 			},
-			"labels": map[string]string{"go-taas.io/accelerator": "nvidia"},
+			"labels": map[string]string{"go-taas.com/accelerator": "nvidia"},
 			"taints": []string{"dedicated=gpu:NoSchedule"},
 			"resources": []map[string]any{
 				{"card_type": "A800", "allocatable": 8, "allocated": 2},
@@ -254,7 +254,7 @@ func TestFVTAccleratorInventory(t *testing.T) {
 	assert.Equal(t, "0", gpus[0].(map[string]any)["index"])
 	assert.Equal(t, true, gpus[0].(map[string]any)["allocated"])
 	labels, _ := node["labels"].(map[string]any)
-	assert.Equal(t, "nvidia", labels["go-taas.io/accelerator"])
+	assert.Equal(t, "nvidia", labels["go-taas.com/accelerator"])
 	taints, _ := node["taints"].([]any)
 	require.Len(t, taints, 1)
 	resources, _ := node["resources"].([]any)

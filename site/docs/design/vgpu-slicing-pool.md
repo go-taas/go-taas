@@ -47,7 +47,7 @@ This feature adds a **vGPU slicing pool**: the operator designates a set of node
 
 | # | Decision | Rationale |
 | --- | --- | --- |
-| D1 | **A pool is a named set of nodes designated by a node label.** The operator creates a pool, picks a label key/value (e.g. `go-taas.io/vgpu-pool=pool-a`), and any node carrying that label is a member. | Matches the architecture's node-labeling model (§2.3) and HAMI's own `gpu=on` opt-in; membership is declarative and survives node churn (a new labeled node joins automatically). |
+| D1 | **A pool is a named set of nodes designated by a node label.** The operator creates a pool, picks a label key/value (e.g. `go-taas.com/vgpu-pool=pool-a`), and any node carrying that label is a member. | Matches the architecture's node-labeling model (§2.3) and HAMI's own `gpu=on` opt-in; membership is declarative and survives node churn (a new labeled node joins automatically). |
 | D2 | **Sharing is opt-in per service, and only on pool nodes.** A deploy can choose "Shared GPU" mode; without it, the service gets a whole card as today. | Sharing has isolation/performance trade-offs; tenants and operators must choose it deliberately. Non-pool nodes never share. |
 | D3 | **Slice templates are the bounded vocabulary.** A pool defines named templates (e.g. `small` = 8 GiB / 25% compute, `medium` = 16 GiB / 50%, `large` = 24 GiB / 75%); a deploy picks a template, never raw memory/compute values. | Keeps capacity planning honest (the operator controls the carve-ups) and the deploy form simple (a dropdown, not two number fields). |
 | D4 | **HAMI is the sharing mechanism; go-taas stays vendor-neutral.** The Controller emits HAMI annotations; HAMI handles NVIDIA (incl. MIG), Iluvatar, MetaX and other backends behind one resource model. | The platform already lists HAMI as an accelerator-tier inspiration; delegating device sharing to HAMI keeps go-taas vendor-neutral and avoids reimplementing device virtualization. |
@@ -148,7 +148,7 @@ This feature adds a **vGPU slicing pool**: the operator designates a set of node
 
 ### 5.2 Page: `/admin/vgpu-pools` — vGPU Pools (admin)
 
-**Pool table**: Name, Node label selector ("`go-taas.io/vgpu-pool=pool-a`"), Placement policy (binpack / spread / mutex), Templates ("small, medium, large"), Nodes (count), Allocation ("small 12/20 · medium 3/8"), Utilization (bar, amber ≥ 80%, red 100%). Row click opens the pool detail; a "New pool" button opens the create dialog.
+**Pool table**: Name, Node label selector ("`go-taas.com/vgpu-pool=pool-a`"), Placement policy (binpack / spread / mutex), Templates ("small, medium, large"), Nodes (count), Allocation ("small 12/20 · medium 3/8"), Utilization (bar, amber ≥ 80%, red 100%). Row click opens the pool detail; a "New pool" button opens the create dialog.
 
 **Filter bar**: name search, placement-policy filter, pagination.
 

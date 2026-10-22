@@ -97,6 +97,7 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 - **集群网络**：集群内运行 CNI Pod 网络，并通过 ClusterIP Service 与 CoreDNS 提供东西向服务发现；南北向流量经 Envoy Gateway + TLS 终结进入；NetworkPolicy 对控制面、数据面与租户命名空间做隔离；推理数据链路可选走 RDMA 网络（RoCE / InfiniBand），控制面保持常规以太网（详见 §5.2）；
 - **配额与准入控制**：平台不引入独立的配额微服务，准入控制落在流量所在的位置——按 API Key 的请求限流与按组织的服务配额（最大并发推理请求数、推理服务数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制。在上述约束内，管理员按**集群可用资源**创建推理服务，集群容量由 Kubernetes 调度器与节点资源自然约束；
 - **负载隔离**：推理工作负载与控制面工作负载通过 Namespace、节点标签与污点/容忍度隔离，可在同一集群内稳定共存。
+- **资源标签**：Chart 与 Controller 创建的每个资源都带标准 `app.kubernetes.io/*` 标签（`name`、`instance`、`version`、`managed-by`、`part-of: go-taas`，并按组件补充 `component`：`server`、`controller`、`postgresql`、`redis`、`rabbitmq`）。平台自有键统一使用项目自己的 DNS 前缀 `go-taas.com/`（官方网站），不使用项目并不拥有的域名：`go-taas.com/service-id`、`go-taas.com/replica-index`、`go-taas.com/origin`、`go-taas.com/model`、`go-taas.com/model-id`、`go-taas.com/task-type`、`go-taas.com/task-id`、`go-taas.com/role`、`go-taas.com/accelerator`、`go-taas.com/accelerator-type`、`go-taas.com/driver-version`、`go-taas.com/device-plugin` 与 `go-taas.com/vgpu-pool`。出现在 selector 中的键属于 API 面：改名会触发受影响工作负载的滚动更新，不是纯展示性修改。
 
 ---
 

@@ -37,7 +37,12 @@ MINIO_SECRET_KEY="${JUICE_FS_SECRET_KEY}"
 IN_CLUSTER_META_URL="${JUICE_FS_META_URL//10.86.56.47:30379/yunzhi-redis-headless.yunzhi.svc.cluster.local:6379}"
 
 echo ">> [cluster-down] removing accelerator node labels"
+# Remove the current prefix and the two legacy prefixes (taas.go-taas.github.io
+# and go-taas.io) so a cluster labelled before the go-taas.com rename is cleaned
+# up as well.
 kubectl label node --all \
+  go-taas.com/accelerator- \
+  go-taas.com/accelerator-type- \
   taas.go-taas.github.io/accelerator- \
   taas.go-taas.github.io/accelerator-type- \
   go-taas.io/accelerator- >/dev/null 2>&1 || true
@@ -73,7 +78,7 @@ metadata:
   namespace: yunzhi
   labels:
     app.kubernetes.io/part-of: go-taas
-    go-taas.github.io/role: model-weights
+    go-taas.com/role: model-weights
 spec:
   backoffLimit: 2
   ttlSecondsAfterFinished: 120
@@ -109,7 +114,7 @@ metadata:
   namespace: yunzhi
   labels:
     app.kubernetes.io/part-of: go-taas
-    go-taas.github.io/role: model-weights
+    go-taas.com/role: model-weights
 spec:
   backoffLimit: 2
   ttlSecondsAfterFinished: 120

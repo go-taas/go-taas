@@ -9,7 +9,7 @@ metadata:
   name: juicefs-taas-models
   labels:
     app.kubernetes.io/part-of: go-taas
-    go-taas.github.io/role: model-weights
+    go-taas.com/role: model-weights
 provisioner: csi.juicefs.com
 reclaimPolicy: Retain
 volumeBindingMode: Immediate

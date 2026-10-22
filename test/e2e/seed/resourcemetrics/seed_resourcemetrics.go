@@ -21,7 +21,7 @@
 // The compose stack's Controller is the only writer of
 // service_resource_metrics through its per-service sampler, but the
 // compose stack has no running inference pods carrying the
-// go-taas.io/service-id and go-taas.io/replica-index labels, so the
+// go-taas.com/service-id and go-taas.com/replica-index labels, so the
 // sampler writes nothing. This seed writes the rows directly into
 // PostgreSQL (the resourcemetrics module is a read-only aggregation over
 // service_resource_metrics, so seeding the table is the only way to

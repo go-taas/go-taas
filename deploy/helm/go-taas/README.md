@@ -22,6 +22,46 @@ The chart creates no Ingress. Choose the exposure mechanism with
 `taasServer.service.type` (`ClusterIP`, `NodePort`, `LoadBalancer`) or add
 your own Ingress in front of the gateway port.
 
+Project links: [website](https://go-taas.com) ·
+[documentation](https://go-taas.com/docs.html) ·
+[source](https://github.com/go-taas/go-taas) ·
+[support](https://github.com/go-taas/go-taas/discussions).
+
+## Resource labels
+
+Every resource the chart creates carries the Kubernetes recommended labels:
+
+| Label | Value |
+| --- | --- |
+| `helm.sh/chart` | `<chart>-<version>` |
+| `app.kubernetes.io/name` | chart name (`go-taas`, overridable with `nameOverride`) |
+| `app.kubernetes.io/instance` | release name |
+| `app.kubernetes.io/version` | chart `appVersion` |
+| `app.kubernetes.io/managed-by` | `Helm` for chart resources, `taas-controller` for resources the controller creates |
+| `app.kubernetes.io/part-of` | `go-taas` |
+| `app.kubernetes.io/component` | `server`, `controller`, `postgresql`, `redis`, or `rabbitmq` |
+
+Platform-specific keys use the project's own DNS prefix, `go-taas.com/`, taken
+from the official website. Never use a domain the project does not own (the
+retired `taas.go-taas.github.io/` and `go-taas.io/` prefixes), because a label
+prefix is expected to be resolvable by whoever consumes it.
+
+| Key | Set on | Meaning |
+| --- | --- | --- |
+| `go-taas.com/service-id` | inference Deployment, Service, pods, ModelClaim | owning inference service |
+| `go-taas.com/replica-index` | inference pods | masked replica index |
+| `go-taas.com/accelerator`, `go-taas.com/accelerator-type` | inference pods (node selector), nodes | requested accelerator vendor and card type |
+| `go-taas.com/driver-version`, `go-taas.com/device-plugin` | nodes | accelerator driver and device-plugin health signals |
+| `go-taas.com/model`, `go-taas.com/model-id`, `go-taas.com/origin` | ModelClaim | model name, catalog id, and whether the claim came from a service or a registration |
+| `go-taas.com/task-type`, `go-taas.com/task-id` | image warmup Job | warmup task identity |
+| `go-taas.com/role` | compose cluster resources | static role of a volume, secret, or namespace |
+| `go-taas.com/vgpu-pool` | nodes | vGPU pool membership (`vgpu.hami.poolLabelPrefix`, configurable) |
+
+Keys used in selectors are an API surface: changing one rolls the affected
+workloads, so it is treated as a migration, not a rename. `taasServer.podLabels`,
+`controller.podLabels`, and the dependency `podLabels` values add labels without
+overriding the ones above.
+
 ## Requirements
 
 * Kubernetes 1.25+

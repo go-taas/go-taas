@@ -87,12 +87,12 @@ func TestBuildDeployment(t *testing.T) {
 	}, c.Command)
 
 	// Accelerator node selector.
-	assert.Equal(t, "nvidia", dep.Spec.Template.Spec.NodeSelector["taas.go-taas.github.io/accelerator"])
-	assert.Equal(t, "A100", dep.Spec.Template.Spec.NodeSelector["taas.go-taas.github.io/accelerator-type"])
+	assert.Equal(t, "nvidia", dep.Spec.Template.Spec.NodeSelector["go-taas.com/accelerator"])
+	assert.Equal(t, "A100", dep.Spec.Template.Spec.NodeSelector["go-taas.com/accelerator-type"])
 
 	// Labels are consistent between selector and template.
 	assert.Equal(t, dep.Spec.Selector.MatchLabels, dep.Spec.Template.Labels)
-	assert.Equal(t, "svc-1", dep.Spec.Template.Labels["taas.go-taas.github.io/service-id"])
+	assert.Equal(t, "svc-1", dep.Spec.Template.Labels["go-taas.com/service-id"])
 }
 
 func TestBuildService(t *testing.T) {
@@ -109,9 +109,9 @@ func TestBuildService(t *testing.T) {
 // evt2Labels mirrors resourceLabels for the test event.
 func evt2Labels(evt changeEvent) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/managed-by":      "taas-controller",
-		"taas.go-taas.github.io/service-id": evt.ServiceID,
-		"app":                               evt.Name,
+		"app.kubernetes.io/managed-by": "taas-controller",
+		"go-taas.com/service-id":       evt.ServiceID,
+		"app":                          evt.Name,
 	}
 }
 
@@ -390,11 +390,11 @@ func TestApplyImageWarmup(t *testing.T) {
 	reconciler, clientset := newFakeReconciler(publisher)
 
 	// One node labeled nvidia; the task selector matches it.
-	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a", Labels: map[string]string{"taas.go-taas.github.io/accelerator": "nvidia"}}}
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "node-a", Labels: map[string]string{"go-taas.com/accelerator": "nvidia"}}}
 	_, err := clientset.CoreV1().Nodes().Create(context.Background(), node, metav1.CreateOptions{})
 	require.NoError(t, err)
 
-	task := `{"task_id":"11111111-2222-3333-4444-555555555555","image_id":"img-1","reference":"ghcr.io/go-taas/vllm:v0.6.3","node_selector":{"taas.go-taas.github.io/accelerator":"nvidia"}}`
+	task := `{"task_id":"11111111-2222-3333-4444-555555555555","image_id":"img-1","reference":"ghcr.io/go-taas/vllm:v0.6.3","node_selector":{"go-taas.com/accelerator":"nvidia"}}`
 	err = reconciler.ApplyImageWarmup(context.Background(), mq.Message{
 		Subject: mq.DefaultSubjects().ImageWarmups,
 		Body:    []byte(task),
@@ -419,7 +419,7 @@ func TestApplyImageWarmupNoMatchingNode(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
 	reconciler, _ := newFakeReconciler(publisher)
 
-	task := `{"task_id":"11111111-2222-3333-4444-555555555555","image_id":"img-1","reference":"ghcr.io/go-taas/vllm:v0.6.3","node_selector":{"taas.go-taas.github.io/accelerator":"metax"}}`
+	task := `{"task_id":"11111111-2222-3333-4444-555555555555","image_id":"img-1","reference":"ghcr.io/go-taas/vllm:v0.6.3","node_selector":{"go-taas.com/accelerator":"metax"}}`
 	err := reconciler.ApplyImageWarmup(context.Background(), mq.Message{
 		Subject: mq.DefaultSubjects().ImageWarmups,
 		Body:    []byte(task),
@@ -492,17 +492,17 @@ func TestResourceLabels(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
 	labels := resourceLabels(evt)
 	assert.Equal(t, "taas-controller", labels["app.kubernetes.io/managed-by"])
-	assert.Equal(t, "svc-1", labels["taas.go-taas.github.io/service-id"])
+	assert.Equal(t, "svc-1", labels["go-taas.com/service-id"])
 	assert.Equal(t, "demo", labels["app"])
 }
 
 func TestAcceleratorNodeSelector(t *testing.T) {
 	selector := acceleratorNodeSelector("nvidia", "")
-	assert.Equal(t, map[string]string{"taas.go-taas.github.io/accelerator": "nvidia"}, selector)
+	assert.Equal(t, map[string]string{"go-taas.com/accelerator": "nvidia"}, selector)
 
 	selector = acceleratorNodeSelector("metax", "m100")
-	assert.Equal(t, "metax", selector["taas.go-taas.github.io/accelerator"])
-	assert.Equal(t, "m100", selector["taas.go-taas.github.io/accelerator-type"])
+	assert.Equal(t, "metax", selector["go-taas.com/accelerator"])
+	assert.Equal(t, "m100", selector["go-taas.com/accelerator-type"])
 }
 
 func TestGPUResourceName(t *testing.T) {

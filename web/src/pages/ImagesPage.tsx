@@ -511,7 +511,7 @@ function WarmupDialog({
   onDone: () => void;
 }) {
   const [selectorKey, setSelectorKey] = useState(
-    'taas.go-taas.github.io/accelerator',
+    'go-taas.com/accelerator',
   );
   const [selectorValue, setSelectorValue] = useState(image.accelerator);
   const [submitting, setSubmitting] = useState(false);

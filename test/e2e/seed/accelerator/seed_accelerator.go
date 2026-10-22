@@ -111,9 +111,9 @@ func main() {
 			DevicePluginState: "healthy",
 			Readiness:         "ready",
 			Labels: map[string]string{
-				"go-taas.io/accelerator":    "nvidia",
-				"go-taas.io/driver-version": "535.183.01",
-				"go-taas.io/device-plugin":  "healthy",
+				"go-taas.com/accelerator":    "nvidia",
+				"go-taas.com/driver-version": "535.183.01",
+				"go-taas.com/device-plugin":  "healthy",
 			},
 			Taints: []string{},
 			Resources: []snapshotResource{
@@ -142,9 +142,9 @@ func main() {
 			DevicePluginState: "healthy",
 			Readiness:         "ready",
 			Labels: map[string]string{
-				"go-taas.io/accelerator":    "nvidia",
-				"go-taas.io/driver-version": "535.183.01",
-				"go-taas.io/device-plugin":  "healthy",
+				"go-taas.com/accelerator":    "nvidia",
+				"go-taas.com/driver-version": "535.183.01",
+				"go-taas.com/device-plugin":  "healthy",
 			},
 			Taints: []string{},
 			Resources: []snapshotResource{
@@ -169,9 +169,9 @@ func main() {
 			DevicePluginState: "degraded",
 			Readiness:         "ready",
 			Labels: map[string]string{
-				"go-taas.io/accelerator":    "nvidia",
-				"go-taas.io/driver-version": "535.183.01",
-				"go-taas.io/device-plugin":  "degraded",
+				"go-taas.com/accelerator":    "nvidia",
+				"go-taas.com/driver-version": "535.183.01",
+				"go-taas.com/device-plugin":  "degraded",
 			},
 			Taints: []string{"gpu=degraded:NoSchedule"},
 			Resources: []snapshotResource{
@@ -196,9 +196,9 @@ func main() {
 			DevicePluginState: "healthy",
 			Readiness:         "ready",
 			Labels: map[string]string{
-				"go-taas.io/accelerator":    "iluvatar",
-				"go-taas.io/driver-version": "4.2.0",
-				"go-taas.io/device-plugin":  "healthy",
+				"go-taas.com/accelerator":    "iluvatar",
+				"go-taas.com/driver-version": "4.2.0",
+				"go-taas.com/device-plugin":  "healthy",
 			},
 			Taints: []string{},
 			Resources: []snapshotResource{
@@ -227,9 +227,9 @@ func main() {
 			DevicePluginState: "healthy",
 			Readiness:         "ready",
 			Labels: map[string]string{
-				"go-taas.io/accelerator":    "metax",
-				"go-taas.io/driver-version": "3.1.0",
-				"go-taas.io/device-plugin":  "healthy",
+				"go-taas.com/accelerator":    "metax",
+				"go-taas.com/driver-version": "3.1.0",
+				"go-taas.com/device-plugin":  "healthy",
 			},
 			Taints: []string{},
 			Resources: []snapshotResource{

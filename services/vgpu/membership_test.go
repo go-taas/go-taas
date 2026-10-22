@@ -22,7 +22,7 @@ func TestMembershipConsumerHandle(t *testing.T) {
 		Nodes: []acceleratorNode{
 			{
 				NodeID: "n1", Name: "node-a",
-				Labels: map[string]string{"go-taas.io/vgpu-pool": "pool-a"},
+				Labels: map[string]string{"go-taas.com/vgpu-pool": "pool-a"},
 				GPUs: []acceleratorGPU{{
 					Index: 0, Model: "A800",
 					Slices: []sliceAllocation{{TemplateName: "small", ServiceID: "s1", MemoryGiB: 8, ComputePct: 25}},
@@ -34,7 +34,7 @@ func TestMembershipConsumerHandle(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, consumer.handle(context.Background(), mq.Message{Subject: "accelerator.inventory", Body: body}))
 
-	assert.Equal(t, int64(1), proj.NodeCount("pool-a", "go-taas.io/vgpu-pool", "pool-a"))
+	assert.Equal(t, int64(1), proj.NodeCount("pool-a", "go-taas.com/vgpu-pool", "pool-a"))
 
 	// A malformed snapshot is skipped without error.
 	require.NoError(t, consumer.handle(context.Background(), mq.Message{Subject: "accelerator.inventory", Body: []byte("{bad")}))
@@ -45,7 +45,7 @@ func TestMembershipUtilization(t *testing.T) {
 	proj.Replace(map[string]*acceleratorNode{
 		"n1": {
 			NodeID: "n1", Name: "node-a",
-			Labels: map[string]string{"go-taas.io/vgpu-pool": "pool-a"},
+			Labels: map[string]string{"go-taas.com/vgpu-pool": "pool-a"},
 			GPUs: []acceleratorGPU{{
 				Index: 0, Model: "A800",
 				Slices: []sliceAllocation{{TemplateName: "small", ServiceID: "s1", MemoryGiB: 8, ComputePct: 25}},
@@ -53,7 +53,7 @@ func TestMembershipUtilization(t *testing.T) {
 		},
 	})
 	// No total memory is tracked in the projection, so utilization is 0.
-	assert.Equal(t, int64(0), proj.Utilization("pool-a", "go-taas.io/vgpu-pool", "pool-a"))
+	assert.Equal(t, int64(0), proj.Utilization("pool-a", "go-taas.com/vgpu-pool", "pool-a"))
 }
 
 func TestMembershipConsumerRun(_ *testing.T) {

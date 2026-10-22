@@ -184,7 +184,7 @@ func TestFVTvgpuAdminLifecycle(t *testing.T) {
 	// Create a pool.
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/vgpu-pools", map[string]any{
 		"name":            "pool-a",
-		"labelKey":        "go-taas.io/vgpu-pool",
+		"labelKey":        "go-taas.com/vgpu-pool",
 		"labelValue":      "pool-a",
 		"placementPolicy": "binpack",
 		"templates": []map[string]any{
@@ -252,7 +252,7 @@ func TestFVTvgpuDeleteBlocked(t *testing.T) {
 	env := newVgpuFvtEnv(t)
 
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/vgpu-pools", map[string]any{
-		"name": "pool-a", "labelKey": "go-taas.io/vgpu-pool", "labelValue": "pool-a",
+		"name": "pool-a", "labelKey": "go-taas.com/vgpu-pool", "labelValue": "pool-a",
 		"placementPolicy": "binpack",
 		"templates":       []map[string]any{{"name": "small", "memoryGib": 8, "computePct": 25}},
 	}, true)
@@ -274,7 +274,7 @@ func TestFVTvgpuTenantList(t *testing.T) {
 	env := newVgpuFvtEnv(t)
 
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/vgpu-pools", map[string]any{
-		"name": "pool-a", "labelKey": "go-taas.io/vgpu-pool", "labelValue": "pool-a",
+		"name": "pool-a", "labelKey": "go-taas.com/vgpu-pool", "labelValue": "pool-a",
 		"placementPolicy": "binpack",
 		"templates":       []map[string]any{{"name": "small", "memoryGib": 8, "computePct": 25}},
 	}, true)
@@ -319,7 +319,7 @@ func TestFVTvgpuDeploySliceValidation(t *testing.T) {
 	env := newVgpuFvtEnv(t)
 
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/vgpu-pools", map[string]any{
-		"name": "pool-a", "labelKey": "go-taas.io/vgpu-pool", "labelValue": "pool-a",
+		"name": "pool-a", "labelKey": "go-taas.com/vgpu-pool", "labelValue": "pool-a",
 		"placementPolicy": "binpack",
 		"templates":       []map[string]any{{"name": "small", "memoryGib": 8, "computePct": 25}},
 	}, true)

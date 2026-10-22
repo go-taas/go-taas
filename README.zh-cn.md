@@ -6,6 +6,7 @@
 
 **Token as a Service —— 基于 Kubernetes、面向智能体与应用的开源大模型推理服务与计量计费平台**
 
+[![官方网站](https://img.shields.io/badge/Website-go--taas.com-007F86.svg)](https://go-taas.com)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](./LICENSE)
 [![Go Version](https://img.shields.io/badge/Go-1.26+-00ADD8.svg)](https://golang.org/)
 [![PRs Welcome](https://img.shields.io/badge/PRs-Welcome-brightgreen.svg)](./CONTRIBUTING.md)
@@ -336,7 +337,7 @@ curl https://<your-taas-host>/v1/chat/completions \
 
 ## 文档
 
-在**[文档浏览器](https://go-taas.com/docs.html)**中阅读完整文档集 —— 支持搜索、中英双语、目录导航与图表渲染 —— 也可直接打开单个文档：
+项目官方网站为 **[go-taas.com](https://go-taas.com)**。在**[文档浏览器](https://go-taas.com/docs.html)**中阅读完整文档集 —— 支持搜索、中英双语、目录导航与图表渲染 —— 也可直接打开单个文档：
 
 | 文档 | 语言 |
 | --- | --- |
@@ -374,6 +375,7 @@ curl https://<your-taas-host>/v1/chat/completions \
 
 ## 社区
 
+- [官方网站](https://go-taas.com) —— 项目主页与文档浏览器
 - [GitHub Issues](https://github.com/go-taas/go-taas/issues) —— 缺陷报告与功能请求
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) —— 问题与开放讨论
 - [治理规则](./GOVERNANCE.zh-cn.md) —— 角色、权限、晋升与决策机制

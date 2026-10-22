@@ -228,7 +228,7 @@ vgpu:
     memResource: "nvidia.com/gpumem"
     coreResource: "nvidia.com/gpucores"
     policyAnnotation: "hami.io/gpu-scheduler-policy"
-    poolLabelPrefix: "go-taas.io/vgpu-pool"
+    poolLabelPrefix: "go-taas.com/vgpu-pool"
 
 # Feature #53: fault diagnosis & automatic fault tolerance. The fault
 # module owns the incident lifecycle, the deterministic root-cause

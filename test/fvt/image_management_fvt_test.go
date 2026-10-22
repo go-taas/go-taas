@@ -241,7 +241,7 @@ func TestFVTImageManagement(t *testing.T) {
 	// AC7: trigger a warmup task.
 	env.mqBus.warmups = nil
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/images/"+imageID+":warmup", map[string]any{
-		"nodeSelector": map[string]string{"taas.go-taas.github.io/accelerator": "nvidia"},
+		"nodeSelector": map[string]string{"go-taas.com/accelerator": "nvidia"},
 	})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	taskID, _ := body["taskId"].(string)

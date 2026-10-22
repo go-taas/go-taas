@@ -77,7 +77,7 @@ func TestServiceGetAcceleratorNode(t *testing.T) {
 				{Index: 0, Model: "A800", Allocated: true, Free: false, Note: ""},
 				{Index: 1, Model: "A800", Allocated: false, Free: true, Note: ""},
 			},
-			Labels: map[string]string{"go-taas.io/accelerator": "nvidia"},
+			Labels: map[string]string{"go-taas.com/accelerator": "nvidia"},
 			Taints: []string{"dedicated=gpu:NoSchedule"},
 			Resources: []AcceleratorResource{
 				{CardType: "A800", Allocatable: 8, Allocated: 2},
@@ -97,7 +97,7 @@ func TestServiceGetAcceleratorNode(t *testing.T) {
 	require.Len(t, resp.Node.Gpus, 2)
 	assert.EqualValues(t, 0, resp.Node.Gpus[0].Index)
 	assert.True(t, resp.Node.Gpus[0].Allocated)
-	assert.Equal(t, "nvidia", resp.Node.Labels["go-taas.io/accelerator"])
+	assert.Equal(t, "nvidia", resp.Node.Labels["go-taas.com/accelerator"])
 	require.Len(t, resp.Node.Taints, 1)
 	require.Len(t, resp.Node.Resources, 1)
 	assert.EqualValues(t, 8, resp.Node.Resources[0].Allocatable)

@@ -401,9 +401,9 @@ func (r *k8sReconciler) buildWarmupPod(task warmupTask, podName, node string) *c
 			Name:      podName,
 			Namespace: r.namespace,
 			Labels: map[string]string{
-				"app.kubernetes.io/managed-by":     "taas-controller",
-				"taas.go-taas.github.io/task-type": "image-warmup",
-				"taas.go-taas.github.io/task-id":   task.TaskID,
+				"app.kubernetes.io/managed-by": "taas-controller",
+				"go-taas.com/task-type":        "image-warmup",
+				"go-taas.com/task-id":          task.TaskID,
 			},
 		},
 		Spec: corev1.PodSpec{
@@ -778,7 +778,7 @@ func (r *k8sReconciler) ensureWeightsPVC(ctx context.Context) error {
 			Namespace: r.namespace,
 			Labels: map[string]string{
 				"app.kubernetes.io/managed-by": "taas-controller",
-				"taas.go-taas.github.io/role":  "model-weights",
+				"go-taas.com/role":             "model-weights",
 			},
 		},
 		Spec: corev1.PersistentVolumeClaimSpec{
@@ -1092,19 +1092,19 @@ func hpaName(name string) string { return "hpa-" + name }
 // Service for one inference service.
 func resourceLabels(evt changeEvent) map[string]string {
 	return map[string]string{
-		"app.kubernetes.io/managed-by":      "taas-controller",
-		"taas.go-taas.github.io/service-id": evt.ServiceID,
-		"app":                               evt.Name,
+		"app.kubernetes.io/managed-by": "taas-controller",
+		"go-taas.com/service-id":       evt.ServiceID,
+		"app":                          evt.Name,
 	}
 }
 
 // acceleratorNodeSelector maps the accelerator request to node labels.
 func acceleratorNodeSelector(accelerator, acceleratorType string) map[string]string {
 	selector := map[string]string{
-		"taas.go-taas.github.io/accelerator": accelerator,
+		"go-taas.com/accelerator": accelerator,
 	}
 	if acceleratorType != "" {
-		selector["taas.go-taas.github.io/accelerator-type"] = acceleratorType
+		selector["go-taas.com/accelerator-type"] = acceleratorType
 	}
 	return selector
 }

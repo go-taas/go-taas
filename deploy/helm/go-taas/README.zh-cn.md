@@ -17,6 +17,40 @@
 
 Chart 不创建 Ingress。对外暴露方式由 `taasServer.service.type`（`ClusterIP`、`NodePort`、`LoadBalancer`）决定，或在网关端口前自行添加 Ingress。
 
+项目链接：[官方网站](https://go-taas.com) ·
+[文档](https://go-taas.com/docs.html) ·
+[源码](https://github.com/go-taas/go-taas) ·
+[社区支持](https://github.com/go-taas/go-taas/discussions)。
+
+## 资源标签
+
+Chart 创建的每个资源都带 Kubernetes 推荐标签：
+
+| 标签 | 取值 |
+| --- | --- |
+| `helm.sh/chart` | `<chart>-<version>` |
+| `app.kubernetes.io/name` | Chart 名称（`go-taas`，可用 `nameOverride` 覆盖） |
+| `app.kubernetes.io/instance` | Release 名称 |
+| `app.kubernetes.io/version` | Chart 的 `appVersion` |
+| `app.kubernetes.io/managed-by` | Chart 资源为 `Helm`，Controller 创建的资源为 `taas-controller` |
+| `app.kubernetes.io/part-of` | `go-taas` |
+| `app.kubernetes.io/component` | `server`、`controller`、`postgresql`、`redis` 或 `rabbitmq` |
+
+平台自有键统一使用项目自己的 DNS 前缀 `go-taas.com/`（取自官方网站）。不要使用项目并不拥有的域名（已弃用的 `taas.go-taas.github.io/` 与 `go-taas.io/`）：标签前缀应当能被使用方解析。
+
+| 键 | 设置位置 | 含义 |
+| --- | --- | --- |
+| `go-taas.com/service-id` | 推理 Deployment、Service、Pod、ModelClaim | 所属推理服务 |
+| `go-taas.com/replica-index` | 推理 Pod | 掩码后的副本序号 |
+| `go-taas.com/accelerator`、`go-taas.com/accelerator-type` | 推理 Pod（node selector）、节点 | 请求的加速卡厂商与卡型 |
+| `go-taas.com/driver-version`、`go-taas.com/device-plugin` | 节点 | 加速卡驱动与 device-plugin 健康信号 |
+| `go-taas.com/model`、`go-taas.com/model-id`、`go-taas.com/origin` | ModelClaim | 模型名、目录 ID，以及 Claim 来自服务还是注册 |
+| `go-taas.com/task-type`、`go-taas.com/task-id` | 镜像预热 Job | 预热任务标识 |
+| `go-taas.com/role` | compose 集群资源 | 存储卷、Secret 或命名空间的静态角色 |
+| `go-taas.com/vgpu-pool` | 节点 | vGPU 池成员（`vgpu.hami.poolLabelPrefix`，可配置） |
+
+出现在 selector 中的键属于 API 面：改动会滚动受影响的工作负载，因此按迁移处理，而不是改名。`taasServer.podLabels`、`controller.podLabels` 与各依赖的 `podLabels` 用于追加标签，不会覆盖上表。
+
 ## 环境要求
 
 * Kubernetes 1.25+

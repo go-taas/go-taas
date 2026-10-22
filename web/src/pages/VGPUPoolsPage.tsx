@@ -199,7 +199,7 @@ function CreatePoolDialog({
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [name, setName] = useState('');
-  const [labelKey, setLabelKey] = useState('go-taas.io/vgpu-pool');
+  const [labelKey, setLabelKey] = useState('go-taas.com/vgpu-pool');
   const [labelValue, setLabelValue] = useState('');
   const [policy, setPolicy] = useState('binpack');
   const [rows, setRows] = useState<TemplateRow[]>([

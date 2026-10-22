@@ -84,7 +84,7 @@ func createPool(t *testing.T, svc *Service, name string) string {
 	t.Helper()
 	resp, err := svc.CreateVGPUPool(context.Background(), &vgpuv1.CreateVGPUPoolRequest{
 		Name:            name,
-		LabelKey:        "go-taas.io/vgpu-pool",
+		LabelKey:        "go-taas.com/vgpu-pool",
 		LabelValue:      "pool-a",
 		PlacementPolicy: PolicyBinpack,
 		Templates: []*vgpuv1.SliceTemplate{
@@ -299,7 +299,7 @@ func TestMembershipProjection(t *testing.T) {
 	proj.Replace(map[string]*acceleratorNode{
 		"n1": {
 			NodeID: "n1", Name: "node-a",
-			Labels: map[string]string{"go-taas.io/vgpu-pool": "pool-a"},
+			Labels: map[string]string{"go-taas.com/vgpu-pool": "pool-a"},
 			GPUs: []acceleratorGPU{{
 				Index: 0, Model: "A800",
 				Slices: []sliceAllocation{{TemplateName: "small", ServiceID: "s1", MemoryGiB: 8, ComputePct: 25}},
@@ -308,9 +308,9 @@ func TestMembershipProjection(t *testing.T) {
 		"n2": {NodeID: "n2", Name: "node-b", Labels: map[string]string{}},
 	})
 
-	assert.Equal(t, int64(1), proj.NodeCount("pool-a", "go-taas.io/vgpu-pool", "pool-a"))
-	assert.Len(t, proj.Nodes("pool-a", "go-taas.io/vgpu-pool", "pool-a"), 1)
-	agg := proj.TemplateAllocation("pool-a", "go-taas.io/vgpu-pool", "pool-a")
+	assert.Equal(t, int64(1), proj.NodeCount("pool-a", "go-taas.com/vgpu-pool", "pool-a"))
+	assert.Len(t, proj.Nodes("pool-a", "go-taas.com/vgpu-pool", "pool-a"), 1)
+	agg := proj.TemplateAllocation("pool-a", "go-taas.com/vgpu-pool", "pool-a")
 	assert.Equal(t, int64(1), agg["small"].Allocated)
 }
 
@@ -324,7 +324,7 @@ func TestGetVGPUPoolWithProjection(t *testing.T) {
 	svc.membership.Replace(map[string]*acceleratorNode{
 		"n1": {
 			NodeID: "n1", Name: "node-a", Health: "healthy",
-			Labels: map[string]string{"go-taas.io/vgpu-pool": "pool-a"},
+			Labels: map[string]string{"go-taas.com/vgpu-pool": "pool-a"},
 			GPUs: []acceleratorGPU{{
 				Index: 0, Model: "A800", Allocated: true, Free: false,
 				Slices: []sliceAllocation{{TemplateName: "small", ServiceID: "s1", MemoryGiB: 8, ComputePct: 25}},
@@ -350,7 +350,7 @@ func TestUpdateVGPUPoolLabelAndTemplates(t *testing.T) {
 	poolID := createPool(t, svc, "pool-a")
 
 	// Change the label selector.
-	labelKey := "go-taas.io/vgpu-pool"
+	labelKey := "go-taas.com/vgpu-pool"
 	labelValue := "pool-b"
 	resp, err := svc.UpdateVGPUPool(ctx, &vgpuv1.UpdateVGPUPoolRequest{
 		PoolId: poolID, LabelKey: &labelKey, LabelValue: &labelValue,
@@ -377,7 +377,7 @@ func TestUpdateVGPUPoolLabelAndTemplates(t *testing.T) {
 
 	// Invalid templates.
 	_, err = svc.UpdateVGPUPool(ctx, &vgpuv1.UpdateVGPUPoolRequest{
-		PoolId: poolID,
+		PoolId:    poolID,
 		Templates: []*vgpuv1.SliceTemplate{{Name: "small", MemoryGib: 0, ComputePct: 25}},
 	})
 	assert.EqualValues(t, apierrors.CodeVGPUSliceTemplateInvalid, apierrors.CodeOf(err))

@@ -12,7 +12,8 @@ version: 0.1.0
 # v<appVersion>.
 appVersion: "1.62.2"
 kubeVersion: ">=1.25.0-0"
-home: https://github.com/go-taas/go-taas
+home: https://go-taas.com
+icon: https://go-taas.com/assets/avatar-512.png
 sources:
   - https://github.com/go-taas/go-taas
 keywords:
@@ -23,6 +24,16 @@ keywords:
   - ai-platform
 maintainers:
   - name: The go-taas Authors
-    url: https://github.com/go-taas/go-taas
+    url: https://go-taas.com
 annotations:
   category: AI/MachineLearning
+  artifacthub.io/license: Apache-2.0
+  artifacthub.io/links: |
+    - name: Website
+      url: https://go-taas.com
+    - name: Documentation
+      url: https://go-taas.com/docs.html
+    - name: Source
+      url: https://github.com/go-taas/go-taas
+    - name: Support
+      url: https://github.com/go-taas/go-taas/discussions

@@ -15,9 +15,9 @@ import (
 
 // Accelerator vendor labels (AD3). The vendor set is closed.
 const (
-	labelAcceleratorVendor = "go-taas.io/accelerator"
-	labelDriverVersion     = "go-taas.io/driver-version"
-	labelDevicePlugin      = "go-taas.io/device-plugin"
+	labelAcceleratorVendor = "go-taas.com/accelerator"
+	labelDriverVersion     = "go-taas.com/driver-version"
+	labelDevicePlugin      = "go-taas.com/device-plugin"
 )
 
 // inventoryNode is one node's raw signals in the published snapshot

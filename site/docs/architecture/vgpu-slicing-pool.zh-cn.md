@@ -41,7 +41,7 @@ AD1–AD10 把 UI/UX 设计的决策（D1–D8）重述为实现级规则；AD11
 
 | # | 决策 | 理由 |
 | --- | --- | --- |
-| AD1 | **池是一组由节点标签指定的命名节点。** 运营者创建池、选标签键/值（如 `go-taas.io/vgpu-pool=pool-a`），任何带该标签的节点都是成员。成员是**声明式**的：Controller 观察节点上的标签选择器并上报成员；失去标签的节点离开池（其切片随服务结束自然排空） | 设计 D1。契合架构的节点标签模型（§2.3）与 HAMI 自身的 `gpu=on` 加入；成员能承受节点更替（新打标签的节点自动加入） |
+| AD1 | **池是一组由节点标签指定的命名节点。** 运营者创建池、选标签键/值（如 `go-taas.com/vgpu-pool=pool-a`），任何带该标签的节点都是成员。成员是**声明式**的：Controller 观察节点上的标签选择器并上报成员；失去标签的节点离开池（其切片随服务结束自然排空） | 设计 D1。契合架构的节点标签模型（§2.3）与 HAMI 自身的 `gpu=on` 加入；成员能承受节点更替（新打标签的节点自动加入） |
 | AD2 | **共享按服务可选，且只在池节点上。** 部署可选"共享 GPU"模式；不选则如今天一样拿整卡。非池节点永不共享 | 设计 D2。共享有隔离/性能权衡；租户与运营者必须刻意选择 |
 | AD3 | **切片模板是有界词汇。** 池定义命名模板（如 `small` = 8 GiB / 25% 算力、`medium` = 16 GiB / 50%、`large` = 24 GiB / 75%）；部署选模板，绝不选原始显存/算力值 | 设计 D3。让容量规划诚实（运营者控制切分）且部署表单简单（下拉而非两个数字字段） |
 | AD4 | **HAMI 是共享机制；go-taas 保持厂商中立。** Controller 发出 HAMI 注解；HAMI 在一个资源模型下处理 NVIDIA（含 MIG）、Iluvatar、MetaX 等后端 | 设计 D4。平台已把 HAMI 列为加速器层灵感；把设备共享委托给 HAMI 让 go-taas 保持厂商中立，避免重造设备虚拟化 |
@@ -113,7 +113,7 @@ flowchart TD
 
     subgraph k8s["Kubernetes"]
         POD["推理 Pod<br/>HAMI 设备注解"]
-        NODE["池节点<br/>go-taas.io/vgpu-pool=pool-a"]
+        NODE["池节点<br/>go-taas.com/vgpu-pool=pool-a"]
     end
 
     AC --> GUARD
@@ -143,7 +143,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `id` | `uuid` | PRIMARY KEY | 服务端生成 UUID v4，暴露为 `pool_id` |
 | `name` | `varchar(63)` | NOT NULL, UNIQUE | DNS 安全池名，1–63 字符（FR1.2） |
-| `label_key` | `varchar(128)` | NOT NULL | 节点标签键，如 `go-taas.io/vgpu-pool` |
+| `label_key` | `varchar(128)` | NOT NULL | 节点标签键，如 `go-taas.com/vgpu-pool` |
 | `label_value` | `varchar(128)` | NOT NULL | 节点标签值，如 `pool-a` |
 | `placement_policy` | `varchar(16)` | NOT NULL DEFAULT 'binpack' | `binpack` / `spread` / `mutex`（AD15） |
 | `templates` | `jsonb` | NOT NULL DEFAULT '[]' | 切片模板数组（name、memory_gib、compute_pct、description） |
@@ -455,7 +455,7 @@ HAMI 不在本仓库；下面的契约对数据面轨道有约束力，并在 FV
 
 1. **资源请求**：Pod 的引擎容器请求 HAMI 扩展资源而非整卡 — `nvidia.com/gpumem` = 模板显存 MiB、`nvidia.com/gpucores` = 模板算力百分比（设计 §6 注 3）。对非 NVIDIA 加速器，应用等价的 HAMI 资源名（协调器中的 `gpuResourceName` 映射被扩展）。
 2. **放置策略注解**：Pod 携带 `hami.io/gpu-scheduler-policy` = 池的放置策略（`binpack` / `spread` / `mutex`）（设计 §6 注 3，AD15）。
-3. **节点亲和**：Pod 的 `nodeSelector` 被约束到池的标签选择器（`go-taas.io/vgpu-pool=pool-a`），让 HAMI 只在池节点上调度（AD2 — 非池节点永不共享）。
+3. **节点亲和**：Pod 的 `nodeSelector` 被约束到池的标签选择器（`go-taas.com/vgpu-pool=pool-a`），让 HAMI 只在池节点上调度（AD2 — 非池节点永不共享）。
 4. **已分配切片上报**：一旦 HAMI 调度切片，Controller 读 Pod 的节点与 HAMI 设备注解，在 `infer.services.status` 主题上上报分配的物理 GPU（节点 + GPU 索引）（AD14）。
 
 契约逐项：
@@ -559,7 +559,7 @@ sequenceDiagram
     VGPU->>VGPU: INSERT vgpu_pools
     VGPU->>AUD: pool.created（运营者，旧 -> 新）
     VGPU-->>UI: pool_id，成功 toast，导航到详情
-    Op->>UI: 用选择器给节点打标签（go-taas.io/vgpu-pool=pool-a）
+    Op->>UI: 用选择器给节点打标签（go-taas.com/vgpu-pool=pool-a）
     Note over ACC: 清单快照在间隔内（30 秒）拾取标签
     Ten->>DEP: 打开共享 GPU，选池 + 模板
     DEP->>VGPU: GET /api/v1/admin/vgpu-pools（平台范围）
@@ -627,7 +627,7 @@ sequenceDiagram
 | `vgpu.hami.memResource` | string | `"nvidia.com/gpumem"` | HAMI 显存资源名（第 5.3 节） |
 | `vgpu.hami.coreResource` | string | `"nvidia.com/gpucores"` | HAMI 算力资源名 |
 | `vgpu.hami.policyAnnotation` | string | `"hami.io/gpu-scheduler-policy"` | 放置策略注解名 |
-| `vgpu.hami.poolLabelPrefix` | string | `"go-taas.io/vgpu-pool"` | 默认池标签键前缀 |
+| `vgpu.hami.poolLabelPrefix` | string | `"go-taas.com/vgpu-pool"` | 默认池标签键前缀 |
 
 `configs/config.yaml` 增加：
 
@@ -644,7 +644,7 @@ vgpu:
     memResource: "nvidia.com/gpumem"
     coreResource: "nvidia.com/gpucores"
     policyAnnotation: "hami.io/gpu-scheduler-policy"
-    poolLabelPrefix: "go-taas.io/vgpu-pool"
+    poolLabelPrefix: "go-taas.com/vgpu-pool"
 ```
 
 ---
@@ -791,7 +791,7 @@ CodeVGPUPoolNotFound          Code = 13406 // VGPU_POOL_NOT_FOUND
 
 ### 13.8 前端详细设计
 
-- **`VGPUPoolsPage`**（`/admin/vgpu-pools`）：加载 `GET /api/v1/admin/vgpu-pools?{page, name, placement_policy}`；渲染池表格 — 名称、节点标签选择器（"`go-taas.io/vgpu-pool=pool-a`"）、放置策略、模板（"small, medium, large"）、节点（数量）、分配（"small 12/20 · medium 3/8"）、利用率（条，琥珀 ≥ 80%、红 100%）。过滤条：名称搜索、放置策略过滤、分页。行点击打开详情。**创建对话框**：名称（必填、DNS 安全、1–63、唯一 — 内联校验）、节点标签选择器（键 + 值、必填）、放置策略（下拉、默认 binpack）、`SliceTemplateEditor`（加行：名称、显存 GiB、算力 %、描述；按 FR2.2 校验）。保存 → `POST /api/v1/admin/vgpu-pools`；**13401/13402** 响应高亮违规字段并带服务端文案；成功显示 toast 并导航到新池详情。状态：加载骨架；空（"No vGPU pools yet — create one to share GPUs across small inference jobs"）；错误（陈旧带重试）；权限拒绝（10036，链接 `/admin`）。
+- **`VGPUPoolsPage`**（`/admin/vgpu-pools`）：加载 `GET /api/v1/admin/vgpu-pools?{page, name, placement_policy}`；渲染池表格 — 名称、节点标签选择器（"`go-taas.com/vgpu-pool=pool-a`"）、放置策略、模板（"small, medium, large"）、节点（数量）、分配（"small 12/20 · medium 3/8"）、利用率（条，琥珀 ≥ 80%、红 100%）。过滤条：名称搜索、放置策略过滤、分页。行点击打开详情。**创建对话框**：名称（必填、DNS 安全、1–63、唯一 — 内联校验）、节点标签选择器（键 + 值、必填）、放置策略（下拉、默认 binpack）、`SliceTemplateEditor`（加行：名称、显存 GiB、算力 %、描述；按 FR2.2 校验）。保存 → `POST /api/v1/admin/vgpu-pools`；**13401/13402** 响应高亮违规字段并带服务端文案；成功显示 toast 并导航到新池详情。状态：加载骨架；空（"No vGPU pools yet — create one to share GPUs across small inference jobs"）；错误（陈旧带重试）；权限拒绝（10036，链接 `/admin`）。
 - **`VGPUPoolDetailPage`**（`/admin/vgpu-pools/:poolId`）：加载 `GET /api/v1/admin/vgpu-pools/{pool_id}`；渲染池头部（名称、选择器、策略、聚合利用率条、编辑/删除操作）、节点成员表（节点、物理 GPU 型号 + 数量、按 GPU 分配带可展开行显示每块 GPU 的已分配切片：模板、服务、显存/算力已用 vs 空闲、来自加速器清单的健康；放不下任何模板时节点 `full`）、使用切片服务表（服务、模板、物理 GPU、显存/算力、状态、链接服务详情）。**编辑对话框**：放置策略 + `SliceTemplateEditor`；改选择器警告"成员将随新标签变化"；改模板警告"运行中服务保留其当前切片"。保存 → `PATCH /api/v1/admin/vgpu-pools/{pool_id}`。**删除流程**：删除打开确认对话框；若有服务使用池，服务端返回 **13405**，对话框显示"N 个服务正在使用此池。删除前请先迁移或删除这些服务。"并禁用删除。状态：加载；空（池无成员节点 — "No nodes carry this label yet"；提示给节点打标签）；错误；权限拒绝。
 - **`DeployDialog`**（共享 GPU 模式）：在加速器/卡型字段下方，一个**"共享 GPU"开关**（默认关）。关时无变化。开时：出现**池下拉**（来自 `GET /api/v1/admin/vgpu-pools`，平台范围 — 管理面读取）；选池把加速器/卡型字段约束到池的节点；出现**切片模板下拉**（来自所选池），每个选项标注"small — 8 GiB / 25% compute"并带短描述；出现**共享 GPU 说明**（"This service will share a physical GPU with other services. Memory and compute are isolated best-effort; performance is not guaranteed."）。提交调用 `POST /api/v1/admin/inference-services` 并带 `pool_id` + `slice_template_id`；**13403** 响应显示内联文案。状态：加载（池获取中）；空（无共享 GPU 池 — "No shared-GPU pools are available for your organization" 且开关禁用带 tooltip）；错误（陈旧带重试）。
 - **`ServiceDetailPage`**（切片卡片）：服务为共享 GPU 时，规格区出现**切片卡片**：池名、模板（"small — 8 GiB / 25%"）、调度后分配的物理 GPU（"node-a · GPU 0"）。整卡服务无切片卡片。卡片在用户面不链接任何东西（池详情仅限管理面）；它是信息性的。

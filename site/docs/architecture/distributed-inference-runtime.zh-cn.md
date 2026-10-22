@@ -862,9 +862,9 @@ metadata:
   namespace: <controller namespace>       # r.namespace (e.g. taas-infer)
   labels:
     app.kubernetes.io/managed-by: taas-controller
-    taas.go-taas.github.io/service-id: <evt.ServiceID>
-    taas.go-taas.github.io/model-id: <evt.Model.ModelID>
-    taas.go-taas.github.io/origin: service
+    go-taas.com/service-id: <evt.ServiceID>
+    go-taas.com/model-id: <evt.Model.ModelID>
+    go-taas.com/origin: service
 spec:
   modelName: <evt.Name>
   engine: <evt.Image.Engine>              # vllm | sglang
@@ -884,14 +884,14 @@ metadata:
   namespace: <controller namespace>
   labels:
     app.kubernetes.io/managed-by: taas-controller
-    taas.go-taas.github.io/origin: registration
+    go-taas.com/origin: registration
 spec:
   modelName: <model_name>
   engine: <engine>
   artifactURL: <artifact_url>
   replicas: <replicas>
   podSelector:
-    matchLabels: <pod_selector>            # user-supplied, else {taas.go-taas.github.io/model: <model_name>}
+    matchLabels: <pod_selector>            # user-supplied, else {go-taas.com/model: <model_name>}
   engineConfig:
     args: <engine_args>                    # omitted when empty
 ```
@@ -910,7 +910,7 @@ spec:
    - 读取 Envoy AI Gateway Deployment `cfg.Runtime.AIBrix.Gateway`（`envoy-aibrix-system-aibrix-eg`）作为 `gateway` 组件，同一映射。
    - `runtime_version` 取自 `aibrix-controller-manager` Deployment 的镜像 tag（尽力而为，不可用时为空）。
    - `availability`：每个期望组件都 `ready` 时 `available`；至少一个为 `progressing`/`degraded`/`unavailable` 但至少一个 `ready` 时 `degraded`；无一 `ready` 时 `unavailable`。
-   - 列出 `ModelClaim`（dynamic client，控制器命名空间，以及配置时的 AIBrix 命名空间）并把每个投影为 `RegisteredModel`：`engine` 取自 `spec.engine`；`replicas` 取自 `spec.replicas`；`ready_candidates` 取自 `status.candidates`；`status`/`conditions` 取自 `status.conditions`（Ready=True → `ready`；Ready=False 带失败原因 → `failed`；无 Ready condition 但 candidates > 0 → `progressing`；否则 `degraded`/`unknown`）；`created_at` 取自 `metadata.creationTimestamp`；`origin` 取自 `taas.go-taas.github.io/origin` 标签。
+   - 列出 `ModelClaim`（dynamic client，控制器命名空间，以及配置时的 AIBrix 命名空间）并把每个投影为 `RegisteredModel`：`engine` 取自 `spec.engine`；`replicas` 取自 `spec.replicas`；`ready_candidates` 取自 `status.candidates`；`status`/`conditions` 取自 `status.conditions`（Ready=True → `ready`；Ready=False 带失败原因 → `failed`；无 Ready condition 但 candidates > 0 → `progressing`；否则 `degraded`/`unknown`）；`created_at` 取自 `metadata.creationTimestamp`；`origin` 取自 `go-taas.com/origin` 标签。
 3. `scheme=plain`：发布回退组件 — `go-taas-controller`（`fallback`，Controller 运行时 `ready`，即产生此快照时总是）与 `kubernetes-api`（`fallback`，列表调用成功时 `ready`）— 空 `models` 数组与 `availability=available`。
 4. 列表/轮询错误时：发布 `availability=unavailable`（或首个成功快照前的 `unknown`），在 Controller 内存中保留**最后已知**组件与模型，把 `reason` 设为简短消息，并在下一 tick 继续 — **绝不**中止循环。
 5. 把全量快照以 JSON 发布到 `subjects.RuntimeHealth`。

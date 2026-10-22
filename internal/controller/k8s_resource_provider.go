@@ -17,11 +17,11 @@ import (
 // labelServiceID is the label the controller sets on inference pods to
 // identify the owning service (feature #37, AD2). It matches the label
 // the reconciler applies to inference Deployments.
-const labelServiceID = "go-taas.io/service-id"
+const labelServiceID = "go-taas.com/service-id"
 
 // labelReplicaIndex is the label the controller sets on inference pods
 // to carry the masked replica index (feature #37, AD1).
-const labelReplicaIndex = "go-taas.io/replica-index"
+const labelReplicaIndex = "go-taas.com/replica-index"
 
 // K8sResourceSampleProvider reads per-service per-replica CPU/memory
 // from the Kubernetes metrics-server and GPU utilization from the

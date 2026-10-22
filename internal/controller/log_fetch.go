@@ -38,7 +38,7 @@ func NewLogFetcher(client *k8s.Client, namespace string) infer.LogFetcher {
 
 // serviceLabelKey is the label the controller stamps on inference pods
 // (see resourceLabels in reconciler.go).
-const serviceLabelKey = "taas.go-taas.github.io/service-id"
+const serviceLabelKey = "go-taas.com/service-id"
 
 // ListServiceLogPods lists the service's pods by the service label and
 // returns each pod's containers and phase, masked as replica-N indices

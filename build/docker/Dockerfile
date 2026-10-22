@@ -115,7 +115,11 @@ ARG APT_MIRROR
 LABEL org.opencontainers.image.title="taas-server" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
-      org.opencontainers.image.created="${BUILD_TIME}"
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.url="https://go-taas.com" \
+      org.opencontainers.image.source="https://github.com/go-taas/go-taas" \
+      org.opencontainers.image.documentation="https://go-taas.com/docs.html" \
+      org.opencontainers.image.licenses="Apache-2.0"
 # Point apt at a reachable mirror when requested (restricted networks).
 RUN if [ -n "$APT_MIRROR" ]; then \
       sed -i "s|http://deb.debian.org/debian|${APT_MIRROR}/debian|; s|http://deb.debian.org/debian-security|${APT_MIRROR}/debian-security|" /etc/apt/sources.list.d/debian.sources; \
@@ -138,7 +142,11 @@ ARG BUILD_TIME
 LABEL org.opencontainers.image.title="taas-controller" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
-      org.opencontainers.image.created="${BUILD_TIME}"
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.url="https://go-taas.com" \
+      org.opencontainers.image.source="https://github.com/go-taas/go-taas" \
+      org.opencontainers.image.documentation="https://go-taas.com/docs.html" \
+      org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=builder /out/taas-controller /usr/local/bin/taas-controller
 COPY configs /etc/taas/configs
 WORKDIR /etc/taas
@@ -160,7 +168,11 @@ ARG BUILD_TIME
 LABEL org.opencontainers.image.title="taas-console" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
-      org.opencontainers.image.created="${BUILD_TIME}"
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.url="https://go-taas.com" \
+      org.opencontainers.image.source="https://github.com/go-taas/go-taas" \
+      org.opencontainers.image.documentation="https://go-taas.com/docs.html" \
+      org.opencontainers.image.licenses="Apache-2.0"
 COPY build/docker/console.nginx.conf /etc/nginx/templates/default.conf.template
 COPY --from=console-builder /web/dist/ /usr/share/nginx/html/
 # 8080 is unprivileged; nginx:alpine supports running as root only for

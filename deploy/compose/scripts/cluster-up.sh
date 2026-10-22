@@ -86,9 +86,8 @@ kubectl apply -f "${K8S_DIR}/redis-nodeport.yaml" >/dev/null
 
 echo ">> [cluster-up] adding accelerator node labels"
 kubectl label node --all \
-  taas.go-taas.github.io/accelerator=nvidia \
-  taas.go-taas.github.io/accelerator-type=gpu \
-  go-taas.io/accelerator=nvidia \
+  go-taas.com/accelerator=nvidia \
+  go-taas.com/accelerator-type=gpu \
   --overwrite >/dev/null
 
 echo ">> [cluster-up] done"

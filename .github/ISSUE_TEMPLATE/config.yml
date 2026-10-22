@@ -1,5 +1,8 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Project website
+    url: https://go-taas.com
+    about: Project homepage, quick start, and the searchable documentation browser.
   - name: Questions and discussion
     url: https://github.com/go-taas/go-taas/discussions
     about: Please ask questions and start discussions in GitHub Discussions.

@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "go-taas admin console (React + TypeScript).",
+  "homepage": "https://go-taas.com",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -522,7 +522,7 @@ func (c *Configuration) applyDefaults() {
 		c.VGPU.HAMI.PolicyAnnotation = "hami.io/gpu-scheduler-policy"
 	}
 	if c.VGPU.HAMI.PoolLabelPrefix == "" {
-		c.VGPU.HAMI.PoolLabelPrefix = "go-taas.io/vgpu-pool"
+		c.VGPU.HAMI.PoolLabelPrefix = "go-taas.com/vgpu-pool"
 	}
 	// Feature #53: fault-diagnosis defaults (Section 9). The debounce
 	// windows, the retention window, and the default auto-recovery

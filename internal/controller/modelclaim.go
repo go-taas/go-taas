@@ -28,10 +28,10 @@ var (
 // ModelClaim labels (feature #47, §13.4).
 const (
 	mcLabelManagedBy = "app.kubernetes.io/managed-by"
-	mcLabelOrigin    = "taas.go-taas.github.io/origin"
-	mcLabelServiceID = "taas.go-taas.github.io/service-id"
-	mcLabelModelID   = "taas.go-taas.github.io/model-id"
-	mcLabelModel     = "taas.go-taas.github.io/model"
+	mcLabelOrigin    = "go-taas.com/origin"
+	mcLabelServiceID = "go-taas.com/service-id"
+	mcLabelModelID   = "go-taas.com/model-id"
+	mcLabelModel     = "go-taas.com/model"
 
 	originService      = "service"
 	originRegistration = "registration"

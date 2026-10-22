@@ -106,7 +106,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [{name: 'small', memoryGib: 8, computePct: 25}]
@@ -141,7 +141,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [
@@ -255,7 +255,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [{name: 'small', memoryGib: 8, computePct: 25}]
@@ -316,7 +316,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [{name: 'small', memoryGib: 8, computePct: 25}]
@@ -386,7 +386,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [{name: 'small', memoryGib: 8, computePct: 25}]
@@ -423,7 +423,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [{name: 'small', memoryGib: 8, computePct: 25}]
@@ -479,7 +479,7 @@ module.exports = {
       sessionRealm: 'admin',
       body: {
         name,
-        labelKey: 'go-taas.io/vgpu-pool',
+        labelKey: 'go-taas.com/vgpu-pool',
         labelValue: name,
         placementPolicy: 'binpack',
         templates: [{name: 'small', memoryGib: 8, computePct: 25}]
