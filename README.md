@@ -375,20 +375,24 @@ feature backlog).
 | Phase 2 | ✅ Shipped | Price matrix, balance/quota, tiered pricing, async settlement, usage/cost analytics, payments/invoices/auto-recharge, audit logging, RBAC, notifications. |
 | Phase 3 | ✅ Shipped | Accelerator inventory & health, multi-vendor engine and image adaptation, model × engine × card-type compatibility matrix. |
 | Phase 4 | ✅ Shipped | Autoscaling, routing policies, load testing, observability & tracing, webhooks, notification center, prompt library & evaluation, batch inference, multi-cluster management, API docs explorer, data export, distributed inference runtime (AIBrix), external model providers, intelligent model routing, cost optimization, service quota management, vGPU slicing pools (HAMI), fault diagnosis & auto-recovery. |
-| Next | 🚧 Planned | RDMA networking, community operations (Helm one-click install has shipped via `deploy/helm/go-taas`; community operations remain tracked separately outside the feature backlog). |
+| Next | 🚧 Planned | RDMA networking; community operations are tracked separately outside the feature backlog (Helm one-click install via `deploy/helm/go-taas`, project governance via [GOVERNANCE.md](./GOVERNANCE.md)). |
 
 ## Contributing
 
-Contributions of all kinds are welcome — code, documentation, bug reports, and feature ideas. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup, commit conventions, and pull request guidelines.
+Contributions of all kinds are welcome — code, documentation, bug reports, and feature ideas. See [CONTRIBUTING.md](./CONTRIBUTING.md) for the development setup, commit conventions, and pull request guidelines, and [CONTRIBUTING.zh-cn.md](./CONTRIBUTING.zh-cn.md) for the Chinese version.
 
 - Follow [Conventional Commits](https://www.conventionalcommits.org/) (validated by commitlint)
 - Run `make lint` and `make ut` before submitting
 - Use the issue templates for bug reports and feature requests
+- New here? Pick a `good first issue` and say hello in Discussions
 
 ## Community
 
 - [GitHub Issues](https://github.com/go-taas/go-taas/issues) — bug reports and feature requests
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) — questions and open discussion
+- [Governance](./GOVERNANCE.md) — roles, permissions, promotion, and decision-making
+- [Maintainers](./MAINTAINERS.md) — current role holders, area ownership, and review service levels
+- [Role ladder](./CONTRIBUTING.md#community-roles-and-growth) — how to grow from contributor to maintainer; non-code contributions count
 
 ## Acknowledgements
 

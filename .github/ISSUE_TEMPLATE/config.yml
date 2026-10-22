@@ -3,3 +3,6 @@ contact_links:
   - name: Questions and discussion
     url: https://github.com/go-taas/go-taas/discussions
     about: Please ask questions and start discussions in GitHub Discussions.
+  - name: Community roles and promotion
+    url: https://github.com/go-taas/go-taas/blob/main/GOVERNANCE.md#4-promotion
+    about: Read the role ladder, promotion criteria, and recognition rules before opening a role request.

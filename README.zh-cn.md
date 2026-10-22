@@ -361,20 +361,24 @@ curl https://<your-taas-host>/v1/chat/completions \
 | Phase 2 | ✅ 已交付 | 价格矩阵、余额/额度、阶梯价、异步结算、用量/成本分析、支付/发票/自动充值、审计日志、RBAC、通知。 |
 | Phase 3 | ✅ 已交付 | 加速器清单与健康、多厂商引擎与镜像适配、模型 × 引擎 × 卡型兼容性矩阵。 |
 | Phase 4 | ✅ 已交付 | 弹性伸缩、路由策略、压测、可观测与链路追踪、Webhook、通知中心、提示词库与评测、批量推理、多集群管理、API 文档浏览器、数据导出、分布式推理运行时（AIBrix）、外部模型提供方、智能模型路由、成本优化、服务配额管理、vGPU 切分池（HAMI）、故障诊断与自动容错。 |
-| 后续 | 🚧 规划中 | RDMA 网络、社区运营（Helm 一键部署已上线：`deploy/helm/go-taas`；社区运营在特性待办之外单独跟踪）。 |
+| 后续 | 🚧 规划中 | RDMA 网络；社区运营在特性待办之外单独跟踪（Helm 一键部署见 `deploy/helm/go-taas`，项目治理见 [GOVERNANCE.zh-cn.md](./GOVERNANCE.zh-cn.md)）。 |
 
 ## 参与贡献
 
-欢迎各种形式的贡献 —— 代码、文档、缺陷报告与功能建议。开发环境、提交规范与 PR 指引见 [CONTRIBUTING.md](./CONTRIBUTING.md)。
+欢迎各种形式的贡献 —— 代码、文档、缺陷报告与功能建议。开发环境、提交规范与 PR 指引见 [CONTRIBUTING.md](./CONTRIBUTING.md)，中文版见 [CONTRIBUTING.zh-cn.md](./CONTRIBUTING.zh-cn.md)。
 
 - 遵循 [Conventional Commits](https://www.conventionalcommits.org/zh-hans/)（由 commitlint 校验）
 - 提交前运行 `make lint` 与 `make ut`
 - 缺陷报告与功能请求请使用 issue 模板
+- 第一次参与？挑一个 `good first issue`，在 Discussions 里打个招呼
 
 ## 社区
 
 - [GitHub Issues](https://github.com/go-taas/go-taas/issues) —— 缺陷报告与功能请求
 - [GitHub Discussions](https://github.com/go-taas/go-taas/discussions) —— 问题与开放讨论
+- [治理规则](./GOVERNANCE.zh-cn.md) —— 角色、权限、晋升与决策机制
+- [维护者名册](./MAINTAINERS.zh-cn.md) —— 当前角色持有者、领域归属与评审服务等级
+- [角色阶梯](./CONTRIBUTING.zh-cn.md#社区角色与成长) —— 从贡献者成长为维护者的路径；非代码贡献同样计入
 
 ## 致谢
 

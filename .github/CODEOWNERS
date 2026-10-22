@@ -1,0 +1,51 @@
+# Code owners for go-taas.
+#
+# Rules live in GOVERNANCE.md (§3 permission matrix, §6 two-person rule) and the
+# roster in MAINTAINERS.md. CODEOWNERS is the enforcement half of path
+# ownership: a matching owner is requested for review, and with "Require review
+# from Code Owners" enabled in branch protection, the pull request cannot merge
+# without it.
+#
+# Bootstrap note: the organization teams do not exist yet (see MAINTAINERS.md
+# §7). GitHub silently ignores a team handle that does not exist or lacks write
+# access, so the interim owner @sanmuny is listed on every rule until the teams
+# are created. Remove the individual handle from a rule once its team exists.
+#
+# The last matching pattern wins, so broad rules come first and high-risk paths
+# come last.
+
+# Default: every path needs a Maintainer review.
+*                                   @go-taas/maintainers @sanmuny
+
+# Core services, shared packages, and the controller.
+/services/                          @go-taas/area-core @sanmuny
+/pkg/                               @go-taas/area-core @sanmuny
+/internal/                          @go-taas/area-core @sanmuny
+
+# API contract.
+/proto/                             @go-taas/area-api @sanmuny
+
+# Web console.
+/web/                               @go-taas/area-web @sanmuny
+
+# Tests and end-to-end suites.
+/test/                              @go-taas/area-test @sanmuny
+
+# Documentation and the static site.
+/site/                              @go-taas/area-docs @sanmuny
+/site/docs/                         @go-taas/area-docs @sanmuny
+/*.md                               @go-taas/area-docs @sanmuny
+
+# High-risk paths: two-person rule (GOVERNANCE.md §6). A Steering member plus a
+# Maintainer must both review, so a release, workflow, or governance change can
+# never merge on a single approval.
+/deploy/                            @go-taas/steering @go-taas/maintainers @sanmuny
+/build/                             @go-taas/steering @go-taas/maintainers @sanmuny
+/.github/workflows/                 @go-taas/steering @go-taas/maintainers @sanmuny
+/.github/CODEOWNERS                 @go-taas/steering @go-taas/maintainers @sanmuny
+/GOVERNANCE.md                      @go-taas/steering @go-taas/maintainers @sanmuny
+/GOVERNANCE.zh-cn.md                @go-taas/steering @go-taas/maintainers @sanmuny
+/MAINTAINERS.md                     @go-taas/steering @go-taas/maintainers @sanmuny
+/MAINTAINERS.zh-cn.md               @go-taas/steering @go-taas/maintainers @sanmuny
+/CODE_OF_CONDUCT.md                 @go-taas/steering @go-taas/maintainers @sanmuny
+/LICENSE                            @go-taas/steering @go-taas/maintainers @sanmuny

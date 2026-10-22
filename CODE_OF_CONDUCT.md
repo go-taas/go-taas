@@ -38,6 +38,15 @@ This Code of Conduct applies within all community spaces, and also applies when 
 
 Instances of abusive, harassing, or otherwise unacceptable behavior may be reported to the community leaders responsible for enforcement at kelvin.xupt@gmail.com. All complaints will be reviewed and investigated promptly and fairly.
 
+Reports are handled by the moderation group, which is independent of the
+day-to-day review process. If a report concerns a member of the moderation
+group or the Steering Committee, that person must recuse and the remaining
+members handle the case. Community roles and access are separate from conduct
+handling: the [Steering Committee](./GOVERNANCE.md#25-steering-committee)
+revokes repository access after a conduct decision, but does not decide the
+case, and cannot override this policy. The role ladder and its consequences are
+defined in [GOVERNANCE.md](./GOVERNANCE.md) §9.
+
 All community leaders are obligated to respect the privacy and security of the reporter of any incident.
 
 ## Enforcement Guidelines

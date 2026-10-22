@@ -1,0 +1,91 @@
+name: Role request
+description: Request or nominate a community role (Triager, Reviewer, Maintainer)
+title: "REQUEST: <role> for <github-handle>"
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping the project grow. Read the criteria first:
+        [GOVERNANCE.md §4 Promotion](https://github.com/go-taas/go-taas/blob/main/GOVERNANCE.md#4-promotion)
+        and the current roster in
+        [MAINTAINERS.md](https://github.com/go-taas/go-taas/blob/main/MAINTAINERS.md).
+
+        A triager will label this request `governance` and keep it open for at
+        least seven days. Evidence is public: link the pull requests, reviews,
+        or triage records; do not describe them from memory.
+  - type: dropdown
+    id: role
+    attributes:
+      label: Requested role
+      description: The role being requested. Steering elections are announced separately and are out of scope here.
+      options:
+        - Triager
+        - Reviewer
+        - Maintainer
+        - Emeritus (retirement)
+        - Emeritus restoration
+    validations:
+      required: true
+  - type: input
+    id: candidate
+    attributes:
+      label: Candidate GitHub handle
+      description: The account being nominated. Self-nomination is allowed when a sponsor co-signs.
+      placeholder: "@username"
+    validations:
+      required: true
+  - type: input
+    id: area
+    attributes:
+      label: Area
+      description: The area the role covers. See the area table in MAINTAINERS.md. Write "whole repository" only for Maintainer.
+      placeholder: "services/, proto/, web/, test/, site/docs/, ..."
+    validations:
+      required: true
+  - type: input
+    id: sponsor
+    attributes:
+      label: Sponsor
+      description: A person already holding the requested role or higher. Triager needs one Maintainer; Reviewer needs two Reviewers or Maintainers; Maintainer needs two Maintainers.
+      placeholder: "@sponsor1, @sponsor2"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Link the contributions that satisfy the published criteria. Group by criterion.
+      value: |
+        ### Merged contributions
+        -
+
+        ### Reviews
+        -
+
+        ### Triage records
+        -
+
+        ### Design, documentation, or test work
+        -
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: Intended scope and commitment
+      description: Which area will you review, and roughly how much time per week can you commit? A role is voluntary; there is no minimum, but the answer helps set expectations.
+    validations:
+      required: true
+  - type: checkboxes
+    id: acknowledgements
+    attributes:
+      label: Acknowledgements
+      options:
+        - label: I have read GOVERNANCE.md and accept the responsibilities and limits of this role.
+          required: true
+        - label: I have read the Code of Conduct and agree to follow it.
+          required: true
+        - label: I understand that a role is voluntary, grants no payment, and can be retired to Emeritus.
+          required: true
+        - label: This request does not involve any undisclosed conflict of interest (employer, sponsorship, or financial).
+          required: true
