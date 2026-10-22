@@ -1,3 +1,10 @@
+# [1.63.0](https://github.com/go-taas/go-taas/compare/v1.62.2...v1.63.0) (2026-10-22)
+
+
+### Features
+
+* **labels:** move platform label prefixes to go-taas.com ([33bd5db](https://github.com/go-taas/go-taas/commit/33bd5dbad85602f8205ff63cc0d310a7573eeaa1))
+
 ## [1.62.2](https://github.com/go-taas/go-taas/compare/v1.62.1...v1.62.2) (2026-10-21)
 
 
