@@ -1,8 +1,9 @@
 # Unified multi-stage image for the platform binaries.
 #
-# Two build targets are exposed so CI can publish one image per binary:
+# Three build targets are exposed so CI can publish one image per component:
 #   docker build --target taas-server     -t <registry>/taas-server:tag .
 #   docker build --target taas-controller -t <registry>/taas-controller:tag .
+#   docker build --target taas-console    -t <registry>/taas-console:tag .
 #
 # Build metadata is injected via --build-arg by CI and persisted as
 # OCI image labels (visible via `docker inspect --format '{{json .Config.Labels}}'`).
@@ -144,19 +145,19 @@ WORKDIR /etc/taas
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/taas-controller"]
 
-# ---- console ----------------------------------------------------------
-# Standalone admin-console image: the same Vite bundle that is embedded
-# into taas-server, served by nginx with /api/ reverse-proxied to the
-# gateway. Use it when the console should scale or be released
-# independently of the control plane.
-#   docker build --target console -t <registry>/console:tag .
+# ---- taas-console -----------------------------------------------------
+# Standalone console image: the same Vite bundle that is embedded into
+# taas-server, served by nginx with /api/ reverse-proxied to the gateway.
+# Use it when the console should scale or be released independently of
+# the control plane.
+#   docker build --target taas-console -t <registry>/taas-console:tag .
 # The gateway address is set at runtime via TASS_PROXY_PASS (default
 # http://taas-server:9091); see build/docker/console.nginx.conf.
-FROM nginx:1.29-alpine AS console
+FROM nginx:1.29-alpine AS taas-console
 ARG VERSION
 ARG COMMIT
 ARG BUILD_TIME
-LABEL org.opencontainers.image.title="console" \
+LABEL org.opencontainers.image.title="taas-console" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${BUILD_TIME}"

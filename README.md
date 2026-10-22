@@ -275,15 +275,15 @@ console** at `http://localhost:9091/admin`. End-user APIs live under
 under `/api/v1/admin/*`. The gateway listens on `9091` (HTTP/JSON + console),
 `9090` (gRPC) and `9092` (metrics/healthz).
 
-A standalone `console` image (nginx serving the same Vite bundle, with `/api/`
-reverse-proxied to the gateway) is also published for deployments that scale
-or release the frontend independently of the control plane:
+A standalone `taas-console` image (nginx serving the same Vite bundle, with
+`/api/` reverse-proxied to the gateway) is also published for deployments that
+scale or release the frontend independently of the control plane:
 
 ```bash
-make docker-build    # builds taas-server, taas-controller and console
+make docker-build    # builds taas-server, taas-controller and taas-console
 # run it (point TASS_PROXY_PASS at the gateway):
 docker run -p 8080:8080 -e TASS_PROXY_PASS=http://<gateway-host>:9091 \
-  ghcr.io/go-taas/go-taas/console:latest
+  ghcr.io/go-taas/go-taas/taas-console:latest
 ```
 
 On restricted networks, point the image build at local mirrors:

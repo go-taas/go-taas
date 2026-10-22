@@ -270,14 +270,14 @@ make compose-down  # 停止并删除环境
 在 `/api/v1/auth/*`）；管理类 API 位于 `/api/v1/admin/*`。
 网关端口：`9091`（HTTP/JSON + 控制台）、`9090`（gRPC）、`9092`（指标/健康检查）。
 
-另发布独立的 `console` 镜像（nginx 承载同一 Vite 产物，`/api/` 反代到网关），
+另发布独立的 `taas-console` 镜像（nginx 承载同一 Vite 产物，`/api/` 反代到网关），
 供前端与控制面独立扩缩容、独立发布的部署场景使用：
 
 ```bash
-make docker-build    # 构建 taas-server、taas-controller 与 console 三个镜像
+make docker-build    # 构建 taas-server、taas-controller 与 taas-console 三个镜像
 # 运行（通过 TASS_PROXY_PASS 指向网关）：
 docker run -p 8080:8080 -e TASS_PROXY_PASS=http://<网关地址>:9091 \
-  ghcr.io/go-taas/go-taas/console:latest
+  ghcr.io/go-taas/go-taas/taas-console:latest
 ```
 
 受限网络下可为镜像构建指定国内镜像源：

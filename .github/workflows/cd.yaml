@@ -10,11 +10,11 @@
 #      and a GitHub Release. Without release-worthy commits it is a no-op
 #      and the previous tag is reused for the images below.
 #   2. build-and-push: publishes multi-arch images (taas-server,
-#      taas-controller, console) tagged with the resolved version, the
-#      short SHA, and "latest". The console image is the standalone nginx
-#      build of the admin console (same Vite bundle that is embedded
-#      into taas-server) for deployments that scale the frontend
-#      independently of the control plane.
+#      taas-controller, taas-console) tagged with the resolved version,
+#      the short SHA, and "latest". The taas-console image is the
+#      standalone nginx build of the console (same Vite bundle that is
+#      embedded into taas-server) for deployments that scale the
+#      frontend independently of the control plane.
 #
 # Note: the [skip ci] marker in the release commit plus the job-level
 # guard below prevent this workflow from re-triggering on the release
@@ -135,7 +135,7 @@ jobs:
         include:
           - target: taas-server
           - target: taas-controller
-          - target: console
+          - target: taas-console
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
