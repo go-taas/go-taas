@@ -128,7 +128,11 @@ jobs:
     name: Build and push images
     needs: release
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # A cold multi-arch build (linux/amd64 + linux/arm64 under QEMU) that
+    # misses the Go and npm caches takes 25-35 minutes, which is why this
+    # limit is 60 rather than the 30 a single-arch build would need. The
+    # matrix jobs share the GHA cache, so only the first cold run is slow.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
