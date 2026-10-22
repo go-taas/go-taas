@@ -42,7 +42,7 @@ fullnameOverride: ""
 image:
   # -- Image registry. Set to "" for a registry-less (Docker Hub style) repository.
   registry: ghcr.io
-  # -- Repository path; the component name (`taas-server`, `controller`) is appended.
+  # -- Repository path; the component name (`taas-server`, `taas-controller`) is appended.
   repository: go-taas/go-taas
   # -- Image tag for both components. Empty defaults to `v<Chart.appVersion>`.
   tag: ""
@@ -371,7 +371,7 @@ controller:
   replicaCount: 1
   image:
     # -- Image name appended to `image.repository` (the Dockerfile build target).
-    name: controller
+    name: taas-controller
     # -- Image tag for this component. Empty uses `image.tag`, then `v<Chart.appVersion>`.
     tag: ""
     # -- Image pull policy for this component. Empty uses `image.pullPolicy`.

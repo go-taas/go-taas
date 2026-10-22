@@ -1,8 +1,8 @@
 # Unified multi-stage image for the platform binaries.
 #
 # Two build targets are exposed so CI can publish one image per binary:
-#   docker build --target taas-server -t <registry>/taas-server:tag .
-#   docker build --target controller    -t <registry>/controller:tag .
+#   docker build --target taas-server     -t <registry>/taas-server:tag .
+#   docker build --target taas-controller -t <registry>/taas-controller:tag .
 #
 # Build metadata is injected via --build-arg by CI and persisted as
 # OCI image labels (visible via `docker inspect --format '{{json .Config.Labels}}'`).
@@ -99,7 +99,7 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
       -X main.version=${VERSION} \
       -X main.commit=${COMMIT} \
       -X main.buildTime=${BUILD_TIME}" \
-    -o /out/controller ./apps/controller
+    -o /out/taas-controller ./apps/controller
 
 # ---- taas-server ------------------------------------------------------
 # The runtime image carries skopeo (used by the image-import flow to copy
@@ -129,20 +129,20 @@ WORKDIR /etc/taas
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/taas-server"]
 
-# ---- controller -------------------------------------------------------
-FROM gcr.io/distroless/static-debian12:nonroot AS controller
+# ---- taas-controller --------------------------------------------------
+FROM gcr.io/distroless/static-debian12:nonroot AS taas-controller
 ARG VERSION
 ARG COMMIT
 ARG BUILD_TIME
-LABEL org.opencontainers.image.title="controller" \
+LABEL org.opencontainers.image.title="taas-controller" \
       org.opencontainers.image.version="${VERSION}" \
       org.opencontainers.image.revision="${COMMIT}" \
       org.opencontainers.image.created="${BUILD_TIME}"
-COPY --from=builder /out/controller /usr/local/bin/controller
+COPY --from=builder /out/taas-controller /usr/local/bin/taas-controller
 COPY configs /etc/taas/configs
 WORKDIR /etc/taas
 USER nonroot:nonroot
-ENTRYPOINT ["/usr/local/bin/controller"]
+ENTRYPOINT ["/usr/local/bin/taas-controller"]
 
 # ---- console ----------------------------------------------------------
 # Standalone admin-console image: the same Vite bundle that is embedded

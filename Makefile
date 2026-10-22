@@ -33,7 +33,7 @@ DOCKERFILE ?= build/docker/Dockerfile
 # "console" is the standalone nginx image of the admin console (the same
 # Vite bundle embedded into taas-server) for independent frontend
 # deployments.
-IMAGE_TARGETS ?= taas-server controller console
+IMAGE_TARGETS ?= taas-server taas-controller console
 
 # Network build-args for image builds. Override on the command line for
 # restricted networks, e.g.:
@@ -130,7 +130,7 @@ docker-push:
 	done
 
 ## compose-up: create the cluster resources, build the taas-server and
-## controller images and start the local deployment-verification stack
+## taas-controller images and start the local deployment-verification stack
 ## (PostgreSQL, Redis, RabbitMQ, Keycloak, taas-server, controller). The admin
 ## console is served by taas-server at http://localhost:9091/ — same origin
 ## as the API. Keycloak (the local OIDC IdP) is at http://localhost:8080
@@ -145,9 +145,9 @@ compose-up:
 	docker build $(DOCKER_NETWORK) --target taas-server \
 		$(DOCKER_BUILD_ARGS) \
 		-f $(DOCKERFILE) -t "$(IMAGE_REPO)/taas-server:$(IMAGE_TAG)" .
-	docker build $(DOCKER_NETWORK) --target controller \
+	docker build $(DOCKER_NETWORK) --target taas-controller \
 		$(DOCKER_BUILD_ARGS) \
-		-f $(DOCKERFILE) -t "$(IMAGE_REPO)/controller:$(IMAGE_TAG)" .
+		-f $(DOCKERFILE) -t "$(IMAGE_REPO)/taas-controller:$(IMAGE_TAG)" .
 	docker compose --env-file .env -f deploy/compose/docker-compose.yaml up -d
 	@echo ">> console: http://localhost:9091/  (API: /api/v1/..., gRPC: 9090, metrics: 9092)"
 	@echo ">> keycloak: http://localhost:8080/  (admin / admin)"

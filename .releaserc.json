@@ -13,10 +13,17 @@
       }
     ],
     [
+      "@semantic-release/exec",
+      {
+        "prepareCmd": "sed -i -E 's/^appVersion: .*/appVersion: \"${nextRelease.version}\"/' deploy/helm/go-taas/Chart.yaml"
+      }
+    ],
+    [
       "@semantic-release/git",
       {
         "assets": [
-          "CHANGELOG.md"
+          "CHANGELOG.md",
+          "deploy/helm/go-taas/Chart.yaml"
         ],
         "message": "chore(release): v${nextRelease.version} [skip ci]\n\n${nextRelease.notes}"
       }

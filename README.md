@@ -280,7 +280,7 @@ reverse-proxied to the gateway) is also published for deployments that scale
 or release the frontend independently of the control plane:
 
 ```bash
-make docker-build    # builds taas-server, controller and console
+make docker-build    # builds taas-server, taas-controller and console
 # run it (point TASS_PROXY_PASS at the gateway):
 docker run -p 8080:8080 -e TASS_PROXY_PASS=http://<gateway-host>:9091 \
   ghcr.io/go-taas/go-taas/console:latest

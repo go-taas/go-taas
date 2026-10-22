@@ -268,7 +268,7 @@ services:
   # via CONFIG_CONTROLLER_KUBECONFIG. To manage a different cluster, point
   # KUBECONFIG at that cluster's kubeconfig before `make compose-up`.
   controller:
-    image: ghcr.io/go-taas/go-taas/controller:dev
+    image: ghcr.io/go-taas/go-taas/taas-controller:dev
     depends_on:
       rabbitmq:
         condition: service_healthy

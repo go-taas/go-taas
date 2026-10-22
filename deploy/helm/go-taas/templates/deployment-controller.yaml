@@ -37,7 +37,7 @@ spec:
       terminationGracePeriodSeconds: {{ .Values.controller.terminationGracePeriodSeconds }}
       containers:
         - name: controller
-          image: {{ include "go-taas.image" (dict "root" . "name" "controller" "image" .Values.controller.image) }}
+          image: {{ include "go-taas.image" (dict "root" . "name" (default "taas-controller" .Values.controller.image.name) "image" .Values.controller.image) }}
           imagePullPolicy: {{ .Values.controller.image.pullPolicy | default .Values.image.pullPolicy }}
           # The controller speaks no HTTP and its image carries no shell, so it
           # has no probes: it consumes the queue and the Kubernetes API, and a

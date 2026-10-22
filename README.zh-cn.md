@@ -274,7 +274,7 @@ make compose-down  # 停止并删除环境
 供前端与控制面独立扩缩容、独立发布的部署场景使用：
 
 ```bash
-make docker-build    # 构建 taas-server、controller 与 console 三个镜像
+make docker-build    # 构建 taas-server、taas-controller 与 console 三个镜像
 # 运行（通过 TASS_PROXY_PASS 指向网关）：
 docker run -p 8080:8080 -e TASS_PROXY_PASS=http://<网关地址>:9091 \
   ghcr.io/go-taas/go-taas/console:latest
