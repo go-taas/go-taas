@@ -1,3 +1,10 @@
+## [1.65.1](https://github.com/go-taas/go-taas/compare/v1.65.0...v1.65.1) (2026-10-23)
+
+
+### Bug Fixes
+
+* **console:** polish account card and unify form controls ([9058cc4](https://github.com/go-taas/go-taas/commit/9058cc429c3fbaa22f4fbe88e1a300b0c2b6b68b))
+
 # [1.65.0](https://github.com/go-taas/go-taas/compare/v1.64.0...v1.65.0) (2026-10-23)
 
 
