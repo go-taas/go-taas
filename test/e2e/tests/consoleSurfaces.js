@@ -46,22 +46,25 @@ module.exports = {
     browser.assert.urlContains('/usage', 'AC1: / redirects to /usage');
   },
 
-  'AC2/AC3: user console has the 8 tenant nav items, no admin links': function (browser) {
+  'AC2/AC3: user console has the tenant nav categories, no admin links': function (browser) {
     browser.execute(`localStorage.setItem('go-taas.org-id', '${browser.globals.orgA}')`);
     browser.url(browser.globals.baseUrl + '/usage');
     browser.waitForElementPresent('[data-testid="user-shell"]', 15000, 'user shell');
-    // Feature #21 (SDK/Quickstart): the Quickstart item is first, making
-    // eight user-nav-* items total (the seven pre-existing items plus
-    // user-nav-quickstart).
-    browser.waitForElementPresent('[data-testid="user-nav-quickstart"]', 10000, 'AC2: user-nav-quickstart');
+    // Navigation is grouped into categories (Aurora redesign): the top bar
+    // carries the categories, the left sidebar carries the active
+    // category's items. On /usage the Usage & Cost category is active.
+    browser.waitForElementPresent('[data-testid="user-nav-cat-start"]', 10000, 'AC2: start category');
+    browser.waitForElementPresent('[data-testid="user-nav-cat-usage"]', 10000, 'AC2: usage category');
+    browser.waitForElementPresent('[data-testid="user-nav-cat-api"]', 10000, 'AC2: api category');
+    browser.waitForElementPresent('[data-testid="user-nav-cat-workloads"]', 10000, 'AC2: workloads category');
+    browser.waitForElementPresent('[data-testid="user-nav-cat-billing"]', 10000, 'AC2: billing category');
+    browser.waitForElementPresent('[data-testid="user-nav-cat-account"]', 10000, 'AC2: account category');
+    // The active category's items are in the sidebar.
     browser.waitForElementPresent('[data-testid="user-nav-usage"]', 10000, 'AC2: user-nav-usage');
-    browser.waitForElementPresent('[data-testid="user-nav-api-keys"]', 10000, 'AC2: user-nav-api-keys');
-    browser.waitForElementPresent('[data-testid="user-nav-request-logs"]', 10000, 'AC2: user-nav-request-logs');
-    browser.waitForElementPresent('[data-testid="user-nav-playground"]', 10000, 'AC2: user-nav-playground');
-    browser.waitForElementPresent('[data-testid="user-nav-billing"]', 10000, 'AC2: user-nav-billing');
-    browser.waitForElementPresent('[data-testid="user-nav-activity"]', 10000, 'AC2: user-nav-activity');
-    browser.waitForElementPresent('[data-testid="user-nav-models"]', 10000, 'AC2: user-nav-models');
+    browser.waitForElementPresent('[data-testid="user-nav-usage-keys"]', 10000, 'AC2: user-nav-usage-keys');
+    browser.waitForElementPresent('[data-testid="user-nav-cost"]', 10000, 'AC2: user-nav-cost');
     browser.assert.not.elementPresent('[data-testid="nav-models"]', 'AC4: no admin nav in user console');
+    browser.assert.not.elementPresent('[data-testid="nav-cat-access"]', 'AC4: no admin categories in user console');
   },
 
   'AC16: moved admin URLs redirect to the user console': function (browser) {

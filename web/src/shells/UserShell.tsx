@@ -3,26 +3,6 @@
 // keys (AD12).
 
 import { useEffect, useState, type ReactNode } from 'react';
-import {
-  ChartLine,
-  Key,
-  ListMagnifyingGlass,
-  Play,
-  Receipt,
-  Pulse,
-  Cube,
-  Rocket,
-  LinkSimple,
-  FileText,
-  Bell,
-  BookOpen,
-  DownloadSimple,
-  TextT,
-  ChartBar,
-  TrendDown,
-  Gauge,
-  type Icon,
-} from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
@@ -32,37 +12,12 @@ import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
+import { USER_NAV_CATEGORIES, categoryForPath } from './nav';
 
 // adminRoles is the set of session roles that make a user an
 // administrator (feature-22 AD3). It mirrors the server-side default so
 // the switch-to-admin button is shown only to admins.
 const adminRoles = ['platform-admin', 'org-admin', 'admin', 'owner'];
-
-export const USER_NAV_ITEMS: { path: string; labelKey: string; testid: string; icon: Icon }[] = [
-  { path: '/quickstart', labelKey: 'nav.quickstart', testid: 'user-nav-quickstart', icon: Rocket },
-  { path: '/docs', labelKey: 'nav.apiDocs', testid: 'user-nav-api-docs', icon: BookOpen },
-  { path: '/usage', labelKey: 'nav.usage', testid: 'user-nav-usage', icon: ChartLine },
-  { path: '/usage/keys', labelKey: 'nav.usageKeys', testid: 'user-nav-usage-keys', icon: Key },
-  { path: '/cost', labelKey: 'nav.cost', testid: 'user-nav-cost', icon: ChartLine },
-  { path: '/forecast', labelKey: 'nav.forecast', testid: 'user-nav-forecast', icon: ChartLine },
-  { path: '/quotas', labelKey: 'nav.quotas', testid: 'user-nav-quotas', icon: Gauge },
-  { path: '/optimization', labelKey: 'nav.optimization', testid: 'user-nav-optimization', icon: TrendDown },
-  { path: '/api-keys', labelKey: 'nav.apiKeys', testid: 'user-nav-api-keys', icon: Key },
-  { path: '/request-logs', labelKey: 'nav.requestLogs', testid: 'user-nav-request-logs', icon: ListMagnifyingGlass },
-  { path: '/playground', labelKey: 'nav.playground', testid: 'user-nav-playground', icon: Play },
-  { path: '/batch', labelKey: 'nav.batch', testid: 'user-nav-batch', icon: Cube },
-  { path: '/prompts', labelKey: 'nav.prompts', testid: 'user-nav-prompts', icon: TextT },
-  { path: '/evaluations', labelKey: 'nav.evaluations', testid: 'user-nav-evaluations', icon: ChartBar },
-  { path: '/billing', labelKey: 'nav.billing', testid: 'user-nav-billing', icon: Receipt },
-  { path: '/billing/reports', labelKey: 'nav.billingReports', testid: 'user-nav-billing-reports', icon: FileText },
-  { path: '/activity', labelKey: 'nav.activity', testid: 'user-nav-activity', icon: Pulse },
-  { path: '/webhooks', labelKey: 'nav.webhooks', testid: 'user-nav-webhooks', icon: LinkSimple },
-  { path: '/notifications', labelKey: 'nav.notifications', testid: 'user-nav-notifications', icon: Bell },
-  { path: '/models', labelKey: 'nav.models', testid: 'user-nav-models', icon: Cube },
-  { path: '/traces', labelKey: 'nav.traces', testid: 'user-nav-traces', icon: ChartLine },
-  { path: '/errors', labelKey: 'nav.errors', testid: 'user-nav-errors', icon: ChartLine },
-  { path: '/account/export', labelKey: 'nav.dataExport', testid: 'user-nav-data-export', icon: DownloadSimple },
-];
 
 function isActive(path: string, current: string): boolean {
   return current === path || current.startsWith(`${path}/`);
@@ -143,13 +98,49 @@ export function UserShell({ children }: { children: ReactNode }) {
 
   return (
     <div className="app" data-testid="user-shell">
-      <aside className="sidebar" data-testid="sidebar">
-        <div className="brand">
+      <header className="topbar" data-testid="topbar">
+        <div className="topbar-brand">
           <img src={brandLogo} alt="Go TaaS" className="brand-logo" />
           <span>Go TaaS</span>
         </div>
+        <nav className="topbar-nav" aria-label="User categories">
+          {USER_NAV_CATEGORIES.map((cat) => {
+            const IconComp = cat.icon;
+            const active = categoryForPath(USER_NAV_CATEGORIES, path).id === cat.id;
+            return (
+              <a
+                key={cat.id}
+                href={cat.items[0].path}
+                className={active ? 'topbar-nav-item active' : 'topbar-nav-item'}
+                data-testid={`user-nav-cat-${cat.id}`}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(cat.items[0].path);
+                }}
+              >
+                <IconComp size={16} weight="duotone" aria-hidden="true" />
+                <span>{t(cat.labelKey)}</span>
+              </a>
+            );
+          })}
+        </nav>
+        <div className="topbar-actions">
+          <NotificationBell path="/api/v1/notifications" testId="user-bell-badge" />
+          <button
+            className="lang-switch"
+            data-testid="lang-switch"
+            onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
+          >
+            {t('lang.switch')}
+          </button>
+        </div>
+      </header>
+      <aside className="sidebar" data-testid="sidebar">
+        <div className="sidebar-category-label">
+          {t(categoryForPath(USER_NAV_CATEGORIES, path).shortLabelKey)}
+        </div>
         <nav>
-          {USER_NAV_ITEMS.map((item) => {
+          {categoryForPath(USER_NAV_CATEGORIES, path).items.map((item) => {
             const IconComp = item.icon;
             return (
               <a
@@ -170,14 +161,6 @@ export function UserShell({ children }: { children: ReactNode }) {
         </nav>
         <OrgSwitcher />
         <QuotaBar />
-        <NotificationBell path="/api/v1/notifications" testId="user-bell-badge" />
-        <button
-          className="lang-switch"
-          data-testid="lang-switch"
-          onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
-        >
-          {t('lang.switch')}
-        </button>
         {getSessionToken(realm) && (
           <div className="account-block" data-testid="user-account-block">
             {session && (
