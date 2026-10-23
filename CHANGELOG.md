@@ -1,3 +1,10 @@
+# [1.65.0](https://github.com/go-taas/go-taas/compare/v1.64.0...v1.65.0) (2026-10-23)
+
+
+### Features
+
+* **console:** Aurora redesign with category navigation ([20b7139](https://github.com/go-taas/go-taas/commit/20b7139187134a53c5fa25b5292e943c74fe43de))
+
 # [1.64.0](https://github.com/go-taas/go-taas/compare/v1.63.0...v1.64.0) (2026-10-23)
 
 
