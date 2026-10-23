@@ -3,6 +3,7 @@
 // keys (AD12).
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { ArrowsLeftRight, SignOut } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
@@ -162,29 +163,46 @@ export function UserShell({ children }: { children: ReactNode }) {
         <OrgSwitcher />
         <QuotaBar />
         {getSessionToken(realm) && (
-          <div className="account-block" data-testid="user-account-block">
+          <div className="account-card" data-testid="user-account-block">
             {session && (
               <div className="account-identity">
-                <span className="account-username">{session.username}</span>
-                {isAdmin && <span className="badge">admin</span>}
+                <span className="account-avatar" aria-hidden="true">
+                  {session.username.trim().charAt(0).toUpperCase()}
+                </span>
+                <span className="account-meta">
+                  <span className="account-username" title={session.username}>
+                    {session.username}
+                  </span>
+                  <span className={isAdmin ? 'account-role' : 'account-role muted'}>
+                    {isAdmin ? 'admin' : 'user'}
+                  </span>
+                </span>
               </div>
             )}
-            {isAdmin && (
+            <div className="account-actions">
+              {isAdmin && (
+                <button
+                  className="account-action"
+                  data-testid="switch-to-admin"
+                  disabled={switching}
+                  onClick={() => void switchToAdmin()}
+                >
+                  <ArrowsLeftRight size={15} weight="bold" aria-hidden="true" />
+                  <span>{switching ? t('account.switching') : t('account.switchToAdmin')}</span>
+                </button>
+              )}
+              {switchNotice && (
+                <div className="account-notice" data-testid="switch-notice">{switchNotice}</div>
+              )}
               <button
-                className="link"
-                data-testid="switch-to-admin"
-                disabled={switching}
-                onClick={() => void switchToAdmin()}
+                className="account-action account-action-danger"
+                data-testid="user-menu-logout"
+                onClick={() => void logout()}
               >
-                {switching ? t('account.switching') : t('account.switchToAdmin')}
+                <SignOut size={15} weight="bold" aria-hidden="true" />
+                <span>{t('account.signOut')}</span>
               </button>
-            )}
-            {switchNotice && (
-              <div className="notice" data-testid="switch-notice">{switchNotice}</div>
-            )}
-            <button className="link" data-testid="user-menu-logout" onClick={() => void logout()}>
-              {t('account.signOut')}
-            </button>
+            </div>
           </div>
         )}
       </aside>

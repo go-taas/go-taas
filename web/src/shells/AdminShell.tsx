@@ -3,6 +3,7 @@
 // keys (AD12).
 
 import { useEffect, useState, type ReactNode } from 'react';
+import { ArrowsLeftRight, SignOut } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
@@ -150,27 +151,42 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </nav>
         <OrgSwitcher />
         {getSessionToken(realm) && (
-          <div className="account-block" data-testid="admin-account-block">
+          <div className="account-card" data-testid="admin-account-block">
             {session && (
               <div className="account-identity">
-                <span className="account-username">{session.username}</span>
-                <span className="badge">admin</span>
+                <span className="account-avatar" aria-hidden="true">
+                  {session.username.trim().charAt(0).toUpperCase()}
+                </span>
+                <span className="account-meta">
+                  <span className="account-username" title={session.username}>
+                    {session.username}
+                  </span>
+                  <span className="account-role">admin</span>
+                </span>
               </div>
             )}
-            <button
-              className="link"
-              data-testid="switch-to-user"
-              disabled={switching}
-              onClick={() => void switchToUser()}
-            >
-              {switching ? t('account.switching') : t('account.switchToUser')}
-            </button>
-            {switchNotice && (
-              <div className="notice" data-testid="switch-notice">{switchNotice}</div>
-            )}
-            <button className="link" data-testid="user-menu-logout" onClick={() => void logout()}>
-              {t('account.signOut')}
-            </button>
+            <div className="account-actions">
+              <button
+                className="account-action"
+                data-testid="switch-to-user"
+                disabled={switching}
+                onClick={() => void switchToUser()}
+              >
+                <ArrowsLeftRight size={15} weight="bold" aria-hidden="true" />
+                <span>{switching ? t('account.switching') : t('account.switchToUser')}</span>
+              </button>
+              {switchNotice && (
+                <div className="account-notice" data-testid="switch-notice">{switchNotice}</div>
+              )}
+              <button
+                className="account-action account-action-danger"
+                data-testid="user-menu-logout"
+                onClick={() => void logout()}
+              >
+                <SignOut size={15} weight="bold" aria-hidden="true" />
+                <span>{t('account.signOut')}</span>
+              </button>
+            </div>
           </div>
         )}
       </aside>
