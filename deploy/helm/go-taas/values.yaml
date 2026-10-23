@@ -244,6 +244,62 @@ dependencies:
       # -- Affinity for the RabbitMQ pod.
       affinity: {}
 
+  keycloak:
+    # -- `internal` provisions Keycloak with this chart; `external` connects to an existing IdP.
+    mode: internal
+    # Connection used when `mode: external`. These values are also used to
+    # seed the SSO provider row (auth.seedSso) so the console can log in.
+    external:
+      # -- OIDC issuer of the external IdP.
+      issuer: ""
+      # -- OIDC client id.
+      clientId: ""
+      # -- OIDC client secret.
+      clientSecret: ""
+      # -- OIDC redirect URI (the console's SSO callback).
+      redirectUri: ""
+    # The instance this chart provisions when `mode: internal`.
+    internal:
+      image:
+        # -- Keycloak image repository.
+        repository: quay.io/keycloak/keycloak
+        # -- Keycloak image tag.
+        tag: "26.0"
+        # -- Keycloak image pull policy.
+        pullPolicy: IfNotPresent
+      # -- Keycloak admin username (KEYCLOAK_ADMIN).
+      adminUser: admin
+      # -- Keycloak admin password. Empty generates and stores a random password.
+      adminPassword: ""
+      # -- HTTP port.
+      port: 8080
+      # -- Management/health port (Keycloak 26 exposes /health/* here).
+      managementPort: 9000
+      # -- The console's SSO redirect URI. Defaults to the compose value;
+      # set it to the exposed URL (e.g. https://taas.example.com/api/v1/auth/sso/*).
+      redirectUri: "http://localhost:9091/api/v1/auth/sso/*"
+      # -- The console's web origin (CORS). Defaults to the compose value.
+      webOrigin: "http://localhost:9091"
+      # Storage for the Keycloak data directory. Disabling it uses an
+      # emptyDir.
+      persistence:
+        # -- Persist the Keycloak data directory on a PersistentVolumeClaim.
+        enabled: true
+        # -- Requested volume size.
+        size: 2Gi
+        # -- StorageClass to provision from. Empty uses the cluster default.
+        storageClass: ""
+      # -- Resource requests/limits for the Keycloak container.
+      resources: {}
+      # -- Extra annotations for the Keycloak pod.
+      podAnnotations: {}
+      # -- Node selector for the Keycloak pod.
+      nodeSelector: {}
+      # -- Tolerations for the Keycloak pod.
+      tolerations: []
+      # -- Affinity for the Keycloak pod.
+      affinity: {}
+
 # taas-server: the unified control-plane server (gRPC on 9090, the REST
 # gateway and admin console on 9091, metrics/health on 9092).
 taasServer:

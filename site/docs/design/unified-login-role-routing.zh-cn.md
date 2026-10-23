@@ -113,12 +113,12 @@
 - **FR3.3** 对称地，管理端控制台在 `AdminShell` 账号块提供**「切换到用户控制台」**控件。它调用 `POST /api/v1/admin/auth/session:switch-to-user`，铸造 `user` realm 会话；控制台把它存入 `go-taas.user.session-token` 并导航到 `/usage`。
 - **FR3.4** 无管理角色却调用 `switch-to-admin` 的用户会收到权限拒绝错误（10036），且按钮本就不会渲染（FR3.1）。
 
-### FR4 — compose 启动时预置 Keycloak
+### FR4 — 首次启动时预置 Keycloak
 
-- **FR4.1** `deploy/compose/keycloak/realm-export.json` 新增 `admin` 用户（`admin`/`admin`、邮箱 `admin@example.com`、启用）并带管理角色，在 `go-taas-console` 客户端上启用 `directAccessGrantsEnabled`，并添加角色协议映射器使管理角色出现在 ID token 中（D5）。
-- **FR4.2** compose 启动时由预置机制创建 Keycloak OIDC 提供商行（若不存在）：`provider_id` `keycloak`、`type` `oidc`、`display_name` `Keycloak`、`issuer` `http://keycloak:8080/realms/go-taas`、`client_id` `go-taas-console`、`client_secret` `go-taas-console-secret`、`redirect_uri` `http://localhost:9091/api/v1/auth/sso/*`、`enabled` true、`allow_auto_provision` true，以及把 Keycloak 管理角色声明映射到 TaaS `admin` 角色的 `attribute_mapping`（D5、D6）。
+- **FR4.1** `deploy/compose/keycloak/realm-export.json`（以及 Helm Chart 内置 Keycloak 的 realm ConfigMap）新增 `admin` 用户（`admin`/`admin`、邮箱 `admin@example.com`、启用）并带管理角色，在 `go-taas-console` 客户端上启用 `directAccessGrantsEnabled`，并添加角色协议映射器使管理角色出现在 ID token 中（D5）。
+- **FR4.2** 首次启动时由预置机制创建 Keycloak OIDC 提供商行（若不存在）：`provider_id` `keycloak`、`type` `oidc`、`display_name` `Keycloak`、`issuer`（默认 `http://keycloak:8080/realms/go-taas`）、`client_id` `go-taas-console`、`client_secret` `go-taas-console-secret`、`redirect_uri`（默认 `http://localhost:9091/api/v1/auth/sso/*`）、`enabled` true、`allow_auto_provision` true，以及把 Keycloak 管理角色声明映射到 TaaS `admin` 角色的 `attribute_mapping`（D5、D6）。取值来自 `auth.seedSso` 配置，因此 Helm Chart 会把 issuer 指向内置 Keycloak、把 redirect URI 指向暴露地址。
 - **FR4.3** 预置还创建 `admin` 用户的身份绑定（或依赖 JIT 预置加角色映射），使以 `admin`/`admin` 登录能解析为带 `admin` 角色的 TaaS 用户。
-- **FR4.4** 预置是幂等的：重复运行 compose 启动不会重复创建提供商或绑定。
+- **FR4.4** 预置是幂等的：重复运行启动不会重复创建提供商或绑定。当 `auth.seedSso.enabled` 为 false 时预置为 no-op。
 
 ### FR5 — 登录页与提供商选择
 

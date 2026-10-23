@@ -118,6 +118,36 @@ type AuthConfig struct {
 	// role is in the set. Defaults to platform-admin, org-admin, admin,
 	// owner.
 	AdminRoles []string `mapstructure:"adminRoles"`
+	// SeedSso configures the first-boot SSO provider seed (feature-22
+	// AD6/AD10). When enabled, the auth Migrate hook inserts a provider
+	// row (and the admin user/binding) if none exists, so a fresh
+	// install is usable without manual IdP configuration. The Helm chart
+	// points it at the bundled Keycloak; production deployments can
+	// disable it and register their own IdP through the admin API.
+	SeedSso SeedSsoConfig `mapstructure:"seedSso"`
+}
+
+// SeedSsoConfig holds the first-boot SSO provider seed settings.
+type SeedSsoConfig struct {
+	// Enabled turns the first-boot SSO seed on or off. Defaults to true
+	// so a fresh install is usable out of the box.
+	Enabled bool `mapstructure:"enabled"`
+	// ProviderID is the id of the seeded provider row.
+	ProviderID string `mapstructure:"providerId"`
+	// Issuer is the OIDC issuer of the seeded provider.
+	Issuer string `mapstructure:"issuer"`
+	// ClientID is the OIDC client id of the seeded provider.
+	ClientID string `mapstructure:"clientId"`
+	// ClientSecret is the OIDC client secret of the seeded provider.
+	ClientSecret string `mapstructure:"clientSecret"`
+	// RedirectURI is the OIDC redirect URI of the seeded provider.
+	RedirectURI string `mapstructure:"redirectUri"`
+	// AdminUsername is the seeded admin platform user's username.
+	AdminUsername string `mapstructure:"adminUsername"`
+	// AdminPassword is the seeded admin user's password at the IdP.
+	AdminPassword string `mapstructure:"adminPassword"`
+	// AdminOrgID is the seeded admin user's organization id.
+	AdminOrgID string `mapstructure:"adminOrgId"`
 }
 
 // MeteringConfig holds metering-module specific settings.

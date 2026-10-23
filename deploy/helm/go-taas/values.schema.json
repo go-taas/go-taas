@@ -56,6 +56,9 @@
         },
         "rabbitmq": {
           "$ref": "#/definitions/rabbitmq"
+        },
+        "keycloak": {
+          "$ref": "#/definitions/keycloak"
         }
       }
     },
@@ -493,6 +496,69 @@
               "type": "integer",
               "minimum": 1,
               "maximum": 65535
+            },
+            "persistence": {
+              "$ref": "#/definitions/persistence"
+            }
+          },
+          "allOf": [
+            {
+              "$ref": "#/definitions/scheduling"
+            }
+          ]
+        }
+      }
+    },
+    "keycloak": {
+      "type": "object",
+      "properties": {
+        "mode": {
+          "$ref": "#/definitions/mode"
+        },
+        "external": {
+          "type": "object",
+          "properties": {
+            "issuer": {
+              "type": "string"
+            },
+            "clientId": {
+              "type": "string"
+            },
+            "clientSecret": {
+              "type": "string"
+            },
+            "redirectUri": {
+              "type": "string"
+            }
+          }
+        },
+        "internal": {
+          "type": "object",
+          "properties": {
+            "image": {
+              "$ref": "#/definitions/internalImage"
+            },
+            "adminUser": {
+              "type": "string"
+            },
+            "adminPassword": {
+              "type": "string"
+            },
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "managementPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "redirectUri": {
+              "type": "string"
+            },
+            "webOrigin": {
+              "type": "string"
             },
             "persistence": {
               "$ref": "#/definitions/persistence"

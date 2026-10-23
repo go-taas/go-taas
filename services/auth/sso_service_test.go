@@ -425,7 +425,7 @@ func TestServiceSessionTTL(t *testing.T) {
 	cfg := &config.Configuration{}
 	cfg.Auth.SessionTTL = 2 * time.Hour
 	config.SetConfigForTest(cfg)
-	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
+	t.Cleanup(func() { config.SetConfigForTest(nil) })
 	assert.Equal(t, 2*time.Hour, svc.sessionTTL())
 }
 

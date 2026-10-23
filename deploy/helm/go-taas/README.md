@@ -2,8 +2,8 @@
 
 Deploys the Go TaaS control plane into Kubernetes and makes every
 third-party dependency connection a value: the chart either provisions a
-single-replica PostgreSQL / Redis / RabbitMQ instance itself, or connects the
-control plane to an operator-managed service.
+single-replica PostgreSQL / Redis / RabbitMQ / Keycloak instance itself, or
+connects the control plane to an operator-managed service.
 
 ## What the chart deploys
 
@@ -16,7 +16,7 @@ control plane to an operator-managed service.
 | `Namespace/<inference namespace>` | `controller.createNamespace` | the namespace the controller manages, taken from `controller.config.controller.namespace` |
 | `Secret/<release>-secrets` | unless `secrets.existingSecret` | dependency passwords and the at-rest encryption keys |
 | `ConfigMap/<release>-config-overrides` | `configOverrides` | raw configuration file merged after the image defaults |
-| PostgreSQL / Redis / RabbitMQ `Deployment` + `Service` + `PersistentVolumeClaim` | per dependency `mode: internal` | single-replica instances for evaluation and small installs |
+| PostgreSQL / Redis / RabbitMQ / Keycloak `Deployment` + `Service` + `PersistentVolumeClaim` | per dependency `mode: internal` | single-replica instances for evaluation and small installs |
 
 The chart creates no Ingress. Choose the exposure mechanism with
 `taasServer.service.type` (`ClusterIP`, `NodePort`, `LoadBalancer`) or add
@@ -26,6 +26,41 @@ Project links: [website](https://go-taas.com) ·
 [documentation](https://go-taas.com/docs.html) ·
 [source](https://github.com/go-taas/go-taas) ·
 [support](https://github.com/go-taas/go-taas/discussions).
+
+## SSO and the bundled Keycloak
+
+The chart bundles a Keycloak IdP by default (`dependencies.keycloak.mode:
+internal`) so the console is usable out of the box. On first start the
+`taas-server` seeds the `go-taas` realm's client (`go-taas-console`) and an
+`admin`/`admin` user (with the `admin` realm role), and the auth Migrate hook
+inserts the matching SSO provider row. Log in at the console with
+`admin`/`admin`.
+
+To expose the console behind a gateway or Ingress, set the redirect URI and
+web origin to the public URL:
+
+```yaml
+dependencies:
+  keycloak:
+    internal:
+      redirectUri: "https://taas.example.com/api/v1/auth/sso/*"
+      webOrigin: "https://taas.example.com"
+```
+
+The bundled Keycloak runs as uid 1000; the chart sets `fsGroup: 1000` so the
+data PVC is writable, and exposes the health endpoints on the management port
+(`dependencies.keycloak.internal.managementPort`, default 9000) which the
+readiness/liveness probes use.
+
+To use an existing IdP instead of the bundled one, set
+`dependencies.keycloak.mode: external` and provide the issuer, client id,
+client secret, and redirect URI. The chart then skips the Keycloak
+Deployment/Service/PVC and points the SSO seed at the external IdP.
+
+> **Production note**: the seeded `admin`/`admin` and `alice`/`alice-password`
+> credentials are for evaluation only. Change them (or disable the seed with
+> `auth.seedSso.enabled: false` and register your own IdP through the admin
+> API) before exposing the console publicly.
 
 ## Resource labels
 
@@ -39,7 +74,7 @@ Every resource the chart creates carries the Kubernetes recommended labels:
 | `app.kubernetes.io/version` | chart `appVersion` |
 | `app.kubernetes.io/managed-by` | `Helm` for chart resources, `taas-controller` for resources the controller creates |
 | `app.kubernetes.io/part-of` | `go-taas` |
-| `app.kubernetes.io/component` | `server`, `controller`, `postgresql`, `redis`, or `rabbitmq` |
+| `app.kubernetes.io/component` | `server`, `controller`, `postgresql`, `redis`, `rabbitmq`, or `keycloak` |
 
 Platform-specific keys use the project's own DNS prefix, `go-taas.com/`, taken
 from the official website. Never use a domain the project does not own (the

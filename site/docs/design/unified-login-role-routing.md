@@ -113,12 +113,12 @@ Pitfalls to avoid:
 - **FR3.3** Symmetrically, the admin console offers a **"Switch to user console"** control in the `AdminShell` account block. It calls `POST /api/v1/admin/auth/session:switch-to-user`, which mints a `user`-realm session; the console stores it under `go-taas.user.session-token` and navigates to `/usage`.
 - **FR3.4** A user without an admin role who calls `switch-to-admin` receives a permission-denied error (10036) and the button is not rendered in the first place (FR3.1).
 
-### FR4 — Keycloak seeding on compose startup
+### FR4 — Keycloak seeding on first boot
 
-- **FR4.1** `deploy/compose/keycloak/realm-export.json` gains an `admin` user (`admin`/`admin`, email `admin@example.com`, enabled) with an admin role, enables `directAccessGrantsEnabled` on the `go-taas-console` client, and adds a role protocol mapper so the admin role appears in the ID token (D5).
-- **FR4.2** On compose startup a seed mechanism creates the Keycloak OIDC provider row if it does not exist: `provider_id` `keycloak`, `type` `oidc`, `display_name` `Keycloak`, `issuer` `http://keycloak:8080/realms/go-taas`, `client_id` `go-taas-console`, `client_secret` `go-taas-console-secret`, `redirect_uri` `http://localhost:9091/api/v1/auth/sso/*`, `enabled` true, `allow_auto_provision` true, and an `attribute_mapping` that maps the Keycloak admin role claim to the TaaS `admin` role (D5, D6).
+- **FR4.1** `deploy/compose/keycloak/realm-export.json` (and the Helm chart's bundled Keycloak realm ConfigMap) gains an `admin` user (`admin`/`admin`, email `admin@example.com`, enabled) with an admin role, enables `directAccessGrantsEnabled` on the `go-taas-console` client, and adds a role protocol mapper so the admin role appears in the ID token (D5).
+- **FR4.2** On first boot a seed mechanism creates the Keycloak OIDC provider row if it does not exist: `provider_id` `keycloak`, `type` `oidc`, `display_name` `Keycloak`, `issuer` (default `http://keycloak:8080/realms/go-taas`), `client_id` `go-taas-console`, `client_secret` `go-taas-console-secret`, `redirect_uri` (default `http://localhost:9091/api/v1/auth/sso/*`), `enabled` true, `allow_auto_provision` true, and an `attribute_mapping` that maps the Keycloak admin role claim to the TaaS `admin` role (D5, D6). The values come from `auth.seedSso` config, so the Helm chart points the issuer at the bundled Keycloak and the redirect URI at the exposed URL.
 - **FR4.3** The seed also creates the `admin` user's identity binding (or relies on JIT provisioning plus the role mapping) so that signing in as `admin`/`admin` resolves to a TaaS user with the `admin` role.
-- **FR4.4** The seed is idempotent: re-running compose startup does not duplicate the provider or the binding.
+- **FR4.4** The seed is idempotent: re-running startup does not duplicate the provider or the binding. It is a no-op when `auth.seedSso.enabled` is false.
 
 ### FR5 — Login pages and provider selection
 

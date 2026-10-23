@@ -1,0 +1,146 @@
+{{- if eq .Values.dependencies.keycloak.mode "internal" }}
+{{- $dep := .Values.dependencies.keycloak }}
+{{- $name := include "go-taas.keycloak.name" . }}
+{{- $labels := printf "%s\n%s" (include "go-taas.labels" .) "app.kubernetes.io/component: keycloak" }}
+{{- $redirectUri := $dep.internal.redirectUri }}
+{{- $webOrigin := $dep.internal.webOrigin }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ $name }}-realm
+  labels:
+    {{- $labels | nindent 4 }}
+data:
+  realm-export.json: |
+    {
+      "realm": "go-taas",
+      "enabled": true,
+      "displayName": "go-taas local IdP",
+      "sslRequired": "none",
+      "registrationAllowed": false,
+      "roles": {
+        "realm": [
+          {
+            "name": "admin",
+            "description": "Platform administrator"
+          }
+        ]
+      },
+      "clients": [
+        {
+          "clientId": "go-taas-console",
+          "enabled": true,
+          "protocol": "openid-connect",
+          "publicClient": false,
+          "secret": "go-taas-console-secret",
+          "standardFlowEnabled": true,
+          "directAccessGrantsEnabled": true,
+          "redirectUris": [
+            {{ $redirectUri | quote }}
+          ],
+          "webOrigins": [
+            {{ $webOrigin | quote }}
+          ]
+        }
+      ],
+      "clientScopes": [
+        {
+          "name": "roles",
+          "protocol": "openid-connect",
+          "protocolMappers": [
+            {
+              "name": "realm roles",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-realm-role-mapper",
+              "config": {
+                "claim.name": "realm_access.roles",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "name": "profile",
+          "protocol": "openid-connect",
+          "protocolMappers": [
+            {
+              "name": "username",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-attribute-mapper",
+              "config": {
+                "user.attribute": "username",
+                "claim.name": "preferred_username",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        },
+        {
+          "name": "email",
+          "protocol": "openid-connect",
+          "protocolMappers": [
+            {
+              "name": "email",
+              "protocol": "openid-connect",
+              "protocolMapper": "oidc-usermodel-attribute-mapper",
+              "config": {
+                "user.attribute": "email",
+                "claim.name": "email",
+                "jsonType.label": "String",
+                "id.token.claim": "true",
+                "access.token.claim": "true",
+                "userinfo.token.claim": "true"
+              }
+            }
+          ]
+        }
+      ],
+      "defaultDefaultClientScopes": [
+        "roles",
+        "profile",
+        "email"
+      ],
+      "users": [
+        {
+          "username": "admin",
+          "enabled": true,
+          "email": "admin@example.com",
+          "emailVerified": true,
+          "firstName": "Admin",
+          "lastName": "User",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "admin",
+              "temporary": false
+            }
+          ],
+          "realmRoles": [
+            "admin"
+          ]
+        },
+        {
+          "username": "alice",
+          "enabled": true,
+          "email": "alice@example.com",
+          "emailVerified": true,
+          "firstName": "Alice",
+          "lastName": "Example",
+          "credentials": [
+            {
+              "type": "password",
+              "value": "alice-password",
+              "temporary": false
+            }
+          ]
+        }
+      ]
+    }
+{{- end }}

@@ -195,6 +195,40 @@ func TestAdminRolesDefaults(t *testing.T) {
 	}
 }
 
+func TestSeedSsoDefaults(t *testing.T) {
+	cfg := &Configuration{}
+	cfg.applyDefaults()
+	s := cfg.Auth.SeedSso
+	if s.ProviderID != "keycloak" {
+		t.Fatalf("seedSso.providerId default = %q, want keycloak", s.ProviderID)
+	}
+	if s.Issuer != "http://keycloak:8080/realms/go-taas" {
+		t.Fatalf("seedSso.issuer default = %q", s.Issuer)
+	}
+	if s.ClientID != "go-taas-console" {
+		t.Fatalf("seedSso.clientId default = %q", s.ClientID)
+	}
+	if s.ClientSecret != "go-taas-console-secret" {
+		t.Fatalf("seedSso.clientSecret default = %q", s.ClientSecret)
+	}
+	if s.RedirectURI != "http://localhost:9091/api/v1/auth/sso/*" {
+		t.Fatalf("seedSso.redirectUri default = %q", s.RedirectURI)
+	}
+	if s.AdminUsername != "admin" || s.AdminPassword != "admin" || s.AdminOrgID != "org-admin" {
+		t.Fatalf("seedSso admin defaults = %+v", s)
+	}
+	// An explicit issuer/redirectUri is preserved.
+	cfg.Auth.SeedSso.Issuer = "https://idp.example.com/realms/go-taas"
+	cfg.Auth.SeedSso.RedirectURI = "https://taas.example.com/api/v1/auth/sso/*"
+	cfg.applyDefaults()
+	if cfg.Auth.SeedSso.Issuer != "https://idp.example.com/realms/go-taas" {
+		t.Fatalf("explicit seedSso.issuer overwritten: %q", cfg.Auth.SeedSso.Issuer)
+	}
+	if cfg.Auth.SeedSso.RedirectURI != "https://taas.example.com/api/v1/auth/sso/*" {
+		t.Fatalf("explicit seedSso.redirectUri overwritten: %q", cfg.Auth.SeedSso.RedirectURI)
+	}
+}
+
 func TestValidateAdminRoles(t *testing.T) {
 	cfg := &Configuration{}
 	cfg.Billing.Currency = "USD"

@@ -1,0 +1,143 @@
+{{- if eq .Values.dependencies.keycloak.mode "internal" }}
+{{- $dep := .Values.dependencies.keycloak }}
+{{- $name := include "go-taas.keycloak.name" . }}
+{{- $labels := printf "%s\n%s" (include "go-taas.labels" .) "app.kubernetes.io/component: keycloak" }}
+{{- $adminPassword := include "go-taas.keycloak.adminPassword" . }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $dep.internal.port }}
+      targetPort: http
+      protocol: TCP
+    - name: management
+      port: {{ $dep.internal.managementPort }}
+      targetPort: management
+      protocol: TCP
+  selector:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "go-taas.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: keycloak
+  template:
+    metadata:
+      labels:
+        {{- $labels | nindent 8 }}
+      {{- with $dep.internal.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      # Keycloak 26 runs as uid 1000 (the `keycloak` user). fsGroup makes the
+      # PVC group-writable by that uid so the data directory is writable.
+      securityContext:
+        fsGroup: 1000
+      containers:
+        - name: keycloak
+          image: {{ printf "%s:%s" $dep.internal.image.repository $dep.internal.image.tag }}
+          imagePullPolicy: {{ $dep.internal.image.pullPolicy }}
+          args:
+            - start-dev
+            - --import-realm
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: {{ $dep.internal.adminUser | quote }}
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: {{ $adminPassword | quote }}
+            - name: KC_HEALTH_ENABLED
+              value: "true"
+            - name: KC_HTTP_MANAGEMENT_PORT
+              value: {{ $dep.internal.managementPort | toString | quote }}
+          ports:
+            - name: http
+              containerPort: {{ $dep.internal.port }}
+              protocol: TCP
+            - name: management
+              containerPort: {{ $dep.internal.managementPort }}
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /health/ready
+              port: management
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 30
+          livenessProbe:
+            httpGet:
+              path: /health/live
+              port: management
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            {{- toYaml $dep.internal.resources | nindent 12 }}
+          volumeMounts:
+            - name: realm
+              mountPath: /opt/keycloak/data/import
+              readOnly: true
+            - name: data
+              mountPath: /opt/keycloak/data
+      volumes:
+        - name: realm
+          configMap:
+            name: {{ $name }}-realm
+        - name: data
+          {{- if $dep.internal.persistence.enabled }}
+          persistentVolumeClaim:
+            claimName: {{ $name }}-data
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+      {{- with $dep.internal.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $dep.internal.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $dep.internal.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- if $dep.internal.persistence.enabled }}
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ $name }}-data
+  labels:
+    {{- $labels | nindent 4 }}
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if $dep.internal.persistence.storageClass }}
+  storageClassName: {{ $dep.internal.persistence.storageClass | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $dep.internal.persistence.size }}
+{{- end }}
+{{- end }}

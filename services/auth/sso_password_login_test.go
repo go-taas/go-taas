@@ -184,6 +184,7 @@ func TestAdminRolesHelper(t *testing.T) {
 	config.SetConfigForTest(&config.Configuration{Auth: config.AuthConfig{
 		AdminRoles: []string{"platform-admin", "org-admin", "admin", "owner"},
 	}})
+	t.Cleanup(func() { config.SetConfigForTest(nil) })
 	assert.True(t, svc.isAdminRole([]string{"admin"}))
 	assert.True(t, svc.isAdminRole([]string{"developer", "owner"}))
 	assert.False(t, svc.isAdminRole([]string{"developer", "user"}))
@@ -205,6 +206,7 @@ func TestSwitchSurface(t *testing.T) {
 	config.SetConfigForTest(&config.Configuration{Auth: config.AuthConfig{
 		AdminRoles: []string{"platform-admin", "org-admin", "admin", "owner"},
 	}})
+	t.Cleanup(func() { config.SetConfigForTest(nil) })
 
 	// Seed a user-realm session with an admin role.
 	sess := &Session{
@@ -264,6 +266,7 @@ func TestSwitchSurfaceAdmin(t *testing.T) {
 	config.SetConfigForTest(&config.Configuration{Auth: config.AuthConfig{
 		AdminRoles: []string{"platform-admin", "org-admin", "admin", "owner"},
 	}})
+	t.Cleanup(func() { config.SetConfigForTest(nil) })
 
 	// Seed an admin-realm session.
 	sess := &Session{

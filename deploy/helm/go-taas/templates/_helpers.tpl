@@ -63,6 +63,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-rabbitmq" (include "go-taas.fullname" .) -}}
 {{- end -}}
 
+{{- define "go-taas.keycloak.name" -}}
+{{- printf "%s-keycloak" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
 {{- define "go-taas.configOverrides.name" -}}
 {{- printf "%s-config-overrides" (include "go-taas.fullname" .) -}}
 {{- end -}}
@@ -154,6 +158,21 @@ Call with (dict "root" $ "key" "postgresql-password").
 {{- $password -}}
 {{- else -}}
 {{- include "go-taas.generatedSecret" (dict "root" . "key" "redis-password") -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Keycloak admin password: configured, or generated for an in-cluster instance. */}}
+{{- define "go-taas.keycloak.adminPassword" -}}
+{{- $dep := .Values.dependencies.keycloak -}}
+{{- if eq $dep.mode "external" -}}
+{{- $dep.external.clientSecret -}}
+{{- else -}}
+{{- $password := $dep.internal.adminPassword -}}
+{{- if $password -}}
+{{- $password -}}
+{{- else -}}
+{{- include "go-taas.generatedSecret" (dict "root" . "key" "keycloak-admin-password") -}}
 {{- end -}}
 {{- end -}}
 {{- end -}}
@@ -343,6 +362,44 @@ instance from the values file.
   value: {{ $url | quote }}
 - name: CONFIG_MQ_NAMESPACE
   value: {{ $dep.namespace | quote }}
+{{- end -}}
+
+{{/* First-boot SSO seed environment (auth.seedSso). Points the seed at the
+bundled Keycloak (internal) or the configured external IdP. */}}
+{{- define "go-taas.sso.env" -}}
+{{- $root := . -}}
+{{- $dep := .Values.dependencies.keycloak -}}
+{{- $issuer := "" -}}
+{{- $clientId := "go-taas-console" -}}
+{{- $clientSecret := "go-taas-console-secret" -}}
+{{- $redirectUri := "http://localhost:9091/api/v1/auth/sso/*" -}}
+{{- if eq $dep.mode "external" -}}
+{{- $issuer = required "go-taas: dependencies.keycloak.external.issuer is required when dependencies.keycloak.mode=external" $dep.external.issuer -}}
+{{- $clientId = $dep.external.clientId -}}
+{{- $clientSecret = $dep.external.clientSecret -}}
+{{- $redirectUri = $dep.external.redirectUri -}}
+{{- else -}}
+{{- $issuer = printf "http://%s:%v/realms/go-taas" (include "go-taas.keycloak.name" $root) $dep.internal.port -}}
+{{- $redirectUri = $dep.internal.redirectUri -}}
+{{- end -}}
+- name: CONFIG_AUTH_SEEDSSO_ENABLED
+  value: "true"
+- name: CONFIG_AUTH_SEEDSSO_PROVIDERID
+  value: "keycloak"
+- name: CONFIG_AUTH_SEEDSSO_ISSUER
+  value: {{ $issuer | quote }}
+- name: CONFIG_AUTH_SEEDSSO_CLIENTID
+  value: {{ $clientId | quote }}
+- name: CONFIG_AUTH_SEEDSSO_CLIENTSECRET
+  value: {{ $clientSecret | quote }}
+- name: CONFIG_AUTH_SEEDSSO_REDIRECTURI
+  value: {{ $redirectUri | quote }}
+- name: CONFIG_AUTH_SEEDSSO_ADMINUSERNAME
+  value: "admin"
+- name: CONFIG_AUTH_SEEDSSO_ADMINPASSWORD
+  value: "admin"
+- name: CONFIG_AUTH_SEEDSSO_ADMINORGID
+  value: "org-admin"
 {{- end -}}
 
 {{/* ---- misc ------------------------------------------------------------ */}}

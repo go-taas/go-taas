@@ -61,6 +61,7 @@ spec:
             {{- include "go-taas.postgresql.env" . | nindent 12 }}
             {{- include "go-taas.redis.env" . | nindent 12 }}
             {{- include "go-taas.mq.env" . | nindent 12 }}
+            {{- include "go-taas.sso.env" . | nindent 12 }}
             {{- with .Values.taasServer.config }}
             {{- include "go-taas.configEnv" (dict "prefix" "CONFIG" "values" . "indent" 12) }}
             {{- end }}

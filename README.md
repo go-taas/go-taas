@@ -210,7 +210,9 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # console: http://127.0.0.1:9091/ · /admin
 ```
 
-With no overrides the chart provisions in-cluster PostgreSQL, Redis, and RabbitMQ (each switchable to an external instance) and wires their credentials to the control plane. For the full values reference, external-dependency wiring, and the production checklist, see the chart's [README](./deploy/helm/go-taas/README.md) ([Chinese mirror](./deploy/helm/go-taas/README.zh-cn.md)).
+With no overrides the chart provisions in-cluster PostgreSQL, Redis, RabbitMQ, and **Keycloak** (each switchable to an external instance) and wires their credentials to the control plane. The bundled Keycloak seeds the `go-taas` realm and an `admin`/`admin` user, so you can log in to the console immediately. For the full values reference, external-dependency wiring, and the production checklist, see the chart's [README](./deploy/helm/go-taas/README.md) ([Chinese mirror](./deploy/helm/go-taas/README.zh-cn.md)).
+
+To expose the console behind a gateway or Ingress, set the Keycloak redirect URI and web origin to the public URL (see the chart README's *SSO and the bundled Keycloak* section).
 
 ### Prerequisites
 
@@ -303,11 +305,14 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # console: http://127.0.0.1:9091/
 ```
 
-PostgreSQL, Redis and RabbitMQ link to the control plane via configurable
-strategies (per dependency) — either as chart-managed internal instances, or
-via external services the chart wires the credentials against. Use the secret
-generator, `existingSecret`, or both. Local validation renders and lints the
-chart:
+PostgreSQL, Redis, RabbitMQ and Keycloak link to the control plane via
+configurable strategies (per dependency) — either as chart-managed internal
+instances, or via external services the chart wires the credentials against.
+The bundled Keycloak seeds the `go-taas` realm and an `admin`/`admin` user so
+the console is usable immediately; set `dependencies.keycloak.internal.redirectUri`
+and `webOrigin` to the public URL when exposing it behind a gateway or Ingress.
+Use the secret generator, `existingSecret`, or both. Local validation renders
+and lints the chart:
 
 ```bash
 make helm-lint        # lint the chart (values schema included)

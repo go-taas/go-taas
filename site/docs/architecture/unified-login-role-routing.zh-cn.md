@@ -47,7 +47,7 @@ AD1–AD7 把 UI/UX 设计的决策重述为实现级规则。**AD8–AD10 是�
 | AD3 | **管理角色集合是配置值，不是常量。** `auth.adminRoles`（默认 `platform-admin`、`org-admin`、`admin`、`owner`）是使某用户成为管理员的会话角色集合。若任一会话角色在集合中，则该用户是管理员 | 设计 D6。角色来自功能 #10 的成员解析器与功能 #7 的属性映射；哪些角色算「管理」是部署策略，因此必须可配置。默认值覆盖租户角色词汇（`owner`/`admin`）与平台角色（`platform-admin`/`org-admin`） |
 | AD4 | **`SwitchSurface` 是 `taas.auth.v1.AuthService` 上的新 RPC，固定到承载按钮的表面。** `POST /api/v1/auth/session:switch-to-admin`（用户前缀）铸造 admin realm 会话；`POST /api/v1/admin/auth/session:switch-to-user`（管理端前缀）铸造 user realm 会话。每个绑定要求其自身 realm 的已认证会话（由网关 realm 守卫强制），并返回目标 realm 的会话 token | 设计 D4/FR3.2/FR3.3。切换是让基于角色的落地可用的逃生口。每个表面保留自己的会话（功能 #17 D4），因此切换为目标 realm 铸造新会话，而非复用源 token。两个绑定是独立 RPC（而非 `additional_bindings`），因为它们铸造不同的 realm 并校验不同的角色 |
 | AD5 | **`switch-to-admin` 校验调用者具有管理角色；`switch-to-user` 不校验。** 无管理角色却调用 `switch-to-admin` 的用户会收到 10036 `CodeForbidden`。`switch-to-user` 对任何 admin realm 会话可用（管理员总是被允许使用用户控制台） | 设计 FR3.4。管理端切换是权限提升（用户 → 管理端），因此必须按角色门控；用户切换是降权，无需门控。按钮本就不会为非管理员渲染（FR3.1），无角色直接调用返回 10036 |
-| AD6 | **compose 预置是两部分机制：静态的 realm-export.json 变更与 `auth` 模块 `Migrate` 钩子中的运行时预置。** realm-export.json 新增 `admin` 用户、`directAccessGrantsEnabled` 与角色协议映射器；`Migrate` 钩子在不存在时创建 Keycloak OIDC 提供商行与 admin 用户的身份绑定（幂等） | 设计 D5/FR4.1–FR4.4。realm-export.json 是 Keycloak 侧的事实来源（首次启动时由 Keycloak 导入）；提供商行与绑定是 TaaS 侧的事实来源（由 `auth` 模块预置，既有的 `Migrator` 模式）。拆分使每侧的事实来源留在自己的层 |
+| AD6 | **预置是两部分机制：静态的 realm 导入与 `auth` 模块 `Migrate` 钩子中的运行时预置。** realm（来自 `deploy/compose/keycloak/realm-export.json` 或 Helm Chart 内置 Keycloak 的 realm ConfigMap）新增 `admin` 用户、`directAccessGrantsEnabled` 与角色协议映射器；`Migrate` 钩子在不存在时创建 Keycloak OIDC 提供商行与 admin 用户的身份绑定（幂等），取值来自 `auth.seedSso` 配置 | 设计 D5/FR4.1–FR4.4。realm 导入是 Keycloak 侧的事实来源（首次启动时由 Keycloak 导入）；提供商行与绑定是 TaaS 侧的事实来源（由 `auth` 模块预置，既有的 `Migrator` 模式）。拆分使每侧的事实来源留在自己的层 |
 | AD7 | **自定义登录页仅对 OIDC 与 LDAP 提供商提供；SAML 保留重定向流程。** 登录页的提供商列表标记每个提供商的类型；选择 OIDC/LDAP 提供商时导航到 `/login/{provider_id}`（或 `/admin/login/{provider_id}`），选择 SAML 提供商时调用 `SSOAuthorize` 并重定向到 IdP | 设计 D1/FR1.3/FR5.2。SAML 2.0 没有密码授权，因此 SAML 提供商无法通过用户名/密码表单认证。提供商的 `type` 已在公开投影中（`ListPublicSSOProviders` 返回 `type`），因此控制台无需新字段即可分支 |
 | AD8 | **细化设计 D2 —— realm 由*映射后的*会话角色派生，这些角色是权威的。** 当成员解析器已接线时（功能 #10），角色来自 `org_members`；否则来自 IdP 属性映射。`SSOPasswordLogin` 复用既有的 `mapAttributes`/`mapMembership` 路径，因此 realm 决策看到的正是会话将携带的角色 | 设计（D2）说「由用户角色派生」。会话角色由既有的 `mapAttributes`/`mapMembership` 函数产生（功能 #7 D7、功能 #10 AD2/AD11）；从同一输出派生 realm 保证 realm 与会话角色永不一致 |
 | AD9 | **细化设计 D4 —— 切换铸造一个*全新*会话，身份相同但为目标 realm，且不复制源会话的 token。** `SwitchSurface` 解析当前会话，从同一用户/角色/组织重新派生目标 realm 的会话，并在目标 realm 下签发新的会话 id 与访问 token。源会话保持原样（用户可切回） | 设计（D4）说「为目标 realm 铸造会话」。全新会话 id 使两个 realm 的会话保持独立（功能 #17 D4），并让用户同时持有两者——这正是切换到管理端/切换到用户往返所需的。源会话不被吊销，因此用户无需重新认证即可返回 |
@@ -242,9 +242,9 @@ message SwitchSurfaceResponse {
 - int64 字段序列化为 JSON 字符串（既定约定）。
 - 密码绝不在任何响应或错误消息中回显。
 
-### 5.4 compose 的 Keycloak 预置
+### 5.4 首次启动时的 Keycloak 预置
 
-**`deploy/compose/keycloak/realm-export.json`**（Keycloak 侧事实来源，AD6）：
+**Keycloak 侧事实来源（AD6）** —— `go-taas` realm 由 Keycloak 首次启动时导入，来源为 `deploy/compose/keycloak/realm-export.json`（compose）或 Helm Chart 内置 Keycloak 的 realm ConfigMap：
 
 | 变更 | 详情 |
 | --- | --- |
@@ -252,13 +252,13 @@ message SwitchSurfaceResponse {
 | `directAccessGrantsEnabled` | 在 `go-taas-console` 客户端上设为 `true`（使 OIDC 密码授权可用） |
 | 角色协议映射器 | 一个把 `admin` realm 角色映射进 ID token 作为声明的客户端 scope 协议映射器（使角色出现在密码授权返回的 ID token 中） |
 
-**`auth` 模块 `Migrate` 钩子**（TaaS 侧事实来源，AD6/AD10）：在 `AutoMigrate` 之后，预置幂等地运行：
+**`auth` 模块 `Migrate` 钩子**（TaaS 侧事实来源，AD6/AD10）：在 `AutoMigrate` 之后，预置幂等地运行。取值来自 `auth.seedSso` 配置（默认与 compose Keycloak 一致；Helm Chart 会把 issuer 指向内置 Keycloak、把 redirect URI 指向暴露地址）：
 
-1. 若不存在 `provider_id = "keycloak"` 的提供商，则创建它：`type = "oidc"`、`display_name = "Keycloak"`、`issuer = "http://keycloak:8080/realms/go-taas"`、`client_id = "go-taas-console"`、`client_secret = "go-taas-console-secret"`、`redirect_uri = "http://localhost:9091/api/v1/auth/sso/*"`、`enabled = true`、`allow_auto_provision = true`，以及把 Keycloak 管理角色声明映射到 TaaS `admin` 角色的 `attribute_mapping`（例如 `{"username":"preferred_username","email":"email","role":"realm_access.roles"}`）。
+1. 若不存在 `provider_id = "keycloak"` 的提供商，则创建它：`type = "oidc"`、`display_name = "Keycloak"`、`issuer`（来自 `auth.seedSso.issuer`）、`client_id`（来自 `auth.seedSso.clientId`）、`client_secret`（来自 `auth.seedSso.clientSecret`）、`redirect_uri`（来自 `auth.seedSso.redirectUri`）、`enabled = true`、`allow_auto_provision = true`，以及把 Keycloak 管理角色声明映射到 TaaS `admin` 角色的 `attribute_mapping`（例如 `{"username":"preferred_username","email":"email","role":"realm_access.roles"}`）。
 2. 若不存在 `username = "admin"` 的平台用户，则创建它。
 3. 若不存在 `(provider_id = "keycloak", external_subject = issuer + ":" + admin_subject)` 的身份绑定，则创建它并绑定到 `admin` 用户。
 
-预置是幂等的（FR4.4）：每一步在插入前检查存在性，因此重复运行 compose 启动不会重复创建提供商、用户或绑定。`admin` 用户的 `external_subject` 是 Keycloak `admin` 用户的主体；预置在首次启动时从 IdP 读取它（realm-export.json 不固定主体），或通过 JIT 预置在首次成功登录时创建绑定（见 AD10）。
+预置是幂等的（FR4.4）：每一步在插入前检查存在性，因此重复运行启动不会重复创建提供商、用户或绑定。当 `auth.seedSso.enabled` 为 false 时预置为 no-op。`admin` 用户的 `external_subject` 是 Keycloak `admin` 用户的主体；预置在首次启动时从 IdP 读取它（realm-export.json 不固定主体），或通过 JIT 预置在首次成功登录时创建绑定（见 AD10）。
 
 ---
 
@@ -410,7 +410,7 @@ function UserSurface({ path }: { path: string }) {
 - **切换固定到 realm**（AD4）：`switch-to-admin` 仅在用户前缀可达，`switch-to-user` 仅在管理端前缀可达，由网关 realm 守卫强制。错误 realm 会话 → 10038。
 - **SAML 保留重定向流程**（AD7）：SAML 提供商无法通过密码表单认证，因此绝不暴露密码字段；自定义登录页仅对 OIDC 与 LDAP 提供商提供。
 - **管理角色集合可配置**（AD3）：哪些角色算「管理」是部署策略，而非硬编码常量，因此部署无需改代码即可收紧或放宽集合。
-- **预置凭据仅限 compose**：`admin`/`admin` 用户与 `go-taas-console-secret` 客户端密钥仅存在于 compose 的 realm-export.json；生产部署配置自己的 IdP，绝不导入 compose realm。
+- **预置凭据仅用于评估**：`admin`/`admin` 用户与 `go-taas-console-secret` 客户端密钥仅存在于 compose 的 realm-export.json 与 Helm Chart 内置 Keycloak 的 realm；生产部署配置自己的 IdP（或修改预置凭据），绝不导入 compose realm。
 
 ---
 

@@ -1,6 +1,6 @@
 # go-taas Helm Chart
 
-将 Go TaaS 控制面部署到 Kubernetes，并把所有第三方依赖的连接方式变成 values 配置项：Chart 既可以自行置备单副本的 PostgreSQL / Redis / RabbitMQ，也可以让控制面连接运维托管的外部服务。
+将 Go TaaS 控制面部署到 Kubernetes，并把所有第三方依赖的连接方式变成 values 配置项：Chart 既可以自行置备单副本的 PostgreSQL / Redis / RabbitMQ / Keycloak，也可以让控制面连接运维托管的外部服务。
 
 ## Chart 部署的资源
 
@@ -13,7 +13,7 @@
 | `Namespace/<推理命名空间>` | `controller.createNamespace` | 控制器管理的命名空间，取自 `controller.config.controller.namespace` |
 | `Secret/<release>-secrets` | 未设置 `secrets.existingSecret` 时 | 依赖密码与静态加密主密钥 |
 | `ConfigMap/<release>-config-overrides` | `configOverrides` | 在镜像内置配置之后合并的原始配置文件 |
-| PostgreSQL / Redis / RabbitMQ 的 `Deployment` + `Service` + `PersistentVolumeClaim` | 各依赖 `mode: internal` 时 | 面向评估与小规模安装的单副本实例 |
+| PostgreSQL / Redis / RabbitMQ / Keycloak 的 `Deployment` + `Service` + `PersistentVolumeClaim` | 各依赖 `mode: internal` 时 | 面向评估与小规模安装的单副本实例 |
 
 Chart 不创建 Ingress。对外暴露方式由 `taasServer.service.type`（`ClusterIP`、`NodePort`、`LoadBalancer`）决定，或在网关端口前自行添加 Ingress。
 
@@ -21,6 +21,26 @@ Chart 不创建 Ingress。对外暴露方式由 `taasServer.service.type`（`Clu
 [文档](https://go-taas.com/docs.html) ·
 [源码](https://github.com/go-taas/go-taas) ·
 [社区支持](https://github.com/go-taas/go-taas/discussions)。
+
+## SSO 与内置 Keycloak
+
+Chart 默认内置一个 Keycloak IdP（`dependencies.keycloak.mode: internal`），让控制台开箱即用。首次启动时 `taas-server` 会 seed 出 `go-taas` realm 的客户端（`go-taas-console`）与 `admin`/`admin` 用户（带 `admin` realm 角色），auth 的 Migrate 钩子会插入对应的 SSO 提供商记录。用 `admin`/`admin` 登录控制台即可。
+
+若要通过网关或 Ingress 暴露控制台，请把 redirect URI 与 web origin 设置为公网地址：
+
+```yaml
+dependencies:
+  keycloak:
+    internal:
+      redirectUri: "https://taas.example.com/api/v1/auth/sso/*"
+      webOrigin: "https://taas.example.com"
+```
+
+内置 Keycloak 以 uid 1000 运行；Chart 会设置 `fsGroup: 1000` 使数据 PVC 可写，并在管理端口（`dependencies.keycloak.internal.managementPort`，默认 9000）暴露健康检查端点，供就绪/存活探针使用。
+
+若要使用已有 IdP 而非内置实例，把 `dependencies.keycloak.mode` 设为 `external`，并提供 issuer、client id、client secret 与 redirect URI。此时 Chart 不创建 Keycloak 的 Deployment/Service/PVC，并把 SSO seed 指向外部 IdP。
+
+> **生产注意**：seed 的 `admin`/`admin` 与 `alice`/`alice-password` 仅用于评估。公开暴露控制台前请修改它们（或把 `auth.seedSso.enabled` 设为 `false`，通过管理 API 注册自己的 IdP）。
 
 ## 资源标签
 
@@ -34,7 +54,7 @@ Chart 创建的每个资源都带 Kubernetes 推荐标签：
 | `app.kubernetes.io/version` | Chart 的 `appVersion` |
 | `app.kubernetes.io/managed-by` | Chart 资源为 `Helm`，Controller 创建的资源为 `taas-controller` |
 | `app.kubernetes.io/part-of` | `go-taas` |
-| `app.kubernetes.io/component` | `server`、`controller`、`postgresql`、`redis` 或 `rabbitmq` |
+| `app.kubernetes.io/component` | `server`、`controller`、`postgresql`、`redis`、`rabbitmq` 或 `keycloak` |
 
 平台自有键统一使用项目自己的 DNS 前缀 `go-taas.com/`（取自官方网站）。不要使用项目并不拥有的域名（已弃用的 `taas.go-taas.github.io/` 与 `go-taas.io/`）：标签前缀应当能被使用方解析。
 

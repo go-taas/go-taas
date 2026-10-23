@@ -209,7 +209,9 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # 控制台：http://127.0.0.1:9091/ · /admin
 ```
 
-默认配置下，Chart 会在集群内置备 PostgreSQL、Redis 与 RabbitMQ（每个依赖均可切换为外部实例），并把凭据接线到控制面。完整的 values 参考、外部依赖接线方式与生产检查清单见 Chart 的 [README](./deploy/helm/go-taas/README.zh-cn.md)（英文版 [README.md](./deploy/helm/go-taas/README.md)）。
+默认配置下，Chart 会在集群内置备 PostgreSQL、Redis、RabbitMQ 与 **Keycloak**（每个依赖均可切换为外部实例），并把凭据接线到控制面。内置 Keycloak 会 seed 出 `go-taas` realm 与 `admin`/`admin` 用户，因此可以立即登录控制台。完整的 values 参考、外部依赖接线方式与生产检查清单见 Chart 的 [README](./deploy/helm/go-taas/README.zh-cn.md)（英文版 [README.md](./deploy/helm/go-taas/README.md)）。
+
+若要通过网关或 Ingress 暴露控制台，请把 Keycloak 的 redirect URI 与 web origin 设置为公网地址（见 Chart README 的「SSO 与内置 Keycloak」一节）。
 
 ### 环境要求
 
@@ -297,7 +299,7 @@ kubectl --namespace taas port-forward svc/taas-server 9091:9091
 # 控制台：http://127.0.0.1:9091/
 ```
 
-PostgreSQL、Redis 与 RabbitMQ 通过按依赖配置的策略接入控制面 —— 既可以是 Chart 置备并管理的集群内实例，也可以是外部服务（Chart 不负责其部署，只负责把凭据接入）。凭据可来自 Chart 的密钥生成器、`secrets.existingSecret`，或两者并用。本地可用以下目标校验 Chart：
+PostgreSQL、Redis、RabbitMQ 与 Keycloak 通过按依赖配置的策略接入控制面 —— 既可以是 Chart 置备并管理的集群内实例，也可以是外部服务（Chart 不负责其部署，只负责把凭据接入）。内置 Keycloak 会 seed 出 `go-taas` realm 与 `admin`/`admin` 用户，让控制台立即可用；通过网关或 Ingress 暴露时，请把 `dependencies.keycloak.internal.redirectUri` 与 `webOrigin` 设置为公网地址。凭据可来自 Chart 的密钥生成器、`secrets.existingSecret`，或两者并用。本地可用以下目标校验 Chart：
 
 ```bash
 make helm-lint        # lint the chart (values schema included)

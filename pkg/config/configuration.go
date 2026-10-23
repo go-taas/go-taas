@@ -85,6 +85,13 @@ func ParseConfigs(pathPattern string) {
 	// preserved, while an absent key still defaults to true.
 	v.SetDefault("quota.concurrencyConsumer.enabled", true)
 
+	// Feature-22 (AD6/AD10): the first-boot SSO seed is enabled by
+	// default so a fresh install is usable out of the box. Applied here
+	// (not in applyDefaults) so an explicit `seedSso.enabled: false` in
+	// a config file or a CONFIG_AUTH_SEEDSSO_ENABLED=false override is
+	// preserved, while an absent key still defaults to true.
+	v.SetDefault("auth.seedSso.enabled", true)
+
 	for _, configFile := range matches {
 		// Skip hidden files such as editor backups.
 		if strings.HasPrefix(filepath.Base(configFile), ".") {
@@ -137,6 +144,34 @@ func (c *Configuration) applyDefaults() {
 	// platform role vocabulary. A deployment can override it.
 	if len(c.Auth.AdminRoles) == 0 {
 		c.Auth.AdminRoles = []string{"platform-admin", "org-admin", "admin", "owner"}
+	}
+	// Feature-22 (AD6/AD10): the first-boot SSO seed defaults to the
+	// compose Keycloak values so a fresh install is usable out of the
+	// box. The Helm chart overrides issuer/redirectUri to point at the
+	// bundled Keycloak and the exposed URL.
+	if c.Auth.SeedSso.ProviderID == "" {
+		c.Auth.SeedSso.ProviderID = "keycloak"
+	}
+	if c.Auth.SeedSso.Issuer == "" {
+		c.Auth.SeedSso.Issuer = "http://keycloak:8080/realms/go-taas"
+	}
+	if c.Auth.SeedSso.ClientID == "" {
+		c.Auth.SeedSso.ClientID = "go-taas-console"
+	}
+	if c.Auth.SeedSso.ClientSecret == "" {
+		c.Auth.SeedSso.ClientSecret = "go-taas-console-secret"
+	}
+	if c.Auth.SeedSso.RedirectURI == "" {
+		c.Auth.SeedSso.RedirectURI = "http://localhost:9091/api/v1/auth/sso/*"
+	}
+	if c.Auth.SeedSso.AdminUsername == "" {
+		c.Auth.SeedSso.AdminUsername = "admin"
+	}
+	if c.Auth.SeedSso.AdminPassword == "" {
+		c.Auth.SeedSso.AdminPassword = "admin"
+	}
+	if c.Auth.SeedSso.AdminOrgID == "" {
+		c.Auth.SeedSso.AdminOrgID = "org-admin"
 	}
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2

@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 
@@ -168,4 +169,27 @@ func TestSeedComposeProviderAndAdminJITFallback(t *testing.T) {
 	var bindingCount int64
 	require.NoError(t, db.Model(&IdentityBinding{}).Count(&bindingCount).Error)
 	assert.EqualValues(t, 0, bindingCount, "no binding when the subject is unresolvable")
+}
+
+// TestSeedComposeProviderAndAdminDisabled verifies the seed is a no-op
+// when auth.seedSso.enabled is false (feature-22 AD6): no provider, user,
+// or binding is created.
+func TestSeedComposeProviderAndAdminDisabled(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	config.SetConfigForTest(&config.Configuration{Auth: config.AuthConfig{
+		SeedSso: config.SeedSsoConfig{Enabled: false},
+	}})
+	t.Cleanup(func() { config.SetConfigForTest(nil) })
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+
+	var providerCount, userCount, bindingCount int64
+	require.NoError(t, db.Model(&SSOProvider{}).Count(&providerCount).Error)
+	require.NoError(t, db.Model(&User{}).Count(&userCount).Error)
+	require.NoError(t, db.Model(&IdentityBinding{}).Count(&bindingCount).Error)
+	assert.EqualValues(t, 0, providerCount, "no provider when seed disabled")
+	assert.EqualValues(t, 0, userCount, "no user when seed disabled")
+	assert.EqualValues(t, 0, bindingCount, "no binding when seed disabled")
 }
