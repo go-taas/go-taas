@@ -1,3 +1,10 @@
+# [1.64.0](https://github.com/go-taas/go-taas/compare/v1.63.0...v1.64.0) (2026-10-23)
+
+
+### Features
+
+* **helm:** bundle Keycloak as a default dependency ([091c8a1](https://github.com/go-taas/go-taas/commit/091c8a1d336f9eeb0c54661a4815a420675de954))
+
 # [1.63.0](https://github.com/go-taas/go-taas/compare/v1.62.2...v1.63.0) (2026-10-22)
 
 
