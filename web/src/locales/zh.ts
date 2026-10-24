@@ -755,6 +755,7 @@ export const zh: Record<string, string> = {
   'users.stateTitle': '确认操作',
   'users.stateBody': '确定要{action}用户 {username} 吗？',
   'users.stateFailed': '更新用户状态失败',
+  'users.deleteBody': '确定要永久删除用户 {username} 吗？此操作不可撤销，将同时删除其身份绑定。',
   'users.loadFailed': '加载用户失败',
 
   // ---- Billing Payments ----
@@ -1336,6 +1337,11 @@ export const zh: Record<string, string> = {
   'models.validationName': '名称必填（1-128 个字符）。',
   'models.validationVersion': '版本必填（1-64 个字符）。',
   'models.validationWeightPath': '权重路径必填（例如 models/qwen2.5-32b/）。',
+  'models.downloadFromHub': '从模型仓库下载权重（ModelScope / HuggingFace）',
+  'models.fieldSource': '模型仓库',
+  'models.fieldSourceModelId': '仓库模型 ID',
+  'models.placeholderSourceModelId': '例如 Qwen/Qwen2.5-0.5B-Instruct',
+  'models.validationSourceModelId': '请输入仓库模型 ID。',
   'models.registerFailed': '注册模型失败',
   'models.loadFailed': '加载模型失败',
 

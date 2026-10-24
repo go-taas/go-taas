@@ -132,3 +132,25 @@ func TestServiceResolveUserID(t *testing.T) {
 	_, err = svc.ResolveUserID(ctx, "00000000-0000-0000-0000-000000000000")
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
+func TestServiceDeleteUser(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	require.NoError(t, db.Create(&User{ID: "user-1", Username: "alice", Email: "a@x.com"}).Error)
+	require.NoError(t, db.Create(&IdentityBinding{ID: "b-1", ProviderID: "p", ExternalSubject: "s", UserID: "user-1"}).Error)
+
+	resp, err := svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "user-1"})
+	require.NoError(t, err)
+	assert.NotNil(t, resp.Response)
+
+	// The user and its bindings are gone.
+	var count int64
+	require.NoError(t, db.Model(&User{}).Where("id = ?", "user-1").Count(&count).Error)
+	assert.EqualValues(t, 0, count)
+	require.NoError(t, db.Model(&IdentityBinding{}).Where("user_id = ?", "user-1").Count(&count).Error)
+	assert.EqualValues(t, 0, count)
+
+	// Unknown user → 10003.
+	_, err = svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "missing"})
+	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
+}

@@ -18,6 +18,7 @@ import (
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/services/audit"
 )
 
 // ---- User directory (admin surface) ----
@@ -100,6 +101,30 @@ func (s *Service) setUserState(ctx context.Context, userID, state string) (*auth
 		return nil, err
 	}
 	return s.summarizeUser(ctx, row), nil
+}
+
+// DeleteUser permanently removes a platform user and its identity
+// bindings. Unknown user → CodeUserNotFound.
+func (s *Service) DeleteUser(ctx context.Context, req *authv1.DeleteUserRequest) (*authv1.DeleteUserResponse, error) {
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return nil, err
+	}
+	if err := repo.DeleteUser(ctx, req.GetUserId()); err != nil {
+		if isRecordNotFound(err) {
+			return nil, apierrors.New(apierrors.CodeUserNotFound)
+		}
+		return nil, err
+	}
+	s.recordAudit(ctx, &audit.AuditEvent{
+		ActorUserID:  req.GetUserId(),
+		ActorType:    "user",
+		Action:       "user.delete",
+		ResourceType: "user",
+		ResourceID:   req.GetUserId(),
+		Result:       "success",
+	})
+	return &authv1.DeleteUserResponse{Response: okResponse()}, nil
 }
 
 // summarizeUser maps a user row to the directory summary, computing the

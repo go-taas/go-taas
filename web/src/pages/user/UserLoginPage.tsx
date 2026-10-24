@@ -221,7 +221,7 @@ export default function UserLoginPage() {
         <button
           type="submit"
           data-testid="login-local-submit"
-          disabled={!username.trim() || !password || submitting}
+          disabled={!username.trim() || !password || !email.trim() || !emailCode.trim() || submitting}
         >
           {submitting ? t('common.working') : t('login.submit')}
         </button>

@@ -330,6 +330,26 @@ func (r *SSORepository) SetUserState(ctx context.Context, id string, state strin
 	return &row, nil
 }
 
+// DeleteUser removes a user and its identity bindings in one
+// transaction. gorm.ErrRecordNotFound passes through when the user does
+// not exist.
+func (r *SSORepository) DeleteUser(ctx context.Context, id string) error {
+	return r.db.DB(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Where("user_id = ?", id).Delete(&IdentityBinding{})
+		if res.Error != nil {
+			return res.Error
+		}
+		out := tx.Where("id = ?", id).Delete(&User{})
+		if out.Error != nil {
+			return out.Error
+		}
+		if out.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}
+
 // UpdateUserProfile updates the mutable profile fields (display name,
 // avatar) and re-selects the row. Username and email are immutable.
 // gorm.ErrRecordNotFound passes through; the caller maps it to

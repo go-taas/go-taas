@@ -411,6 +411,16 @@ taasServer:
   # -- Extra environment variables appended to the server container (full env entries).
   extraEnv: []
   # -- Extra volumes for the server pod (e.g. a shared model-weights filesystem).
+  # Model download from ModelScope/HuggingFace writes into the shared
+  # weights directory, so mount an RWX PVC at /data/weights and set
+  # `configOverrides.model.weightsDir: /data/weights`, e.g.:
+  #   extraVolumes:
+  #     - name: model-weights
+  #       persistentVolumeClaim:
+  #         claimName: taas-model-weights
+  #   extraVolumeMounts:
+  #     - name: model-weights
+  #       mountPath: /data/weights
   extraVolumes: []
   # -- Extra volume mounts for the server container.
   extraVolumeMounts: []

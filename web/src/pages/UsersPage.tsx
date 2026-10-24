@@ -28,7 +28,7 @@ export default function UsersPage() {
   const [error, setError] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<{
     user: UserSummary;
-    action: 'disable' | 'enable';
+    action: 'disable' | 'enable' | 'delete';
   } | null>(null);
 
   const load = useCallback(async () => {
@@ -62,11 +62,15 @@ export default function UsersPage() {
     setError('');
     try {
       const { user, action } = confirmTarget;
-      await api.post(
-        `/api/v1/admin/auth/users/${user.userId}:${action}`,
-        orgId,
-        {},
-      );
+      if (action === 'delete') {
+        await api.del(`/api/v1/admin/auth/users/${user.userId}`, orgId);
+      } else {
+        await api.post(
+          `/api/v1/admin/auth/users/${user.userId}:${action}`,
+          orgId,
+          {},
+        );
+      }
       setConfirmTarget(null);
       await load();
     } catch (e) {
@@ -150,6 +154,13 @@ export default function UsersPage() {
                         {t('common.enable')}
                       </button>
                     )}
+                    <button
+                      className="link danger"
+                      data-testid={`user-delete-${user.userId}`}
+                      onClick={() => setConfirmTarget({ user, action: 'delete' })}
+                    >
+                      {t('common.delete')}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -172,14 +183,20 @@ export default function UsersPage() {
           onClose={() => setConfirmTarget(null)}
           testId="user-state-dialog"
         >
-          <p
-            dangerouslySetInnerHTML={{
-              __html: t('users.stateBody', {
-                action: confirmTarget.action,
-                username: confirmTarget.user.username,
-              }),
-            }}
-          />
+          {confirmTarget.action === 'delete' ? (
+            <p data-testid="user-delete-body">
+              {t('users.deleteBody', { username: confirmTarget.user.username })}
+            </p>
+          ) : (
+            <p
+              dangerouslySetInnerHTML={{
+                __html: t('users.stateBody', {
+                  action: confirmTarget.action,
+                  username: confirmTarget.user.username,
+                }),
+              }}
+            />
+          )}
           <div className="dialog-actions">
             <button
               className="secondary"
@@ -189,11 +206,13 @@ export default function UsersPage() {
               {t('common.cancel')}
             </button>
             <button
-              className={confirmTarget.action === 'disable' ? 'danger' : ''}
+              className={confirmTarget.action === 'enable' ? '' : 'danger'}
               data-testid="user-state-ok"
               onClick={() => void setStateAction()}
             >
-              {t(confirmTarget.action === 'disable' ? 'common.disable' : 'common.enable')}
+              {confirmTarget.action === 'delete'
+                ? t('common.delete')
+                : t(confirmTarget.action === 'disable' ? 'common.disable' : 'common.enable')}
             </button>
           </div>
         </Dialog>

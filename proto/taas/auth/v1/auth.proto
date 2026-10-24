@@ -339,6 +339,14 @@ service AuthService {
       post: "/api/v1/admin/auth/users/{user_id}:enable"
     };
   }
+
+  // DeleteUser permanently removes a platform user and its identity
+  // bindings (admin surface). Sessions are revoked with the row.
+  rpc DeleteUser(DeleteUserRequest) returns (DeleteUserResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/admin/auth/users/{user_id}"
+    };
+  }
 }
 
 message CreateUserRequest {
@@ -775,6 +783,14 @@ message EnableUserRequest {
 message EnableUserResponse {
   taas.common.v1.Response response = 1;
   UserSummary user = 2;
+}
+
+message DeleteUserRequest {
+  string user_id = 1;
+}
+
+message DeleteUserResponse {
+  taas.common.v1.Response response = 1;
 }
 
 // ---- Unified login & role-based routing (feature-22) ----

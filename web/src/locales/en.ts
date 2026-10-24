@@ -755,6 +755,7 @@ export const en: Record<string, string> = {
   'users.stateTitle': 'Confirm action',
   'users.stateBody': 'Are you sure you want to {action} user {username}?',
   'users.stateFailed': 'failed to update user state',
+  'users.deleteBody': 'Permanently delete user {username}? This cannot be undone and also removes its identity bindings.',
   'users.loadFailed': 'failed to load users',
 
   // ---- Billing Payments ----
@@ -1359,6 +1360,11 @@ export const en: Record<string, string> = {
   'models.validationName': 'Name is required (1-128 characters).',
   'models.validationVersion': 'Version is required (1-64 characters).',
   'models.validationWeightPath': 'Weight path is required (e.g. models/qwen2.5-32b/).',
+  'models.downloadFromHub': 'Download weights from a model hub (ModelScope / HuggingFace)',
+  'models.fieldSource': 'Model hub',
+  'models.fieldSourceModelId': 'Hub model ID',
+  'models.placeholderSourceModelId': 'e.g. Qwen/Qwen2.5-0.5B-Instruct',
+  'models.validationSourceModelId': 'Enter the hub model ID.',
   'models.registerFailed': 'failed to register model',
   'models.loadFailed': 'failed to load models',
 

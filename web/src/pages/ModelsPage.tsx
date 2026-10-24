@@ -203,6 +203,11 @@ function RegisterDialog({
   const [version, setVersion] = useState('');
   const [weightPath, setWeightPath] = useState('');
   const [description, setDescription] = useState('');
+  // Download mode: fetch the weights from a model hub instead of
+  // supplying a weight path.
+  const [download, setDownload] = useState(false);
+  const [source, setSource] = useState('huggingface');
+  const [sourceModelId, setSourceModelId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { t } = useI18n();
@@ -217,19 +222,30 @@ function RegisterDialog({
       setError(t('models.validationVersion'));
       return;
     }
-    if (!weightPath.trim()) {
+    if (download) {
+      if (!sourceModelId.trim()) {
+        setError(t('models.validationSourceModelId'));
+        return;
+      }
+    } else if (!weightPath.trim()) {
       setError(t('models.validationWeightPath'));
       return;
     }
     setSubmitting(true);
     setError('');
     try {
-      await api.post('/api/v1/admin/models', orgId, {
+      const body: Record<string, string> = {
         name: name.trim(),
         version: version.trim(),
-        weightPath: weightPath.trim(),
         description: description.trim(),
-      });
+      };
+      if (download) {
+        body.source = source;
+        body.sourceModelId = sourceModelId.trim();
+      } else {
+        body.weightPath = weightPath.trim();
+      }
+      await api.post('/api/v1/admin/models', orgId, body);
       onRegistered();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('models.registerFailed'));
@@ -264,15 +280,54 @@ function RegisterDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="model-weight-path">{t('models.fieldWeightPath')}</label>
-          <input
-            id="model-weight-path"
-            data-testid="model-weight-path-input"
-            value={weightPath}
-            onChange={(e) => setWeightPath(e.target.value)}
-            placeholder={t('models.placeholderWeightPath')}
-          />
+          <label htmlFor="model-download-mode">
+            <input
+              id="model-download-mode"
+              type="checkbox"
+              data-testid="model-download-mode"
+              checked={download}
+              onChange={(e) => setDownload(e.target.checked)}
+            />{' '}
+            {t('models.downloadFromHub')}
+          </label>
         </div>
+        {download ? (
+          <>
+            <div className="form-field">
+              <label htmlFor="model-source">{t('models.fieldSource')}</label>
+              <select
+                id="model-source"
+                data-testid="model-source-select"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                <option value="huggingface">HuggingFace</option>
+                <option value="modelscope">ModelScope</option>
+              </select>
+            </div>
+            <div className="form-field">
+              <label htmlFor="model-source-id">{t('models.fieldSourceModelId')}</label>
+              <input
+                id="model-source-id"
+                data-testid="model-source-id-input"
+                value={sourceModelId}
+                onChange={(e) => setSourceModelId(e.target.value)}
+                placeholder={t('models.placeholderSourceModelId')}
+              />
+            </div>
+          </>
+        ) : (
+          <div className="form-field full">
+            <label htmlFor="model-weight-path">{t('models.fieldWeightPath')}</label>
+            <input
+              id="model-weight-path"
+              data-testid="model-weight-path-input"
+              value={weightPath}
+              onChange={(e) => setWeightPath(e.target.value)}
+              placeholder={t('models.placeholderWeightPath')}
+            />
+          </div>
+        )}
         <div className="form-field full">
           <label htmlFor="model-description">{t('common.descriptionOptional')}</label>
           <textarea
