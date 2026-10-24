@@ -488,6 +488,11 @@ message SSOProvider {
   string default_org = 18;
   bool allow_auto_provision = 19;
   string attribute_mapping = 20; // JSON string
+  // password_login reports whether the provider supports the
+  // resource-owner password grant (Keycloak Direct Access Grants, LDAP
+  // bind). OAuth2-only providers such as GitHub do not; the console
+  // offers only the redirect flow for them.
+  bool password_login = 23;
   int64 created_at = 21;
   int64 updated_at = 22;
 }
@@ -603,6 +608,9 @@ message PublicSSOProvider {
   string provider_id = 1;
   string type = 2; // oidc | saml | ldap
   string display_name = 3;
+  // password_login reports whether the provider supports the
+  // resource-owner password grant; false means redirect-only.
+  bool password_login = 4;
 }
 message ListPublicSSOProvidersResponse {
   taas.common.v1.Response response = 1;

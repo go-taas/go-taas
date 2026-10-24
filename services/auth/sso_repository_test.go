@@ -45,6 +45,13 @@ func TestSSORepositoryProviderCRUD(t *testing.T) {
 	require.NoError(t, err)
 	assert.False(t, noJITFound.AllowAutoProvision, "allow_auto_provision: false must be preserved on create")
 
+	// An explicit password_login: false is preserved on create.
+	noPwd := &SSOProvider{ID: "nopwd", Type: ProviderTypeOIDC, DisplayName: "NoPwd", PasswordLogin: false}
+	require.NoError(t, repo.CreateProvider(ctx, noPwd))
+	noPwdFound, err := repo.FindProvider(ctx, "nopwd")
+	require.NoError(t, err)
+	assert.False(t, noPwdFound.PasswordLogin, "password_login: false must be preserved on create")
+
 	// Duplicate id maps to 10020.
 	err = repo.CreateProvider(ctx, &SSOProvider{ID: "okta", Type: ProviderTypeOIDC, DisplayName: "Dup"})
 	assert.EqualValues(t, apierrors.CodeSSOProviderExists, apierrors.CodeOf(err))

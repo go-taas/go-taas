@@ -140,6 +140,7 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 			Scopes:             "openid profile email",
 			Enabled:            true,
 			AllowAutoProvision: true,
+			PasswordLogin:      true,
 			AttributeMapping:   seedKeycloakAttributeMapping,
 		}
 		if err := repo.CreateProvider(ctx, prov); err != nil {

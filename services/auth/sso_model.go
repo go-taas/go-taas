@@ -38,9 +38,15 @@ type SSOProvider struct {
 	Enabled            bool   `gorm:"not null;default:false"`
 	DefaultOrg         string `gorm:"size:64"`
 	AllowAutoProvision bool   `gorm:"not null;default:true"`
-	AttributeMapping   string `gorm:"type:jsonb;not null;default:'{}'"`
-	CreatedAt          time.Time
-	UpdatedAt          time.Time
+	// PasswordLogin reports whether the provider supports the
+	// resource-owner password grant (Keycloak Direct Access Grants,
+	// LDAP bind). OAuth2-only providers such as GitHub do not, so the
+	// console offers only the redirect flow and SSOPasswordLogin
+	// rejects them.
+	PasswordLogin     bool   `gorm:"not null;default:true"`
+	AttributeMapping string `gorm:"type:jsonb;not null;default:'{}'"`
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
 }
 
 // TableName returns the sso_providers table name.

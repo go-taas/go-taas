@@ -73,6 +73,11 @@ func (s *Service) SSOPasswordLogin(ctx context.Context, req *authv1.SSOPasswordL
 	if prov.Type == ProviderTypeSAML {
 		return nil, apierrors.New(apierrors.CodeSSOProviderInvalid)
 	}
+	// A provider that does not support the password grant (e.g. GitHub
+	// OAuth) must use the redirect flow only.
+	if !prov.PasswordLogin {
+		return nil, apierrors.New(apierrors.CodeSSOProviderInvalid)
+	}
 
 	// Validate the credentials (feature-22 §7): empty → 10024.
 	username := strings.TrimSpace(req.GetUsername())

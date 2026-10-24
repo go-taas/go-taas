@@ -62,6 +62,7 @@ func seedPasswordProvider(t *testing.T, svc *Service, idpURL string, roleClaim s
 		RedirectURI:        "http://localhost:9091/api/v1/auth/sso/*",
 		Enabled:            true,
 		AllowAutoProvision: true,
+		PasswordLogin:      true,
 		AttributeMapping:   `{"username":"preferred_username","email":"email","role":"` + roleClaim + `"}`,
 	}
 	require.NoError(t, svc.ssoRepo.CreateProvider(context.Background(), prov))
@@ -132,11 +133,25 @@ func TestSSOPasswordLoginValidation(t *testing.T) {
 	})
 	assert.EqualValues(t, apierrors.CodeSSOProviderInvalid, apierrors.CodeOf(err))
 
+	// A provider that does not support the password grant (e.g. GitHub
+	// OAuth) → 10028.
+	require.NoError(t, svc.ssoRepo.CreateProvider(context.Background(), &SSOProvider{
+		ID: "github", Type: ProviderTypeOIDC, DisplayName: "GitHub",
+		Issuer: "https://github.com/login/oauth", ClientID: "c", ClientSecret: "s",
+		RedirectURI: "https://console.example.com/callback", Enabled: true,
+		PasswordLogin: false,
+	}))
+	_, err = svc.SSOPasswordLogin(ctx, &authv1.SSOPasswordLoginRequest{
+		ProviderId: "github", Username: "a", Password: "b",
+	})
+	assert.EqualValues(t, apierrors.CodeSSOProviderInvalid, apierrors.CodeOf(err))
+
 	// Empty username/password → 10024.
 	require.NoError(t, svc.ssoRepo.CreateProvider(context.Background(), &SSOProvider{
 		ID: "oidc", Type: ProviderTypeOIDC, DisplayName: "O",
 		Issuer: "https://idp.example.com", ClientID: "c", ClientSecret: "s",
 		RedirectURI: "https://console.example.com/callback", Enabled: true,
+		PasswordLogin: true,
 	}))
 	_, err = svc.SSOPasswordLogin(ctx, &authv1.SSOPasswordLoginRequest{
 		ProviderId: "oidc", Username: "", Password: "b",
@@ -167,6 +182,7 @@ func TestSSOPasswordLoginJITDisabledNoBinding(t *testing.T) {
 		RedirectURI:        "http://localhost:9091/api/v1/auth/sso/*",
 		Enabled:            true,
 		AllowAutoProvision: false,
+		PasswordLogin:      true,
 		AttributeMapping:   `{"username":"preferred_username","email":"email","role":"realm_access.roles"}`,
 	}
 	require.NoError(t, svc.ssoRepo.CreateProvider(context.Background(), prov))

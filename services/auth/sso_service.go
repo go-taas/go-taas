@@ -395,9 +395,10 @@ func (s *Service) ListPublicSSOProviders(ctx context.Context, req *authv1.ListPu
 	providers := make([]*authv1.PublicSSOProvider, 0, len(rows))
 	for _, row := range rows {
 		providers = append(providers, &authv1.PublicSSOProvider{
-			ProviderId:  row.ID,
-			Type:        row.Type,
-			DisplayName: row.DisplayName,
+			ProviderId:    row.ID,
+			Type:          row.Type,
+			DisplayName:   row.DisplayName,
+			PasswordLogin: row.PasswordLogin,
 		})
 	}
 	return &authv1.ListPublicSSOProvidersResponse{
@@ -567,6 +568,7 @@ func (s *Service) validateProvider(p *authv1.SSOProvider, create bool) (*SSOProv
 		DefaultOrg:         strings.TrimSpace(p.GetDefaultOrg()),
 		AllowAutoProvision: p.GetAllowAutoProvision(),
 		AttributeMapping:   p.GetAttributeMapping(),
+		PasswordLogin:      p.GetPasswordLogin(),
 	}
 	if create {
 		id := strings.TrimSpace(p.GetProviderId())
@@ -670,6 +672,7 @@ func mergeProvider(existing *SSOProvider, p *authv1.SSOProvider) *SSOProvider {
 	}
 	// Booleans: the request explicitly sets them.
 	prov.AllowAutoProvision = p.GetAllowAutoProvision()
+	prov.PasswordLogin = p.GetPasswordLogin()
 	return &prov
 }
 
@@ -929,6 +932,7 @@ func summarizeProvider(p *SSOProvider) *authv1.SSOProvider {
 		DefaultOrg:         p.DefaultOrg,
 		AllowAutoProvision: p.AllowAutoProvision,
 		AttributeMapping:   p.AttributeMapping,
+		PasswordLogin:      p.PasswordLogin,
 		CreatedAt:          p.CreatedAt.Unix(),
 		UpdatedAt:          p.UpdatedAt.Unix(),
 	}

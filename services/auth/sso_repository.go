@@ -88,6 +88,7 @@ func (r *SSORepository) CreateProvider(ctx context.Context, p *SSOProvider) erro
 		"enabled":              p.Enabled,
 		"default_org":          p.DefaultOrg,
 		"allow_auto_provision": p.AllowAutoProvision,
+		"password_login":       p.PasswordLogin,
 	}
 	if p.AttributeMapping != "" {
 		row["attribute_mapping"] = p.AttributeMapping
@@ -154,6 +155,7 @@ func (r *SSORepository) UpdateProvider(ctx context.Context, id string, p *SSOPro
 		"default_org":          p.DefaultOrg,
 		"allow_auto_provision": p.AllowAutoProvision,
 		"attribute_mapping":    p.AttributeMapping,
+		"password_login":       p.PasswordLogin,
 	}
 	res := r.db.DB(ctx).Model(&SSOProvider{}).Where("id = ?", id).Updates(updates)
 	if res.Error != nil {

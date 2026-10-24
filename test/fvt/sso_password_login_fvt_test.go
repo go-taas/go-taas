@@ -52,6 +52,7 @@ func seedPasswordProvider(t *testing.T, env *ssoEnv, idpURL string) {
 			"redirectUri":        "http://localhost:9091/api/v1/auth/sso/*",
 			"defaultOrg":         "org-fvt",
 			"allowAutoProvision": true,
+			"passwordLogin":      true,
 			"attributeMapping":   `{"username":"preferred_username","email":"email","role":"realm_access.roles"}`,
 		},
 	}, map[string]string{"X-Organization-Id": "org-fvt"})

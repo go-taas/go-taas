@@ -13,6 +13,7 @@ interface PublicProvider {
   providerId: string;
   type: string;
   displayName: string;
+  passwordLogin: boolean;
 }
 
 export default function UserLoginPage() {
@@ -30,10 +31,11 @@ export default function UserLoginPage() {
       .finally(() => setLoading(false));
   }, [api]);
 
-  const signIn = async (providerId: string, type: string) => {
-    // OIDC/LDAP → the TaaS custom login page (feature-22 AD7); SAML →
-    // the redirect flow.
-    if (type === 'oidc' || type === 'ldap') {
+  const signIn = async (providerId: string, type: string, passwordLogin: boolean) => {
+    // OIDC/LDAP providers that support the password grant → the TaaS
+    // custom login page (feature-22 AD7); SAML and password-less
+    // providers (e.g. GitHub OAuth) → the redirect flow.
+    if ((type === 'oidc' || type === 'ldap') && passwordLogin) {
       navigate(realmCustomLoginPath('user', providerId));
       return;
     }
@@ -71,7 +73,7 @@ export default function UserLoginPage() {
               key={p.providerId}
               className="provider-button"
               data-testid={`sso-login-${p.providerId}`}
-              onClick={() => void signIn(p.providerId, p.type)}
+              onClick={() => void signIn(p.providerId, p.type, p.passwordLogin)}
             >
               {t('login.signInWith', { name: p.displayName })}
             </button>
