@@ -71,6 +71,7 @@ export const zh: Record<string, string> = {
   'common.rateLimitUnlimited': '不限',
   'common.rateLimitRpm': '∞ rpm',
   'common.rateLimitTpm': '∞ tpm',
+  'common.pageError': '页面加载失败',
   'common.zeroUnlimited': '0 = 不限',
 
   // ---- Shells / navigation ----

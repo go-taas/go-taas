@@ -546,6 +546,30 @@ th.sortable:hover {
   border: 1px solid var(--border);
 }
 
+/* Page-level error fallback (ErrorBoundary). */
+.page-error {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 28px;
+  border-radius: var(--radius);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.92), rgba(255, 245, 246, 0.7));
+  border: 1px solid rgba(225, 29, 72, 0.22);
+  border-left: 3px solid var(--danger);
+}
+
+.page-error h2 {
+  margin: 0;
+  font-size: 17px;
+  color: var(--danger);
+}
+
+.page-error p {
+  margin: 0;
+  font-size: 13px;
+  word-break: break-word;
+}
+
 .not-found {
   text-align: center;
   padding: 64px 24px;

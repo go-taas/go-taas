@@ -34,7 +34,7 @@ export default function QuotaBar() {
     return () => clearInterval(id);
   }, [load]);
 
-  if (!data) return null;
+  if (!data || !data.quota || !data.usage) return null;
   const q = data.quota;
   const u = data.usage;
   const allUnlimited =

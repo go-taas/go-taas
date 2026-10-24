@@ -12,6 +12,7 @@ import { OrgSwitcher } from '../org';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
+import { ErrorBoundary } from '../components';
 import { ADMIN_NAV_CATEGORIES, categoryForPath } from './nav';
 
 function isActive(path: string, current: string): boolean {
@@ -191,7 +192,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
         )}
       </aside>
       <main className="main">
-        {children}
+        <ErrorBoundary title={t('common.pageError')}>{children}</ErrorBoundary>
       </main>
     </div>
   );

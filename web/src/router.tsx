@@ -5,8 +5,7 @@
 import {
   createContext,
   useContext,
-  useEffect,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from 'react';
 
@@ -17,8 +16,13 @@ function emit() {
   listeners.forEach((l) => l());
 }
 
+/** Current location including the query string. */
+function currentLocation(): string {
+  return window.location.pathname + window.location.search;
+}
+
 export function navigate(path: string) {
-  if (window.location.pathname === path) return;
+  if (currentLocation() === path) return;
   window.history.pushState({}, '', path);
   emit();
 }
@@ -27,23 +31,35 @@ export function navigate(path: string) {
 // for the moved-admin-route redirects so a bookmark does not create a
 // back-button loop.
 export function replace(path: string) {
-  if (window.location.pathname === path) return;
+  if (currentLocation() === path) return;
   window.history.replaceState({}, '', path);
   emit();
 }
 
+// Back/forward navigation changes the location without going through
+// navigate(); re-emit so every subscriber sees the new path.
+if (typeof window !== 'undefined') {
+  window.addEventListener('popstate', emit);
+}
+
+function subscribe(listener: Listener): () => void {
+  listeners.add(listener);
+  return () => {
+    listeners.delete(listener);
+  };
+}
+
+function getSnapshot(): string {
+  return window.location.pathname;
+}
+
+// useRoute subscribes through useSyncExternalStore. Unlike a useEffect
+// subscription this cannot miss an update that happens during the initial
+// mount: React re-reads the snapshot right after subscribing. That matters
+// because the shells redirect from an effect (no session → /login), which
+// runs before their parent's effect would have subscribed.
 export function useRoute(): string {
-  const [path, setPath] = useState(window.location.pathname);
-  useEffect(() => {
-    const listener = () => setPath(window.location.pathname);
-    listeners.add(listener);
-    window.addEventListener('popstate', listener);
-    return () => {
-      listeners.delete(listener);
-      window.removeEventListener('popstate', listener);
-    };
-  }, []);
-  return path;
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
 }
 
 // Router renders its children; children use <Route> to match segments.

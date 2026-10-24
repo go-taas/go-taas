@@ -13,6 +13,7 @@ import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
+import { ErrorBoundary } from '../components';
 import { USER_NAV_CATEGORIES, categoryForPath } from './nav';
 
 // adminRoles is the set of session roles that make a user an
@@ -207,7 +208,7 @@ export function UserShell({ children }: { children: ReactNode }) {
         )}
       </aside>
       <main className="main">
-        {children}
+        <ErrorBoundary title={t('common.pageError')}>{children}</ErrorBoundary>
       </main>
     </div>
   );

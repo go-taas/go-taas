@@ -1,6 +1,6 @@
 // Shared presentational components used across console pages.
 
-import { useEffect, useState, type ReactNode } from 'react';
+import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import { navigate } from './router';
 
 export function Dialog({
@@ -129,4 +129,44 @@ export function usePolling(callback: () => void, intervalMs: number, active: boo
     const id = setInterval(callback, intervalMs);
     return () => clearInterval(id);
   }, [callback, intervalMs, active]);
+}
+
+// ErrorBoundary keeps a single failing page from blanking the whole
+// console: React unmounts the entire root when a render throws with no
+// boundary above it, which used to leave an empty page. The fallback keeps
+// the shell usable (navigation still works) and offers a reload.
+export class ErrorBoundary extends Component<
+  { children: ReactNode; title?: string },
+  { error: Error | null }
+> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    // Surface the component stack for debugging without crashing the app.
+    console.error('console page error:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="page-error" role="alert" data-testid="page-error">
+          <h2>{this.props.title || 'Something went wrong'}</h2>
+          <p className="muted">{this.state.error.message}</p>
+          <div className="header-actions">
+            <button className="secondary" onClick={() => this.setState({ error: null })}>
+              Try again
+            </button>
+            <button className="primary" onClick={() => window.location.reload()}>
+              Reload
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
 }

@@ -112,12 +112,15 @@ import UserQuotasPage from './pages/user/UserQuotasPage';
 import UserOptimizationPage from './pages/user/UserOptimizationPage';
 import DataExportPage from './pages/DataExportPage';
 import NotFoundPage from './pages/NotFoundPage';
+import { ErrorBoundary } from './components';
 
 export default function App() {
   return (
     <I18nProvider>
       <Router>
-        <SurfaceRouter />
+        <ErrorBoundary>
+          <SurfaceRouter />
+        </ErrorBoundary>
       </Router>
     </I18nProvider>
   );

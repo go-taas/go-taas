@@ -71,6 +71,7 @@ export const en: Record<string, string> = {
   'common.rateLimitUnlimited': 'Unlimited',
   'common.rateLimitRpm': '∞ rpm',
   'common.rateLimitTpm': '∞ tpm',
+  'common.pageError': 'This page failed to load',
   'common.zeroUnlimited': '0 = unlimited',
 
   // ---- Shells / navigation ----
