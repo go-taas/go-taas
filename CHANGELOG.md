@@ -1,3 +1,10 @@
+# [1.74.0](https://github.com/go-taas/go-taas/compare/v1.73.0...v1.74.0) (2026-10-24)
+
+
+### Features
+
+* **helm:** expose the seeded admin password as a chart value ([52b5f89](https://github.com/go-taas/go-taas/commit/52b5f8964293a3a787b18c304815e7eef07b70dc))
+
 # [1.73.0](https://github.com/go-taas/go-taas/compare/v1.72.0...v1.73.0) (2026-10-24)
 
 
