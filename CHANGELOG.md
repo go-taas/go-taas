@@ -1,3 +1,10 @@
+# [1.68.0](https://github.com/go-taas/go-taas/compare/v1.67.0...v1.68.0) (2026-10-24)
+
+
+### Features
+
+* **auth:** add email verification codes for local accounts ([b6874ba](https://github.com/go-taas/go-taas/commit/b6874ba48a799a29985f5a8fdf83fc97c3f1bd6e))
+
 # [1.67.0](https://github.com/go-taas/go-taas/compare/v1.66.2...v1.67.0) (2026-10-24)
 
 
