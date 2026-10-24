@@ -34,6 +34,7 @@ func TestFVTLocalAccountRegisterAndLogin(t *testing.T) {
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.NotEmpty(t, body["sessionToken"])
+	assert.Equal(t, "user", body["realm"], "a local account with no org role is a user-realm session")
 	assert.NotEmpty(t, body["expiresAt"])
 
 	// Login with wrong password → 10002.

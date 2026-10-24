@@ -131,3 +131,30 @@ func TestServiceLoginPlatformAdminSkipsEmailCode(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.SessionToken)
 }
+
+// The login response carries the role-derived realm so the console
+// stores the token under the right key.
+func TestServiceLoginReturnsRealm(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	_, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{Username: "plain", Password: "Pass4admin"})
+	require.NoError(t, err)
+
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "plain", Password: "Pass4admin"})
+	require.NoError(t, err)
+	assert.Equal(t, RealmUser, resp.Realm, "a user without an org role signs in to the user realm")
+
+	// Give the account a platform-admin role and sign in again.
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "platform", DisplayName: "P", State: tenancy.StateActive}).Error)
+	var u User
+	require.NoError(t, db.First(&u, "username = ?", "plain").Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{
+		OrganizationID: "platform", UserID: u.ID, Role: tenancy.RolePlatformAdmin,
+	}).Error)
+
+	resp, err = svc.Login(ctx, &authv1.LoginRequest{Username: "plain", Password: "Pass4admin"})
+	require.NoError(t, err)
+	assert.Equal(t, RealmAdmin, resp.Realm, "a platform admin signs in to the admin realm")
+}

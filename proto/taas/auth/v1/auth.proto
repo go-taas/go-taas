@@ -382,6 +382,9 @@ message LoginResponse {
   taas.common.v1.Response response = 1;
   string session_token = 2;
   int64 expires_at = 3;
+  // realm is the session realm derived from the account's roles, so the
+  // console stores the token under the matching key and routes correctly.
+  string realm = 4;
 }
 
 message SendEmailCodeRequest {

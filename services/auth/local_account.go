@@ -164,6 +164,7 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		Response:     okResponse(),
 		SessionToken: sessionID,
 		ExpiresAt:    expiresAt,
+		Realm:        realm,
 	}, nil
 }
 
