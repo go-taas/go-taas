@@ -2751,4 +2751,8 @@ export const en: Record<string, string> = {
   'vgpu.placementPolicy': 'Placement policy',
   'vgpu.nodeLabelKey': 'Node label key',
   'vgpu.nodeLabelValue': 'Node label value',
-  'routingGroups.external': 'External',  'routingGroups.keyword': 'Keyword',  'routingGroups.regex': 'Regex',};
+  'routingGroups.external': 'External',  'routingGroups.keyword': 'Keyword',  'routingGroups.regex': 'Regex',  'common.pageOf': 'Page {page} of {pages} · {total} total',
+  'common.previous': 'Previous',
+  'common.next': 'Next',
+  'providers.searchByName': 'Search by name',
+};

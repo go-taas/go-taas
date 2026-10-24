@@ -57,11 +57,11 @@ const TYPE_LABELS: Record<string, string> = {
 };
 const PROBE_STATUSES = ['unknown', 'ok', 'unauthorized', 'unreachable', 'error'];
 const PROBE_LABEL_KEYS: Record<string, string> = {
-  unknown: 'provider.status.unknown',
-  ok: 'provider.status.ok',
-  unauthorized: 'provider.status.unauthorized',
-  unreachable: 'provider.status.unreachable',
-  error: 'provider.status.error',
+  unknown: 'providers.status.unknown',
+  ok: 'providers.status.ok',
+  unauthorized: 'providers.status.unauthorized',
+  unreachable: 'providers.status.unreachable',
+  error: 'providers.status.error',
 };
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
@@ -356,10 +356,10 @@ export default function ProvidersPage() {
         </div>
         <div className="toolbar">
           <button className="primary" data-testid="provider-add" onClick={openCreate}>
-            Add provider
+            {t('providers.add')}
           </button>
           <button className="secondary" data-testid="provider-refresh" disabled={refreshing} onClick={refresh}>
-            {refreshing ? 'Refreshing…' : 'Refresh'}
+            {refreshing ? t('common.refreshing') : t('common.refresh')}
           </button>
         </div>
       </div>
@@ -392,7 +392,7 @@ export default function ProvidersPage() {
         <div className="toolbar">
           <input
             data-testid="provider-search"
-            placeholder="Search by name"
+            placeholder={t('providers.searchByName')}
             value={search}
             onChange={(e) => {
               setOffset(0);

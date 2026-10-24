@@ -2728,4 +2728,8 @@ export const zh: Record<string, string> = {
   'vgpu.placementPolicy': '放置策略',
   'vgpu.nodeLabelKey': '节点标签键',
   'vgpu.nodeLabelValue': '节点标签值',
-  'routingGroups.external': '外部',  'routingGroups.keyword': '关键字',  'routingGroups.regex': '正则',};
+  'routingGroups.external': '外部',  'routingGroups.keyword': '关键字',  'routingGroups.regex': '正则',  'common.pageOf': '第 {page} 页，共 {pages} 页 · 共 {total} 条',
+  'common.previous': '上一页',
+  'common.next': '下一页',
+  'providers.searchByName': '按名称搜索',
+};

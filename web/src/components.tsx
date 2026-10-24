@@ -2,6 +2,7 @@
 
 import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
 import { navigate } from './router';
+import { useI18n } from './i18n';
 
 export function Dialog({
   title,
@@ -117,20 +118,19 @@ export function Pagination({
   total: number;
   onPageChange: (offset: number) => void;
 }) {
+  const { t } = useI18n();
   const page = Math.floor(offset / limit) + 1;
   const pages = Math.max(1, Math.ceil(total / limit));
   return (
     <div className="pagination" data-testid="pagination">
-      <span>
-        Page {page} of {pages} · {total} total
-      </span>
+      <span>{t('common.pageOf', { page, pages, total })}</span>
       <button
         className="secondary"
         disabled={offset <= 0}
         onClick={() => onPageChange(Math.max(0, offset - limit))}
         data-testid="prev-page"
       >
-        Previous
+        {t('common.previous')}
       </button>
       <button
         className="secondary"
@@ -138,7 +138,7 @@ export function Pagination({
         onClick={() => onPageChange(offset + limit)}
         data-testid="next-page"
       >
-        Next
+        {t('common.next')}
       </button>
     </div>
   );
