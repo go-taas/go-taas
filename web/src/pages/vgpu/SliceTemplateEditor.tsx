@@ -4,6 +4,7 @@
 // edit dialogs.
 
 import type { SliceTemplate } from '../../api';
+import { useI18n } from '../../i18n';
 
 export interface TemplateRow {
   name: string;
@@ -41,6 +42,7 @@ export default function SliceTemplateEditor({
   onChange: (rows: TemplateRow[]) => void;
   errors?: Record<number, string>;
 }) {
+  const { t } = useI18n();
   const update = (index: number, patch: Partial<TemplateRow>) => {
     const next = rows.map((r, i) => (i === index ? { ...r, ...patch } : r));
     onChange(next);
@@ -48,7 +50,7 @@ export default function SliceTemplateEditor({
 
   return (
     <div className="form-field full">
-      <label>Slice templates</label>
+      <label>{t('vgpu.templates')}</label>
       {rows.map((row, i) => (
         <div
           key={i}
@@ -58,14 +60,14 @@ export default function SliceTemplateEditor({
         >
           <input
             data-testid={`vgpu-pool-template-name-${i}`}
-            placeholder="name (e.g. small)"
+            placeholder={t('vgpu.templateName')}
             value={row.name}
             onChange={(e) => update(i, { name: e.target.value })}
             style={{ width: 120 }}
           />
           <input
             data-testid={`vgpu-pool-template-memory-${i}`}
-            placeholder="memory GiB"
+            placeholder={t('vgpu.templateMemory')}
             type="number"
             min={1}
             value={row.memoryGib}
@@ -74,7 +76,7 @@ export default function SliceTemplateEditor({
           />
           <input
             data-testid={`vgpu-pool-template-compute-${i}`}
-            placeholder="compute %"
+            placeholder={t('vgpu.templateCompute')}
             type="number"
             min={5}
             max={100}
@@ -84,7 +86,7 @@ export default function SliceTemplateEditor({
           />
           <input
             data-testid={`vgpu-pool-template-desc-${i}`}
-            placeholder="description (optional)"
+            placeholder={t('vgpu.templateDesc')}
             value={row.description}
             onChange={(e) => update(i, { description: e.target.value })}
             style={{ flex: 1 }}
@@ -95,7 +97,7 @@ export default function SliceTemplateEditor({
             data-testid={`vgpu-pool-template-remove-${i}`}
             onClick={() => onChange(rows.filter((_, idx) => idx !== i))}
           >
-            Remove
+            {t('common.remove')}
           </button>
           {errors?.[i] && (
             <div className="field-error" data-testid={`vgpu-pool-template-error-${i}`}>
@@ -112,7 +114,7 @@ export default function SliceTemplateEditor({
           onChange([...rows, { name: '', memoryGib: '', computePct: '', description: '' }])
         }
       >
-        Add template
+        {t('vgpu.templateAdd')}
       </button>
     </div>
   );

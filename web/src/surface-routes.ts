@@ -23,16 +23,23 @@ export function realmHome(realm: Realm): string {
   return realm === 'admin' ? '/admin/models' : '/usage';
 }
 
-// realmLoginPath returns the login route of a realm.
-export function realmLoginPath(realm: Realm): string {
-  return realm === 'admin' ? '/admin/login' : '/login';
+// LoginPath is the single shared login route. Both surfaces sign in at
+// the end-user login page; the session realm is derived from the
+// account's role and the console routes to the matching surface.
+export const LoginPath = '/login';
+
+// realmLoginPath returns the login route. There is one shared login page
+// for both surfaces.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+export function realmLoginPath(_realm: Realm): string {
+  return LoginPath;
 }
 
-// realmCustomLoginPath returns the custom login route of a realm for a
-// provider (feature-22): /login/{provider_id} (user) or
-// /admin/login/{provider_id} (admin).
-export function realmCustomLoginPath(realm: Realm, providerId: string): string {
-  return realm === 'admin' ? `/admin/login/${providerId}` : `/login/${providerId}`;
+// realmCustomLoginPath returns the shared custom login route for a
+// provider: /login/{provider_id}. The provider's own session realm is
+// derived server-side.
+export function realmCustomLoginPath(_realm: Realm, providerId: string): string {
+  return `${LoginPath}/${providerId}`;
 }
 
 // isAllowedNext validates the next parameter of a guard redirect so the

@@ -10,6 +10,7 @@ import { useOrg } from '../org';
 import { formatTime, type PageMeta } from '../api';
 import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
 import { navigate } from '../router';
+import { useI18n } from '../i18n';
 
 interface ResponseEnvelope {
   code: number;
@@ -55,12 +56,12 @@ const TYPE_LABELS: Record<string, string> = {
   openai_compatible: 'OpenAI-compatible',
 };
 const PROBE_STATUSES = ['unknown', 'ok', 'unauthorized', 'unreachable', 'error'];
-const PROBE_LABELS: Record<string, string> = {
-  unknown: 'Not checked',
-  ok: 'Reachable',
-  unauthorized: 'Credentials rejected',
-  unreachable: 'Unreachable',
-  error: 'Error',
+const PROBE_LABEL_KEYS: Record<string, string> = {
+  unknown: 'provider.status.unknown',
+  ok: 'provider.status.ok',
+  unauthorized: 'provider.status.unauthorized',
+  unreachable: 'provider.status.unreachable',
+  error: 'provider.status.error',
 };
 const NAME_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const HEADER_NAME_PATTERN = /^[A-Za-z0-9-]+$/;
@@ -81,8 +82,9 @@ export function probeBadgeClass(status: string): string {
 }
 
 // probeLabel returns the human label of a probe status.
-export function probeLabel(status: string): string {
-  return PROBE_LABELS[status] || PROBE_LABELS.unknown;
+// probeLabelKey returns the i18n key of a probe status label.
+export function probeLabelKey(status: string): string {
+  return PROBE_LABEL_KEYS[status] || PROBE_LABEL_KEYS.unknown;
 }
 
 // isNonHTTPS reports whether the base URL uses a plain-HTTP scheme.
@@ -105,6 +107,7 @@ const emptyForm = {
 };
 
 export default function ProvidersPage() {
+  const { t } = useI18n();
   const api = useApi();
   const { orgId } = useOrg();
 
@@ -309,11 +312,11 @@ export default function ProvidersPage() {
       );
       setToast(
         probe
-          ? `${probeLabel(probe.status)} · ${probe.latencyMs} ms · ${probe.httpStatus ? `HTTP ${probe.httpStatus}` : 'no response'} · just now`
-          : 'Test complete.',
+          ? `${t(probeLabelKey(probe.status))} · ${probe.latencyMs} ms · ${probe.httpStatus ? `HTTP ${probe.httpStatus}` : t('providers.noResponse')} · ${t('providers.justNow')}`
+          : t('providers.testComplete'),
       );
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'The connectivity test failed.');
+      setActionError(e instanceof Error ? e.message : t('providers.testFailed'));
     } finally {
       setBusyId('');
     }
@@ -348,8 +351,8 @@ export default function ProvidersPage() {
     <div data-testid="provider-list">
       <div className="page-header">
         <div>
-          <h1>Model providers</h1>
-          <div className="subtitle">Third-party LLM providers and their published models</div>
+          <h1>{t('providers.title')}</h1>
+          <div className="subtitle">{t('providers.subtitle')}</div>
         </div>
         <div className="toolbar">
           <button className="primary" data-testid="provider-add" onClick={openCreate}>
@@ -404,7 +407,7 @@ export default function ProvidersPage() {
               setType(e.target.value);
             }}
           >
-            <option value="">All types</option>
+            <option value="">{t('providers.allTypes')}</option>
             {PROVIDER_TYPES.map((v) => (
               <option key={v} value={v}>
                 {TYPE_LABELS[v]}
@@ -419,10 +422,10 @@ export default function ProvidersPage() {
               setProbeStatus(e.target.value);
             }}
           >
-            <option value="">All statuses</option>
+            <option value="">{t('providers.allStatuses')}</option>
             {PROBE_STATUSES.map((v) => (
               <option key={v} value={v}>
-                {PROBE_LABELS[v]}
+                {t(PROBE_LABEL_KEYS[v])}
               </option>
             ))}
           </select>
@@ -434,35 +437,35 @@ export default function ProvidersPage() {
               setEnabled(e.target.value);
             }}
           >
-            <option value="">All</option>
-            <option value="true">Enabled</option>
-            <option value="false">Disabled</option>
+            <option value="">{t('common.all')}</option>
+            <option value="true">{t('common.enabled')}</option>
+            <option value="false">{t('common.disabled')}</option>
           </select>
         </div>
 
         {loading ? (
           <div className="skeleton" data-testid="provider-loading">
-            Loading…
+            {t('common.loading')}
           </div>
         ) : rows.length === 0 ? (
           <div className="empty" data-testid="provider-empty">
-            <p>No providers yet. Register a third-party LLM provider to publish external models.</p>
+            <p>{t('providers.empty')}</p>
             <button className="primary" data-testid="provider-empty-add" onClick={openCreate}>
-              Add provider
+              {t('providers.add')}
             </button>
           </div>
         ) : (
           <table className="table">
             <thead>
               <tr>
-                <th>Name</th>
-                <th>Type</th>
-                <th>Base URL</th>
-                <th>Status</th>
-                <th>Enabled</th>
-                <th>Models</th>
-                <th>Last checked</th>
-                <th>Actions</th>
+                <th>{t('providers.colName')}</th>
+                <th>{t('providers.colType')}</th>
+                <th>{t('providers.colBaseUrl')}</th>
+                <th>{t('providers.colStatus')}</th>
+                <th>{t('providers.colEnabled')}</th>
+                <th>{t('providers.colModels')}</th>
+                <th>{t('providers.colLastChecked')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -480,13 +483,13 @@ export default function ProvidersPage() {
                       </span>
                       {isNonHTTPS(p.baseUrl) && (
                         <span className="badge failed" data-testid={`provider-nonhttps-chip-${p.providerId}`}>
-                          Non-HTTPS endpoint
+                          {t('providers.nonHttps')}
                         </span>
                       )}
                     </td>
                     <td>
                       <span className={probeBadgeClass(status)} data-testid={`provider-status-${p.providerId}`}>
-                        {probeLabel(status)}
+                        {t(probeLabelKey(status))}
                       </span>
                     </td>
                     <td>
@@ -496,7 +499,7 @@ export default function ProvidersPage() {
                         disabled={busyId === p.providerId}
                         onClick={() => void toggleEnabled(p)}
                       >
-                        {p.enabled ? 'Enabled' : 'Disabled'}
+                        {p.enabled ? t('common.enabled') : t('common.disabled')}
                       </button>
                     </td>
                     <td>
@@ -511,7 +514,7 @@ export default function ProvidersPage() {
                         data-testid={`provider-view-${p.providerId}`}
                         onClick={() => navigate(`/admin/providers/${encodeURIComponent(p.providerId)}`)}
                       >
-                        View
+                        {t('common.view')}
                       </button>
                       <button
                         className="link"
@@ -519,19 +522,19 @@ export default function ProvidersPage() {
                         disabled={busyId === p.providerId}
                         onClick={() => void runTest(p)}
                       >
-                        Test
+                        {t('providers.test')}
                       </button>
                       <button className="link" data-testid={`provider-edit-${p.providerId}`} onClick={() => openEdit(p)}>
-                        Edit
+                        {t('common.edit')}
                       </button>
                       <button
                         className="link danger"
                         data-testid={`provider-delete-${p.providerId}`}
                         disabled={Number(p.publishedModelCount) > 0}
-                        title={Number(p.publishedModelCount) > 0 ? 'Unpublish all models before deleting this provider.' : undefined}
+                        title={Number(p.publishedModelCount) > 0 ? t('providers.deleteBlocked') : undefined}
                         onClick={() => setDeleteTarget(p)}
                       >
-                        Delete
+                        {t('common.delete')}
                       </button>
                     </td>
                   </tr>
@@ -545,13 +548,13 @@ export default function ProvidersPage() {
 
       {dialogOpen && (
         <Dialog
-          title={editing ? 'Edit provider' : 'Add provider'}
+          title={editing ? t('providers.editTitle') : t('providers.addTitle')}
           onClose={() => setDialogOpen(false)}
           testId="provider-dialog"
         >
           {formError && <ErrorBanner message={formError} />}
           <label className="field">
-            <span>Name</span>
+            <span>{t('providers.fieldName')}</span>
             <input
               data-testid="provider-form-name"
               value={form.name}
@@ -559,7 +562,7 @@ export default function ProvidersPage() {
             />
           </label>
           <label className="field">
-            <span>Type</span>
+            <span>{t('providers.fieldType')}</span>
             <select
               data-testid="provider-form-type"
               value={form.type}
@@ -573,26 +576,26 @@ export default function ProvidersPage() {
             </select>
           </label>
           <label className="field">
-            <span>Base URL</span>
+            <span>{t('providers.fieldBaseUrl')}</span>
             <input
               data-testid="provider-form-base-url"
               value={form.baseUrl}
-              placeholder="https://api.example.com"
+              placeholder={t('providers.placeholderBaseUrl')}
               onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
             />
           </label>
           <label className="field">
-            <span>API key {editing ? `(${editing.apiKeyHint} — leave blank to keep)` : ''}</span>
+            <span>{t('providers.fieldApiKey')} {editing ? `(${editing.apiKeyHint} — ${t('providers.leaveBlankToKeep')})` : ''}</span>
             <input
               type="password"
               data-testid="provider-form-api-key"
               value={form.apiKey}
-              placeholder={editing ? 'Leave blank to keep the current key' : 'sk-…'}
+              placeholder={editing ? t('providers.placeholderApiKeyKeep') : 'sk-…'}
               onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
             />
           </label>
           <label className="field">
-            <span>Enabled</span>
+            <span>{t('providers.fieldEnabled')}</span>
             <input
               type="checkbox"
               data-testid="provider-form-enabled"
@@ -601,7 +604,7 @@ export default function ProvidersPage() {
             />
           </label>
           <label className="field">
-            <span>Request timeout (seconds)</span>
+            <span>{t('providers.fieldTimeout')}</span>
             <input
               data-testid="provider-form-timeout"
               value={form.timeout}
@@ -609,48 +612,47 @@ export default function ProvidersPage() {
             />
           </label>
           <div className="field" data-testid="provider-form-headers">
-            <span>Extra headers</span>
+            <span>{t('providers.fieldHeaders')}</span>
             {headers.map((row, i) => (
               <div key={i} className="toolbar">
                 <input
-                  aria-label="header name"
+                  aria-label={t('providers.headerName')}
                   value={row.name}
                   onChange={(e) => setHeaders(headers.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))}
                 />
                 <input
-                  aria-label="header value"
+                  aria-label={t('providers.headerValue')}
                   value={row.value}
                   onChange={(e) => setHeaders(headers.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
                 />
                 <button className="link" onClick={() => setHeaders(headers.filter((_, j) => j !== i))}>
-                  Remove
+                  {t('common.remove')}
                 </button>
               </div>
             ))}
             <button className="secondary" onClick={() => setHeaders([...headers, { name: '', value: '' }])}>
-              Add header
+              {t('providers.addHeader')}
             </button>
           </div>
           <div className="dialog-actions">
             <button className="secondary" data-testid="provider-form-cancel" onClick={() => setDialogOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button className="primary" data-testid="provider-form-submit" onClick={() => void submitForm()}>
-              {editing ? 'Save' : 'Create'}
+              {editing ? t('common.save') : t('common.create')}
             </button>
           </div>
         </Dialog>
       )}
 
       {deleteTarget && (
-        <Dialog title="Delete provider" onClose={() => setDeleteTarget(null)} testId="provider-delete-dialog">
+        <Dialog title={t('providers.deleteTitle')} onClose={() => setDeleteTarget(null)} testId="provider-delete-dialog">
           <p>
-            Delete provider <strong>{deleteTarget.name}</strong>? This removes the provider and its curated
-            models. It cannot be deleted while any model is published.
+            {t('providers.deleteBodyA')} <strong>{deleteTarget.name}</strong>{t('providers.deleteBodyB')}
           </p>
           <div className="dialog-actions">
             <button className="secondary" data-testid="provider-delete-cancel" onClick={() => setDeleteTarget(null)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button className="danger" data-testid="provider-delete-confirm" onClick={() => void confirmDelete()}>
               Delete

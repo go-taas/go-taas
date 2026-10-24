@@ -614,7 +614,7 @@ export default function RoutingGroupDetailPage() {
                       {byModelId.get(draft.modelId)?.external && (
                         <>
                           {' '}
-                          <span className="badge external">External</span>
+                          <span className="badge external">{t('routingGroups.external')}</span>
                         </>
                       )}
                     </td>
@@ -809,8 +809,8 @@ export default function RoutingGroupDetailPage() {
                         }}
                         data-testid={`routing-group-rule-type-${draft.name}`}
                       >
-                        <option value="keyword">Keyword</option>
-                        <option value="regex">Regex</option>
+                        <option value="keyword">{t('routingGroups.keyword')}</option>
+                        <option value="regex">{t('routingGroups.regex')}</option>
                       </select>
                     </td>
                     <td>

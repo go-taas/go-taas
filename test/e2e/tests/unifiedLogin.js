@@ -151,9 +151,9 @@ module.exports = {
     });
   },
 
-  // AC10: an admin who signs in at /admin/login lands on /admin/models.
-  'AC10: admin at /admin/login lands on /admin/models': function (browser) {
-    browser.url(browser.globals.baseUrl + '/admin/login/keycloak');
+  // AC10: an admin who signs in at /login lands on /admin/models.
+  'AC10: admin at /login lands on /admin/models': function (browser) {
+    browser.url(browser.globals.baseUrl + '/login/keycloak');
     browser.waitForElementPresent('[data-testid="custom-login-username"]', 15000, 'AC10: username field');
     browser.setValue('[data-testid="custom-login-username"]', 'admin');
     browser.setValue('[data-testid="custom-login-password"]', 'admin');
@@ -162,9 +162,9 @@ module.exports = {
     browser.assert.urlContains('/admin/models', 'AC10: landed on /admin/models');
   },
 
-  // AC11: a non-admin who signs in at /admin/login lands on /usage.
-  'AC11: non-admin at /admin/login lands on /usage': function (browser) {
-    browser.url(browser.globals.baseUrl + '/admin/login/keycloak');
+  // AC11: a non-admin who signs in at /login lands on /usage.
+  'AC11: non-admin at /login lands on /usage': function (browser) {
+    browser.url(browser.globals.baseUrl + '/login/keycloak');
     browser.waitForElementPresent('[data-testid="custom-login-username"]', 15000, 'AC11: username field');
     browser.setValue('[data-testid="custom-login-username"]', 'alice');
     browser.setValue('[data-testid="custom-login-password"]', 'alice-password');

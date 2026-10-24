@@ -14,7 +14,6 @@ import { AdminShell } from './shells/AdminShell';
 import UserLoginPage from './pages/user/UserLoginPage';
 import RegisterPage from './pages/RegisterPage';
 import UserCustomLoginPage from './pages/user/UserCustomLoginPage';
-import AdminCustomLoginPage from './pages/AdminCustomLoginPage';
 import UserQuickstartPage from './pages/user/QuickstartPage';
 import ApiDocsPage from './pages/ApiDocsPage';
 import UserUsagePage from './pages/user/UsagePage';
@@ -26,7 +25,6 @@ import UserBillsPage from './pages/user/BillsPage';
 import UserBillingReportsPage from './pages/user/UserBillingReportsPage';
 import UserModelsPage from './pages/user/ModelsPage';
 import UserModelDetailPage from './pages/user/ModelDetailPage';
-import AdminLoginPage from './pages/AdminLoginPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import UsersPage from './pages/UsersPage';
 import JoinRequestsPage from './pages/JoinRequestsPage';
@@ -138,9 +136,15 @@ function SurfaceRouter() {
   const path = useRoute();
   const moved = MOVED_ADMIN_ROUTES[path];
   if (moved) return <Redirect to={moved} />;
+  // The admin surface has no login page of its own: every admin login
+  // link lands on the shared end-user login page.
+  if (path === '/admin/login') return <Redirect to="/login" />;
+  if (path.startsWith('/admin/login/')) {
+    return <Redirect to={`/login/${path.slice('/admin/login/'.length)}`} />;
+  }
   if (path === '/') return <Redirect to={realmHome('user')} />;
   if (path === '/admin') return <Redirect to={realmHome('admin')} />;
-  return isAdminPath(path) ? <AdminSurface path={path} /> : <UserSurface path={path} />;
+  return isAdminPath(path) ? <AdminSurface /> : <UserSurface path={path} />;
 }
 
 function Redirect({ to }: { to: string }) {
@@ -214,16 +218,11 @@ function UserSurface({ path }: { path: string }) {
   );
 }
 
-function AdminSurface({ path }: { path: string }) {
+function AdminSurface() {
   return (
     <SurfaceProvider realm="admin">
       <OrgProvider>
         <ProfileProvider>
-        {path === '/admin/login' ? (
-          <AdminLoginPage />
-        ) : path.startsWith('/admin/login/') ? (
-          <AdminCustomLoginPage providerId={path.slice('/admin/login/'.length)} />
-        ) : (
           <AdminShell>
             <Routes>
               <Route path="/admin/organizations" element={<OrganizationsPage />} />
@@ -296,7 +295,6 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>
-        )}
         </ProfileProvider>
       </OrgProvider>
     </SurfaceProvider>

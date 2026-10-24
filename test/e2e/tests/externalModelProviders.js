@@ -1264,8 +1264,8 @@ module.exports = {
       return window.location.pathname;
     }, [], (r) => {
       browser.assert.ok(
-        String(r.value || '').indexOf('/admin/login') >= 0,
-        `AC12: redirected to the admin login (got ${r.value})`
+        String(r.value || '').indexOf('/login') >= 0,
+        `AC12: redirected to the shared login (got ${r.value})`
       );
     });
   }

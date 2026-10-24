@@ -3,10 +3,12 @@
 // is rendered in red.
 
 import { formatTime, type IncidentStep } from '../../api';
+import { useI18n } from '../../i18n';
 
 export default function IncidentTimeline({ steps }: { steps: IncidentStep[] }) {
+  const { t } = useI18n();
   if (!steps || steps.length === 0) {
-    return <div className="muted">No diagnosis steps yet.</div>;
+    return <div className="muted">{t('incident.noSteps')}</div>;
   }
   return (
     <div className="incident-timeline" data-testid="fault-timeline">

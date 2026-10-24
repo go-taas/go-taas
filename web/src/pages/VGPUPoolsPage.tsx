@@ -254,7 +254,7 @@ function CreatePoolDialog({
     <Dialog title={t('vgpu.create')} onClose={onClose} testId="vgpu-pool-create-dialog">
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="vgpu-pool-name">Name</label>
+          <label htmlFor="vgpu-pool-name">{t('providers.colName')}</label>
           <input
             id="vgpu-pool-name"
             data-testid="vgpu-pool-name-input"
@@ -265,7 +265,7 @@ function CreatePoolDialog({
           {fieldErrors.name && <div className="field-error">{fieldErrors.name}</div>}
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-policy">Placement policy</label>
+          <label htmlFor="vgpu-pool-policy">{t('vgpu.placementPolicy')}</label>
           <select
             id="vgpu-pool-policy"
             data-testid="vgpu-pool-policy-select"
@@ -280,7 +280,7 @@ function CreatePoolDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-label-key">Node label key</label>
+          <label htmlFor="vgpu-pool-label-key">{t('vgpu.nodeLabelKey')}</label>
           <input
             id="vgpu-pool-label-key"
             data-testid="vgpu-pool-label-key-input"
@@ -289,7 +289,7 @@ function CreatePoolDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-label-value">Node label value</label>
+          <label htmlFor="vgpu-pool-label-value">{t('vgpu.nodeLabelValue')}</label>
           <input
             id="vgpu-pool-label-value"
             data-testid="vgpu-pool-label-value-input"

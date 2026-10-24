@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../surface';
+import { useI18n } from '../i18n';
 import { useOrg } from '../org';
 import { formatTime } from '../api';
 import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
@@ -13,7 +14,7 @@ import { useParams } from '../router';
 import {
   isNonHTTPS,
   probeBadgeClass,
-  probeLabel,
+  probeLabelKey,
   type ProbeResult,
   type Provider,
 } from './ProvidersPage';
@@ -53,6 +54,7 @@ const POLL_MS = 30_000;
 const emptyModelForm = { upstreamModelId: '', displayName: '', contextWindow: '0', enabled: true };
 
 export default function ProviderDetailPage() {
+  const { t } = useI18n();
   const api = useApi();
   const { orgId } = useOrg();
   const params = useParams();
@@ -317,22 +319,22 @@ export default function ProviderDetailPage() {
             {provider && <span className="badge steady">{provider.type}</span>}{' '}
             {provider && (
               <span className={provider.enabled ? 'badge running' : 'badge terminated'}>
-                {provider.enabled ? 'Enabled' : 'Disabled'}
+                {provider.enabled ? t('common.enabled') : t('common.disabled')}
               </span>
             )}{' '}
             {provider && isNonHTTPS(provider.baseUrl) && (
               <span className="badge failed" data-testid="provider-detail-nonhttps-chip">
-                Non-HTTPS endpoint
+                {t('providers.nonHttps')}
               </span>
             )}
           </div>
         </div>
         <div className="toolbar">
           <button className="primary" data-testid="provider-test-now" disabled={busy} onClick={() => void runTest()}>
-            Test connection
+            {t('providers.testConnection')}
           </button>
           <a className="secondary" href="/admin/providers" data-testid="provider-detail-back">
-            Back to providers
+            {t('providers.backToProviders')}
           </a>
         </div>
       </div>
@@ -348,7 +350,7 @@ export default function ProviderDetailPage() {
           {toast}
         </div>
       )}
-      {stale && <div className="warning-banner" data-testid="provider-stale-banner">Showing stale data.</div>}
+      {stale && <div className="warning-banner" data-testid="provider-stale-banner">{t('providers.stale')}</div>}
 
       {loading ? (
         <div className="skeleton" data-testid="provider-detail-loading">
@@ -359,67 +361,67 @@ export default function ProviderDetailPage() {
           <>
             <div className="panel" data-testid="provider-detail-overview">
               <div className="detail-item">
-                <div className="label">Base URL</div>
+                <div className="label">{t('providers.colBaseUrl')}</div>
                 <div className="value mono" data-testid="provider-detail-base-url">
                   {provider.baseUrl}
                 </div>
               </div>
               <div className="detail-item">
-                <div className="label">Request timeout</div>
+                <div className="label">{t('providers.fieldTimeoutShort')}</div>
                 <div className="value">{provider.requestTimeoutSeconds} s</div>
               </div>
               <div className="detail-item">
-                <div className="label">API key</div>
+                <div className="label">{t('providers.fieldApiKey')}</div>
                 <div className="value mono" data-testid="provider-detail-key-hint">
                   {provider.apiKeyHint}
                 </div>
               </div>
               <div className="detail-item">
-                <div className="label">Extra headers</div>
+                <div className="label">{t('providers.fieldHeaders')}</div>
                 <div className="value" data-testid="provider-detail-headers">
                   {(provider.extraHeaderNames || []).join(', ') || '—'} (values hidden)
                 </div>
               </div>
               <div className="detail-item">
-                <div className="label">Created</div>
+                <div className="label">{t('common.created')}</div>
                 <div className="value">{formatTime(provider.createdAt)}</div>
               </div>
               <div className="detail-item">
-                <div className="label">Updated</div>
+                <div className="label">{t('common.updated')}</div>
                 <div className="value">{formatTime(provider.updatedAt)}</div>
               </div>
             </div>
 
             <div className="panel" data-testid="provider-test-panel">
               <div className="detail-item">
-                <div className="label">Status</div>
+                <div className="label">{t('providers.colStatus')}</div>
                 <div className="value">
                   <span className={probeBadgeClass(status)} data-testid="provider-test-status">
-                    {probeLabel(status)}
+                    {t(probeLabelKey(status))}
                   </span>
                 </div>
               </div>
               <div className="detail-item">
-                <div className="label">Latency</div>
+                <div className="label">{t('providers.latency')}</div>
                 <div className="value">{provider.lastProbe?.latencyMs ?? '—'} ms</div>
               </div>
               <div className="detail-item">
-                <div className="label">HTTP status</div>
+                <div className="label">{t('providers.httpStatus')}</div>
                 <div className="value">{provider.lastProbe?.httpStatus ? provider.lastProbe.httpStatus : '—'}</div>
               </div>
               <div className="detail-item">
-                <div className="label">Checked at</div>
+                <div className="label">{t('providers.checkedAt')}</div>
                 <div className="value">
                   {provider.lastProbe?.checkedAt ? formatTime(provider.lastProbe.checkedAt) : '—'}
                 </div>
               </div>
               <div className="detail-item">
-                <div className="label">Message</div>
+                <div className="label">{t('providers.message')}</div>
                 <div className="value" data-testid="provider-test-message">
                   {provider.lastProbe?.message || '—'}
                 </div>
               </div>
-              <div className="subtitle">Checked automatically every 60 s.</div>
+              <div className="subtitle">{t('providers.autoChecked')}</div>
               {status === 'unauthorized' && (
                 <div className="warning-banner" data-testid="provider-test-unauthorized-notice">
                   The endpoint is reachable but the credentials were rejected. Fix or rotate the API key, then test
@@ -435,7 +437,7 @@ export default function ProviderDetailPage() {
 
             <div className="panel" data-testid="provider-model-table">
               <div className="page-header">
-                <div className="subtitle">Upstream models</div>
+                <div className="subtitle">{t('providers.upstreamModels')}</div>
                 <button className="primary" data-testid="provider-model-add" onClick={openAddModel}>
                   Add model
                 </button>
@@ -444,7 +446,7 @@ export default function ProviderDetailPage() {
                 <input
                   aria-label="search upstream id"
                   value={search}
-                  placeholder="Search by upstream id"
+                  placeholder={t('providers.searchUpstream')}
                   onChange={(e) => {
                     setOffset(0);
                     setSearch(e.target.value);
@@ -458,9 +460,9 @@ export default function ProviderDetailPage() {
                     setEnabledFilter(e.target.value);
                   }}
                 >
-                  <option value="">All</option>
-                  <option value="true">Enabled</option>
-                  <option value="false">Disabled</option>
+                  <option value="">{t('common.all')}</option>
+                  <option value="true">{t('common.enabled')}</option>
+                  <option value="false">{t('common.disabled')}</option>
                 </select>
                 <select
                   aria-label="published filter"
@@ -470,9 +472,9 @@ export default function ProviderDetailPage() {
                     setPublishedFilter(e.target.value);
                   }}
                 >
-                  <option value="">All</option>
-                  <option value="true">Published</option>
-                  <option value="false">Unpublished</option>
+                  <option value="">{t('common.all')}</option>
+                  <option value="true">{t('providers.published')}</option>
+                  <option value="false">{t('providers.unpublished')}</option>
                 </select>
               </div>
               {models.length === 0 ? (
@@ -483,13 +485,13 @@ export default function ProviderDetailPage() {
                 <table className="table">
                   <thead>
                     <tr>
-                      <th>Upstream id</th>
-                      <th>Display name</th>
-                      <th>Context window</th>
-                      <th>Enabled</th>
-                      <th>Published</th>
-                      <th>Updated</th>
-                      <th>Actions</th>
+                      <th>{t('providers.colUpstreamId')}</th>
+                      <th>{t('providers.colDisplayName')}</th>
+                      <th>{t('providers.colContextWindow')}</th>
+                      <th>{t('providers.colEnabled')}</th>
+                      <th>{t('providers.colPublished')}</th>
+                      <th>{t('common.updated')}</th>
+                      <th>{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -500,7 +502,7 @@ export default function ProviderDetailPage() {
                         <td>{m.contextWindow && m.contextWindow !== '0' ? m.contextWindow : '—'}</td>
                         <td>
                           <span className={m.enabled ? 'badge running' : 'badge terminated'}>
-                            {m.enabled ? 'Enabled' : 'Disabled'}
+                            {m.enabled ? t('common.enabled') : t('common.disabled')}
                           </span>
                         </td>
                         <td>
@@ -513,13 +515,13 @@ export default function ProviderDetailPage() {
                               {m.catalogModelName || m.catalogModelId}
                             </a>
                           ) : (
-                            <span className="badge terminated">Unpublished</span>
+                            <span className="badge terminated">{t('providers.unpublished')}</span>
                           )}
                         </td>
                         <td>{formatTime(m.updatedAt)}</td>
                         <td className="actions">
                           <button className="link" onClick={() => openEditModel(m)} data-testid={`provider-model-edit-${m.modelId}`}>
-                            Edit
+                            {t('common.edit')}
                           </button>
                           {m.published ? (
                             <button
@@ -527,27 +529,27 @@ export default function ProviderDetailPage() {
                               data-testid={`provider-model-unpublish-${m.modelId}`}
                               onClick={() => setUnpublishTarget(m)}
                             >
-                              Unpublish
+                              {t('providers.unpublish')}
                             </button>
                           ) : (
                             <button
                               className="link"
                               data-testid={`provider-model-publish-${m.modelId}`}
                               disabled={!m.enabled}
-                              title={!m.enabled ? 'Enable this model before publishing.' : undefined}
+                              title={!m.enabled ? t('providers.enableBeforePublish') : undefined}
                               onClick={() => openPublish(m)}
                             >
-                              Publish
+                              {t('providers.publish')}
                             </button>
                           )}
                           <button
                             className="link danger"
                             data-testid={`provider-model-remove-${m.modelId}`}
                             disabled={m.published}
-                            title={m.published ? 'Unpublish this model before removing it.' : undefined}
+                            title={m.published ? t('providers.unpublishBeforeRemove') : undefined}
                             onClick={() => void removeModel(m)}
                           >
-                            Remove
+                            {t('common.remove')}
                           </button>
                         </td>
                       </tr>
@@ -569,7 +571,7 @@ export default function ProviderDetailPage() {
         >
           {modelFormError && <ErrorBanner message={modelFormError} />}
           <label className="field">
-            <span>Upstream model id</span>
+            <span>{t('providers.upstreamModelId')}</span>
             <input
               data-testid="provider-model-form-upstream"
               value={modelForm.upstreamModelId}
@@ -578,7 +580,7 @@ export default function ProviderDetailPage() {
             />
           </label>
           <label className="field">
-            <span>Display name</span>
+            <span>{t('providers.displayName')}</span>
             <input
               data-testid="provider-model-form-display"
               value={modelForm.displayName}
@@ -586,7 +588,7 @@ export default function ProviderDetailPage() {
             />
           </label>
           <label className="field">
-            <span>Context window</span>
+            <span>{t('providers.contextWindow')}</span>
             <input
               data-testid="provider-model-form-window"
               value={modelForm.contextWindow}
@@ -594,7 +596,7 @@ export default function ProviderDetailPage() {
             />
           </label>
           <label className="field">
-            <span>Enabled</span>
+            <span>{t('providers.fieldEnabled')}</span>
             <input
               type="checkbox"
               data-testid="provider-model-form-enabled"
@@ -607,21 +609,20 @@ export default function ProviderDetailPage() {
               Cancel
             </button>
             <button className="primary" data-testid="provider-model-form-submit" onClick={() => void submitModel()}>
-              Save model
+              {t('providers.saveModel')}
             </button>
           </div>
         </Dialog>
       )}
 
       {publishTarget && (
-        <Dialog title="Publish model" onClose={() => setPublishTarget(null)} testId="provider-publish-dialog">
+        <Dialog title={t('providers.publishTitle')} onClose={() => setPublishTarget(null)} testId="provider-publish-dialog">
           {publishError && <ErrorBanner message={publishError} />}
           <p className="subtitle">
-            Tenants will see and call this model under this name, exactly like a self-hosted model. It enters the
-            model catalog where you grant it to organizations.
+            {t('providers.publishBody')}
           </p>
           <label className="field">
-            <span>Tenant-facing name</span>
+            <span>{t('providers.tenantName')}</span>
             <input
               data-testid="provider-publish-name"
               value={publishName}
@@ -630,28 +631,26 @@ export default function ProviderDetailPage() {
           </label>
           <div className="dialog-actions">
             <button className="secondary" onClick={() => setPublishTarget(null)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button className="primary" data-testid="provider-publish-confirm" onClick={() => void submitPublish()}>
-              Publish
+              {t('providers.publish')}
             </button>
           </div>
         </Dialog>
       )}
 
       {unpublishTarget && (
-        <Dialog title="Unpublish model" onClose={() => setUnpublishTarget(null)} testId="provider-unpublish-dialog">
+        <Dialog title={t('providers.unpublishTitle')} onClose={() => setUnpublishTarget(null)} testId="provider-unpublish-dialog">
           <p>
-            Unpublish <strong>{unpublishTarget.displayName || unpublishTarget.upstreamModelId}</strong>? Tenants
-            will no longer see or be able to call this model. Existing organization grants are kept and become
-            active again if you re-publish. In-flight requests fail closed.
+            {t('providers.unpublishBodyA')} <strong>{unpublishTarget.displayName || unpublishTarget.upstreamModelId}</strong>{t('providers.unpublishBodyB')}
           </p>
           <div className="dialog-actions">
             <button className="secondary" onClick={() => setUnpublishTarget(null)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button className="danger" data-testid="provider-unpublish-confirm" onClick={() => void submitUnpublish()}>
-              Unpublish
+              {t('providers.unpublish')}
             </button>
           </div>
         </Dialog>

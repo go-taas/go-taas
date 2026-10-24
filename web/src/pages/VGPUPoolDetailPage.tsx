@@ -312,7 +312,7 @@ function EditPoolDialog({
     <Dialog title={t('vgpu.edit')} onClose={onClose} testId="vgpu-pool-edit-dialog">
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="vgpu-pool-policy">Placement policy</label>
+          <label htmlFor="vgpu-pool-policy">{t('vgpu.placementPolicy')}</label>
           <select
             id="vgpu-pool-policy"
             data-testid="vgpu-pool-policy-select"
@@ -327,7 +327,7 @@ function EditPoolDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-label-key">Node label key</label>
+          <label htmlFor="vgpu-pool-label-key">{t('vgpu.nodeLabelKey')}</label>
           <input
             id="vgpu-pool-label-key"
             data-testid="vgpu-pool-label-key-input"
@@ -336,7 +336,7 @@ function EditPoolDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-label-value">Node label value</label>
+          <label htmlFor="vgpu-pool-label-value">{t('vgpu.nodeLabelValue')}</label>
           <input
             id="vgpu-pool-label-value"
             data-testid="vgpu-pool-label-value-input"

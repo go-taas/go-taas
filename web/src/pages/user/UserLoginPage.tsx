@@ -111,15 +111,22 @@ export default function UserLoginPage() {
     }
   };
 
+  // The bootstrap `admin` account signs in with a password only: no
+  // email verification code (the server exempts platform admins). Hide
+  // the email and code fields and skip their validation for it.
+  const requiresEmailCode = username.trim().toLowerCase() !== 'admin';
+  const canLogin =
+    !!username.trim() && !!password && (requiresEmailCode ? !!email.trim() && !!emailCode.trim() : true);
+
   const localLogin = async () => {
-    if (!username.trim() || !password || submitting) return;
+    if (!canLogin || submitting) return;
     setSubmitting(true);
     setError('');
     try {
       const data = await api.post<LoginResponse>('/api/v1/auth/login', '', {
         username: username.trim(),
         password,
-        emailCode: emailCode.trim(),
+        emailCode: requiresEmailCode ? emailCode.trim() : '',
       });
       const token = data.sessionToken;
       const realm = (data.realm as Realm) || 'user';
@@ -160,6 +167,7 @@ export default function UserLoginPage() {
             autoComplete="username"
           />
         </div>
+        {requiresEmailCode && (
         <div className="field">
           <label htmlFor="login-email">{t('login.email')}</label>
           <div className="code-row">
@@ -185,6 +193,8 @@ export default function UserLoginPage() {
             </button>
           </div>
         </div>
+        )}
+        {requiresEmailCode && (
         <div className="field">
           <label htmlFor="login-code">{t('login.code')}</label>
           <input
@@ -196,6 +206,7 @@ export default function UserLoginPage() {
             inputMode="numeric"
           />
         </div>
+        )}
         <div className="field">
           <label htmlFor="login-password">{t('login.password')}</label>
           <div className="password-row">
@@ -221,7 +232,7 @@ export default function UserLoginPage() {
         <button
           type="submit"
           data-testid="login-local-submit"
-          disabled={!username.trim() || !password || !email.trim() || !emailCode.trim() || submitting}
+          disabled={!canLogin || submitting}
         >
           {submitting ? t('common.working') : t('login.submit')}
         </button>

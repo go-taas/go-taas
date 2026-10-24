@@ -184,7 +184,7 @@ module.exports = {
       redirectUri: 'https://console.example.com/callback'
     });
     api.enableSSOProvider(browser, providerId);
-    browser.url(browser.globals.baseUrl + '/admin/login');
+    browser.url(browser.globals.baseUrl + '/login');
     browser.waitForElementPresent(`[data-testid="sso-login-${providerId}"]`, 10000, 'AC14: login button renders');
   },
 
