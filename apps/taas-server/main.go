@@ -317,6 +317,9 @@ func main() {
 			// service resolve the authenticated caller (feature #10).
 			tenancySvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			tenancySvc.SetSessionResolver(authSvc)
+			// The user resolver lets member management accept a username
+			// or id (feature #10); auth owns the users table.
+			tenancySvc.SetUserResolver(authSvc)
 			// Feature #51 (AD13): the org quota seams. Tenancy owns the
 			// quota columns; auth rides them on the VerifyAPIKey verdict,
 			// infer and batch check them at create time.

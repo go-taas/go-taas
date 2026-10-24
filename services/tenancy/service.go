@@ -55,6 +55,11 @@ type Service struct {
 	// module; nil until wired.
 	sessionOrgResolver SessionOrgResolver
 
+	// userResolver resolves a user id or username to the canonical user
+	// id for member management (feature #10). Implemented by the auth
+	// module; nil until wired (the input is used verbatim).
+	userResolver UserResolver
+
 	// concurrency holds the gateway in-flight snapshot consumer
 	// (feature #51, AD14). Nil-safe: a nil consumer answers 0.
 	concurrency *ConcurrencyConsumer
@@ -96,6 +101,11 @@ func (s *Service) SetRoleGuard(g *RoleGuard) { s.roleGuard = g }
 // Production and FVT wire it; unit tests leave it nil so session
 // resolution no-ops.
 func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r }
+
+// SetUserResolver injects the user id/username resolver (feature #10).
+// Production wires it to the auth module; unit tests leave it nil so the
+// input is used verbatim.
+func (s *Service) SetUserResolver(r UserResolver) { s.userResolver = r }
 
 // SetSessionOrgResolver injects the session active-org resolver
 // (feature #51, AD13). Production and FVT wire it; unit tests leave it

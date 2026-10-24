@@ -101,6 +101,12 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 	if !validAssignableRole(role) {
 		return nil, apierrors.New(apierrors.CodeRoleInvalid)
 	}
+	// Resolve a username or id to the canonical user id so a username
+	// never reaches the DB as an invalid UUID.
+	userID, err := s.resolveUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	repo, err := s.membershipRepo()
 	if err != nil {
 		return nil, err
@@ -471,6 +477,17 @@ func (s *Service) sessionUserID(ctx context.Context) (string, error) {
 		return "", apierrors.New(apierrors.CodeSessionInvalid)
 	}
 	return s.sessionResolver.SessionUserID(ctx)
+}
+
+// resolveUserID resolves a caller-supplied user id or username to the
+// canonical user id. When no user resolver is wired the input is used
+// verbatim (unit tests); production resolves via the auth module so a
+// username never reaches the DB as an invalid UUID.
+func (s *Service) resolveUserID(ctx context.Context, idOrUsername string) (string, error) {
+	if s.userResolver == nil {
+		return idOrUsername, nil
+	}
+	return s.userResolver.ResolveUserID(ctx, idOrUsername)
 }
 
 // sessionUserEmail resolves the authenticated caller's email.

@@ -12,6 +12,8 @@ import (
 	"context"
 	"strings"
 
+	"github.com/google/uuid"
+
 	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
@@ -118,4 +120,37 @@ func (s *Service) summarizeUser(ctx context.Context, row *User) *authv1.UserSumm
 		CreatedAt:         row.CreatedAt.Unix(),
 		UpdatedAt:         row.UpdatedAt.Unix(),
 	}
+}
+
+// ResolveUserID resolves a caller-supplied user id or username to the
+// canonical user id. It is the tenancy service's user resolver seam
+// (the SetRoleGuard injection pattern): member-management RPCs accept
+// either a UUID or a username and resolve it here, so a typo or a
+// username never reaches the DB as an invalid UUID. Unknown input maps
+// to CodeUserNotFound.
+func (s *Service) ResolveUserID(ctx context.Context, idOrUsername string) (string, error) {
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return "", err
+	}
+	// A valid UUID is treated as a user id directly.
+	if _, err := uuid.Parse(idOrUsername); err == nil {
+		row, err := repo.FindUser(ctx, idOrUsername)
+		if isRecordNotFound(err) {
+			return "", apierrors.New(apierrors.CodeUserNotFound)
+		}
+		if err != nil {
+			return "", err
+		}
+		return row.ID, nil
+	}
+	// Otherwise resolve by username.
+	row, err := repo.FindUserByUsername(ctx, idOrUsername)
+	if isRecordNotFound(err) {
+		return "", apierrors.New(apierrors.CodeUserNotFound)
+	}
+	if err != nil {
+		return "", err
+	}
+	return row.ID, nil
 }

@@ -134,3 +134,39 @@ func TestServiceProjectMemberForbidden(t *testing.T) {
 	})
 	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
 }
+
+// fakeUserResolver resolves a username to a canonical id.
+type fakeUserResolver struct{}
+
+func (fakeUserResolver) ResolveUserID(_ context.Context, idOrUsername string) (string, error) {
+	if idOrUsername == "alice" {
+		return "user-1", nil
+	}
+	if idOrUsername == "user-1" {
+		return "user-1", nil
+	}
+	return "", apierrors.New(apierrors.CodeUserNotFound)
+}
+
+// A username is resolved to the canonical user id before insert.
+func TestServiceAddProjectMemberResolvesUsername(t *testing.T) {
+	svc := newMembershipService(t)
+	svc.SetUserResolver(fakeUserResolver{})
+	ctx := context.Background()
+
+	seedMember(t, svc, "org-a", "u-admin", RoleAdmin)
+	seedProject(t, svc, "proj-a", "org-a")
+
+	// Add by username.
+	resp, err := svc.AddProjectMember(ctx, &tenancyv1.AddProjectMemberRequest{
+		ProjectId: "proj-a", UserId: "alice", Role: RoleMember,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", resp.Member.UserId)
+
+	// Unknown username → 10003.
+	_, err = svc.AddProjectMember(ctx, &tenancyv1.AddProjectMemberRequest{
+		ProjectId: "proj-a", UserId: "nobody", Role: RoleMember,
+	})
+	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
+}

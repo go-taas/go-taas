@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 
@@ -77,4 +78,33 @@ func TestFVTProjectMemberForbidden(t *testing.T) {
 	_, body := env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects/proj-a/members",
 		map[string]any{"userId": "u-2", "role": "member"})
 	assert.Equal(t, float64(10036), body["code"])
+}
+
+// fvtUserResolver resolves a username to a canonical id.
+type fvtUserResolver struct{}
+
+func (fvtUserResolver) ResolveUserID(_ context.Context, idOrUsername string) (string, error) {
+	if idOrUsername == "alice" {
+		return "u-alice", nil
+	}
+	return "", apierrors.New(apierrors.CodeUserNotFound)
+}
+
+// A username is resolved to the canonical user id before insert.
+func TestFVTProjectMemberResolvesUsername(t *testing.T) {
+	env := newRBACEnv(t)
+	env.tenancySvc.SetUserResolver(fvtUserResolver{})
+	env.seedRBACMember(t, "org-a", "u-admin", tenancy.RoleOwner)
+	env.seedRBACProject(t, "proj-a", "org-a")
+
+	// Add by username.
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects/proj-a/members",
+		map[string]any{"userId": "alice", "role": "member"})
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Equal(t, "u-alice", body["member"].(map[string]any)["userId"])
+
+	// Unknown username → 10003.
+	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects/proj-a/members",
+		map[string]any{"userId": "nobody", "role": "member"})
+	assert.Equal(t, float64(10003), body["code"])
 }

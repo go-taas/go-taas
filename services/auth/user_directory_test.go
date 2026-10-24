@@ -106,3 +106,29 @@ func TestServiceUserOrganizationCount(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 2, resp.User.OrganizationCount)
 }
+
+func TestServiceResolveUserID(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	userID := "440722d6-4847-40b6-abb6-db12fc41e1a1"
+	require.NoError(t, db.Create(&User{ID: userID, Username: "alice", Email: "a@x.com"}).Error)
+
+	// Resolve by username.
+	id, err := svc.ResolveUserID(ctx, "alice")
+	require.NoError(t, err)
+	assert.Equal(t, userID, id)
+
+	// Resolve by id (a valid UUID).
+	id, err = svc.ResolveUserID(ctx, userID)
+	require.NoError(t, err)
+	assert.Equal(t, userID, id)
+
+	// Unknown username → 10003.
+	_, err = svc.ResolveUserID(ctx, "nobody")
+	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
+
+	// Unknown id → 10003.
+	_, err = svc.ResolveUserID(ctx, "00000000-0000-0000-0000-000000000000")
+	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
+}

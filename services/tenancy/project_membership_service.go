@@ -75,6 +75,12 @@ func (s *Service) AddProjectMember(ctx context.Context, req *tenancyv1.AddProjec
 	if !validAssignableRole(role) {
 		return nil, apierrors.New(apierrors.CodeRoleInvalid)
 	}
+	// Resolve a username or id to the canonical user id so a username
+	// never reaches the DB as an invalid UUID.
+	userID, err := s.resolveUserID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
 	repo, err := s.projectMemberRepo()
 	if err != nil {
 		return nil, err
