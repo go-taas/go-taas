@@ -639,7 +639,7 @@ th.sortable:hover {
   gap: 7px;
   padding: 8px 14px;
   border-radius: 999px;
-  color: var(--muted);
+  color: var(--muted-strong);
   text-decoration: none;
   font-size: 13.5px;
   font-weight: 600;
