@@ -1,3 +1,12 @@
+# [1.66.0](https://github.com/go-taas/go-taas/compare/v1.65.2...v1.66.0) (2026-10-24)
+
+
+### Features
+
+* **auth:** add user directory with lifecycle control ([58e930e](https://github.com/go-taas/go-taas/commit/58e930ec8b25727e227a56e3c4dce735331ecfec))
+* **tenancy:** add project member management ([27aeb1a](https://github.com/go-taas/go-taas/commit/27aeb1a8f02685e985dc59a21a8a93bc3de77fb7))
+* **tenancy:** add user-surface my organizations and projects ([78a1099](https://github.com/go-taas/go-taas/commit/78a10991f8b387a7d9a97399bf6ba55ebc91e072))
+
 ## [1.65.2](https://github.com/go-taas/go-taas/compare/v1.65.1...v1.65.2) (2026-10-24)
 
 
