@@ -26,6 +26,7 @@ import UserModelsPage from './pages/user/ModelsPage';
 import UserModelDetailPage from './pages/user/ModelDetailPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import OrganizationsPage from './pages/OrganizationsPage';
+import UsersPage from './pages/UsersPage';
 import ProjectsPage from './pages/ProjectsPage';
 import MembersPage from './pages/MembersPage';
 import InvitationsPage from './pages/InvitationsPage';
@@ -210,6 +211,7 @@ function AdminSurface({ path }: { path: string }) {
           <AdminShell>
             <Routes>
               <Route path="/admin/organizations" element={<OrganizationsPage />} />
+              <Route path="/admin/users" element={<UsersPage />} />
               <Route path="/admin/projects" element={<ProjectsPage />} />
               <Route path="/admin/members" element={<MembersPage />} />
               <Route path="/admin/invitations" element={<InvitationsPage />} />

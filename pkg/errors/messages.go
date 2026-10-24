@@ -11,6 +11,7 @@ var messages = map[Code]string{
 	CodeInvalidCredentials:   "invalid credentials",
 	CodeUserNotFound:         "user not found",
 	CodeUserExists:           "user already exists",
+	CodeUserDisabled:         "user disabled",
 	CodeOrganizationNotFound: "organization not found",
 	CodeProjectNotFound:      "project not found",
 	CodeAPIKeyNotFound:       "API key not found",

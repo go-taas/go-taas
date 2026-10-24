@@ -50,6 +50,11 @@ type BindingFilter struct {
 	UserID     string // "" = all users
 }
 
+// UserFilter narrows ListUsers.
+type UserFilter struct {
+	State string // "" = all states
+}
+
 // CreateProvider inserts a new provider. A unique violation on the
 // primary key maps to CodeSSOProviderExists.
 //
@@ -272,6 +277,39 @@ func (r *SSORepository) FindUserByUsername(ctx context.Context, username string)
 	var row User
 	err := r.db.DB(ctx).Where("username = ?", username).First(&row).Error
 	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// ListUsers returns the user directory, optionally filtered by state,
+// ordered by creation time descending.
+func (r *SSORepository) ListUsers(ctx context.Context, filter UserFilter, offset, limit int) ([]*User, int64, error) {
+	query := r.db.DB(ctx).Model(&User{})
+	if filter.State != "" {
+		query = query.Where("state = ?", filter.State)
+	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []*User
+	if err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+// SetUserState flips a user's lifecycle state and re-selects the row.
+// gorm.ErrRecordNotFound passes through; the caller maps it to
+// CodeUserNotFound.
+func (r *SSORepository) SetUserState(ctx context.Context, id string, state string) (*User, error) {
+	var row User
+	if err := r.db.DB(ctx).Model(&User{}).Where("id = ?", id).
+		Update("state", state).Error; err != nil {
+		return nil, err
+	}
+	if err := r.db.DB(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		return nil, err
 	}
 	return &row, nil

@@ -190,6 +190,68 @@ func TestSSORepositoryUserCRUD(t *testing.T) {
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
 }
 
+func TestSSORepositoryListUsers(t *testing.T) {
+	db := newSSOTestDB(t)
+	repo := NewSSORepository(db)
+	ctx := context.Background()
+
+	require.NoError(t, repo.CreateUser(ctx, &User{ID: "user-1", Username: "alice", Email: "a@x.com"}))
+	require.NoError(t, repo.CreateUser(ctx, &User{ID: "user-2", Username: "bob", Email: "b@x.com"}))
+	require.NoError(t, repo.CreateUser(ctx, &User{ID: "user-3", Username: "carol", Email: "c@x.com", State: UserStateDisabled}))
+
+	// All users, newest first.
+	rows, total, err := repo.ListUsers(ctx, UserFilter{}, 0, 10)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, total)
+	assert.Len(t, rows, 3)
+	assert.Equal(t, "user-3", rows[0].ID, "newest first")
+
+	// State filter.
+	active, total, err := repo.ListUsers(ctx, UserFilter{State: UserStateActive}, 0, 10)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, total)
+	assert.Len(t, active, 2)
+
+	disabled, total, err := repo.ListUsers(ctx, UserFilter{State: UserStateDisabled}, 0, 10)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, total)
+	assert.Len(t, disabled, 1)
+	assert.Equal(t, "user-3", disabled[0].ID)
+
+	// Pagination.
+	page, total, err := repo.ListUsers(ctx, UserFilter{}, 0, 2)
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, total)
+	assert.Len(t, page, 2)
+}
+
+func TestSSORepositorySetUserState(t *testing.T) {
+	db := newSSOTestDB(t)
+	repo := NewSSORepository(db)
+	ctx := context.Background()
+
+	require.NoError(t, repo.CreateUser(ctx, &User{ID: "user-1", Username: "alice"}))
+
+	// Default state is active.
+	found, err := repo.FindUser(ctx, "user-1")
+	require.NoError(t, err)
+	assert.Equal(t, UserStateActive, found.State)
+
+	// Disable.
+	updated, err := repo.SetUserState(ctx, "user-1", UserStateDisabled)
+	require.NoError(t, err)
+	assert.Equal(t, UserStateDisabled, updated.State)
+
+	// Re-enable.
+	updated, err = repo.SetUserState(ctx, "user-1", UserStateActive)
+	require.NoError(t, err)
+	assert.Equal(t, UserStateActive, updated.State)
+
+	// Unknown id passes ErrRecordNotFound through.
+	_, err = repo.SetUserState(ctx, "user-missing", UserStateDisabled)
+	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
 func TestSSORepositoryCountBindingsByProvider(t *testing.T) {
 	db := newSSOTestDB(t)
 	repo := NewSSORepository(db)

@@ -85,6 +85,7 @@ export const zh: Record<string, string> = {
   'nav.activity': '活动',
   'nav.models': '模型',
   'nav.organizations': '组织',
+  'nav.users': '用户',
   'nav.projects': '项目',
   'nav.members': '成员',
   'nav.invitations': '邀请',
@@ -696,6 +697,20 @@ export const zh: Record<string, string> = {
   'orgs.enableBody': '启用将恢复该组织的完整写权限。',
   'orgs.actionFailed': '{action}组织失败',
   'orgs.loadFailed': '加载组织失败',
+
+  // ---- User directory ----
+  'users.title': '用户',
+  'users.subtitle': '平台用户目录。用户由 SSO 自动开通或邀请创建；此处可查看并控制其生命周期状态。',
+  'users.empty': '没有符合筛选条件的用户。',
+  'users.colUser': '用户',
+  'users.colEmail': '邮箱',
+  'users.colState': '状态',
+  'users.colOrgs': '组织数',
+  'users.colCreated': '创建时间',
+  'users.stateTitle': '确认操作',
+  'users.stateBody': '确定要{action}用户 {username} 吗？',
+  'users.stateFailed': '更新用户状态失败',
+  'users.loadFailed': '加载用户失败',
 
   // ---- Billing Payments ----
   'payments.title': '支付',

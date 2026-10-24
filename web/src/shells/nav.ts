@@ -84,6 +84,7 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
     shortLabelKey: 'nav.cat.accessShort',
     icon: ShieldCheck,
     items: [
+      { path: '/admin/users', labelKey: 'nav.users', testid: 'nav-users', icon: Users },
       { path: '/admin/organizations', labelKey: 'nav.organizations', testid: 'nav-organizations', icon: Buildings },
       { path: '/admin/projects', labelKey: 'nav.projects', testid: 'nav-projects', icon: Folder },
       { path: '/admin/members', labelKey: 'nav.members', testid: 'nav-members', icon: Users },

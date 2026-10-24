@@ -784,6 +784,18 @@ export interface ProjectSummary {
   updatedAt: string;
 }
 
+// ---- user directory (admin surface) ----
+
+export interface UserSummary {
+  userId: string;
+  username: string;
+  email: string;
+  state: string; // active | disabled
+  organizationCount: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ---- org members & invitations (feature #10) ----
 
 export interface OrgMember {

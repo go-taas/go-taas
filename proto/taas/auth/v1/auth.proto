@@ -286,6 +286,34 @@ service AuthService {
   rpc DeleteIdentityBinding(DeleteIdentityBindingRequest) returns (DeleteIdentityBindingResponse) {
     option (google.api.http) = {delete: "/api/v1/admin/auth/identity-bindings/{binding_id}"};
   }
+
+  // ListUsers returns the platform user directory (admin surface).
+  rpc ListUsers(ListUsersRequest) returns (ListUsersResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/admin/auth/users"
+    };
+  }
+
+  // GetUser returns one platform user (admin surface).
+  rpc GetUser(GetUserRequest) returns (GetUserResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/admin/auth/users/{user_id}"
+    };
+  }
+
+  // DisableUser flips a user to the disabled state (admin surface).
+  rpc DisableUser(DisableUserRequest) returns (DisableUserResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/users/{user_id}:disable"
+    };
+  }
+
+  // EnableUser flips a user back to the active state (admin surface).
+  rpc EnableUser(EnableUserRequest) returns (EnableUserResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/users/{user_id}:enable"
+    };
+  }
 }
 
 message CreateUserRequest {
@@ -614,6 +642,60 @@ message DeleteIdentityBindingRequest {
 }
 message DeleteIdentityBindingResponse {
   taas.common.v1.Response response = 1;
+}
+
+// ---- User directory (admin surface) ----
+
+// UserSummary describes one platform user row of the directory.
+message UserSummary {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  // state is "active" or "disabled".
+  string state = 4;
+  // organization_count is the number of organizations the user belongs to.
+  int64 organization_count = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+}
+
+message ListUsersRequest {
+  taas.common.v1.PageRequest page = 1;
+  // state filters by lifecycle state: "active" or "disabled".
+  string state = 2;
+}
+
+message ListUsersResponse {
+  taas.common.v1.Response response = 1;
+  repeated UserSummary users = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetUserRequest {
+  string user_id = 1;
+}
+
+message GetUserResponse {
+  taas.common.v1.Response response = 1;
+  UserSummary user = 2;
+}
+
+message DisableUserRequest {
+  string user_id = 1;
+}
+
+message DisableUserResponse {
+  taas.common.v1.Response response = 1;
+  UserSummary user = 2;
+}
+
+message EnableUserRequest {
+  string user_id = 1;
+}
+
+message EnableUserResponse {
+  taas.common.v1.Response response = 1;
+  UserSummary user = 2;
 }
 
 // ---- Unified login & role-based routing (feature-22) ----

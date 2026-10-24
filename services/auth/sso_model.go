@@ -60,14 +60,25 @@ type IdentityBinding struct {
 // TableName returns the identity_bindings table name.
 func (IdentityBinding) TableName() string { return "identity_bindings" }
 
+// User lifecycle states (mirrors the tenancy active/disabled model).
+const (
+	// UserStateActive is the normal operating state.
+	UserStateActive = "active"
+	// UserStateDisabled blocks the user from signing in; history stays
+	// readable.
+	UserStateDisabled = "disabled"
+)
+
 // User is the platform account model. Roles and org memberships are not
 // columns — they are derived per-session from the attribute mapping and
-// the organizations table (D7).
+// the organizations table (D7). The state moves only through the
+// disable/enable endpoints.
 type User struct {
 	ID           string `gorm:"primaryKey;type:uuid"`
 	Username     string `gorm:"size:128;not null;uniqueIndex"`
 	Email        string `gorm:"size:256"`
 	PasswordHash string `gorm:"size:256"`
+	State        string `gorm:"size:16;not null;default:'active'"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

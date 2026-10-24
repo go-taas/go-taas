@@ -85,6 +85,7 @@ export const en: Record<string, string> = {
   'nav.activity': 'Activity',
   'nav.models': 'Models',
   'nav.organizations': 'Organizations',
+  'nav.users': 'Users',
   'nav.projects': 'Projects',
   'nav.members': 'Members',
   'nav.invitations': 'Invitations',
@@ -696,6 +697,20 @@ export const en: Record<string, string> = {
   'orgs.enableBody': 'Enabling restores full write access for this organization.',
   'orgs.actionFailed': 'failed to {action} organization',
   'orgs.loadFailed': 'failed to load organizations',
+
+  // ---- User directory ----
+  'users.title': 'Users',
+  'users.subtitle': 'Platform user directory. Users are created by SSO JIT provisioning or invitations; here you can view and control their lifecycle state.',
+  'users.empty': 'No users match the filter.',
+  'users.colUser': 'User',
+  'users.colEmail': 'Email',
+  'users.colState': 'State',
+  'users.colOrgs': 'Orgs',
+  'users.colCreated': 'Created',
+  'users.stateTitle': 'Confirm action',
+  'users.stateBody': 'Are you sure you want to {action} user {username}?',
+  'users.stateFailed': 'failed to update user state',
+  'users.loadFailed': 'failed to load users',
 
   // ---- Billing Payments ----
   'payments.title': 'Payments',

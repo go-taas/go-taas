@@ -75,6 +75,7 @@ const (
 	// #46, AD3). It is checked before org-level model authorization so
 	// callers can distinguish a key-scope denial from an org denial.
 	CodeAPIKeyModelNotAllowed Code = 10039 // API_KEY_MODEL_NOT_ALLOWED
+	CodeUserDisabled          Code = 10040 // USER_DISABLED
 )
 
 // model module error codes.
