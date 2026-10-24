@@ -14,7 +14,7 @@ func TestFVTLocalAccountRegisterAndLogin(t *testing.T) {
 
 	// Register a local account.
 	code, body := env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
-		"username": "alice", "password": "password123", "email": "alice@x.com",
+		"username": "alice", "password": "Password123", "email": "alice@x.com",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Equal(t, float64(0), body["response"].(map[string]any)["code"])
@@ -23,14 +23,14 @@ func TestFVTLocalAccountRegisterAndLogin(t *testing.T) {
 
 	// Duplicate username → 10004.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
-		"username": "alice", "password": "password123",
+		"username": "alice", "password": "Password123",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	assert.NotEqual(t, http.StatusOK, code)
 	assert.EqualValues(t, float64(10004), body["code"])
 
 	// Login with correct credentials → session token.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/login", map[string]any{
-		"username": "alice", "password": "password123",
+		"username": "alice", "password": "Password123",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.NotEmpty(t, body["sessionToken"])
@@ -45,7 +45,7 @@ func TestFVTLocalAccountRegisterAndLogin(t *testing.T) {
 
 	// Login with unknown user → 10002.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/login", map[string]any{
-		"username": "nobody", "password": "password123",
+		"username": "nobody", "password": "Password123",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	assert.NotEqual(t, http.StatusOK, code)
 	assert.EqualValues(t, float64(10002), body["code"])

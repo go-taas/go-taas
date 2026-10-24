@@ -29,6 +29,46 @@ const passwordKeyLen uint32 = 32
 // passwordHashPrefix is the PHC-style prefix of a stored password hash.
 const passwordHashPrefix = "argon2id"
 
+// Password policy: at least 8 characters and at least three of the four
+// character classes (uppercase, lowercase, digit, special).
+const (
+	// PasswordMinLen is the minimum password length.
+	PasswordMinLen = 8
+	// passwordMaxLen bounds a password.
+	passwordMaxLen = 256
+	// passwordClassMin is the number of character classes required.
+	passwordClassMin = 3
+)
+
+// ValidatePasswordPolicy reports whether a password satisfies the
+// platform policy: length >= 8 and at least three of the four character
+// classes (uppercase, lowercase, digit, special).
+func ValidatePasswordPolicy(password string) bool {
+	if len(password) < PasswordMinLen || len(password) > passwordMaxLen {
+		return false
+	}
+	var upper, lower, digit, special bool
+	for _, r := range password {
+		switch {
+		case r >= 'A' && r <= 'Z':
+			upper = true
+		case r >= 'a' && r <= 'z':
+			lower = true
+		case r >= '0' && r <= '9':
+			digit = true
+		default:
+			special = true
+		}
+	}
+	classes := 0
+	for _, ok := range []bool{upper, lower, digit, special} {
+		if ok {
+			classes++
+		}
+	}
+	return classes >= passwordClassMin
+}
+
 // HashPassword returns a self-describing Argon2id hash of the password
 // with a fresh random salt. The format is
 // `argon2id$v=19$m=<MiB>,t=<time>,p=<parallelism>$<salt>$<hash>`, so the

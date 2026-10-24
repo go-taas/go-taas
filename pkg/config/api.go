@@ -154,6 +154,10 @@ type SeedSsoConfig struct {
 	AdminUsername string `mapstructure:"adminUsername"`
 	// AdminPassword is the seeded admin user's password at the IdP.
 	AdminPassword string `mapstructure:"adminPassword"`
+	// AdminLocalPassword is the seeded admin local account's initial
+	// password (hashed with Argon2id at first boot). It defaults to
+	// Pass4admin when unset.
+	AdminLocalPassword string `mapstructure:"adminLocalPassword"`
 	// AdminOrgID is the seeded admin user's organization id.
 	AdminOrgID string `mapstructure:"adminOrgId"`
 }

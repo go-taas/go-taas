@@ -55,3 +55,23 @@ func TestHashPasswordDefaults(t *testing.T) {
 	require.NoError(t, err)
 	assert.True(t, VerifyPassword("password", hash))
 }
+func TestValidatePasswordPolicy(t *testing.T) {
+	cases := []struct {
+		name string
+		pw   string
+		want bool
+	}{
+		{"default seeded admin", "Pass4admin", true},              // upper+lower+digit = 3
+		{"all four classes", "Pass4admin!", true},                 // 4
+		{"upper lower digit", "Abcdefg1", true},                   // 3
+		{"upper lower special", "Abcdefg!", true},                 // 3
+		{"lower digit special", "abcdefg1!", true},                // 3
+		{"two classes only", "abcdefg1", false},                   // 2
+		{"lower only", "abcdefgh", false},
+		{"too short", "Ab1!", false},
+		{"uppercase lowercase only", "Abcdefgh", false},
+	}
+	for _, c := range cases {
+		assert.Equal(t, c.want, ValidatePasswordPolicy(c.pw), c.name)
+	}
+}

@@ -106,13 +106,13 @@ func TestCreateUserRequiresEmailCode(t *testing.T) {
 
 	// Without an email → 10003.
 	_, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
-		Username: "alice", Password: "password123",
+		Username: "alice", Password: "Password123",
 	})
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 
 	// With an email but no code → 10002.
 	_, err = svc.CreateUser(ctx, &authv1.CreateUserRequest{
-		Username: "alice", Password: "password123", Email: "alice@x.com",
+		Username: "alice", Password: "Password123", Email: "alice@x.com",
 	})
 	assert.EqualValues(t, apierrors.CodeInvalidCredentials, apierrors.CodeOf(err))
 
@@ -124,7 +124,7 @@ func TestCreateUserRequiresEmailCode(t *testing.T) {
 	client, _ := svc.redisClientFor()
 	stored, _ := client.Get(ctx, emailCodeKeyPrefix+"alice@x.com:"+emailCodePurposeRegister).Result()
 	resp, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
-		Username: "alice", Password: "password123", Email: "alice@x.com", EmailCode: stored,
+		Username: "alice", Password: "Password123", Email: "alice@x.com", EmailCode: stored,
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.UserId)
@@ -136,7 +136,7 @@ func TestLoginRequiresEmailCode(t *testing.T) {
 
 	// Register a user with email verification disabled.
 	_, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
-		Username: "alice", Password: "password123", Email: "alice@x.com",
+		Username: "alice", Password: "Password123", Email: "alice@x.com",
 	})
 	require.NoError(t, err)
 
@@ -144,7 +144,7 @@ func TestLoginRequiresEmailCode(t *testing.T) {
 	enableEmailVerification(t)
 
 	// Login without a code → 10002.
-	_, err = svc.Login(ctx, &authv1.LoginRequest{Username: "alice", Password: "password123"})
+	_, err = svc.Login(ctx, &authv1.LoginRequest{Username: "alice", Password: "Password123"})
 	assert.EqualValues(t, apierrors.CodeInvalidCredentials, apierrors.CodeOf(err))
 
 	// Send a code and login with it.
@@ -155,7 +155,7 @@ func TestLoginRequiresEmailCode(t *testing.T) {
 	client, _ := svc.redisClientFor()
 	stored, _ := client.Get(ctx, emailCodeKeyPrefix+"alice@x.com:"+emailCodePurposeLogin).Result()
 	resp, err := svc.Login(ctx, &authv1.LoginRequest{
-		Username: "alice", Password: "password123", EmailCode: stored,
+		Username: "alice", Password: "Password123", EmailCode: stored,
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.SessionToken)

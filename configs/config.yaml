@@ -82,6 +82,10 @@ auth:
     redirectUri: http://localhost:9091/api/v1/auth/sso/*
     adminUsername: admin
     adminPassword: admin
+    # adminLocalPassword is the seeded admin local account's initial
+    # password (Argon2id-hashed at first boot). Change it on a real
+    # deployment.
+    adminLocalPassword: Pass4admin
     adminOrgId: org-admin
 
 metering:

@@ -30,6 +30,14 @@ interface SendCodeResponse {
 // The localStorage key for the register resend cooldown deadline.
 const COOLDOWN_KEY = 'go-taas.register.cooldown-until';
 
+// passwordPolicyOK mirrors the server policy: at least 8 characters and
+// at least three of uppercase, lowercase, digit, special.
+export function passwordPolicyOK(pw: string): boolean {
+  if (pw.length < 8) return false;
+  const classes = [/[A-Z]/, /[a-z]/, /[0-9]/, /[^A-Za-z0-9]/].filter((re) => re.test(pw)).length;
+  return classes >= 3;
+}
+
 export default function RegisterPage() {
   const api = useApi();
   const { t } = useI18n();
@@ -64,7 +72,7 @@ export default function RegisterPage() {
   const passwordsMatch = password === confirmPassword;
   const canSubmit =
     username.trim().length > 0 &&
-    password.length >= 8 &&
+    passwordPolicyOK(password) &&
     passwordsMatch &&
     email.trim().length > 0 &&
     emailCode.trim().length > 0 &&
@@ -224,6 +232,11 @@ export default function RegisterPage() {
             onChange={(e) => setConfirmPassword(e.target.value)}
             autoComplete="new-password"
           />
+          {password.length > 0 && !passwordPolicyOK(password) && (
+            <div className="field-error" data-testid="register-password-policy">
+              {t('register.passwordPolicy')}
+            </div>
+          )}
           {confirmPassword.length > 0 && !passwordsMatch && (
             <div className="field-error" data-testid="register-password-mismatch">
               {t('register.passwordMismatch')}

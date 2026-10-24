@@ -49,6 +49,10 @@ const seedAdminUsername = "admin"
 // seedAdminPassword is the seeded admin user's password at the IdP.
 const seedAdminPassword = "admin"
 
+// seedAdminLocalPassword is the seeded admin local account's default
+// initial password (overridable via auth.seedSso.adminLocalPassword).
+const seedAdminLocalPassword = "Pass4admin"
+
 // seedAdminOrgID is the seeded organization the admin user belongs to.
 // The admin user needs an org_members row with an admin role so the
 // session realm derives as admin when the membership resolver is wired
@@ -73,9 +77,10 @@ func seedSsoConfig() config.SeedSsoConfig {
 		ClientID:      seedKeycloakClientID,
 		ClientSecret:  seedKeycloakClientSecret,
 		RedirectURI:   seedKeycloakRedirectURI,
-		AdminUsername: seedAdminUsername,
-		AdminPassword: seedAdminPassword,
-		AdminOrgID:    seedAdminOrgID,
+		AdminUsername:      seedAdminUsername,
+		AdminPassword:      seedAdminPassword,
+		AdminLocalPassword: seedAdminLocalPassword,
+		AdminOrgID:         seedAdminOrgID,
 	}
 	if c := config.GetConfig(); c != nil {
 		s := c.Auth.SeedSso
@@ -105,6 +110,9 @@ func seedSsoConfig() config.SeedSsoConfig {
 		}
 		if s.AdminPassword != "" {
 			cfg.AdminPassword = s.AdminPassword
+		}
+		if s.AdminLocalPassword != "" {
+			cfg.AdminLocalPassword = s.AdminLocalPassword
 		}
 		if s.AdminOrgID != "" {
 			cfg.AdminOrgID = s.AdminOrgID
@@ -151,19 +159,35 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 		return err
 	}
 
-	// 2. The admin platform user.
+	// 2. The admin local account. The initial password is hashed with
+	// Argon2id and overridable via auth.seedSso.adminLocalPassword so a
+	// fresh install can sign in without an external IdP.
+	hash, err := HashPassword(seed.AdminLocalPassword, s.hashParamsFor())
+	if err != nil {
+		return err
+	}
 	adminUser, err := repo.FindUserByUsername(ctx, seed.AdminUsername)
 	if isRecordNotFound(err) {
 		adminUser = &User{
-			ID:       uuid.NewString(),
-			Username: seed.AdminUsername,
-			Email:    "admin@example.com",
+			ID:           uuid.NewString(),
+			Username:     seed.AdminUsername,
+			Email:        "admin@example.com",
+			DisplayName:  "Administrator",
+			PasswordHash: hash,
+			State:        UserStateActive,
 		}
 		if err := repo.CreateUser(ctx, adminUser); err != nil {
 			return err
 		}
 	} else if err != nil {
 		return err
+	} else if adminUser.PasswordHash == "" {
+		// An admin user seeded before the local account existed has no
+		// password; set the configured initial one so it can sign in.
+		if err := repo.SetUserPassword(ctx, adminUser.ID, hash); err != nil {
+			return err
+		}
+		adminUser.PasswordHash = hash
 	}
 
 	// 3. The admin user's identity binding. The external subject is

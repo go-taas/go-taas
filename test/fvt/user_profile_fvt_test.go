@@ -14,13 +14,13 @@ func TestFVTUserProfile(t *testing.T) {
 
 	// Register a local account.
 	code, body := env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
-		"username": "alice", "password": "password123", "email": "alice@x.com",
+		"username": "alice", "password": "Password123", "email": "alice@x.com",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 
 	// Login to get a session token.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/login", map[string]any{
-		"username": "alice", "password": "password123",
+		"username": "alice", "password": "Password123",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	token, _ := body["sessionToken"].(string)

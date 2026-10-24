@@ -350,6 +350,12 @@ func (r *SSORepository) DeleteUser(ctx context.Context, id string) error {
 	})
 }
 
+// SetUserPassword stores a new password hash for a user.
+func (r *SSORepository) SetUserPassword(ctx context.Context, id, hash string) error {
+	return r.db.DB(ctx).Model(&User{}).Where("id = ?", id).
+		Update("password_hash", hash).Error
+}
+
 // UpdateUserProfile updates the mutable profile fields (display name,
 // avatar) and re-selects the row. Username and email are immutable.
 // gorm.ErrRecordNotFound passes through; the caller maps it to

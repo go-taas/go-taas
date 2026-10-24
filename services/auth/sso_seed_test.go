@@ -11,6 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
+
 	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
@@ -192,4 +194,22 @@ func TestSeedComposeProviderAndAdminDisabled(t *testing.T) {
 	assert.EqualValues(t, 0, providerCount, "no provider when seed disabled")
 	assert.EqualValues(t, 0, userCount, "no user when seed disabled")
 	assert.EqualValues(t, 0, bindingCount, "no binding when seed disabled")
+}
+// TestSeedLocalAdminPassword verifies the seeded admin gets a hashed
+// local password from config, and can log in with it.
+func TestSeedLocalAdminPassword(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+
+	var admin User
+	require.NoError(t, db.First(&admin, "username = ?", "admin").Error)
+	require.NotEmpty(t, admin.PasswordHash, "seeded admin has a local password hash")
+	assert.True(t, VerifyPassword("Pass4admin", admin.PasswordHash), "default password verifies")
+
+	// The seeded admin can sign in through the local login.
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "admin", Password: "Pass4admin"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.SessionToken)
 }

@@ -23,12 +23,6 @@ import (
 // usernameMaxLen bounds a local account username.
 const usernameMaxLen = 128
 
-// passwordMinLen is the minimum local account password length.
-const passwordMinLen = 8
-
-// passwordMaxLen bounds a local account password.
-const passwordMaxLen = 256
-
 // CreateUser registers a local account. The password is hashed with
 // Argon2id and never stored in plaintext. The username must be unique.
 // When email verification is enabled, the email and its verification
@@ -40,7 +34,7 @@ func (s *Service) CreateUser(ctx context.Context, req *authv1.CreateUserRequest)
 	if username == "" || len(username) > usernameMaxLen {
 		return nil, apierrors.New(apierrors.CodeUserNotFound)
 	}
-	if len(password) < passwordMinLen || len(password) > passwordMaxLen {
+	if !ValidatePasswordPolicy(password) {
 		return nil, apierrors.New(apierrors.CodePasswordPolicy)
 	}
 	// When email verification is enabled, the email and its code are

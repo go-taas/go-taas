@@ -40,14 +40,14 @@ func TestFVTEmailCodeRegisterAndLogin(t *testing.T) {
 
 	// Register with the code.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
-		"username": "alice", "password": "password123", "email": "alice@x.com", "emailCode": stored,
+		"username": "alice", "password": "Password123", "email": "alice@x.com", "emailCode": stored,
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Equal(t, float64(0), body["response"].(map[string]any)["code"])
 
 	// Register without a code → 10002.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
-		"username": "bob", "password": "password123", "email": "bob@x.com",
+		"username": "bob", "password": "Password123", "email": "bob@x.com",
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	assert.NotEqual(t, http.StatusOK, code)
 	assert.EqualValues(t, float64(10002), body["code"])
@@ -60,7 +60,7 @@ func TestFVTEmailCodeRegisterAndLogin(t *testing.T) {
 	stored, err = client.Get(t.Context(), "auth:email-code:alice@x.com:login").Result()
 	require.NoError(t, err)
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/login", map[string]any{
-		"username": "alice", "password": "password123", "emailCode": stored,
+		"username": "alice", "password": "Password123", "emailCode": stored,
 	}, map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.NotEmpty(t, body["sessionToken"])
