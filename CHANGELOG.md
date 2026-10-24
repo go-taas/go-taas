@@ -1,3 +1,15 @@
+# [1.72.0](https://github.com/go-taas/go-taas/compare/v1.71.0...v1.72.0) (2026-10-24)
+
+
+### Bug Fixes
+
+* **console:** load the avatar on the admin surface and add admin profile ([59a6685](https://github.com/go-taas/go-taas/commit/59a66851d9f1e5f6c41f4bc65a33c78f3138ab9e))
+
+
+### Features
+
+* **console:** redesign profile page and show real avatar everywhere ([17a2993](https://github.com/go-taas/go-taas/commit/17a29933e38b86be73279098376c81e004960f9b))
+
 # [1.71.0](https://github.com/go-taas/go-taas/compare/v1.70.0...v1.71.0) (2026-10-24)
 
 
