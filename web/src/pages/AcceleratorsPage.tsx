@@ -182,7 +182,8 @@ export default function AcceleratorsPage() {
       )}
 
       {zeroNodeVendors.map((v) => (
-        <div className="warning-banner" data-testid={`accelerators-vendor-banner-${v}`}>
+        <div className="info-banner" data-testid={`accelerators-vendor-banner-${v}`}>
+          <span className="info-banner-dot" aria-hidden="true" />
           {t('accelerators.vendorNodes', { v })}
         </div>
       ))}
