@@ -101,7 +101,7 @@ export const zh: Record<string, string> = {
   'nav.images': '镜像',
   'nav.pricing': '定价',
   'nav.bills': '账单',
-  'nav.accounts': '账户',
+  'nav.accounts': '计费账户',
   'nav.payments': '支付',
   'nav.invoices': '发票',
   'nav.auditLogs': '审计日志',

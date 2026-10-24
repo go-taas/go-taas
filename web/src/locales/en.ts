@@ -101,7 +101,7 @@ export const en: Record<string, string> = {
   'nav.images': 'Images',
   'nav.pricing': 'Pricing',
   'nav.bills': 'Bills',
-  'nav.accounts': 'Accounts',
+  'nav.accounts': 'Billing Accounts',
   'nav.payments': 'Payments',
   'nav.invoices': 'Invoices',
   'nav.auditLogs': 'Audit Logs',
