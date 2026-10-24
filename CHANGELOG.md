@@ -1,3 +1,10 @@
+## [1.65.2](https://github.com/go-taas/go-taas/compare/v1.65.1...v1.65.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **console:** stop the blank page when the console redirects to login ([d1e441d](https://github.com/go-taas/go-taas/commit/d1e441da5769efb7f89eb5522b53bfbd9cd60e82))
+
 ## [1.65.1](https://github.com/go-taas/go-taas/compare/v1.65.0...v1.65.1) (2026-10-23)
 
 
