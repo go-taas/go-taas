@@ -1,3 +1,10 @@
+# [1.71.0](https://github.com/go-taas/go-taas/compare/v1.70.0...v1.71.0) (2026-10-24)
+
+
+### Features
+
+* **tenancy:** add join requests, project quotas and scoped admin roles ([ba928b7](https://github.com/go-taas/go-taas/commit/ba928b7e78972e9ca6ec33205f77b8c6679d1a8a))
+
 # [1.70.0](https://github.com/go-taas/go-taas/compare/v1.69.0...v1.70.0) (2026-10-24)
 
 
