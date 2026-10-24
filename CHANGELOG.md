@@ -1,3 +1,15 @@
+# [1.73.0](https://github.com/go-taas/go-taas/compare/v1.72.0...v1.73.0) (2026-10-24)
+
+
+### Bug Fixes
+
+* **auth:** exempt platform admins from login email verification ([0e6c1d2](https://github.com/go-taas/go-taas/commit/0e6c1d2145a90bccaed81b27c3548f9de6965518))
+
+
+### Features
+
+* **auth:** seed a local admin account and enforce a password policy ([2a8e107](https://github.com/go-taas/go-taas/commit/2a8e1078ac550cfde6b14171165d75f1508b35b1))
+
 # [1.72.0](https://github.com/go-taas/go-taas/compare/v1.71.0...v1.72.0) (2026-10-24)
 
 
