@@ -1,3 +1,10 @@
+# [1.69.0](https://github.com/go-taas/go-taas/compare/v1.68.1...v1.69.0) (2026-10-24)
+
+
+### Features
+
+* **auth:** add user profile and harden local account flows ([eb01bb6](https://github.com/go-taas/go-taas/commit/eb01bb651a0d1c9e24a7407ad324b08461b69b69))
+
 ## [1.68.1](https://github.com/go-taas/go-taas/compare/v1.68.0...v1.68.1) (2026-10-24)
 
 
