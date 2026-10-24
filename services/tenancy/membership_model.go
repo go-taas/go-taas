@@ -49,6 +49,26 @@ type OrgMember struct {
 // TableName returns the org_members table name.
 func (OrgMember) TableName() string { return "org_members" }
 
+// ProjectMember is one row of a project's roster (feature #10 project
+// refinement). Project roles are admin / member / viewer; there is no
+// owner at the project level — the owning org's owner governs the
+// project. The composite (project_id, user_id) is the natural key.
+type ProjectMember struct {
+	// ProjectID is the owning project.
+	ProjectID string `gorm:"size:64;not null;uniqueIndex:idx_project_members_project_user,priority:1"`
+	// UserID is the member platform user.
+	UserID string `gorm:"type:uuid;not null;uniqueIndex:idx_project_members_project_user,priority:2;index:idx_project_members_user"`
+	// Role is admin / member / viewer.
+	Role string `gorm:"size:16;not null"`
+	// JoinedAt is when the membership was created.
+	JoinedAt  time.Time `gorm:"not null"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// TableName returns the project_members table name.
+func (ProjectMember) TableName() string { return "project_members" }
+
 // Invitation is one row of the org's invitation pipeline (feature #10,
 // AD4/AD5). The token is stored hashed; the raw token is returned once
 // at creation/resend and never stored.

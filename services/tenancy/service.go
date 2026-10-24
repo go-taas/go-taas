@@ -120,10 +120,10 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 }
 
 // MigrateSchemaForFVT applies the tenancy schema (organizations,
-// projects, org_members, invitations) onto a caller-provided database
-// for full-verification tests.
+// projects, org_members, project_members, invitations) onto a
+// caller-provided database for full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &Invitation{})
+	return db.AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{})
 }
 
 // AttachToServer implements server.Service.
@@ -148,7 +148,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &Invitation{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{}); err != nil {
 		return err
 	}
 	repo, err := s.repository()

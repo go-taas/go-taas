@@ -805,6 +805,13 @@ export interface OrgMember {
   joinedAt: string;
 }
 
+export interface ProjectMember {
+  userId: string;
+  displayName: string;
+  role: string; // admin | member | viewer
+  joinedAt: string;
+}
+
 export interface Invitation {
   invitationId: string;
   email: string;

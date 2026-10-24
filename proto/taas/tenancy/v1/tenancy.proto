@@ -133,6 +133,36 @@ service TenancyService {
     option (google.api.http) = {delete: "/api/v1/admin/tenancy/organizations/{organization_id}/members/{user_id}"};
   }
 
+  // ListProjectMembers returns the project's roster. Requires admin/owner
+  // in the owning organization.
+  rpc ListProjectMembers(ListProjectMembersRequest) returns (ListProjectMembersResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}/members"};
+  }
+
+  // AddProjectMember adds a member with a role. Requires admin/owner in
+  // the owning organization.
+  rpc AddProjectMember(AddProjectMemberRequest) returns (AddProjectMemberResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/projects/{project_id}/members"
+      body: "*"
+    };
+  }
+
+  // SetProjectMemberRole changes a project member's role. Requires
+  // admin/owner in the owning organization.
+  rpc SetProjectMemberRole(SetProjectMemberRoleRequest) returns (SetProjectMemberRoleResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/tenancy/projects/{project_id}/members/{user_id}"
+      body: "*"
+    };
+  }
+
+  // RemoveProjectMember removes a project member. Requires admin/owner
+  // in the owning organization.
+  rpc RemoveProjectMember(RemoveProjectMemberRequest) returns (RemoveProjectMemberResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/tenancy/projects/{project_id}/members/{user_id}"};
+  }
+
   // CreateInvitation invites a person by email with a role. Requires
   // admin/owner; returns the raw token once.
   rpc CreateInvitation(CreateInvitationRequest) returns (CreateInvitationResponse) {
@@ -428,6 +458,58 @@ message RemoveOrgMemberRequest {
 }
 
 message RemoveOrgMemberResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// ProjectMember describes one member of a project's roster.
+message ProjectMember {
+  string user_id = 1;
+  string display_name = 2;
+  // role is admin / member / viewer.
+  string role = 3;
+  int64 joined_at = 4;
+}
+
+message ListProjectMembersRequest {
+  string project_id = 1;
+  taas.common.v1.PageRequest page = 2;
+}
+
+message ListProjectMembersResponse {
+  taas.common.v1.Response response = 1;
+  repeated ProjectMember members = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message AddProjectMemberRequest {
+  string project_id = 1;
+  string user_id = 2;
+  // role is admin / member / viewer.
+  string role = 3;
+}
+
+message AddProjectMemberResponse {
+  taas.common.v1.Response response = 1;
+  ProjectMember member = 2;
+}
+
+message SetProjectMemberRoleRequest {
+  string project_id = 1;
+  string user_id = 2;
+  string role = 3;
+}
+
+message SetProjectMemberRoleResponse {
+  taas.common.v1.Response response = 1;
+  ProjectMember member = 2;
+}
+
+message RemoveProjectMemberRequest {
+  string project_id = 1;
+  string user_id = 2;
+}
+
+message RemoveProjectMemberResponse {
   taas.common.v1.Response response = 1;
 }
 

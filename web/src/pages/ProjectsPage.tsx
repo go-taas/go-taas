@@ -9,6 +9,7 @@ import {
   formatTime,
   type OrganizationSummary,
   type PageMeta,
+  type ProjectMember,
   type ProjectSummary,
 } from '../api';
 import { useOrg } from '../org';
@@ -41,6 +42,7 @@ export default function ProjectsPage() {
   const [error, setError] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ProjectSummary | null>(null);
+  const [membersTarget, setMembersTarget] = useState<ProjectSummary | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{
     project: ProjectSummary;
     action: 'disable' | 'enable';
@@ -175,6 +177,13 @@ export default function ProjectsPage() {
                     >
                       {t('common.edit')}
                     </button>
+                    <button
+                      className="link"
+                      data-testid={`project-members-${project.projectId}`}
+                      onClick={() => setMembersTarget(project)}
+                    >
+                      {t('projects.members')}
+                    </button>
                     {project.state === 'active' ? (
                       <button
                         className="link danger"
@@ -233,6 +242,14 @@ export default function ProjectsPage() {
             setEditTarget(null);
             void load();
           }}
+        />
+      )}
+
+      {membersTarget && (
+        <ProjectMembersDialog
+          orgId={orgId}
+          project={membersTarget}
+          onClose={() => setMembersTarget(null)}
         />
       )}
 
@@ -517,6 +534,185 @@ function ConfirmStateDialog({
           onClick={() => void submit()}
         >
           {submitting ? t('common.working') : t(action === 'disable' ? 'common.disable' : 'common.enable')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// ProjectMembersDialog manages a project's roster: list, add, role
+// change and remove.
+function ProjectMembersDialog({
+  orgId,
+  project,
+  onClose,
+}: {
+  orgId: string;
+  project: ProjectSummary;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [addUserId, setAddUserId] = useState('');
+  const [addRole, setAddRole] = useState('member');
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    try {
+      const data = await api.get<{
+        response: { code: number; message: string };
+        members: ProjectMember[];
+      }>(`/api/v1/admin/tenancy/projects/${project.projectId}/members?page.limit=100`, orgId);
+      setMembers(data.members || []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('projects.membersLoadFailed'));
+    } finally {
+      setLoading(false);
+    }
+  }, [orgId, project.projectId, t]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const addMember = async () => {
+    setError('');
+    try {
+      await api.post(
+        `/api/v1/admin/tenancy/projects/${project.projectId}/members`,
+        orgId,
+        { userId: addUserId, role: addRole },
+      );
+      setAddOpen(false);
+      setAddUserId('');
+      setAddRole('member');
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t('projects.membersAddFailed'));
+    }
+  };
+
+  const changeRole = async (userId: string, role: string) => {
+    setError('');
+    try {
+      await api.patch(
+        `/api/v1/admin/tenancy/projects/${project.projectId}/members/${userId}`,
+        orgId,
+        { role },
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t('projects.membersRoleFailed'));
+    }
+  };
+
+  const removeMember = async (userId: string) => {
+    setError('');
+    try {
+      await api.del(
+        `/api/v1/admin/tenancy/projects/${project.projectId}/members/${userId}`,
+        orgId,
+      );
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t('projects.membersRemoveFailed'));
+    }
+  };
+
+  return (
+    <Dialog
+      title={t('projects.membersTitle', { projectId: project.projectId })}
+      onClose={onClose}
+      testId="project-members-dialog"
+    >
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions" style={{ justifyContent: 'flex-start', marginBottom: 12 }}>
+        <button data-testid="project-member-add-button" onClick={() => setAddOpen(true)}>
+          {t('projects.membersAdd')}
+        </button>
+      </div>
+      {loading ? (
+        <div className="loading">{t('common.loading')}</div>
+      ) : members.length === 0 ? (
+        <div className="empty-state" data-testid="project-members-empty">
+          {t('projects.membersEmpty')}
+        </div>
+      ) : (
+        <table className="data" data-testid="project-members-table">
+          <thead>
+            <tr>
+              <th>{t('projects.membersColUser')}</th>
+              <th>{t('projects.membersColRole')}</th>
+              <th>{t('common.actions')}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {members.map((m) => (
+              <tr key={m.userId} data-testid={`project-member-row-${m.userId}`}>
+                <td>
+                  <strong className="mono">{m.userId}</strong>
+                </td>
+                <td>
+                  <select
+                    className="member-role-select"
+                    data-testid={`project-member-role-${m.userId}`}
+                    value={m.role}
+                    onChange={(e) => changeRole(m.userId, e.target.value)}
+                  >
+                    <option value="admin">admin</option>
+                    <option value="member">member</option>
+                    <option value="viewer">viewer</option>
+                  </select>
+                </td>
+                <td>
+                  <button
+                    className="link danger"
+                    data-testid={`project-member-remove-${m.userId}`}
+                    onClick={() => void removeMember(m.userId)}
+                  >
+                    {t('common.remove')}
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {addOpen && (
+        <div className="form" style={{ marginTop: 12 }}>
+          <label>
+            {t('projects.membersFieldUserId')}
+            <input
+              data-testid="project-member-add-user-id"
+              value={addUserId}
+              onChange={(e) => setAddUserId(e.target.value)}
+              placeholder={t('projects.membersPlaceholderUserId')}
+            />
+          </label>
+          <label>
+            {t('projects.membersFieldRole')}
+            <select
+              data-testid="project-member-add-role"
+              value={addRole}
+              onChange={(e) => setAddRole(e.target.value)}
+            >
+              <option value="admin">admin</option>
+              <option value="member">member</option>
+              <option value="viewer">viewer</option>
+            </select>
+          </label>
+          <button data-testid="project-member-add-save" onClick={() => void addMember()}>
+            {t('projects.membersAdd')}
+          </button>
+        </div>
+      )}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>
+          {t('common.cancel')}
         </button>
       </div>
     </Dialog>

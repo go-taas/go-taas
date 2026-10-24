@@ -88,6 +88,52 @@ func TestMembershipListMemberOrgs(t *testing.T) {
 	assert.Len(t, rows, 2)
 }
 
+// Project member repository: add, find, list, role change, remove.
+func TestProjectMembershipCRUD(t *testing.T) {
+	db := newTestDB(t)
+	repo := NewMembershipRepository(db)
+	ctx := context.Background()
+
+	// Add.
+	m := &ProjectMember{ProjectID: "proj-a", UserID: "u-1", Role: RoleMember, JoinedAt: time.Now().UTC()}
+	require.NoError(t, repo.AddProjectMember(ctx, m))
+
+	// Duplicate (project, user) maps to 10029.
+	dup := &ProjectMember{ProjectID: "proj-a", UserID: "u-1", Role: RoleAdmin, JoinedAt: time.Now().UTC()}
+	err := repo.AddProjectMember(ctx, dup)
+	assert.EqualValues(t, apierrors.CodeMemberExists, apierrors.CodeOf(err))
+
+	// Find.
+	found, err := repo.FindProjectMember(ctx, "proj-a", "u-1")
+	require.NoError(t, err)
+	require.NotNil(t, found)
+	assert.Equal(t, RoleMember, found.Role)
+
+	// Absent → nil.
+	absent, err := repo.FindProjectMember(ctx, "proj-a", "u-missing")
+	require.NoError(t, err)
+	assert.Nil(t, absent)
+
+	// List.
+	require.NoError(t, repo.AddProjectMember(ctx, &ProjectMember{ProjectID: "proj-a", UserID: "u-2", Role: RoleViewer, JoinedAt: time.Now().UTC()}))
+	rows, total, err := repo.ListProjectMembers(ctx, "proj-a", 0, 10)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, total)
+	assert.Len(t, rows, 2)
+
+	// Role change.
+	require.NoError(t, repo.SetProjectMemberRole(ctx, "proj-a", "u-1", RoleAdmin))
+	found, err = repo.FindProjectMember(ctx, "proj-a", "u-1")
+	require.NoError(t, err)
+	assert.Equal(t, RoleAdmin, found.Role)
+
+	// Remove.
+	require.NoError(t, repo.RemoveProjectMember(ctx, "proj-a", "u-1"))
+	absent, err = repo.FindProjectMember(ctx, "proj-a", "u-1")
+	require.NoError(t, err)
+	assert.Nil(t, absent)
+}
+
 // AC4: CreateInvitation stores a pending invite; a duplicate pending
 // (org, email) maps to 10035.
 func TestInvitationCreateDuplicate(t *testing.T) {

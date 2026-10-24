@@ -93,6 +93,60 @@ func (r *MembershipRepository) ListMemberOrgs(ctx context.Context, userID string
 	return rows, err
 }
 
+// FindProjectMember returns the member row for (project, user); nil
+// when absent.
+func (r *MembershipRepository) FindProjectMember(ctx context.Context, projectID, userID string) (*ProjectMember, error) {
+	var row ProjectMember
+	err := r.db.DB(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// ListProjectMembers returns one page of the project's members, newest
+// first, and the total count.
+func (r *MembershipRepository) ListProjectMembers(ctx context.Context, projectID string, offset, limit int) ([]*ProjectMember, int64, error) {
+	query := r.db.DB(ctx).Model(&ProjectMember{}).Where("project_id = ?", projectID)
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+	var rows []*ProjectMember
+	if err := query.Order("joined_at DESC").Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
+		return nil, 0, err
+	}
+	return rows, total, nil
+}
+
+// AddProjectMember inserts a project member row. A duplicate
+// (project, user) maps to CodeMemberExists.
+func (r *MembershipRepository) AddProjectMember(ctx context.Context, m *ProjectMember) error {
+	if err := r.db.DB(ctx).Create(m).Error; err != nil {
+		if isUniqueViolation(err) {
+			return apierrors.New(apierrors.CodeMemberExists)
+		}
+		return err
+	}
+	return nil
+}
+
+// SetProjectMemberRole updates a project member's role.
+func (r *MembershipRepository) SetProjectMemberRole(ctx context.Context, projectID, userID, role string) error {
+	return r.db.DB(ctx).Model(&ProjectMember{}).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		Update("role", role).Error
+}
+
+// RemoveProjectMember deletes a project member row (idempotent).
+func (r *MembershipRepository) RemoveProjectMember(ctx context.Context, projectID, userID string) error {
+	return r.db.DB(ctx).Where("project_id = ? AND user_id = ?", projectID, userID).
+		Delete(&ProjectMember{}).Error
+}
+
 // CreateInvitation inserts an invitation. A duplicate pending
 // (org, email) maps to CodeInvitationExists.
 func (r *MembershipRepository) CreateInvitation(ctx context.Context, inv *Invitation) error {
