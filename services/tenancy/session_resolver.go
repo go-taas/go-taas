@@ -39,3 +39,11 @@ type UserResolver interface {
 	// username, or CodeUserNotFound when no such user exists.
 	ResolveUserID(ctx context.Context, idOrUsername string) (string, error)
 }
+
+// SessionRolesResolver resolves the authenticated caller's session
+// roles. It is implemented by the auth module so the tenancy service can
+// distinguish platform administrators from organization administrators.
+type SessionRolesResolver interface {
+	// SessionRoles returns the caller's session roles.
+	SessionRoles(ctx context.Context) ([]string, error)
+}

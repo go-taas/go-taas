@@ -17,10 +17,10 @@ func (s *Service) projectMemberRepo() (*MembershipRepository, error) {
 	return s.membershipRepo()
 }
 
-// requireProjectAdminOrOwner gates a project member operation on the
-// caller being an admin or owner in the project's owning organization.
-// The project must exist (else CodeProjectNotFound).
-func (s *Service) requireProjectAdminOrOwner(ctx context.Context, projectID string) error {
+// requireProjectAdmin gates a project member or quota operation on the
+// caller being a project admin, or an admin/owner of the owning
+// organization. The project must exist (else CodeProjectNotFound).
+func (s *Service) requireProjectAdmin(ctx context.Context, projectID string) error {
 	repo, err := s.repository()
 	if err != nil {
 		return err
@@ -32,13 +32,36 @@ func (s *Service) requireProjectAdminOrOwner(ctx context.Context, projectID stri
 	if err != nil {
 		return err
 	}
-	return s.requireAdminOrOwner(ctx, project.OrganizationID)
+	userID, err := s.sessionUserID(ctx)
+	if err != nil {
+		return err
+	}
+	if s.roleGuard == nil {
+		return nil
+	}
+	// An org admin/owner may always administer the org's projects.
+	if err := s.roleGuard.RequireAdminOrOwner(ctx, project.OrganizationID, userID); err == nil {
+		return nil
+	}
+	// Otherwise the caller must be a project admin.
+	mrepo, err := s.membershipRepo()
+	if err != nil {
+		return err
+	}
+	m, err := mrepo.FindProjectMember(ctx, projectID, userID)
+	if err != nil {
+		return err
+	}
+	if m != nil && m.Role == RoleAdmin {
+		return nil
+	}
+	return apierrors.New(apierrors.CodeForbidden)
 }
 
 // ListProjectMembers returns the project's roster.
 func (s *Service) ListProjectMembers(ctx context.Context, req *tenancyv1.ListProjectMembersRequest) (*tenancyv1.ListProjectMembersResponse, error) {
 	projectID := req.GetProjectId()
-	if err := s.requireProjectAdminOrOwner(ctx, projectID); err != nil {
+	if err := s.requireProjectAdmin(ctx, projectID); err != nil {
 		return nil, err
 	}
 	repo, err := s.projectMemberRepo()
@@ -64,7 +87,7 @@ func (s *Service) ListProjectMembers(ctx context.Context, req *tenancyv1.ListPro
 // AddProjectMember adds a member with a role.
 func (s *Service) AddProjectMember(ctx context.Context, req *tenancyv1.AddProjectMemberRequest) (*tenancyv1.AddProjectMemberResponse, error) {
 	projectID := req.GetProjectId()
-	if err := s.requireProjectAdminOrOwner(ctx, projectID); err != nil {
+	if err := s.requireProjectAdmin(ctx, projectID); err != nil {
 		return nil, err
 	}
 	userID := strings.TrimSpace(req.GetUserId())
@@ -111,7 +134,7 @@ func (s *Service) AddProjectMember(ctx context.Context, req *tenancyv1.AddProjec
 // SetProjectMemberRole changes a project member's role.
 func (s *Service) SetProjectMemberRole(ctx context.Context, req *tenancyv1.SetProjectMemberRoleRequest) (*tenancyv1.SetProjectMemberRoleResponse, error) {
 	projectID := req.GetProjectId()
-	if err := s.requireProjectAdminOrOwner(ctx, projectID); err != nil {
+	if err := s.requireProjectAdmin(ctx, projectID); err != nil {
 		return nil, err
 	}
 	userID := req.GetUserId()
@@ -151,7 +174,7 @@ func (s *Service) SetProjectMemberRole(ctx context.Context, req *tenancyv1.SetPr
 // RemoveProjectMember removes a project member.
 func (s *Service) RemoveProjectMember(ctx context.Context, req *tenancyv1.RemoveProjectMemberRequest) (*tenancyv1.RemoveProjectMemberResponse, error) {
 	projectID := req.GetProjectId()
-	if err := s.requireProjectAdminOrOwner(ctx, projectID); err != nil {
+	if err := s.requireProjectAdmin(ctx, projectID); err != nil {
 		return nil, err
 	}
 	userID := req.GetUserId()

@@ -15,6 +15,18 @@ import brandLogo from '../assets/brand/logo-dark.svg';
 import { ErrorBoundary } from '../components';
 import { ADMIN_NAV_CATEGORIES, categoryForPath } from './nav';
 
+// navForRoles restricts the admin navigation by the caller's role:
+// only platform admins see the full operator surface. Organization and
+// project admins are limited to the access/membership pages.
+function navForRoles(roles: string[]) {
+  if (roles.includes('platform-admin')) return ADMIN_NAV_CATEGORIES;
+  const hidden = ['/admin/users', '/admin/sso', '/admin/identity-bindings'];
+  return ADMIN_NAV_CATEGORIES.filter((c) => c.id === 'access').map((c) => ({
+    ...c,
+    items: c.items.filter((i) => !hidden.includes(i.path)),
+  }));
+}
+
 function isActive(path: string, current: string): boolean {
   return current === path || current.startsWith(`${path}/`);
 }
@@ -27,6 +39,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<SessionInfo | null>(null);
   const [switching, setSwitching] = useState(false);
   const [switchNotice, setSwitchNotice] = useState('');
+  const navCategories = navForRoles(session?.roles || []);
 
   useEffect(() => {
     return Router.subscribe(() => setPath(window.location.pathname));
@@ -95,9 +108,9 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <span>Go TaaS</span>
         </div>
         <nav className="topbar-nav" aria-label="Admin categories">
-          {ADMIN_NAV_CATEGORIES.map((cat) => {
+          {navCategories.map((cat) => {
             const IconComp = cat.icon;
-            const active = categoryForPath(ADMIN_NAV_CATEGORIES, path).id === cat.id;
+            const active = categoryForPath(navCategories, path).id === cat.id;
             return (
               <a
                 key={cat.id}
@@ -128,10 +141,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </header>
       <aside className="sidebar" data-testid="sidebar">
         <div className="sidebar-category-label">
-          {t(categoryForPath(ADMIN_NAV_CATEGORIES, path).shortLabelKey)}
+          {t(categoryForPath(navCategories, path).shortLabelKey)}
         </div>
         <nav>
-          {categoryForPath(ADMIN_NAV_CATEGORIES, path).items.map((item) => {
+          {categoryForPath(navCategories, path).items.map((item) => {
             const IconComp = item.icon;
             return (
               <a

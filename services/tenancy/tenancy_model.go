@@ -60,6 +60,16 @@ type Project struct {
 	State          string    `gorm:"size:16;not null;default:'active'"`
 	CreatedAt      time.Time `gorm:"index:idx_projects_org_created,priority:2,sort:DESC"`
 	UpdatedAt      time.Time
+
+	// Service quotas at the project level. 0 = unlimited; when set they
+	// sit inside the documented ranges. Written only through
+	// UpdateProjectQuota.
+	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
+	MaxInferenceServices      int64     `gorm:"not null;default:0"`
+	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
+	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
+	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`
+	QuotaUpdatedAt            time.Time `gorm:"default:null"`
 }
 
 // TableName implements the GORM Tabler interface.

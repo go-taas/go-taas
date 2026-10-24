@@ -59,17 +59,17 @@ func TestServiceUpdateUserProfile(t *testing.T) {
 
 	// Update display name and avatar.
 	resp, err := svc.UpdateUserProfile(ctx, &authv1.UpdateUserProfileRequest{
-		DisplayName: "Alice Updated", Avatar: "https://example.com/a.png",
+		DisplayName: "Alice Updated", Avatar: "data:image/png;base64,iVBORw0KGgo=",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "Alice Updated", resp.Profile.DisplayName)
-	assert.Equal(t, "https://example.com/a.png", resp.Profile.Avatar)
+	assert.Equal(t, "data:image/png;base64,iVBORw0KGgo=", resp.Profile.Avatar)
 
 	// Persisted.
 	var row User
 	require.NoError(t, db.First(&row, "id = ?", userID).Error)
 	assert.Equal(t, "Alice Updated", row.DisplayName)
-	assert.Equal(t, "https://example.com/a.png", row.Avatar)
+	assert.Equal(t, "data:image/png;base64,iVBORw0KGgo=", row.Avatar)
 
 	// Username and email are unchanged.
 	assert.Equal(t, "alice", row.Username)

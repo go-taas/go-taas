@@ -865,6 +865,15 @@ func (s *Service) SessionUserID(ctx context.Context) (string, error) {
 	return sess.UserID, nil
 }
 
+// SessionRoles returns the authenticated caller's session roles.
+func (s *Service) SessionRoles(ctx context.Context) ([]string, error) {
+	sess, err := s.sessionFromContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return sess.Roles, nil
+}
+
 // SessionUserEmail implements tenancy.SessionResolver (feature #10): it
 // resolves the authenticated caller's email from the session.
 func (s *Service) SessionUserEmail(ctx context.Context) (string, error) {

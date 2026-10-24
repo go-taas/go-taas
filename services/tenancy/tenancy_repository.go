@@ -160,6 +160,19 @@ func (r *Repository) ListProjects(ctx context.Context, filter ProjectFilter, off
 	return rows, total, nil
 }
 
+// UpdateProjectQuotas persists a project's quota columns.
+func (r *Repository) UpdateProjectQuotas(ctx context.Context, p *Project) error {
+	return r.db.DB(ctx).Model(&Project{}).Where("id = ?", p.ID).
+		Updates(map[string]any{
+			"max_concurrent_requests":      p.MaxConcurrentRequests,
+			"max_inference_services":       p.MaxInferenceServices,
+			"max_batch_jobs_per_day":       p.MaxBatchJobsPerDay,
+			"max_output_tokens_per_request": p.MaxOutputTokensPerRequest,
+			"quota_updated_by":             p.QuotaUpdatedBy,
+			"quota_updated_at":             p.QuotaUpdatedAt,
+		}).Error
+}
+
 // UpdateProject replaces the display name and description and bumps
 // updated_at (GORM's auto-update). The row is re-selected afterwards.
 func (r *Repository) UpdateProject(ctx context.Context, id, displayName, description string) (*Project, error) {

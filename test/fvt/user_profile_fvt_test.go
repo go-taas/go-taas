@@ -35,10 +35,10 @@ func TestFVTUserProfile(t *testing.T) {
 
 	// Update the profile.
 	code, body = env.call(t, http.MethodPatch, "/api/v1/auth/profile", map[string]any{
-		"displayName": "Alice Updated", "avatar": "https://example.com/a.png",
+		"displayName": "Alice Updated", "avatar": "data:image/png;base64,iVBORw0KGgo=",
 	}, map[string]string{"Authorization": "Bearer " + token})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	profile = body["profile"].(map[string]any)
 	assert.Equal(t, "Alice Updated", profile["displayName"])
-	assert.Equal(t, "https://example.com/a.png", profile["avatar"])
+	assert.Equal(t, "data:image/png;base64,iVBORw0KGgo=", profile["avatar"])
 }

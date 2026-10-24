@@ -170,3 +170,11 @@ func TestServiceAddProjectMemberResolvesUsername(t *testing.T) {
 	})
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
+// seedOrg adds an organization directly.
+func seedOrg(t *testing.T, svc *Service, orgID string) {
+	t.Helper()
+	repo := NewRepository(svc.repo.db.DB(context.Background()))
+	require.NoError(t, repo.CreateOrganization(context.Background(), &Organization{
+		ID: orgID, DisplayName: orgID, State: StateActive,
+	}))
+}

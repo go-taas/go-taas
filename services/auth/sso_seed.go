@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/config"
@@ -219,6 +220,12 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 				return err
 			}
 		}
+		// Grant the seeded admin the platform-admin role on a dedicated
+		// platform organization so the session carries it (organizations
+		// are created only by platform admins). Idempotent.
+		if err := seedPlatformAdminMembership(ctx, db, adminUser.ID); err != nil {
+			return err
+		}
 	}
 
 	return s.seedAdminBinding(ctx, repo, prov, adminUser)
@@ -294,4 +301,38 @@ func (s *Service) EnsureComposeSeed(ctx context.Context) error {
 		return apierrors.Newf(apierrors.CodeInternal, "auth: sso repository not wired")
 	}
 	return s.seedComposeProviderAndAdmin(ctx)
+}
+// seedPlatformAdminMembership ensures the seeded admin holds the
+// platform-admin role on the dedicated "platform" organization, so a
+// session derived from org_members carries the platform-admin role.
+func seedPlatformAdminMembership(ctx context.Context, db *gorm.DB, userID string) error {
+	const platformOrgID = "platform"
+	var orgCount int64
+	if err := db.WithContext(ctx).Model(&tenancy.Organization{}).
+		Where("id = ?", platformOrgID).Count(&orgCount).Error; err != nil {
+		return err
+	}
+	if orgCount == 0 {
+		org := &tenancy.Organization{
+			ID: platformOrgID, DisplayName: "Platform", State: tenancy.StateActive,
+		}
+		if err := db.WithContext(ctx).Create(org).Error; err != nil {
+			return err
+		}
+	}
+	var memberCount int64
+	if err := db.WithContext(ctx).Model(&tenancy.OrgMember{}).
+		Where("organization_id = ? AND user_id = ?", platformOrgID, userID).
+		Count(&memberCount).Error; err != nil {
+		return err
+	}
+	if memberCount > 0 {
+		return nil
+	}
+	return db.WithContext(ctx).Create(&tenancy.OrgMember{
+		OrganizationID: platformOrgID,
+		UserID:         userID,
+		Role:           tenancy.RolePlatformAdmin,
+		JoinedAt:       time.Now().UTC(),
+	}).Error
 }

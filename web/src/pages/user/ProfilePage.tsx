@@ -47,6 +47,25 @@ export default function ProfilePage() {
     void load();
   }, [load]);
 
+  // onAvatarFile reads the selected image as a base64 data URL so the
+  // avatar is stored in the database, not fetched from a remote URL.
+  const onAvatarFile = async (file?: File) => {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError(t('profile.avatarInvalid'));
+      return;
+    }
+    if (file.size > 512 * 1024) {
+      setError(t('profile.avatarTooLarge'));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === 'string') setAvatar(reader.result);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const save = async () => {
     setSaving(true);
     setError('');
@@ -94,12 +113,30 @@ export default function ProfilePage() {
           </div>
           <div className="field">
             <label>{t('profile.avatar')}</label>
+            {avatar && (
+              <img
+                src={avatar}
+                alt={t('profile.avatar')}
+                data-testid="profile-avatar-preview"
+                style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover' }}
+              />
+            )}
             <input
-              value={avatar}
-              onChange={(e) => setAvatar(e.target.value)}
-              data-testid="profile-avatar"
-              placeholder={t('profile.avatarPlaceholder')}
+              type="file"
+              accept="image/*"
+              data-testid="profile-avatar-file"
+              onChange={(e) => void onAvatarFile(e.target.files?.[0])}
             />
+            {avatar && (
+              <button
+                type="button"
+                className="link danger"
+                data-testid="profile-avatar-clear"
+                onClick={() => setAvatar('')}
+              >
+                {t('profile.avatarRemove')}
+              </button>
+            )}
           </div>
           <button data-testid="profile-save" disabled={saving} onClick={() => void save()}>
             {saving ? t('common.working') : t('profile.save')}

@@ -28,6 +28,7 @@ import UserModelDetailPage from './pages/user/ModelDetailPage';
 import AdminLoginPage from './pages/AdminLoginPage';
 import OrganizationsPage from './pages/OrganizationsPage';
 import UsersPage from './pages/UsersPage';
+import JoinRequestsPage from './pages/JoinRequestsPage';
 import ProjectsPage from './pages/ProjectsPage';
 import MembersPage from './pages/MembersPage';
 import InvitationsPage from './pages/InvitationsPage';
@@ -113,6 +114,7 @@ import UserForecastPage from './pages/user/UserForecastPage';
 import UserQuotasPage from './pages/user/UserQuotasPage';
 import MyOrganizationsPage from './pages/user/MyOrganizationsPage';
 import ProfilePage from './pages/user/ProfilePage';
+import MyRequestsPage from './pages/user/MyRequestsPage';
 import MyProjectsPage from './pages/user/MyProjectsPage';
 import UserOptimizationPage from './pages/user/UserOptimizationPage';
 import DataExportPage from './pages/DataExportPage';
@@ -187,6 +189,7 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/my-org" element={<MyOrganizationsPage />} />
               <Route path="/my-projects" element={<MyProjectsPage />} />
               <Route path="/account/profile" element={<ProfilePage />} />
+              <Route path="/my-requests" element={<MyRequestsPage />} />
               <Route path="/optimization" element={<UserOptimizationPage />} />
               <Route path="/errors" element={<UserErrorAnalysisPage />} />
               <Route path="/errors/:errorCode" element={<UserErrorDetailPage />} />
@@ -224,6 +227,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/projects" element={<ProjectsPage />} />
               <Route path="/admin/members" element={<MembersPage />} />
               <Route path="/admin/invitations" element={<InvitationsPage />} />
+              <Route path="/admin/join-requests" element={<JoinRequestsPage />} />
               <Route path="/admin/sso" element={<SSOProvidersPage />} />
               <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
               <Route path="/admin/models" element={<ModelsPage />} />

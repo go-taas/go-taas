@@ -55,7 +55,7 @@ func TestSeedComposeProviderAndAdmin(t *testing.T) {
 	require.NoError(t, db.Model(&tenancy.OrgMember{}).Count(&memberCount2).Error)
 	assert.EqualValues(t, 1, providerCount, "no duplicate provider on re-seed")
 	assert.EqualValues(t, 1, userCount, "no duplicate admin user on re-seed")
-	assert.EqualValues(t, 1, memberCount2, "no duplicate membership on re-seed")
+	assert.EqualValues(t, 2, memberCount2, "no duplicate membership on re-seed (admin org + platform)")
 }
 
 // fakeAdminOIDCServer is an in-process OIDC IdP that answers the

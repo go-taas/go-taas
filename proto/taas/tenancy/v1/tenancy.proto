@@ -257,6 +257,54 @@ service TenancyService {
   rpc GetMyProjects(GetMyProjectsRequest) returns (GetMyProjectsResponse) {
     option (google.api.http) = {get: "/api/v1/tenancy/my-projects"};
   }
+
+  // CreateJoinRequest submits a request to join an organization or a
+  // project (user surface).
+  rpc CreateJoinRequest(CreateJoinRequestRequest) returns (CreateJoinRequestResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/tenancy/join-requests"
+      body: "*"
+    };
+  }
+
+  // ListMyJoinRequests returns the caller's own join requests.
+  rpc ListMyJoinRequests(ListMyJoinRequestsRequest) returns (ListMyJoinRequestsResponse) {
+    option (google.api.http) = {get: "/api/v1/tenancy/join-requests"};
+  }
+
+  // ListJoinRequests returns join requests for the admin's org/project
+  // (admin surface).
+  rpc ListJoinRequests(ListJoinRequestsRequest) returns (ListJoinRequestsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/join-requests"};
+  }
+
+  // ApproveJoinRequest approves a join request and adds the member
+  // (admin surface). Requires admin/owner of the target.
+  rpc ApproveJoinRequest(ApproveJoinRequestRequest) returns (ApproveJoinRequestResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/join-requests/{request_id}:approve"
+    };
+  }
+
+  // RejectJoinRequest rejects a join request (admin surface).
+  rpc RejectJoinRequest(RejectJoinRequestRequest) returns (RejectJoinRequestResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/tenancy/join-requests/{request_id}:reject"
+    };
+  }
+
+  // GetProjectQuota returns a project's quotas (admin surface).
+  rpc GetProjectQuota(GetProjectQuotaRequest) returns (GetProjectQuotaResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}/quota"};
+  }
+
+  // UpdateProjectQuota updates a project's quotas (admin surface).
+  rpc UpdateProjectQuota(UpdateProjectQuotaRequest) returns (UpdateProjectQuotaResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/tenancy/projects/{project_id}/quota"
+      body: "*"
+    };
+  }
 }
 
 message CreateOrganizationRequest {
@@ -717,4 +765,102 @@ message GetMyProjectsRequest {}
 message GetMyProjectsResponse {
   taas.common.v1.Response response = 1;
   repeated MyProject projects = 2;
+}
+
+// ---- Join requests (self-service membership) ----
+
+message JoinRequest {
+  string request_id = 1;
+  string user_id = 2;
+  string username = 3;
+  string target_type = 4; // organization | project
+  string target_id = 5;
+  string status = 6; // pending | approved | rejected
+  string message = 7;
+  string decided_by = 8;
+  int64 decided_at = 9;
+  int64 created_at = 10;
+}
+
+message CreateJoinRequestRequest {
+  string target_type = 1; // organization | project
+  string target_id = 2;
+  string message = 3;
+}
+
+message CreateJoinRequestResponse {
+  taas.common.v1.Response response = 1;
+  JoinRequest request = 2;
+}
+
+message ListMyJoinRequestsRequest {}
+
+message ListMyJoinRequestsResponse {
+  taas.common.v1.Response response = 1;
+  repeated JoinRequest requests = 2;
+}
+
+message ListJoinRequestsRequest {
+  string target_type = 1;
+  string target_id = 2;
+  string status = 3;
+}
+
+message ListJoinRequestsResponse {
+  taas.common.v1.Response response = 1;
+  repeated JoinRequest requests = 2;
+}
+
+message ApproveJoinRequestRequest {
+  string request_id = 1;
+}
+
+message ApproveJoinRequestResponse {
+  taas.common.v1.Response response = 1;
+  JoinRequest request = 2;
+}
+
+message RejectJoinRequestRequest {
+  string request_id = 1;
+}
+
+message RejectJoinRequestResponse {
+  taas.common.v1.Response response = 1;
+  JoinRequest request = 2;
+}
+
+// ---- Project quotas ----
+
+message ProjectQuota {
+  string project_id = 1;
+  string organization_id = 2;
+  string project_name = 3;
+  int64 max_concurrent_requests = 4;
+  int64 max_inference_services = 5;
+  int64 max_batch_jobs_per_day = 6;
+  int64 max_output_tokens_per_request = 7;
+  int64 updated_at = 8;
+  string updated_by = 9;
+}
+
+message GetProjectQuotaRequest {
+  string project_id = 1;
+}
+
+message GetProjectQuotaResponse {
+  taas.common.v1.Response response = 1;
+  ProjectQuota quota = 2;
+}
+
+message UpdateProjectQuotaRequest {
+  string project_id = 1;
+  optional int64 max_concurrent_requests = 2;
+  optional int64 max_inference_services = 3;
+  optional int64 max_batch_jobs_per_day = 4;
+  optional int64 max_output_tokens_per_request = 5;
+}
+
+message UpdateProjectQuotaResponse {
+  taas.common.v1.Response response = 1;
+  ProjectQuota quota = 2;
 }

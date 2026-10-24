@@ -14,6 +14,10 @@ const (
 	RoleMember = "member"
 	// RoleViewer is read-only.
 	RoleViewer = "viewer"
+	// RolePlatformAdmin marks a platform administrator. It is carried on
+	// a dedicated platform organization membership so the session
+	// carries the role; it is not assignable through member APIs.
+	RolePlatformAdmin = "platform-admin"
 )
 
 // InvitationStatus values (feature #10, AD4/AD5).
@@ -95,3 +99,48 @@ type Invitation struct {
 
 // TableName returns the invitations table name.
 func (Invitation) TableName() string { return "invitations" }
+
+// JoinRequest is a user's request to join an organization or a project
+// (self-service membership). A user belongs to exactly one organization
+// but may belong to many projects; the approval flow enforces both.
+type JoinRequest struct {
+	// ID is the generated request id.
+	ID string `gorm:"primaryKey;type:uuid"`
+	// UserID is the requesting platform user.
+	UserID string `gorm:"type:uuid;not null;index:idx_join_requests_user,priority:1"`
+	// TargetType is "organization" or "project".
+	TargetType string `gorm:"size:16;not null;index:idx_join_requests_target,priority:1"`
+	// TargetID is the organization or project id.
+	TargetID string `gorm:"size:64;not null;index:idx_join_requests_target,priority:2"`
+	// Status is pending / approved / rejected.
+	Status string `gorm:"size:16;not null;default:'pending';index:idx_join_requests_target,priority:3"`
+	// Message is the applicant's optional note.
+	Message string `gorm:"size:512;not null;default:''"`
+	// DecidedBy is the admin user who approved/rejected the request.
+	DecidedBy string `gorm:"size:64;not null;default:''"`
+	// DecidedAt is the decision time (unix seconds); 0 when pending.
+	DecidedAt int64 `gorm:"not null;default:0"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
+}
+
+// TableName returns the join_requests table name.
+func (JoinRequest) TableName() string { return "join_requests" }
+
+// Join request target types.
+const (
+	// JoinTargetOrganization is an organization join request.
+	JoinTargetOrganization = "organization"
+	// JoinTargetProject is a project join request.
+	JoinTargetProject = "project"
+)
+
+// Join request statuses.
+const (
+	// JoinStatusPending is an open request.
+	JoinStatusPending = "pending"
+	// JoinStatusApproved means the user was added as a member.
+	JoinStatusApproved = "approved"
+	// JoinStatusRejected means the admin declined the request.
+	JoinStatusRejected = "rejected"
+)

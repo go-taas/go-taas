@@ -242,3 +242,64 @@ func (r *MembershipRepository) PendingInvitationExists(ctx context.Context, orgI
 		Count(&count).Error
 	return count > 0, err
 }
+
+// CreateJoinRequest inserts a join request. A duplicate pending request
+// for the same (user, target) maps to CodeMemberExists.
+func (r *MembershipRepository) CreateJoinRequest(ctx context.Context, j *JoinRequest) error {
+	var count int64
+	if err := r.db.DB(ctx).Model(&JoinRequest{}).
+		Where("user_id = ? AND target_type = ? AND target_id = ? AND status = ?",
+			j.UserID, j.TargetType, j.TargetID, JoinStatusPending).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count > 0 {
+		return apierrors.New(apierrors.CodeMemberExists)
+	}
+	return r.db.DB(ctx).Create(j).Error
+}
+
+// ListJoinRequestsByUser returns a user's own join requests, newest
+// first.
+func (r *MembershipRepository) ListJoinRequestsByUser(ctx context.Context, userID string) ([]*JoinRequest, error) {
+	var rows []*JoinRequest
+	err := r.db.DB(ctx).Where("user_id = ?", userID).Order("created_at DESC").Find(&rows).Error
+	return rows, err
+}
+
+// ListJoinRequests returns join requests filtered by target and status.
+func (r *MembershipRepository) ListJoinRequests(ctx context.Context, targetType, targetID, status string) ([]*JoinRequest, error) {
+	query := r.db.DB(ctx).Model(&JoinRequest{})
+	if targetType != "" {
+		query = query.Where("target_type = ?", targetType)
+	}
+	if targetID != "" {
+		query = query.Where("target_id = ?", targetID)
+	}
+	if status != "" {
+		query = query.Where("status = ?", status)
+	}
+	var rows []*JoinRequest
+	err := query.Order("created_at DESC").Find(&rows).Error
+	return rows, err
+}
+
+// FindJoinRequest returns the join request with the given id; nil when
+// absent.
+func (r *MembershipRepository) FindJoinRequest(ctx context.Context, id string) (*JoinRequest, error) {
+	var row JoinRequest
+	err := r.db.DB(ctx).Where("id = ?", id).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// SetJoinRequestStatus records a decision on a join request.
+func (r *MembershipRepository) SetJoinRequestStatus(ctx context.Context, id, status, decidedBy string, decidedAt int64) error {
+	return r.db.DB(ctx).Model(&JoinRequest{}).Where("id = ?", id).
+		Updates(map[string]any{"status": status, "decided_by": decidedBy, "decided_at": decidedAt}).Error
+}

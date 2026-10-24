@@ -15,6 +15,8 @@ var roleRank = map[string]int{
 	RoleMember: 1,
 	RoleAdmin:  2,
 	RoleOwner:  3,
+	// Platform admins rank with owners for org-scoped operations.
+	RolePlatformAdmin: 3,
 }
 
 // RoleGuard resolves the caller's role in the org context from

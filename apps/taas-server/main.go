@@ -320,6 +320,7 @@ func main() {
 			// The user resolver lets member management accept a username
 			// or id (feature #10); auth owns the users table.
 			tenancySvc.SetUserResolver(authSvc)
+			tenancySvc.SetSessionRolesResolver(authSvc)
 			// Feature #51 (AD13): the org quota seams. Tenancy owns the
 			// quota columns; auth rides them on the VerifyAPIKey verdict,
 			// infer and batch check them at create time.

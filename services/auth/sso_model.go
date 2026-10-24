@@ -85,7 +85,7 @@ type User struct {
 	Username     string `gorm:"size:128;not null;uniqueIndex"`
 	Email        string `gorm:"size:256;uniqueIndex"`
 	DisplayName  string `gorm:"size:128;not null;default:''"`
-	Avatar       string `gorm:"size:512;not null;default:''"`
+	Avatar       string `gorm:"type:text;not null;default:''"`
 	PasswordHash string `gorm:"size:256"`
 	State        string `gorm:"size:16;not null;default:'active'"`
 	CreatedAt    time.Time

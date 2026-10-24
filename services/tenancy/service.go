@@ -55,6 +55,10 @@ type Service struct {
 	// module; nil until wired.
 	sessionOrgResolver SessionOrgResolver
 
+	// sessionRolesResolver resolves the caller's session roles for the
+	// platform-administrator gate. Nil until wired.
+	sessionRolesResolver SessionRolesResolver
+
 	// userResolver resolves a user id or username to the canonical user
 	// id for member management (feature #10). Implemented by the auth
 	// module; nil until wired (the input is used verbatim).
@@ -107,6 +111,29 @@ func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r 
 // input is used verbatim.
 func (s *Service) SetUserResolver(r UserResolver) { s.userResolver = r }
 
+// SetSessionRolesResolver injects the caller-roles resolver.
+func (s *Service) SetSessionRolesResolver(r SessionRolesResolver) { s.sessionRolesResolver = r }
+
+// isPlatformAdmin reports whether the caller's session carries the
+// platform-admin role.
+func (s *Service) isPlatformAdmin(ctx context.Context) bool {
+	if s.sessionRolesResolver == nil {
+		// No resolver wired (unit tests): allow, matching the other
+		// nil-guard conventions.
+		return true
+	}
+	roles, err := s.sessionRolesResolver.SessionRoles(ctx)
+	if err != nil {
+		return false
+	}
+	for _, r := range roles {
+		if r == RolePlatformAdmin {
+			return true
+		}
+	}
+	return false
+}
+
 // SetSessionOrgResolver injects the session active-org resolver
 // (feature #51, AD13). Production and FVT wire it; unit tests leave it
 // nil so org resolution falls back to the transitional header.
@@ -133,7 +160,7 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 // projects, org_members, project_members, invitations) onto a
 // caller-provided database for full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{})
+	return db.AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{}, &JoinRequest{})
 }
 
 // AttachToServer implements server.Service.
@@ -158,7 +185,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{}, &JoinRequest{}); err != nil {
 		return err
 	}
 	repo, err := s.repository()
@@ -218,6 +245,10 @@ func (s *Service) repository() (*Repository, error) {
 // CreateOrganization creates a tenant with a caller-supplied id
 // (validation matrix: architecture Section 4.3, AC1).
 func (s *Service) CreateOrganization(ctx context.Context, req *tenancyv1.CreateOrganizationRequest) (*tenancyv1.CreateOrganizationResponse, error) {
+	// Only platform administrators may create organizations.
+	if !s.isPlatformAdmin(ctx) {
+		return nil, apierrors.New(apierrors.CodeForbidden)
+	}
 	id := strings.TrimSpace(req.GetOrganizationId())
 	if !config.TenancyIDRegex().MatchString(id) {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)

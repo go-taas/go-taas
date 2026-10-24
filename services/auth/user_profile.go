@@ -19,8 +19,9 @@ import (
 // maxDisplayNameLen bounds a profile display name.
 const maxDisplayNameLen = 128
 
-// maxAvatarLen bounds a profile avatar URL.
-const maxAvatarLen = 512
+// maxAvatarLen bounds a profile avatar: a base64 data URL of up to
+// ~512 KiB decoded image (base64 expands by ~4/3).
+const maxAvatarLen = 700_000
 
 // GetUserProfile returns the caller's own profile.
 func (s *Service) GetUserProfile(ctx context.Context, _ *authv1.GetUserProfileRequest) (*authv1.GetUserProfileResponse, error) {
@@ -58,6 +59,11 @@ func (s *Service) UpdateUserProfile(ctx context.Context, req *authv1.UpdateUserP
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
 	if len(avatar) > maxAvatarLen {
+		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
+	}
+	// An avatar is either empty or an inline base64 image data URL; it is
+	// stored in the database, never fetched from a remote URL.
+	if avatar != "" && !strings.HasPrefix(avatar, "data:image/") {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
 	repo, err := s.ssoRepository()

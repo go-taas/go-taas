@@ -43,6 +43,7 @@ export default function ProjectsPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ProjectSummary | null>(null);
   const [membersTarget, setMembersTarget] = useState<ProjectSummary | null>(null);
+  const [quotaTarget, setQuotaTarget] = useState<ProjectSummary | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{
     project: ProjectSummary;
     action: 'disable' | 'enable';
@@ -184,6 +185,13 @@ export default function ProjectsPage() {
                     >
                       {t('projects.members')}
                     </button>
+                    <button
+                      className="link"
+                      data-testid={`project-quota-${project.projectId}`}
+                      onClick={() => setQuotaTarget(project)}
+                    >
+                      {t('projects.quota')}
+                    </button>
                     {project.state === 'active' ? (
                       <button
                         className="link danger"
@@ -242,6 +250,14 @@ export default function ProjectsPage() {
             setEditTarget(null);
             void load();
           }}
+        />
+      )}
+
+      {quotaTarget && (
+        <ProjectQuotaDialog
+          orgId={orgId}
+          project={quotaTarget}
+          onClose={() => setQuotaTarget(null)}
         />
       )}
 
@@ -713,6 +729,103 @@ function ProjectMembersDialog({
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// ProjectQuotaDialog edits a project's quotas (project admin or org
+// admin/owner).
+function ProjectQuotaDialog({
+  orgId,
+  project,
+  onClose,
+}: {
+  orgId: string;
+  project: ProjectSummary;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const [maxConcurrent, setMaxConcurrent] = useState('');
+  const [maxServices, setMaxServices] = useState('');
+  const [maxBatch, setMaxBatch] = useState('');
+  const [maxTokens, setMaxTokens] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api
+      .get<{ quota: Record<string, string> }>(
+        `/api/v1/admin/tenancy/projects/${project.projectId}/quota`,
+        orgId,
+      )
+      .then((d) => {
+        setMaxConcurrent(String(d.quota.maxConcurrentRequests || '0'));
+        setMaxServices(String(d.quota.maxInferenceServices || '0'));
+        setMaxBatch(String(d.quota.maxBatchJobsPerDay || '0'));
+        setMaxTokens(String(d.quota.maxOutputTokensPerRequest || '0'));
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : t('projects.quotaLoadFailed')))
+      .finally(() => setLoading(false));
+  }, [api, orgId, project.projectId, t]);
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.patch(`/api/v1/admin/tenancy/projects/${project.projectId}/quota`, orgId, {
+        maxConcurrentRequests: maxConcurrent || '0',
+        maxInferenceServices: maxServices || '0',
+        maxBatchJobsPerDay: maxBatch || '0',
+        maxOutputTokensPerRequest: maxTokens || '0',
+      });
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('projects.quotaSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={t('projects.quotaTitle', { projectId: project.projectId })}
+      onClose={onClose}
+      testId="project-quota-dialog"
+    >
+      {error && <ErrorBanner message={error} />}
+      {loading ? (
+        <div className="loading">{t('common.loading')}</div>
+      ) : (
+        <div className="form">
+          <label>
+            {t('projects.quotaConcurrent')}
+            <input data-testid="quota-concurrent" value={maxConcurrent}
+              onChange={(e) => setMaxConcurrent(e.target.value)} />
+          </label>
+          <label>
+            {t('projects.quotaServices')}
+            <input data-testid="quota-services" value={maxServices}
+              onChange={(e) => setMaxServices(e.target.value)} />
+          </label>
+          <label>
+            {t('projects.quotaBatch')}
+            <input data-testid="quota-batch" value={maxBatch}
+              onChange={(e) => setMaxBatch(e.target.value)} />
+          </label>
+          <label>
+            {t('projects.quotaTokens')}
+            <input data-testid="quota-tokens" value={maxTokens}
+              onChange={(e) => setMaxTokens(e.target.value)} />
+          </label>
+        </div>
+      )}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
+        <button data-testid="quota-save" disabled={saving || loading} onClick={() => void save()}>
+          {saving ? t('common.working') : t('common.save')}
         </button>
       </div>
     </Dialog>
