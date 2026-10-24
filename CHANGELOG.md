@@ -1,3 +1,16 @@
+# [1.75.0](https://github.com/go-taas/go-taas/compare/v1.74.0...v1.75.0) (2026-10-24)
+
+
+### Bug Fixes
+
+* **auth:** return the session realm from local login ([015b0fc](https://github.com/go-taas/go-taas/commit/015b0fcee8e9e314310a5965b8ed4acbd67db1b4))
+* **console:** correct provider status i18n keys and translate pagination ([cadc0f4](https://github.com/go-taas/go-taas/commit/cadc0f44d3a775ba6e1f91f43e3d908c95b59a16))
+
+
+### Features
+
+* **console:** unify login page, exempt admin from email code, translate UI ([44c9219](https://github.com/go-taas/go-taas/commit/44c9219a5cbb73858414e5397cfd83a0dfac67d8))
+
 # [1.74.0](https://github.com/go-taas/go-taas/compare/v1.73.0...v1.74.0) (2026-10-24)
 
 
