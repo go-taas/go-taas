@@ -18,6 +18,7 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/audit"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // usernameMaxLen bounds a local account username.
@@ -106,8 +107,10 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		return nil, apierrors.New(apierrors.CodeInvalidCredentials)
 	}
 	// When email verification is enabled, the user's email and its code
-	// are required.
-	if emailVerificationEnabled() {
+	// are required. Platform administrators are exempt: the bootstrap
+	// admin account must be able to sign in with its initial password
+	// even when no mailbox is reachable.
+	if emailVerificationEnabled() && !s.isPlatformAdminUser(ctx, user.ID) {
 		if user.Email == "" {
 			return nil, apierrors.New(apierrors.CodeInvalidCredentials)
 		}
@@ -162,6 +165,25 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		SessionToken: sessionID,
 		ExpiresAt:    expiresAt,
 	}, nil
+}
+
+// isPlatformAdminUser reports whether the user carries the
+// platform-admin role in any organization. Bootstrap platform admins are
+// exempt from login email verification.
+func (s *Service) isPlatformAdminUser(ctx context.Context, userID string) bool {
+	if s.membershipResolver == nil {
+		return false
+	}
+	memberships, err := s.membershipResolver.AccessibleOrgsAndRoles(ctx, userID)
+	if err != nil {
+		return false
+	}
+	for _, m := range memberships {
+		if m.Role == tenancy.RolePlatformAdmin {
+			return true
+		}
+	}
+	return false
 }
 
 // localMembership derives a local account's roles and accessible orgs

@@ -108,3 +108,26 @@ func TestServiceLoginDerivesAdminRealm(t *testing.T) {
 	assert.Equal(t, RealmAdmin, sess.Realm)
 	assert.Equal(t, "org-a", sess.ActiveOrg)
 }
+// A platform admin is exempt from login email verification so the
+// bootstrap admin can sign in with its initial password.
+func TestServiceLoginPlatformAdminSkipsEmailCode(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	_, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
+		Username: "rootadmin", Password: "Pass4admin",
+	})
+	require.NoError(t, err)
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "platform", DisplayName: "P", State: tenancy.StateActive}).Error)
+	var u User
+	require.NoError(t, db.First(&u, "username = ?", "rootadmin").Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{
+		OrganizationID: "platform", UserID: u.ID, Role: tenancy.RolePlatformAdmin,
+	}).Error)
+
+	enableEmailVerification(t)
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "rootadmin", Password: "Pass4admin"})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.SessionToken)
+}
