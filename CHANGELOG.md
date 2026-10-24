@@ -1,3 +1,10 @@
+## [1.66.2](https://github.com/go-taas/go-taas/compare/v1.66.1...v1.66.2) (2026-10-24)
+
+
+### Bug Fixes
+
+* **auth:** route password-less SSO providers to redirect flow ([64b37d5](https://github.com/go-taas/go-taas/commit/64b37d5cdd8a4c6fc867e471fbe88890e95281b9))
+
 ## [1.66.1](https://github.com/go-taas/go-taas/compare/v1.66.0...v1.66.1) (2026-10-24)
 
 
