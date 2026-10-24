@@ -311,6 +311,16 @@ func (s *Service) SetOrgQuotaReader(r tenancy.OrgQuotaReader) { s.orgQuotaReader
 // return 10027.
 func (s *Service) SetSessionStore(st *SessionStore) { s.sessionStore = st }
 
+// SessionStoreClient returns the session store's Redis client, or nil
+// when no session store is wired. It is a test seam for FVT to read
+// verification codes directly.
+func (s *Service) SessionStoreClient() *goredis.Client {
+	if s.sessionStore == nil {
+		return nil
+	}
+	return s.sessionStore.client
+}
+
 // SetMembershipResolver injects the org_members membership resolver
 // (feature #10, AD2/AD11). Production and FVT wire it; unit tests leave
 // it nil so session derivation falls back to IdP claims.

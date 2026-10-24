@@ -1,8 +1,9 @@
 // Register page: create a local account (username/password) and sign in.
 // The account is stored with an Argon2id-hashed password; on success the
-// returned session routes to the realm home.
+// returned session routes to the realm home. When email verification is
+// enabled, an email verification code is required.
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApi } from '../surface';
 import { setSessionToken, type Realm } from '../api';
 import { navigate } from '../router';
@@ -20,14 +21,28 @@ interface LoginResponse {
   expiresAt?: string;
 }
 
+interface SendCodeResponse {
+  resendAfterSeconds?: string;
+}
+
 export default function RegisterPage() {
   const api = useApi();
   const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  // 1-minute resend countdown.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(() => setCooldown((c) => c - 1), 1000);
+    return () => clearInterval(id);
+  }, [cooldown]);
 
   const canSubmit = username.trim().length > 0 && password.length >= 8 && !submitting;
 
@@ -37,8 +52,29 @@ export default function RegisterPage() {
         return t('register.errorExists');
       case 10014:
         return t('register.errorPasswordPolicy');
+      case 10002:
+        return t('register.errorBadCode');
       default:
         return t('register.errorFailed');
+    }
+  };
+
+  const sendCode = async () => {
+    if (!email.trim() || sendingCode || cooldown > 0) return;
+    setSendingCode(true);
+    setError('');
+    try {
+      const data = await api.post<SendCodeResponse>('/api/v1/auth/email-code', '', {
+        email: email.trim(),
+        purpose: 'register',
+      });
+      const secs = parseInt(data.resendAfterSeconds || '60', 10) || 60;
+      setCooldown(secs);
+    } catch (e) {
+      const code = (e as { code?: number }).code;
+      setError(code === 10037 ? t('register.errorCooldown') : t('register.errorSendCode'));
+    } finally {
+      setSendingCode(false);
     }
   };
 
@@ -52,11 +88,13 @@ export default function RegisterPage() {
         username: username.trim(),
         password,
         email: email.trim(),
+        emailCode: emailCode.trim(),
       });
       // Sign in with the new account.
       const data = await api.post<LoginResponse>('/api/v1/auth/login', '', {
         username: username.trim(),
         password,
+        emailCode: emailCode.trim(),
       });
       const token = data.sessionToken;
       const realm = (data.realm as Realm) || 'user';
@@ -95,12 +133,38 @@ export default function RegisterPage() {
         </div>
         <div className="field">
           <label htmlFor="register-email">{t('register.email')}</label>
+          <div className="code-row">
+            <input
+              id="register-email"
+              data-testid="register-email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            <button
+              type="button"
+              className="secondary"
+              data-testid="register-send-code"
+              disabled={!email.trim() || sendingCode || cooldown > 0}
+              onClick={() => void sendCode()}
+            >
+              {cooldown > 0
+                ? t('register.resendIn', { seconds: cooldown })
+                : sendingCode
+                  ? t('common.working')
+                  : t('register.sendCode')}
+            </button>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="register-code">{t('register.code')}</label>
           <input
-            id="register-email"
-            data-testid="register-email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
+            id="register-code"
+            data-testid="register-code"
+            value={emailCode}
+            onChange={(e) => setEmailCode(e.target.value)}
+            autoComplete="one-time-code"
+            inputMode="numeric"
           />
         </div>
         <div className="field">

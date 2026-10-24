@@ -26,6 +26,15 @@ service AuthService {
     };
   }
 
+  // SendEmailCode sends a verification code to the given email for
+  // local registration or login. The code expires after a short window.
+  rpc SendEmailCode(SendEmailCodeRequest) returns (SendEmailCodeResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/email-code"
+      body: "*"
+    };
+  }
+
   // ListAPIKeys returns the API keys of the caller's organization.
   // User-surface API: served under /api/v1; the session's active org
   // wins and X-Organization-Id is ignored (feature-17 AD6).
@@ -321,6 +330,8 @@ message CreateUserRequest {
   string password = 2;
   string email = 3;
   string organization = 4;
+  // email_code is required when email verification is enabled.
+  string email_code = 5;
 }
 
 message CreateUserResponse {
@@ -331,12 +342,27 @@ message CreateUserResponse {
 message LoginRequest {
   string username = 1;
   string password = 2;
+  // email_code is required when email verification is enabled.
+  string email_code = 3;
 }
 
 message LoginResponse {
   taas.common.v1.Response response = 1;
   string session_token = 2;
   int64 expires_at = 3;
+}
+
+message SendEmailCodeRequest {
+  string email = 1;
+  // purpose is "register" or "login".
+  string purpose = 2;
+}
+
+message SendEmailCodeResponse {
+  taas.common.v1.Response response = 1;
+  // resend_after_seconds is the minimum wait before requesting another
+  // code (60s).
+  int64 resend_after_seconds = 2;
 }
 
 message ListAPIKeysRequest {

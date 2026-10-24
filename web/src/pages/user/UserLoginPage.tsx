@@ -1,11 +1,11 @@
 // End-user login page (feature-17/22): realm-pinned sign-in against the
-// user surface's SSO providers. An OIDC or LDAP provider navigates to
-// the TaaS custom login page; a SAML provider keeps the redirect flow.
+// user surface's SSO providers, plus a local username/password form.
 
 import { useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { navigate } from '../../router';
-import { realmCustomLoginPath } from '../../surface-routes';
+import { setSessionToken, type Realm } from '../../api';
+import { realmCustomLoginPath, realmHome } from '../../surface-routes';
 import { useI18n } from '../../i18n';
 import brandLogo from '../../assets/brand/logo.svg';
 
@@ -16,12 +16,36 @@ interface PublicProvider {
   passwordLogin: boolean;
 }
 
+interface LoginResponse {
+  sessionToken?: string;
+  realm?: string;
+  expiresAt?: string;
+}
+
+interface SendCodeResponse {
+  resendAfterSeconds?: string;
+}
+
 export default function UserLoginPage() {
   const api = useApi();
   const { t } = useI18n();
   const [providers, setProviders] = useState<PublicProvider[]>([]);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [sendingCode, setSendingCode] = useState(false);
+  const [cooldown, setCooldown] = useState(0);
+
+  // 1-minute resend countdown.
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const id = setInterval(() => setCooldown((c) => c - 1), 1000);
+    return () => clearInterval(id);
+  }, [cooldown]);
 
   useEffect(() => {
     api
@@ -52,6 +76,51 @@ export default function UserLoginPage() {
     }
   };
 
+  const sendCode = async () => {
+    if (!email.trim() || sendingCode || cooldown > 0) return;
+    setSendingCode(true);
+    setError('');
+    try {
+      const data = await api.post<SendCodeResponse>('/api/v1/auth/email-code', '', {
+        email: email.trim(),
+        purpose: 'login',
+      });
+      const secs = parseInt(data.resendAfterSeconds || '60', 10) || 60;
+      setCooldown(secs);
+    } catch (e) {
+      const code = (e as { code?: number }).code;
+      setError(code === 10037 ? t('login.errorCooldown') : t('login.errorSendCode'));
+    } finally {
+      setSendingCode(false);
+    }
+  };
+
+  const localLogin = async () => {
+    if (!username.trim() || !password || submitting) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      const data = await api.post<LoginResponse>('/api/v1/auth/login', '', {
+        username: username.trim(),
+        password,
+        emailCode: emailCode.trim(),
+      });
+      const token = data.sessionToken;
+      const realm = (data.realm as Realm) || 'user';
+      if (!token) {
+        setError(t('login.errorIncomplete'));
+        return;
+      }
+      setSessionToken(realm, token);
+      navigate(realmHome(realm));
+    } catch (e) {
+      const code = (e as { code?: number }).code;
+      setError(code === 10002 ? t('login.errorBadCredentials') : t('login.errorIncomplete'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   if (loading) {
     return <div className="login" data-testid="login-loading">{t('login.loading')}</div>;
   }
@@ -64,6 +133,73 @@ export default function UserLoginPage() {
       <h1>{t('login.signIn')}</h1>
       <p className="login-subtitle">{t('login.subtitle')}</p>
       {error && <div className="error" data-testid="login-error">{error}</div>}
+      <form className="custom-login-form" onSubmit={(e) => { e.preventDefault(); void localLogin(); }}>
+        <div className="field">
+          <label htmlFor="login-username">{t('login.username')}</label>
+          <input
+            id="login-username"
+            data-testid="login-username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            autoComplete="username"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="login-email">{t('login.email')}</label>
+          <div className="code-row">
+            <input
+              id="login-email"
+              data-testid="login-email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              autoComplete="email"
+            />
+            <button
+              type="button"
+              className="secondary"
+              data-testid="login-send-code"
+              disabled={!email.trim() || sendingCode || cooldown > 0}
+              onClick={() => void sendCode()}
+            >
+              {cooldown > 0
+                ? t('login.resendIn', { seconds: cooldown })
+                : sendingCode
+                  ? t('common.working')
+                  : t('login.sendCode')}
+            </button>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="login-code">{t('login.code')}</label>
+          <input
+            id="login-code"
+            data-testid="login-code"
+            value={emailCode}
+            onChange={(e) => setEmailCode(e.target.value)}
+            autoComplete="one-time-code"
+            inputMode="numeric"
+          />
+        </div>
+        <div className="field">
+          <label htmlFor="login-password">{t('login.password')}</label>
+          <input
+            id="login-password"
+            data-testid="login-password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            autoComplete="current-password"
+          />
+        </div>
+        <button
+          type="submit"
+          data-testid="login-local-submit"
+          disabled={!username.trim() || !password || submitting}
+        >
+          {submitting ? t('common.working') : t('login.submit')}
+        </button>
+      </form>
+      <div className="login-divider">{t('login.or')}</div>
       {providers.length === 0 ? (
         <div data-testid="login-no-providers">{t('login.noProviders')}</div>
       ) : (

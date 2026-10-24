@@ -115,6 +115,15 @@ func (s *fakeRedisServer) handle(conn net.Conn) {
 			}
 			s.mu.Unlock()
 			_, _ = w.WriteString(":1\r\n")
+		case "TTL":
+			s.mu.Lock()
+			ttl, ok := s.ttls[args[1]]
+			s.mu.Unlock()
+			if !ok {
+				_, _ = w.WriteString(":-2\r\n")
+			} else {
+				_, _ = fmt.Fprintf(w, ":%d\r\n", int64(ttl/time.Second))
+			}
 		case "HSET":
 			s.mu.Lock()
 			if s.hashes[args[1]] == nil {

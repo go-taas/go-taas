@@ -45,6 +45,19 @@ auth:
     parallelism: 1
   localPasswordLogin: true
   autoRegister: true
+  # emailVerification enables email verification codes for local
+  # registration and login. When enabled, registration and login require
+  # a code sent to the user's email. Disabled when SMTP is not
+  # configured (codes are logged instead of sent).
+  emailVerification: false
+  # smtp configures the outbound mail transport for verification codes.
+  # When host is empty, codes are logged instead of sent.
+  smtp:
+    host: ""
+    port: 587
+    username: ""
+    password: ""
+    from: ""
   # adminRoles is the set of session roles that make a user an
   # administrator (feature-22 AD3). A user is an admin iff any session
   # role is in the set.

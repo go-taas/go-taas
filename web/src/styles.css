@@ -2017,6 +2017,30 @@ button.primary:hover {
   color: var(--muted);
 }
 
+.login .login-divider {
+  margin: 16px 0 4px;
+  font-size: 12px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.login .code-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.login .code-row input {
+  flex: 1;
+}
+
+.login .code-row button {
+  white-space: nowrap;
+  padding: 10px 12px;
+  font-size: 13px;
+}
+
 /* Account card (feature-22): identity + console switch + sign out.
    Lives at the bottom of the dark sidebar, so it uses the sidebar
    palette rather than the light-surface tokens. */

@@ -113,6 +113,14 @@ type AuthConfig struct {
 	LocalPasswordLogin bool `mapstructure:"localPasswordLogin"`
 	// AutoRegister enables JIT account provisioning on first SSO login.
 	AutoRegister bool `mapstructure:"autoRegister"`
+	// EmailVerification enables email verification codes for local
+	// registration and login. When enabled, registration and login
+	// require a code sent to the user's email. Disabled when SMTP is
+	// not configured.
+	EmailVerification bool `mapstructure:"emailVerification"`
+	// SMTP configures the outbound mail transport for verification
+	// codes. When empty, verification codes are logged instead of sent.
+	SMTP SMTPConfig `mapstructure:"smtp"`
 	// AdminRoles is the set of session roles that make a user an
 	// administrator (feature-22 AD3). A user is an admin iff any session
 	// role is in the set. Defaults to platform-admin, org-admin, admin,
@@ -148,6 +156,22 @@ type SeedSsoConfig struct {
 	AdminPassword string `mapstructure:"adminPassword"`
 	// AdminOrgID is the seeded admin user's organization id.
 	AdminOrgID string `mapstructure:"adminOrgId"`
+}
+
+// SMTPConfig configures the outbound mail transport for verification
+// codes. When Host is empty, verification codes are logged instead of
+// sent (useful for local development and tests).
+type SMTPConfig struct {
+	// Host is the SMTP server host. Empty disables real sending.
+	Host string `mapstructure:"host"`
+	// Port is the SMTP server port (default 587).
+	Port int `mapstructure:"port"`
+	// Username is the SMTP auth username.
+	Username string `mapstructure:"username"`
+	// Password is the SMTP auth password.
+	Password string `mapstructure:"password"`
+	// From is the sender address.
+	From string `mapstructure:"from"`
 }
 
 // MeteringConfig holds metering-module specific settings.

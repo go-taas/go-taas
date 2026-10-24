@@ -31,6 +31,8 @@ const passwordMaxLen = 256
 
 // CreateUser registers a local account. The password is hashed with
 // Argon2id and never stored in plaintext. The username must be unique.
+// When email verification is enabled, the email and its verification
+// code are required.
 func (s *Service) CreateUser(ctx context.Context, req *authv1.CreateUserRequest) (*authv1.CreateUserResponse, error) {
 	username := strings.TrimSpace(req.GetUsername())
 	password := req.GetPassword()
@@ -40,6 +42,16 @@ func (s *Service) CreateUser(ctx context.Context, req *authv1.CreateUserRequest)
 	}
 	if len(password) < passwordMinLen || len(password) > passwordMaxLen {
 		return nil, apierrors.New(apierrors.CodePasswordPolicy)
+	}
+	// When email verification is enabled, the email and its code are
+	// required.
+	if emailVerificationEnabled() {
+		if email == "" {
+			return nil, apierrors.New(apierrors.CodeUserNotFound)
+		}
+		if err := s.verifyEmailCode(ctx, email, emailCodePurposeRegister, req.GetEmailCode()); err != nil {
+			return nil, err
+		}
 	}
 	hash, err := HashPassword(password, s.hashParamsFor())
 	if err != nil {
@@ -98,6 +110,16 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 	}
 	if user.PasswordHash == "" || !VerifyPassword(password, user.PasswordHash) {
 		return nil, apierrors.New(apierrors.CodeInvalidCredentials)
+	}
+	// When email verification is enabled, the user's email and its code
+	// are required.
+	if emailVerificationEnabled() {
+		if user.Email == "" {
+			return nil, apierrors.New(apierrors.CodeInvalidCredentials)
+		}
+		if err := s.verifyEmailCode(ctx, user.Email, emailCodePurposeLogin, req.GetEmailCode()); err != nil {
+			return nil, err
+		}
 	}
 
 	// Derive roles and orgs from org_members (authoritative for local

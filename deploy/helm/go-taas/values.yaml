@@ -517,6 +517,13 @@ controller:
 #   configOverrides:
 #     auth:
 #       adminRoles: ["platform-admin", "org-admin", "admin", "owner"]
+#       emailVerification: true
+#       smtp:
+#         host: "smtp.example.com"
+#         port: 587
+#         username: "user"
+#         password: "secret"
+#         from: "no-reply@example.com"
 #     billing:
 #       currency: "CNY"
 #     image:
