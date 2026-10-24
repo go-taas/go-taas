@@ -2087,6 +2087,11 @@ export const zh: Record<string, string> = {
   'profile.saved': '已保存。',
   'profile.loadFailed': '加载个人资料失败',
   'profile.saveFailed': '保存个人资料失败',
+  'profile.changeAvatar': '更换头像',
+  'profile.editTitle': '编辑资料',
+  'profile.displayNamePlaceholder': '输入显示名',
+  'profile.immutableHint': '用户名和邮箱全系统唯一，不可修改。',
+  'profile.noEmail': '未设置邮箱',
   // ---- Join requests ----
   'joinreq.title': '加入申请',
   'joinreq.subtitle': '审批用户加入组织或项目的申请。组织管理员管理本组织；项目管理员管理本项目。',

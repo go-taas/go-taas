@@ -12,7 +12,8 @@ import { OrgSwitcher } from '../org';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
-import { ErrorBoundary } from '../components';
+import { Avatar, ErrorBoundary } from '../components';
+import { useAvatar } from '../profile';
 import { ADMIN_NAV_CATEGORIES, categoryForPath } from './nav';
 
 // navForRoles restricts the admin navigation by the caller's role:
@@ -37,6 +38,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const { t, lang, setLang } = useI18n();
   const [path, setPath] = useState(window.location.pathname);
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const avatar = useAvatar(realm);
   const [switching, setSwitching] = useState(false);
   const [switchNotice, setSwitchNotice] = useState('');
   const navCategories = navForRoles(session?.roles || []);
@@ -168,9 +170,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <div className="account-card" data-testid="admin-account-block">
             {session && (
               <div className="account-identity">
-                <span className="account-avatar" aria-hidden="true">
-                  {session.username.trim().charAt(0).toUpperCase()}
-                </span>
+                <Avatar
+                  avatar={avatar}
+                  name={session.username}
+                  size={32}
+                  testId={`${'admin'}-account-avatar`}
+                />
                 <span className="account-meta">
                   <span className="account-username" title={session.username}>
                     {session.username}

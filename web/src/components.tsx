@@ -29,6 +29,45 @@ export function Dialog({
   );
 }
 
+// Avatar renders the user's real avatar image, falling back to the
+// username's initial when no avatar is set. It is used anywhere the
+// console shows who the caller is.
+export function Avatar({
+  avatar,
+  name,
+  size = 32,
+  testId,
+}: {
+  avatar?: string;
+  name?: string;
+  size?: number;
+  testId?: string;
+}) {
+  const initial = (name || '?').trim().charAt(0).toUpperCase() || '?';
+  const style = { width: size, height: size };
+  if (avatar) {
+    return (
+      <img
+        src={avatar}
+        alt={name || 'avatar'}
+        className="avatar"
+        data-testid={testId}
+        style={{ ...style, borderRadius: '50%', objectFit: 'cover' }}
+      />
+    );
+  }
+  return (
+    <span
+      className="avatar avatar-initial"
+      data-testid={testId}
+      aria-hidden="true"
+      style={{ ...style, borderRadius: '50%' }}
+    >
+      {initial}
+    </span>
+  );
+}
+
 export function StateBadge({ state }: { state: string }) {
   return (
     <span className={`badge ${state}`} data-testid={`state-badge-${state}`}>

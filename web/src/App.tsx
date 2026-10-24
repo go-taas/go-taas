@@ -4,6 +4,7 @@
 
 import { useEffect } from 'react';
 import { Router, Routes, Route, replace, useRoute } from './router';
+import { ProfileProvider } from './profile';
 import { OrgProvider } from './org';
 import { SurfaceProvider } from './surface';
 import { I18nProvider } from './i18n';
@@ -153,6 +154,7 @@ function UserSurface({ path }: { path: string }) {
   return (
     <SurfaceProvider realm="user">
       <OrgProvider>
+        <ProfileProvider>
         {path === '/login' ? (
           <UserLoginPage />
         ) : path === '/register' ? (
@@ -206,6 +208,7 @@ function UserSurface({ path }: { path: string }) {
             </Routes>
           </UserShell>
         )}
+        </ProfileProvider>
       </OrgProvider>
     </SurfaceProvider>
   );
@@ -215,6 +218,7 @@ function AdminSurface({ path }: { path: string }) {
   return (
     <SurfaceProvider realm="admin">
       <OrgProvider>
+        <ProfileProvider>
         {path === '/admin/login' ? (
           <AdminLoginPage />
         ) : path.startsWith('/admin/login/') ? (
@@ -292,6 +296,7 @@ function AdminSurface({ path }: { path: string }) {
             </Routes>
           </AdminShell>
         )}
+        </ProfileProvider>
       </OrgProvider>
     </SurfaceProvider>
   );

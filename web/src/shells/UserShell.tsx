@@ -13,7 +13,8 @@ import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
-import { ErrorBoundary } from '../components';
+import { Avatar, ErrorBoundary } from '../components';
+import { useAvatar } from '../profile';
 import { USER_NAV_CATEGORIES, categoryForPath } from './nav';
 
 // adminRoles is the set of session roles that make a user an
@@ -31,6 +32,7 @@ export function UserShell({ children }: { children: ReactNode }) {
   const { t, lang, setLang } = useI18n();
   const [path, setPath] = useState(window.location.pathname);
   const [session, setSession] = useState<SessionInfo | null>(null);
+  const avatar = useAvatar(realm);
   const [switching, setSwitching] = useState(false);
   const [switchNotice, setSwitchNotice] = useState('');
 
@@ -167,9 +169,12 @@ export function UserShell({ children }: { children: ReactNode }) {
           <div className="account-card" data-testid="user-account-block">
             {session && (
               <div className="account-identity">
-                <span className="account-avatar" aria-hidden="true">
-                  {session.username.trim().charAt(0).toUpperCase()}
-                </span>
+                <Avatar
+                  avatar={avatar}
+                  name={session.username}
+                  size={32}
+                  testId={`${'user'}-account-avatar`}
+                />
                 <span className="account-meta">
                   <span className="account-username" title={session.username}>
                     {session.username}

@@ -2630,3 +2630,134 @@ button.primary:hover {
   font-size: 12px;
   margin-top: 2px;
 }
+
+/* ---- Profile page (hero card + edit form) ---- */
+.profile-page {
+  max-width: 880px;
+}
+
+.profile-hero {
+  display: flex;
+  gap: 24px;
+  align-items: center;
+  padding: 24px;
+  margin-bottom: 16px;
+}
+
+.profile-avatar-wrap {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.profile-avatar-wrap .avatar {
+  display: block;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+}
+
+.avatar-initial {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary, #007f86);
+  color: #fff;
+  font-weight: 600;
+  font-size: 0.9em;
+}
+
+.profile-avatar-edit {
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid var(--panel-solid, #fff);
+  background: var(--primary, #007f86);
+  color: #fff;
+  cursor: pointer;
+}
+
+.profile-avatar-edit:hover {
+  filter: brightness(1.08);
+}
+
+.profile-hero-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.profile-hero-name {
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.profile-hero-sub {
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.profile-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.profile-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--panel-soft, rgba(0, 0, 0, 0.04));
+  border: 1px solid var(--border, rgba(0, 0, 0, 0.08));
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.profile-form-panel {
+  padding: 20px 24px 8px;
+}
+
+.profile-form-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.field-hint {
+  margin-top: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (max-width: 640px) {
+  .profile-hero {
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+  }
+}

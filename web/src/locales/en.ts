@@ -2110,6 +2110,11 @@ export const en: Record<string, string> = {
   'profile.saved': 'Saved.',
   'profile.loadFailed': 'failed to load profile',
   'profile.saveFailed': 'failed to save profile',
+  'profile.changeAvatar': 'Change avatar',
+  'profile.editTitle': 'Edit profile',
+  'profile.displayNamePlaceholder': 'Enter a display name',
+  'profile.immutableHint': 'The username and email are globally unique and cannot be changed.',
+  'profile.noEmail': 'No email set',
   // ---- Join requests ----
   'joinreq.title': 'Join Requests',
   'joinreq.subtitle': 'Approve or reject requests to join an organization or project. Org admins manage their org; project admins manage their project.',

@@ -35,10 +35,14 @@ service AuthService {
     };
   }
 
-  // GetUserProfile returns the caller's own profile (user surface).
+  // GetUserProfile returns the caller's own profile. Served on both the
+  // user and admin surfaces so each console can render the avatar.
   rpc GetUserProfile(GetUserProfileRequest) returns (GetUserProfileResponse) {
     option (google.api.http) = {
       get: "/api/v1/auth/profile"
+      additional_bindings: {
+        get: "/api/v1/admin/auth/profile"
+      }
     };
   }
 
@@ -48,6 +52,10 @@ service AuthService {
     option (google.api.http) = {
       patch: "/api/v1/auth/profile"
       body: "*"
+      additional_bindings: {
+        patch: "/api/v1/admin/auth/profile"
+        body: "*"
+      }
     };
   }
 
@@ -409,7 +417,8 @@ message GetUserProfileResponse {
 message UpdateUserProfileRequest {
   // display_name replaces the stored display name; empty clears it.
   string display_name = 1;
-  // avatar replaces the stored avatar URL; empty clears it.
+  // avatar replaces the stored avatar (a base64 image data URL);
+  // empty clears it.
   string avatar = 2;
 }
 

@@ -1,25 +1,21 @@
-// ProfilePage is the end-user console "My profile" page: view and update
-// the caller's display name and avatar. Username and email are immutable.
+// ProfilePage is the end-user console "My profile" page. It shows a
+// hero card with the real avatar (uploaded and stored inline in the
+// database) plus the immutable identity, and lets the user edit the
+// display name and avatar.
 
-import { useCallback, useEffect, useState } from 'react';
-import { ErrorBanner } from '../../components';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { Camera, EnvelopeSimple, IdentificationBadge, UserCircle } from '@phosphor-icons/react';
+import { Avatar, ErrorBanner } from '../../components';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
-
-interface UserProfile {
-  userId: string;
-  username: string;
-  email: string;
-  displayName: string;
-  avatar: string;
-  createdAt: string;
-}
+import { useProfile, type UserProfile } from '../../profile';
 
 export default function ProfilePage() {
   const api = useApi();
   const { orgId } = useOrg();
   const { t } = useI18n();
+  const { setProfile: applyProfile } = useProfile();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState('');
@@ -27,6 +23,7 @@ export default function ProfilePage() {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const fileInput = useRef<HTMLInputElement | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -36,12 +33,13 @@ export default function ProfilePage() {
       setProfile(data.profile);
       setDisplayName(data.profile.displayName || '');
       setAvatar(data.profile.avatar || '');
+      applyProfile(data.profile);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('profile.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, t]);
+  }, [api, orgId, t, applyProfile]);
 
   useEffect(() => {
     void load();
@@ -73,9 +71,11 @@ export default function ProfilePage() {
     try {
       const data = await api.patch<{ profile: UserProfile }>('/api/v1/auth/profile', orgId, {
         displayName: displayName.trim(),
-        avatar: avatar.trim(),
+        avatar,
       });
       setProfile(data.profile);
+      setAvatar(data.profile.avatar || '');
+      applyProfile(data.profile);
       setSaved(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('profile.saveFailed'));
@@ -85,59 +85,103 @@ export default function ProfilePage() {
   };
 
   if (loading) {
-    return <div className="page" data-testid="profile-page"><div className="loading">{t('common.loading')}</div></div>;
+    return (
+      <div className="page" data-testid="profile-page">
+        <div className="loading">{t('common.loading')}</div>
+      </div>
+    );
   }
 
+  const shownName = displayName.trim() || profile?.username || '';
+
   return (
-    <div className="page" data-testid="profile-page">
+    <div className="page profile-page" data-testid="profile-page">
       <h1>{t('profile.title')}</h1>
       {error && <ErrorBanner message={error} />}
-      {saved && <div className="success" data-testid="profile-saved">{t('profile.saved')}</div>}
-      <div className="panel">
-        <div className="form">
-          <div className="field">
-            <label>{t('profile.username')}</label>
-            <input value={profile?.username || ''} disabled data-testid="profile-username" />
+      {saved && (
+        <div className="success" data-testid="profile-saved">
+          {t('profile.saved')}
+        </div>
+      )}
+
+      <div className="panel profile-hero">
+        <div className="profile-avatar-wrap">
+          <Avatar avatar={avatar} name={shownName} size={96} testId="profile-avatar-preview" />
+          <button
+            type="button"
+            className="profile-avatar-edit"
+            data-testid="profile-avatar-pick"
+            title={t('profile.changeAvatar')}
+            aria-label={t('profile.changeAvatar')}
+            onClick={() => fileInput.current?.click()}
+          >
+            <Camera size={16} weight="fill" />
+          </button>
+          <input
+            ref={fileInput}
+            type="file"
+            accept="image/*"
+            className="visually-hidden"
+            data-testid="profile-avatar-file"
+            onChange={(e) => void onAvatarFile(e.target.files?.[0])}
+          />
+        </div>
+
+        <div className="profile-hero-meta">
+          <div className="profile-hero-name">{shownName}</div>
+          <div className="profile-hero-sub">@{profile?.username}</div>
+          <div className="profile-chips">
+            <span className="profile-chip">
+              <IdentificationBadge size={14} />
+              {t('profile.username')}
+            </span>
+            <span className="profile-chip">
+              <EnvelopeSimple size={14} />
+              {profile?.email || t('profile.noEmail')}
+            </span>
           </div>
-          <div className="field">
-            <label>{t('profile.email')}</label>
-            <input value={profile?.email || ''} disabled data-testid="profile-email" />
+          {avatar && (
+            <button
+              type="button"
+              className="link danger"
+              data-testid="profile-avatar-clear"
+              onClick={() => setAvatar('')}
+            >
+              {t('profile.avatarRemove')}
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="panel profile-form-panel">
+        <div className="profile-form-head">
+          <UserCircle size={18} weight="duotone" />
+          <span>{t('profile.editTitle')}</span>
+        </div>
+        <div className="form-grid">
+          <div className="form-field full">
+            <label htmlFor="profile-username">{t('profile.username')}</label>
+            <input id="profile-username" value={profile?.username || ''} disabled data-testid="profile-username" />
+            <div className="field-hint">{t('profile.immutableHint')}</div>
           </div>
-          <div className="field">
-            <label>{t('profile.displayName')}</label>
+          <div className="form-field full">
+            <label htmlFor="profile-email">{t('profile.email')}</label>
+            <input id="profile-email" value={profile?.email || ''} disabled data-testid="profile-email" />
+            <div className="field-hint">{t('profile.immutableHint')}</div>
+          </div>
+          <div className="form-field full">
+            <label htmlFor="profile-display-name">{t('profile.displayName')}</label>
             <input
+              id="profile-display-name"
               value={displayName}
+              maxLength={128}
+              placeholder={t('profile.displayNamePlaceholder')}
               onChange={(e) => setDisplayName(e.target.value)}
               data-testid="profile-display-name"
             />
           </div>
-          <div className="field">
-            <label>{t('profile.avatar')}</label>
-            {avatar && (
-              <img
-                src={avatar}
-                alt={t('profile.avatar')}
-                data-testid="profile-avatar-preview"
-                style={{ width: 72, height: 72, borderRadius: '50%', objectFit: 'cover' }}
-              />
-            )}
-            <input
-              type="file"
-              accept="image/*"
-              data-testid="profile-avatar-file"
-              onChange={(e) => void onAvatarFile(e.target.files?.[0])}
-            />
-            {avatar && (
-              <button
-                type="button"
-                className="link danger"
-                data-testid="profile-avatar-clear"
-                onClick={() => setAvatar('')}
-              >
-                {t('profile.avatarRemove')}
-              </button>
-            )}
-          </div>
+        </div>
+        <div className="dialog-actions">
           <button data-testid="profile-save" disabled={saving} onClick={() => void save()}>
             {saving ? t('common.working') : t('profile.save')}
           </button>
