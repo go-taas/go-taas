@@ -1,3 +1,16 @@
+# [1.76.0](https://github.com/go-taas/go-taas/compare/v1.75.0...v1.76.0) (2026-10-24)
+
+
+### Bug Fixes
+
+* **console:** darken inactive topbar tabs for reliable contrast ([82cb14b](https://github.com/go-taas/go-taas/commit/82cb14beb38990a21db8f6fecbe4190bb5ed0f7b))
+* **console:** raise contrast for language switch, active nav, disabled buttons ([b5df22b](https://github.com/go-taas/go-taas/commit/b5df22be281c73bd7de4e7d35b3e8176a52b9617))
+
+
+### Features
+
+* **console:** professional tech palette, contrast fixes, vendor inference ([0c421f0](https://github.com/go-taas/go-taas/commit/0c421f0b7e63eb33b5a8c32d23f50966e5325513))
+
 # [1.75.0](https://github.com/go-taas/go-taas/compare/v1.74.0...v1.75.0) (2026-10-24)
 
 
