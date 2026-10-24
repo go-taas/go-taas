@@ -177,3 +177,20 @@ func TestSendVerificationEmailSMTPConfigured(t *testing.T) {
 	err := sendVerificationEmail("alice@x.com", "123456")
 	assert.Error(t, err)
 }
+
+func TestSendVerificationEmailImplicitTLS(t *testing.T) {
+	// Port 465 uses implicit TLS; an unreachable host returns an error
+	// (exercises the TLS path).
+	cfg := &config.Configuration{}
+	cfg.Auth.SMTP = config.SMTPConfig{Host: "127.0.0.1", Port: 465, Username: "u", Password: "p", From: "f@x.com"}
+	config.SetConfigForTest(cfg)
+	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
+
+	err := sendVerificationEmail("alice@x.com", "123456")
+	assert.Error(t, err)
+}
+
+func TestHostOf(t *testing.T) {
+	assert.Equal(t, "smtp.example.com", hostOf("smtp.example.com:465"))
+	assert.Equal(t, "smtp.example.com", hostOf("smtp.example.com"))
+}

@@ -12,9 +12,11 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/subtle"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"math/big"
+	"net"
 	"net/smtp"
 	"strings"
 	"time"
@@ -171,7 +173,8 @@ func generateEmailCode() (string, error) {
 }
 
 // sendVerificationEmail sends the code via SMTP, or logs it when SMTP
-// is not configured.
+// is not configured. Port 465 uses implicit TLS (SMTPS); other ports
+// use STARTTLS via smtp.SendMail.
 func sendVerificationEmail(email, code string) error {
 	cfg := smtpConfig()
 	if cfg.Host == "" {
@@ -189,5 +192,55 @@ func sendVerificationEmail(email, code string) error {
 	}
 	msg := []byte(fmt.Sprintf("To: %s\r\nSubject: Go TaaS verification code\r\n\r\nYour verification code is %s. It expires in 5 minutes.\r\n", email, code))
 	auth := smtp.PlainAuth("", cfg.Username, cfg.Password, cfg.Host)
+	if port == 465 {
+		return sendMailImplicitTLS(addr, auth, from, []string{email}, msg)
+	}
 	return smtp.SendMail(addr, auth, from, []string{email}, msg)
+}
+
+// sendMailImplicitTLS sends mail over an implicit-TLS (SMTPS)
+// connection, used by port 465.
+func sendMailImplicitTLS(addr string, a smtp.Auth, from string, to []string, msg []byte) error {
+	conn, err := tls.Dial("tcp", addr, &tls.Config{ServerName: hostOf(addr), InsecureSkipVerify: false})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = conn.Close() }()
+	c, err := smtp.NewClient(conn, hostOf(addr))
+	if err != nil {
+		return err
+	}
+	defer func() { _ = c.Close() }()
+	if a != nil {
+		if err := c.Auth(a); err != nil {
+			return err
+		}
+	}
+	if err := c.Mail(from); err != nil {
+		return err
+	}
+	for _, rcpt := range to {
+		if err := c.Rcpt(rcpt); err != nil {
+			return err
+		}
+	}
+	w, err := c.Data()
+	if err != nil {
+		return err
+	}
+	if _, err := w.Write(msg); err != nil {
+		return err
+	}
+	if err := w.Close(); err != nil {
+		return err
+	}
+	return c.Quit()
+}
+
+// hostOf returns the host portion of an addr (host:port).
+func hostOf(addr string) string {
+	if h, _, err := net.SplitHostPort(addr); err == nil {
+		return h
+	}
+	return addr
 }
