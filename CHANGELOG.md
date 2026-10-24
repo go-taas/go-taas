@@ -1,3 +1,10 @@
+## [1.66.1](https://github.com/go-taas/go-taas/compare/v1.66.0...v1.66.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **tenancy:** resolve username when adding a member ([2e54049](https://github.com/go-taas/go-taas/commit/2e540491da2d9de9f9805ae190758968ef16e688))
+
 # [1.66.0](https://github.com/go-taas/go-taas/compare/v1.65.2...v1.66.0) (2026-10-24)
 
 
