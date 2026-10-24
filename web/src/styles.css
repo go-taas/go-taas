@@ -59,7 +59,7 @@
   --sidebar-bg: linear-gradient(180deg, #0a1020 0%, #0e1729 60%, #101c33 100%);
   --sidebar-text: #d5e0f2;
   --sidebar-muted: #8fa0b8;
-  --sidebar-active: linear-gradient(135deg, #1d5cff, #0891b2);
+  --sidebar-active: linear-gradient(135deg, #1a4fd6, #0a6c88);
   --sidebar-hover: rgba(255, 255, 255, 0.07);
 
   /* Topbar (crisp glass) */
@@ -793,9 +793,9 @@ th.sortable:hover {
 
 /* ---- language switch button (sidebar) ---- */
 .lang-switch {
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--sidebar-text);
-  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(15, 23, 42, 0.04);
+  color: var(--muted-strong);
+  border: 1px solid var(--border-strong);
   border-radius: 8px;
   padding: 7px 12px;
   font-size: 12.5px;
@@ -806,8 +806,8 @@ th.sortable:hover {
 }
 
 .lang-switch:hover {
-  background: rgba(255, 255, 255, 0.14);
-  color: #fff;
+  background: var(--primary-soft);
+  color: var(--primary-strong);
 }
 
 /* ============================================================
