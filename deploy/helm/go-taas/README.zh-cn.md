@@ -42,6 +42,17 @@ dependencies:
 
 > **生产注意**：seed 的 `admin`/`admin` 与 `alice`/`alice-password` 仅用于评估。公开暴露控制台前请修改它们（或把 `auth.seedSso.enabled` 设为 `false`，通过管理 API 注册自己的 IdP）。
 
+### 内置的本地 admin 账号
+
+首次启动时平台会在**自己的账号系统**中 seed 一个 `admin` 账号（不依赖外部 IdP）：初始密码以 Argon2id 哈希写入 `users` 表。通过一级配置项 `auth.seedSso.adminLocalPassword` 设置（默认 `Pass4admin`）：
+
+```bash
+helm upgrade --install taas deploy/helm/go-taas --namespace taas \
+  --set auth.seedSso.adminLocalPassword='YourStr0ng!Pass'
+```
+
+密码需满足平台策略：至少 8 位，且至少包含大写字母、小写字母、数字、特殊符号中的三类。seed 是幂等的——只在密码缺失时写入，不会覆盖运维已修改的密码。平台管理员登录时免邮箱验证码，保证引导管理员始终可登录。
+
 ## 资源标签
 
 Chart 创建的每个资源都带 Kubernetes 推荐标签：

@@ -543,4 +543,13 @@ controller:
 #           tag: "v0.6.3"
 #           accelerator: "nvidia"
 #           engine: "vllm"
+# Local admin account seeded on first boot (auth.seedSso). The initial
+# password is Argon2id-hashed into the platform's own account store, so a
+# fresh install can sign in without an external IdP. Set your own value
+# before exposing the console.
+auth:
+  seedSso:
+    # -- Initial password of the seeded local `admin` account.
+    adminLocalPassword: "Pass4admin"
+
 configOverrides: {}

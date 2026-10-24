@@ -62,6 +62,24 @@ Deployment/Service/PVC and points the SSO seed at the external IdP.
 > `auth.seedSso.enabled: false` and register your own IdP through the admin
 > API) before exposing the console publicly.
 
+### Seeded local admin account
+
+On first boot the platform seeds an `admin` account **in its own account
+store** (no external IdP required): the initial password is Argon2id-hashed
+into the `users` table. Set it with the first-class value
+`auth.seedSso.adminLocalPassword` (default `Pass4admin`):
+
+```bash
+helm upgrade --install taas deploy/helm/go-taas --namespace taas \
+  --set auth.seedSso.adminLocalPassword='YourStr0ng!Pass'
+```
+
+The password must satisfy the platform policy: at least 8 characters and at
+least three of uppercase, lowercase, digit, and special character. The seed is
+idempotent — it only fills a missing password, so an operator-changed password
+is never overwritten. Platform administrators are exempt from the login email
+verification code, so the bootstrap admin can always sign in.
+
 ## Resource labels
 
 Every resource the chart creates carries the Kubernetes recommended labels:
