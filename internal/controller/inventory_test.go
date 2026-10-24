@@ -204,3 +204,78 @@ func TestInventoryCollectorSkipsOnListError(t *testing.T) {
 	collector.collectAndPublish(context.Background())
 	assert.Empty(t, got, "no snapshot must be published when the node list fails")
 }
+
+// A node that advertises the NVIDIA device-plugin signals but has no
+// go-taas.com/accelerator label is classified as nvidia, not unspecified
+// (the sd4090 scenario).
+func TestNodeToInventoryInfersVendorFromDevicePlugin(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels map[string]string
+		alloc  corev1.ResourceList
+		want   string
+	}{
+		{
+			name: "nvidia gpu product label",
+			labels: map[string]string{
+				"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
+			},
+			want: "nvidia",
+		},
+		{
+			name:   "nvidia extended resource",
+			labels: map[string]string{},
+			alloc: corev1.ResourceList{
+				corev1.ResourceName("nvidia.com/gpu"): resource.MustParse("2"),
+			},
+			want: "nvidia",
+		},
+		{
+			name: "iluvatar label",
+			labels: map[string]string{
+				"iluvatar.ai/gpu.present": "true",
+			},
+			want: "iluvatar",
+		},
+		{
+			name: "metax resource",
+			alloc: corev1.ResourceList{
+				corev1.ResourceName("metax-tech.com/gpu"): resource.MustParse("1"),
+			},
+			want: "metax",
+		},
+		{
+			name:   "explicit label wins",
+			labels: map[string]string{labelAcceleratorVendor: "metax", "nvidia.com/gpu.product": "x"},
+			want:   "metax",
+		},
+		{
+			name:   "no accelerator signal",
+			labels: map[string]string{"kubernetes.io/hostname": "plain"},
+			want:   "unspecified",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "n", UID: "u", Labels: c.labels},
+				Status:     corev1.NodeStatus{Allocatable: c.alloc},
+			}
+			assert.Equal(t, c.want, nodeToInventory(node).Vendor)
+		})
+	}
+}
+
+// The sd4090 node's allocatable nvidia.com/gpu counts as a gpu card type.
+func TestCardTypeFromResourceVendors(t *testing.T) {
+	for _, name := range []string{
+		"nvidia.com/gpu", "iluvatar.ai/gpu", "iluvatar.com/gpu",
+		"metax-tech.com/gpu", "metax.com/gpu",
+	} {
+		card, ok := cardTypeFromResource(corev1.ResourceName(name))
+		assert.True(t, ok, name)
+		assert.Equal(t, "gpu", card, name)
+	}
+	_, ok := cardTypeFromResource("example.com/other")
+	assert.False(t, ok)
+}

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
@@ -141,7 +142,7 @@ func (c *InventoryCollector) listNodes(ctx context.Context) ([]inventoryNode, er
 // nodeToInventory computes the raw signals for one node (Section 4.1).
 func nodeToInventory(n *corev1.Node) inventoryNode {
 	labels := n.Labels
-	vendor := vendorFromLabels(labels)
+	vendor := vendorFromNode(n)
 	readiness := readinessFromNode(n)
 	driverVersion := labels[labelDriverVersion]
 	devicePlugin := devicePluginFromNode(n, labels)
@@ -186,15 +187,53 @@ func nodeToInventory(n *corev1.Node) inventoryNode {
 	}
 }
 
-// vendorFromLabels derives the accelerator vendor from the node labels
-// (AD3). A node with no accelerator label is "unspecified".
-func vendorFromLabels(labels map[string]string) string {
-	switch labels[labelAcceleratorVendor] {
-	case "nvidia", "iluvatar", "metax":
-		return labels[labelAcceleratorVendor]
-	default:
-		return "unspecified"
+// vendorFromNode derives the accelerator vendor (AD3). The explicit
+// go-taas.com/accelerator label wins; otherwise the vendor is inferred
+// from well-known device-plugin labels and extended resources, so a node
+// that only advertises nvidia.com/gpu is classified as nvidia instead of
+// "unspecified". A node with no accelerator signal stays "unspecified".
+func vendorFromNode(n *corev1.Node) string {
+	if v := n.Labels[labelAcceleratorVendor]; v != "" {
+		switch v {
+		case "nvidia", "iluvatar", "metax":
+			return v
+		}
 	}
+	labels := n.Labels
+	// Device-plugin labels published by the vendor operators.
+	if isTruthy(labels["nvidia.com/gpu.present"]) ||
+		labels["nvidia.com/gpu.product"] != "" ||
+		labels["nvidia.com/gpu.machine"] != "" {
+		return "nvidia"
+	}
+	if _, ok := labels["iluvatar.ai/gpu.present"]; ok {
+		return "iluvatar"
+	}
+	for l := range labels {
+		if strings.HasPrefix(l, "iluvatar.ai/") {
+			return "iluvatar"
+		}
+		if strings.HasPrefix(l, "metax-tech.com/") {
+			return "metax"
+		}
+	}
+	// Extended resources advertised by the device plugins.
+	for name := range n.Status.Allocatable {
+		switch {
+		case strings.HasPrefix(string(name), "nvidia.com/"):
+			return "nvidia"
+		case strings.HasPrefix(string(name), "iluvatar.ai/"):
+			return "iluvatar"
+		case strings.HasPrefix(string(name), "metax-tech.com/"):
+			return "metax"
+		}
+	}
+	return "unspecified"
+}
+
+// isTruthy reports whether a label value means true.
+func isTruthy(v string) bool {
+	return v == "true" || v == "True" || v == "1"
 }
 
 // readinessFromNode derives the node readiness from the Ready condition.
@@ -242,8 +281,9 @@ func devicePluginFromNode(n *corev1.Node, labels map[string]string) string {
 // extended-resource name (e.g. nvidia.com/gpu -> gpu). It returns false
 // for non-accelerator resources.
 func cardTypeFromResource(name corev1.ResourceName) (string, bool) {
-	switch name {
-	case "nvidia.com/gpu", "iluvatar.com/gpu", "metax.com/gpu":
+	switch string(name) {
+	case "nvidia.com/gpu", "iluvatar.com/gpu", "iluvatar.ai/gpu",
+		"metax.com/gpu", "metax-tech.com/gpu", "metax-tech.com/vgpu":
 		return "gpu", true
 	default:
 		return "", false

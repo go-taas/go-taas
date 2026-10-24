@@ -9,68 +9,69 @@
    ============================================================ */
 
 :root {
-  /* Aurora palette */
-  --primary: #0080ff;
-  --primary-strong: #0066d6;
-  --primary-soft: rgba(0, 128, 255, 0.12);
-  --primary-ring: rgba(0, 128, 255, 0.22);
-  --accent: #ff1493;
-  --accent-soft: rgba(255, 20, 147, 0.12);
-  --accent-strong: #d6007a;
-  --cyan: #00c2ff;
-  --purple: #7c3aed;
-  --purple-soft: rgba(124, 58, 237, 0.12);
-  --orange: #ff8a00;
-  --yellow: #ffd60a;
+  /* Professional tech palette: deep slate + electric blue/cyan accent.
+     High-contrast neutrals, restrained gradients, no pink/purple haze. */
+  --primary: #1d5cff;
+  --primary-strong: #1546c8;
+  --primary-soft: rgba(29, 92, 255, 0.10);
+  --primary-ring: rgba(29, 92, 255, 0.24);
+  --accent: #0891b2;
+  --accent-soft: rgba(8, 145, 178, 0.10);
+  --accent-strong: #0e7490;
+  --cyan: #06b6d4;
+  --purple: #4f46e5;
+  --purple-soft: rgba(79, 70, 229, 0.10);
+  --orange: #ea580c;
+  --yellow: #ca8a04;
 
-  /* Aurora gradient stops (mesh / northern lights) */
-  --aurora-1: #0080ff;
-  --aurora-2: #7c3aed;
-  --aurora-3: #ff1493;
-  --aurora-4: #00c2ff;
-  --aurora-5: #ff8a00;
+  /* Restrained blue/cyan gradient stops (replaces the aurora haze) */
+  --aurora-1: #1d5cff;
+  --aurora-2: #4f46e5;
+  --aurora-3: #0891b2;
+  --aurora-4: #06b6d4;
+  --aurora-5: #1e3a8a;
 
-  /* Neutrals (cool, slightly blue-tinted) */
-  --bg: #f4f7ff;
-  --bg-grad-1: rgba(0, 128, 255, 0.14);
-  --bg-grad-2: rgba(124, 58, 237, 0.12);
-  --bg-grad-3: rgba(255, 20, 147, 0.10);
-  --panel: rgba(255, 255, 255, 0.72);
-  --surface-2: rgba(0, 128, 255, 0.07);
+  /* Neutrals (cool slate, crisp) */
+  --bg: #f5f7fb;
+  --bg-grad-1: rgba(29, 92, 255, 0.06);
+  --bg-grad-2: rgba(79, 70, 229, 0.05);
+  --bg-grad-3: rgba(8, 145, 178, 0.04);
+  --panel: rgba(255, 255, 255, 0.88);
+  --surface-2: rgba(29, 92, 255, 0.05);
   --panel-solid: #ffffff;
   --border: rgba(15, 23, 42, 0.10);
-  --border-strong: rgba(15, 23, 42, 0.18);
+  --border-strong: rgba(15, 23, 42, 0.20);
   --text: #0b1220;
-  --muted: #5b6b83;
-  --muted-strong: #3d4c63;
+  --muted: #4a5a70;
+  --muted-strong: #334155;
 
-  /* Semantic */
-  --danger: #e11d48;
-  --danger-soft: rgba(225, 29, 72, 0.10);
-  --ok: #0ea5a4;
-  --ok-soft: rgba(14, 165, 164, 0.12);
-  --warn: #d97706;
-  --warn-soft: rgba(217, 119, 6, 0.12);
-  --info: #0284c7;
-  --info-soft: rgba(2, 132, 199, 0.12);
+  /* Semantic (darkened for >=4.5:1 on their soft backgrounds) */
+  --danger: #b91c34;
+  --danger-soft: rgba(185, 28, 52, 0.10);
+  --ok: #047857;
+  --ok-soft: rgba(4, 120, 87, 0.10);
+  --warn: #9a4a02;
+  --warn-soft: rgba(154, 74, 2, 0.10);
+  --info: #075985;
+  --info-soft: rgba(7, 89, 133, 0.10);
 
-  /* Sidebar (deep aurora gradient) */
-  --sidebar-bg: linear-gradient(180deg, #0b1220 0%, #141b34 55%, #1a1030 100%);
-  --sidebar-text: #c7d2fe;
-  --sidebar-muted: #8b9bb8;
-  --sidebar-active: linear-gradient(135deg, #0080ff, #7c3aed);
-  --sidebar-hover: rgba(255, 255, 255, 0.08);
+  /* Sidebar (deep slate with a subtle blue cast) */
+  --sidebar-bg: linear-gradient(180deg, #0a1020 0%, #0e1729 60%, #101c33 100%);
+  --sidebar-text: #d5e0f2;
+  --sidebar-muted: #8fa0b8;
+  --sidebar-active: linear-gradient(135deg, #1d5cff, #0891b2);
+  --sidebar-hover: rgba(255, 255, 255, 0.07);
 
-  /* Topbar (glass) */
-  --topbar-bg: rgba(255, 255, 255, 0.6);
+  /* Topbar (crisp glass) */
+  --topbar-bg: rgba(255, 255, 255, 0.82);
   --topbar-border: rgba(15, 23, 42, 0.08);
 
   /* Effects */
-  --shadow-sm: 0 1px 3px rgba(15, 23, 42, 0.06);
-  --shadow-md: 0 8px 24px rgba(15, 23, 42, 0.10);
-  --shadow-lg: 0 20px 48px rgba(15, 23, 42, 0.18);
-  --radius: 16px;
-  --radius-sm: 10px;
+  --shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --shadow-md: 0 6px 20px rgba(15, 23, 42, 0.08);
+  --shadow-lg: 0 18px 44px rgba(15, 23, 42, 0.14);
+  --radius: 14px;
+  --radius-sm: 9px;
   --blur: 14px;
 
   --mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, 'Liberation Mono', monospace;
@@ -99,20 +100,6 @@ body {
   color: var(--text);
   font-size: 14px;
   line-height: 1.5;
-  animation: aurora-flow 18s ease-in-out infinite alternate;
-}
-
-/* Aurora flowing background (Northern Lights effect). */
-@keyframes aurora-flow {
-  0% {
-    background-position: 0% 0%, 100% 0%, 50% 100%, 0 0;
-  }
-  50% {
-    background-position: 30% 10%, 80% 20%, 40% 90%, 0 0;
-  }
-  100% {
-    background-position: 60% 20%, 60% 10%, 60% 80%, 0 0;
-  }
 }
 
 h1,
@@ -523,7 +510,12 @@ th.sortable:hover {
 }
 
 .dashboard-card.muted {
-  opacity: 0.62;
+  background: rgba(255, 255, 255, 0.55);
+  border-color: var(--border);
+}
+
+.dashboard-card.muted .value {
+  color: var(--muted-strong);
 }
 
 .dashboard-card .detail-item .label {
@@ -661,9 +653,9 @@ th.sortable:hover {
 }
 
 .topbar-nav-item.active {
-  background: linear-gradient(135deg, var(--aurora-1), var(--aurora-2));
+  background: linear-gradient(135deg, #1d5cff, #0b7ea6);
   color: #fff;
-  box-shadow: 0 4px 14px rgba(0, 128, 255, 0.35);
+  box-shadow: 0 3px 12px rgba(29, 92, 255, 0.28);
 }
 
 .topbar-actions {
@@ -754,7 +746,7 @@ th.sortable:hover {
 .nav-item.active {
   background: var(--sidebar-active);
   color: #fff;
-  box-shadow: 0 6px 18px rgba(0, 128, 255, 0.4);
+  box-shadow: 0 4px 14px rgba(29, 92, 255, 0.32);
 }
 
 .org-switcher {
@@ -877,8 +869,8 @@ th.sortable:hover {
   inset: 0 0 auto 0;
   height: 2px;
   border-radius: var(--radius) var(--radius) 0 0;
-  background: linear-gradient(90deg, var(--aurora-1), var(--aurora-4), var(--aurora-2), var(--aurora-3));
-  opacity: 0.55;
+  background: linear-gradient(90deg, #1d5cff, #0891b2);
+  opacity: 0.75;
   pointer-events: none;
 }
 
@@ -1097,10 +1089,10 @@ table.table tbody tr:hover {
    ============================================================ */
 
 .warning-banner {
-  background: linear-gradient(90deg, rgba(255, 214, 10, 0.22), rgba(255, 138, 0, 0.12));
-  color: var(--warn);
-  border: 1px solid rgba(255, 138, 0, 0.28);
-  border-left: 3px solid var(--orange);
+  background: #fdf3e3;
+  color: #7c3a02;
+  border: 1px solid rgba(154, 74, 2, 0.22);
+  border-left: 3px solid #b45309;
   border-radius: var(--radius-sm);
   padding: 10px 12px;
   margin-bottom: 12px;
