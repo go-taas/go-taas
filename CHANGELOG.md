@@ -1,3 +1,10 @@
+# [1.70.0](https://github.com/go-taas/go-taas/compare/v1.69.0...v1.70.0) (2026-10-24)
+
+
+### Features
+
+* **models,auth:** add model hub download UI and user deletion ([695b8ae](https://github.com/go-taas/go-taas/commit/695b8ae63c5d520f10c02c41abd1cc3832658a57))
+
 # [1.69.0](https://github.com/go-taas/go-taas/compare/v1.68.1...v1.69.0) (2026-10-24)
 
 
