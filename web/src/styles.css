@@ -2011,6 +2011,12 @@ button.primary:hover {
   cursor: not-allowed;
 }
 
+.login .login-alt {
+  margin-top: 16px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
 /* Account card (feature-22): identity + console switch + sign out.
    Lives at the bottom of the dark sidebar, so it uses the sidebar
    palette rather than the light-surface tokens. */

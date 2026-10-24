@@ -297,16 +297,6 @@ func resolveOrganizationID(ctx context.Context) (string, error) {
 	return strings.TrimSpace(values[0]), nil
 }
 
-// CreateUser registers a local account.
-func (s *Service) CreateUser(_ context.Context, _ *authv1.CreateUserRequest) (*authv1.CreateUserResponse, error) {
-	return nil, apierrors.Newf(apierrors.CodeUnauthorized, "auth: not implemented")
-}
-
-// Login authenticates a local account and issues a session token.
-func (s *Service) Login(_ context.Context, _ *authv1.LoginRequest) (*authv1.LoginResponse, error) {
-	return nil, apierrors.Newf(apierrors.CodeUnauthorized, "auth: not implemented")
-}
-
 // SetOrgGuard injects the tenancy read guard (the SetDeleteModelGuard
 // pattern). Production and FVT wire it; unit tests leave it nil so
 // checkOrg no-ops.

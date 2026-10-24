@@ -80,6 +80,11 @@ export default function UserLoginPage() {
           ))}
         </div>
       )}
+      <div className="login-alt" data-testid="login-register-link">
+        <button className="link" onClick={() => navigate('/register')}>
+          {t('login.register')}
+        </button>
+      </div>
     </div>
   );
 }

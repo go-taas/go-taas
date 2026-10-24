@@ -232,6 +232,7 @@ export const zh: Record<string, string> = {
   'login.adminSubtitle': '管理组织、模型、账单和平台设置。',
   'login.noProviders': '未配置登录提供方。',
   'login.signInWith': '使用 {name} 登录',
+  'login.register': '注册本地账号',
   'login.loading': '加载中…',
   'login.signingIn': '登录中…',
   'login.back': '所有登录方式',
@@ -245,6 +246,17 @@ export const zh: Record<string, string> = {
   'login.errorBadCredentials': '用户名或密码错误。',
   'login.errorNoAccount': '此身份未关联 go-taas 账户，请联系组织管理员获取邀请。',
   'login.errorIncomplete': '登录未完成，请重试。',
+
+  // ---- Register ----
+  'register.title': '注册本地账号',
+  'register.subtitle': '创建用户名/密码账号，密码以 Argon2id 哈希存储。',
+  'register.username': '用户名',
+  'register.email': '邮箱（可选）',
+  'register.password': '密码（至少 8 位）',
+  'register.submit': '注册并登录',
+  'register.errorExists': '该用户名已被占用。',
+  'register.errorPasswordPolicy': '密码长度至少 8 位。',
+  'register.errorFailed': '注册失败，请重试。',
 
   // ---- NotFound ----
   'notFound.title': '页面不存在',

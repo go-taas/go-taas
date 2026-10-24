@@ -232,6 +232,7 @@ export const en: Record<string, string> = {
   'login.adminSubtitle': 'Manage organizations, models, billing and platform settings.',
   'login.noProviders': 'No sign-in providers configured.',
   'login.signInWith': 'Sign in with {name}',
+  'login.register': 'Register a local account',
   'login.loading': 'Loading…',
   'login.signingIn': 'Signing in…',
   'login.back': 'All sign-in options',
@@ -245,6 +246,17 @@ export const en: Record<string, string> = {
   'login.errorBadCredentials': 'The username or password is incorrect.',
   'login.errorNoAccount': 'This identity is not linked to a go-taas account. Ask your organization administrator for an invitation.',
   'login.errorIncomplete': 'Sign-in did not complete. Try again.',
+
+  // ---- Register ----
+  'register.title': 'Register a local account',
+  'register.subtitle': 'Create a username/password account. The password is stored as an Argon2id hash.',
+  'register.username': 'Username',
+  'register.email': 'Email (optional)',
+  'register.password': 'Password (at least 8 characters)',
+  'register.submit': 'Register and sign in',
+  'register.errorExists': 'That username is already taken.',
+  'register.errorPasswordPolicy': 'Password must be at least 8 characters.',
+  'register.errorFailed': 'Registration failed. Try again.',
 
   // ---- NotFound ----
   'notFound.title': 'Page not found',
