@@ -1,3 +1,10 @@
+# [1.67.0](https://github.com/go-taas/go-taas/compare/v1.66.2...v1.67.0) (2026-10-24)
+
+
+### Features
+
+* **auth:** add local account registration and login ([2ad316a](https://github.com/go-taas/go-taas/commit/2ad316add9237dfc18c7ad3f3a25badc42508673))
+
 ## [1.66.2](https://github.com/go-taas/go-taas/compare/v1.66.1...v1.66.2) (2026-10-24)
 
 
