@@ -8,13 +8,16 @@ import { Camera, EnvelopeSimple, IdentificationBadge, UserCircle } from '@phosph
 import { Avatar, ErrorBanner } from '../../components';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
+import { useRealm } from '../../surface';
 import { useI18n } from '../../i18n';
-import { useProfile, type UserProfile } from '../../profile';
+import { profilePath, useProfile, type UserProfile } from '../../profile';
 
 export default function ProfilePage() {
   const api = useApi();
   const { orgId } = useOrg();
   const { t } = useI18n();
+  const realm = useRealm();
+  const path = profilePath(realm);
   const { setProfile: applyProfile } = useProfile();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState('');
@@ -29,7 +32,7 @@ export default function ProfilePage() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.get<{ profile: UserProfile }>('/api/v1/auth/profile', orgId);
+      const data = await api.get<{ profile: UserProfile }>(path, orgId);
       setProfile(data.profile);
       setDisplayName(data.profile.displayName || '');
       setAvatar(data.profile.avatar || '');
@@ -39,7 +42,7 @@ export default function ProfilePage() {
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, t, applyProfile]);
+  }, [api, orgId, path, t, applyProfile]);
 
   useEffect(() => {
     void load();
@@ -69,7 +72,7 @@ export default function ProfilePage() {
     setError('');
     setSaved(false);
     try {
-      const data = await api.patch<{ profile: UserProfile }>('/api/v1/auth/profile', orgId, {
+      const data = await api.patch<{ profile: UserProfile }>(path, orgId, {
         displayName: displayName.trim(),
         avatar,
       });

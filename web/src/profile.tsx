@@ -30,6 +30,12 @@ const ProfileContext = createContext<ProfileContextValue>({
   setProfile: () => {},
 });
 
+// profilePath returns the profile API path of a realm. The admin console
+// serves it under /api/v1/admin so the request stays on its surface.
+export function profilePath(realm: string): string {
+  return realm === 'admin' ? '/api/v1/admin/auth/profile' : '/api/v1/auth/profile';
+}
+
 // avatarCacheKey scopes the cached avatar by realm so the two consoles
 // never share a stale avatar.
 function avatarCacheKey(realm: string): string {
@@ -73,7 +79,7 @@ export function ProfileProvider({ children }: { children: ReactNode }) {
   const refresh = useCallback(async () => {
     if (!getSessionToken(realm)) return;
     try {
-      const data = await api.get<{ profile: UserProfile }>('/api/v1/auth/profile', '');
+      const data = await api.get<{ profile: UserProfile }>(profilePath(realm), '');
       if (data.profile) apply(data.profile);
     } catch {
       // No session or transient failure: the cached avatar stays.

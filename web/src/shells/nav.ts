@@ -91,6 +91,7 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
       { path: '/admin/members', labelKey: 'nav.members', testid: 'nav-members', icon: Users },
       { path: '/admin/invitations', labelKey: 'nav.invitations', testid: 'nav-invitations', icon: Envelope },
       { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
+      { path: '/admin/profile', labelKey: 'nav.profile', testid: 'nav-profile', icon: UserCircle },
       { path: '/admin/quotas', labelKey: 'nav.quotas', testid: 'nav-quotas', icon: SlidersHorizontal },
       { path: '/admin/sso', labelKey: 'nav.ssoProviders', testid: 'nav-sso-providers', icon: Key },
       { path: '/admin/identity-bindings', labelKey: 'nav.identityBindings', testid: 'nav-identity-bindings', icon: LinkSimple },

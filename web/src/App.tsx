@@ -232,6 +232,7 @@ function AdminSurface({ path }: { path: string }) {
               <Route path="/admin/members" element={<MembersPage />} />
               <Route path="/admin/invitations" element={<InvitationsPage />} />
               <Route path="/admin/join-requests" element={<JoinRequestsPage />} />
+              <Route path="/admin/profile" element={<ProfilePage />} />
               <Route path="/admin/sso" element={<SSOProvidersPage />} />
               <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
               <Route path="/admin/models" element={<ModelsPage />} />
