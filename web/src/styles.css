@@ -2041,6 +2041,38 @@ button.primary:hover {
   font-size: 13px;
 }
 
+.login .password-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.login .password-row input {
+  flex: 1;
+}
+
+.login .password-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 8px;
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius);
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.login .password-toggle:hover {
+  color: var(--text);
+}
+
+.login .field-error {
+  font-size: 12px;
+  color: var(--danger, #e5484d);
+  margin-top: 4px;
+}
+
 /* Account card (feature-22): identity + console switch + sign out.
    Lives at the bottom of the dark sidebar, so it uses the sidebar
    palette rather than the light-surface tokens. */

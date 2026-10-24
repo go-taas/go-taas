@@ -78,11 +78,14 @@ const (
 // User is the platform account model. Roles and org memberships are not
 // columns — they are derived per-session from the attribute mapping and
 // the organizations table (D7). The state moves only through the
-// disable/enable endpoints.
+// disable/enable endpoints. Username and email are globally unique and
+// immutable; display name and avatar are mutable profile fields.
 type User struct {
 	ID           string `gorm:"primaryKey;type:uuid"`
 	Username     string `gorm:"size:128;not null;uniqueIndex"`
-	Email        string `gorm:"size:256"`
+	Email        string `gorm:"size:256;uniqueIndex"`
+	DisplayName  string `gorm:"size:128;not null;default:''"`
+	Avatar       string `gorm:"size:512;not null;default:''"`
 	PasswordHash string `gorm:"size:256"`
 	State        string `gorm:"size:16;not null;default:'active'"`
 	CreatedAt    time.Time

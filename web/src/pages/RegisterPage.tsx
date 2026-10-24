@@ -1,9 +1,11 @@
 // Register page: create a local account (username/password) and sign in.
 // The account is stored with an Argon2id-hashed password; on success the
 // returned session routes to the realm home. When email verification is
-// enabled, an email verification code is required.
+// enabled, an email verification code is required. The resend countdown
+// persists across page refreshes via localStorage.
 
 import { useEffect, useState } from 'react';
+import { Eye, EyeSlash } from '@phosphor-icons/react';
 import { useApi } from '../surface';
 import { setSessionToken, type Realm } from '../api';
 import { navigate } from '../router';
@@ -25,26 +27,48 @@ interface SendCodeResponse {
   resendAfterSeconds?: string;
 }
 
+// The localStorage key for the register resend cooldown deadline.
+const COOLDOWN_KEY = 'go-taas.register.cooldown-until';
+
 export default function RegisterPage() {
   const api = useApi();
   const { t } = useI18n();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [email, setEmail] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // 1-minute resend countdown.
+  // Restore the resend cooldown from localStorage on mount.
   useEffect(() => {
-    if (cooldown <= 0) return;
+    const until = parseInt(localStorage.getItem(COOLDOWN_KEY) || '0', 10);
+    const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    if (remaining > 0) setCooldown(remaining);
+  }, []);
+
+  // 1-minute resend countdown, persisted to localStorage.
+  useEffect(() => {
+    if (cooldown <= 0) {
+      localStorage.removeItem(COOLDOWN_KEY);
+      return;
+    }
     const id = setInterval(() => setCooldown((c) => c - 1), 1000);
     return () => clearInterval(id);
   }, [cooldown]);
 
-  const canSubmit = username.trim().length > 0 && password.length >= 8 && !submitting;
+  const passwordsMatch = password === confirmPassword;
+  const canSubmit =
+    username.trim().length > 0 &&
+    password.length >= 8 &&
+    passwordsMatch &&
+    email.trim().length > 0 &&
+    emailCode.trim().length > 0 &&
+    !submitting;
 
   const errorCopy = (code: number): string => {
     switch (code) {
@@ -70,6 +94,7 @@ export default function RegisterPage() {
       });
       const secs = parseInt(data.resendAfterSeconds || '60', 10) || 60;
       setCooldown(secs);
+      localStorage.setItem(COOLDOWN_KEY, String(Date.now() + secs * 1000));
     } catch (e) {
       const code = (e as { code?: number }).code;
       setError(code === 10037 ? t('register.errorCooldown') : t('register.errorSendCode'));
@@ -169,14 +194,41 @@ export default function RegisterPage() {
         </div>
         <div className="field">
           <label htmlFor="register-password">{t('register.password')}</label>
+          <div className="password-row">
+            <input
+              id="register-password"
+              data-testid="register-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              data-testid="register-password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? t('common.hidePassword') : t('common.showPassword')}
+            >
+              {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
+        </div>
+        <div className="field">
+          <label htmlFor="register-confirm-password">{t('register.confirmPassword')}</label>
           <input
-            id="register-password"
-            data-testid="register-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
+            id="register-confirm-password"
+            data-testid="register-confirm-password"
+            type={showPassword ? 'text' : 'password'}
+            value={confirmPassword}
+            onChange={(e) => setConfirmPassword(e.target.value)}
             autoComplete="new-password"
           />
+          {confirmPassword.length > 0 && !passwordsMatch && (
+            <div className="field-error" data-testid="register-password-mismatch">
+              {t('register.passwordMismatch')}
+            </div>
+          )}
         </div>
         <button
           type="submit"

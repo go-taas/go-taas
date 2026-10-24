@@ -85,6 +85,7 @@ export const en: Record<string, string> = {
   'nav.activity': 'Activity',
   'nav.myOrganizations': 'My Organizations',
   'nav.myProjects': 'My Projects',
+  'nav.profile': 'Profile',
   'nav.models': 'Models',
   'nav.organizations': 'Organizations',
   'nav.users': 'Users',
@@ -270,6 +271,10 @@ export const en: Record<string, string> = {
   'register.errorBadCode': 'Invalid or expired verification code.',
   'register.errorCooldown': 'Please wait before requesting another code.',
   'register.errorSendCode': 'Failed to send the code.',
+  'register.confirmPassword': 'Confirm password',
+  'register.passwordMismatch': 'Passwords do not match.',
+  'common.showPassword': 'Show password',
+  'common.hidePassword': 'Hide password',
 
   // ---- NotFound ----
   'notFound.title': 'Page not found',
@@ -2082,6 +2087,18 @@ export const en: Record<string, string> = {
   'myprojects.colOrganization': 'Organization',
   'myprojects.colRole': 'Role',
   'myprojects.loadFailed': 'failed to load my projects',
+
+  // ---- User: Profile ----
+  'profile.title': 'My Profile',
+  'profile.username': 'Username (immutable)',
+  'profile.email': 'Email (immutable)',
+  'profile.displayName': 'Display name',
+  'profile.avatar': 'Avatar URL',
+  'profile.avatarPlaceholder': 'https://example.com/avatar.png',
+  'profile.save': 'Save',
+  'profile.saved': 'Saved.',
+  'profile.loadFailed': 'failed to load profile',
+  'profile.saveFailed': 'failed to save profile',
 
   // ---- User: Activity ----
   'uactivity.title': 'My Activity',

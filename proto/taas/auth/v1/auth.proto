@@ -35,6 +35,22 @@ service AuthService {
     };
   }
 
+  // GetUserProfile returns the caller's own profile (user surface).
+  rpc GetUserProfile(GetUserProfileRequest) returns (GetUserProfileResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/auth/profile"
+    };
+  }
+
+  // UpdateUserProfile updates the caller's mutable profile fields
+  // (display name, avatar). Username and email are immutable.
+  rpc UpdateUserProfile(UpdateUserProfileRequest) returns (UpdateUserProfileResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/auth/profile"
+      body: "*"
+    };
+  }
+
   // ListAPIKeys returns the API keys of the caller's organization.
   // User-surface API: served under /api/v1; the session's active org
   // wins and X-Organization-Id is ignored (feature-17 AD6).
@@ -363,6 +379,35 @@ message SendEmailCodeResponse {
   // resend_after_seconds is the minimum wait before requesting another
   // code (60s).
   int64 resend_after_seconds = 2;
+}
+
+// UserProfile describes the caller's own profile.
+message UserProfile {
+  string user_id = 1;
+  string username = 2;
+  string email = 3;
+  string display_name = 4;
+  string avatar = 5;
+  int64 created_at = 6;
+}
+
+message GetUserProfileRequest {}
+
+message GetUserProfileResponse {
+  taas.common.v1.Response response = 1;
+  UserProfile profile = 2;
+}
+
+message UpdateUserProfileRequest {
+  // display_name replaces the stored display name; empty clears it.
+  string display_name = 1;
+  // avatar replaces the stored avatar URL; empty clears it.
+  string avatar = 2;
+}
+
+message UpdateUserProfileResponse {
+  taas.common.v1.Response response = 1;
+  UserProfile profile = 2;
 }
 
 message ListAPIKeysRequest {

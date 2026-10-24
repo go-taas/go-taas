@@ -284,6 +284,19 @@ func (r *SSORepository) FindUserByUsername(ctx context.Context, username string)
 	return &row, nil
 }
 
+// FindUserByEmail returns the user with the given email.
+// gorm.ErrRecordNotFound passes through; the caller maps it to
+// CodeOrganizationNotFound (reused: unknown user). Used to link an SSO
+// identity to an existing local account by email.
+func (r *SSORepository) FindUserByEmail(ctx context.Context, email string) (*User, error) {
+	var row User
+	err := r.db.DB(ctx).Where("email = ?", email).First(&row).Error
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // ListUsers returns the user directory, optionally filtered by state,
 // ordered by creation time descending.
 func (r *SSORepository) ListUsers(ctx context.Context, filter UserFilter, offset, limit int) ([]*User, int64, error) {
@@ -311,6 +324,23 @@ func (r *SSORepository) SetUserState(ctx context.Context, id string, state strin
 		Update("state", state).Error; err != nil {
 		return nil, err
 	}
+	if err := r.db.DB(ctx).Where("id = ?", id).First(&row).Error; err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// UpdateUserProfile updates the mutable profile fields (display name,
+// avatar) and re-selects the row. Username and email are immutable.
+// gorm.ErrRecordNotFound passes through; the caller maps it to
+// CodeUserNotFound.
+func (r *SSORepository) UpdateUserProfile(ctx context.Context, id, displayName, avatar string) (*User, error) {
+	res := r.db.DB(ctx).Model(&User{}).Where("id = ?", id).
+		Updates(map[string]any{"display_name": displayName, "avatar": avatar}).Error
+	if res != nil {
+		return nil, res
+	}
+	var row User
 	if err := r.db.DB(ctx).Where("id = ?", id).First(&row).Error; err != nil {
 		return nil, err
 	}

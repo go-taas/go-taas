@@ -697,6 +697,24 @@ func (s *Service) resolveIdentity(ctx context.Context, repo *SSORepository, prov
 	if !prov.AllowAutoProvision {
 		return nil, apierrors.New(apierrors.CodeSSONoAccount)
 	}
+	// Link by email: if a local account already exists with the same
+	// email, bind the SSO identity to it instead of creating a new user.
+	if identity.Email != "" {
+		if existing, err := repo.FindUserByEmail(ctx, identity.Email); err == nil {
+			binding = &IdentityBinding{
+				ID:              uuid.NewString(),
+				ProviderID:      prov.ID,
+				ExternalSubject: identity.ExternalSubject,
+				UserID:          existing.ID,
+			}
+			if err := repo.CreateBinding(ctx, binding); err != nil {
+				return nil, err
+			}
+			return existing, nil
+		} else if !isRecordNotFound(err) {
+			return nil, err
+		}
+	}
 	username := identity.Username
 	if username == "" {
 		username = identity.ExternalSubject

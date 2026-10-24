@@ -2,6 +2,7 @@
 // user surface's SSO providers, plus a local username/password form.
 
 import { useEffect, useState } from 'react';
+import { Eye, EyeSlash } from '@phosphor-icons/react';
 import { useApi } from '../../surface';
 import { navigate } from '../../router';
 import { setSessionToken, type Realm } from '../../api';
@@ -26,6 +27,9 @@ interface SendCodeResponse {
   resendAfterSeconds?: string;
 }
 
+// The localStorage key for the login resend cooldown deadline.
+const COOLDOWN_KEY = 'go-taas.login.cooldown-until';
+
 export default function UserLoginPage() {
   const api = useApi();
   const { t } = useI18n();
@@ -38,11 +42,22 @@ export default function UserLoginPage() {
   const [emailCode, setEmailCode] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [cooldown, setCooldown] = useState(0);
 
-  // 1-minute resend countdown.
+  // Restore the resend cooldown from localStorage on mount.
   useEffect(() => {
-    if (cooldown <= 0) return;
+    const until = parseInt(localStorage.getItem(COOLDOWN_KEY) || '0', 10);
+    const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
+    if (remaining > 0) setCooldown(remaining);
+  }, []);
+
+  // 1-minute resend countdown, persisted to localStorage.
+  useEffect(() => {
+    if (cooldown <= 0) {
+      localStorage.removeItem(COOLDOWN_KEY);
+      return;
+    }
     const id = setInterval(() => setCooldown((c) => c - 1), 1000);
     return () => clearInterval(id);
   }, [cooldown]);
@@ -87,6 +102,7 @@ export default function UserLoginPage() {
       });
       const secs = parseInt(data.resendAfterSeconds || '60', 10) || 60;
       setCooldown(secs);
+      localStorage.setItem(COOLDOWN_KEY, String(Date.now() + secs * 1000));
     } catch (e) {
       const code = (e as { code?: number }).code;
       setError(code === 10037 ? t('login.errorCooldown') : t('login.errorSendCode'));
@@ -182,14 +198,25 @@ export default function UserLoginPage() {
         </div>
         <div className="field">
           <label htmlFor="login-password">{t('login.password')}</label>
-          <input
-            id="login-password"
-            data-testid="login-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            autoComplete="current-password"
-          />
+          <div className="password-row">
+            <input
+              id="login-password"
+              data-testid="login-password"
+              type={showPassword ? 'text' : 'password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              autoComplete="current-password"
+            />
+            <button
+              type="button"
+              className="password-toggle"
+              data-testid="login-password-toggle"
+              onClick={() => setShowPassword((v) => !v)}
+              aria-label={showPassword ? t('common.hidePassword') : t('common.showPassword')}
+            >
+              {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
+            </button>
+          </div>
         </div>
         <button
           type="submit"

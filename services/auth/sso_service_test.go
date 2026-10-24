@@ -716,18 +716,62 @@ func TestResolveIdentityBindingFound(t *testing.T) {
 	svc, _ := newSSOService(t)
 	ctx := context.Background()
 
-	user := &User{ID: uuid.NewString(), Username: "alice", Email: "alice@x.com"}
-	require.NoError(t, svc.ssoRepo.CreateUser(ctx, user))
-	require.NoError(t, svc.ssoRepo.CreateBinding(ctx, &IdentityBinding{
-		ID: uuid.NewString(), ProviderID: "keycloak",
-		ExternalSubject: "http://keycloak:8080/realms/go-taas:sub-1", UserID: user.ID,
+	// A provider with auto-provision enabled.
+	require.NoError(t, svc.ssoRepo.CreateProvider(ctx, &SSOProvider{
+		ID: "keycloak", Type: ProviderTypeOIDC, DisplayName: "Keycloak",
+		Issuer: "http://keycloak:8080/realms/go-taas", ClientID: "go-taas-console",
+		ClientSecret: "secret", RedirectURI: "http://localhost:9091/api/v1/auth/sso/*",
+		Enabled: true, AllowAutoProvision: true,
 	}))
 
-	got, err := svc.resolveIdentity(ctx, svc.ssoRepo, &SSOProvider{
+	// A pre-existing binding.
+	user := &User{ID: uuid.NewString(), Username: "alice", Email: "alice@example.com"}
+	require.NoError(t, svc.ssoRepo.CreateUser(ctx, user))
+	require.NoError(t, svc.ssoRepo.CreateBinding(ctx, &IdentityBinding{
+		ID: uuid.NewString(), ProviderID: "keycloak", ExternalSubject: "sub-1", UserID: user.ID,
+	}))
+
+	// The identity resolves to the bound user.
+	resolved, err := svc.resolveIdentity(ctx, svc.ssoRepo, &SSOProvider{
 		ID: "keycloak", Type: ProviderTypeOIDC, AllowAutoProvision: true,
-	}, &Identity{ExternalSubject: "http://keycloak:8080/realms/go-taas:sub-1"})
+	}, &Identity{ExternalSubject: "sub-1", Username: "alice", Email: "alice@example.com"})
 	require.NoError(t, err)
-	assert.Equal(t, user.ID, got.ID, "resolved to the bound user")
+	assert.Equal(t, user.ID, resolved.ID)
+}
+
+// TestResolveIdentityLinksByEmail verifies that an SSO identity with no
+// binding links to an existing local account by email.
+func TestResolveIdentityLinksByEmail(t *testing.T) {
+	svc, _ := newSSOService(t)
+	ctx := context.Background()
+
+	// A provider with auto-provision enabled.
+	require.NoError(t, svc.ssoRepo.CreateProvider(ctx, &SSOProvider{
+		ID: "keycloak", Type: ProviderTypeOIDC, DisplayName: "Keycloak",
+		Issuer: "http://keycloak:8080/realms/go-taas", ClientID: "go-taas-console",
+		ClientSecret: "secret", RedirectURI: "http://localhost:9091/api/v1/auth/sso/*",
+		Enabled: true, AllowAutoProvision: true,
+	}))
+
+	// An existing local account with the same email.
+	localUser := &User{ID: uuid.NewString(), Username: "alice", Email: "alice@example.com"}
+	require.NoError(t, svc.ssoRepo.CreateUser(ctx, localUser))
+
+	// The SSO identity (no binding) links to the local account by email.
+	user, err := svc.resolveIdentity(ctx, svc.ssoRepo, &SSOProvider{
+		ID: "keycloak", Type: ProviderTypeOIDC, AllowAutoProvision: true,
+	}, &Identity{
+		ExternalSubject: "http://keycloak:8080/realms/go-taas:alice-subject",
+		Username:        "alice-oidc",
+		Email:           "alice@example.com",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, localUser.ID, user.ID, "linked to the existing local account by email")
+
+	// The binding now exists for the resolved subject.
+	binding, err := svc.ssoRepo.FindBindingBySubject(ctx, "keycloak", "http://keycloak:8080/realms/go-taas:alice-subject")
+	require.NoError(t, err)
+	assert.Equal(t, localUser.ID, binding.UserID)
 }
 
 // TestResolveIdentityNoProvision verifies that JIT provisioning disabled

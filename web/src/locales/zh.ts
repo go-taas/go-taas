@@ -85,6 +85,7 @@ export const zh: Record<string, string> = {
   'nav.activity': '活动',
   'nav.myOrganizations': '我的组织',
   'nav.myProjects': '我的项目',
+  'nav.profile': '个人资料',
   'nav.models': '模型',
   'nav.organizations': '组织',
   'nav.users': '用户',
@@ -270,6 +271,10 @@ export const zh: Record<string, string> = {
   'register.errorBadCode': '验证码错误或已过期。',
   'register.errorCooldown': '请稍候再发送验证码。',
   'register.errorSendCode': '发送验证码失败。',
+  'register.confirmPassword': '确认密码',
+  'register.passwordMismatch': '两次输入的密码不一致。',
+  'common.showPassword': '显示密码',
+  'common.hidePassword': '隐藏密码',
 
   // ---- NotFound ----
   'notFound.title': '页面不存在',
@@ -2059,6 +2064,18 @@ export const zh: Record<string, string> = {
   'myprojects.colOrganization': '组织',
   'myprojects.colRole': '角色',
   'myprojects.loadFailed': '加载我的项目失败',
+
+  // ---- User: Profile ----
+  'profile.title': '个人资料',
+  'profile.username': '用户名（不可修改）',
+  'profile.email': '邮箱（不可修改）',
+  'profile.displayName': '显示名',
+  'profile.avatar': '头像 URL',
+  'profile.avatarPlaceholder': 'https://example.com/avatar.png',
+  'profile.save': '保存',
+  'profile.saved': '已保存。',
+  'profile.loadFailed': '加载个人资料失败',
+  'profile.saveFailed': '保存个人资料失败',
 
   // ---- User: Activity ----
   'uactivity.title': '我的活动',
