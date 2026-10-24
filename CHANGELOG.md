@@ -1,3 +1,10 @@
+## [1.68.1](https://github.com/go-taas/go-taas/compare/v1.68.0...v1.68.1) (2026-10-24)
+
+
+### Bug Fixes
+
+* **auth:** support implicit TLS SMTP on port 465 ([0f90593](https://github.com/go-taas/go-taas/commit/0f90593f2b57c698f411057079b2a830cbf7c49c))
+
 # [1.68.0](https://github.com/go-taas/go-taas/compare/v1.67.0...v1.68.0) (2026-10-24)
 
 
