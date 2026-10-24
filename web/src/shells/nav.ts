@@ -235,6 +235,8 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
     shortLabelKey: 'nav.cat.accountShort',
     icon: User,
     items: [
+      { path: '/my-org', labelKey: 'nav.myOrganizations', testid: 'user-nav-my-org', icon: Buildings },
+      { path: '/my-projects', labelKey: 'nav.myProjects', testid: 'user-nav-my-projects', icon: Folder },
       { path: '/activity', labelKey: 'nav.activity', testid: 'user-nav-activity', icon: Pulse },
       { path: '/webhooks', labelKey: 'nav.webhooks', testid: 'user-nav-webhooks', icon: LinkSimple },
       { path: '/notifications', labelKey: 'nav.notifications', testid: 'user-nav-notifications', icon: Bell },

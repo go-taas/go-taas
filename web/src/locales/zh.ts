@@ -83,6 +83,8 @@ export const zh: Record<string, string> = {
   'nav.playground': '试用',
   'nav.billing': '账单',
   'nav.activity': '活动',
+  'nav.myOrganizations': '我的组织',
+  'nav.myProjects': '我的项目',
   'nav.models': '模型',
   'nav.organizations': '组织',
   'nav.users': '用户',
@@ -2019,6 +2021,19 @@ export const zh: Record<string, string> = {
   'uusage.colTokens': 'Tokens',
   'uusage.empty': '还没有用量。',
   'uusage.loadFailed': '加载用量失败',
+
+  // ---- User: My organizations & projects ----
+  'myorgs.title': '我的组织',
+  'myorgs.empty': '你尚未加入任何组织。',
+  'myorgs.colOrganization': '组织',
+  'myorgs.colRole': '角色',
+  'myorgs.loadFailed': '加载我的组织失败',
+  'myprojects.title': '我的项目',
+  'myprojects.empty': '你尚未加入任何项目。',
+  'myprojects.colProject': '项目',
+  'myprojects.colOrganization': '组织',
+  'myprojects.colRole': '角色',
+  'myprojects.loadFailed': '加载我的项目失败',
 
   // ---- User: Activity ----
   'uactivity.title': '我的活动',

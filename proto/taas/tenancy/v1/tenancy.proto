@@ -245,6 +245,18 @@ service TenancyService {
   rpc GetMyQuota(GetMyQuotaRequest) returns (GetMyQuotaResponse) {
     option (google.api.http) = {get: "/api/v1/quotas"};
   }
+
+  // GetMyOrganizations returns the caller's own organizations and roles
+  // (user surface; the caller is resolved from the session).
+  rpc GetMyOrganizations(GetMyOrganizationsRequest) returns (GetMyOrganizationsResponse) {
+    option (google.api.http) = {get: "/api/v1/tenancy/my-organizations"};
+  }
+
+  // GetMyProjects returns the caller's own projects and roles (user
+  // surface; the caller is resolved from the session).
+  rpc GetMyProjects(GetMyProjectsRequest) returns (GetMyProjectsResponse) {
+    option (google.api.http) = {get: "/api/v1/tenancy/my-projects"};
+  }
 }
 
 message CreateOrganizationRequest {
@@ -674,4 +686,35 @@ message GetMyQuotaResponse {
   // request_increase_email is the configured operator mailbox for the
   // Request-increase mailto (AD18); empty hides the button.
   string request_increase_email = 4;
+}
+
+// MyOrganization describes one of the caller's organizations and role.
+message MyOrganization {
+  string organization_id = 1;
+  string display_name = 2;
+  // role is owner / admin / member / viewer.
+  string role = 3;
+}
+
+message GetMyOrganizationsRequest {}
+
+message GetMyOrganizationsResponse {
+  taas.common.v1.Response response = 1;
+  repeated MyOrganization organizations = 2;
+}
+
+// MyProject describes one of the caller's projects and role.
+message MyProject {
+  string project_id = 1;
+  string organization_id = 2;
+  string display_name = 3;
+  // role is admin / member / viewer.
+  string role = 4;
+}
+
+message GetMyProjectsRequest {}
+
+message GetMyProjectsResponse {
+  taas.common.v1.Response response = 1;
+  repeated MyProject projects = 2;
 }

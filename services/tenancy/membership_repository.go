@@ -147,6 +147,14 @@ func (r *MembershipRepository) RemoveProjectMember(ctx context.Context, projectI
 		Delete(&ProjectMember{}).Error
 }
 
+// ListMemberProjects returns the (project, role) pairs for a user — the
+// user-surface "my projects" lookup.
+func (r *MembershipRepository) ListMemberProjects(ctx context.Context, userID string) ([]*ProjectMember, error) {
+	var rows []*ProjectMember
+	err := r.db.DB(ctx).Where("user_id = ?", userID).Find(&rows).Error
+	return rows, err
+}
+
 // CreateInvitation inserts an invitation. A duplicate pending
 // (org, email) maps to CodeInvitationExists.
 func (r *MembershipRepository) CreateInvitation(ctx context.Context, inv *Invitation) error {

@@ -812,6 +812,21 @@ export interface ProjectMember {
   joinedAt: string;
 }
 
+// ---- user-surface my tenancy (feature #10) ----
+
+export interface MyOrganization {
+  organizationId: string;
+  displayName: string;
+  role: string; // owner | admin | member | viewer
+}
+
+export interface MyProject {
+  projectId: string;
+  organizationId: string;
+  displayName: string;
+  role: string; // admin | member | viewer
+}
+
 export interface Invitation {
   invitationId: string;
   email: string;

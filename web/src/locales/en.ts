@@ -83,6 +83,8 @@ export const en: Record<string, string> = {
   'nav.playground': 'Playground',
   'nav.billing': 'Billing',
   'nav.activity': 'Activity',
+  'nav.myOrganizations': 'My Organizations',
+  'nav.myProjects': 'My Projects',
   'nav.models': 'Models',
   'nav.organizations': 'Organizations',
   'nav.users': 'Users',
@@ -2042,6 +2044,19 @@ export const en: Record<string, string> = {
   'uusage.colTokens': 'Tokens',
   'uusage.empty': 'No usage yet.',
   'uusage.loadFailed': 'failed to load usage',
+
+  // ---- User: My organizations & projects ----
+  'myorgs.title': 'My Organizations',
+  'myorgs.empty': 'You are not a member of any organization yet.',
+  'myorgs.colOrganization': 'Organization',
+  'myorgs.colRole': 'Role',
+  'myorgs.loadFailed': 'failed to load my organizations',
+  'myprojects.title': 'My Projects',
+  'myprojects.empty': 'You are not a member of any project yet.',
+  'myprojects.colProject': 'Project',
+  'myprojects.colOrganization': 'Organization',
+  'myprojects.colRole': 'Role',
+  'myprojects.loadFailed': 'failed to load my projects',
 
   // ---- User: Activity ----
   'uactivity.title': 'My Activity',

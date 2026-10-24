@@ -110,6 +110,8 @@ import UserCostAnalyticsPage from './pages/user/UserCostAnalyticsPage';
 import UserCostDetailPage from './pages/user/UserCostDetailPage';
 import UserForecastPage from './pages/user/UserForecastPage';
 import UserQuotasPage from './pages/user/UserQuotasPage';
+import MyOrganizationsPage from './pages/user/MyOrganizationsPage';
+import MyProjectsPage from './pages/user/MyProjectsPage';
 import UserOptimizationPage from './pages/user/UserOptimizationPage';
 import DataExportPage from './pages/DataExportPage';
 import NotFoundPage from './pages/NotFoundPage';
@@ -178,6 +180,8 @@ function UserSurface({ path }: { path: string }) {
               <Route path="/cost/:dimension/:value" element={<UserCostDetailPage />} />
               <Route path="/forecast" element={<UserForecastPage />} />
               <Route path="/quotas" element={<UserQuotasPage />} />
+              <Route path="/my-org" element={<MyOrganizationsPage />} />
+              <Route path="/my-projects" element={<MyProjectsPage />} />
               <Route path="/optimization" element={<UserOptimizationPage />} />
               <Route path="/errors" element={<UserErrorAnalysisPage />} />
               <Route path="/errors/:errorCode" element={<UserErrorDetailPage />} />
