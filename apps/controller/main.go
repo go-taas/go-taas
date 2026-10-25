@@ -66,6 +66,10 @@ func main() {
 	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
 	// placement-policy annotation, the pool's scheduling hint, and the
 	// pool's node label selector are config-driven.
+	// The serving gateway resolves a request's model to an HTTPRoute in its
+	// own namespace, so the controller writes model routes next to the
+	// Gateway the AIBrix install declares.
+	reconciler.SetGatewayRouting(cfg.Runtime.AIBrix.Namespace, cfg.Runtime.AIBrix.GatewayName)
 	reconciler.SetVGPUConfig(
 		cfg.VGPU.HAMI.PolicyAnnotation,
 		"binpack",

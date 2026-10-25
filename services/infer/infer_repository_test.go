@@ -20,7 +20,7 @@ import (
 
 func newInferTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}))
@@ -280,7 +280,7 @@ func TestChangeEventJSONShape(t *testing.T) {
 		ModelID: "model-1", ModelVersion: "v1", ImageID: "img-1",
 		Replicas: 2, Accelerator: "nvidia", AcceleratorType: "A100",
 	}
-	evt := buildChangeEvent(EventTypeUpsert, svc, "qwen/v1", "ghcr.io/go-taas/vllm:v0.6.3", "vllm")
+	evt := buildChangeEvent(EventTypeUpsert, svc, "qwen2.5-0.5b", "qwen/v1", "ghcr.io/go-taas/vllm:v0.6.3", "vllm")
 
 	body, err := json.Marshal(evt)
 	require.NoError(t, err)
@@ -294,6 +294,7 @@ func TestChangeEventJSONShape(t *testing.T) {
 	modelRaw, ok := raw["model"].(map[string]any)
 	require.True(t, ok)
 	assert.Equal(t, "model-1", modelRaw["model_id"])
+	assert.Equal(t, "qwen2.5-0.5b", modelRaw["name"])
 	assert.Equal(t, "qwen/v1", modelRaw["weight_path"])
 	imageRaw, ok := raw["image"].(map[string]any)
 	require.True(t, ok)
@@ -306,7 +307,7 @@ func TestChangeEventJSONShape(t *testing.T) {
 func TestPublishChangeHeaders(t *testing.T) {
 	client := &recordingClient{}
 	svc := &InferenceService{ID: "svc-1", OrganizationID: "org-1", Name: "demo"}
-	evt := buildChangeEvent(EventTypeDelete, svc, "", "", "")
+	evt := buildChangeEvent(EventTypeDelete, svc, "", "", "", "")
 
 	require.NoError(t, publishChange(context.Background(), client, evt))
 	require.Len(t, client.published, 1)
@@ -322,7 +323,7 @@ func TestPublishChangeWithCompensationRollsBack(t *testing.T) {
 
 	svc := seedService(t, repo, "org", "svc", StatePending, time.Now())
 	client := &recordingClient{failNext: true}
-	evt := buildChangeEvent(EventTypeUpsert, svc, "p", "ref", "vllm")
+	evt := buildChangeEvent(EventTypeUpsert, svc, "demo", "p", "ref", "vllm")
 
 	err := publishChangeWithCompensation(ctx, client, repo, evt, svc.ID)
 	require.Error(t, err)

@@ -436,6 +436,9 @@ func (c *Configuration) applyDefaults() {
 	if c.Runtime.AIBrix.Namespace == "" {
 		c.Runtime.AIBrix.Namespace = "aibrix-system"
 	}
+	if c.Runtime.AIBrix.GatewayName == "" {
+		c.Runtime.AIBrix.GatewayName = "aibrix-eg"
+	}
 	if c.Runtime.AIBrix.Gateway == "" {
 		c.Runtime.AIBrix.Gateway = "envoy-aibrix-system-aibrix-eg"
 	}

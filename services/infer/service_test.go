@@ -32,7 +32,7 @@ func seedImageRegistry(t *testing.T) {
 	t.Helper()
 	// Seed a disposable DB-backed registry and bind the package-level
 	// Lookup/List helpers to it.
-	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", t.Name())), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&image.Image{}, &image.WarmupTask{}))
 	repo := image.NewRepository(db)

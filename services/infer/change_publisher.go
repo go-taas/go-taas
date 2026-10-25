@@ -26,7 +26,11 @@ const (
 // changeEventModel is the resolved model spec inside a change event. The
 // controller never needs a database round-trip.
 type changeEventModel struct {
-	ModelID    string `json:"model_id"`
+	ModelID string `json:"model_id"`
+	// Name is the catalog model name. Clients send it as the `model`
+	// field of an inference request, so the controller advertises it to
+	// AIBrix and passes it to the engine as its served model name.
+	Name       string `json:"name,omitempty"`
 	Version    string `json:"version"`
 	WeightPath string `json:"weight_path"`
 }
@@ -70,8 +74,13 @@ type changeEvent struct {
 }
 
 // buildChangeEvent composes the change event for a service row with its
-// resolved model version and image summary.
-func buildChangeEvent(eventType string, svc *InferenceService, weightPath, imageReference, engine string) changeEvent {
+// resolved model name, model version and image summary. modelName is the
+// catalog name clients pass as `model`; an empty value falls back to the
+// service name so the engine always has a servable name.
+func buildChangeEvent(eventType string, svc *InferenceService, modelName, weightPath, imageReference, engine string) changeEvent {
+	if modelName == "" {
+		modelName = svc.Name
+	}
 	return changeEvent{
 		EventType:      eventType,
 		ServiceID:      svc.ID,
@@ -79,6 +88,7 @@ func buildChangeEvent(eventType string, svc *InferenceService, weightPath, image
 		Name:           svc.Name,
 		Model: changeEventModel{
 			ModelID:    svc.ModelID,
+			Name:       modelName,
 			Version:    svc.ModelVersion,
 			WeightPath: weightPath,
 		},

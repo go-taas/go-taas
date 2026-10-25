@@ -234,7 +234,8 @@ func (s *Service) UpdateInferenceServiceAutoscaling(ctx context.Context, req *in
 		updated.Replicas = row.Replicas
 	}
 
-	evt := buildChangeEvent(EventTypeUpsert, &updated, modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt := buildChangeEvent(EventTypeUpsert, &updated, servedModelName(ctx, modelRepo, row),
+		modelVersion.WeightPath, img.Reference(), img.Engine)
 	evt.Autoscaling = effective
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish autoscaling change failed",

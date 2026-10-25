@@ -525,6 +525,7 @@ controller:
     #   aibrix:
     #     namespace: aibrix-system                     # CONFIG_RUNTIME_AIBRIX_NAMESPACE
     #     gateway: envoy-aibrix-system-aibrix-eg       # CONFIG_RUNTIME_AIBRIX_GATEWAY
+    #     gatewayName: aibrix-eg                      # CONFIG_RUNTIME_AIBRIX_GATEWAYNAME
   # Secret config overrides, written to the chart's Secret and consumed via
   # `secretKeyRef`.
   secretConfig: {}

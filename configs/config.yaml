@@ -134,11 +134,13 @@ runtime:
   # modelChangeConsumer configures the Controller's model-change consumer.
   modelChangeConsumer:
     enabled: true
-  # aibrix names the installed AIBrix control plane's namespace and the
-  # Envoy AI Gateway Deployment observed for health.
+  # aibrix names the installed AIBrix control plane's namespace, the Envoy
+  # AI Gateway Deployment observed for health, and the Gateway API Gateway
+  # object the per-model HTTPRoutes attach to.
   aibrix:
     namespace: aibrix-system
     gateway: envoy-aibrix-system-aibrix-eg
+    gatewayName: aibrix-eg
 
 # External model providers (feature #48). The provider module owns the
 # third-party LLM provider registry, the encrypted write-only API keys,

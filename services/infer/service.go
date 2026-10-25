@@ -622,6 +622,21 @@ func (s *Service) modelRepository() (*model.Repository, error) {
 	return s.modelRepo, nil
 }
 
+// servedModelName resolves the catalog name of the model an inference
+// service runs. Change events carry it because clients address the served
+// endpoint by that name and AIBrix routes on it. A lookup failure falls
+// back to the service name, which is always a valid serving name.
+func servedModelName(ctx context.Context, repo *model.Repository, svc *InferenceService) string {
+	if repo == nil || svc.ModelID == "" {
+		return svc.Name
+	}
+	row, err := repo.GetModel(ctx, svc.ModelID)
+	if err != nil || row.Name == "" {
+		return svc.Name
+	}
+	return row.Name
+}
+
 // mqClientFor lazily resolves the MQ client.
 func (s *Service) mqClientFor() (mq.Client, error) {
 	if s.mqClient != nil {
@@ -692,7 +707,11 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
-	if _, err := modelRepo.GetModel(ctx, req.GetModelId()); err != nil {
+	// The catalog name is the name clients pass as `model`; the change
+	// event carries it so the controller advertises it to AIBrix and the
+	// engine serves under it.
+	modelRow, err := modelRepo.GetModel(ctx, req.GetModelId())
+	if err != nil {
 		return nil, err
 	}
 	modelVersion, err := modelRepo.FindVersion(ctx, req.GetModelId(), req.GetModelVersion())
@@ -811,7 +830,7 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, err
 	}
 
-	evt := buildChangeEvent(EventTypeUpsert, svc, modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt := buildChangeEvent(EventTypeUpsert, svc, modelRow.Name, modelVersion.WeightPath, img.Reference(), img.Engine)
 	// Feature #16: the change event carries the effective policy (the
 	// global default when the service stores {}).
 	effective, err := repo.ResolveEffectivePolicy(ctx, svc)
@@ -1063,7 +1082,8 @@ func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleI
 
 	scaled := *row
 	scaled.Replicas = replicas
-	evt := buildChangeEvent(EventTypeUpsert, &scaled, modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt := buildChangeEvent(EventTypeUpsert, &scaled, servedModelName(ctx, modelRepo, row),
+		modelVersion.WeightPath, img.Reference(), img.Engine)
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish scale change failed",
 			"service_id", req.GetServiceId(), "err", err)
@@ -1126,7 +1146,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	// A publish failure only logs: the row is already terminated, so the
 	// service is hidden from lists and the controller's periodic resync
 	// (feature #4) eventually tears the resources down.
-	if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, "", "", "")); err != nil {
+	if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, "", "", "", "")); err != nil {
 		logger.S().Warnw("infer: publish delete change failed",
 			"service_id", req.GetServiceId(), "err", err)
 	}
@@ -1206,7 +1226,8 @@ func (s *Service) UpdateInferenceServiceVersion(ctx context.Context, req *inferv
 	updated := *row
 	updated.ModelVersion = target.Version
 	updated.State = StateDeploying
-	evt := buildChangeEvent(EventTypeUpdateVersion, &updated, target.WeightPath, img.Reference(), img.Engine)
+	evt := buildChangeEvent(EventTypeUpdateVersion, &updated, servedModelName(ctx, modelRepo, row),
+		target.WeightPath, img.Reference(), img.Engine)
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish version-change failed",
 			"service_id", req.GetServiceId(), "err", err)
@@ -1469,13 +1490,13 @@ func (s *Service) RollbackDeployment(ctx context.Context, req *inferv1.RollbackD
 	if target.isEmpty() {
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
 	}
+	modelRepo, err := s.modelRepository()
+	if err != nil {
+		return nil, err
+	}
 	// The target version, when present, must be a registered version of
 	// the service's model.
 	if target.ModelVersion != "" {
-		modelRepo, err := s.modelRepository()
-		if err != nil {
-			return nil, err
-		}
 		if _, err := modelRepo.FindVersion(ctx, row.ModelID, target.ModelVersion); err != nil {
 			return nil, err
 		}
@@ -1509,7 +1530,8 @@ func (s *Service) RollbackDeployment(ctx context.Context, req *inferv1.RollbackD
 	if err != nil {
 		return nil, err
 	}
-	evtChange := buildChangeEvent(EventTypeRollback, &updated, target.WeightPath, img.Reference(), img.Engine)
+	evtChange := buildChangeEvent(EventTypeRollback, &updated, servedModelName(ctx, modelRepo, row),
+		target.WeightPath, img.Reference(), img.Engine)
 	if err := publishChange(ctx, client, evtChange); err != nil {
 		logger.S().Errorw("infer: publish rollback change failed",
 			"service_id", req.GetServiceId(), "err", err)

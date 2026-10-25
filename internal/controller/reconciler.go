@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -33,7 +34,10 @@ type changeEvent struct {
 	OrganizationID string `json:"organization_id"`
 	Name           string `json:"name"`
 	Model          struct {
-		ModelID    string `json:"model_id"`
+		ModelID string `json:"model_id"`
+		// Name is the catalog model name clients pass as `model`. Empty
+		// falls back to the service name.
+		Name       string `json:"name,omitempty"`
 		Version    string `json:"version"`
 		WeightPath string `json:"weight_path"`
 	} `json:"model"`
@@ -133,6 +137,12 @@ type k8sReconciler struct {
 	// cardTypeLabelKeys caches card model -> node label key ("" = no node
 	// reports that card).
 	cardTypeLabelKeys map[string]string
+	// gatewayNamespace is the namespace holding the AIBrix Gateway and the
+	// per-model HTTPRoutes. Empty uses defaultAIBrixNamespace.
+	gatewayNamespace string
+	// gatewayName is the AIBrix Gateway object model routes attach to.
+	// Empty uses defaultAIBrixGateway.
+	gatewayName string
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -200,6 +210,30 @@ func (r *k8sReconciler) SetVGPUConfig(policyAnnotation, placementPolicy string, 
 	r.policyAnnotation = policyAnnotation
 	r.placementPolicy = placementPolicy
 	r.poolSelector = poolSelector
+}
+
+// SetGatewayRouting names the AIBrix Gateway that model HTTPRoutes attach
+// to. The namespace is also where the routes are written, because Gateway
+// API only routes to a backend in another namespace through a route in the
+// Gateway's own namespace plus a ReferenceGrant. Empty values keep the
+// shipped defaults.
+func (r *k8sReconciler) SetGatewayRouting(namespace, gateway string) {
+	r.gatewayNamespace = namespace
+	r.gatewayName = gateway
+}
+
+// gatewayRouteTarget returns the namespace and Gateway name model routes
+// are written against, applying the shipped defaults.
+func (r *k8sReconciler) gatewayRouteTarget() (string, string) {
+	namespace := r.gatewayNamespace
+	if namespace == "" {
+		namespace = defaultAIBrixNamespace
+	}
+	gateway := r.gatewayName
+	if gateway == "" {
+		gateway = defaultAIBrixGateway
+	}
+	return namespace, gateway
 }
 
 // ApplyInferServiceChange implements Reconciler.
@@ -546,6 +580,9 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 	if err := deleteModelClaim(ctx, r.dynamic, r.namespace, evt.Name); err != nil {
 		logger.S().Warnw("controller: delete aibrix modelclaim failed", "name", evt.Name, "err", err)
 	}
+	if err := r.deleteModelRoute(ctx, evt); err != nil {
+		logger.S().Warnw("controller: delete aibrix model route failed", "name", evt.Name, "err", err)
+	}
 	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
 	logger.S().Infow("controller: tore down inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
@@ -577,6 +614,16 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	svc := r.buildService(evt)
 	if err := r.createOrUpdateService(ctx, svc); err != nil {
 		return r.reportFailure(ctx, evt, err)
+	}
+
+	// The serving gateway refuses every request for a model it cannot
+	// resolve to a route, so a service is unroutable until its model route
+	// exists. The write is best-effort: a failure (Gateway API CRDs absent
+	// or dynamic client unavailable) is logged and the plain serving path
+	// continues unchanged.
+	if err := r.applyModelRoute(ctx, evt); err != nil {
+		logger.S().Warnw("controller: aibrix model route write failed, continuing on the plain path",
+			"service_id", evt.ServiceID, "name", evt.Name, "err", err)
 	}
 
 	// Feature #47 (AD5, AD13): when the serving scheme is aibrix, register
@@ -930,17 +977,32 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 		annotations[r.policyAnnotation] = r.placementPolicy
 		nodeSelector = mergeSelectors(nodeSelector, r.poolSelector)
 	}
+	// The serving gateway discovers which model a workload serves from the
+	// workload's own metadata, so both the Deployment (which the gateway
+	// derives the model route from) and its pods (which receive the
+	// routed traffic) carry the model name, port and backing Service.
+	modelName := servedModelName(evt)
+	routeLabels := routingLabels(modelName)
+	routeAnnotations := routingAnnotations(modelName, serviceName(evt.Name))
+	deploymentLabels := mergeLabels(labels, routeLabels)
+	deploymentAnnotations := mergeLabels(annotations, routeAnnotations)
+	podLabels := deploymentLabels
+	podAnnotations := deploymentAnnotations
 	return &appsv1.Deployment{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:      deploymentName(evt.Name),
-			Namespace: r.namespace,
-			Labels:    labels,
+			Name:        deploymentName(evt.Name),
+			Namespace:   r.namespace,
+			Labels:      deploymentLabels,
+			Annotations: deploymentAnnotations,
 		},
 		Spec: appsv1.DeploymentSpec{
 			Replicas: ptr(clampReplicas(evt.Replicas)),
+			// The selector stays the shared resource labels: it is
+			// immutable, and a service whose served model name changes must
+			// keep updating in place.
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
-				ObjectMeta: metav1.ObjectMeta{Labels: labels, Annotations: annotations},
+				ObjectMeta: metav1.ObjectMeta{Labels: podLabels, Annotations: podAnnotations},
 				Spec: corev1.PodSpec{
 					Containers: []corev1.Container{{
 						Name:  "engine",
@@ -955,7 +1017,7 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 						// directory (the whole JuiceFS filesystem is mounted
 						// at the weights mount path; the model lives in a
 						// subdirectory named by its weight path).
-						Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath),
+						Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath, modelName),
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "weights",
 							MountPath: r.weights.MountPath,
@@ -1083,15 +1145,21 @@ func mergeSelectors(base, extra map[string]string) map[string]string {
 // weightPath (e.g. "Qwen__Qwen2.5-0.5B-Instruct/"). The command is
 // engine-specific; unknown engines get no command (the image's default
 // entrypoint runs).
-func engineCommand(engine, mountPath, weightPath string) []string {
+func engineCommand(engine, mountPath, weightPath, servedName string) []string {
 	switch engine {
 	case "vllm":
-		return []string{
+		args := []string{
 			"python3", "-m", "vllm.entrypoints.openai.api_server",
 			"--model", modelDir(mountPath, weightPath),
-			"--port", "8000",
+			"--port", strconv.Itoa(enginePort),
 			"--host", "0.0.0.0",
 		}
+		// The engine must accept the name clients send as `model`, which
+		// is the catalog name rather than the weights directory.
+		if servedName != "" {
+			args = append(args, "--served-model-name", servedName)
+		}
+		return args
 	default:
 		return nil
 	}
@@ -1120,11 +1188,21 @@ func (r *k8sReconciler) buildService(evt changeEvent) *corev1.Service {
 		},
 		Spec: corev1.ServiceSpec{
 			Selector: labels,
-			Ports: []corev1.ServicePort{{
-				Name:       "http",
-				Port:       80,
-				TargetPort: intstr.FromInt32(8000),
-			}},
+			// The engine port is exposed next to the plain HTTP port because
+			// the serving gateway's model route addresses the backend by the
+			// engine's own port (model.aibrix.ai/port).
+			Ports: []corev1.ServicePort{
+				{
+					Name:       "http",
+					Port:       80,
+					TargetPort: intstr.FromInt32(enginePort),
+				},
+				{
+					Name:       "engine",
+					Port:       enginePort,
+					TargetPort: intstr.FromInt32(enginePort),
+				},
+			},
 		},
 	}
 }

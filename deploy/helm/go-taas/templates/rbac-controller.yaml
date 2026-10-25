@@ -49,6 +49,12 @@ rules:
   - apiGroups: ["autoscaling.aibrix.ai"]
     resources: ["podautoscalers"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # The per-model HTTPRoute lives in the AIBrix gateway namespace and points
+  # at the inference Service in the controller's own namespace, which the
+  # ReferenceGrant authorises.
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes", "referencegrants"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

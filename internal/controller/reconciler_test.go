@@ -15,6 +15,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
 	k8stesting "k8s.io/client-go/testing"
 
@@ -89,10 +90,12 @@ func TestBuildDeployment(t *testing.T) {
 	require.NotNil(t, c.Resources.Requests)
 	assert.Equal(t, resource.MustParse("1"), c.Resources.Requests[corev1.ResourceName("nvidia.com/gpu")])
 
-	// The engine command points at the model's weights directory.
+	// The engine command points at the model's weights directory and
+	// serves under the name clients send as `model`.
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
+		"--served-model-name", "demo",
 	}, c.Command)
 
 	// Accelerator node selector.
@@ -100,9 +103,18 @@ func TestBuildDeployment(t *testing.T) {
 	assert.Equal(t, "A100", dep.Spec.Template.Spec.NodeSelector["nvidia.com/gpu.product"],
 		"the card model is pinned through the label that carries it")
 
-	// Labels are consistent between selector and template.
-	assert.Equal(t, dep.Spec.Selector.MatchLabels, dep.Spec.Template.Labels)
+	// The selector keeps the shared resource labels (it is immutable); the
+	// template adds the serving-gateway routing labels on top.
+	assert.Equal(t, evt2Labels(evt), dep.Spec.Selector.MatchLabels)
+	for key, value := range evt2Labels(evt) {
+		assert.Equal(t, value, dep.Spec.Template.Labels[key])
+	}
 	assert.Equal(t, "svc-1", dep.Spec.Template.Labels["go-taas.com/service-id"])
+	assert.Equal(t, "demo", dep.Spec.Template.Labels[modelNameLabel])
+	assert.Equal(t, "8000", dep.Spec.Template.Labels[modelPortLabel])
+	assert.Equal(t, "demo", dep.Spec.Template.Annotations[modelNameLabel])
+	assert.Equal(t, "demo-svc", dep.Spec.Template.Annotations[modelServiceAnno])
+	assert.Equal(t, "demo", dep.Labels[modelNameLabel], "the gateway derives the route from the Deployment")
 }
 
 func TestBuildService(t *testing.T) {
@@ -111,8 +123,11 @@ func TestBuildService(t *testing.T) {
 
 	assert.Equal(t, "demo-svc", svc.Name)
 	assert.Equal(t, reconcileNamespace, svc.Namespace)
-	require.Len(t, svc.Spec.Ports, 1)
+	require.Len(t, svc.Spec.Ports, 2)
 	assert.Equal(t, int32(80), svc.Spec.Ports[0].Port)
+	// The gateway's model route addresses the backend by the engine port.
+	assert.Equal(t, int32(enginePort), svc.Spec.Ports[1].Port)
+	assert.Equal(t, intstr.FromInt32(enginePort), svc.Spec.Ports[1].TargetPort)
 	assert.Equal(t, svc.Spec.Selector, evt2Labels(evt))
 }
 
@@ -327,6 +342,7 @@ func TestApplyUpdateVersionReusesUpsert(t *testing.T) {
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v2", "--port", "8000", "--host", "0.0.0.0",
+		"--served-model-name", "demo",
 	}, dep.Spec.Template.Spec.Containers[0].Command)
 
 	// The Service keeps the same identity.
@@ -544,11 +560,19 @@ func TestEngineCommand(t *testing.T) {
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1"))
+		"--served-model-name", "qwen2.5-0.5b",
+	}, engineCommand("vllm", "/data/weights", "qwen/v1", "qwen2.5-0.5b"))
+
+	// An empty name leaves the weights path as the served name, which is
+	// what the engine defaults to.
+	assert.Equal(t, []string{
+		"python3", "-m", "vllm.entrypoints.openai.api_server",
+		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
+	}, engineCommand("vllm", "/data/weights", "qwen/v1", ""))
 
 	// Unknown engines get no command (the image's default entrypoint runs).
-	assert.Nil(t, engineCommand("sglang", "/data/weights", "qwen/v1"))
-	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1"))
+	assert.Nil(t, engineCommand("sglang", "/data/weights", "qwen/v1", "m"))
+	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1", "m"))
 }
 
 func TestModelDir(t *testing.T) {

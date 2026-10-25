@@ -829,6 +829,9 @@ type RuntimeAIBrixConfig struct {
 	// Gateway is the Envoy AI Gateway Deployment observed for health.
 	// Default "envoy-aibrix-system-aibrix-eg".
 	Gateway string `mapstructure:"gateway"`
+	// GatewayName is the Gateway API Gateway object the model HTTPRoutes
+	// attach to. Default "aibrix-eg".
+	GatewayName string `mapstructure:"gatewayName"`
 }
 
 // ProviderConfig holds the external-model-provider module settings

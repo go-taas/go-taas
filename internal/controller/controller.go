@@ -27,6 +27,10 @@ type Reconciler interface {
 	// SetVGPUConfig installs the vGPU slicing-pool HAMI contract
 	// (feature #52, AD13). It must be called before serving.
 	SetVGPUConfig(policyAnnotation, placementPolicy string, poolSelector map[string]string)
+
+	// SetGatewayRouting names the AIBrix Gateway that model HTTPRoutes
+	// attach to. It must be called before serving.
+	SetGatewayRouting(namespace, gateway string)
 }
 
 // Controller wires the message queue subscriptions to a Reconciler.
