@@ -27,11 +27,11 @@ type acceleratorNode struct {
 // FR3.1). The slice allocation is carried in the inventory snapshot by
 // the Controller from the HAMI-reported device state.
 type acceleratorGPU struct {
-	Index   int64             `json:"index"`
-	Model   string            `json:"model"`
-	Slices  []sliceAllocation `json:"slices"`
-	Allocated bool            `json:"allocated"`
-	Free    bool              `json:"free"`
+	Index     int64             `json:"index"`
+	Model     string            `json:"model"`
+	Slices    []sliceAllocation `json:"slices"`
+	Allocated bool              `json:"allocated"`
+	Free      bool              `json:"free"`
 }
 
 // sliceAllocation is one allocated slice on a physical GPU (feature
@@ -189,7 +189,7 @@ func NewMembershipConsumerRunner(components server.Components, proj *MembershipP
 // inventory subject and blocks until ctx is cancelled or the
 // subscription fails.
 func (c *MembershipConsumer) Run(ctx context.Context) error {
-	return c.client.Subscribe(ctx, mq.DefaultSubjects().AcceleratorInventory, func(msg mq.Message) error {
+	return mq.SubscribeInGroup(ctx, c.client, mq.DefaultSubjects().AcceleratorInventory, "vgpu", func(msg mq.Message) error {
 		return c.handle(ctx, msg)
 	})
 }

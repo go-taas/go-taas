@@ -58,9 +58,37 @@ type Client interface {
 	Publish(ctx context.Context, subject string, body []byte, headers map[string]string) error
 	// Subscribe registers handler for the subject and blocks until ctx is
 	// cancelled or the underlying connection fails.
+	//
+	// Two subscribers of one subject share a single queue and therefore
+	// *split* the messages between them, which is only correct when they run
+	// the same handler. An independent consumer of a subject another service
+	// also consumes must go through SubscribeInGroup.
 	Subscribe(ctx context.Context, subject string, handler Handler) error
 	// Close releases broker resources.
 	Close() error
+}
+
+// GroupedSubscriber is implemented by clients that can bind a queue per
+// consumer group, so independent consumers of one subject each receive every
+// message instead of splitting them.
+//
+// It is a separate interface rather than a Client method because subscribing
+// is the only thing that varies: a client without the capability degrades to
+// plain Subscribe, which keeps third-party implementations and test doubles
+// working.
+type GroupedSubscriber interface {
+	// SubscribeInGroup is Subscribe with an explicit group. The queue is
+	// named per group, so every group sees the whole subject.
+	SubscribeInGroup(ctx context.Context, subject, group string, handler Handler) error
+}
+
+// SubscribeInGroup subscribes with an explicit consumer group when the client
+// supports it, and falls back to a plain Subscribe otherwise.
+func SubscribeInGroup(ctx context.Context, client Client, subject, group string, handler Handler) error {
+	if grouped, ok := client.(GroupedSubscriber); ok {
+		return grouped.SubscribeInGroup(ctx, subject, group, handler)
+	}
+	return client.Subscribe(ctx, subject, handler)
 }
 
 // Subjects groups the canonical subjects used by the platform. All subjects
@@ -191,7 +219,17 @@ func (f *fakeClient) Publish(_ context.Context, subject string, body []byte, hea
 	return nil
 }
 
-func (f *fakeClient) Subscribe(_ context.Context, subject string, handler Handler) error {
+func (f *fakeClient) Subscribe(ctx context.Context, subject string, handler Handler) error {
+	return f.SubscribeInGroup(ctx, subject, "", handler)
+}
+
+// SubscribeInGroup records the handler on the subject.
+//
+// The fake keeps no queue per group: its purpose is to deliver to every
+// handler, which is exactly the isolation a consumer group provides.
+// Modelling the split that the real broker does for a shared queue here would
+// make tests pass on behaviour the platform never wants.
+func (f *fakeClient) SubscribeInGroup(_ context.Context, subject, _ string, handler Handler) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	if f.closed {

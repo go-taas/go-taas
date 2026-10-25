@@ -93,7 +93,7 @@ func NewEventConsumerRunner(components server.Components) *EventConsumer {
 // Run implements server.Runner: it subscribes to the metering events
 // subject and blocks until ctx is cancelled or the subscription fails.
 func (c *EventConsumer) Run(ctx context.Context) error {
-	return c.client.Subscribe(ctx, mq.DefaultSubjects().MeteringEvents, func(msg mq.Message) error {
+	return mq.SubscribeInGroup(ctx, c.client, mq.DefaultSubjects().MeteringEvents, "billing", func(msg mq.Message) error {
 		return c.handle(ctx, msg)
 	})
 }

@@ -129,3 +129,22 @@ func TestMessageTimestampSet(t *testing.T) {
 	require.NoError(t, client.Publish(context.Background(), "ts", nil, nil))
 	assert.False(t, ts.Before(before.Add(-time.Second)))
 }
+
+// TestSubscribeInGroupDeliversEveryMessage covers the isolation the platform
+// depends on: metering and billing both consume metering.events, and a shared
+// queue would split the stream between them.
+func TestSubscribeInGroupDeliversEveryMessage(t *testing.T) {
+	client := NewFake()
+	var a, b []string
+
+	require.NoError(t, SubscribeInGroup(t.Context(), client, "metering.events", "metering",
+		func(msg Message) error { a = append(a, string(msg.Body)); return nil }))
+	require.NoError(t, SubscribeInGroup(t.Context(), client, "metering.events", "billing",
+		func(msg Message) error { b = append(b, string(msg.Body)); return nil }))
+
+	require.NoError(t, client.Publish(t.Context(), "metering.events", []byte("one"), nil))
+	require.NoError(t, client.Publish(t.Context(), "metering.events", []byte("two"), nil))
+
+	assert.Equal(t, []string{"one", "two"}, a, "the metering consumer must see every event")
+	assert.Equal(t, []string{"one", "two"}, b, "and so must billing: they are independent")
+}

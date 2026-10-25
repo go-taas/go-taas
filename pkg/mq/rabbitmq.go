@@ -171,8 +171,19 @@ func (c *rabbitMQClient) Publish(ctx context.Context, subject string, body []byt
 // with the subject as the binding key, and consumes until ctx is cancelled.
 // It reconnects forever so the consumer survives broker restarts.
 func (c *rabbitMQClient) Subscribe(ctx context.Context, subject string, handler Handler) error {
+	return c.subscribeLoop(ctx, subject, "", handler)
+}
+
+// SubscribeInGroup binds a queue named after the group, so every group
+// receives every message on the subject.
+func (c *rabbitMQClient) SubscribeInGroup(ctx context.Context, subject, group string, handler Handler) error {
+	return c.subscribeLoop(ctx, subject, group, handler)
+}
+
+// subscribeLoop reconnects until ctx ends.
+func (c *rabbitMQClient) subscribeLoop(ctx context.Context, subject, group string, handler Handler) error {
 	for {
-		if err := c.subscribeOnce(ctx, subject, handler); err != nil {
+		if err := c.subscribeOnce(ctx, subject, group, handler); err != nil {
 			if ctx.Err() != nil {
 				return nil
 			}
@@ -188,7 +199,7 @@ func (c *rabbitMQClient) Subscribe(ctx context.Context, subject string, handler 
 	}
 }
 
-func (c *rabbitMQClient) subscribeOnce(ctx context.Context, subject string, handler Handler) error {
+func (c *rabbitMQClient) subscribeOnce(ctx context.Context, subject, group string, handler Handler) error {
 	c.mu.Lock()
 	if c.closed {
 		c.mu.Unlock()
@@ -207,10 +218,20 @@ func (c *rabbitMQClient) subscribeOnce(ctx context.Context, subject string, hand
 	}
 	defer func() { _ = ch.Close() }()
 
-	// A per-consumer, auto-delete queue. The queue name is derived from
-	// the subject so a reconnect re-binds the same queue.
+	// A per-consumer, auto-delete queue. The name is derived from the subject
+	// and the consumer group so a reconnect re-binds the same queue.
+	//
+	// The group is not cosmetic: two independent consumers on one queue get
+	// *different* messages (the broker round-robins), which silently halves
+	// both. Metering and billing both consume metering.events, and with a
+	// shared queue about half of all usage events produced a voucher while the
+	// other half produced only a billing line.
+	queueName := "taas." + subject
+	if group != "" {
+		queueName += "." + group
+	}
 	q, err := ch.QueueDeclare(
-		"taas."+subject,
+		queueName,
 		false, // durable
 		true,  // auto-delete
 		false, // exclusive

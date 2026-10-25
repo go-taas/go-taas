@@ -65,6 +65,17 @@ var gatewayUsageDropped = prometheus.NewCounter(prometheus.CounterOpts{
 	Help:      "Token-usage events the internal gateway API could not record.",
 })
 
+// gatewayUsageTotal counts usage events the platform recorded, so the
+// gateway's metering volume is observable next to the drops. A flat counter
+// while inference traffic flows is the signal that the filter stopped
+// reporting — which nothing else would show.
+var gatewayUsageTotal = prometheus.NewCounter(prometheus.CounterOpts{
+	Namespace: "taas",
+	Subsystem: "gateway_plugin",
+	Name:      "usage_total",
+	Help:      "Token-usage events recorded from the data-plane gateway.",
+})
+
 // gatewayVerifyTotal counts verifications by outcome, so an operator can
 // tell "keys are being rejected" from "the verifier itself is failing".
 var gatewayVerifyTotal = prometheus.NewCounterVec(prometheus.CounterOpts{
@@ -310,6 +321,7 @@ func (s *commonServer) usageHandler(sink GatewayUsageSink) http.HandlerFunc {
 			writeGatewayError(w, http.StatusServiceUnavailable, 0, "usage not recorded")
 			return
 		}
+		gatewayUsageTotal.Inc()
 		writeJSON(w, http.StatusOK, map[string]string{"voucher_id": voucherID})
 	}
 }
@@ -415,5 +427,5 @@ func writeGatewayError(w http.ResponseWriter, status, code int, message string) 
 
 // gatewayCollectors returns the plugin's metrics for the monitor registry.
 func gatewayCollectors() []prometheus.Collector {
-	return []prometheus.Collector{gatewayUsageDropped, gatewayVerifyTotal}
+	return []prometheus.Collector{gatewayUsageDropped, gatewayUsageTotal, gatewayVerifyTotal}
 }

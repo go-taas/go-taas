@@ -103,7 +103,7 @@ func NewSnapshotConsumerRunner(components server.Components, cache *ProjectionCa
 // inventory subject and blocks until ctx is cancelled or the
 // subscription fails.
 func (c *SnapshotConsumer) Run(ctx context.Context) error {
-	return c.client.Subscribe(ctx, mq.DefaultSubjects().AcceleratorInventory, func(msg mq.Message) error {
+	return mq.SubscribeInGroup(ctx, c.client, mq.DefaultSubjects().AcceleratorInventory, "accelerator", func(msg mq.Message) error {
 		return c.handle(ctx, msg)
 	})
 }
