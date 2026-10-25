@@ -1,3 +1,11 @@
+## [1.81.2](https://github.com/go-taas/go-taas/compare/v1.81.1...v1.81.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** pin the account block to the sidebar bottom and enrich it ([5880b83](https://github.com/go-taas/go-taas/commit/5880b830a650ffc44773670dd657513d710ea100))
+* **console:** stop the settings summary from clipping its URLs ([92eeb16](https://github.com/go-taas/go-taas/commit/92eeb160076953840aaca4345e485159d4d70bcb))
+
 ## [1.81.1](https://github.com/go-taas/go-taas/compare/v1.81.0...v1.81.1) (2026-10-25)
 
 
