@@ -162,7 +162,7 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
       { path: '/admin/batch', labelKey: 'nav.batch', testid: 'nav-batch', icon: Cube },
       { path: '/admin/prompts', labelKey: 'nav.prompts', testid: 'nav-prompts', icon: TextT },
       { path: '/admin/status', labelKey: 'nav.status', testid: 'nav-status', icon: Gauge },
-      { path: '/admin/settings', labelKey: 'nav.platformSettings', testid: 'nav-platform-settings', icon: Wrench },
+      { path: '/admin/settings', labelKey: 'nav.gatewaySettings', testid: 'nav-gateway-settings', icon: Wrench },
     ],
   },
   {

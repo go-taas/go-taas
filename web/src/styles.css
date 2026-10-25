@@ -314,7 +314,7 @@ textarea {
   min-width: 0;
 }
 
-/* Platform settings summary: the values are URLs, so the cells are wider
+/* Gateway settings summary: the values are URLs, so the cells are wider
    than a normal key/value grid and long tokens wrap instead of being
    clipped into the neighbouring column. */
 .kv-grid.settings-summary {

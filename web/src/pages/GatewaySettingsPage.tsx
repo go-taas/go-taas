@@ -1,11 +1,11 @@
-// Admin platform settings page: the installation-wide values an operator
-// edits at runtime. Today it holds the data-plane (inference gateway)
-// endpoint — the hostname users are told to call, and the optional
-// in-cluster URL the platform itself uses. Control plane and data plane are
-// separate gateways, so the address a tenant calls is a setting, not a
-// build-time constant.
+// Admin gateway settings page: the data-plane (inference gateway) endpoint
+// an operator edits at runtime — the hostname users are told to call, and
+// the optional in-cluster URL the platform itself uses. Control plane and
+// data plane are separate gateways, so the address a tenant calls is a
+// setting, not a build-time constant.
 //
-// Admin-surface only: it calls /api/v1/admin/platform-settings.
+// Admin-surface only: it calls /api/v1/admin/platform-settings (the API
+// name is kept for compatibility; the page is about the gateway).
 
 import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../surface';
@@ -45,7 +45,7 @@ const EMPTY: PlatformSettings = {
   servedHostnames: [],
 };
 
-export default function PlatformSettingsPage() {
+export default function GatewaySettingsPage() {
   const api = useApi();
   const { orgId } = useOrg();
   const { t } = useI18n();
