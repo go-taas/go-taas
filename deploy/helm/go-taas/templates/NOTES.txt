@@ -45,6 +45,13 @@ StorageClass. Inference pods and the control plane must read the same model
 weights, which requires a ReadWriteMany-capable (e.g. JuiceFS-backed)
 StorageClass shared by both.
 {{- end }}
+{{- if not .Values.controller.config.controller.acceleratorLabelKey }}
+
+NOTE: inference pods pin the accelerator vendor by node label. They use
+"go-taas.com/accelerator" and fall back to "gpu-vendor" when no node carries
+that key. If your GPU nodes use another label, set
+controller.config.controller.acceleratorLabelKey.
+{{- end }}
 {{- end }}
 
 {{- if not .Values.secrets.existingSecret }}
