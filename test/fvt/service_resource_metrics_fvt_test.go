@@ -8,6 +8,8 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -164,4 +166,102 @@ func TestFVTServiceResourceMetrics(t *testing.T) {
 	dt, ok := cards["dataThrough"].(string)
 	require.True(t, ok, "data_through must be present: %v", cards)
 	assert.NotEmpty(t, dt)
+}
+// fakeMetricsPodLister is the Prometheus read path's pod source.
+type fakeMetricsPodLister struct{ pods []resourcemetrics.ServicePod }
+
+func (f fakeMetricsPodLister) ServicePods(context.Context, string) ([]resourcemetrics.ServicePod, error) {
+	return f.pods, nil
+}
+
+// fakePrometheus answers the three range queries the metrics page issues,
+// so the FVT exercises the real HTTP client, the real JSON decoding and the
+// real response mapping instead of a stubbed service method.
+func fakePrometheus(t *testing.T) *httptest.Server {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = r.ParseForm()
+		query := r.Form.Get("query")
+		value := "0"
+		switch {
+		case strings.Contains(query, "container_cpu_usage_seconds_total"):
+			value = "0.5" // half a core of a 1-core limit
+		case strings.Contains(query, "container_memory_working_set_bytes"):
+			value = "2147483648" // 2 GiB
+		case strings.Contains(query, "GPU_FVT"):
+			value = "37"
+		}
+		result := []any{}
+		if r.URL.Path == "/api/v1/query_range" {
+			result = append(result, map[string]any{
+				"metric": map[string]string{"pod": "svc-abc"},
+				"values": []any{
+					[]any{float64(1700000000), value},
+					[]any{float64(1700000060), value},
+				},
+			})
+		} else if strings.Contains(query, "count(") {
+			result = append(result, map[string]any{"metric": map[string]string{}, "value": []any{float64(1700000000), "1"}})
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"status": "success",
+			"data":   map[string]any{"resultType": "matrix", "result": result},
+		})
+	}))
+	t.Cleanup(srv.Close)
+	return srv
+}
+
+// TestFVTServiceMetricsFromPrometheus covers the metrics page reading
+// Prometheus instead of stored samples: the cards, the series and the
+// per-replica row all come back, and an idle-but-present GPU reports 0%
+// with gpuAvailable true rather than "unavailable".
+func TestFVTServiceMetricsFromPrometheus(t *testing.T) {
+	env := newResourceMetricsEnv(t)
+	prom := fakePrometheus(t)
+	env.rmSvc.SetPrometheus(prom.URL, "taas-infer", "GPU_FVT", 5*time.Second)
+	env.rmSvc.SetPodLister(fakeMetricsPodLister{pods: []resourcemetrics.ServicePod{{
+		Name: "svc-abc", ReplicaIndex: "replica-1", CPULimitMilli: 1000,
+	}}})
+
+	serviceID := "22222222-2222-2222-2222-222222222222"
+	require.NoError(t, env.db.Exec(
+		`INSERT INTO inference_services (id, organization_id, name) VALUES (?, 'org-fvt', 'prom-svc')`, serviceID).Error)
+
+	code, body := env.call(t, http.MethodGet,
+		"/api/v1/admin/services/"+serviceID+"/metrics", "org-fvt")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+
+	cards, ok := body["cards"].(map[string]any)
+	require.True(t, ok)
+	// JSON numbers arrive as strings for int64 fields and as numbers for
+	// doubles; compare through float64 so both shapes work.
+	assert.InDelta(t, 50.0, anyToFloat(cards["currentCpuPercent"]), 0.01)
+	assert.InDelta(t, 2147483648, anyToFloat(cards["currentMemoryBytes"]), 1)
+	assert.InDelta(t, 37.0, anyToFloat(cards["currentGpuPercent"]), 0.01)
+	assert.Equal(t, true, cards["gpuAvailable"])
+	assert.InDelta(t, 1, anyToFloat(cards["replicaCount"]), 0.001)
+
+	series, ok := body["series"].([]any)
+	require.True(t, ok)
+	require.Len(t, series, 2)
+
+	replicas, ok := body["replicas"].([]any)
+	require.True(t, ok)
+	require.Len(t, replicas, 1)
+	assert.Equal(t, "replica-1", replicas[0].(map[string]any)["replicaIndex"])
+}
+
+// anyToFloat converts a JSON number or numeric string to float64.
+func anyToFloat(v any) float64 {
+	switch typed := v.(type) {
+	case float64:
+		return typed
+	case string:
+		parsed, _ := strconv.ParseFloat(typed, 64)
+		return parsed
+	default:
+		return 0
+	}
 }

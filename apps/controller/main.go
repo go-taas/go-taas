@@ -115,7 +115,13 @@ func main() {
 	// The connection is retried: a pod that starts before PostgreSQL is
 	// ready used to lose the sampler for the rest of its life (one failed
 	// InitDB silently disabled metrics until the next restart).
-	if db, dbErr := initDBWithRetry(&cfg.Databases.Master, controllerDBRetryWindow); dbErr == nil {
+	// The sampler exists for installations without Prometheus. When
+	// Prometheus is the source (the metrics page reads it), writing the
+	// same numbers into PostgreSQL is pure churn: skip it and say so.
+	if cfg.ResourceMetrics.PrometheusURL != "" {
+		logger.S().Infow("controller: resource sampling disabled, the metrics page reads Prometheus",
+			"prometheus", cfg.ResourceMetrics.PrometheusURL)
+	} else if db, dbErr := initDBWithRetry(&cfg.Databases.Master, controllerDBRetryWindow); dbErr == nil {
 		defer func() {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()

@@ -1416,6 +1416,7 @@ export const zh: Record<string, string> = {
   'observability.metricThroughput': '每秒请求数',
   'observability.metricErrorRate': '错误率（%）',
   'resource.chartAria': '资源利用率图表',
+  'resource.noData': '此范围内没有数据点。',
   'traces.waterfallAria': '链路瀑布图',
   'usageKeys.chartAria': 'API 密钥用量图表',
   'usageKeys.requests': '请求数',

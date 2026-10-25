@@ -32,13 +32,13 @@ func bucketStart(ts, bucketSize int64) int64 {
 // over (AD3). It is defined locally so the module reads the table
 // without importing the controller package.
 type serviceResourceMetricRow struct {
-	ID            string `gorm:"primaryKey"`
-	ServiceID     string `gorm:"size:64;not null;index:idx_service_resource_metrics_service_time,priority:1;index:idx_service_resource_metrics_service_replica_time,priority:1"`
-	ReplicaIndex  string `gorm:"size:32;not null;index:idx_service_resource_metrics_service_replica_time,priority:2"`
-	SampledAt     time.Time `gorm:"not null;index:idx_service_resource_metrics_service_time,priority:2"`
-	CPUPercent    float64
-	MemoryBytes   int64
-	GPUPercent    *float64
+	ID           string    `gorm:"primaryKey"`
+	ServiceID    string    `gorm:"size:64;not null;index:idx_service_resource_metrics_service_time,priority:1;index:idx_service_resource_metrics_service_replica_time,priority:1"`
+	ReplicaIndex string    `gorm:"size:32;not null;index:idx_service_resource_metrics_service_replica_time,priority:2"`
+	SampledAt    time.Time `gorm:"not null;index:idx_service_resource_metrics_service_time,priority:2"`
+	CPUPercent   float64
+	MemoryBytes  int64
+	GPUPercent   *float64
 }
 
 // TableName overrides the default GORM table name.
@@ -62,21 +62,21 @@ func (ServiceMetricRow) TableName() string { return "service_resource_metrics" }
 // BucketRow is one time bucket of the aggregation query: the mean
 // CPU/memory/GPU across the replicas sampled in the bucket.
 type BucketRow struct {
-	Bucket       int64
-	CPUPercent   float64
-	MemoryBytes  int64
-	GPUPercent   float64
-	HasGPU       bool
-	SampleCount  int64
+	Bucket        int64
+	CPUPercent    float64
+	MemoryBytes   int64
+	GPUPercent    float64
+	HasGPU        bool
+	SampleCount   int64
 	BucketSeconds int64
 }
 
 // ReplicaRow is one replica's aggregate in the per-replica table.
 type ReplicaRow struct {
-	ReplicaIndex      string
-	CurrentCPUPercent float64
+	ReplicaIndex       string
+	CurrentCPUPercent  float64
 	CurrentMemoryBytes int64
-	CurrentGPUPercent float64
-	HasGPU            bool
-	DataThrough       int64
+	CurrentGPUPercent  float64
+	HasGPU             bool
+	DataThrough        int64
 }

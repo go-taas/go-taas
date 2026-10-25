@@ -50,6 +50,11 @@ message ResourceMetricsCard {
   int64 replica_count = 4;
   // data_through is the start of the last complete sample bucket (AD6).
   int64 data_through = 5;
+  // gpu_available reports whether the cluster exposes GPU utilization for
+  // this service's pods. It is false when no GPU exporter scrapes them, so
+  // the console can say "not available" instead of showing 0% — an idle
+  // GPU is 0%, a cluster without the exporter is not.
+  bool gpu_available = 6;
 }
 
 // ResourceMetricsSeriesPoint is one time bucket of the series (hourly for

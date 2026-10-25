@@ -304,6 +304,22 @@ dependencies:
 
 # taas-server: the unified control-plane server (gRPC on 9090, the REST
 # gateway and admin console on 9091, metrics/health on 9092).
+# Monitoring (Prometheus) integration.
+#
+# The service metrics page reads CPU, memory and GPU utilization from
+# Prometheus, which already scrapes cAdvisor and the GPU exporter. Reading
+# it means the chart stores no samples of its own; leaving `prometheusURL`
+# empty falls back to samples the Controller writes to PostgreSQL.
+monitoring:
+  # -- Prometheus base URL, for example
+  # `http://prometheus-operated.monitoring.svc:9090`. Empty disables the
+  # Prometheus read path.
+  prometheusURL: ""
+  # -- PromQL metric carrying GPU utilization (NVIDIA DCGM exporter).
+  gpuUtilizationMetric: DCGM_FI_DEV_GPU_UTIL
+  # -- Upper bound on one Prometheus query.
+  timeout: 10s
+
 # Data plane (inference gateway) exposure.
 #
 # The platform separates its two planes: this chart deploys the control

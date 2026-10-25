@@ -1439,6 +1439,7 @@ export const en: Record<string, string> = {
   'observability.metricThroughput': 'requests/sec',
   'observability.metricErrorRate': 'error rate (%)',
   'resource.chartAria': 'resource utilization chart',
+  'resource.noData': 'No data points in this range.',
   'traces.waterfallAria': 'Trace span waterfall',
   'usageKeys.chartAria': 'API key usage chart',
   'usageKeys.requests': 'Requests',

@@ -343,6 +343,22 @@ infer:
       workers: 2
     statusReportInterval: 5s
 
+resourceMetrics:
+  # prometheusURL is where the service metrics page reads CPU, memory and
+  # GPU utilization from. Prometheus already scrapes cAdvisor and the GPU
+  # exporter, so reading it means the platform stores nothing itself and a
+  # range follows whatever Prometheus retains. Leave empty to fall back to
+  # the samples the Controller writes to PostgreSQL.
+  prometheusURL: ""
+  # inferenceNamespace scopes the queries to where inference pods run.
+  # Empty uses controller.namespace.
+  inferenceNamespace: ""
+  # prometheusTimeout bounds one Prometheus query.
+  prometheusTimeout: 10s
+  # gpuUtilizationMetric is the PromQL metric carrying GPU utilization
+  # (the NVIDIA DCGM exporter's default name).
+  gpuUtilizationMetric: DCGM_FI_DEV_GPU_UTIL
+
 tenancy:
   # The organization seeded on first boot (when the organizations table
   # is empty at startup, insert-only, never re-seeded).

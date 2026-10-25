@@ -644,6 +644,20 @@ type ResourceMetricsConfig struct {
 	// GetServiceResourceMetrics RPC (AD5). Default 7948800 (92 days),
 	// mirroring the metering maxRangeSeconds constant.
 	MaxRangeSeconds int64 `mapstructure:"maxRangeSeconds"`
+	// PrometheusURL is the Prometheus base URL the metrics page reads
+	// from, for example "http://prometheus-operated.monitoring.svc:9090".
+	// Prometheus already scrapes cAdvisor and the GPU exporter, so reading
+	// it keeps the platform from collecting and storing the same samples
+	// itself. Empty falls back to the samples the Controller writes.
+	PrometheusURL string `mapstructure:"prometheusURL"`
+	// InferenceNamespace is the namespace inference pods run in, used to
+	// scope the Prometheus queries. Default: controller.namespace.
+	InferenceNamespace string `mapstructure:"inferenceNamespace"`
+	// PrometheusTimeout bounds one Prometheus query. Default 10s.
+	PrometheusTimeout time.Duration `mapstructure:"prometheusTimeout"`
+	// GPUUtilizationMetric is the PromQL metric carrying GPU utilization.
+	// Default DCGM_FI_DEV_GPU_UTIL (the NVIDIA DCGM exporter).
+	GPUUtilizationMetric string `mapstructure:"gpuUtilizationMetric"`
 }
 
 // ControllerResourceMetricsConfig holds the controller's per-service

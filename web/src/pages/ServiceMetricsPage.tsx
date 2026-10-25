@@ -81,7 +81,10 @@ export default function ServiceMetricsPage() {
   const cards = data?.cards;
   const series = data?.series || [];
   const replicas = data?.replicas || [];
-  const hasGPU = series.some((p) => parseFloat(p.gpuPercent || '0') > 0) || (cards && parseFloat(cards.currentGpuPercent || '0') > 0);
+  // An idle GPU reports 0%, which is a value; only the server can tell
+  // that apart from "no GPU exporter scrapes these pods". Inferring it
+  // from "> 0" made every idle GPU look unavailable.
+  const hasGPU = cards?.gpuAvailable !== false;
 
   return (
     <div>
@@ -188,12 +191,13 @@ export default function ServiceMetricsPage() {
               </button>
             ))}
           </div>
-          {!hasGPU && metric === 'gpu' && (
-            <div className="muted" data-testid="metrics-gpu-unavailable">
+          {!hasGPU && metric === 'gpu' ? (
+            <div className="chart-empty" data-testid="metrics-gpu-unavailable">
               {t('servicemetrics.gpuUnavailable')}
             </div>
+          ) : (
+            <ResourceChart series={series} metric={metric} />
           )}
-          <ResourceChart series={series} metric={metric} />
         </div>
       )}
 

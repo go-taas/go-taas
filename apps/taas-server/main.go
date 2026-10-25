@@ -409,6 +409,23 @@ func main() {
 			resourceMetricsSvc.SetSessionUserResolver(authSvc)
 			resourceMetricsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			resourceMetricsSvc.SetServiceExists(infer.NewServiceExistsProvider(gormDB))
+			// The metrics page reads Prometheus, which already scrapes
+			// cAdvisor and the GPU exporter, instead of collecting and
+			// storing the same samples. Without a configured Prometheus the
+			// stored samples remain the source.
+			if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
+				resourceMetricsSvc.SetPodLister(controller.NewPodLister(k8sClient, cfg.Controller.Namespace))
+				if cfg.ResourceMetrics.PrometheusURL != "" {
+					resourceMetricsSvc.SetPrometheus(
+						cfg.ResourceMetrics.PrometheusURL,
+						cfg.ResourceMetrics.InferenceNamespace,
+						cfg.ResourceMetrics.GPUUtilizationMetric,
+						cfg.ResourceMetrics.PrometheusTimeout,
+					)
+				}
+			} else {
+				logger.S().Warnw("resourcemetrics: prometheus path disabled, k8s client unavailable", "err", k8sErr)
+			}
 			// Feature #38: the docs service resolves the session's
 			// active org and caller, and gates the docs RPC by the
 			// caller's role (AD1).

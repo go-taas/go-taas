@@ -123,12 +123,12 @@ func aggregateReplicas(rows []serviceResourceMetricRow, bucketSize int64) []Repl
 
 // bucketAccum accumulates one time bucket.
 type bucketAccum struct {
-	bucket       int64
-	cpuSum       float64
-	memorySum    int64
-	gpuSum       float64
-	gpuCount     int64
-	sampleCount  int64
+	bucket      int64
+	cpuSum      float64
+	memorySum   int64
+	gpuSum      float64
+	gpuCount    int64
+	sampleCount int64
 }
 
 func (a *bucketAccum) add(row serviceResourceMetricRow) {
@@ -158,8 +158,8 @@ func (a *bucketAccum) row(bucketSize int64) BucketRow {
 
 // replicaAccum accumulates one replica's aggregate.
 type replicaAccum struct {
-	replicaIndex      string
-	latest            *serviceResourceMetricRow
+	replicaIndex string
+	latest       *serviceResourceMetricRow
 }
 
 func (a *replicaAccum) add(row serviceResourceMetricRow) {

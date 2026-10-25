@@ -12,8 +12,8 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
-	resourcemetricsv1 "github.com/go-taas/go-taas/proto/taas/resourcemetrics/v1"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	resourcemetricsv1 "github.com/go-taas/go-taas/proto/taas/resourcemetrics/v1"
 )
 
 type fakeSessionOrgResolver struct{ org string }

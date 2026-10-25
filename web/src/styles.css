@@ -307,6 +307,80 @@ textarea {
   margin-top: 12px;
 }
 
+/* ============================================================
+   Monitoring chart (service metrics page)
+   ============================================================ */
+.chart-wrap {
+  margin-top: 12px;
+}
+
+.chart-svg {
+  width: 100%;
+  height: 260px;
+  display: block;
+  overflow: visible;
+}
+
+.chart-grid {
+  stroke: rgba(148, 163, 184, 0.22);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.chart-axis-label {
+  fill: var(--muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-line {
+  fill: none;
+  stroke: var(--chart-line, #0080ff);
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 3px 6px rgba(0, 128, 255, 0.28));
+}
+
+.chart-crosshair {
+  stroke: rgba(148, 163, 184, 0.65);
+  stroke-width: 1;
+  stroke-dasharray: 4 4;
+}
+
+.chart-dot {
+  fill: var(--chart-line, #0080ff);
+  stroke: #fff;
+  stroke-width: 1.6;
+}
+
+.chart-tooltip-box {
+  fill: rgba(15, 23, 42, 0.94);
+  stroke: rgba(148, 163, 184, 0.35);
+  stroke-width: 1;
+}
+
+.chart-tooltip-time {
+  fill: rgba(226, 232, 240, 0.85);
+  font-size: 10.5px;
+}
+
+.chart-tooltip-value {
+  fill: #fff;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 220px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
 .kv-grid > div {
   display: flex;
   flex-direction: column;

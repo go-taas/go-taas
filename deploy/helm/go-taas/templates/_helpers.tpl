@@ -448,11 +448,19 @@ route; these are its install-time parts.
 {{- $runtime := get $overrides "runtime" | default dict -}}
 {{- $_ := set $runtime "dataPlane" $dataPlane -}}
 {{- $_ := set $overrides "runtime" $runtime -}}
+{{- $monitoring := .Values.monitoring | default dict -}}
+{{- if $monitoring.prometheusURL -}}
+{{- $rm := get $overrides "resourceMetrics" | default dict -}}
+{{- $_ := set $rm "prometheusURL" $monitoring.prometheusURL -}}
+{{- $_ := set $rm "gpuUtilizationMetric" ($monitoring.gpuUtilizationMetric | default "DCGM_FI_DEV_GPU_UTIL") -}}
+{{- $_ := set $rm "prometheusTimeout" ($monitoring.timeout | default "10s") -}}
+{{- $_ := set $overrides "resourceMetrics" $rm -}}
+{{- end -}}
 {{- toYaml $overrides -}}
 {{- end -}}
 
 {{- define "go-taas.hasConfigOverrides" -}}
-{{- if or .Values.configOverrides .Values.dataPlane.enabled -}}true{{- end -}}
+{{- if or .Values.configOverrides .Values.dataPlane.enabled .Values.monitoring.prometheusURL -}}true{{- end -}}
 {{- end -}}
 
 {{/* Checksum of the config-overrides file, to roll pods when it changes. */}}

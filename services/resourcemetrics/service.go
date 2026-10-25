@@ -95,6 +95,16 @@ type Service struct {
 	// contract (10301). Nil until wired: existence is not checked (unit
 	// tests).
 	serviceExists ServiceExists
+
+	// prometheus is the read path: Prometheus already scrapes cAdvisor and
+	// the GPU exporter, so reading it avoids collecting and storing the
+	// same samples. Nil falls back to the Controller's stored samples.
+	prometheus *prometheusSource
+
+	// podLister resolves a service's running pods, which is the join key
+	// between a service and its Prometheus series. Nil disables the
+	// Prometheus path.
+	podLister PodLister
 }
 
 // New constructs the resourcemetrics service. The repository is wired
@@ -325,11 +335,22 @@ func (s *Service) GetServiceResourceMetrics(ctx context.Context, req *resourceme
 	if err != nil {
 		return nil, err
 	}
+	bucketSize := bucketSizeForRange(since, until)
+	// Prometheus first: it holds the real numbers with no dependency on
+	// this process having sampled anything. The stored samples remain the
+	// fallback for an installation without Prometheus.
+	if s.prometheus != nil && s.podLister != nil {
+		resp, promErr := s.prometheusRead(ctx, serviceID, since, until, bucketSize, replica)
+		if promErr == nil {
+			return resp, nil
+		}
+		warnPrometheus(promErr)
+	}
+
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
 	}
-	bucketSize := bucketSizeForRange(since, until)
 	buckets, replicas, err := repo.AggregateServiceMetrics(ctx, serviceID, since, until, bucketSize, replica)
 	if err != nil {
 		return nil, err
@@ -359,6 +380,9 @@ func buildCards(buckets []BucketRow, replicas []ReplicaRow, watermark int64) *re
 		last := buckets[len(buckets)-1]
 		card.CurrentCpuPercent = last.CPUPercent
 		card.CurrentMemoryBytes = last.MemoryBytes
+		// A sampled 0 with HasGPU set means an idle GPU, which is a value;
+		// HasGPU false means the sampler had no GPU signal to record.
+		card.GpuAvailable = last.HasGPU
 		if last.HasGPU {
 			card.CurrentGpuPercent = last.GPUPercent
 		}
@@ -374,10 +398,10 @@ func buildSeries(buckets []BucketRow) []*resourcemetricsv1.ResourceMetricsSeries
 	out := make([]*resourcemetricsv1.ResourceMetricsSeriesPoint, 0, len(buckets))
 	for _, b := range buckets {
 		p := &resourcemetricsv1.ResourceMetricsSeriesPoint{
-			Bucket:       b.Bucket,
-			CpuPercent:   b.CPUPercent,
-			MemoryBytes:  b.MemoryBytes,
-			GpuPercent:   b.GPUPercent,
+			Bucket:      b.Bucket,
+			CpuPercent:  b.CPUPercent,
+			MemoryBytes: b.MemoryBytes,
+			GpuPercent:  b.GPUPercent,
 		}
 		if !b.HasGPU {
 			p.GpuPercent = 0

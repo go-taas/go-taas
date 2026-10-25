@@ -1246,6 +1246,10 @@ export interface ResourceMetricsCard {
   currentGpuPercent: string;
   replicaCount: string;
   dataThrough: string;
+  // gpuAvailable is false when the cluster exposes no GPU utilization for
+  // this service. An idle GPU is 0%, which is a value; this flag is the
+  // difference between "idle" and "not measurable".
+  gpuAvailable?: boolean;
 }
 
 export interface ResourceMetricsSeriesPoint {

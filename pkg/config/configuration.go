@@ -436,6 +436,15 @@ func (c *Configuration) applyDefaults() {
 	if c.Runtime.AIBrix.Namespace == "" {
 		c.Runtime.AIBrix.Namespace = "aibrix-system"
 	}
+	if c.ResourceMetrics.PrometheusTimeout <= 0 {
+		c.ResourceMetrics.PrometheusTimeout = 10 * time.Second
+	}
+	if c.ResourceMetrics.GPUUtilizationMetric == "" {
+		c.ResourceMetrics.GPUUtilizationMetric = "DCGM_FI_DEV_GPU_UTIL"
+	}
+	if c.ResourceMetrics.InferenceNamespace == "" {
+		c.ResourceMetrics.InferenceNamespace = c.Controller.Namespace
+	}
 	if c.Runtime.DataPlane.RouteNamespace == "" {
 		c.Runtime.DataPlane.RouteNamespace = c.Controller.Namespace
 	}
