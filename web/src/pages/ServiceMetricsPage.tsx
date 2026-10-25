@@ -149,30 +149,30 @@ export default function ServiceMetricsPage() {
       )}
 
       {cards && (
+        <div className="muted metrics-through" data-testid="metrics-data-through">
+          {t('servicemetrics.dataThrough')} {formatTime(cards.dataThrough)}
+        </div>
+      )}
+
+      {cards && (
         <div className="card-row" data-testid="metrics-cards">
           <div className="card" data-testid="metrics-card-cpu">
             <div className="label">{t('servicemetrics.cpu')}</div>
             <div className="value">{parseFloat(cards.currentCpuPercent || '0').toFixed(1)}%</div>
-            <div className="muted" data-testid="metrics-data-through">
-              {t('servicemetrics.dataThrough')} {formatTime(cards.dataThrough)}
-            </div>
           </div>
           <div className="card" data-testid="metrics-card-memory">
             <div className="label">{t('servicemetrics.memory')}</div>
             <div className="value">{formatBytes(parseInt(cards.currentMemoryBytes || '0', 10))}</div>
-            <div className="muted">{t('servicemetrics.dataThrough')} {formatTime(cards.dataThrough)}</div>
           </div>
           <div className="card" data-testid="metrics-card-gpu">
             <div className="label">{t('servicemetrics.gpu')}</div>
             <div className="value">
               {hasGPU ? `${parseFloat(cards.currentGpuPercent || '0').toFixed(1)}%` : t('servicemetrics.unavailable')}
             </div>
-            <div className="muted">{t('servicemetrics.dataThrough')} {formatTime(cards.dataThrough)}</div>
           </div>
           <div className="card" data-testid="metrics-card-replicas">
             <div className="label">{t('servicemetrics.replicas')}</div>
             <div className="value">{cards.replicaCount}</div>
-            <div className="muted">{t('servicemetrics.dataThrough')} {formatTime(cards.dataThrough)}</div>
           </div>
         </div>
       )}
@@ -222,7 +222,7 @@ export default function ServiceMetricsPage() {
                   <td>{parseFloat(r.currentCpuPercent || '0').toFixed(1)}%</td>
                   <td>{formatBytes(parseInt(r.currentMemoryBytes || '0', 10))}</td>
                   <td>
-                    {parseFloat(r.currentGpuPercent || '0') > 0
+                    {hasGPU
                       ? `${parseFloat(r.currentGpuPercent || '0').toFixed(1)}%`
                       : t('servicemetrics.unavailable')}
                   </td>

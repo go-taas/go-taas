@@ -47,16 +47,32 @@ function formatMemory(bytes: number): string {
   return unit === 0 ? `${Math.round(value)} B` : `${value.toFixed(value < 10 ? 1 : 0)} ${units[unit]}`;
 }
 
-// axisFormatter returns the tick label and a scale ceiling for a metric.
-// Percent metrics are fixed to 0-100 so a quiet service does not look
-// busy, and so the axis does not rescale on every refresh.
+// niceCeiling rounds a value up to a readable axis top (1, 2, 2.5 or 5
+// times a power of ten), so the grid labels are round numbers instead of
+// whatever the data happened to peak at.
+function niceCeiling(value: number): number {
+  if (value <= 0) return 10;
+  const exponent = Math.floor(Math.log10(value));
+  const base = Math.pow(10, exponent);
+  for (const multiple of [1, 2, 2.5, 5, 10]) {
+    if (value <= multiple * base) return multiple * base;
+  }
+  return 10 * base;
+}
+
+// axisFor returns the scale ceiling and tick format for a metric.
+//
+// The ceiling follows the data (capped at 100 for percentages) instead of
+// always spanning 0-100: a service idling at 5% CPU otherwise draws a flat
+// line along the axis, which hides exactly the shape the page exists to
+// show. The floor keeps a near-zero series from being magnified into noise.
 function axisFor(metric: ResourceMetric, max: number): { ceiling: number; format: (v: number) => string } {
   if (metric === 'memory') {
-    return { ceiling: max <= 0 ? 1 : max * 1.15, format: (v) => formatMemory(v) };
+    return { ceiling: niceCeiling(Math.max(max * 1.15, 1)), format: (v) => formatMemory(v) };
   }
   return {
-    ceiling: 100,
-    format: (v) => `${v.toFixed(0)}%`,
+    ceiling: Math.min(100, niceCeiling(Math.max(max * 1.2, 10))),
+    format: (v) => `${v.toFixed(v < 10 ? 1 : 0)}%`,
   };
 }
 

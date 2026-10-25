@@ -310,6 +310,11 @@ textarea {
 /* ============================================================
    Monitoring chart (service metrics page)
    ============================================================ */
+.metrics-through {
+  margin: 4px 0 10px;
+  font-size: 12px;
+}
+
 .chart-wrap {
   margin-top: 12px;
 }
