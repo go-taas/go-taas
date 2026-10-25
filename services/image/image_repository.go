@@ -321,6 +321,24 @@ func (r *WarmupTaskRepository) ApplyStatus(ctx context.Context, taskID, state st
 	return nil
 }
 
+// RecoverInterruptedTasks fails warmup tasks a previous process left
+// pending or running: the controller driving them is gone, so they would
+// otherwise stay active forever and block new warmups for the same image
+// (the active-task gate).
+func (r *WarmupTaskRepository) RecoverInterruptedTasks(ctx context.Context, reason string) (int64, error) {
+	res := r.DB(ctx).Model(&WarmupTask{}).
+		Where("state IN ?", []string{TaskStatePending, TaskStateRunning}).
+		Updates(map[string]any{
+			"state":          TaskStateFailed,
+			"failure_reason": reason,
+			"updated_at":     time.Now().UTC(),
+		})
+	if res.Error != nil {
+		return 0, res.Error
+	}
+	return res.RowsAffected, nil
+}
+
 // MarkFailed sets state=failed with a reason. It is the compensation
 // path when publishing the task event fails after the row was written.
 func (r *WarmupTaskRepository) MarkFailed(ctx context.Context, taskID, reason string) error {

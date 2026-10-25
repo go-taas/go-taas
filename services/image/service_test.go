@@ -535,3 +535,35 @@ func TestServiceTriggerWarmupEmptySelectorSkipsValidation(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeInternal, ae.Code)
 }
+
+// TestRecoverInterruptedWarmupTasks verifies a task a previous process left
+// active is failed at startup, so the active-task gate no longer blocks new
+// warmups for the image.
+func TestRecoverInterruptedWarmupTasks(t *testing.T) {
+	svc, img := newServiceForTest(t)
+	ctx := context.Background()
+
+	task := &WarmupTask{ImageID: img.ID, State: TaskStateRunning}
+	require.NoError(t, svc.tasks.Create(ctx, task))
+
+	// A new warmup is blocked while the stale task is active.
+	_, err := svc.TriggerWarmup(ctx, &imagev1.TriggerWarmupRequest{ImageId: img.ID})
+	require.Error(t, err)
+
+	n, err := svc.tasks.RecoverInterruptedTasks(ctx, "interrupted by a platform restart")
+	require.NoError(t, err)
+	assert.EqualValues(t, 1, n)
+
+	rows, _, err := svc.tasks.ListByImageID(ctx, img.ID, 0, 10)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, TaskStateFailed, rows[0].State)
+	require.NotNil(t, rows[0].FailureReason)
+	assert.Contains(t, *rows[0].FailureReason, "interrupted")
+
+	// The gate is free again (the retry fails at publish, not at the gate).
+	_, err = svc.TriggerWarmup(ctx, &imagev1.TriggerWarmupRequest{ImageId: img.ID})
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInternal, ae.Code)
+}

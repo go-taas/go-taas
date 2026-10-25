@@ -342,6 +342,15 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err := db.WithContext(ctx).Exec(oneActivePartialIndex).Error; err != nil {
 		return err
 	}
+	// Warmup tasks are driven by the controller; a task left pending or
+	// running by a previous process can never finish, and its active
+	// state would block every new warmup for the same image.
+	if n, err := NewWarmupTaskRepository(db).
+		RecoverInterruptedTasks(ctx, "interrupted by a platform restart"); err != nil {
+		return err
+	} else if n > 0 {
+		logger.S().Infow("image: recovered interrupted warmup tasks", "count", n)
+	}
 
 	// First-boot seed: an empty table gets the config entries as rows
 	// preserving their imageId values; a non-empty table is never
