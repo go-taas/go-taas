@@ -233,7 +233,7 @@ export const zh: Record<string, string> = {
   'login.adminSignIn': '管理员登录',
   'login.subtitle': '访问您的 API 密钥、用量、请求日志和账单。',
   'login.adminSubtitle': '管理组织、模型、账单和平台设置。',
-  'login.noProviders': '未配置登录提供方。',
+  'login.noProviders': '未配置登录提供方',
   'login.signInWith': '使用 {name} 登录',
   'login.register': '注册本地账号',
   'login.or': '或使用 SSO 登录',

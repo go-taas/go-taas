@@ -233,7 +233,7 @@ export const en: Record<string, string> = {
   'login.adminSignIn': 'Admin sign in',
   'login.subtitle': 'Access your API keys, usage, request logs and billing.',
   'login.adminSubtitle': 'Manage organizations, models, billing and platform settings.',
-  'login.noProviders': 'No sign-in providers configured.',
+  'login.noProviders': 'No sign-in providers configured',
   'login.signInWith': 'Sign in with {name}',
   'login.register': 'Register a local account',
   'login.or': 'or sign in with SSO',
