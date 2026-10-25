@@ -1,3 +1,16 @@
+# [1.82.0](https://github.com/go-taas/go-taas/compare/v1.81.3...v1.82.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **controller:** retry the database at startup so metrics survive a rollout ([4d6736f](https://github.com/go-taas/go-taas/commit/4d6736f18265a001608a43dae670c4ecdf655cb6))
+
+
+### Features
+
+* **infer:** enforce the service access policy where the platform is the caller ([f903638](https://github.com/go-taas/go-taas/commit/f9036380f261a19b0d3628e7e8681e30f5b08ab7))
+* **infer:** make inference services platform assets with an access policy ([5addf8b](https://github.com/go-taas/go-taas/commit/5addf8bfb642d0a56a130f475c92bcee1887736e))
+
 ## [1.81.3](https://github.com/go-taas/go-taas/compare/v1.81.2...v1.81.3) (2026-10-25)
 
 
