@@ -62,7 +62,7 @@ Pitfalls to avoid: raw Prometheus metrics as the product surface (Prometheus, vL
 
 **In scope**: a service-metrics page (summary cards, a metric-switcher time-series chart, a per-replica breakdown, time-range and replica filters), the Controller's per-service CPU/memory/GPU sampler writing to a new `service_resource_metrics` table, and the read-only aggregation RPC.
 
-**Out of scope** (tracked by other feature points): model-level performance metrics (latency/throughput/error rate — feature #24), request-level traces (feature #27), container logs (feature #33), a Prometheus/Grafana stack or PromQL query language (deliberately absent, D2), alerting or threshold notifications on resource usage (feature #26 consumes observability events in-console — out of scope here), and a user-realm resource surface (deliberately absent, D1).
+**Out of scope** (tracked by other feature points): model-level performance metrics (latency/throughput/error rate — feature #24), request-level traces (feature #27), container logs (feature #33), a Grafana dashboard or an interactive PromQL editor (the console renders fixed panels), alerting or threshold notifications on resource usage (feature #26 consumes observability events in-console — out of scope here), and a user-realm resource surface (deliberately absent, D1). *(Implementation note: AD11 later made Prometheus the data source when it is configured, and AD12/AD13 added the engine's own TTFT/TPOT/VRAM telemetry — this D-numbered list is the original scope and the architecture document is authoritative.)*
 
 ---
 
@@ -259,7 +259,7 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 | Model-level performance metrics (latency/throughput/error rate) | Feature #24 model observability |
 | Request-level traces and latency breakdown | Feature #27 request tracing |
 | Container logs | Feature #33 service logs viewer |
-| A Prometheus/Grafana stack or PromQL query language | Deliberately absent (D2) — metrics are sampled from metrics-server and the accelerator signals |
+| A Grafana dashboard or an interactive PromQL editor | Deliberately absent — the console renders a fixed panel set. Superseded in part by AD11: Prometheus *is* the data source when `resourceMetrics.prometheusURL` is set (see architecture §2 AD11–AD13) |
 | Alerting or threshold notifications on resource usage | Feature #26 notification center consumes observability events in-console |
 | A user-realm resource surface | Deliberately absent (D1) — tenants get model performance, not pod resource internals |
 | Resource-metrics retention / archival | Future refinement — the sample table's lifecycle stands |

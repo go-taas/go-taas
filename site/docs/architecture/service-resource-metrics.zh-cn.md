@@ -16,9 +16,9 @@ go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deplo
 
 本功能新增一个**推理服务资源指标**页面：按服务查看 CPU / 内存 / GPU 利用率随时间变化，支持时间范围筛选与资源使用图表。它是 Phase 4 运维面最小且有独立价值的增量：把"服务很慢"变成"服务在过去一小时 CPU 饱和 95% 而 GPU 只有 20% —— 瓶颈在计算而非加速器"。这是一个**只读**聚合层 —— 推理、计量或计费管线均无改动。
 
-**目标**：新的 `resourcemetrics` 模块，负责对新的 `service_resource_metrics` 表的只读聚合；Controller 的按服务 CPU/内存/GPU 采样器写入该表；`taas.resourcemetrics.v1.ResourceMetricsService` 及 `GetServiceResourceMetrics` RPC（卡片 + 时序 + 按副本明细）；管理端服务指标页面（`/admin/services/:serviceId/metrics`）；新错误码 12101 `CodeServiceMetricsInvalid`；页面 → 路由 → API 前缀表（精确管理端前缀）；各页面交互状态（空、错误、权限拒绝）；以及可在 compose 栈上以 Nightwatch 测试的编号验收标准。
+**目标**：新的 `resourcemetrics` 模块，负责只读聚合 —— 配置了 Prometheus 时 CPU/内存取自 Prometheus，否则取自新的 `service_resource_metrics` 表（AD11），并叠加引擎自身上报的显存与延迟遥测（AD12）以及承载这些指标的采集目标（AD13）；Controller 的按服务 CPU/内存/GPU 采样器写入该表；`taas.resourcemetrics.v1.ResourceMetricsService` 及 `GetServiceResourceMetrics` RPC（卡片 + 时序 + 按副本明细）；管理端服务指标页面（`/admin/services/:serviceId/metrics`）；新错误码 12101 `CodeServiceMetricsInvalid`；页面 → 路由 → API 前缀表（精确管理端前缀）；各页面交互状态（空、错误、权限拒绝）；以及可在 compose 栈上以 Nightwatch 测试的编号验收标准。
 
-**非目标**（延后，设计 §8）：模型级性能指标（延迟/吞吐/错误率 —— 功能 #24）；请求级追踪（功能 #27）；容器日志（功能 #33）；Prometheus/Grafana 栈或 PromQL 查询语言（刻意不引入，D2）；资源使用告警或阈值通知（功能 #26 在控制台内消费可观测性事件 —— 此处不涉及）；用户域资源面（刻意不引入，D1）；资源指标保留/归档（未来细化）。
+**非目标**（延后，设计 §8）：模型级性能指标（延迟/吞吐/错误率 —— 功能 #24）；请求级追踪（功能 #27）；容器日志（功能 #33）；Grafana 看板或可交互的 PromQL 编辑器 —— Prometheus 是数据源（AD11），但控制台渲染固定的面板集合；资源使用告警规则或阈值通知（功能 #26 在控制台内消费可观测性事件 —— 此处不涉及）；用户域资源面（刻意不引入，D1）；资源指标保留/归档（未来细化）。
 
 ### 1.1 本文档阅读顺序
 
@@ -229,11 +229,12 @@ message ResourceMetricsReplicaRow {
 
 ### 5.2 契约说明（为 Developer 智能体固定）
 
-1. `GetServiceResourceMetrics` 接受 `since`/`until`（int64 unix 秒；默认 `until = now`、`since = until − 24h`）、`replica`（可选，掩码副本索引）与 `metric`（可选，`cpu` / `memory` / `gpu` 之一）。返回 `cards`（当前 CPU/内存/GPU、副本数、`data_through`）、`series[]`（每桶一项，含 `bucket`、`cpu_percent`、`memory_bytes`、`gpu_percent`）与 `replicas[]`（每副本一行，含 `replica_index`、当前 CPU/内存/GPU、`data_through`）。
-2. Controller 从 Kubernetes metrics-server（`metrics.k8s.io`）采样 CPU/内存，从加速器信号（功能 #18）采样 GPU 利用率，按间隔（默认 30 秒），向 `service_resource_metrics` 表写入每（服务、副本、采样）一行（AD2）。写入前将 Pod 名掩码为副本索引（AD1）。
+1. `GetServiceResourceMetrics` 接受 `since`/`until`（int64 unix 秒；默认 `until = now`、`since = until − 24h`）、`replica`（可选，掩码副本索引）与 `metric`（可选，`cpu` / `memory` / `gpu` 之一）。返回 `cards`（当前 CPU/内存/GPU、副本数、`data_through`，以及 AD12 的 `gpu_available`、`engine_available`、`current_gpu_memory_bytes`、`gpu_memory_total_bytes`、`ttft_p95_ms`、`tpot_p95_ms`、`kv_cache_percent`、`requests_running`、`requests_waiting`、`tokens_per_second`）、`series[]`（每桶一项，含 `bucket`、`cpu_percent`、`memory_bytes`、`gpu_percent` 以及引擎字段 `gpu_memory_bytes`、`ttft_p95_ms`、`tpot_p95_ms`、`tokens_per_second`）与 `replicas[]`（每副本一行，含 `replica_index`、当前 CPU/内存/GPU、`data_through`）。
+2. 两个数据源，一份契约。设置 `resourceMetrics.prometheusURL` 时由 server 自行查询 `/api/v1/query_range`（每 Pod 每指标一次查询），Controller 停止采样（AD11）；未设置时由 Controller 从 Kubernetes metrics-server（`metrics.k8s.io`）采样 CPU/内存、从加速器信号（功能 #18）采样 GPU 利用率，按间隔（默认 30 秒）向 `service_resource_metrics` 表写入每（服务、副本、采样）一行（AD2）。两种路径都将 Pod 名掩码为副本索引（AD1）—— Prometheus 路径在读取时由 Pod 名推导 `replica-N`。
 3. GPU 利用率尽力而为（AD7）：当加速器信号不暴露时，`gpu_percent` 为空，页面显示"GPU 指标不可用"提示。
 4. 时间分桶随范围自适应（≤ 7 天小时、否则天，AD5）；每个响应携带 `data_through` 用于新鲜度标记（AD6）。
-5. 线上约定不变：成功 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`，int64 字段序列化为 JSON 字符串。
+5. 非有限采样值不算"有值"。Prometheus 用 `NaN` 表示未定义的聚合结果（例如窗口内没有观测时 `histogram_quantile` 的返回值），而 `strconv.ParseFloat` 接受这种写法，因此解码层显式拒绝 `NaN`/`±Inf`，字段保持 0 且对应的 `*_available` 为 false。直接下发会让空闲服务在首词元延迟卡片上显示"NaN"并画出坏线 —— 这正是 AD7 与 AD12 对 GPU 利用率所强调的"没数据不能读成数据"。
+6. 线上约定不变：成功 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`，int64 字段序列化为 JSON 字符串。
 
 ### 5.3 错误码
 
@@ -398,13 +399,17 @@ sequenceDiagram
 | `proto/taas/resourcemetrics/v1` | `resourcemetrics.proto` | 新：`ResourceMetricsService` 及 `GetServiceResourceMetrics` RPC + `GetServiceResourceMetricsRequest/Response`、`ResourceMetricsCard`、`ResourceMetricsSeriesPoint`、`ResourceMetricsReplicaRow` 消息（第 5.1 节）。经 `buf generate` 重新生成 `resourcemetrics.pb.go`/`resourcemetrics_grpc.pb.go`/`resourcemetrics.pb.gw.go` |
 | `services/resourcemetrics` | `metrics_model.go` | 聚合行结构体（`ResourceMetricsBucketRow`、`ResourceMetricsReplicaRow`）与 `bucketSizeFor` 辅助函数（≤ 7 天小时、否则天，AD5） |
 | | `metrics_repository.go` | `AggregateServiceMetrics(ctx, serviceID, since, until, replica, bucketSize)` —— 对 `service_resource_metrics` 的分桶聚合；`ReadDataThrough(ctx, serviceID)` —— 最后一个完整采样桶的起始（AD6） |
-| | `service.go` | 新 RPC `GetServiceResourceMetrics`；范围校验（10404，AD5）；卡片 + 时序 + 副本组装（AD4）；`data_through` 新鲜度标记（AD6）；`service_id` 存在性检查（10301）；管理端组织作用域的 `RoleGuard` 接缝（10036） |
-| `internal/controller` | `resource_metrics.go` | 新采样循环：按 `sampleInterval`，列出推理服务，从 Kubernetes metrics-server 读取每容器 CPU/内存、从加速器信号读取 GPU 利用率，将 Pod 名掩码为副本索引，向 `service_resource_metrics` 写入每（服务、副本、采样）一行（AD2） |
+| | `service.go` | 新 RPC `GetServiceResourceMetrics`；范围校验（10404，AD5）；数据源选择 —— 设置 `prometheusURL` 时读 Prometheus，否则读已存采样（AD11）；卡片 + 时序 + 副本组装（AD4）；`data_through` 新鲜度标记（AD6）；`service_id` 存在性检查（10301）；管理端组织作用域的 `RoleGuard` 接缝（10036） |
+| | `prometheus_source.go` | Prometheus HTTP 客户端：`queryRangeByPod`（每指标一次范围查询，按 Pod 分组）与用于 gauge 和 `histogram_quantile` 的 `queryScalarOK`/`queryRange`；`rateWindow` 将窗口渲染为秒（PromQL 不接受 Go 的 `5m0s`）；`podSelector` 对精确 Pod 名做 RE2 转义；`decodePromPoint` 拒绝非有限采样（5.2 第 5 条） |
+| | `prometheus_metrics.go` | 基于该客户端的读取路径：`prometheusRead`（CPU 从核归一化为毫核、内存、GPU 利用率）、`readEngineTelemetry`（显存、TTFT/TPOT P95、KV 缓存、队列深度、吞吐 —— 各面板独立降级，AD12）、`mergeEngineSeries`（就近桶对齐，采集周期偏移不会丢值）、`applyEngineCards`、`cardMemoryCapacityMiB`（total gauge，缺失时 used + free） |
+| `internal/controller` | `resource_metrics.go` | 新采样循环：按 `sampleInterval`，列出推理服务，从 Kubernetes metrics-server 读取每容器 CPU/内存、从加速器信号读取 GPU 利用率，将 Pod 名掩码为副本索引，向 `service_resource_metrics` 写入每（服务、副本、采样）一行（AD2）。配置了 Prometheus 时整体跳过（AD11） |
+| | `pod_lister.go` | `NewPodLister` —— 推理服务与 Prometheus 之间的连接键：解析带 `go-taas.com/service-id` 标签的 Pod，并由 Pod 名推导 `replica-N`（Deployment 无法为每个副本单独设标签），同时给出用于利用率分母的 CPU/内存配额 |
 | `pkg/errors` | `codes.go`/`messages.go` | `CodeServiceMetricsInvalid`（12101）常量 + 规范消息 "invalid service metric or replica filter"（AD9） |
 | `pkg/config` | `api.go`/`configuration.go` | `ResourceMetricsConfig` + `maxRangeSeconds`（第 9 节）+ `applyDefaults`/`Validate`；`ControllerResourceMetricsConfig` + `sampleInterval` |
 | `apps/taas-server` | `main.go` | 注册新 `ResourceMetricsService`；将 `tenancy` RoleGuard 接入 resourcemetrics 服务 |
 | `apps/controller` | `main.go` | 启动资源指标采样循环 |
-| `web/src` | `pages/ServiceMetricsPage.tsx`、`components/ResourceChart.tsx`、`App.tsx`、`api.ts`、`shells/AdminShell.tsx` | 路由 `/admin/services/:serviceId/metrics`；`GetServiceResourceMetrics` API 类型与调用；服务详情页的 Metrics 标签/链接（第 6.5 节） |
+| `deploy/helm/go-taas` | `templates/podmonitor-inference.yaml` | 引擎采集目标：按 `go-taas.com/service-id` 标签在引擎端口选择 Pod 的 PodMonitor，使 TTFT/TPOT/KV 缓存序列无需改 chart 即可进入 Prometheus（AD13）。所有取值都带 `default`，避免 `--reuse-values` 升级时渲染 nil map |
+| `web/src` | `pages/ServiceMetricsPage.tsx`、`components/ResourceChart.tsx`、`App.tsx`、`api.ts`、`shells/AdminShell.tsx` | 路由 `/admin/services/:serviceId/metrics`；`GetServiceResourceMetrics` API 类型与调用；两组卡片（资源占用 / 推理性能）与七指标切换；服务详情页的 Metrics 标签/链接（第 6.5 节） |
 | `test` | `fvt/service_resource_metrics_fvt_test.go`、`e2e/tests/serviceResourceMetrics.js` | 第 14 节 |
 
 ### 13.2 各屏幕由哪个 React 页面/模块实现
@@ -418,6 +423,6 @@ sequenceDiagram
 
 ## 14. 测试策略
 
-- **单元**（`services/resourcemetrics`，内存 sqlite）：`metrics_repository_test.go` —— `AggregateServiceMetrics` 返回分桶行（AC1），`ReadDataThrough` 返回水位（AC3）。`service_test.go` —— `bucketSizeFor` 在 ≤ 7 天返回小时、否则天（AC3）；范围校验返回 10404（AC1）；`service_id` 存在性检查返回 10301；管理端组织作用域返回 10036（AC8）。新文件覆盖率 ≥ 80%。
+- **单元**（`services/resourcemetrics`，内存 sqlite）：`metrics_repository_test.go` —— `AggregateServiceMetrics` 返回分桶行（AC1），`ReadDataThrough` 返回水位（AC3）。`service_test.go` —— `bucketSizeFor` 在 ≤ 7 天返回小时、否则天（AC3）；范围校验返回 10404（AC1）；`service_id` 存在性检查返回 10301；管理端组织作用域返回 10036（AC8）。`prometheus_metrics_test.go` —— 针对假 Prometheus 服务：卡片/时序/副本组装；空闲 GPU 报 `gpu_available: true`（0% 是数据而不是缺失）而缺 exporter 时为 false；无 Pod 时返回空而非错误；Pod 名转义；`rateWindow` 边界；同一时间戳上的多 Pod 求和；就近桶对齐；面板逐个降级；`0` 与"未采集"保持可区分；非有限采样被拒绝（5.2 第 5 条）。新文件覆盖率 ≥ 80%。
 - **FVT**（`test/fvt/service_resource_metrics_fvt_test.go`，observability FVT 模式：文件 sqlite + `MigrateSchemaForFVT` + `NewForFVT` + 生产拦截器的 gRPC 服务器 + `FVTHeaderMatcher` 的网关 mux）：预置 `service_resource_metrics` 行，断言 `GetServiceResourceMetrics` 返回卡片、时序与副本（AC1），分桶按范围小时/天（AC3），响应携带 `data_through`（AC3）。
 - **E2E**（`test/e2e/tests/serviceResourceMetrics.js`，`serviceLogs.js` 模式）：针对 compose 栈 —— 管理端 `/admin/services/:serviceId/metrics` 页面在首次成功加载时渲染筛选栏、摘要卡片、图表与按副本表（AC4）；更改时间范围或副本重新拉取、指标切换器客户端切换（AC5）；按副本表显示掩码索引、GPU 卡片为空时显示 "Unavailable"（AC6）；页面仅调用 `/api/v1/admin/services/{service_id}/metrics`、未认证访客重定向到 `/admin/login`（AC7）；无所需角色的会话收到 10036 并显示权限拒绝状态（AC8）。
