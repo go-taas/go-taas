@@ -168,7 +168,7 @@ export default function ProvidersPage() {
           setRefreshing(false);
           return;
         }
-        setError(e instanceof Error ? e.message : 'Could not load providers.');
+        setError(e instanceof Error ? e.message : t('providers.loadFailed'));
         if (rows.length > 0) setStale(true);
       } finally {
         setLoading(false);
@@ -212,20 +212,20 @@ export default function ProvidersPage() {
   const validateForm = (): string => {
     const name = form.name.trim();
     if (name === '' || name.length > 64 || !NAME_PATTERN.test(name)) {
-      return 'Enter a lowercase name (letters, digits, -).';
+      return t('providers.errName');
     }
-    if (!PROVIDER_TYPES.includes(form.type)) return 'Select a supported provider type.';
+    if (!PROVIDER_TYPES.includes(form.type)) return t('providers.errType');
     if (form.baseUrl.trim() === '' || !/^https?:\/\/[^/]+/.test(form.baseUrl.trim())) {
-      return 'Enter a valid absolute URL (https://…).';
+      return t('providers.errUrl');
     }
-    if (!editing && form.apiKey.trim() === '') return 'Enter the provider API key.';
+    if (!editing && form.apiKey.trim() === '') return t('providers.errApiKey');
     const timeout = Number(form.timeout);
     if (!Number.isInteger(timeout) || timeout < 1 || timeout > 120) {
-      return 'Enter a timeout between 1 and 120 seconds.';
+      return t('providers.errTimeout');
     }
     for (const row of headers) {
       if (row.name.trim() === '' || !HEADER_NAME_PATTERN.test(row.name.trim())) {
-        return 'Header names must be letters, digits and -.';
+        return t('providers.errHeaderName');
       }
     }
     return '';
@@ -253,23 +253,23 @@ export default function ProvidersPage() {
     try {
       if (editing) {
         await api.patch(`/api/v1/admin/providers/${encodeURIComponent(editing.providerId)}`, orgId, body);
-        setToast('Provider updated.');
+        setToast(t('providers.updatedToast'));
       } else {
         await api.post('/api/v1/admin/providers', orgId, body);
-        setToast('Provider created.');
+        setToast(t('providers.createdToast'));
       }
       setActionError('');
       setDialogOpen(false);
       await load(false);
     } catch (e) {
       const code = (e as { code?: number } | undefined)?.code;
-      if (code === 13002) setFormError('A provider with this name already exists.');
-      else if (code === 13003) setFormError('Enter a lowercase name (letters, digits, -).');
-      else if (code === 13004) setFormError('Enter a valid absolute URL (https://…).');
-      else if (code === 13005) setFormError('Select a supported provider type.');
-      else if (code === 13006) setFormError('Enter the provider API key.');
-      else if (code === 13012) setFormError('Credentials were rejected — fix or rotate the key, then test again.');
-      else setFormError(e instanceof Error ? e.message : 'Could not save the provider.');
+      if (code === 13002) setFormError(t('providers.errExists'));
+      else if (code === 13003) setFormError(t('providers.errName'));
+      else if (code === 13004) setFormError(t('providers.errUrl'));
+      else if (code === 13005) setFormError(t('providers.errType'));
+      else if (code === 13006) setFormError(t('providers.errApiKey'));
+      else if (code === 13012) setFormError(t('providers.errCredentials'));
+      else setFormError(e instanceof Error ? e.message : t('providers.saveFailed'));
     }
   };
 
@@ -288,9 +288,9 @@ export default function ProvidersPage() {
     } catch (e) {
       const code = (e as { code?: number } | undefined)?.code;
       if (code === 13012) {
-        setActionError('Credentials were rejected — fix or rotate the API key, then test again.');
+        setActionError(t('providers.errCredentials'));
       } else {
-        setActionError(e instanceof Error ? e.message : 'Could not update the provider.');
+        setActionError(e instanceof Error ? e.message : t('providers.updateFailed'));
       }
     } finally {
       setBusyId('');
@@ -326,12 +326,12 @@ export default function ProvidersPage() {
     if (!deleteTarget) return;
     try {
       await api.del(`/api/v1/admin/providers/${encodeURIComponent(deleteTarget.providerId)}`, orgId);
-      setToast('Provider deleted.');
+      setToast(t('providers.deletedToast'));
       setActionError('');
       setDeleteTarget(null);
       await load(false);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Could not delete the provider.');
+      setActionError(e instanceof Error ? e.message : t('providers.deleteFailed'));
       setDeleteTarget(null);
     }
   };
@@ -339,7 +339,7 @@ export default function ProvidersPage() {
   if (permissionDenied) {
     return (
       <div data-testid="provider-permission-denied">
-        <ErrorBanner message="You do not have permission to manage providers." />
+        <ErrorBanner message={t('providers.forbidden')} />
         <a href="/admin" className="link" data-testid="provider-back-admin">
           Back to admin
         </a>

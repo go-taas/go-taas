@@ -370,7 +370,7 @@ function RegisterImageDialog({
           disabled={submitting}
           onClick={() => void submit()}
         >
-          {submitting ? 'Registering…' : t('images.register')}
+          {submitting ? t('images.registering') : t('images.register')}
         </button>
       </div>
     </Dialog>
@@ -510,24 +510,62 @@ function WarmupDialog({
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [selectorKey, setSelectorKey] = useState(
-    'go-taas.com/accelerator',
-  );
-  const [selectorValue, setSelectorValue] = useState(image.accelerator);
+  // Default: warm every node (an empty selector). Filtering by a node
+  // label is opt-in, because a wrong label key used to fail the task in
+  // the controller after the fact.
+  const [filterNodes, setFilterNodes] = useState(false);
+  const [selectorKey, setSelectorKey] = useState('');
+  const [selectorValue, setSelectorValue] = useState('');
+  const [labelKeys, setLabelKeys] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { t } = useI18n();
 
+  // Suggested selector keys: the accelerator labels the local cluster's
+  // nodes actually carry (fetched once when the dialog opens).
+  useEffect(() => {
+    let alive = true;
+    api
+      .get<{ clusters?: { local?: boolean; nodeSelectorLabels?: string[] }[] }>(
+        '/api/v1/admin/clusters',
+        orgId,
+      )
+      .then((data) => {
+        if (!alive) return;
+        const labels = (data.clusters || [])
+          .filter((c) => c.local)
+          .flatMap((c) => c.nodeSelectorLabels || []);
+        setLabelKeys(Array.from(new Set(labels)).sort());
+      })
+      .catch(() => {
+        // Suggestions are best-effort; the fields stay free-text.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [api, orgId]);
+
   const submit = async () => {
+    const selector: Record<string, string> = {};
+    if (filterNodes) {
+      const key = selectorKey.trim();
+      const value = selectorValue.trim();
+      if (!key || !value) {
+        setError(t('images.warmupSelectorRequired'));
+        return;
+      }
+      selector[key] = value;
+    }
     setSubmitting(true);
     setError('');
     try {
       await api.post(`/api/v1/admin/images/${image.imageId}:warmup`, orgId, {
-        nodeSelector: { [selectorKey.trim()]: selectorValue.trim() },
+        nodeSelector: selector,
       });
       onDone();
     } catch (e) {
-      // 10205: a warmup task is already active for this image.
+      // 10205: a warmup task is already active for this image; 10204: the
+      // selector matches no node (the message names the valid labels).
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('images.warmupFailed'));
     } finally {
       setSubmitting(false);
@@ -542,24 +580,50 @@ function WarmupDialog({
     >
       <p className="muted">{t('images.warmupNote')}</p>
       <div className="form-grid">
-        <div className="form-field">
-          <label htmlFor="warmup-selector-key">{t('images.fieldSelectorKey')}</label>
-          <input
-            id="warmup-selector-key"
-            data-testid="warmup-selector-key-input"
-            value={selectorKey}
-            onChange={(e) => setSelectorKey(e.target.value)}
-          />
+        <div className="form-field full">
+          <label htmlFor="warmup-filter-nodes">
+            <input
+              id="warmup-filter-nodes"
+              type="checkbox"
+              data-testid="warmup-filter-nodes"
+              checked={filterNodes}
+              onChange={(e) => setFilterNodes(e.target.checked)}
+            />{' '}
+            {t('images.warmupFilterNodes')}
+          </label>
+          <div className="field-hint">{t('images.warmupFilterNodesHint')}</div>
         </div>
-        <div className="form-field">
-          <label htmlFor="warmup-selector-value">{t('images.fieldSelectorValue')}</label>
-          <input
-            id="warmup-selector-value"
-            data-testid="warmup-selector-value-input"
-            value={selectorValue}
-            onChange={(e) => setSelectorValue(e.target.value)}
-          />
-        </div>
+        {filterNodes && (
+          <>
+            <div className="form-field">
+              <label htmlFor="warmup-selector-key">{t('images.fieldSelectorKey')}</label>
+              <input
+                id="warmup-selector-key"
+                data-testid="warmup-selector-key-input"
+                list="warmup-label-keys"
+                value={selectorKey}
+                onChange={(e) => setSelectorKey(e.target.value)}
+                placeholder="nvidia.com/gpu.product"
+              />
+              <datalist id="warmup-label-keys">
+                {labelKeys.map((k) => (
+                  <option key={k} value={k} />
+                ))}
+              </datalist>
+              <div className="field-hint">{t('images.warmupSelectorKeyHint')}</div>
+            </div>
+            <div className="form-field">
+              <label htmlFor="warmup-selector-value">{t('images.fieldSelectorValue')}</label>
+              <input
+                id="warmup-selector-value"
+                data-testid="warmup-selector-value-input"
+                value={selectorValue}
+                onChange={(e) => setSelectorValue(e.target.value)}
+                placeholder="NVIDIA-GeForce-RTX-4090"
+              />
+            </div>
+          </>
+        )}
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
@@ -571,7 +635,7 @@ function WarmupDialog({
           disabled={submitting}
           onClick={() => void submit()}
         >
-          {submitting ? 'Triggering…' : t('images.triggerWarmup')}
+          {submitting ? t('images.triggering') : t('images.triggerWarmup')}
         </button>
       </div>
     </Dialog>

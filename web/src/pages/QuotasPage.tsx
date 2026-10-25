@@ -140,21 +140,23 @@ export default function QuotasPage() {
                     <div className="muted mono">{q.organizationId}</div>
                   </td>
                   <td data-testid={`quota-usage-concurrency-${q.organizationId}`}>
-                    {usageOrUnlimited(u.concurrentRequests, q.maxConcurrentRequests)}
+                    {usageOrUnlimited(u.concurrentRequests, q.maxConcurrentRequests, t('common.unlimited'))}
                   </td>
                   <td data-testid={`quota-usage-services-${q.organizationId}`}>
-                    {usageOrUnlimited(u.inferenceServices, q.maxInferenceServices)}
+                    {usageOrUnlimited(u.inferenceServices, q.maxInferenceServices, t('common.unlimited'))}
                   </td>
                   <td data-testid={`quota-usage-batch-${q.organizationId}`}>
-                    {usageOrUnlimited(u.batchJobsToday, q.maxBatchJobsPerDay)}
+                    {usageOrUnlimited(u.batchJobsToday, q.maxBatchJobsPerDay, t('common.unlimited'))}
                   </td>
                   <td data-testid={`quota-token-cap-${q.organizationId}`}>
-                    {limitOrUnlimited(q.maxOutputTokensPerRequest)}
+                    {limitOrUnlimited(q.maxOutputTokensPerRequest, t('common.unlimited'))}
                   </td>
                   <td data-testid={`quota-updated-${q.organizationId}`}>
                     {q.updatedAt && q.updatedAt !== '0' ? formatTime(q.updatedAt) : '—'}
                   </td>
-                  <td data-testid={`quota-updated-by-${q.organizationId}`}>{q.updatedBy || '—'}</td>
+                  <td data-testid={`quota-updated-by-${q.organizationId}`}>
+                    {q.updatedByDisplayName || q.updatedBy || '—'}
+                  </td>
                   <td>
                     <button className="link" data-testid={`quota-edit-${q.organizationId}`} onClick={() => setEditTarget(row)}>
                       {t('quota.edit')}
@@ -190,15 +192,15 @@ export default function QuotasPage() {
   );
 }
 
-function usageOrUnlimited(current: string, limit: string) {
+function usageOrUnlimited(current: string, limit: string, unlimited: string) {
   const l = parseInt(limit, 10);
-  if (l === 0) return 'Unlimited';
+  if (l === 0) return unlimited;
   return `${current} / ${l}`;
 }
 
-function limitOrUnlimited(limit: string) {
+function limitOrUnlimited(limit: string, unlimited: string) {
   const l = parseInt(limit, 10);
-  return l === 0 ? 'Unlimited' : String(l);
+  return l === 0 ? unlimited : String(l);
 }
 
 function QuotaEditDialog({

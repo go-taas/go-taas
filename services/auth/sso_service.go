@@ -494,7 +494,7 @@ func (s *Service) CreateIdentityBinding(ctx context.Context, req *authv1.CreateI
 	}
 	return &authv1.CreateIdentityBindingResponse{
 		Response: okResponse(),
-		Binding:  summarizeBinding(binding),
+		Binding:  summarizeBinding(binding, s.userLabel(ctx, binding.UserID)),
 	}, nil
 }
 
@@ -512,9 +512,17 @@ func (s *Service) ListIdentityBindings(ctx context.Context, req *authv1.ListIden
 	if err != nil {
 		return nil, err
 	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.UserID)
+	}
+	labels, labelErr := s.ResolveUserLabels(ctx, ids)
+	if labelErr != nil {
+		labels = nil
+	}
 	bindings := make([]*authv1.IdentityBinding, 0, len(rows))
 	for _, row := range rows {
-		bindings = append(bindings, summarizeBinding(row))
+		bindings = append(bindings, summarizeBinding(row, labels[row.UserID]))
 	}
 	return &authv1.ListIdentityBindingsResponse{
 		Response: okResponse(),
@@ -973,15 +981,30 @@ func maskSecret(s string) string {
 	return "••••"
 }
 
-// summarizeBinding maps a binding row to the proto summary.
-func summarizeBinding(b *IdentityBinding) *authv1.IdentityBinding {
+// summarizeBinding maps a binding row to the proto summary. userLabel is
+// the bound user's display label (empty when unresolved).
+func summarizeBinding(b *IdentityBinding, userLabel string) *authv1.IdentityBinding {
 	return &authv1.IdentityBinding{
 		BindingId:       b.ID,
 		ProviderId:      b.ProviderID,
 		ExternalSubject: b.ExternalSubject,
 		UserId:          b.UserID,
+		UserDisplayName: userLabel,
 		CreatedAt:       b.CreatedAt.Unix(),
 	}
+}
+
+// userLabel resolves one user's display label, preferring the display
+// name and falling back to the username.
+func (s *Service) userLabel(ctx context.Context, userID string) string {
+	if userID == "" {
+		return ""
+	}
+	labels, err := s.ResolveUserLabels(ctx, []string{userID})
+	if err != nil {
+		return ""
+	}
+	return labels[userID]
 }
 
 // newAccessToken generates a random opaque access token.

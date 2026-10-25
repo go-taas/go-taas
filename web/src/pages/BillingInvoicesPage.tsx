@@ -22,7 +22,7 @@ interface Invoice {
 export default function BillingInvoicesPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [error, setError] = useState('');
 
@@ -67,7 +67,7 @@ export default function BillingInvoicesPage() {
               <tr key={inv.invoiceId} data-testid={`invoice-row-${inv.invoiceId}`}>
                 <td>{formatTime(inv.periodStart)} – {formatTime(inv.periodEnd)}</td>
                 <td>{inv.totalCents} {inv.currency}</td>
-                <td>{inv.status}</td>
+                <td>{tEnum('state', inv.status)}</td>
                 <td>{formatTime(inv.issuedAt)}</td>
                 <td>
                   <button data-testid={`invoice-download-${inv.invoiceId}`} onClick={() => void download(inv.invoiceId)}>

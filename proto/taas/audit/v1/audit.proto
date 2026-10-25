@@ -73,6 +73,9 @@ message AuditEvent {
   string audit_event_id = 1;
   string organization_id = 2; // empty for platform-level events
   string actor_user_id = 3;
+  // actor_display_name is the actor's display name (else username),
+  // resolved for display; empty for non-user actors.
+  string actor_display_name = 13;
   AuditActorType actor_type = 4;
   string action = 5; // curated enum name, e.g. "api_key.revoke"
   string resource_type = 6;

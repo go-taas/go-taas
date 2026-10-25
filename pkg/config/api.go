@@ -663,6 +663,10 @@ type ClusterConfig struct {
 	// form's cluster selector (AD8). Empty means the first active
 	// cluster.
 	DefaultClusterID string `mapstructure:"defaultClusterId"`
+	// SelfName overrides the auto-discovered name of the cluster the
+	// platform itself runs in (DiscoverCluster). Empty derives the name
+	// from the cluster identity.
+	SelfName string `mapstructure:"selfName"`
 }
 
 // ControllerClusterConfig holds the controller's per-cluster health

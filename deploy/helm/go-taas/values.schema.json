@@ -67,7 +67,30 @@
       }
     },
     "taasServer": {
-      "$ref": "#/definitions/component"
+      "allOf": [
+        {
+          "$ref": "#/definitions/component"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "rbac": {
+              "type": "object",
+              "properties": {
+                "create": {
+                  "type": "boolean"
+                },
+                "name": {
+                  "type": "string"
+                },
+                "existingClusterRole": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
     },
     "controller": {
       "allOf": [

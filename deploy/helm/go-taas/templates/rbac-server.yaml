@@ -1,0 +1,42 @@
+{{- if and .Values.taasServer.enabled .Values.taasServer.rbac.create }}
+{{- $name := default (include "go-taas.server.name" .) .Values.taasServer.rbac.name }}
+{{/*
+The server reads the cluster it runs in (cluster discovery, the live node
+set used to validate image-warmup selectors) and container logs through
+the Kubernetes API. Read-only, and only the objects it needs.
+*/}}
+{{- if not .Values.taasServer.rbac.existingClusterRole }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+rules:
+  # Cluster discovery and warmup node-selector validation.
+  - apiGroups: [""]
+    resources: ["nodes", "namespaces"]
+    verbs: ["get", "list"]
+  # The in-console service log viewer.
+  - apiGroups: [""]
+    resources: ["pods", "pods/log"]
+    verbs: ["get", "list"]
+{{- end }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ $name }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ default $name .Values.taasServer.rbac.existingClusterRole }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "go-taas.server.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}

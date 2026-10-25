@@ -118,10 +118,28 @@ type Service struct {
 	// the import RPC fails closed.
 	importer Importer
 
+	// nodeMatcher validates a warmup node selector against the live node
+	// set so a selector that matches nothing fails fast with the labels
+	// the cluster actually carries. Nil until wired: no pre-check.
+	nodeMatcher NodeMatcher
+
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
 }
+
+// NodeMatcher validates an image-warmup node selector against the live
+// node set. It is implemented in the server wiring layer (which owns the
+// cluster's Kubernetes client) and injected here.
+type NodeMatcher interface {
+	// MatchNodes returns how many nodes match the selector and, when the
+	// selector matches nothing, the accelerator label pairs the cluster
+	// carries ("key=value").
+	MatchNodes(ctx context.Context, selector map[string]string) (int, []string, error)
+}
+
+// SetNodeMatcher injects the warmup selector validator.
+func (s *Service) SetNodeMatcher(m NodeMatcher) { s.nodeMatcher = m }
 
 // Importer copies a container image from a source reference to a
 // destination reference. It is implemented by the registry package and
@@ -784,6 +802,12 @@ func (s *Service) TriggerWarmup(ctx context.Context, req *imagev1.TriggerWarmupR
 	for k, v := range req.GetNodeSelector() {
 		selector[k] = v
 	}
+	// Validate the selector against the live node set: a selector no node
+	// carries would fail the task in the controller after the fact, so
+	// reject it here with the label keys the cluster actually has.
+	if err := s.checkWarmupSelector(ctx, selector); err != nil {
+		return nil, err
+	}
 	selectorJSON, err := json.Marshal(selector)
 	if err != nil {
 		return nil, err
@@ -812,6 +836,27 @@ func (s *Service) TriggerWarmup(ctx context.Context, req *imagev1.TriggerWarmupR
 		return nil, errors.Newf(errors.CodeInternal, "image: publish warmup task failed")
 	}
 	return &imagev1.TriggerWarmupResponse{Response: okResponse(), TaskId: task.ID}, nil
+}
+
+// checkWarmupSelector rejects a warmup node selector that matches no
+// node, reporting the accelerator labels the cluster actually carries so
+// the operator can correct the selector. An empty selector means "every
+// node" and is always accepted. A missing matcher, or a matcher error,
+// skips the pre-check (the controller still validates).
+func (s *Service) checkWarmupSelector(ctx context.Context, selector map[string]string) error {
+	if s.nodeMatcher == nil || len(selector) == 0 {
+		return nil
+	}
+	matched, available, err := s.nodeMatcher.MatchNodes(ctx, selector)
+	if err != nil {
+		return nil
+	}
+	if matched > 0 {
+		return nil
+	}
+	return errors.Newf(errors.CodeImageIncompatible,
+		"image: no node matches the node selector %v; accelerator labels in this cluster: %s",
+		selector, strings.Join(available, ", "))
 }
 
 // ListWarmupTasks returns the warmup task history of one image, newest

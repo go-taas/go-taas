@@ -70,7 +70,7 @@ func (s *Service) CreateJoinRequest(ctx context.Context, req *tenancyv1.CreateJo
 	}
 	return &tenancyv1.CreateJoinRequestResponse{
 		Response: okResponse(),
-		Request:  summarizeJoinRequest(j, ""),
+		Request:  summarizeJoinRequest(j, s.userLabel(ctx, j.UserID)),
 	}, nil
 }
 
@@ -88,9 +88,10 @@ func (s *Service) ListMyJoinRequests(ctx context.Context, _ *tenancyv1.ListMyJoi
 	if err != nil {
 		return nil, err
 	}
+	labels := s.joinRequestLabels(ctx, rows)
 	out := make([]*tenancyv1.JoinRequest, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, summarizeJoinRequest(row, ""))
+		out = append(out, summarizeJoinRequest(row, labels[row.UserID]))
 	}
 	return &tenancyv1.ListMyJoinRequestsResponse{Response: okResponse(), Requests: out}, nil
 }
@@ -114,9 +115,10 @@ func (s *Service) ListJoinRequests(ctx context.Context, req *tenancyv1.ListJoinR
 	if err != nil {
 		return nil, err
 	}
+	labels := s.joinRequestLabels(ctx, rows)
 	out := make([]*tenancyv1.JoinRequest, 0, len(rows))
 	for _, row := range rows {
-		out = append(out, summarizeJoinRequest(row, ""))
+		out = append(out, summarizeJoinRequest(row, labels[row.UserID]))
 	}
 	return &tenancyv1.ListJoinRequestsResponse{Response: okResponse(), Requests: out}, nil
 }
@@ -170,7 +172,7 @@ func (s *Service) ApproveJoinRequest(ctx context.Context, req *tenancyv1.Approve
 	j.Status = JoinStatusApproved
 	j.DecidedBy = adminID
 	j.DecidedAt = time.Now().Unix()
-	return &tenancyv1.ApproveJoinRequestResponse{Response: okResponse(), Request: summarizeJoinRequest(j, "")}, nil
+	return &tenancyv1.ApproveJoinRequestResponse{Response: okResponse(), Request: summarizeJoinRequest(j, s.userLabel(ctx, j.UserID))}, nil
 }
 
 // RejectJoinRequest rejects a pending request.
@@ -193,7 +195,7 @@ func (s *Service) RejectJoinRequest(ctx context.Context, req *tenancyv1.RejectJo
 	j.Status = JoinStatusRejected
 	j.DecidedBy = adminID
 	j.DecidedAt = time.Now().Unix()
-	return &tenancyv1.RejectJoinRequestResponse{Response: okResponse(), Request: summarizeJoinRequest(j, "")}, nil
+	return &tenancyv1.RejectJoinRequestResponse{Response: okResponse(), Request: summarizeJoinRequest(j, s.userLabel(ctx, j.UserID))}, nil
 }
 
 // pendingJoinRequest loads a pending request and validates that the
@@ -261,17 +263,37 @@ func (s *Service) requireOrgMembershipOfProject(ctx context.Context, projectID, 
 }
 
 // summarizeJoinRequest maps a join request row to the proto message.
-func summarizeJoinRequest(j *JoinRequest, username string) *tenancyv1.JoinRequest {
+// displayName is the requester's resolved label; empty falls back to the
+// user id.
+func summarizeJoinRequest(j *JoinRequest, displayName string) *tenancyv1.JoinRequest {
 	return &tenancyv1.JoinRequest{
-		RequestId:  j.ID,
-		UserId:     j.UserID,
-		Username:   username,
-		TargetType: j.TargetType,
-		TargetId:   j.TargetID,
-		Status:     j.Status,
-		Message:    j.Message,
-		DecidedBy:  j.DecidedBy,
-		DecidedAt:  j.DecidedAt,
-		CreatedAt:  j.CreatedAt.Unix(),
+		RequestId:   j.ID,
+		UserId:      j.UserID,
+		DisplayName: displayName,
+		TargetType:  j.TargetType,
+		TargetId:    j.TargetID,
+		Status:      j.Status,
+		Message:     j.Message,
+		DecidedBy:   j.DecidedBy,
+		DecidedAt:   j.DecidedAt,
+		CreatedAt:   j.CreatedAt.Unix(),
 	}
+}
+
+// joinRequestLabels resolves the display labels of the given join request
+// rows in one batch. A missing resolver or a resolution error yields an
+// empty map so the roster falls back to user ids.
+func (s *Service) joinRequestLabels(ctx context.Context, rows []*JoinRequest) map[string]string {
+	if s.userLabelResolver == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.UserID)
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return labels
 }

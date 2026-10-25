@@ -14,7 +14,7 @@ import { formatTime, type GetTraceResponse } from '../api';
 export default function TraceDetailPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const pathParts = window.location.pathname.split('/');
   const traceId = pathParts[pathParts.length - 1] || '';
   const [data, setData] = useState<GetTraceResponse | null>(null);
@@ -73,7 +73,7 @@ export default function TraceDetailPage() {
           <div className="subtitle">
             {trace ? (
               <>
-                <span className={`status-badge ${trace.status}`}>{trace.status}</span>
+                <span className={`status-badge ${trace.status}`}>{tEnum('state', trace.status)}</span>
                 <span className="muted" style={{ marginLeft: 8 }}>
                   {formatTime(trace.createdAt)}
                 </span>
@@ -182,7 +182,7 @@ export default function TraceDetailPage() {
                 </tr>
                 <tr>
                   <td>{t('traces.colStatus')}</td>
-                  <td>{trace.status}</td>
+                  <td>{tEnum('state', trace.status)}</td>
                 </tr>
                 <tr>
                   <td>{t('traces.colError')}</td>

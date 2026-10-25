@@ -56,6 +56,43 @@ func (r *ClusterRepository) ListClusters(ctx context.Context) ([]Cluster, error)
 	return rows, err
 }
 
+// UpsertLocalCluster registers or refreshes the local cluster row. When a
+// local row already exists it is updated in place (name, region, node
+// labels, state) and returned, so discovery is idempotent. A name
+// collision with a manually registered cluster is reported as
+// CodeClusterExists rather than silently adopting that row.
+func (r *ClusterRepository) UpsertLocalCluster(ctx context.Context, c *Cluster) (*Cluster, error) {
+	var existing Cluster
+	err := r.db.DB(ctx).Where("local = ?", true).First(&existing).Error
+	switch {
+	case err == nil:
+		updates := map[string]any{
+			"name":        c.Name,
+			"region":      c.Region,
+			"state":       ClusterStateActive,
+			"node_labels": c.NodeLabels,
+		}
+		if uerr := r.db.DB(ctx).Model(&Cluster{}).Where("id = ?", existing.ID).
+			Updates(updates).Error; uerr != nil {
+			if isUniqueViolation(uerr) {
+				return nil, apierrors.New(apierrors.CodeClusterExists)
+			}
+			return nil, uerr
+		}
+		if uerr := r.db.DB(ctx).Where("id = ?", existing.ID).First(&existing).Error; uerr != nil {
+			return nil, uerr
+		}
+		return &existing, nil
+	case !errors.Is(err, gorm.ErrRecordNotFound):
+		return nil, err
+	}
+	c.ID = uuid.NewString()
+	if cerr := r.CreateCluster(ctx, c); cerr != nil {
+		return nil, cerr
+	}
+	return c, nil
+}
+
 // UpdateClusterState sets a cluster's state.
 func (r *ClusterRepository) UpdateClusterState(ctx context.Context, clusterID, state string) error {
 	return r.db.DB(ctx).Model(&Cluster{}).Where("id = ?", clusterID).Update("state", state).Error

@@ -28,7 +28,7 @@ const TARGET_TYPES = ['service', 'node', 'accelerator'];
 export default function FaultsPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [incidents, setIncidents] = useState<Incident[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -108,25 +108,25 @@ export default function FaultsPage() {
         <select data-testid="fault-filter-status" value={status} onChange={(e) => { setStatus(e.target.value); setOffset(0); }}>
           <option value="">{t('fault.allStatuses')}</option>
           {STATUSES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s}>{tEnum('state', s)}</option>
           ))}
         </select>
         <select data-testid="fault-filter-severity" value={severity} onChange={(e) => { setSeverity(e.target.value); setOffset(0); }}>
           <option value="">{t('fault.allSeverities')}</option>
           {SEVERITIES.map((s) => (
-            <option key={s} value={s}>{s}</option>
+            <option key={s} value={s}>{tEnum('state', s)}</option>
           ))}
         </select>
         <select data-testid="fault-filter-root-cause" value={rootCause} onChange={(e) => { setRootCause(e.target.value); setOffset(0); }}>
           <option value="">{t('fault.allRootCauses')}</option>
           {ROOT_CAUSES.map((r) => (
-            <option key={r} value={r}>{r}</option>
+            <option key={r} value={r}>{tEnum('state', r)}</option>
           ))}
         </select>
         <select data-testid="fault-filter-target-type" value={targetType} onChange={(e) => { setTargetType(e.target.value); setOffset(0); }}>
           <option value="">{t('fault.allTargetTypes')}</option>
           {TARGET_TYPES.map((tt) => (
-            <option key={tt} value={tt}>{tt}</option>
+            <option key={tt} value={tt}>{tEnum('state', tt)}</option>
           ))}
         </select>
       </div>

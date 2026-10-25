@@ -85,6 +85,10 @@ type Service struct {
 	// exportMaxRows is the export row cap (AD7). 0 means the configured
 	// default (10000).
 	exportMaxRows int
+
+	// actorLabelResolver resolves user ids to display labels so the audit
+	// log shows people instead of UUIDs. Nil until wired.
+	actorLabelResolver ActorLabelResolver
 }
 
 // New constructs the audit service. The repository is wired lazily on
@@ -406,9 +410,12 @@ func (s *Service) ListAuditEvents(ctx context.Context, req *auditv1.ListAuditEve
 	if err != nil {
 		return nil, err
 	}
+	labels := s.actorLabels(ctx, rows)
 	events := make([]*auditv1.AuditEvent, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, summarizeEvent(row))
+		ev := summarizeEvent(row)
+		ev.ActorDisplayName = labels[row.ActorUserID]
+		events = append(events, ev)
 	}
 	return &auditv1.ListAuditEventsResponse{
 		Response:    okResponse(),
@@ -527,9 +534,12 @@ func (s *Service) ListMyActivity(ctx context.Context, req *auditv1.ListMyActivit
 	if err != nil {
 		return nil, err
 	}
+	labels := s.actorLabels(ctx, rows)
 	events := make([]*auditv1.AuditEvent, 0, len(rows))
 	for _, row := range rows {
-		events = append(events, summarizeEvent(row))
+		ev := summarizeEvent(row)
+		ev.ActorDisplayName = labels[row.ActorUserID]
+		events = append(events, ev)
 	}
 	return &auditv1.ListMyActivityResponse{
 		Response:    okResponse(),
@@ -657,4 +667,36 @@ func resultEnum(s string) auditv1.AuditResult {
 // okResponse is the success envelope.
 func okResponse() *commonv1.Response {
 	return &commonv1.Response{Code: 0, Message: "OK"}
+}
+
+// ActorLabelResolver resolves user ids to display labels. It is the auth
+// module's ResolveUserLabels injected at wiring time.
+type ActorLabelResolver interface {
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
+// SetActorLabelResolver injects the actor display-name resolver.
+func (s *Service) SetActorLabelResolver(r ActorLabelResolver) { s.actorLabelResolver = r }
+
+// actorLabels resolves the display labels of the events' actors in one
+// batch. A missing resolver or an error yields an empty map so the log
+// falls back to actor ids.
+func (s *Service) actorLabels(ctx context.Context, rows []*AuditEvent) map[string]string {
+	if s.actorLabelResolver == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.ActorUserID != "" {
+			ids = append(ids, row.ActorUserID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	labels, err := s.actorLabelResolver.ResolveUserLabels(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return labels
 }

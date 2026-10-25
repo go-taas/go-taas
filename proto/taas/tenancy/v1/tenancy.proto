@@ -663,6 +663,9 @@ message OrganizationQuota {
   int64 max_output_tokens_per_request = 6;
   int64 updated_at = 7; // unix seconds, 0 = never updated
   string updated_by = 8; // "" = never updated
+  // updated_by_display_name is the editor's display name (else username),
+  // resolved for display; empty when unknown.
+  string updated_by_display_name = 9;
 }
 
 // QuotaUsage is the best-effort live-usage snapshot (FR1.2/FR4.1).
@@ -780,6 +783,9 @@ message JoinRequest {
   string decided_by = 8;
   int64 decided_at = 9;
   int64 created_at = 10;
+  // display_name is the requesting user's display name, falling back to
+  // the username when no display name is set.
+  string display_name = 11;
 }
 
 message CreateJoinRequestRequest {
@@ -841,6 +847,8 @@ message ProjectQuota {
   int64 max_output_tokens_per_request = 7;
   int64 updated_at = 8;
   string updated_by = 9;
+  // updated_by_display_name is the editor's display name (else username).
+  string updated_by_display_name = 10;
 }
 
 message GetProjectQuotaRequest {

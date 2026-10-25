@@ -60,7 +60,7 @@ function CopyControl({ text, testId, label }: { text: string; testId: string; la
 export default function ApiDocsPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [categories, setCategories] = useState<ApiDocsCategory[]>([]);
   const [selectedId, setSelectedId] = useState('');
   const [lang, setLang] = useState<Lang>('python');
@@ -245,7 +245,7 @@ export default function ApiDocsPage() {
                           <td className="mono">{p.name}</td>
                           <td>{p.in}</td>
                           <td>{p.required ? t('common.yes') : t('common.no')}</td>
-                          <td>{p.type}</td>
+                          <td>{tEnum('state', p.type)}</td>
                           <td>{p.description}</td>
                         </tr>
                       ))}

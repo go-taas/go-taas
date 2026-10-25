@@ -52,7 +52,7 @@ export default function TraceWaterfall({ spans, totalMs }: Props) {
               data-testid={`trace-span-${span.name}`}
             />
             <text x={xFor(start) + wFor(dur) + 6} y={y + 14} fontSize={11} fill="#5A6B72">
-              {dur} ms{isError ? ' · error' : ''}
+              {dur} ms{isError ? ` · ${t('traces.errorSpan')}` : ''}
             </text>
           </g>
         );

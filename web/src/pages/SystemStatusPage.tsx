@@ -12,15 +12,15 @@ import StatusBadge from '../components/StatusBadge';
 import UptimeBar from '../components/UptimeBar';
 import { formatTime, type GetSystemStatusResponse } from '../api';
 
-// overallLabel maps the overall status to a display label.
-function overallLabel(status: string): string {
+// overallLabel maps the overall status to a localized display label.
+function overallLabel(status: string, t: (key: string) => string): string {
   switch (status) {
     case 'operational':
-      return 'Operational';
+      return t('status.operational');
     case 'degraded':
-      return 'Degraded';
+      return t('state.degraded');
     default:
-      return 'Outage';
+      return t('status.outage');
   }
 }
 
@@ -95,7 +95,7 @@ export default function SystemStatusPage() {
       {overall && (
         <div className="status-overall" data-testid="status-overall">
           <StatusBadge status={overall} />
-          <span className="status-overall-label">{overallLabel(overall)}</span>
+          <span className="status-overall-label">{overallLabel(overall, t)}</span>
           <span className="muted" data-testid="status-last-checked">
             {t('status.lastChecked', { time: lastChecked ? formatTime(lastChecked) : '—' })}
           </span>
@@ -159,7 +159,7 @@ export default function SystemStatusPage() {
           <h3 style={{ marginTop: 0 }}>{t('status.summaryTitle')}</h3>
           <div className="card-row">
             <div className="card">
-              <div className="card-value">{overallLabel(statusPage.overallStatus)}</div>
+              <div className="card-value">{overallLabel(statusPage.overallStatus, t)}</div>
               <div className="card-label">{t('status.summaryOverall')}</div>
             </div>
             <div className="card">

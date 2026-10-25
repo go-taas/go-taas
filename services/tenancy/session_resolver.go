@@ -47,3 +47,14 @@ type SessionRolesResolver interface {
 	// SessionRoles returns the caller's session roles.
 	SessionRoles(ctx context.Context) ([]string, error)
 }
+
+// UserLabelResolver resolves user ids to a human-readable label: the
+// user's display name, falling back to the username. It is implemented
+// by the auth module (which owns the users table) and injected into the
+// tenancy service at wiring time so member and join-request rosters show
+// people instead of UUIDs. Nil until wired: the user id is the label.
+type UserLabelResolver interface {
+	// ResolveUserLabels returns id -> label. Unknown ids are absent from
+	// the map rather than an error.
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}

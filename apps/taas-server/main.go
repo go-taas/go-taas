@@ -26,6 +26,7 @@ import (
 	"github.com/go-taas/go-taas/services/cluster"
 	"github.com/go-taas/go-taas/services/docs"
 	"github.com/go-taas/go-taas/services/evaluation"
+	"github.com/go-taas/go-taas/services/fault"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/infer"
 	"github.com/go-taas/go-taas/services/metering"
@@ -38,10 +39,9 @@ import (
 	"github.com/go-taas/go-taas/services/resourcemetrics"
 	"github.com/go-taas/go-taas/services/routing"
 	"github.com/go-taas/go-taas/services/runtime"
-	"github.com/go-taas/go-taas/services/fault"
 	"github.com/go-taas/go-taas/services/tenancy"
-	"github.com/go-taas/go-taas/services/vgpu"
 	"github.com/go-taas/go-taas/services/tracing"
+	"github.com/go-taas/go-taas/services/vgpu"
 	"github.com/go-taas/go-taas/services/webhook"
 )
 
@@ -320,6 +320,9 @@ func main() {
 			// The user resolver lets member management accept a username
 			// or id (feature #10); auth owns the users table.
 			tenancySvc.SetUserResolver(authSvc)
+			// Rosters show people, not UUIDs: auth resolves user ids to
+			// display names (falling back to the username).
+			tenancySvc.SetUserLabelResolver(authSvc)
 			tenancySvc.SetSessionRolesResolver(authSvc)
 			// Feature #51 (AD13): the org quota seams. Tenancy owns the
 			// quota columns; auth rides them on the VerifyAPIKey verdict,
@@ -333,6 +336,8 @@ func main() {
 			// and gates the admin audit RPCs by the caller's role.
 			auditSvc.SetSessionOrgResolver(authSvc)
 			auditSvc.SetSessionUserResolver(authSvc)
+			// The audit log shows actors by display name, not UUID.
+			auditSvc.SetActorLabelResolver(authSvc)
 			auditSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			// Feature #23: the webhook service resolves the session's
 			// active org and caller, gates the admin webhook RPCs by the
@@ -385,6 +390,21 @@ func main() {
 			clusterSvc.SetSessionUserResolver(authSvc)
 			clusterSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			clusterSvc.SetWorkloadProvider(infer.NewClusterWorkloadProvider(gormDB))
+			// The cluster the platform runs in is discovered from the
+			// in-cluster Kubernetes environment, so a single-cluster
+			// install shows its own cluster without manual registration.
+			// A missing client leaves discovery disabled (the page then
+			// only lists manually registered clusters).
+			if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
+				clusterSvc.SetSelfClusterProvider(k8s.NewSelfClusterProvider(k8sClient, cfg.Cluster.SelfName))
+				// Register the running cluster at startup so the cluster
+				// page is populated without a manual step.
+				srv.AddRunner(cluster.NewSelfDiscoveryRunner(clusterSvc))
+				// The image warmup selector is validated against the live
+				// node set so a typo fails fast with the valid label keys
+				// instead of failing the task in the controller.
+				imageSvc.SetNodeMatcher(k8s.NewNodeMatcher(k8sClient))
+			}
 			// Feature #41: the account service resolves the session's
 			// active org and caller, and gates the data-export RPCs by
 			// the caller's role (AD1).

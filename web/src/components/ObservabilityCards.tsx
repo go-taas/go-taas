@@ -5,6 +5,7 @@
 
 import type { ObservabilityCard } from '../api';
 import { formatTime } from '../api';
+import { useI18n } from '../i18n';
 
 // errorRatePercent derives the error rate as a percentage.
 function errorRatePercent(cards: ObservabilityCard): string {
@@ -20,17 +21,23 @@ export default function ObservabilityCards({
   cards: ObservabilityCard | null;
   dataThroughLabel: string;
 }) {
+  const { t } = useI18n();
   if (!cards) {
     return (
       <div className="dashboard-cards" data-testid="observability-cards">
-        {['Requests', 'Error rate', 'Avg latency', 'p95 latency', 'Output tokens/sec', 'Input tokens/sec'].map(
-          (label) => (
-            <div className="dashboard-card" key={label}>
-              <div className="label">{label}</div>
-              <div className="value">—</div>
-            </div>
-          ),
-        )}
+        {[
+          t('observability.requests'),
+          t('errors.rate'),
+          t('observability.avgLatency'),
+          t('observability.p95Latency'),
+          t('observability.outputTokensPerSec'),
+          t('observability.inputTokensPerSec'),
+        ].map((label) => (
+          <div className="dashboard-card" key={label}>
+            <div className="label">{label}</div>
+            <div className="value">—</div>
+          </div>
+        ))}
       </div>
     );
   }
@@ -39,12 +46,12 @@ export default function ObservabilityCards({
   const freshness = dataThrough > 0 ? `${dataThroughLabel} ${formatTime(String(dataThrough))}` : '';
 
   const items = [
-    { label: 'Requests', value: parseInt(cards.requestCount || '0', 10).toLocaleString() },
-    { label: 'Error rate', value: errorRatePercent(cards) },
-    { label: 'Avg latency', value: `${cards.avgLatencyMs || '0'} ms` },
-    { label: 'p95 latency', value: `${cards.p95LatencyMs || '0'} ms` },
-    { label: 'Output tokens/sec', value: (cards.outputTokensPerSec || '0').toLocaleString() },
-    { label: 'Input tokens/sec', value: (cards.inputTokensPerSec || '0').toLocaleString() },
+    { label: t('observability.requests'), value: parseInt(cards.requestCount || '0', 10).toLocaleString() },
+    { label: t('errors.rate'), value: errorRatePercent(cards) },
+    { label: t('observability.avgLatency'), value: `${cards.avgLatencyMs || '0'} ms` },
+    { label: t('observability.p95Latency'), value: `${cards.p95LatencyMs || '0'} ms` },
+    { label: t('observability.outputTokensPerSec'), value: (cards.outputTokensPerSec || '0').toLocaleString() },
+    { label: t('observability.inputTokensPerSec'), value: (cards.inputTokensPerSec || '0').toLocaleString() },
   ];
 
   return (

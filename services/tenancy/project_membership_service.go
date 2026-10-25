@@ -73,9 +73,10 @@ func (s *Service) ListProjectMembers(ctx context.Context, req *tenancyv1.ListPro
 	if err != nil {
 		return nil, err
 	}
+	labels := s.projectMemberLabels(ctx, rows)
 	members := make([]*tenancyv1.ProjectMember, 0, len(rows))
 	for _, row := range rows {
-		members = append(members, summarizeProjectMember(row))
+		members = append(members, summarizeProjectMember(row, labels[row.UserID]))
 	}
 	return &tenancyv1.ListProjectMembersResponse{
 		Response: okResponse(),
@@ -127,7 +128,7 @@ func (s *Service) AddProjectMember(ctx context.Context, req *tenancyv1.AddProjec
 	})
 	return &tenancyv1.AddProjectMemberResponse{
 		Response: okResponse(),
-		Member:   summarizeProjectMember(m),
+		Member:   summarizeProjectMember(m, s.userLabel(ctx, m.UserID)),
 	}, nil
 }
 
@@ -167,7 +168,7 @@ func (s *Service) SetProjectMemberRole(ctx context.Context, req *tenancyv1.SetPr
 	})
 	return &tenancyv1.SetProjectMemberRoleResponse{
 		Response: okResponse(),
-		Member:   summarizeProjectMember(m),
+		Member:   summarizeProjectMember(m, s.userLabel(ctx, m.UserID)),
 	}, nil
 }
 
@@ -204,11 +205,33 @@ func (s *Service) RemoveProjectMember(ctx context.Context, req *tenancyv1.Remove
 }
 
 // summarizeProjectMember maps a project member row to the proto message.
-func summarizeProjectMember(m *ProjectMember) *tenancyv1.ProjectMember {
+// displayName is the resolved user label; empty falls back to the user id.
+func summarizeProjectMember(m *ProjectMember, displayName string) *tenancyv1.ProjectMember {
+	if displayName == "" {
+		displayName = m.UserID
+	}
 	return &tenancyv1.ProjectMember{
 		UserId:      m.UserID,
-		DisplayName: m.UserID,
+		DisplayName: displayName,
 		Role:        m.Role,
 		JoinedAt:    m.JoinedAt.Unix(),
 	}
+}
+
+// projectMemberLabels resolves the display labels of the given project
+// member rows in one batch. A missing resolver or a resolution error
+// yields an empty map so the roster falls back to user ids.
+func (s *Service) projectMemberLabels(ctx context.Context, rows []*ProjectMember) map[string]string {
+	if s.userLabelResolver == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.UserID)
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return labels
 }

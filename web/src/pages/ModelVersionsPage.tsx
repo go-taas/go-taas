@@ -34,7 +34,7 @@ interface ListServicesResponse {
 
 export default function ModelVersionsPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const modelId = window.location.pathname.split('/')[3] || '';
   const [data, setData] = useState<ListVersionsResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -350,7 +350,7 @@ export default function ModelVersionsPage() {
                       </td>
                       <td>{s.name}</td>
                       <td className="mono">{s.modelVersion}</td>
-                      <td>{s.state}</td>
+                      <td>{tEnum('state', s.state)}</td>
                     </tr>
                   ))}
               </tbody>

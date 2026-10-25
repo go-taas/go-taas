@@ -22,7 +22,16 @@ type Cluster struct { //nolint:revive // cluster.Cluster is the documented domai
 	Region        string `gorm:"size:64;not null;default:''"`
 	KubeconfigRef string `gorm:"size:512;not null"`
 	State         string `gorm:"size:16;not null;index"`
-	CreatedAt     time.Time
+	// Local marks the cluster the platform itself runs in (discovered
+	// from the in-cluster Kubernetes environment). At most one row is
+	// local; the console shows it as "this cluster" instead of a remote
+	// registration.
+	Local bool `gorm:"not null;default:false;index"`
+	// NodeLabels caches the accelerator label keys present on the
+	// cluster's nodes (comma-separated), so the console can offer valid
+	// image-warmup selectors without a live API call.
+	NodeLabels string `gorm:"size:1024;not null;default:''"`
+	CreatedAt  time.Time
 }
 
 // TableName overrides the default GORM table name.

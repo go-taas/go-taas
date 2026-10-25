@@ -43,7 +43,7 @@ const RANGE_PRESETS = [
 
 export default function ServiceLogsPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const serviceId = window.location.pathname.split('/')[3] || '';
   const [pods, setPods] = useState<ServiceLogPod[]>([]);
   const [replica, setReplica] = useState('');
@@ -261,7 +261,7 @@ export default function ServiceLogsPage() {
                 {filtered.map((l, i) => (
                   <div key={i} className="log-line" data-testid={`log-line-${i}`}>
                     <span className="log-time mono">{formatLogTime(l.timestamp)}</span>
-                    {l.level && <span className={`badge ${l.level}`}>{l.level}</span>}
+                    {l.level && <span className={`badge ${l.level}`}>{tEnum('state', l.level)}</span>}
                     <span className="log-msg">{l.message}</span>
                   </div>
                 ))}

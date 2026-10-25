@@ -70,14 +70,16 @@ export function Avatar({
 }
 
 export function StateBadge({ state }: { state: string }) {
+  const { tEnum } = useI18n();
   return (
     <span className={`badge ${state}`} data-testid={`state-badge-${state}`}>
-      {state}
+      {tEnum('state', state)}
     </span>
   );
 }
 
-export function CopyButton({ text, label = 'Copy' }: { text: string; label?: string }) {
+export function CopyButton({ text, label }: { text: string; label?: string }) {
+  const { t } = useI18n();
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -94,7 +96,7 @@ export function CopyButton({ text, label = 'Copy' }: { text: string; label?: str
         setTimeout(() => setCopied(false), 1500);
       }}
     >
-      {copied ? 'Copied!' : label}
+      {copied ? t('common.copied') : (label ?? t('common.copy'))}
     </button>
   );
 }
@@ -170,6 +172,33 @@ export function usePolling(callback: () => void, intervalMs: number, active: boo
   }, [callback, intervalMs, active]);
 }
 
+// ErrorFallback is the translated fallback of the page error boundary.
+function ErrorFallback({
+  title,
+  message,
+  onRetry,
+}: {
+  title?: string;
+  message: string;
+  onRetry: () => void;
+}) {
+  const { t } = useI18n();
+  return (
+    <div className="page-error" role="alert" data-testid="page-error">
+      <h2>{title || t('common.errorTitle')}</h2>
+      <p className="muted">{message}</p>
+      <div className="header-actions">
+        <button className="secondary" onClick={onRetry}>
+          {t('common.tryAgain')}
+        </button>
+        <button className="primary" onClick={() => window.location.reload()}>
+          {t('common.reload')}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ErrorBoundary keeps a single failing page from blanking the whole
 // console: React unmounts the entire root when a render throws with no
 // boundary above it, which used to leave an empty page. The fallback keeps
@@ -192,18 +221,11 @@ export class ErrorBoundary extends Component<
   render() {
     if (this.state.error) {
       return (
-        <div className="page-error" role="alert" data-testid="page-error">
-          <h2>{this.props.title || 'Something went wrong'}</h2>
-          <p className="muted">{this.state.error.message}</p>
-          <div className="header-actions">
-            <button className="secondary" onClick={() => this.setState({ error: null })}>
-              Try again
-            </button>
-            <button className="primary" onClick={() => window.location.reload()}>
-              Reload
-            </button>
-          </div>
-        </div>
+        <ErrorFallback
+          title={this.props.title}
+          message={this.state.error.message}
+          onRetry={() => this.setState({ error: null })}
+        />
       );
     }
     return this.props.children;

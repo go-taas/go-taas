@@ -79,7 +79,7 @@ function healthBadgeClass(health: string): string {
 export default function AcceleratorsPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [nodes, setNodes] = useState<AcceleratorNodeSummary[]>([]);
   const [cardTypes, setCardTypes] = useState<CardTypeSummary[]>([]);
   const [total, setTotal] = useState(0);
@@ -201,7 +201,7 @@ export default function AcceleratorsPage() {
               data-testid={`accelerator-card-${c.vendor}-${c.cardType}`}
             >
               <div className="detail-item">
-                <span className={vendorBadgeClass(c.vendor)}>{c.vendor}</span>
+                <span className={vendorBadgeClass(c.vendor)}>{tEnum('state', c.vendor)}</span>
               </div>
               <div className="detail-item">
                 <div className="label">{t('accelerators.cardType')}</div>
@@ -251,7 +251,7 @@ export default function AcceleratorsPage() {
           <option value="">{t('common.allVendors')}</option>
           {VENDORS.map((v) => (
             <option key={v} value={v}>
-              {v}
+              {tEnum('state', v)}
             </option>
           ))}
         </select>
@@ -266,7 +266,7 @@ export default function AcceleratorsPage() {
           <option value="">{t('common.allHealth')}</option>
           {HEALTHS.map((h) => (
             <option key={h} value={h}>
-              {h}
+              {tEnum('state', h)}
             </option>
           ))}
         </select>
@@ -318,7 +318,7 @@ export default function AcceleratorsPage() {
                     </a>
                   </td>
                   <td>
-                    <span className={vendorBadgeClass(n.vendor)}>{n.vendor}</span>
+                    <span className={vendorBadgeClass(n.vendor)}>{tEnum('state', n.vendor)}</span>
                   </td>
                   <td>{(n.cardTypes || []).join(', ')}</td>
                   <td>

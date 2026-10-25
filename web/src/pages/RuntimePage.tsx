@@ -129,7 +129,7 @@ function formatAge(seconds: number): string {
 export default function RuntimePage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
 
   const [toast, setToast] = useState('');
   const [actionError, setActionError] = useState('');
@@ -440,11 +440,11 @@ export default function RuntimePage() {
                 <tr key={c.componentId} data-testid={`runtime-component-${c.componentId}`}>
                   <td>{c.name}</td>
                   <td>
-                    <span className="badge steady">{c.kind}</span>
+                    <span className="badge steady">{tEnum('state', c.kind)}</span>
                   </td>
                   <td className="mono">{c.namespace || '—'}</td>
                   <td>
-                    <span className={statusBadgeClass(c.status)}>{c.status}</span>
+                    <span className={statusBadgeClass(c.status)}>{tEnum('state', c.status)}</span>
                   </td>
                   <td>
                     {c.readyReplicas}/{c.desiredReplicas}
@@ -540,14 +540,14 @@ export default function RuntimePage() {
                 <tr key={m.modelName} data-testid={`runtime-model-${m.modelName}`}>
                   <td className="mono">{m.modelName}</td>
                   <td>
-                    <span className="badge steady">{m.engine}</span>
+                    <span className="badge steady">{tEnum('state', m.engine)}</span>
                   </td>
                   <td>{m.replicas}</td>
                   <td>
                     {m.readyCandidates}/{m.replicas}
                   </td>
                   <td>
-                    <span className={statusBadgeClass(m.status)}>{m.status}</span>
+                    <span className={statusBadgeClass(m.status)}>{tEnum('state', m.status)}</span>
                   </td>
                   <td className="muted">
                     {formatAge(Number(m.ageSeconds || '0'))}

@@ -40,6 +40,15 @@ func (c *ProjectionCache) Replace(snapshot map[string]*ClusterHealth) {
 	c.byID = snapshot
 }
 
+// Set stores one cluster's health, replacing any previous entry. It is
+// used by discovery to seed the live node count before the first health
+// snapshot arrives.
+func (c *ProjectionCache) Set(clusterID string, health *ClusterHealth) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.byID[clusterID] = health
+}
+
 // Get returns one cluster's health, or nil when absent.
 func (c *ProjectionCache) Get(clusterID string) *ClusterHealth {
 	c.mu.RLock()

@@ -127,8 +127,12 @@ export default function UsersPage() {
               {users.map((user) => (
                 <tr key={user.userId} data-testid={`user-row-${user.userId}`}>
                   <td>
-                    <strong className="mono">{user.userId}</strong>
-                    <div className="muted">{user.username}</div>
+                    <strong>{user.displayName || user.username || user.userId}</strong>
+                    <div className="muted small">
+                      {user.username}
+                      {user.displayName ? '' : ''}
+                    </div>
+                    <div className="muted small mono">{user.userId}</div>
                   </td>
                   <td>{user.email || '—'}</td>
                   <td>

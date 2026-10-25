@@ -216,7 +216,7 @@ export default function LoadTestDetailPage() {
           </div>
           <div className="detail-item">
             <div className="label">{t('loadtest.requestRate')}</div>
-            <div className="value">{s.requestRate === 0 ? 'unlimited' : `${s.requestRate} req/s`}</div>
+            <div className="value">{s.requestRate === 0 ? t('common.unlimited') : `${s.requestRate} req/s`}</div>
           </div>
           <div className="detail-item">
             <div className="label">{t('loadtest.maxTokens')}</div>

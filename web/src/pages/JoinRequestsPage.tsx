@@ -12,6 +12,7 @@ import { useI18n } from '../i18n';
 interface JoinRequest {
   requestId: string;
   userId: string;
+  displayName?: string;
   targetType: string;
   targetId: string;
   status: string;
@@ -125,7 +126,10 @@ export default function JoinRequestsPage() {
             <tbody>
               {requests.map((r) => (
                 <tr key={r.requestId} data-testid={`joinreq-row-${r.requestId}`}>
-                  <td className="mono">{r.userId}</td>
+                  <td>
+                    <strong>{r.displayName || r.userId}</strong>
+                    <div className="muted small mono">{r.userId}</div>
+                  </td>
                   <td>
                     <span className="muted">{r.targetType}</span>{' '}
                     <strong className="mono">{r.targetId}</strong>

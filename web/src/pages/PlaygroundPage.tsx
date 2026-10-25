@@ -20,7 +20,7 @@ interface KeyListResponse {
 
 export default function PlaygroundPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [services, setServices] = useState<InferenceServiceSummary[]>([]);
   const [keys, setKeys] = useState<{ keyId: string; name: string }[]>([]);
   const [serviceId, setServiceId] = useState('');
@@ -91,7 +91,7 @@ export default function PlaygroundPage() {
               <option value="">{t('playground.placeholderService')}</option>
               {services.map((s) => (
                 <option key={s.serviceId} value={s.serviceId}>
-                  {s.name} ({s.state})
+                  {s.name} ({tEnum('state', s.state)})
                 </option>
               ))}
             </select>

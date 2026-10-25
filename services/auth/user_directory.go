@@ -139,6 +139,7 @@ func (s *Service) summarizeUser(ctx context.Context, row *User) *authv1.UserSumm
 	return &authv1.UserSummary{
 		UserId:            row.ID,
 		Username:          row.Username,
+		DisplayName:       row.DisplayName,
 		Email:             row.Email,
 		State:             row.State,
 		OrganizationCount: orgCount,
@@ -178,4 +179,32 @@ func (s *Service) ResolveUserID(ctx context.Context, idOrUsername string) (strin
 		return "", err
 	}
 	return row.ID, nil
+}
+
+// ResolveUserLabels returns a human-readable label for each requested
+// user id: the user's display name, falling back to the username. It is
+// the tenancy service's display-name seam, so member and request rosters
+// show people instead of UUIDs. Unknown ids are omitted from the map
+// (the caller keeps a neutral fallback) and never fail the batch.
+func (s *Service) ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error) {
+	labels := make(map[string]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return labels, nil
+	}
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := repo.ListUsersByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.DisplayName != "" {
+			labels[row.ID] = row.DisplayName
+			continue
+		}
+		labels[row.ID] = row.Username
+	}
+	return labels, nil
 }

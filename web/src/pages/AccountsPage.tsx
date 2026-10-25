@@ -114,7 +114,7 @@ export default function AccountsPage() {
                         {formatCents(a.usedThisCycleCents)} /{' '}
                         {Number(a.monthlyQuotaCents) > 0
                           ? formatCents(a.monthlyQuotaCents)
-                          : 'unlimited'}{' '}
+                          : t('common.unlimited')}{' '}
                         {a.currency}
                         {Number(a.monthlyQuotaCents) > 0 && (
                           <progress
@@ -599,7 +599,7 @@ function AccountDetailDialog({
           <div data-testid="detail-quota">
             {Number(account.monthlyQuotaCents) > 0
               ? `${formatCents(account.monthlyQuotaCents)} ${account.currency}`
-              : 'unlimited'}
+              : t('common.unlimited')}
           </div>
         </div>
         <div>

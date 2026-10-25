@@ -76,9 +76,10 @@ func (s *Service) ListOrgMembers(ctx context.Context, req *tenancyv1.ListOrgMemb
 	if err != nil {
 		return nil, err
 	}
+	labels := s.userLabels(ctx, rows)
 	members := make([]*tenancyv1.OrgMember, 0, len(rows))
 	for _, row := range rows {
-		members = append(members, summarizeMember(row))
+		members = append(members, summarizeMember(row, labels[row.UserID]))
 	}
 	return &tenancyv1.ListOrgMembersResponse{
 		Response: okResponse(),
@@ -132,7 +133,7 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 	})
 	return &tenancyv1.AddOrgMemberResponse{
 		Response: okResponse(),
-		Member:   summarizeMember(m),
+		Member:   summarizeMember(m, s.userLabel(ctx, m.UserID)),
 	}, nil
 }
 
@@ -177,7 +178,7 @@ func (s *Service) SetOrgMemberRole(ctx context.Context, req *tenancyv1.SetOrgMem
 	})
 	return &tenancyv1.SetOrgMemberRoleResponse{
 		Response: okResponse(),
-		Member:   summarizeMember(m),
+		Member:   summarizeMember(m, s.userLabel(ctx, m.UserID)),
 	}, nil
 }
 
@@ -509,14 +510,48 @@ func validAssignableRole(role string) bool {
 	}
 }
 
-// summarizeMember maps a member row to the proto message.
-func summarizeMember(m *OrgMember) *tenancyv1.OrgMember {
+// summarizeMember maps a member row to the proto message. displayName is
+// the resolved user label; empty falls back to the user id.
+func summarizeMember(m *OrgMember, displayName string) *tenancyv1.OrgMember {
+	if displayName == "" {
+		displayName = m.UserID
+	}
 	return &tenancyv1.OrgMember{
 		UserId:      m.UserID,
-		DisplayName: m.UserID,
+		DisplayName: displayName,
 		Role:        m.Role,
 		JoinedAt:    m.JoinedAt.Unix(),
 	}
+}
+
+// userLabels resolves the display labels of the given member rows in one
+// batch. A missing resolver or a resolution error yields an empty map so
+// the rosters fall back to user ids instead of failing.
+func (s *Service) userLabels(ctx context.Context, rows []*OrgMember) map[string]string {
+	if s.userLabelResolver == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.UserID)
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return labels
+}
+
+// userLabel resolves one user's display label.
+func (s *Service) userLabel(ctx context.Context, userID string) string {
+	if s.userLabelResolver == nil || userID == "" {
+		return ""
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, []string{userID})
+	if err != nil {
+		return ""
+	}
+	return labels[userID]
 }
 
 // summarizeInvitation maps an invitation row to the proto message.

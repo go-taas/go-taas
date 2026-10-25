@@ -112,7 +112,10 @@ export default function IdentityBindingsPage() {
                 <tr key={b.bindingId} data-testid={`identity-binding-row-${b.bindingId}`}>
                   <td className="mono">{b.providerId}</td>
                   <td className="mono">{b.externalSubject}</td>
-                  <td className="mono">{b.userId}</td>
+                  <td>
+                    <strong>{b.userDisplayName || b.userId}</strong>
+                    <div className="muted small mono">{b.userId}</div>
+                  </td>
                   <td>{new Date(Number(b.createdAt) * 1000).toLocaleString()}</td>
                   <td>
                     <button

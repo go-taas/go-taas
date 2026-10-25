@@ -10,6 +10,7 @@ interface AuditEvent {
   auditEventId: string;
   organizationId: string;
   actorUserId: string;
+  actorDisplayName?: string;
   actorType: string;
   action: string;
   resourceType: string;
@@ -58,7 +59,12 @@ export default function AuditLogsPage() {
               <tr key={e.auditEventId} data-testid={`audit-event-row-${e.auditEventId}`}>
                 <td>{formatTime(e.createdAt)}</td>
                 <td>{e.action}</td>
-                <td>{e.actorUserId}</td>
+                <td>
+                  {e.actorDisplayName || e.actorUserId}
+                  {e.actorDisplayName && (
+                    <div className="muted small mono">{e.actorUserId}</div>
+                  )}
+                </td>
                 <td>{e.resourceType}:{e.resourceId}</td>
                 <td>{e.result}</td>
                 <td>{e.ipAddress}</td>

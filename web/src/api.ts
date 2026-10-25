@@ -811,6 +811,9 @@ export interface ProjectSummary {
 export interface UserSummary {
   userId: string;
   username: string;
+  // displayName is the user's preferred display name; empty when unset
+  // (the console falls back to the username).
+  displayName?: string;
   email: string;
   state: string; // active | disabled
   organizationCount: string;
@@ -822,6 +825,7 @@ export interface UserSummary {
 
 export interface OrgMember {
   userId: string;
+  // displayName is the resolved user label (display name, else username).
   displayName: string;
   role: string; // owner | admin | member | viewer
   joinedAt: string;
@@ -829,6 +833,7 @@ export interface OrgMember {
 
 export interface ProjectMember {
   userId: string;
+  // displayName is the resolved user label (display name, else username).
   displayName: string;
   role: string; // admin | member | viewer
   joinedAt: string;
@@ -915,6 +920,8 @@ export interface IdentityBinding {
   providerId: string;
   externalSubject: string;
   userId: string;
+  // userDisplayName is the bound user's display name (else username).
+  userDisplayName?: string;
   createdAt: string;
 }
 
@@ -1292,6 +1299,11 @@ export interface ClusterSummary {
   nodeCount: string;
   serviceCount: string;
   lastCheckedAt: string;
+  // local marks the cluster the platform itself runs in.
+  local?: boolean;
+  // nodeSelectorLabels are the accelerator label keys on the cluster's
+  // nodes, offered as image-warmup selector suggestions.
+  nodeSelectorLabels?: string[];
 }
 
 export interface ClusterNode {
@@ -1585,6 +1597,8 @@ export interface OrganizationQuota {
   maxOutputTokensPerRequest: string;
   updatedAt: string; // unix seconds, 0 = never updated
   updatedBy: string; // "" = never updated
+  // updatedByDisplayName is the editor's display name (else username).
+  updatedByDisplayName?: string;
 }
 
 export interface QuotaUsage {

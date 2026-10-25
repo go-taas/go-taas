@@ -737,7 +737,7 @@ export default function RoutingGroupDetailPage() {
               .map((m) => (
                 <option key={m.modelId} value={m.modelId}>
                   {m.name}
-                  {m.external ? ' (external)' : ''}
+                  {m.external ? ` (${t('modeldetail.external')})` : ''}
                 </option>
               ))}
           </select>

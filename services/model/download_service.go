@@ -10,6 +10,7 @@ import (
 	"github.com/google/uuid"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/modelhub"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
@@ -237,7 +238,18 @@ func (s *Service) updateDownload(ctx context.Context, jobID string, fields map[s
 	if err != nil {
 		return
 	}
-	_ = db.WithContext(ctx).Model(&DownloadJob{}).Where("id = ?", jobID).Updates(fields).Error
+	// A terminal state must land even when a progress sample is writing
+	// at the same time: retry a few times before giving up.
+	var lastErr error
+	for attempt := 0; attempt < 3; attempt++ {
+		lastErr = db.WithContext(ctx).Model(&DownloadJob{}).Where("id = ?", jobID).
+			Updates(fields).Error
+		if lastErr == nil {
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	logger.S().Warnw("model: download job update failed", "job_id", jobID, "err", lastErr)
 }
 
 // downloadSemaphore lazily creates the per-service concurrency limiter.

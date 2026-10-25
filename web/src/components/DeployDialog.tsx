@@ -188,17 +188,17 @@ export default function DeployDialog({
     }
     const r = parseInt(replicas, 10);
     if (!Number.isInteger(r) || r < 1 || r > 100) {
-      setError('Replicas must be an integer between 1 and 100.');
+      setError(t('deploy.errorReplicas'));
       return;
     }
     if (!imageId) {
-      setError('Choose an image compatible with the accelerator.');
+      setError(t('deploy.errorImage'));
       return;
     }
     // Feature #52 (AD2): validate the Shared GPU selection.
     if (sharedGpu) {
       if (!poolId || !sliceTemplateId) {
-        setSliceError('Choose a vGPU pool and a slice template.');
+        setSliceError(t('deploy.errorVgpu'));
         return;
       }
       setSliceError('');
@@ -207,7 +207,7 @@ export default function DeployDialog({
     const asErrs = validateAutoscaling(autoscaling, t);
     setAutoscalingErrors(asErrs);
     if (Object.keys(asErrs).length > 0) {
-      setError('Fix the autoscaling fields.');
+      setError(t('deploy.errorAutoscaling'));
       return;
     }
     setSubmitting(true);

@@ -64,6 +64,10 @@ type Service struct {
 	// module; nil until wired (the input is used verbatim).
 	userResolver UserResolver
 
+	// userLabelResolver resolves user ids to display names for the member
+	// and join-request rosters (falling back to the user id when nil).
+	userLabelResolver UserLabelResolver
+
 	// concurrency holds the gateway in-flight snapshot consumer
 	// (feature #51, AD14). Nil-safe: a nil consumer answers 0.
 	concurrency *ConcurrencyConsumer
@@ -110,6 +114,11 @@ func (s *Service) SetSessionResolver(r SessionResolver) { s.sessionResolver = r 
 // Production wires it to the auth module; unit tests leave it nil so the
 // input is used verbatim.
 func (s *Service) SetUserResolver(r UserResolver) { s.userResolver = r }
+
+// SetUserLabelResolver injects the user display-name resolver used by
+// the member and join-request rosters (falling back to the user id when
+// nil).
+func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolver = r }
 
 // SetSessionRolesResolver injects the caller-roles resolver.
 func (s *Service) SetSessionRolesResolver(r SessionRolesResolver) { s.sessionRolesResolver = r }

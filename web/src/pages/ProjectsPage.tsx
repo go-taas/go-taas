@@ -567,7 +567,7 @@ function ProjectMembersDialog({
   project: ProjectSummary;
   onClose: () => void;
 }) {
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -670,7 +670,8 @@ function ProjectMembersDialog({
             {members.map((m) => (
               <tr key={m.userId} data-testid={`project-member-row-${m.userId}`}>
                 <td>
-                  <strong className="mono">{m.userId}</strong>
+                  <strong>{m.displayName || m.userId}</strong>
+                  <div className="muted small mono">{m.userId}</div>
                 </td>
                 <td>
                   <select
@@ -679,9 +680,9 @@ function ProjectMembersDialog({
                     value={m.role}
                     onChange={(e) => changeRole(m.userId, e.target.value)}
                   >
-                    <option value="admin">admin</option>
-                    <option value="member">member</option>
-                    <option value="viewer">viewer</option>
+                    <option value="admin">{tEnum('state', 'admin')}</option>
+                    <option value="member">{tEnum('state', 'member')}</option>
+                    <option value="viewer">{tEnum('state', 'viewer')}</option>
                   </select>
                 </td>
                 <td>
@@ -716,9 +717,9 @@ function ProjectMembersDialog({
               value={addRole}
               onChange={(e) => setAddRole(e.target.value)}
             >
-              <option value="admin">admin</option>
-              <option value="member">member</option>
-              <option value="viewer">viewer</option>
+              <option value="admin">{tEnum('state', 'admin')}</option>
+              <option value="member">{tEnum('state', 'member')}</option>
+              <option value="viewer">{tEnum('state', 'viewer')}</option>
             </select>
           </label>
           <button data-testid="project-member-add-save" onClick={() => void addMember()}>

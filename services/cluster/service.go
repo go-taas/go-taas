@@ -82,6 +82,8 @@ type Service struct {
 	roleGuard RoleGuard
 	// workloadProvider lists services placed on a cluster.
 	workloadProvider WorkloadProvider
+	// selfCluster reads the running cluster's identity from Kubernetes.
+	selfCluster SelfClusterProvider
 }
 
 // New constructs the cluster service.
@@ -392,11 +394,13 @@ func (s *Service) DisableCluster(ctx context.Context, req *clusterv1.DisableClus
 // summary assembles a cluster summary with health and workload counts.
 func (s *Service) summary(ctx context.Context, c *Cluster) *clusterv1.ClusterSummary {
 	summary := &clusterv1.ClusterSummary{
-		ClusterId: c.ID,
-		Name:      c.Name,
-		Region:    c.Region,
-		State:     c.State,
-		Health:    "unknown",
+		ClusterId:          c.ID,
+		Name:               c.Name,
+		Region:             c.Region,
+		State:              c.State,
+		Health:             "unknown",
+		Local:              c.Local,
+		NodeSelectorLabels: splitLabels(c.NodeLabels),
 	}
 	if health := s.cache.Get(c.ID); health != nil {
 		summary.Health = health.Health

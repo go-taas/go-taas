@@ -38,7 +38,7 @@ export default function BalanceWidget() {
   if (noAccount) {
     return (
       <div className="balance-widget muted" data-testid="usage-balance-widget">
-        No billing account
+        {t('balance.noAccount')}
       </div>
     );
   }

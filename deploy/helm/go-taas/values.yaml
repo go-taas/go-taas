@@ -326,6 +326,15 @@ taasServer:
     name: ""
     # -- Annotations for the ServiceAccount (e.g. IRSA/workload identity).
     annotations: {}
+  rbac:
+    # -- Create the read-only ClusterRole/ClusterRoleBinding the server needs
+    # (cluster discovery, warmup node-selector validation, service log viewer).
+    # Set to false when the ServiceAccount already has these permissions.
+    create: true
+    # -- ClusterRole/Binding name. Empty uses the chart's full name.
+    name: ""
+    # -- Name of a pre-existing ClusterRole to bind instead of creating one.
+    existingClusterRole: ""
   service:
     # -- Service type: `ClusterIP`, `NodePort` or `LoadBalancer`.
     type: ClusterIP

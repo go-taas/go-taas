@@ -11,7 +11,7 @@ const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
 export default function MembersPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -124,7 +124,8 @@ export default function MembersPage() {
               {members.map((m) => (
                 <tr key={m.userId} data-testid={`org-member-row-${m.userId}`}>
                   <td>
-                    <strong className="mono">{m.userId}</strong>
+                    <strong>{m.displayName || m.userId}</strong>
+                    <div className="muted small mono">{m.userId}</div>
                   </td>
                   <td>
                     <StateBadge state={m.role} />
@@ -135,7 +136,7 @@ export default function MembersPage() {
                         value={m.role}
                         disabled
                       >
-                        <option value="owner">owner</option>
+                        <option value="owner">{t('state.owner')}</option>
                       </select>
                     )}
                     {m.role !== 'owner' && (
@@ -147,7 +148,7 @@ export default function MembersPage() {
                       >
                         {ASSIGNABLE_ROLES.map((r) => (
                           <option key={r} value={r}>
-                            {r}
+                            {tEnum('state', r)}
                           </option>
                         ))}
                       </select>
@@ -193,7 +194,7 @@ export default function MembersPage() {
               >
                 {ASSIGNABLE_ROLES.map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {tEnum('state', r)}
                   </option>
                 ))}
               </select>
@@ -210,7 +211,7 @@ export default function MembersPage() {
           <p
             dangerouslySetInnerHTML={{
               __html: t('members.removeBody', {
-                userId: removeTarget.userId,
+                userId: removeTarget.displayName || removeTarget.userId,
                 orgId,
               }),
             }}

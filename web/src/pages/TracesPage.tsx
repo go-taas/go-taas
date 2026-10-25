@@ -35,7 +35,7 @@ function rangeFor(preset: string, customSince: string, customUntil: string): { s
 export default function TracesPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [preset, setPreset] = useState('24h');
   const [customSince, setCustomSince] = useState('');
   const [customUntil, setCustomUntil] = useState('');
@@ -274,7 +274,7 @@ export default function TracesPage() {
                     <td>{tr.modelName || tr.modelId}</td>
                     <td>{tr.apiKeyName || tr.apiKeyId}</td>
                     <td>
-                      <span className={`status-badge ${tr.status}`}>{tr.status}</span>
+                      <span className={`status-badge ${tr.status}`}>{tEnum('state', tr.status)}</span>
                     </td>
                     <td>{tr.totalLatencyMs} ms</td>
                     <td>{tr.ttftMs} ms</td>

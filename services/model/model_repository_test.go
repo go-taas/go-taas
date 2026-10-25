@@ -16,7 +16,10 @@ import (
 
 func newModelTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
+	// A busy timeout keeps the background download-job writers (which run
+	// on their own goroutine) from colliding with the test's reads on the
+	// shared in-memory database.
+	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&Model{}, &Version{}, &Authorization{}))

@@ -30,7 +30,7 @@ interface PaymentIntent {
 export default function BillingPaymentsPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [intents, setIntents] = useState<PaymentIntent[]>([]);
   const [error, setError] = useState('');
@@ -76,7 +76,7 @@ export default function BillingPaymentsPage() {
           {channels.map((c) => (
             <tr key={c.channelId}>
               <td>{c.displayName}</td>
-              <td>{c.type}</td>
+              <td>{tEnum('state', c.type)}</td>
               <td>{c.enabled ? t('common.enabled') : t('common.disabled')}</td>
             </tr>
           ))}
@@ -101,7 +101,7 @@ export default function BillingPaymentsPage() {
               <tr key={i.intentId} data-testid={`payment-intent-row-${i.intentId}`}>
                 <td>{i.amountCents}</td>
                 <td>{i.channel}</td>
-                <td data-testid={`payment-intent-status-${i.intentId}`}>{i.status}</td>
+                <td data-testid={`payment-intent-status-${i.intentId}`}>{tEnum('state', i.status)}</td>
                 <td>{formatTime(i.createdAt)}</td>
                 <td>
                   {i.status === 'pending' && (

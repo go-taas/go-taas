@@ -154,7 +154,8 @@ func todayAtMidnight() time.Time {
 }
 
 // quotaProto maps an org row to the OrganizationQuota proto projection.
-func quotaProto(org *Organization) *tenancyv1.OrganizationQuota {
+// updatedByName is the resolved editor label (empty falls back to the id).
+func quotaProto(org *Organization, updatedByName string) *tenancyv1.OrganizationQuota {
 	q := &tenancyv1.OrganizationQuota{
 		OrganizationId:            org.ID,
 		OrganizationName:          org.DisplayName,
@@ -163,6 +164,7 @@ func quotaProto(org *Organization) *tenancyv1.OrganizationQuota {
 		MaxBatchJobsPerDay:        org.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: org.MaxOutputTokensPerRequest,
 		UpdatedBy:                 org.QuotaUpdatedBy,
+		UpdatedByDisplayName:      updatedByName,
 	}
 	if !org.QuotaUpdatedAt.IsZero() {
 		q.UpdatedAt = org.QuotaUpdatedAt.Unix()
@@ -210,7 +212,7 @@ func (s *Service) ListOrganizationQuotas(ctx context.Context, req *tenancyv1.Lis
 	quotas := make([]*tenancyv1.OrganizationQuotaRow, 0, len(rows))
 	for _, org := range rows {
 		quotas = append(quotas, &tenancyv1.OrganizationQuotaRow{
-			Quota: quotaProto(org),
+			Quota: quotaProto(org, s.userLabel(ctx, org.QuotaUpdatedBy)),
 			Usage: s.quotaUsage(ctx, repo, org.ID),
 		})
 	}
@@ -254,7 +256,7 @@ func (s *Service) GetOrganizationQuota(ctx context.Context, req *tenancyv1.GetOr
 	}
 	return &tenancyv1.GetOrganizationQuotaResponse{
 		Response: okResponse(),
-		Quota:    quotaProto(org),
+		Quota:    quotaProto(org, s.userLabel(ctx, org.QuotaUpdatedBy)),
 		Usage:    s.quotaUsage(ctx, repo, org.ID),
 		Changes:  entries,
 	}, nil
@@ -313,7 +315,7 @@ func (s *Service) UpdateOrganizationQuota(ctx context.Context, req *tenancyv1.Up
 		// No-op: return the current quota + usage, no write, no audit.
 		return &tenancyv1.UpdateOrganizationQuotaResponse{
 			Response: okResponse(),
-			Quota:    quotaProto(org),
+			Quota:    quotaProto(org, s.userLabel(ctx, org.QuotaUpdatedBy)),
 			Usage:    s.quotaUsage(ctx, repo, org.ID),
 		}, nil
 	}
@@ -345,7 +347,7 @@ func (s *Service) UpdateOrganizationQuota(ctx context.Context, req *tenancyv1.Up
 	}
 	return &tenancyv1.UpdateOrganizationQuotaResponse{
 		Response: okResponse(),
-		Quota:    quotaProto(updated),
+		Quota:    quotaProto(updated, s.userLabel(ctx, updated.QuotaUpdatedBy)),
 		Usage:    s.quotaUsage(ctx, repo, org.ID),
 	}, nil
 }
@@ -375,7 +377,7 @@ func (s *Service) GetMyQuota(ctx context.Context, _ *tenancyv1.GetMyQuotaRequest
 	}
 	return &tenancyv1.GetMyQuotaResponse{
 		Response:             okResponse(),
-		Quota:                quotaProto(org),
+		Quota:                quotaProto(org, s.userLabel(ctx, org.QuotaUpdatedBy)),
 		Usage:                s.quotaUsage(ctx, repo, org.ID),
 		RequestIncreaseEmail: requestIncreaseEmail,
 	}, nil

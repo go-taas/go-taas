@@ -15,8 +15,9 @@ const HEALTH_FILTERS = ['', 'healthy', 'degraded', 'unknown'];
 
 export default function ClustersPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [clusters, setClusters] = useState<ClusterSummary[]>([]);
+  const [discovering, setDiscovering] = useState(false);
   const [stateFilter, setStateFilter] = useState('');
   const [healthFilter, setHealthFilter] = useState('');
   const [loading, setLoading] = useState(true);
@@ -29,13 +30,36 @@ export default function ClustersPage() {
   const [regRegion, setRegRegion] = useState('');
   const [regKubeconfig, setRegKubeconfig] = useState('');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const discover = async (auto = false) => {
+    setDiscovering(true);
     try {
+      await api.post('/api/v1/admin/clusters:discover', orgId, {});
       const data = await api.get<{ clusters?: ClusterSummary[] }>('/api/v1/admin/clusters', orgId);
       setClusters(data.clusters || []);
       setError('');
       setStale(false);
+    } catch (e) {
+      // Automatic discovery stays silent (the page keeps its empty
+      // state); an explicit click surfaces the failure.
+      if (!auto) setError(e instanceof Error ? e.message : t('clusters.discoverFailed'));
+    } finally {
+      setDiscovering(false);
+    }
+  };
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const data = await api.get<{ clusters?: ClusterSummary[] }>('/api/v1/admin/clusters', orgId);
+      const rows = data.clusters || [];
+      setClusters(rows);
+      setError('');
+      setStale(false);
+      // A single-cluster install should never show an empty page: when no
+      // cluster is registered yet, discover the one the platform runs in.
+      if (rows.length === 0) {
+        void discover(true);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t('clusters.loadFailed'));
       setStale(true);
@@ -77,6 +101,14 @@ export default function ClustersPage() {
           <h1 data-testid="clusters-title">{t('clusters.title')}</h1>
           <div className="subtitle">{t('clusters.subtitle')}</div>
         </div>
+        <button
+          className="secondary"
+          data-testid="clusters-discover"
+          onClick={() => void discover()}
+          disabled={discovering || loading}
+        >
+          {discovering ? t('clusters.discovering') : t('clusters.discover')}
+        </button>
         <button className="secondary" data-testid="clusters-refresh" onClick={() => void load()} disabled={loading}>
           {t('clusters.refresh')}
         </button>
@@ -153,6 +185,11 @@ export default function ClustersPage() {
                     >
                       {c.name}
                     </a>
+                    {c.local && (
+                      <span className="badge active" data-testid="clusters-local-badge">
+                        {t('clusters.local')}
+                      </span>
+                    )}
                   </td>
                   <td>{c.region || '—'}</td>
                   <td>
@@ -160,7 +197,7 @@ export default function ClustersPage() {
                   </td>
                   <td>
                     <span className={`badge ${c.health}`} data-testid={`clusters-health-${c.health}`}>
-                      {c.health}
+                      {tEnum('state', c.health)}
                     </span>
                   </td>
                   <td>{c.nodeCount}</td>

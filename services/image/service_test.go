@@ -474,3 +474,64 @@ func TestServiceImportImageDuplicate(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeImageExists, ae.Code)
 }
+
+// fakeNodeMatcher reports a fixed match count and the available labels.
+type fakeNodeMatcher struct {
+	matched   int
+	available []string
+	err       error
+}
+
+func (f fakeNodeMatcher) MatchNodes(context.Context, map[string]string) (int, []string, error) {
+	return f.matched, f.available, f.err
+}
+
+func TestServiceTriggerWarmupRejectsUnmatchedSelector(t *testing.T) {
+	svc, img := newServiceForTest(t)
+	svc.SetNodeMatcher(fakeNodeMatcher{
+		matched:   0,
+		available: []string{"nvidia.com/gpu.product=NVIDIA-GeForce-RTX-4090"},
+	})
+
+	_, err := svc.TriggerWarmup(context.Background(), &imagev1.TriggerWarmupRequest{
+		ImageId:      img.ID,
+		NodeSelector: map[string]string{"nvidia.com": "NVIDIA-GeForce-RTX-4090"},
+	})
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeImageIncompatible, ae.Code)
+	assert.Contains(t, ae.Error(), "nvidia.com/gpu.product=NVIDIA-GeForce-RTX-4090",
+		"the error names the labels the cluster actually carries")
+
+	// No task row is created for a rejected selector.
+	_, total, lerr := svc.tasks.ListByImageID(context.Background(), img.ID, 0, 100)
+	require.NoError(t, lerr)
+	assert.EqualValues(t, 0, total)
+}
+
+func TestServiceTriggerWarmupAcceptsMatchedSelector(t *testing.T) {
+	svc, img := newServiceForTest(t)
+	svc.SetNodeMatcher(fakeNodeMatcher{matched: 1})
+
+	// The publish still fails (no MQ in tests) but the selector passed.
+	_, err := svc.TriggerWarmup(context.Background(), &imagev1.TriggerWarmupRequest{
+		ImageId:      img.ID,
+		NodeSelector: map[string]string{"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090"},
+	})
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInternal, ae.Code, "the validation did not reject the selector")
+}
+
+func TestServiceTriggerWarmupEmptySelectorSkipsValidation(t *testing.T) {
+	svc, img := newServiceForTest(t)
+	// A matcher that would reject everything must not be consulted for an
+	// empty selector (all nodes).
+	svc.SetNodeMatcher(fakeNodeMatcher{matched: 0})
+
+	_, err := svc.TriggerWarmup(context.Background(), &imagev1.TriggerWarmupRequest{ImageId: img.ID})
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInternal, ae.Code)
+}

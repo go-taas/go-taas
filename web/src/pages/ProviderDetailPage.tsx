@@ -115,7 +115,7 @@ export default function ProviderDetailPage() {
           setLoading(false);
           return;
         }
-        setError(e instanceof Error ? e.message : 'Could not load the provider.');
+        setError(e instanceof Error ? e.message : t('providerdetail.loadFailed'));
         if (provider) setStale(true);
       } finally {
         setLoading(false);
@@ -141,7 +141,7 @@ export default function ProviderDetailPage() {
       setModels(data.models || []);
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Could not load the upstream models.');
+      setActionError(e instanceof Error ? e.message : t('providerdetail.loadModelsFailed'));
     }
   }, [api, orgId, providerId, offset, search, enabledFilter, publishedFilter]);
 
@@ -168,9 +168,9 @@ export default function ProviderDetailPage() {
         {},
       );
       setProvider({ ...provider, lastProbe: data.probe });
-      setToast('Connectivity test complete.');
+      setToast(t('providerdetail.testOk'));
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'The connectivity test failed.');
+      setActionError(e instanceof Error ? e.message : t('providerdetail.testFailed'));
     } finally {
       setBusy(false);
     }
@@ -198,12 +198,12 @@ export default function ProviderDetailPage() {
   const submitModel = async () => {
     const upstream = modelForm.upstreamModelId.trim();
     if (!editingModel && (upstream === '' || upstream.length > 128)) {
-      setModelFormError('Enter the upstream model id.');
+      setModelFormError(t('providerdetail.errUpstreamId'));
       return;
     }
     const window = Number(modelForm.contextWindow);
     if (!Number.isInteger(window) || window < 0 || window > 10_000_000) {
-      setModelFormError('Enter a context window in tokens (0 for unknown).');
+      setModelFormError(t('providerdetail.errContextWindow'));
       return;
     }
     try {
@@ -213,7 +213,7 @@ export default function ProviderDetailPage() {
           orgId,
           { displayName: modelForm.displayName.trim(), contextWindow: window, enabled: modelForm.enabled },
         );
-        setToast('Model updated.');
+        setToast(t('providerdetail.modelUpdated'));
       } else {
         await api.post(`/api/v1/admin/providers/${encodeURIComponent(providerId)}/models`, orgId, {
           upstreamModelId: upstream,
@@ -221,16 +221,16 @@ export default function ProviderDetailPage() {
           contextWindow: window,
           enabled: modelForm.enabled,
         });
-        setToast('Model added.');
+        setToast(t('providerdetail.modelAdded'));
       }
       setModelDialogOpen(false);
       setActionError('');
       await loadModels();
     } catch (e) {
       const code = (e as { code?: number } | undefined)?.code;
-      if (code === 13009) setModelFormError('This upstream model is already curated.');
-      else if (code === 13010) setModelFormError('Enter a valid upstream model id.');
-      else setModelFormError(e instanceof Error ? e.message : 'Could not save the model.');
+      if (code === 13009) setModelFormError(t('providerdetail.errAlreadyCurated'));
+      else if (code === 13010) setModelFormError(t('providerdetail.errUpstreamIdInvalid'));
+      else setModelFormError(e instanceof Error ? e.message : t('providerdetail.saveModelFailed'));
     }
   };
 
@@ -240,11 +240,11 @@ export default function ProviderDetailPage() {
         `/api/v1/admin/providers/${encodeURIComponent(providerId)}/models/${encodeURIComponent(m.modelId)}`,
         orgId,
       );
-      setToast('Model removed.');
+      setToast(t('providerdetail.modelRemoved'));
       setActionError('');
       await loadModels();
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Could not remove the model.');
+      setActionError(e instanceof Error ? e.message : t('providerdetail.removeModelFailed'));
     }
   };
 
@@ -262,7 +262,7 @@ export default function ProviderDetailPage() {
         orgId,
         { tenantFacingName: publishName.trim() },
       );
-      setToast('Model published.');
+      setToast(t('providerdetail.publishedToast'));
       setActionError('');
       setPublishTarget(null);
       await loadModels();
@@ -270,8 +270,8 @@ export default function ProviderDetailPage() {
     } catch (e) {
       const code = (e as { code?: number } | undefined)?.code;
       if (code === 13014) setPublishError(`A model with this name already exists. Try "${publishName.trim()}-provider".`);
-      else if (code === 13010) setPublishError('Enter a valid tenant-facing name (lowercase letters, digits, . _ -).');
-      else setPublishError(e instanceof Error ? e.message : 'Could not publish the model.');
+      else if (code === 13010) setPublishError(t('providerdetail.errTenantName'));
+      else setPublishError(e instanceof Error ? e.message : t('providerdetail.publishFailed'));
     }
   };
 
@@ -283,13 +283,13 @@ export default function ProviderDetailPage() {
         orgId,
         {},
       );
-      setToast('Model unpublished.');
+      setToast(t('providerdetail.unpublishedToast'));
       setActionError('');
       setUnpublishTarget(null);
       await loadModels();
       await load(false);
     } catch (e) {
-      setActionError(e instanceof Error ? e.message : 'Could not unpublish the model.');
+      setActionError(e instanceof Error ? e.message : t('providerdetail.unpublishFailed'));
       setUnpublishTarget(null);
     }
   };
@@ -297,7 +297,7 @@ export default function ProviderDetailPage() {
   if (permissionDenied) {
     return (
       <div data-testid="provider-permission-denied">
-        <ErrorBanner message="You do not have permission to manage providers." />
+        <ErrorBanner message={t('providers.forbidden')} />
         <a href="/admin" className="link" data-testid="provider-back-admin">
           Back to admin
         </a>
@@ -305,7 +305,7 @@ export default function ProviderDetailPage() {
     );
   }
   if (notFound) {
-    return <ErrorBanner message="Provider not found." />;
+    return <ErrorBanner message={t('providerdetail.notFound')} />;
   }
 
   const status = provider?.lastProbe?.status || 'unknown';
@@ -565,7 +565,7 @@ export default function ProviderDetailPage() {
 
       {modelDialogOpen && (
         <Dialog
-          title={editingModel ? 'Edit upstream model' : 'Add upstream model'}
+          title={editingModel ? t('providerdetail.editTitle') : t('providerdetail.addTitle')}
           onClose={() => setModelDialogOpen(false)}
           testId="provider-model-dialog"
         >

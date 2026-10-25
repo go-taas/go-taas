@@ -27,12 +27,20 @@ interface I18nContextValue {
   lang: Lang;
   setLang: (lang: Lang) => void;
   t: (key: string, vars?: Record<string, string | number>) => string;
+  // tOr translates a key and returns the fallback when the key is not
+  // translated, so enum values coming from the API stay readable.
+  tOr: (key: string, fallback: string) => string;
+  // tEnum translates a namespaced enum value (e.g. tEnum('state',
+  // 'running') reads "state.running") and falls back to the raw value.
+  tEnum: (namespace: string, value: string) => string;
 }
 
 const I18nContext = createContext<I18nContextValue>({
   lang: 'en',
   setLang: () => {},
   t: (key) => key,
+  tOr: (_key, fallback) => fallback,
+  tEnum: (_namespace, value) => value,
 });
 
 export function I18nProvider({ children }: { children: ReactNode }) {
@@ -57,8 +65,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
     return text;
   };
 
+  const tOr = (key: string, fallback: string): string => {
+    const text = dictionaries[lang][key] ?? dictionaries.en[key];
+    return text ?? fallback;
+  };
+
+  const tEnum = (namespace: string, value: string): string => {
+    if (!value) return '';
+    return tOr(`${namespace}.${value}`, value);
+  };
+
   return (
-    <I18nContext.Provider value={{ lang, setLang, t }}>{children}</I18nContext.Provider>
+    <I18nContext.Provider value={{ lang, setLang, t, tOr, tEnum }}>
+      {children}
+    </I18nContext.Provider>
   );
 }
 

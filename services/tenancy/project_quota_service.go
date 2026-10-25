@@ -31,7 +31,7 @@ func (s *Service) GetProjectQuota(ctx context.Context, req *tenancyv1.GetProject
 	if err != nil {
 		return nil, err
 	}
-	return &tenancyv1.GetProjectQuotaResponse{Response: okResponse(), Quota: summarizeProjectQuota(p)}, nil
+	return &tenancyv1.GetProjectQuotaResponse{Response: okResponse(), Quota: summarizeProjectQuota(p, s.userLabel(ctx, p.QuotaUpdatedBy))}, nil
 }
 
 // UpdateProjectQuota updates a project's quotas. Requires project admin
@@ -82,7 +82,7 @@ func (s *Service) UpdateProjectQuota(ctx context.Context, req *tenancyv1.UpdateP
 		ResourceID:     p.ID,
 		Result:         "success",
 	})
-	return &tenancyv1.UpdateProjectQuotaResponse{Response: okResponse(), Quota: summarizeProjectQuota(p)}, nil
+	return &tenancyv1.UpdateProjectQuotaResponse{Response: okResponse(), Quota: summarizeProjectQuota(p, s.userLabel(ctx, p.QuotaUpdatedBy))}, nil
 }
 
 // optionalQuota validates and unwraps an optional quota value.
@@ -101,7 +101,8 @@ func optionalQuota(v *int64) (int64, bool) {
 }
 
 // summarizeProjectQuota maps a project row to the quota message.
-func summarizeProjectQuota(p *Project) *tenancyv1.ProjectQuota {
+// updatedByName is the resolved editor label.
+func summarizeProjectQuota(p *Project, updatedByName string) *tenancyv1.ProjectQuota {
 	q := &tenancyv1.ProjectQuota{
 		ProjectId:                 p.ID,
 		OrganizationId:            p.OrganizationID,
@@ -111,6 +112,7 @@ func summarizeProjectQuota(p *Project) *tenancyv1.ProjectQuota {
 		MaxBatchJobsPerDay:        p.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: p.MaxOutputTokensPerRequest,
 		UpdatedBy:                 p.QuotaUpdatedBy,
+		UpdatedByDisplayName:      updatedByName,
 	}
 	if !p.QuotaUpdatedAt.IsZero() {
 		q.UpdatedAt = p.QuotaUpdatedAt.Unix()

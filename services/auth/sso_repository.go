@@ -315,6 +315,20 @@ func (r *SSORepository) ListUsers(ctx context.Context, filter UserFilter, offset
 	return rows, total, nil
 }
 
+// ListUsersByIDs returns the users with the given ids. Unknown ids are
+// simply absent from the result; an empty input returns an empty slice
+// without querying.
+func (r *SSORepository) ListUsersByIDs(ctx context.Context, ids []string) ([]*User, error) {
+	if len(ids) == 0 {
+		return nil, nil
+	}
+	var rows []*User
+	if err := r.db.DB(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // SetUserState flips a user's lifecycle state and re-selects the row.
 // gorm.ErrRecordNotFound passes through; the caller maps it to
 // CodeUserNotFound.

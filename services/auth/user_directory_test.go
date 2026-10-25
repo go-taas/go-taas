@@ -154,3 +154,30 @@ func TestServiceDeleteUser(t *testing.T) {
 	_, err = svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "missing"})
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
+
+// TestResolveUserLabels verifies the roster label resolver: display name
+// when set, username as the fallback, and unknown ids omitted.
+func TestResolveUserLabels(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&User{
+		ID: "u-with-name", Username: "alice", Email: "alice@example.com",
+		DisplayName: "Alice Zhang", State: UserStateActive,
+	}).Error)
+	require.NoError(t, db.Create(&User{
+		ID: "u-without-name", Username: "bob", Email: "bob@example.com",
+		State: UserStateActive,
+	}).Error)
+
+	labels, err := svc.ResolveUserLabels(ctx, []string{"u-with-name", "u-without-name", "u-unknown"})
+	require.NoError(t, err)
+	assert.Equal(t, "Alice Zhang", labels["u-with-name"])
+	assert.Equal(t, "bob", labels["u-without-name"], "falls back to the username")
+	_, ok := labels["u-unknown"]
+	assert.False(t, ok, "unknown ids are omitted")
+
+	// An empty batch short-circuits.
+	empty, err := svc.ResolveUserLabels(ctx, nil)
+	require.NoError(t, err)
+	assert.Empty(t, empty)
+}

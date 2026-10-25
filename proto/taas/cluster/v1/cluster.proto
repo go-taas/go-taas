@@ -33,6 +33,14 @@ service ClusterService {
     option (google.api.http) = {get: "/api/v1/admin/clusters/{cluster_id}/workloads"};
   }
 
+  // DiscoverCluster registers (or refreshes) the cluster the platform
+  // itself runs in. It reads the in-cluster Kubernetes environment, so
+  // a single-cluster install shows its own cluster without manual
+  // registration. It is idempotent: the local cluster row is upserted.
+  rpc DiscoverCluster(DiscoverClusterRequest) returns (DiscoverClusterResponse) {
+    option (google.api.http) = {post: "/api/v1/admin/clusters:discover" body: "*"};
+  }
+
   // DisableCluster sets a cluster disabled (exclude from new
   // placements). It is idempotent.
   rpc DisableCluster(DisableClusterRequest) returns (DisableClusterResponse) {
@@ -51,6 +59,13 @@ message RegisterClusterResponse {
   string cluster_id = 2;
   // state is active immediately (AD5).
   string state = 3;
+}
+
+message DiscoverClusterRequest {}
+
+message DiscoverClusterResponse {
+  taas.common.v1.Response response = 1;
+  ClusterSummary cluster = 2;
 }
 
 message ListClustersRequest {
@@ -74,6 +89,13 @@ message ClusterSummary {
   int64 node_count = 6;
   int64 service_count = 7;
   int64 last_checked_at = 8;
+  // local is true for the cluster the platform itself runs in, so the
+  // console can mark it instead of listing it as a remote cluster.
+  bool local = 9;
+  // node_selector_labels are the accelerator label keys present on the
+  // cluster's nodes (e.g. "nvidia.com/gpu.product"), used by the console
+  // to offer valid warmup selectors.
+  repeated string node_selector_labels = 10;
 }
 
 message GetClusterRequest {

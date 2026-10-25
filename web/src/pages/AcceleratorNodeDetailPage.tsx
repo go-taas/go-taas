@@ -69,7 +69,7 @@ function healthBadgeClass(health: string): string {
 export default function AcceleratorNodeDetailPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const nodeId = window.location.pathname.split('/').pop() || '';
   const [node, setNode] = useState<AcceleratorNode | null>(null);
   const [loading, setLoading] = useState(true);
@@ -152,7 +152,7 @@ export default function AcceleratorNodeDetailPage() {
         <div className="detail-grid">
           <div className="detail-item">
             <div className="label">{t('accnode.vendor')}</div>
-            <div className="value">{s.vendor}</div>
+            <div className="value">{tEnum('state', s.vendor)}</div>
           </div>
           <div className="detail-item">
             <div className="label">{t('accnode.readiness')}</div>
@@ -199,8 +199,8 @@ export default function AcceleratorNodeDetailPage() {
                 <tr key={g.index}>
                   <td>{g.index}</td>
                   <td>{g.model}</td>
-                  <td>{g.allocated ? 'yes' : 'no'}</td>
-                  <td>{g.free ? 'yes' : 'no'}</td>
+                  <td>{g.allocated ? t('common.yes') : t('common.no')}</td>
+                  <td>{g.free ? t('common.yes') : t('common.no')}</td>
                   <td className="muted">{g.note || '—'}</td>
                 </tr>
               ))}
@@ -282,7 +282,7 @@ export default function AcceleratorNodeDetailPage() {
               {node.warmupTasks.map((task) => (
                 <tr key={task.taskId}>
                   <td className="mono">{task.taskId}</td>
-                  <td>{task.state}</td>
+                  <td>{tEnum('state', task.state)}</td>
                   <td>{task.nodeOutcome || '—'}</td>
                 </tr>
               ))}
