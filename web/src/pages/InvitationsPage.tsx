@@ -12,7 +12,7 @@ const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
 export default function InvitationsPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -194,7 +194,7 @@ export default function InvitationsPage() {
               >
                 {ASSIGNABLE_ROLES.map((r) => (
                   <option key={r} value={r}>
-                    {r}
+                    {tEnum('state', r)}
                   </option>
                 ))}
               </select>

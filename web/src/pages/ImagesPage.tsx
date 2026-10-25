@@ -20,7 +20,7 @@ const ACCELERATORS = ['all', 'nvidia', 'iluvatar', 'metax'];
 
 export default function ImagesPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [images, setImages] = useState<ImageSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -85,7 +85,7 @@ export default function ImagesPage() {
         >
           {ACCELERATORS.map((a) => (
             <option key={a} value={a}>
-              {a === 'all' ? t('images.filterAccelerator') : a}
+              {a === 'all' ? t('images.filterAccelerator') : tEnum('state', a)}
             </option>
           ))}
         </select>

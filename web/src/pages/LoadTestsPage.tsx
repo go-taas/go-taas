@@ -225,7 +225,7 @@ function NewLoadTestDialog({
 export default function LoadTestsPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [runs, setRuns] = useState<LoadTestSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -427,7 +427,7 @@ export default function LoadTestsPage() {
             <option value="">{t('common.allStatuses')}</option>
             {STATES.map((s) => (
               <option key={s} value={s}>
-                {s}
+                {tEnum('state', s)}
               </option>
             ))}
           </select>
