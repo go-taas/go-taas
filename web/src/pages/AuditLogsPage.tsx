@@ -28,6 +28,7 @@ export default function AuditLogsPage() {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [events, setEvents] = useState<AuditEvent[]>([]);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   // The governance view spans every organization; the filter narrows it on
   // demand (an operator investigating one tenant's trail).
@@ -46,10 +47,13 @@ export default function AuditLogsPage() {
 
   useEffect(() => {
     const query = orgFilter ? `organizationId=${encodeURIComponent(orgFilter)}&` : '';
+    setLoading(true);
+    setError('');
     api
       .get<{ auditEvents?: AuditEvent[] }>(`/api/v1/admin/audit/events?${query}page.limit=100`, orgId)
       .then((data) => setEvents(data.auditEvents || []))
-      .catch((e) => setError(e instanceof Error ? e.message : t('audit.loadFailed')));
+      .catch((e) => setError(e instanceof Error ? e.message : t('audit.loadFailed')))
+      .finally(() => setLoading(false));
   }, [api, orgId, orgFilter, t]);
 
   return (
@@ -73,7 +77,9 @@ export default function AuditLogsPage() {
         </label>
       </div>
       {error && <div className="error">{error}</div>}
-      {events.length === 0 ? (
+      {loading ? (
+        <div className="loading">{t('common.loading')}</div>
+      ) : events.length === 0 ? (
         <div className="empty" data-testid="audit-logs-empty">{t('audit.empty')}</div>
       ) : (
         <table className="table" data-testid="audit-logs-table">
