@@ -549,6 +549,9 @@ func main() {
 			runtimeSvc.SetSessionOrgResolver(authSvc)
 			runtimeSvc.SetSessionUserResolver(authSvc)
 			runtimeSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// The settings page shows who last changed the data-plane
+			// endpoint; resolve the id to a display name.
+			runtimeSvc.SetUserLabelResolver(authSvc)
 			if mqComponent := srv.Components().MQ(); mqComponent != nil {
 				if mqClient, ok := mqComponent.Client().(mq.Client); ok {
 					runtimeSvc.SetPublisher(mqClient)

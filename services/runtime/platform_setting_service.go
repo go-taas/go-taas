@@ -102,6 +102,22 @@ func (s *Service) InferenceGateway(ctx context.Context) (hostname, scheme, inter
 	return row.InferenceGatewayHostname, row.GatewayScheme(), row.InferenceGatewayInternalURL, nil
 }
 
+// actorLabel resolves a stored actor id to a display label, falling back to
+// the id itself when no resolver is wired or the user is gone.
+func (s *Service) actorLabel(ctx context.Context, userID string) string {
+	if userID == "" || s.userLabelResolver == nil {
+		return userID
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, []string{userID})
+	if err != nil {
+		return userID
+	}
+	if label := labels[userID]; label != "" {
+		return label
+	}
+	return userID
+}
+
 // GetPlatformSettings returns the operator-editable platform settings.
 func (s *Service) GetPlatformSettings(ctx context.Context, _ *runtimev1.GetPlatformSettingsRequest) (*runtimev1.GetPlatformSettingsResponse, error) {
 	if err := s.requireAdminRole(ctx); err != nil {
@@ -115,9 +131,11 @@ func (s *Service) GetPlatformSettings(ctx context.Context, _ *runtimev1.GetPlatf
 	if err != nil {
 		return nil, err
 	}
+	projected := platformSettingsToProto(row)
+	projected.UpdatedBy = s.actorLabel(ctx, row.UpdatedBy)
 	return &runtimev1.GetPlatformSettingsResponse{
 		Response: okResponse(),
-		Settings: platformSettingsToProto(row),
+		Settings: projected,
 	}, nil
 }
 
@@ -186,8 +204,10 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 			Metadata:     string(mustJSON(map[string]string{"before": string(beforeJSON), "after": string(afterJSON)})),
 		})
 	}
+	projected := platformSettingsToProto(updated)
+	projected.UpdatedBy = s.actorLabel(ctx, updated.UpdatedBy)
 	return &runtimev1.UpdatePlatformSettingsResponse{
 		Response: okResponse(),
-		Settings: platformSettingsToProto(updated),
+		Settings: projected,
 	}, nil
 }

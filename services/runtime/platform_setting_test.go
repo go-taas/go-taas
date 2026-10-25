@@ -189,3 +189,42 @@ func TestInferenceGatewaySeam(t *testing.T) {
 	assert.Equal(t, "https", scheme)
 	assert.Equal(t, "http://10.43.253.124", internalURL)
 }
+
+// fakeUserLabels resolves ids like the auth module does.
+type fakeUserLabels map[string]string
+
+func (f fakeUserLabels) ResolveUserLabels(_ context.Context, ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		if label, ok := f[id]; ok {
+			out[id] = label
+		}
+	}
+	return out, nil
+}
+
+// TestPlatformSettingsShowsTheActorName keeps the settings page showing a
+// person rather than a UUID, and falls back to the id when the user is gone.
+func TestPlatformSettingsShowsTheActorName(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewForFVT(db, nil)
+	svc.SetSessionUserResolver(fakeSessionUser{user: "user-1"})
+	svc.SetUserLabelResolver(fakeUserLabels{"user-1": "Alice Admin"})
+
+	resp, err := svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname: "api.example.com",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Alice Admin", resp.GetSettings().GetUpdatedBy())
+
+	got, err := svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "Alice Admin", got.GetSettings().GetUpdatedBy())
+
+	// Without a resolver the raw id is still reported, never an empty
+	// string that looks like "nobody".
+	bare := NewForFVT(db, nil)
+	got, err = bare.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "user-1", got.GetSettings().GetUpdatedBy())
+}

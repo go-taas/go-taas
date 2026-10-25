@@ -83,6 +83,11 @@ type Service struct {
 	sessionUserResolver SessionUserResolver
 	roleGuard           RoleGuard
 	auditRecorder       AuditRecorder
+
+	// userLabelResolver resolves the acting admin's user id to a display
+	// label, so the settings page shows a person rather than a UUID. Nil
+	// until wired: the raw id is reported.
+	userLabelResolver UserLabelResolver
 }
 
 // New constructs the runtime service over a fresh projection cache.
@@ -131,6 +136,15 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 
 // SetRoleGuard injects the org role guard.
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// UserLabelResolver resolves user ids to display labels (auth's
+// ResolveUserLabels). Rosters and audit surfaces show people, not UUIDs.
+type UserLabelResolver interface {
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
+// SetUserLabelResolver injects the display-name resolver.
+func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolver = r }
 
 // Cache returns the shared projection cache (the wiring passes the same
 // instance to the snapshot consumer).
