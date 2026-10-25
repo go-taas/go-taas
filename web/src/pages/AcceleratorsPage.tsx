@@ -184,7 +184,7 @@ export default function AcceleratorsPage() {
       {zeroNodeVendors.map((v) => (
         <div className="info-banner" data-testid={`accelerators-vendor-banner-${v}`}>
           <span className="info-banner-dot" aria-hidden="true" />
-          {t('accelerators.vendorNodes', { v })}
+          {t('accelerators.vendorNodes', { v: tEnum('state', v) })}
         </div>
       ))}
 

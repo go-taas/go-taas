@@ -133,7 +133,7 @@ export default function ClustersPage() {
           <select data-testid="clusters-state-filter" value={stateFilter} onChange={(e) => setStateFilter(e.target.value)}>
             {STATE_FILTERS.map((s) => (
               <option key={s} value={s}>
-                {s === '' ? t('clusters.allStates') : s}
+                {s === '' ? t('clusters.allStates') : tEnum('state', s)}
               </option>
             ))}
           </select>
@@ -143,7 +143,7 @@ export default function ClustersPage() {
           <select data-testid="clusters-health-filter" value={healthFilter} onChange={(e) => setHealthFilter(e.target.value)}>
             {HEALTH_FILTERS.map((h) => (
               <option key={h} value={h}>
-                {h === '' ? t('clusters.allHealth') : h}
+                {h === '' ? t('clusters.allHealth') : tEnum('state', h)}
               </option>
             ))}
           </select>
