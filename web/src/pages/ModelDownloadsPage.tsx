@@ -210,6 +210,7 @@ export default function ModelDownloadsPage() {
             {t('models.downloads.empty')}
           </div>
         ) : (
+          <div className="table-scroll">
           <table className="table">
             <thead>
               <tr>
@@ -223,11 +224,11 @@ export default function ModelDownloadsPage() {
             <tbody>
               {downloads.map((d) => (
                 <tr key={d.downloadId} data-testid={`download-row-${d.hubModelId}`}>
-                  <td className="download-hub-id">
+                  <td>
                     <strong className="mono">{d.hubModelId}</strong>
                     <div className="muted small">{d.source}</div>
                   </td>
-                  <td className="mono download-target">
+                  <td className="mono">
                     {d.name}
                     <div className="muted small">{d.version}</div>
                   </td>
@@ -258,6 +259,7 @@ export default function ModelDownloadsPage() {
               ))}
             </tbody>
           </table>
+          </div>
         )}
         {total > PAGE_SIZE && (
           <Pagination

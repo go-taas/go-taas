@@ -954,17 +954,12 @@ table.table tbody tr:hover {
   min-width: 140px;
   max-width: 320px;
 }
-/* Hub ids and model names are long unbroken tokens; cap the columns so the
-   job table still fits the panel. */
-.download-hub-id {
-  max-width: 260px;
+/* Wide tables scroll inside their panel instead of widening the page. */
+.table-scroll {
+  overflow-x: auto;
 }
-.download-target {
-  max-width: 180px;
-}
-.download-hub-id,
-.download-target {
-  word-break: break-word;
+.table-scroll table {
+  min-width: 860px;
 }
 .download-state .badge,
 .download-state .link {
