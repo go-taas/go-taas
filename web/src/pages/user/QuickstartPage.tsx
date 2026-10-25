@@ -190,7 +190,10 @@ export default function QuickstartPage() {
 
   const selectedModel = models.find((m) => m.modelId === selectedModelId);
   const snippet = useMemo(
-    () => buildSnippet(lang, baseUrl || '{base_url}', selectedModel?.modelId || '{model}', snippetKey),
+    // The snippet's model token is the served model *name*: the gateway
+    // routes by name, so a catalog id (UUID) would be rejected as
+    // "model not found".
+    () => buildSnippet(lang, baseUrl || '{base_url}', selectedModel?.name || '{model}', snippetKey),
     [lang, baseUrl, selectedModel, snippetKey],
   );
 
