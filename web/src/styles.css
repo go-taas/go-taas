@@ -981,6 +981,8 @@ table.table tbody tr:hover {
 
 .badge {
   display: inline-block;
+  /* A badge is a single token: never let a narrow table column wrap it. */
+  white-space: nowrap;
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
