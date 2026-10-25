@@ -1,7 +1,19 @@
 {{- if and .Values.dataPlane.enabled .Values.dataPlane.hostname }}
 {{- $dp := .Values.dataPlane }}
-{{- $parent := $dp.parentRef }}
-{{- $backend := $dp.backend }}
+{{- /*
+A `--reuse-values` upgrade reuses the previous release's values, so a
+sub-value added to values.yaml afterwards is absent rather than defaulted.
+`required` turns that into a message naming the missing key instead of an
+API-server validation error about nulls.
+*/}}
+{{- $parent := $dp.parentRef | default dict }}
+{{- $backend := $dp.backend | default dict }}
+{{- $parentName := required "dataPlane.parentRef.name is required (the Gateway that terminates TLS)" $parent.name }}
+{{- $parentNamespace := required "dataPlane.parentRef.namespace is required" $parent.namespace }}
+{{- $backendName := required "dataPlane.backend.name is required (the inference gateway Service)" $backend.name }}
+{{- $backendNamespace := required "dataPlane.backend.namespace is required" $backend.namespace }}
+{{- $backendPort := required "dataPlane.backend.port is required" $backend.port }}
+{{- $timeout := $dp.requestTimeout | default "600s" }}
 {{- /*
 The data plane is the inference gateway, not this server: the control plane
 handles management calls and the data plane handles inference. This route
@@ -12,12 +24,12 @@ The backend lives in the gateway's namespace, so the route needs a
 ReferenceGrant there permitting HTTPRoutes from this namespace to use its
 Services.
 */}}
-{{- if ne $backend.namespace .Release.Namespace }}
+{{- if ne $backendNamespace .Release.Namespace }}
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:
   name: {{ include "go-taas.fullname" . }}-data-plane
-  namespace: {{ $backend.namespace }}
+  namespace: {{ $backendNamespace }}
   labels:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: data-plane
@@ -45,16 +57,16 @@ spec:
   parentRefs:
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: {{ $parent.name }}
-      namespace: {{ $parent.namespace }}
+      name: {{ $parentName }}
+      namespace: {{ $parentNamespace }}
       {{- with $parent.sectionName }}
       sectionName: {{ . }}
       {{- end }}
     {{- if $dp.enablePlainHTTP }}
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: {{ $parent.name }}
-      namespace: {{ $parent.namespace }}
+      name: {{ $parentName }}
+      namespace: {{ $parentNamespace }}
       sectionName: http
     {{- end }}
   rules:
@@ -65,10 +77,10 @@ spec:
       backendRefs:
         - group: ""
           kind: Service
-          name: {{ $backend.name }}
-          namespace: {{ $backend.namespace }}
-          port: {{ $backend.port }}
+          name: {{ $backendName }}
+          namespace: {{ $backendNamespace }}
+          port: {{ $backendPort }}
           weight: 1
       timeouts:
-        request: {{ $dp.requestTimeout }}
+        request: {{ $timeout }}
 {{- end }}

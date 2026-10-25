@@ -70,7 +70,11 @@ export default function PlatformSettingsPage() {
       setPermissionDenied(false);
     } catch (e) {
       const code = (e as { code?: number } | undefined)?.code;
-      if (code === 10036) {
+      // 10036 is a missing role; 10038 is a session from the other console
+      // (for example a user-realm session opening an admin URL). Both mean
+      // "sign in to this console as a platform administrator", which is more
+      // useful than the raw error.
+      if (code === 10036 || code === 10038) {
         setPermissionDenied(true);
       } else {
         setError(e instanceof Error ? e.message : t('settings.loadFailed'));
