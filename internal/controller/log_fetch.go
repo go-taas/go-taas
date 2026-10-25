@@ -82,6 +82,16 @@ func (f *logFetcher) GetServiceLogs(ctx context.Context, serviceID, pod, contain
 	sort.Slice(pods.Items, func(i, j int) bool {
 		return pods.Items[i].CreationTimestamp.Before(&pods.Items[j].CreationTimestamp)
 	})
+	// A caller that names no pod wants the logs of the service, not an
+	// error: default to the first replica. Without this, the very first
+	// read of the viewer (before it has picked a replica) answered an
+	// internal error even though the pods were listed fine.
+	if strings.TrimSpace(pod) == "" {
+		pod = replicaLabel(1)
+	}
+	if len(pods.Items) == 0 {
+		return infer.LogWindow{}, fmt.Errorf("controller: service %s has no pods", serviceID)
+	}
 	replicaIdx := replicaIndex(pod)
 	if replicaIdx < 1 || replicaIdx > len(pods.Items) {
 		return infer.LogWindow{}, fmt.Errorf("controller: unknown replica %q for service %s", pod, serviceID)

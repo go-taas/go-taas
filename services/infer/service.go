@@ -1338,7 +1338,7 @@ func (s *Service) ListServiceLogPods(ctx context.Context, req *inferv1.ListServi
 	}
 	pods, err := s.logFetcher.ListServiceLogPods(ctx, req.GetServiceId())
 	if err != nil {
-		return nil, err
+		return nil, apierrors.Newf(apierrors.CodeInferLogsUnavailable, "infer: %v", err)
 	}
 	out := make([]*inferv1.ServiceLogPod, 0, len(pods))
 	for _, p := range pods {
@@ -1401,7 +1401,11 @@ func (s *Service) GetServiceLogs(ctx context.Context, req *inferv1.GetServiceLog
 		strings.TrimSpace(req.GetNextOffset()),
 	)
 	if err != nil {
-		return nil, err
+		// The fetcher's errors are actionable ("unknown replica", "no
+		// pods") and a bare "internal error" leaves the operator with
+		// nothing to act on.
+		return nil, apierrors.Newf(apierrors.CodeInferLogsUnavailable,
+			"infer: %v", err)
 	}
 	lines := make([]*inferv1.ServiceLogLine, 0, len(window.Lines))
 	for _, l := range window.Lines {

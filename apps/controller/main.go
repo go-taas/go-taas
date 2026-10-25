@@ -8,8 +8,10 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
+	"gorm.io/gorm"
 
 	"github.com/go-taas/go-taas/internal/controller"
 	"github.com/go-taas/go-taas/pkg/config"
@@ -109,7 +111,11 @@ func main() {
 	// service_resource_metrics table. It is wired when the database is
 	// reachable; the metrics-server client is built from the same
 	// kubeconfig.
-	if db, dbErr := database.InitDB(&cfg.Databases.Master); dbErr == nil {
+	//
+	// The connection is retried: a pod that starts before PostgreSQL is
+	// ready used to lose the sampler for the rest of its life (one failed
+	// InitDB silently disabled metrics until the next restart).
+	if db, dbErr := initDBWithRetry(&cfg.Databases.Master, controllerDBRetryWindow); dbErr == nil {
 		defer func() {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
@@ -124,7 +130,11 @@ func main() {
 				),
 				cfg.Controller.ResourceMetrics.SampleInterval,
 			))
+		} else {
+			logger.S().Warnw("controller: resource sampling disabled, metrics client unavailable", "err", mcErr)
 		}
+	} else {
+		logger.S().Warnw("controller: resource sampling disabled, database unreachable", "err", dbErr)
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -135,4 +145,29 @@ func main() {
 		logger.S().Fatalw("controller exited with error", "err", err)
 	}
 	logger.S().Info("controller stopped")
+}
+
+// controllerDBRetryWindow bounds how long startup keeps trying to reach
+// the database. Long enough to outlast a dependency rolling update, short
+// enough that a genuinely broken configuration still fails visibly.
+const controllerDBRetryWindow = 90 * time.Second
+
+// initDBWithRetry opens the database, retrying until the window expires.
+// Features that need the database are wired from the result, so a
+// transient outage at boot must not decide they are unavailable forever.
+func initDBWithRetry(cfg *config.DBConfig, window time.Duration) (*gorm.DB, error) {
+	deadline := time.Now().Add(window)
+	var lastErr error
+	for attempt := 1; ; attempt++ {
+		db, err := database.InitDB(cfg)
+		if err == nil {
+			return db, nil
+		}
+		lastErr = err
+		if time.Now().After(deadline) {
+			return nil, lastErr
+		}
+		logger.S().Infow("controller: database not ready, retrying", "attempt", attempt, "err", err)
+		time.Sleep(2 * time.Second)
+	}
 }
