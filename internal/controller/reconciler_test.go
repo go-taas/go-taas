@@ -57,7 +57,7 @@ func testChangeEvent(eventType, name string) changeEvent {
 
 func TestBuildDeployment(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
-	dep := testReconciler().buildDeployment(evt)
+	dep := testReconciler().buildDeployment(context.Background(), evt)
 
 	assert.Equal(t, "demo", dep.Name)
 	assert.Equal(t, reconcileNamespace, dep.Namespace)
@@ -456,7 +456,7 @@ func TestAwaitReadinessPolls(t *testing.T) {
 	reconciler := newReconcilerWithClientset(clientset, nil, publisher, "", "", WeightsConfig{}, nil)
 
 	evt := testChangeEvent("upsert", "demo")
-	dep := testReconciler().buildDeployment(evt)
+	dep := testReconciler().buildDeployment(context.Background(), evt)
 	_, err := clientset.AppsV1().Deployments(reconcileNamespace).Create(
 		context.Background(), dep, metav1.CreateOptions{})
 	require.NoError(t, err)
@@ -500,10 +500,10 @@ func TestResourceLabels(t *testing.T) {
 }
 
 func TestAcceleratorNodeSelector(t *testing.T) {
-	selector := acceleratorNodeSelector("nvidia", "")
+	selector := acceleratorNodeSelector(labelAcceleratorVendor, "nvidia", "")
 	assert.Equal(t, map[string]string{"go-taas.com/accelerator": "nvidia"}, selector)
 
-	selector = acceleratorNodeSelector("metax", "m100")
+	selector = acceleratorNodeSelector(labelAcceleratorVendor, "metax", "m100")
 	assert.Equal(t, "metax", selector["go-taas.com/accelerator"])
 	assert.Equal(t, "m100", selector["go-taas.com/accelerator-type"])
 }
@@ -554,7 +554,7 @@ func TestDeploymentNameAndServiceName(t *testing.T) {
 func TestBuildDeploymentDefaults(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
 	evt.Replicas = 0
-	dep := testReconciler().buildDeployment(evt)
+	dep := testReconciler().buildDeployment(context.Background(), evt)
 	assert.Equal(t, int32(0), *dep.Spec.Replicas)
 }
 
@@ -565,7 +565,7 @@ func TestBuildDeploymentCustomWeights(t *testing.T) {
 		namespace: reconcileNamespace,
 		weights:   WeightsConfig{PVCName: "my-weights", MountPath: "/models"},
 	}
-	dep := r.buildDeployment(evt)
+	dep := r.buildDeployment(context.Background(), evt)
 	c := dep.Spec.Template.Spec.Containers[0]
 	assert.Equal(t, "/models", c.VolumeMounts[0].MountPath)
 	assert.Equal(t, "my-weights", dep.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
@@ -886,4 +886,38 @@ func TestAwaitReadinessTimesOutWithPodReason(t *testing.T) {
 	assert.Contains(t, err.Error(), "not ready within")
 	assert.Contains(t, err.Error(), "unbound immediate PersistentVolumeClaims",
 		"the failure explains why the pods are stuck")
+}
+
+// TestAcceleratorLabelKeyFallsBack verifies the node-selector label key
+// adapts to what the cluster actually carries: the documented
+// go-taas.com/accelerator label wins, and gpu-vendor is used when no node
+// has it (otherwise every inference pod would be unschedulable).
+func TestAcceleratorLabelKeyFallsBack(t *testing.T) {
+	nvidiaNode := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1", Labels: map[string]string{"gpu-vendor": "nvidia"}}}
+	reconciler := &k8sReconciler{clientset: fake.NewSimpleClientset(nvidiaNode), namespace: "taas-infer"}
+	assert.Equal(t, "gpu-vendor", reconciler.acceleratorLabelKeyFor(context.Background()))
+
+	// The documented label wins when present.
+	labeled := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1", Labels: map[string]string{
+		"gpu-vendor": "nvidia", "go-taas.com/accelerator": "nvidia",
+	}}}
+	reconciler2 := &k8sReconciler{clientset: fake.NewSimpleClientset(labeled), namespace: "taas-infer"}
+	assert.Equal(t, "go-taas.com/accelerator", reconciler2.acceleratorLabelKeyFor(context.Background()))
+
+	// Neither label: keep the configured key so the mismatch is visible.
+	bare := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1", Labels: map[string]string{}}}
+	reconciler3 := &k8sReconciler{clientset: fake.NewSimpleClientset(bare), namespace: "taas-infer"}
+	assert.Equal(t, "go-taas.com/accelerator", reconciler3.acceleratorLabelKeyFor(context.Background()))
+}
+
+// TestBuildDeploymentUsesResolvedLabelKey verifies the Deployment's node
+// selector uses the resolved key.
+func TestBuildDeploymentUsesResolvedLabelKey(t *testing.T) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{Name: "n1", Labels: map[string]string{"gpu-vendor": "nvidia"}}}
+	reconciler := &k8sReconciler{
+		clientset: fake.NewSimpleClientset(node), namespace: "taas-infer",
+	}
+	dep := reconciler.buildDeployment(context.Background(), testChangeEvent("upsert", "demo"))
+	assert.Equal(t, "nvidia", dep.Spec.Template.Spec.NodeSelector["gpu-vendor"],
+		"the pod pins the label the node actually carries")
 }

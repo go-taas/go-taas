@@ -17,8 +17,14 @@ import (
 // Accelerator vendor labels (AD3). The vendor set is closed.
 const (
 	labelAcceleratorVendor = "go-taas.com/accelerator"
-	labelDriverVersion     = "go-taas.com/driver-version"
-	labelDevicePlugin      = "go-taas.com/device-plugin"
+	// fallbackAcceleratorLabel is the vendor label convention some
+	// clusters already carry (GPU operator / platform teams set
+	// gpu-vendor=nvidia). The controller prefers the documented
+	// go-taas.com/accelerator label and falls back to this one when no
+	// node carries it, so inference pods are schedulable on either.
+	fallbackAcceleratorLabel = "gpu-vendor"
+	labelDriverVersion       = "go-taas.com/driver-version"
+	labelDevicePlugin        = "go-taas.com/device-plugin"
 )
 
 // inventoryNode is one node's raw signals in the published snapshot

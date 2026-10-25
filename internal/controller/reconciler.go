@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
@@ -122,6 +123,13 @@ type k8sReconciler struct {
 	policyAnnotation string
 	placementPolicy  string
 	poolSelector     map[string]string
+	// acceleratorLabelKey is the configured node label key carrying the
+	// accelerator vendor. Empty uses labelAcceleratorVendor.
+	acceleratorLabelKey string
+	// resolvedAccelLabelKey caches the key actually present on the
+	// cluster's nodes, so the deploy path does not list nodes per event.
+	accelKeyMu            sync.Mutex
+	resolvedAccelLabelKey string
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -143,8 +151,16 @@ type WeightsConfig struct {
 // reports; endpointBaseURL composes endpoint URLs ("" = in-cluster DNS).
 // scheme is the shared serving-scheme cache (feature #47); nil defaults to
 // plain. The dynamic client is taken from client.Dynamic().
-func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig, scheme *SchemeCache) Reconciler {
-	return newReconcilerWithClientset(client.Clientset(), client.Dynamic(), statusPublisher, endpointBaseURL, namespace, weights, scheme)
+func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig, scheme *SchemeCache, acceleratorLabelKey ...string) Reconciler {
+	key := ""
+	if len(acceleratorLabelKey) > 0 {
+		key = acceleratorLabelKey[0]
+	}
+	r := newReconcilerWithClientset(client.Clientset(), client.Dynamic(), statusPublisher, endpointBaseURL, namespace, weights, scheme)
+	if concrete, ok := r.(*k8sReconciler); ok {
+		concrete.acceleratorLabelKey = key
+	}
+	return r
 }
 
 // newReconcilerWithClientset builds a reconciler over arbitrary clientsets
@@ -551,7 +567,7 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		return r.reportFailure(ctx, evt, err)
 	}
 
-	deployment := r.buildDeployment(evt)
+	deployment := r.buildDeployment(ctx, evt)
 	if err := r.createOrUpdateDeployment(ctx, deployment); err != nil {
 		return r.reportFailure(ctx, evt, err)
 	}
@@ -890,7 +906,7 @@ func (r *k8sReconciler) ensureWeightsPVC(ctx context.Context) error {
 
 // buildDeployment composes the Deployment for a change event: engine
 // image, replicas, weight-volume mount and accelerator node selector.
-func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
+func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *appsv1.Deployment {
 	labels := resourceLabels(evt)
 	// Feature #52 (AD13): a shared-GPU service requests a HAMI slice
 	// instead of a whole card. The engine container requests the HAMI
@@ -899,7 +915,8 @@ func (r *k8sReconciler) buildDeployment(evt changeEvent) *appsv1.Deployment {
 	// label selector so HAMI schedules only onto pool nodes.
 	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
 	annotations := map[string]string{}
-	nodeSelector := acceleratorNodeSelector(evt.Accelerator, evt.AcceleratorType)
+	nodeSelector := acceleratorNodeSelector(
+		r.acceleratorLabelKeyFor(ctx), evt.Accelerator, evt.AcceleratorType)
 	resources := engineResources(evt.Accelerator)
 	if slice {
 		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
@@ -1184,15 +1201,68 @@ func resourceLabels(evt changeEvent) map[string]string {
 	}
 }
 
-// acceleratorNodeSelector maps the accelerator request to node labels.
-func acceleratorNodeSelector(accelerator, acceleratorType string) map[string]string {
+// acceleratorNodeSelector maps the accelerator request to node labels
+// using the given label key.
+func acceleratorNodeSelector(labelKey, accelerator, acceleratorType string) map[string]string {
 	selector := map[string]string{
-		"go-taas.com/accelerator": accelerator,
+		labelKey: accelerator,
 	}
 	if acceleratorType != "" {
-		selector["go-taas.com/accelerator-type"] = acceleratorType
+		selector[labelKey+"-type"] = acceleratorType
 	}
 	return selector
+}
+
+// acceleratorLabelKeyFor resolves the node label key that carries the
+// accelerator vendor: the configured key when the cluster's nodes carry
+// it, else "gpu-vendor" when they carry that instead, else the configured
+// key (so a misconfiguration fails visibly rather than silently matching
+// nothing). The answer is cached: node labels rarely change, and the
+// deploy path must not list nodes on every event.
+func (r *k8sReconciler) acceleratorLabelKeyFor(ctx context.Context) string {
+	configured := r.acceleratorLabelKey
+	if configured == "" {
+		configured = labelAcceleratorVendor
+	}
+	r.accelKeyMu.Lock()
+	defer r.accelKeyMu.Unlock()
+	if r.resolvedAccelLabelKey != "" {
+		return r.resolvedAccelLabelKey
+	}
+	nodes, err := r.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		// Fall through with the configured key: a transient API error
+		// must not change the desired spec.
+		return configured
+	}
+	found := false
+	for _, node := range nodes.Items {
+		if _, ok := node.Labels[configured]; ok {
+			found = true
+			break
+		}
+	}
+	switch {
+	case found:
+		r.resolvedAccelLabelKey = configured
+	case hasNodeLabel(nodes.Items, fallbackAcceleratorLabel):
+		r.resolvedAccelLabelKey = fallbackAcceleratorLabel
+		logger.S().Infow("controller: using fallback accelerator node label",
+			"configured", configured, "using", fallbackAcceleratorLabel)
+	default:
+		r.resolvedAccelLabelKey = configured
+	}
+	return r.resolvedAccelLabelKey
+}
+
+// hasNodeLabel reports whether any node carries the label key.
+func hasNodeLabel(nodes []corev1.Node, key string) bool {
+	for _, node := range nodes {
+		if _, ok := node.Labels[key]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 // endpointFor composes the endpoint URL for a service: the configured

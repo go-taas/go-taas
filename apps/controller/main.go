@@ -62,7 +62,7 @@ func main() {
 		StorageClass: cfg.Controller.Weights.StorageClass,
 		PVCName:      cfg.Controller.Weights.PVCName,
 		MountPath:    cfg.Controller.Weights.MountPath,
-	}, schemeCache)
+	}, schemeCache, cfg.Controller.AcceleratorLabelKey)
 	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
 	// placement-policy annotation, the pool's scheduling hint, and the
 	// pool's node label selector are config-driven.

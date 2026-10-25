@@ -347,6 +347,12 @@ type ControllerConfig struct {
 	// JuiceFS-backed StorageClass so every inference pod reads the same
 	// model weights the control plane downloads.
 	Weights WeightsConfig `mapstructure:"weights"`
+	// AcceleratorLabelKey is the node label key whose value is the
+	// accelerator vendor (nvidia / iluvatar / metax). Inference pods pin
+	// it as a node selector, so it must be a key the cluster's GPU nodes
+	// actually carry. Empty uses "go-taas.com/accelerator"; when no node
+	// carries that key the controller falls back to "gpu-vendor".
+	AcceleratorLabelKey string `mapstructure:"acceleratorLabelKey"`
 	// ResourceMetrics configures the per-service CPU/memory/GPU sampling
 	// loop (feature #37, AD2).
 	ResourceMetrics ControllerResourceMetricsConfig `mapstructure:"resourceMetrics"`

@@ -506,6 +506,12 @@ controller:
     controller:
       # -- Namespace the controller manages inference resources in (`controller.namespace`).
       namespace: taas-infer
+      # -- Node label key carrying the accelerator vendor
+      # (`controller.acceleratorLabelKey`). Inference pods pin it as a node
+      # selector, so it must be a key the GPU nodes carry. Empty uses
+      # `go-taas.com/accelerator`, falling back to `gpu-vendor` when no node
+      # carries that.
+      acceleratorLabelKey: ""
       weights:
         # -- Name of the shared model-weights PVC the controller ensures (`controller.weights.pvcName`).
         pvcName: model-weights
