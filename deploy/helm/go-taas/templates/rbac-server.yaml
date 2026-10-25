@@ -2,6 +2,7 @@
 {{- if $rbacCreate }}
 {{- $existing := dig "rbac" "existingClusterRole" "" .Values.taasServer }}
 {{- $name := default (include "go-taas.server.name" .) (dig "rbac" "name" "" .Values.taasServer) }}
+{{- $dpName := $name }}
 {{/*
 The server reads the cluster it runs in (cluster discovery, the live node
 set used to validate image-warmup selectors) and container logs through
@@ -28,9 +29,8 @@ rules:
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get", "list"]
-  # Applying the inference hostname an administrator saves in the console
-  # to the data-plane HTTPRoute (namespaced; see the Role below for the
-  # write verbs, which stay inside the release namespace).
+  # The data-plane route the server owns (see the Role below for the write
+  # verbs, which stay inside the release namespace).
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
     verbs: ["get", "list"]
@@ -51,7 +51,6 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "go-taas.server.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
-{{- $dpName := default (include "go-taas.server.name" .) (dig "rbac" "name" "" .Values.taasServer) }}
 ---
 {{/*
 The write verbs are namespaced on purpose: the server only ever patches the
@@ -69,7 +68,7 @@ metadata:
 rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes"]
-    verbs: ["patch", "update"]
+    verbs: ["create", "get", "patch", "update"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
@@ -87,4 +86,42 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "go-taas.server.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+{{- if and .Values.dataPlane.enabled (ne .Values.dataPlane.backend.namespace .Release.Namespace) }}
+---
+{{/*
+The route lives in the release namespace and points at the inference gateway
+Service in another one, which needs a ReferenceGrant there. Granting the write
+in exactly that namespace keeps the server from holding cluster-wide write
+access to Gateway API objects.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $dpName }}-referencegrant
+  namespace: {{ .Values.dataPlane.backend.namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["referencegrants"]
+    verbs: ["create", "get", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $dpName }}-referencegrant
+  namespace: {{ .Values.dataPlane.backend.namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $dpName }}-referencegrant
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "go-taas.server.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- end }}
 {{- end }}

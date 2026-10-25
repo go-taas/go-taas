@@ -12,5 +12,5 @@ metadata:
     {{- include "go-taas.labels" . | nindent 4 }}
 data:
   zz-go-taas-overrides.yaml: |
-    {{- toYaml .Values.configOverrides | nindent 4 }}
+    {{- include "go-taas.configOverrides" . | nindent 4 }}
 {{- end }}

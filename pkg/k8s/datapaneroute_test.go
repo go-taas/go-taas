@@ -11,114 +11,137 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+
+	"github.com/go-taas/go-taas/pkg/config"
 )
 
-// testRoute builds an HTTPRoute shaped like the chart renders it.
-func testRoute(name, namespace, hostname string) *unstructured.Unstructured {
-	return &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "gateway.networking.k8s.io/v1",
-		"kind":       "HTTPRoute",
-		"metadata": map[string]any{
-			"name":      name,
-			"namespace": namespace,
-			"labels":    map[string]any{DataPlaneRouteLabel: DataPlaneRouteLabelValue},
-		},
-		"spec": map[string]any{
-			"hostnames": []any{hostname},
-			"parentRefs": []any{map[string]any{
-				"name": "gw", "namespace": "gw-ns", "sectionName": "https",
-			}},
-		},
-	}}
+func testDataPlaneConfig() config.RuntimeDataPlaneConfig {
+	return config.RuntimeDataPlaneConfig{
+		Enabled:            true,
+		RouteNamespace:     "taas",
+		ParentRefName:      "envoy-gateway",
+		ParentRefNamespace: "yunzhi",
+		ParentRefSection:   "https",
+		BackendName:        "envoy-aibrix",
+		BackendNamespace:   "yunzhi-system",
+		BackendPort:        80,
+	}
 }
 
 func newRouteFake(objects ...runtime.Object) *dynamicfake.FakeDynamicClient {
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(runtime.NewScheme(),
-		map[schema.GroupVersionResource]string{httpRouteGVR: "HTTPRouteList"}, objects...)
+		map[schema.GroupVersionResource]string{
+			httpRouteGVR:      "HTTPRouteList",
+			referenceGrantGVR: "ReferenceGrantList",
+		}, objects...)
 }
 
-// TestDataPlaneRouterSetsTheHostname covers the happy path: the saved
-// hostname replaces the route's hostname and the backend is untouched.
-func TestDataPlaneRouterSetsTheHostname(t *testing.T) {
-	route := testRoute("taas-go-taas-data-plane", "taas", "api.example.com")
-	dyn := newRouteFake(route)
-	router := NewDataPlaneRouter(dyn, "taas")
+// TestDataPlaneRouterEnsureCreatesRouteAndGrant covers a fresh install:
+// the route is created in its own namespace and the cross-namespace backend
+// gets the ReferenceGrant it needs.
+func TestDataPlaneRouterEnsureCreatesRouteAndGrant(t *testing.T) {
+	dyn := newRouteFake()
+	router := NewDataPlaneRouter(dyn)
 
-	require.NoError(t, router.SetHostname(context.Background(), "llm.example.com"))
+	require.NoError(t, router.Ensure(context.Background(), "llm.example.com", testDataPlaneConfig()))
 
-	got, err := dyn.Resource(httpRouteGVR).Namespace("taas").
-		Get(context.Background(), "taas-go-taas-data-plane", metav1.GetOptions{})
+	route, err := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), DataPlaneRouteName, metav1.GetOptions{})
 	require.NoError(t, err)
-	hostnames, _, err := unstructured.NestedStringSlice(got.Object, "spec", "hostnames")
+	hostnames, _, _ := unstructured.NestedStringSlice(route.Object, "spec", "hostnames")
+	assert.Equal(t, []string{"llm.example.com"}, hostnames)
+	// The label is how the console finds the route again.
+	assert.Equal(t, DataPlaneRouteLabelValue, route.GetLabels()[DataPlaneRouteLabel])
+
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	require.Len(t, rules, 1)
+	backends := rules[0].(map[string]any)["backendRefs"].([]any)
+	assert.Equal(t, "envoy-aibrix", backends[0].(map[string]any)["name"])
+	assert.Equal(t, int64(80), backends[0].(map[string]any)["port"])
+	// Inference streams, so the request timeout must not be short.
+	timeouts := rules[0].(map[string]any)["timeouts"].(map[string]any)
+	assert.Equal(t, "600s", timeouts["request"])
+
+	grant, err := dyn.Resource(referenceGrantGVR).Namespace("yunzhi-system").
+		Get(context.Background(), "yunzhi-reserved-referencegrant-in-yunzhi-system", metav1.GetOptions{})
+	require.NoError(t, err)
+	from := grant.Object["spec"].(map[string]any)["from"].([]any)
+	assert.Equal(t, "taas", from[0].(map[string]any)["namespace"])
+}
+
+// TestDataPlaneRouterEnsureFollowsTheHostname is the behaviour an operator
+// expects: saving a new hostname replaces the old one on the same route.
+func TestDataPlaneRouterEnsureFollowsTheHostname(t *testing.T) {
+	dyn := newRouteFake()
+	router := NewDataPlaneRouter(dyn)
+	require.NoError(t, router.Ensure(context.Background(), "api.example.com", testDataPlaneConfig()))
+	require.NoError(t, router.Ensure(context.Background(), "llm.example.com", testDataPlaneConfig()))
+
+	hostnames, err := router.ServedHostnames(context.Background(), "taas")
 	require.NoError(t, err)
 	assert.Equal(t, []string{"llm.example.com"}, hostnames)
 
-	// The rest of the route survives a hostname change.
-	parents, _, _ := unstructured.NestedSlice(got.Object, "spec", "parentRefs")
-	require.Len(t, parents, 1)
-	assert.Equal(t, "gw", parents[0].(map[string]any)["name"])
-}
-
-// TestDataPlaneRouterEmptyHostnameIsANoOp keeps clearing the setting from
-// taking the data plane offline.
-func TestDataPlaneRouterEmptyHostnameIsANoOp(t *testing.T) {
-	route := testRoute("r", "taas", "api.example.com")
-	dyn := newRouteFake(route)
-	router := NewDataPlaneRouter(dyn, "taas")
-
-	require.NoError(t, router.SetHostname(context.Background(), ""))
-
-	got, err := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), "r", metav1.GetOptions{})
+	// Only one route exists, so nothing keeps serving the old hostname.
+	list, err := dyn.Resource(httpRouteGVR).Namespace("taas").List(context.Background(), metav1.ListOptions{})
 	require.NoError(t, err)
-	hostnames, _, _ := unstructured.NestedStringSlice(got.Object, "spec", "hostnames")
-	assert.Equal(t, []string{"api.example.com"}, hostnames)
+	assert.Len(t, list.Items, 1)
 }
 
-// TestDataPlaneRouterWithoutARouteFails keeps the console from saving a
-// hostname nothing serves: the chart's route has to exist first.
-func TestDataPlaneRouterWithoutARouteFails(t *testing.T) {
-	router := NewDataPlaneRouter(newRouteFake(), "taas")
-	err := router.SetHostname(context.Background(), "llm.example.com")
+// TestDataPlaneRouterSkipsTheGrantInOneNamespace keeps the extra object out
+// of a same-namespace install.
+func TestDataPlaneRouterSkipsTheGrantInOneNamespace(t *testing.T) {
+	dyn := newRouteFake()
+	cfg := testDataPlaneConfig()
+	cfg.BackendNamespace = cfg.RouteNamespace
+	require.NoError(t, NewDataPlaneRouter(dyn).Ensure(context.Background(), "api.example.com", cfg))
+
+	grants, err := dyn.Resource(referenceGrantGVR).List(context.Background(), metav1.ListOptions{})
+	require.NoError(t, err)
+	assert.Empty(t, grants.Items)
+}
+
+// TestBuildDataPlaneObjectsRejectsIncompleteConfig keeps a save from
+// storing a hostname the platform cannot publish, and names the setting.
+func TestBuildDataPlaneObjectsRejectsIncompleteConfig(t *testing.T) {
+	cases := []struct {
+		name     string
+		hostname string
+		mutate   func(*config.RuntimeDataPlaneConfig)
+		want     string
+	}{
+		{"no hostname", "", func(*config.RuntimeDataPlaneConfig) {}, "needs a hostname"},
+		{"no namespace", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.RouteNamespace = "" }, "needs a namespace"},
+		{"no parent gateway", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.ParentRefName = "" }, "parent Gateway"},
+		{"no backend", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.BackendName = "" }, "inference gateway Service"},
+		{"no port", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.BackendPort = 0 }, "backend port"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testDataPlaneConfig()
+			tc.mutate(&cfg)
+			_, _, err := buildDataPlaneObjects(tc.hostname, cfg)
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.want)
+		})
+	}
+}
+
+// TestServedHostnamesWithoutARoute reports nothing rather than failing, so
+// the console can say "not configured" on a fresh install.
+func TestServedHostnamesWithoutARoute(t *testing.T) {
+	hostnames, err := NewDataPlaneRouter(newRouteFake()).ServedHostnames(context.Background(), "taas")
+	require.NoError(t, err)
+	assert.Empty(t, hostnames)
+
+	// No client at all is also fine.
+	hostnames, err = NewDataPlaneRouter(nil).ServedHostnames(context.Background(), "taas")
+	require.NoError(t, err)
+	assert.Empty(t, hostnames)
+}
+
+// TestDataPlaneRouterWithoutClientFails keeps the caller from believing it
+// published something.
+func TestDataPlaneRouterWithoutClientFails(t *testing.T) {
+	err := NewDataPlaneRouter(nil).Ensure(context.Background(), "a.example.com", testDataPlaneConfig())
 	require.Error(t, err)
-	assert.Contains(t, err.Error(), "no data-plane route")
-	assert.Contains(t, err.Error(), "dataPlane")
-}
-
-// TestDataPlaneRouterIgnoresOtherRoutes proves the label selector is what
-// picks the route, not the namespace alone.
-func TestDataPlaneRouterIgnoresOtherRoutes(t *testing.T) {
-	console := &unstructured.Unstructured{Object: map[string]any{
-		"apiVersion": "gateway.networking.k8s.io/v1",
-		"kind":       "HTTPRoute",
-		"metadata": map[string]any{
-			"name": "taas-go-taas-server", "namespace": "taas",
-			"labels": map[string]any{"app.kubernetes.io/component": "server"},
-		},
-		"spec": map[string]any{"hostnames": []any{"taas.example.com"}},
-	}}
-	dyn := newRouteFake(console)
-	router := NewDataPlaneRouter(dyn, "taas")
-
-	require.Error(t, router.SetHostname(context.Background(), "llm.example.com"))
-
-	got, _ := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), "taas-go-taas-server", metav1.GetOptions{})
-	hostnames, _, _ := unstructured.NestedStringSlice(got.Object, "spec", "hostnames")
-	assert.Equal(t, []string{"taas.example.com"}, hostnames, "the console route is never touched")
-}
-
-// TestDataPlaneRouterReportsServedHostnames feeds the console's
-// "in effect / not in effect" indicator.
-func TestDataPlaneRouterReportsServedHostnames(t *testing.T) {
-	dyn := newRouteFake(testRoute("r", "taas", "api.example.com"))
-	router := NewDataPlaneRouter(dyn, "taas")
-
-	hostnames, err := router.DataPlaneRouteHostnames(context.Background())
-	require.NoError(t, err)
-	assert.Equal(t, []string{"api.example.com"}, hostnames)
-
-	// Without a client (a unit test or an RBAC-less deployment) it reports
-	// nothing rather than failing.
-	empty, err := NewDataPlaneRouter(nil, "taas").DataPlaneRouteHostnames(context.Background())
-	require.NoError(t, err)
-	assert.Empty(t, empty)
+	assert.Contains(t, err.Error(), "no dynamic client")
 }

@@ -320,8 +320,11 @@ func main() {
 				// console is applied to the data-plane route, so the
 				// setting publishes the gateway instead of only changing
 				// what the console advertises.
-				runtimeSvc.SetDataPlaneRouter(k8s.NewDataPlaneRouter(
-					k8sClient.Dynamic(), cfg.Controller.Namespace))
+				runtimeSvc.SetDataPlaneRouter(k8s.NewDataPlaneRouter(k8sClient.Dynamic()))
+				// Publish (and keep republishing) the data-plane route: its
+				// hostname is an operator setting, so it must survive a
+				// restart and repair drift.
+				srv.AddRunner(runtime.NewDataPlaneRunner(runtimeSvc, 0))
 			}
 			// The data-plane hostname users are told to call is an operator
 			// setting (platform settings page), so it wins over the static

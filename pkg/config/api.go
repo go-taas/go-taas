@@ -802,6 +802,12 @@ type RuntimeConfig struct {
 	// AIBrix names the installed AIBrix control plane's namespace and the
 	// Envoy AI Gateway Deployment observed for health.
 	AIBrix RuntimeAIBrixConfig `mapstructure:"aibrix"`
+	// DataPlane describes the HTTPRoute the platform publishes for
+	// inference traffic: the parent Gateway that terminates TLS, and the
+	// inference gateway Service the route forwards to. The hostname itself
+	// is an operator setting in the console; `hostname` here is the value a
+	// fresh install starts from.
+	DataPlane RuntimeDataPlaneConfig `mapstructure:"dataPlane"`
 }
 
 // RuntimeConsumerConfig holds a runtime consumer's kill switch.
@@ -832,6 +838,34 @@ type RuntimeAIBrixConfig struct {
 	// GatewayName is the Gateway API Gateway object the model HTTPRoutes
 	// attach to. Default "aibrix-eg".
 	GatewayName string `mapstructure:"gatewayName"`
+}
+
+// RuntimeDataPlaneConfig describes the data-plane HTTPRoute the server
+// owns. Inference traffic enters through the inference gateway, never
+// through the control plane, so the route is an install-time fact plus one
+// runtime setting (the hostname).
+type RuntimeDataPlaneConfig struct {
+	// Enabled turns publishing on. When false the server never writes the
+	// route, and saving a hostname in the console fails with 12909.
+	Enabled bool `mapstructure:"enabled"`
+	// Hostname is the initial public host name tenants call. The console
+	// setting overrides it.
+	Hostname string `mapstructure:"hostname"`
+	// RouteNamespace holds the HTTPRoute. Default: the controller's
+	// namespace (the release namespace).
+	RouteNamespace string `mapstructure:"routeNamespace"`
+	// ParentRefName and ParentRefNamespace identify the Gateway that
+	// terminates TLS for the hostname.
+	ParentRefName      string `mapstructure:"parentRefName"`
+	ParentRefNamespace string `mapstructure:"parentRefNamespace"`
+	// ParentRefSection is the Gateway listener name, for example "https".
+	ParentRefSection string `mapstructure:"parentRefSection"`
+	// BackendName and BackendNamespace identify the inference gateway
+	// Service the route forwards to.
+	BackendName      string `mapstructure:"backendName"`
+	BackendNamespace string `mapstructure:"backendNamespace"`
+	// BackendPort is the gateway's HTTP port. Default 80.
+	BackendPort int32 `mapstructure:"backendPort"`
 }
 
 // ProviderConfig holds the external-model-provider module settings

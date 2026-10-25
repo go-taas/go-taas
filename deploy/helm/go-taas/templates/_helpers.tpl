@@ -425,11 +425,37 @@ bundled Keycloak (internal) or the configured external IdP. */}}
 {{/* ---- misc ------------------------------------------------------------ */}}
 
 {{/* True when a raw config-overrides file must be mounted. */}}
+{{/*
+The chart folds `dataPlane` into the server's configuration file, so an
+operator configures the data-plane route in one place. The server owns the
+route; these are its install-time parts.
+*/}}
+{{- define "go-taas.configOverrides" -}}
+{{- $overrides := deepCopy (.Values.configOverrides | default dict) -}}
+{{- $dp := .Values.dataPlane | default dict -}}
+{{- $parent := $dp.parentRef | default dict -}}
+{{- $backend := $dp.backend | default dict -}}
+{{- $dataPlane := dict
+      "enabled" (ternary true false ($dp.enabled | default false))
+      "hostname" ($dp.hostname | default "")
+      "routeNamespace" .Release.Namespace
+      "parentRefName" ($parent.name | default "")
+      "parentRefNamespace" ($parent.namespace | default "")
+      "parentRefSection" ($parent.sectionName | default "https")
+      "backendName" ($backend.name | default "")
+      "backendNamespace" ($backend.namespace | default "")
+      "backendPort" ($backend.port | default 80) -}}
+{{- $runtime := get $overrides "runtime" | default dict -}}
+{{- $_ := set $runtime "dataPlane" $dataPlane -}}
+{{- $_ := set $overrides "runtime" $runtime -}}
+{{- toYaml $overrides -}}
+{{- end -}}
+
 {{- define "go-taas.hasConfigOverrides" -}}
-{{- if .Values.configOverrides -}}true{{- end -}}
+{{- if or .Values.configOverrides .Values.dataPlane.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Checksum of the config-overrides file, to roll pods when it changes. */}}
 {{- define "go-taas.configOverrides.checksum" -}}
-{{- toYaml .Values.configOverrides | sha256sum -}}
+{{- include "go-taas.configOverrides" . | sha256sum -}}
 {{- end -}}

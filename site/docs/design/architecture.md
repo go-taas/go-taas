@@ -95,12 +95,15 @@ chart publishes both:
 | Control | `taasServer` (Deployment) | the platform Gateway's route for the console hostname (e.g. `taas.example.com`) | `/api/v1/*`, `/api/v1/admin/*`, the console |
 | Data | AIBrix Envoy gateway (`aibrix-eg` Gateway → Envoy proxy Service) | the platform Gateway's route for the inference hostname (e.g. `api.example.com`) | `/v1/chat/completions`, `/v1/embeddings`, … |
 
-`dataPlane.enabled` + `dataPlane.hostname` make the chart create an
+`dataPlane.enabled` + `dataPlane.hostname` make the **server** create an
 `HTTPRoute` that forwards the inference hostname straight to the inference
 gateway's Service (plus the `ReferenceGrant` the cross-namespace backend
-needs). Inference traffic therefore never enters the control-plane
-process, and a control-plane rollout cannot interrupt a streaming response
-in flight.
+needs). The chart deliberately does not render that route: while both it and
+the server wrote `spec.hostnames`, every Helm upgrade conflicted with a
+console save and the surviving hostname depended on which writer ran last.
+One owner — the server — ends that class of bug. Inference traffic therefore
+never enters the control-plane process, and a control-plane rollout cannot
+interrupt a streaming response in flight.
 
 Because the inference hostname is a deployment fact rather than a build
 constant, it is also an operator setting: the admin console's **Platform
@@ -110,12 +113,14 @@ stores it, and `GetInferenceEndpoint` reports
 client that asks. Precedence is: the console setting, then
 `infer.endpointBaseURL`, then the gateway discovered in the cluster.
 
-Saving the hostname is not just a database write: the server patches the
-data-plane `HTTPRoute` (selected by the `app.kubernetes.io/component:
-data-plane` label) so the route serves exactly the saved hostname. The write
-happens **before** the value is stored, and a route that cannot be found or
-patched fails the update with `12909` — otherwise the console would advertise
-an endpoint that answers 404. Clearing the hostname is a no-op so an
+Saving the hostname is not just a database write: the server reconciles the
+data-plane `HTTPRoute` so it serves exactly the saved hostname. The write
+happens **before** the value is stored, and a route that cannot be published
+(for example publishing is disabled, or the parent Gateway/backend are not
+configured) fails the update with `12909` — otherwise the console would
+advertise an endpoint that answers 404. A periodic resync republishes the
+route, so a route deleted out of band repairs itself and a fresh install gets
+its configured initial hostname without anyone opening the console. Clearing the hostname is a no-op so an
 accidental empty field cannot take the data plane offline. The route's
 parent Gateway, backend Service and timeouts stay chart-owned: they are
 install-time facts, while the hostname is the one part an operator changes at

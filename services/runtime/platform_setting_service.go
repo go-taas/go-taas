@@ -9,6 +9,7 @@ import (
 
 	runtimev1 "github.com/go-taas/go-taas/proto/taas/runtime/v1"
 
+	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/audit"
 )
@@ -131,7 +132,7 @@ func (s *Service) GetPlatformSettings(ctx context.Context, _ *runtimev1.GetPlatf
 	if err != nil {
 		return nil, err
 	}
-	projected := platformSettingsToProto(row)
+	projected := platformSettingsToProto(s.effectiveHostname(row))
 	projected.UpdatedBy = s.actorLabel(ctx, row.UpdatedBy)
 	projected.ServedHostnames = s.servedHostnames(ctx)
 	return &runtimev1.GetPlatformSettingsResponse{
@@ -222,6 +223,20 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 	}, nil
 }
 
+// dataPlaneConfig returns the install-time data-plane settings, applying
+// the namespace default.
+func dataPlaneConfig() config.RuntimeDataPlaneConfig {
+	cfg := config.GetConfig()
+	if cfg == nil {
+		return config.RuntimeDataPlaneConfig{}
+	}
+	dp := cfg.Runtime.DataPlane
+	if dp.RouteNamespace == "" {
+		dp.RouteNamespace = cfg.Controller.Namespace
+	}
+	return dp
+}
+
 // publishHostname makes the data-plane route serve the saved hostname.
 // An empty hostname is a no-op (clearing the setting must not take the
 // data plane offline), and a deployment without a router seam stores the
@@ -230,7 +245,12 @@ func (s *Service) publishHostname(ctx context.Context, hostname string) error {
 	if hostname == "" || s.dataPlaneRouter == nil {
 		return nil
 	}
-	if err := s.dataPlaneRouter.SetHostname(ctx, hostname); err != nil {
+	dp := dataPlaneConfig()
+	if !dp.Enabled {
+		return apierrors.Newf(apierrors.CodeRuntimeRouteNotPublished,
+			"runtime: publishing the data plane is disabled; set runtime.dataPlane.enabled (the chart's dataPlane.enabled)")
+	}
+	if err := s.dataPlaneRouter.Ensure(ctx, hostname, dp); err != nil {
 		return apierrors.Newf(apierrors.CodeRuntimeRouteNotPublished,
 			"runtime: could not publish the inference hostname %q: %v", hostname, err)
 	}
@@ -243,9 +263,58 @@ func (s *Service) servedHostnames(ctx context.Context) []string {
 	if s.dataPlaneRouter == nil {
 		return nil
 	}
-	hostnames, err := s.dataPlaneRouter.DataPlaneRouteHostnames(ctx)
+	hostnames, err := s.dataPlaneRouter.ServedHostnames(ctx, dataPlaneConfig().RouteNamespace)
 	if err != nil {
 		return nil
 	}
 	return hostnames
+}
+
+// EnsureDataPlane makes the data-plane route serve the configured hostname:
+// the saved value, or the chart's initial value when nothing is saved yet.
+// It is safe to call repeatedly and is the runner's resync.
+func (s *Service) EnsureDataPlane(ctx context.Context) error {
+	if s.dataPlaneRouter == nil {
+		return nil
+	}
+	dp := dataPlaneConfig()
+	if !dp.Enabled {
+		return nil
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return err
+	}
+	row, err := repo.GetPlatformSettings(ctx)
+	if err != nil {
+		return err
+	}
+	hostname := row.InferenceGatewayHostname
+	if hostname == "" {
+		hostname = dp.Hostname
+	}
+	if hostname == "" {
+		return nil
+	}
+	return s.dataPlaneRouter.Ensure(ctx, hostname, dp)
+}
+
+// effectiveHostname is the hostname the platform reports: the saved value,
+// or the chart's initial value while nothing has been saved. Reporting the
+// initial value means a fresh install already shows the address users can
+// call, and saving it makes it explicit.
+func (s *Service) effectiveHostname(row *PlatformSetting) *PlatformSetting {
+	if row == nil || row.InferenceGatewayHostname != "" {
+		return row
+	}
+	dp := dataPlaneConfig()
+	if dp.Hostname == "" {
+		return row
+	}
+	out := *row
+	out.InferenceGatewayHostname = dp.Hostname
+	if out.InferenceGatewayScheme == "" {
+		out.InferenceGatewayScheme = GatewaySchemeHTTPS
+	}
+	return &out
 }

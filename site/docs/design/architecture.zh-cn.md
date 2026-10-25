@@ -94,8 +94,10 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 | 控制面 | `taasServer`（Deployment） | 平台 Gateway 上控制台主机名的路由（如 `taas.example.com`） | `/api/v1/*`、`/api/v1/admin/*`、控制台 |
 | 数据面 | AIBrix Envoy 网关（`aibrix-eg` Gateway → Envoy 代理 Service） | 平台 Gateway 上推理主机名的路由（如 `api.example.com`） | `/v1/chat/completions`、`/v1/embeddings` 等 |
 
-打开 `dataPlane.enabled` 并设置 `dataPlane.hostname` 后，Chart 会创建一条 `HTTPRoute`，
+打开 `dataPlane.enabled` 并设置 `dataPlane.hostname` 后，会由**服务端**创建一条 `HTTPRoute`，
 把推理主机名直接转发到推理网关的 Service，并创建跨命名空间后端所需的 `ReferenceGrant`。
+Chart 刻意不再渲染这条路由：此前 Chart 与服务端同时写 `spec.hostnames`，每次 Helm 升级都会
+与控制台保存互相冲突，最终哪个主机名生效取决于谁后写。改为服务端唯一所有者后，这类问题不再出现。
 因此推理流量从不经过控制面进程，控制面滚动发布也不会打断正在进行的流式响应。
 
 推理主机名是部署事实而非编译期常量，所以它同时是一个运维设置项：管理端**平台设置**页
@@ -103,10 +105,10 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 `GetInferenceEndpoint` 把 `<scheme>://<hostname>/v1` 报告给快速开始页、API 文档以及所有
 查询该接口的客户端。优先级为：控制台设置 → `infer.endpointBaseURL` → 集群内自动发现的网关。
 
-保存主机名不只是写数据库：服务端会把同一份值 patch 到数据面的 `HTTPRoute`
-（按 `app.kubernetes.io/component: data-plane` 标签选中），使路由恰好发布该主机名。
-写入发生在**落库之前**，找不到或改不动路由时更新会以 `12909` 失败——否则控制台会对外
-公布一个返回 404 的端点。清空主机名是空操作，避免误操作把数据面下线。路由的父 Gateway、
+保存主机名不只是写数据库：服务端会调谐数据面的 `HTTPRoute`，使其恰好发布该主机名。
+写入发生在**落库之前**；无法发布时（例如未启用发布、未配置父 Gateway 或后端）更新会以
+`12909` 失败——否则控制台会对外公布一个返回 404 的端点。周期性重同步还会重新发布路由，
+因此被误删的路由会自愈，全新安装也会自动发布配置中的初始主机名，无需有人打开控制台。清空主机名是空操作，避免误操作把数据面下线。路由的父 Gateway、
 后端 Service 与超时仍由 Chart 持有：它们是安装期事实，而主机名是运维在运行期唯一要改的部分。
 设置响应里的 `served_hostnames` 报告路由实际发布的主机名，控制台据此提示设置是否生效。
 

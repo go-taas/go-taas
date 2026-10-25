@@ -436,6 +436,15 @@ func (c *Configuration) applyDefaults() {
 	if c.Runtime.AIBrix.Namespace == "" {
 		c.Runtime.AIBrix.Namespace = "aibrix-system"
 	}
+	if c.Runtime.DataPlane.RouteNamespace == "" {
+		c.Runtime.DataPlane.RouteNamespace = c.Controller.Namespace
+	}
+	if c.Runtime.DataPlane.ParentRefSection == "" {
+		c.Runtime.DataPlane.ParentRefSection = "https"
+	}
+	if c.Runtime.DataPlane.BackendPort == 0 {
+		c.Runtime.DataPlane.BackendPort = 80
+	}
 	if c.Runtime.AIBrix.GatewayName == "" {
 		c.Runtime.AIBrix.GatewayName = "aibrix-eg"
 	}

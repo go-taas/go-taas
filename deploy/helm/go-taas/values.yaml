@@ -312,27 +312,22 @@ dependencies:
 # under the hostname users call, through the platform Gateway, so the
 # control plane never proxies inference.
 dataPlane:
-  # -- Create the HTTPRoute (and the ReferenceGrant it needs) that serves
-  # `dataPlane.hostname` from the platform Gateway and forwards it to the
-  # inference gateway. Requires `dataPlane.hostname`.
+  # -- Let the server publish the inference gateway. The route itself is
+  # NOT rendered by this chart: the server owns it, because its hostname is
+  # an operator setting in the console (`/admin/settings`). Two writers
+  # conflicted on `spec.hostnames` on every upgrade, so there is exactly one.
+  # `hostname` below is only the starting value for a fresh install.
   enabled: false
-  # -- Public hostname users call for inference, for example
-  # `api.example.com`. It must be served by the parent Gateway's
-  # certificate. This is the route's initial hostname: the admin console's
-  # platform settings then keeps it in step, because saving a hostname there
-  # patches this same route. Set the console value to the same hostname so
-  # the quickstart page and the route agree from the first render.
+  # -- Initial public hostname users call for inference, for example
+  # `api.example.com`. It must be covered by the parent Gateway's
+  # certificate. Afterwards the console's platform settings owns it; set the
+  # same value there so the quickstart page and the route agree.
   hostname: ""
-  # -- Request timeout for a streaming inference call.
-  requestTimeout: 600s
   # -- Gateway API Gateway that terminates TLS for the hostname.
   parentRef:
     name: envoy-gateway
     namespace: yunzhi
     sectionName: https
-  # -- Also attach the plaintext listener (only for a cluster that does not
-  # serve the hostname over TLS).
-  enablePlainHTTP: false
   # -- Service fronting the inference gateway (the AIBrix Envoy proxy).
   backend:
     name: envoy-aibrix-system-aibrix-eg-903790dc

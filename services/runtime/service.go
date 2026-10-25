@@ -13,6 +13,7 @@ import (
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	runtimev1 "github.com/go-taas/go-taas/proto/taas/runtime/v1"
 
+	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
@@ -143,15 +144,15 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 // SetRoleGuard injects the org role guard.
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
 
-// DataPlaneRouter applies the inference hostname to the data-plane route
-// and reports what that route currently serves. It is implemented in
-// pkg/k8s and injected at wiring time.
+// DataPlaneRouter owns the data-plane HTTPRoute: it makes the route serve a
+// hostname and reports what the route currently serves. It is implemented
+// in pkg/k8s and injected at wiring time.
 type DataPlaneRouter interface {
-	// SetHostname makes the route serve exactly this hostname. An empty
-	// hostname leaves the route untouched.
-	SetHostname(ctx context.Context, hostname string) error
-	// DataPlaneRouteHostnames reports the hostnames the route serves.
-	DataPlaneRouteHostnames(ctx context.Context) ([]string, error)
+	// Ensure creates or updates the route so it serves exactly hostname.
+	// cfg carries the install-time parts (parent Gateway, backend).
+	Ensure(ctx context.Context, hostname string, cfg config.RuntimeDataPlaneConfig) error
+	// ServedHostnames reports the hostnames the route serves.
+	ServedHostnames(ctx context.Context, routeNamespace string) ([]string, error)
 }
 
 // SetDataPlaneRouter injects the data-plane route reconciler.

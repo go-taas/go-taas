@@ -7,6 +7,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	runtimev1 "github.com/go-taas/go-taas/proto/taas/runtime/v1"
 )
@@ -237,7 +238,7 @@ type fakeDataPlaneRouter struct {
 	hostnames []string
 }
 
-func (f *fakeDataPlaneRouter) SetHostname(_ context.Context, hostname string) error {
+func (f *fakeDataPlaneRouter) Ensure(_ context.Context, hostname string, _ config.RuntimeDataPlaneConfig) error {
 	if f.err != nil {
 		return f.err
 	}
@@ -245,7 +246,7 @@ func (f *fakeDataPlaneRouter) SetHostname(_ context.Context, hostname string) er
 	return nil
 }
 
-func (f *fakeDataPlaneRouter) DataPlaneRouteHostnames(context.Context) ([]string, error) {
+func (f *fakeDataPlaneRouter) ServedHostnames(context.Context, string) ([]string, error) {
 	return f.hostnames, nil
 }
 
@@ -255,6 +256,7 @@ func (f *fakeDataPlaneRouter) DataPlaneRouteHostnames(context.Context) ([]string
 func TestUpdatePlatformSettingsPublishesTheHostname(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewForFVT(db, nil)
+	enableDataPlane(t)
 	router := &fakeDataPlaneRouter{hostnames: []string{"api.example.com"}}
 	svc.SetDataPlaneRouter(router)
 
@@ -278,6 +280,7 @@ func TestUpdatePlatformSettingsPublishesTheHostname(t *testing.T) {
 func TestUpdatePlatformSettingsFailsWhenTheRouteCannotBePublished(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewForFVT(db, nil)
+	enableDataPlane(t)
 	router := &fakeDataPlaneRouter{}
 	svc.SetDataPlaneRouter(router)
 
@@ -298,4 +301,69 @@ func TestUpdatePlatformSettingsFailsWhenTheRouteCannotBePublished(t *testing.T) 
 	require.NoError(t, err)
 	assert.Equal(t, "api.example.com", got.GetSettings().GetInferenceGatewayHostname(),
 		"a hostname that could not be published must not be stored")
+}
+
+// enableDataPlane turns publishing on for a test and restores the previous
+// configuration afterwards.
+func enableDataPlane(t *testing.T) {
+	t.Helper()
+	previous := config.GetConfig()
+	cfg := &config.Configuration{}
+	cfg.Runtime.DataPlane.Enabled = true
+	cfg.Runtime.DataPlane.RouteNamespace = "taas"
+	cfg.Runtime.DataPlane.ParentRefName = "gw"
+	cfg.Runtime.DataPlane.ParentRefNamespace = "gw-ns"
+	cfg.Runtime.DataPlane.BackendName = "inference-gateway"
+	cfg.Runtime.DataPlane.BackendNamespace = "gw-ns"
+	cfg.Runtime.DataPlane.BackendPort = 80
+	config.SetConfigForTest(cfg)
+	t.Cleanup(func() { config.SetConfigForTest(previous) })
+}
+
+// TestEnsureDataPlaneUsesTheConfiguredInitialHostname covers a fresh
+// install: nothing is saved yet, so the chart's value is what gets
+// published — and what the console reports.
+func TestEnsureDataPlaneUsesTheConfiguredInitialHostname(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewForFVT(db, nil)
+	enableDataPlane(t)
+	cfg := config.GetConfig()
+	cfg.Runtime.DataPlane.Hostname = "api.example.com"
+	config.SetConfigForTest(cfg)
+
+	router := &fakeDataPlaneRouter{hostnames: []string{"api.example.com"}}
+	svc.SetDataPlaneRouter(router)
+
+	require.NoError(t, svc.EnsureDataPlane(context.Background()))
+	assert.Equal(t, []string{"api.example.com"}, router.applied)
+
+	got, err := svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "api.example.com", got.GetSettings().GetInferenceGatewayHostname())
+	assert.Equal(t, "https://api.example.com/v1", got.GetSettings().GetInferenceBaseUrl())
+
+	// A saved value wins over the configured one.
+	router.applied = nil
+	_, err = svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname: "llm.example.com",
+	})
+	require.NoError(t, err)
+	require.NoError(t, svc.EnsureDataPlane(context.Background()))
+	assert.NotEmpty(t, router.applied)
+	assert.Equal(t, "llm.example.com", router.applied[len(router.applied)-1],
+		"the saved hostname wins over the configured initial one")
+}
+
+// TestEnsureDataPlaneIsSkippedWhenDisabled keeps a chart without dataPlane
+// from talking to the cluster at all.
+func TestEnsureDataPlaneIsSkippedWhenDisabled(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewForFVT(db, nil)
+	config.SetConfigForTest(&config.Configuration{})
+	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
+	router := &fakeDataPlaneRouter{}
+	svc.SetDataPlaneRouter(router)
+
+	require.NoError(t, svc.EnsureDataPlane(context.Background()))
+	assert.Empty(t, router.applied)
 }

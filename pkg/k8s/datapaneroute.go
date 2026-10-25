@@ -2,114 +2,191 @@ package k8s
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
-	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 
+	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/pkg/logger"
 )
 
-// DataPlaneRouteLabel and DataPlaneRouteLabelValue select the HTTPRoute
-// that publishes the inference gateway under the hostname tenants call.
-// The chart labels the route it renders with them, so the console can
-// update the hostname without knowing the Helm release name.
+// DataPlaneRouteName and DataPlaneRouteLabelValue mark the single
+// HTTPRoute that publishes the inference gateway.
+//
+// One owner matters: while both Helm and the server wrote the hostname, a
+// Helm upgrade and a console save conflicted on `spec.hostnames`, and which
+// value survived depended on which writer ran last.
 const (
+	DataPlaneRouteName       = "taas-data-plane"
 	DataPlaneRouteLabel      = "app.kubernetes.io/component"
 	DataPlaneRouteLabelValue = "data-plane"
+	// dataPlaneGrantSuffix names the ReferenceGrant that lets the route
+	// reference the gateway Service across namespaces.
+	dataPlaneGrantSuffix = "-reserved-referencegrant-in-"
 )
 
-// httpRouteGVR is the Gateway API HTTPRoute resource.
-var httpRouteGVR = schema.GroupVersionResource{
-	Group: "gateway.networking.k8s.io", Version: "v1", Resource: "httproutes",
-}
+// Gateway API resources.
+var (
+	httpRouteGVR      = schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1", Resource: "httproutes"}
+	referenceGrantGVR = schema.GroupVersionResource{Group: "gateway.networking.k8s.io", Version: "v1beta1", Resource: "referencegrants"}
+)
 
-// DataPlaneRouter keeps the data-plane HTTPRoute's hostname in step with
-// the hostname an administrator saved in the console. The route itself —
-// its parent Gateway, backend Service and timeouts — belongs to the chart,
-// because those are install-time facts; only the hostname is a runtime
-// setting.
+// DataPlaneRouter owns the data-plane HTTPRoute. The chart does not render
+// the route, so the server is its only writer.
 type DataPlaneRouter struct {
-	dyn       dynamic.Interface
-	namespace string
+	dyn dynamic.Interface
 }
 
-// NewDataPlaneRouter builds the router over the client the server already
-// has. namespace is where the data-plane route lives (the release
-// namespace).
-func NewDataPlaneRouter(dyn dynamic.Interface, namespace string) *DataPlaneRouter {
-	return &DataPlaneRouter{dyn: dyn, namespace: namespace}
+// NewDataPlaneRouter builds the router over the server's dynamic client.
+func NewDataPlaneRouter(dyn dynamic.Interface) *DataPlaneRouter {
+	return &DataPlaneRouter{dyn: dyn}
 }
 
-// SetHostname updates the data-plane route's hostname.
-//
-// An empty hostname is a no-op: clearing the setting must not silently take
-// the data plane offline. A missing route is an error rather than a silent
-// success, because saving a hostname that no route serves would advertise an
-// endpoint that answers 404.
-func (r *DataPlaneRouter) SetHostname(ctx context.Context, hostname string) error {
-	if hostname == "" || r == nil || r.dyn == nil {
-		return nil
+// Ensure makes the route serve exactly hostname, using cfg for the
+// install-time parts (parent Gateway, backend Service).
+func (r *DataPlaneRouter) Ensure(ctx context.Context, hostname string, cfg config.RuntimeDataPlaneConfig) error {
+	if r == nil || r.dyn == nil {
+		return fmt.Errorf("k8s: no dynamic client, cannot publish the data-plane route")
 	}
-	routes, err := r.routes(ctx)
+	route, grant, err := buildDataPlaneObjects(hostname, cfg)
 	if err != nil {
 		return err
 	}
-	if len(routes.Items) == 0 {
-		return fmt.Errorf("k8s: no data-plane route in namespace %s; enable dataPlane in the chart so the inference gateway is published", r.namespace)
-	}
-
-	body, err := json.Marshal(map[string]any{
-		"spec": map[string]any{"hostnames": []string{hostname}},
-	})
-	if err != nil {
-		return fmt.Errorf("k8s: encode data-plane route patch: %w", err)
-	}
-	for i := range routes.Items {
-		route := &routes.Items[i]
-		_, err := r.dyn.Resource(httpRouteGVR).Namespace(route.GetNamespace()).
-			Patch(ctx, route.GetName(), types.MergePatchType, body, metav1.PatchOptions{})
-		if err != nil {
-			if apierrors.IsNotFound(err) {
-				continue
-			}
-			return fmt.Errorf("k8s: update data-plane route %s: %w", route.GetName(), err)
+	if grant != nil {
+		if err := r.apply(ctx, referenceGrantGVR, grant); err != nil {
+			return err
 		}
-		logger.S().Infow("k8s: data-plane route hostname updated",
-			"route", route.GetName(), "namespace", route.GetNamespace(), "hostname", hostname)
 	}
-	return nil
+	return r.apply(ctx, httpRouteGVR, route)
 }
 
-// DataPlaneRouteHostnames reports the hostnames the data-plane route
-// currently serves, so the console can tell an operator whether the saved
-// setting is actually in effect.
-func (r *DataPlaneRouter) DataPlaneRouteHostnames(ctx context.Context) ([]string, error) {
-	if r == nil || r.dyn == nil {
+// ServedHostnames reports the hostnames the route currently serves, so the
+// console can tell an operator whether the saved value is in effect.
+func (r *DataPlaneRouter) ServedHostnames(ctx context.Context, routeNamespace string) ([]string, error) {
+	if r == nil || r.dyn == nil || routeNamespace == "" {
 		return nil, nil
 	}
-	routes, err := r.routes(ctx)
+	route, err := r.dyn.Resource(httpRouteGVR).Namespace(routeNamespace).
+		Get(ctx, DataPlaneRouteName, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil, nil
+	}
 	if err != nil {
 		return nil, err
 	}
-	hostnames := make([]string, 0, len(routes.Items))
-	for i := range routes.Items {
-		raw, found, err := unstructured.NestedStringSlice(routes.Items[i].Object, "spec", "hostnames")
-		if err != nil || !found {
-			continue
-		}
-		hostnames = append(hostnames, raw...)
+	hostnames, _, err := unstructured.NestedStringSlice(route.Object, "spec", "hostnames")
+	if err != nil {
+		return nil, err
 	}
 	return hostnames, nil
 }
 
-// routes lists the data-plane routes in the configured namespace.
-func (r *DataPlaneRouter) routes(ctx context.Context) (*unstructured.UnstructuredList, error) {
-	return r.dyn.Resource(httpRouteGVR).Namespace(r.namespace).
-		List(ctx, metav1.ListOptions{LabelSelector: DataPlaneRouteLabel + "=" + DataPlaneRouteLabelValue})
+// apply creates the object, or updates it in place keeping the resource
+// version the API server handed out.
+func (r *DataPlaneRouter) apply(ctx context.Context, gvr schema.GroupVersionResource, obj *unstructured.Unstructured) error {
+	namespace, name := obj.GetNamespace(), obj.GetName()
+	existing, err := r.dyn.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		if _, err := r.dyn.Resource(gvr).Namespace(namespace).Create(ctx, obj, metav1.CreateOptions{}); err != nil {
+			return fmt.Errorf("k8s: create %s %s/%s: %w", gvr.Resource, namespace, name, err)
+		}
+		logger.S().Infow("k8s: data-plane object created", "kind", gvr.Resource, "namespace", namespace, "name", name)
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("k8s: read %s %s/%s: %w", gvr.Resource, namespace, name, err)
+	}
+	obj.SetResourceVersion(existing.GetResourceVersion())
+	if _, err := r.dyn.Resource(gvr).Namespace(namespace).Update(ctx, obj, metav1.UpdateOptions{}); err != nil {
+		return fmt.Errorf("k8s: update %s %s/%s: %w", gvr.Resource, namespace, name, err)
+	}
+	logger.S().Infow("k8s: data-plane object updated", "kind", gvr.Resource, "namespace", namespace, "name", name)
+	return nil
+}
+
+// buildDataPlaneObjects renders the route and, when the backend lives in
+// another namespace, the ReferenceGrant it needs. A spec that would produce
+// an unusable route fails here, naming the setting to fix, so a console save
+// cannot store a hostname that answers 404.
+func buildDataPlaneObjects(hostname string, cfg config.RuntimeDataPlaneConfig) (*unstructured.Unstructured, *unstructured.Unstructured, error) {
+	routeNamespace := cfg.RouteNamespace
+	switch {
+	case hostname == "":
+		return nil, nil, fmt.Errorf("k8s: data-plane route needs a hostname")
+	case routeNamespace == "":
+		return nil, nil, fmt.Errorf("k8s: data-plane route needs a namespace (runtime.dataPlane.routeNamespace)")
+	case cfg.ParentRefName == "" || cfg.ParentRefNamespace == "":
+		return nil, nil, fmt.Errorf("k8s: data-plane route needs the parent Gateway (runtime.dataPlane.parentRefName/parentRefNamespace)")
+	case cfg.BackendName == "" || cfg.BackendNamespace == "":
+		return nil, nil, fmt.Errorf("k8s: data-plane route needs the inference gateway Service (runtime.dataPlane.backendName/backendNamespace)")
+	case cfg.BackendPort <= 0:
+		return nil, nil, fmt.Errorf("k8s: data-plane route needs a backend port (runtime.dataPlane.backendPort)")
+	}
+
+	parent := map[string]any{
+		"group":     "gateway.networking.k8s.io",
+		"kind":      "Gateway",
+		"name":      cfg.ParentRefName,
+		"namespace": cfg.ParentRefNamespace,
+	}
+	if cfg.ParentRefSection != "" {
+		parent["sectionName"] = cfg.ParentRefSection
+	}
+	route := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "gateway.networking.k8s.io/v1",
+		"kind":       "HTTPRoute",
+		"metadata": map[string]any{
+			"name":      DataPlaneRouteName,
+			"namespace": routeNamespace,
+			"labels": map[string]any{
+				DataPlaneRouteLabel:      DataPlaneRouteLabelValue,
+				"app.kubernetes.io/name": "go-taas",
+			},
+		},
+		"spec": map[string]any{
+			"hostnames":  []any{hostname},
+			"parentRefs": []any{parent},
+			"rules": []any{map[string]any{
+				"matches": []any{map[string]any{
+					"path": map[string]any{"type": "PathPrefix", "value": "/"},
+				}},
+				"backendRefs": []any{map[string]any{
+					"group":     "",
+					"kind":      "Service",
+					"name":      cfg.BackendName,
+					"namespace": cfg.BackendNamespace,
+					"port":      int64(cfg.BackendPort),
+					"weight":    int64(1),
+				}},
+				// Inference answers stream; a short timeout would cut a long
+				// generation off mid-stream.
+				"timeouts": map[string]any{"request": "600s"},
+			}},
+		},
+	}}
+	if routeNamespace == cfg.BackendNamespace {
+		return route, nil, nil
+	}
+	grant := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "gateway.networking.k8s.io/v1beta1",
+		"kind":       "ReferenceGrant",
+		"metadata": map[string]any{
+			"name":      cfg.ParentRefNamespace + dataPlaneGrantSuffix + cfg.BackendNamespace,
+			"namespace": cfg.BackendNamespace,
+			"labels":    map[string]any{"app.kubernetes.io/name": "go-taas"},
+		},
+		"spec": map[string]any{
+			"from": []any{map[string]any{
+				"group":     "gateway.networking.k8s.io",
+				"kind":      "HTTPRoute",
+				"namespace": routeNamespace,
+			}},
+			"to": []any{map[string]any{"group": "", "kind": "Service"}},
+		},
+	}}
+	return route, grant, nil
 }
