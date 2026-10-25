@@ -52,27 +52,53 @@ Section 2 records the architecture decisions (AD1–AD9). Section 3 is the place
 
 ## 3. Placement in the request path
 
+### 3.1 Two gateways, not one
+
+The two planes do not share a proxy:
+
+| | Control plane | Data plane |
+| --- | --- | --- |
+| Gateway | the platform's (`envoy-gateway` in the platform namespace) | `taas-inference`, created by this chart |
+| Serves | `taas.<domain>` (console + management API) and the platform's other vhosts | only the inference hostname |
+| Envoy | shared with the platform's sites | its own deployment, its own addresses |
+| HTTP filters | none | the Wasm plugin |
+| Failure domain | console/API | inference |
+
+They were one proxy at first: inference entered through the platform's gateway and was forwarded to the AIBrix gateway, so an inference traffic spike added load to the console's proxy and a reload or a bad config there broke inference too. The data plane now has its own Gateway — same `aibrix-eg` class, so it inherits the inference-oriented Envoy tuning rather than the platform's, and its own lifecycle.
+
 ```mermaid
 flowchart TD
-    C["Client (SDK / agent)"] --> EG["yunzhi/envoy-gateway<br/>TLS, hostname"]
-    EG --> DP{"HTTPRoute taas/data-plane<br/>server-owned"}
+    C["Client (SDK / agent)"] --> GW["Gateway taas/taas-inference<br/>class aibrix-eg, own address<br/>TLS terminate"]
+    GW --> DP{"HTTPRoute taas/data-plane<br/>server-owned<br/>hostname = console setting"}
     DP --> WASM["Wasm filter<br/>auth + rate + clamp + meter"]
-    WASM --> AIB["envoy-aibrix-system-aibrix-eg<br/>(AIBrix)"]
-    AIB --> EXT["ext_proc: aibrix-gateway-plugins<br/>routing"]
+    WASM --> AIB["aibrix-eg Envoy<br/>(model routing)"]
+    AIB --> EXT["ext_proc: aibrix-gateway-plugins"]
     EXT --> POD["inference pod"]
     WASM -.->|POST /internal/gateway/verify| API["taas-server monitor :9092"]
     WASM -.->|POST /internal/gateway/usage| API
     API --> AUTH["auth.VerifyAPIKey"]
     API --> MQ["metering.events"]
+
+    CON["Console / management API"] --> PGW["platform Gateway"]
 ```
 
 The policy attaches to `taas/data-plane` because:
 
-- it is the only Envoy in the chain go-taas owns (AD9);
+- it is the only Envoy in the chain go-taas owns (AD9), and now the only one in the inference path at all;
 - it sees each request before AIBrix buffers it, so the earliest possible rejection is the cheapest one;
 - the route name is stable while the hostname is an operator setting, so the policy is Helm-owned without competing for the route's `spec.hostnames` — the conflict that previously made a Helm upgrade and a console save disagree.
 
-The filter reaches the platform through an HTTPRoute of its own (`taas-go-taas-internal-api`) on a hostname that is in no DNS zone and no certificate. Envoy requires a configured cluster for a Wasm HTTP call and creates one cluster per route rule, so the route is what gives the filter an upstream; the internal hostname is unreachable from the internet by construction, only addressable by cluster name from inside the proxy.
+Two listener details matter:
+
+- **The HTTPS listener declares no hostname.** The hostname is a console setting and the route carries it; pinning it in the Gateway would make every console change need a Helm upgrade, and a mismatch would stop serving silently.
+- **A second listener exists only for the plugin's own callout.** Envoy needs a configured cluster for a Wasm HTTP call and creates one cluster per route rule, so `taas-go-taas-internal-api` attaches to a listener pinned to a hostname that is in no DNS zone and no certificate. The filter reaches the server by cluster name; the listener cannot serve anything else, because a request with any other `Host` is rejected on it.
+
+### 3.2 What an operator must provide
+
+| Item | Why |
+| --- | --- |
+| A TLS Secret in the release namespace covering the inference hostname | The listener terminates TLS. The chart does not own it: certificates outlive releases and are usually rotated by whoever owns DNS. A wildcard is the usual choice, and the secret name is `dataPlane.gateway.tlsSecretName` |
+| A DNS record for the inference hostname pointing at the data-plane Gateway's address | It is a different address from the console's. Pointing it at the old one returns 404, because inference no longer has a route there |
 
 ---
 

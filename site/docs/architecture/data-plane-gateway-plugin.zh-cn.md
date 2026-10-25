@@ -52,27 +52,53 @@
 
 ## 3. 请求路径中的位置
 
+### 3.1 两个网关，而非一个
+
+两个平面不共用代理：
+
+| | 控制面 | 数据面 |
+| --- | --- | --- |
+| Gateway | 平台自带（平台命名空间里的 `envoy-gateway`） | `taas-inference`，由本 chart 创建 |
+| 服务内容 | `taas.<domain>`（控制台 + 管理 API）以及平台其它域名 | 仅推理域名 |
+| Envoy | 与平台站点共用 | 独立 Deployment、独立地址 |
+| HTTP 过滤器 | 无 | Wasm 插件 |
+| 故障域 | 控制台/API | 推理 |
+
+最初它们是同一个代理：推理流量从平台网关进入，再转发到 AIBrix 网关，因此推理流量高峰会给控制台所在的代理加压，而该代理的一次 reload 或配置错误也会同时打断推理。现在数据面有自己的 Gateway —— 同一个 `aibrix-eg` 类，因此继承的是面向推理的 Envoy 调优而非平台的，并且有自己的生命周期。
+
 ```mermaid
 flowchart TD
-    C["客户端（SDK / agent）"] --> EG["yunzhi/envoy-gateway<br/>TLS、主机名"]
-    EG --> DP{"HTTPRoute taas/data-plane<br/>server 自有"}
+    C["客户端（SDK / agent）"] --> GW["Gateway taas/taas-inference<br/>class aibrix-eg，独立地址<br/>TLS 终止"]
+    GW --> DP{"HTTPRoute taas/data-plane<br/>server 自有<br/>hostname = 控制台设置"}
     DP --> WASM["Wasm 过滤器<br/>鉴权 + 限速 + 截断 + 计量"]
-    WASM --> AIB["envoy-aibrix-system-aibrix-eg<br/>（AIBrix）"]
-    AIB --> EXT["ext_proc: aibrix-gateway-plugins<br/>路由"]
+    WASM --> AIB["aibrix-eg Envoy<br/>（模型路由）"]
+    AIB --> EXT["ext_proc: aibrix-gateway-plugins"]
     EXT --> POD["推理 Pod"]
     WASM -.->|POST /internal/gateway/verify| API["taas-server 监控 :9092"]
     WASM -.->|POST /internal/gateway/usage| API
     API --> AUTH["auth.VerifyAPIKey"]
     API --> MQ["metering.events"]
+
+    CON["控制台 / 管理 API"] --> PGW["平台 Gateway"]
 ```
 
 策略挂在 `taas/data-plane` 上的原因：
 
-- 它是整条链路上唯一由 go-taas 拥有的 Envoy（AD9）；
+- 它是整条链路上唯一由 go-taas 拥有的 Envoy（AD9），现在也是推理链路上唯一的代理；
 - 它在 AIBrix 缓冲请求之前就看到每一个请求，因此最早的拒绝也是最便宜的拒绝；
 - 路由名是稳定的，而主机名是运维设置项，因此策略可以由 Helm 拥有，而不去争夺路由的 `spec.hostnames` —— 那正是过去让 Helm 升级与控制台保存互相矛盾的冲突。
 
-过滤器通过自己的一条 HTTPRoute（`taas-go-taas-internal-api`）访问平台，其主机名不在任何 DNS 区域、也不在任何证书中。Envoy 的 Wasm HTTP 调用需要一个已配置的集群，而 Envoy 为每个路由规则创建一个集群，因此这条路由正是过滤器的上游；内部主机名在设计上无法从互联网访问，只能从代理内部按集群名寻址。
+两个监听器细节很重要：
+
+- **HTTPS 监听器不声明 hostname。** 主机名是控制台设置、由路由承载；写死在 Gateway 里会让每次控制台改动都需要一次 Helm 升级，而两者不一致会静默停止服务。
+- **第二个监听器只为插件自身的回调存在。** Envoy 的 Wasm HTTP 调用需要一个已配置的集群，而集群与路由规则一一对应，因此 `taas-go-taas-internal-api` 挂在一条固定主机名的监听器上，该主机名不在任何 DNS 区域与证书中。过滤器按集群名访问服务端；这个监听器无法服务其它任何东西，因为它上面的其它 `Host` 请求会被拒绝。
+
+### 3.2 运维需要提供什么
+
+| 项目 | 原因 |
+| --- | --- |
+| release 命名空间里覆盖推理域名的 TLS Secret | 监听器要终止 TLS。chart 不拥有它：证书比 release 活得久，且通常由拥有 DNS 的人轮换。通配证书是常见选择，Secret 名由 `dataPlane.gateway.tlsSecretName` 指定 |
+| 指向数据面 Gateway 地址的推理域名 DNS 记录 | 它与控制台是不同的地址。指向旧地址会返回 404，因为推理在那里已经没有路由了 |
 
 ---
 

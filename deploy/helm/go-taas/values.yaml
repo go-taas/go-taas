@@ -351,19 +351,40 @@ monitoring:
 dataPlane:
   # -- Let the server publish the inference gateway. The route itself is
   # NOT rendered by this chart: the server owns it, because its hostname is
-  # an operator setting in the console (`/admin/settings`). Two writers
-  # conflicted on `spec.hostnames` on every upgrade, so there is exactly one.
-  # `hostname` below is only the starting value for a fresh install.
+  # an operator setting in the console (`/admin/gateway-settings`). Two
+  # writers conflicted on `spec.hostnames` on every upgrade, so there is
+  # exactly one. `hostname` below is only the starting value for a fresh
+  # install.
   enabled: false
   # -- Initial public hostname users call for inference, for example
   # `api.example.com`. It must be covered by the parent Gateway's
-  # certificate. Afterwards the console's platform settings owns it; set the
+  # certificate. Afterwards the console's gateway settings owns it; set the
   # same value there so the quickstart page and the route agree.
   hostname: ""
+  # The dedicated data-plane Gateway this chart owns.
+  #
+  # Inference and management traffic do not share a proxy. The management
+  # console is served by the platform's own Gateway, while this one carries
+  # only inference, with its own Envoy, its own addresses and its own
+  # lifecycle — so a control-plane traffic spike, reload or bad config cannot
+  # take inference down with it, and the reverse. It keeps the `aibrix-eg`
+  # class so it inherits the inference-oriented Envoy tuning (log level,
+  # avoiding GPU nodes, resource limits).
+  gateway:
+    # -- Gateway object name, created in the release namespace.
+    name: taas-inference
+    # -- GatewayClass. `aibrix-eg` reuses the inference EnvoyProxy config.
+    className: aibrix-eg
+    # -- TLS Secret the HTTPS listener terminates with. It must exist in the
+    # release namespace and cover the inference hostname; the chart does not
+    # own it because certificates outlive releases and are often rotated by
+    # the platform team. A `*.example.com` wildcard is the usual choice.
+    tlsSecretName: taas-inference-tls
   # -- Gateway API Gateway that terminates TLS for the hostname.
   parentRef:
-    name: envoy-gateway
-    namespace: yunzhi
+    name: taas-inference
+    # -- Empty means the release namespace (the Gateway this chart creates).
+    namespace: ""
     sectionName: https
   # -- Service fronting the inference gateway (the AIBrix Envoy proxy).
   backend:

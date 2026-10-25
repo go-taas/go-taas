@@ -64,9 +64,10 @@ The internal route the plugin dispatches to.
 
 Envoy needs a configured cluster for a Wasm HTTP call, and clusters are one
 per HTTPRoute rule, so reaching the server's internal API requires a route.
-This one is attached to the TLS listener only and carries a hostname that is
-deliberately not in DNS and not in any certificate, so it cannot be reached
-from the internet — only from the proxy, which addresses it by cluster name.
+It attaches to the data-plane Gateway's `internal` listener, whose hostname
+is deliberately not in DNS and not in any certificate, so it cannot be
+reached from the internet — only from the proxy, which addresses it by
+cluster name.
 */}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
@@ -82,11 +83,13 @@ spec:
   parentRefs:
     {{- $dp := .Values.dataPlane | default dict }}
     {{- $parent := $dp.parentRef | default dict }}
+    {{- $gw := $dp.gateway | default dict }}
     - group: gateway.networking.k8s.io
       kind: Gateway
-      name: {{ $parent.name | default "envoy-gateway" }}
-      namespace: {{ $parent.namespace | default "yunzhi" }}
-      sectionName: {{ $parent.sectionName | default "https" }}
+      name: {{ $parent.name | default "taas-inference" }}
+      namespace: {{ $parent.namespace | default .Release.Namespace }}
+      # The plugin's own listener, not the inference one.
+      sectionName: internal
   rules:
     - matches:
         - path:

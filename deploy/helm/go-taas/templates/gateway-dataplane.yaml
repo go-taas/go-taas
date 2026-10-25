@@ -1,0 +1,57 @@
+{{- if .Values.dataPlane.enabled }}
+{{- $dp := .Values.dataPlane | default dict }}
+{{- $gw := $dp.gateway | default dict }}
+{{/*
+The dedicated data-plane Gateway.
+
+Inference and management traffic must not share a proxy: the console is
+served by the platform's Gateway, and this one carries only inference. It has
+its own Envoy, its own addresses and its own lifecycle, so a control-plane
+traffic spike, a reload or a bad config cannot take inference down — and the
+reverse. The class is `aibrix-eg` so the gateway inherits the
+inference-oriented Envoy tuning instead of the platform's.
+
+The HTTPS listener deliberately declares no hostname. The hostname is an
+operator setting in the console, and the route the server owns carries it;
+pinning it here would make every console change require a Helm upgrade, and a
+mismatch between the two would silently stop serving.
+*/}}
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: {{ $gw.name | default "taas-inference" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+spec:
+  gatewayClassName: {{ $gw.className | default "aibrix-eg" }}
+  listeners:
+    # Inference, TLS-terminated. The route's hostname decides what is served.
+    - name: https
+      port: 443
+      protocol: HTTPS
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - group: ""
+            kind: Secret
+            name: {{ $gw.tlsSecretName | default "taas-inference-tls" }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+    # The data-plane gateway plugin's own internal endpoint.
+    #
+    # Envoy needs a configured cluster for a Wasm HTTP call, and clusters come
+    # from routes, so the plugin's call needs a listener a route can attach to.
+    # It is pinned to a hostname that is in no DNS zone and no certificate: a
+    # request that does reach this port with any other Host is rejected, so
+    # this listener cannot serve inference traffic or anything else.
+    - name: internal
+      port: 80
+      protocol: HTTP
+      hostname: {{ .Values.gatewayPlugin.internalHostname | default "taas-internal.invalid" | quote }}
+      allowedRoutes:
+        namespaces:
+          from: Same
+{{- end }}

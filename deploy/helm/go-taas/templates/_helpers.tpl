@@ -486,7 +486,7 @@ route; these are its install-time parts.
       "hostname" ($dp.hostname | default "")
       "routeNamespace" .Release.Namespace
       "parentRefName" ($parent.name | default "")
-      "parentRefNamespace" ($parent.namespace | default "")
+      "parentRefNamespace" ($parent.namespace | default .Release.Namespace)
       "parentRefSection" ($parent.sectionName | default "https")
       "backendName" ($backend.name | default "")
       "backendNamespace" ($backend.namespace | default "")

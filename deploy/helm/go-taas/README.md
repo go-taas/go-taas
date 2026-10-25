@@ -44,12 +44,53 @@ gatewayPlugin:
   internalHostname: taas-internal.invalid   # route the filter calls; not in DNS
 ```
 
-What it deploys: an `EnvoyExtensionPolicy` targeting the data-plane
-`HTTPRoute`, and an `HTTPRoute` for the plugin's own internal calls. The
-filter artifact is built into the server image and served from it, so one
-release produces one plugin version. Changing the artifact requires a restart
-of the Envoy deployment — Envoy caches the Wasm VM per worker, and a restart
-is also what re-fetches the code. On a fresh install this is automatic.
+What it deploys: a dedicated data-plane `Gateway`, an `EnvoyExtensionPolicy`
+targeting the data-plane `HTTPRoute`, and an `HTTPRoute` for the plugin's own
+internal calls. The filter artifact is built into the server image and served
+from it, so one release produces one plugin version. Changing the artifact
+requires a restart of the data-plane Envoy deployment — Envoy caches the Wasm
+VM per worker, and a restart is also what re-fetches the code. On a fresh
+install this is automatic.
+
+## The data plane has its own gateway
+
+`dataPlane.enabled` also creates a `Gateway` named `taas-inference`, so
+inference and management traffic do not share a proxy:
+
+| | Control plane | Data plane |
+| --- | --- | --- |
+| Gateway | the platform's | `taas-inference` (this chart) |
+| Serves | `taas.<domain>` and the platform's other sites | only the inference hostname |
+| Address | the platform gateway's | its own LoadBalancer address |
+
+It uses the `aibrix-eg` GatewayClass so it inherits the inference-oriented
+Envoy tuning, and it does **not** pin the inference hostname on its listener:
+the hostname is a console setting the server applies to the route, so changing
+it does not need a Helm upgrade.
+
+Two things an operator must provide:
+
+1. **A TLS Secret in the release namespace** covering the inference hostname:
+
+   ```bash
+   kubectl -n <namespace> create secret tls taas-inference-tls \
+     --cert=fullchain.pem --key=privkey.pem
+   ```
+
+   The chart does not manage it because certificates outlive releases and are
+   usually rotated by whoever owns DNS. Override the name with
+   `dataPlane.gateway.tlsSecretName`.
+
+2. **A DNS record for the inference hostname pointing at the data-plane
+   Gateway's address**, which differs from the console's:
+
+   ```bash
+   kubectl -n <namespace> get gateway taas-inference \
+     -o jsonpath='{.status.addresses[0].value}'
+   ```
+
+   Pointing it at the console's gateway returns 404: inference has no route
+   there any more.
 
 If `gatewayPlugin.pluginSha256` is set, the policy refuses an artifact whose
 digest differs. Leave it empty when the URL points at this release's own
