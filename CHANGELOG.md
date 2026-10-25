@@ -1,3 +1,10 @@
+## [1.81.1](https://github.com/go-taas/go-taas/compare/v1.81.0...v1.81.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **runtime:** make the saved inference hostname actually publish the gateway ([64e9ffd](https://github.com/go-taas/go-taas/commit/64e9ffdcb8176f7485d853fedc3474e1c7245349))
+
 # [1.81.0](https://github.com/go-taas/go-taas/compare/v1.80.0...v1.81.0) (2026-10-25)
 
 
