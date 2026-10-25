@@ -1,3 +1,10 @@
+## [1.81.3](https://github.com/go-taas/go-taas/compare/v1.81.2...v1.81.3) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** put the avatar on the left of the account block ([7b5dccc](https://github.com/go-taas/go-taas/commit/7b5dccc9cb15e4c78dc90c5be4e262bbd2714503))
+
 ## [1.81.2](https://github.com/go-taas/go-taas/compare/v1.81.1...v1.81.2) (2026-10-25)
 
 
