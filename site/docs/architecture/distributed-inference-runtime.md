@@ -778,6 +778,7 @@ Defaults: `collectInterval` 30 s, `schemeBroadcastInterval` 30 s, all consumers 
 | | `mq.go` (new) | the `runtime.models.changes` / `runtime.scheme` payload structs shared by producer and consumer |
 | `internal/controller` | `runtime.go` (new) | `RuntimeCollector` (component + ModelClaim collection, snapshot publish), `RuntimeSchemeConsumer`, `RuntimeModelChangeConsumer` |
 | | `modelclaim.go` (new) | `buildModelClaim` (from a change event and from a runtime registration), `modelClaimName`, `applyModelClaim`, `deleteModelClaim`, `applyPodAutoscaler`, `deletePodAutoscaler` (dynamic client) |
+| | `aibrix_routing.go` (new) | `servedModelName`, `routingLabels`, `routingAnnotations`, `modelRouteName`, `buildModelHTTPRoute`, `buildModelReferenceGrant`, `applyModelRoute`, `deleteModelRoute` (dynamic client) |
 | | `reconciler.go` (additive) | the `applyUpsert` Aibrix branch (write/delete the `ModelClaim`; PodAutoscaler vs HPA) and the `dynamic` client field |
 | | `controller.go` (additive) | start the runtime collector + scheme/model-change consumers in `Run`; `SetRuntimeCollector` |
 | `pkg/mq` | `mq.go` | `RuntimeHealth`, `RuntimeScheme`, `RuntimeModelChanges` subjects + defaults |
@@ -897,6 +898,49 @@ spec:
 ```
 
 `applyModelClaim` does a dynamic `Get` then `Create` or `Update` (idempotent); `deleteModelClaim` deletes by name ignoring `NotFound`. `modelClaimName` sanitizes to a DNS-1123 subdomain and prefixes `mc-` so no collision with AIBrix-owned names. Every write failure is logged and the reconcile **continues on the plain path** (AD13): the Deployment/Service/HPA are always reconciled, and the `ModelClaim` is best-effort.
+
+### 13.4b `internal/controller` — serving-gateway routing contract
+
+A `ModelClaim` alone does not make a model reachable. The AIBrix placement
+controller only considers **warm-pool pods**, which must carry
+`claim.model.aibrix.ai/enabled=true` and run AIBrix's runtime sidecar. A
+plain engine Deployment never becomes a candidate, so its claim stays
+`Pending` with `no available candidate warm pod for model`.
+
+Routing for a plain Deployment is metadata-driven instead:
+
+* the extproc gateway builds its model → pod table from the pod's own
+  `model.aibrix.ai/name` (label, or annotation when the name is not a valid
+  label value — hub ids such as `MiniMax/MiniMax-M3` contain `/`) and
+  `model.aibrix.ai/port` labels, and answers `model <name> does not exist`
+  for a model it never saw;
+* the request is then dispatched to the HTTPRoute named `<model>-router` in
+  the Gateway's namespace, and a missing route is a 503
+  `httproutes.gateway.networking.k8s.io "<model>-router" not found`;
+* that route's backend is a Service, addressed by the engine port, and a
+  cross-namespace backend needs a `ReferenceGrant` in the Service's
+  namespace.
+
+The controller therefore writes, on every upsert (`aibrix_routing.go`):
+
+| Object | Namespace | Content |
+| --- | --- | --- |
+| Deployment + pod template | `controller.namespace` | `model.aibrix.ai/name`, `model.aibrix.ai/port`, `model.aibrix.ai/service-name` labels/annotations; `--served-model-name <model>` on the engine command |
+| Service | `controller.namespace` | the `http` (80) port plus an `engine` port at 8000, the port the route addresses |
+| HTTPRoute `<model>-router` | `runtime.aibrix.namespace` | parentRef `runtime.aibrix.gatewayName`; one header-matched (`model: <name>`) rule per model path; backendRef `Service/<name>-svc:<engine port>` |
+| ReferenceGrant | `controller.namespace` | `from` the gateway namespace's HTTPRoutes, `to` Services |
+
+The engine must also serve under the catalog name
+(`--served-model-name`), because clients send that name while the engine
+otherwise only knows the weights directory it was started with.
+
+`modelRouteName` reproduces the AIBrix naming rule (the plain
+`<model>-router` form, or a lowercased/hashed variant for names that are
+not DNS subdomains), so a cluster that *does* run the AIBrix model router
+converges on the same object instead of creating a second one. Teardown
+deletes the route; the `ReferenceGrant` stays because it is namespace-scoped
+and shared by every model of the namespace. Both writes are best-effort and
+logged, like the `ModelClaim` write.
 
 ### 13.5 `internal/controller` — autoscaler path and component collection
 

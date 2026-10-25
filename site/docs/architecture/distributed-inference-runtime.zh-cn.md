@@ -778,6 +778,7 @@ type RuntimeAIBrixConfig struct {
 | | `mq.go`（新） | 生产者与消费者共享的 `runtime.models.changes` / `runtime.scheme` 载荷结构 |
 | `internal/controller` | `runtime.go`（新） | `RuntimeCollector`（组件 + ModelClaim 采集、快照发布）、`RuntimeSchemeConsumer`、`RuntimeModelChangeConsumer` |
 | | `modelclaim.go`（新） | `buildModelClaim`（源自变更事件与源自运行时注册）、`modelClaimName`、`applyModelClaim`、`deleteModelClaim`、`applyPodAutoscaler`、`deletePodAutoscaler`（dynamic client） |
+| | `aibrix_routing.go`（新） | `servedModelName`、`routingLabels`、`routingAnnotations`、`modelRouteName`、`buildModelHTTPRoute`、`buildModelReferenceGrant`、`applyModelRoute`、`deleteModelRoute`（dynamic client） |
 | | `reconciler.go`（增量） | `applyUpsert` 的 Aibrix 分支（写/删 `ModelClaim`；PodAutoscaler 对 HPA）与 `dynamic` client 字段 |
 | | `controller.go`（增量） | 在 `Run` 启动运行时采集器 + 方案/模型变更消费者；`SetRuntimeCollector` |
 | `pkg/mq` | `mq.go` | `RuntimeHealth`、`RuntimeScheme`、`RuntimeModelChanges` subject + 默认值 |
@@ -897,6 +898,42 @@ spec:
 ```
 
 `applyModelClaim` 先 dynamic `Get` 再 `Create` 或 `Update`（幂等）；`deleteModelClaim` 按名删除并忽略 `NotFound`。`modelClaimName` 消毒为 DNS-1123 子域并加前缀 `mc-`，避免与 AIBrix 自有名称冲突。每次写失败均记录，且调和**继续朴素路径**（AD13）：Deployment/Service/HPA 始终调和，`ModelClaim` 为尽力而为。
+
+### 13.4b `internal/controller` — 服务网关路由契约
+
+仅写 `ModelClaim` 并不能让模型可被访问。AIBrix 的放置控制器只把**热池 Pod**
+视为候选，而热池 Pod 必须带 `claim.model.aibrix.ai/enabled=true` 并运行 AIBrix
+的 runtime sidecar。普通引擎 Deployment 永远不会成为候选，其 claim 会一直停在
+`Pending`，原因为 `no available candidate warm pod for model`。
+
+普通 Deployment 的路由由**元数据驱动**：
+
+* extproc 网关根据 Pod 自身的 `model.aibrix.ai/name`（标签；当名称不是合法标签
+  值时改用注解，例如包含 `/` 的 hub id `MiniMax/MiniMax-M3`）与
+  `model.aibrix.ai/port` 标签建立"模型 → Pod"表；未见过的模型一律返回
+  `model <name> does not exist`；
+* 随后按 `<model>-router` 在网关命名空间中查找 HTTPRoute；路由缺失即返回 503
+  `httproutes.gateway.networking.k8s.io "<model>-router" not found`；
+* 该路由的后端是一个 Service，按引擎端口访问；跨命名空间的后端还需要在
+  Service 所在命名空间中存在 `ReferenceGrant`。
+
+因此控制器在每次 upsert 时写入（`aibrix_routing.go`）：
+
+| 对象 | 命名空间 | 内容 |
+| --- | --- | --- |
+| Deployment 与 Pod 模板 | `controller.namespace` | `model.aibrix.ai/name`、`model.aibrix.ai/port`、`model.aibrix.ai/service-name` 标签/注解；引擎命令追加 `--served-model-name <模型名>` |
+| Service | `controller.namespace` | 原有 `http`（80）端口，另加 8000 的 `engine` 端口（路由使用的端口） |
+| HTTPRoute `<model>-router` | `runtime.aibrix.namespace` | parentRef 为 `runtime.aibrix.gatewayName`；每个模型路径一条带 `model: <名称>` 头匹配的规则；backendRef 为 `Service/<名称>-svc:<引擎端口>` |
+| ReferenceGrant | `controller.namespace` | `from` 网关命名空间的 HTTPRoutes，`to` Services |
+
+引擎还必须以目录中的模型名对外提供服务（`--served-model-name`）：客户端发送的是
+该名称，而引擎默认只认启动时传入的权重目录。
+
+`modelRouteName` 复刻 AIBrix 的命名规则（常规为 `<model>-router`；非 DNS 子域的
+名称改用小写哈希形式），因此即使集群**同时**运行了 AIBrix 的 model router，
+双方也会收敛到同一个对象，而不会各建一份。删除服务时一并删除路由；
+`ReferenceGrant` 保留，因为它是命名空间级、被该命名空间所有模型共用。
+与 `ModelClaim` 一样，两处写入均为尽力而为并记录日志。
 
 ### 13.5 `internal/controller` — 自动扩缩容路径与组件采集
 
