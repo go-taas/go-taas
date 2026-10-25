@@ -182,7 +182,7 @@ export default function ServiceDetailPage() {
           <div className="detail-grid">
             <div className="detail-item">
               <div className="label">{t('service.enabled')}</div>
-              <div className="value">{data.autoscaling.enabled ? 'On' : 'Off'}</div>
+              <div className="value">{data.autoscaling.enabled ? t('common.on') : t('common.off')}</div>
             </div>
             <div className="detail-item">
               <div className="label">{t('service.minMax')}</div>
@@ -196,7 +196,7 @@ export default function ServiceDetailPage() {
             </div>
             <div className="detail-item">
               <div className="label">{t('service.scaleToZero')}</div>
-              <div className="value">{data.autoscaling.scaleToZero ? 'On' : 'Off'}</div>
+              <div className="value">{data.autoscaling.scaleToZero ? t('common.on') : t('common.off')}</div>
             </div>
             <div className="detail-item">
               <div className="label">{t('service.cooldown')}</div>
@@ -299,8 +299,18 @@ function AutoscalingStatusBlock({ status }: { status: AutoscalingStatus }) {
   );
 }
 
-function AutoscalingStateBadge({ state }: { state: string }) {
+// normalizeAutoscalingState maps the proto enum name the gateway emits
+// (AUTOSCALING_STATE_SCALING_UP) onto the short form the labels use
+// (scaling-up). An already-short value passes through.
+function normalizeAutoscalingState(state: string): string {
+  if (!state.startsWith('AUTOSCALING_STATE_')) return state;
+  const short = state.slice('AUTOSCALING_STATE_'.length).toLowerCase();
+  return short === 'unspecified' ? 'disabled' : short.replace(/_/g, '-');
+}
+
+function AutoscalingStateBadge({ state: rawState }: { state: string }) {
   const { t } = useI18n();
+  const state = normalizeAutoscalingState(rawState);
   const labels: Record<string, string> = {
     disabled: t('service.asDisabled'),
     steady: t('service.asSteady'),
