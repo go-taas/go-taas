@@ -19,7 +19,7 @@ const PAGE_SIZE = 20;
 
 export default function UsersPage() {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [users, setUsers] = useState<UserSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -99,8 +99,8 @@ export default function UsersPage() {
           }}
         >
           <option value="all">{t('common.allStates')}</option>
-          <option value="active">active</option>
-          <option value="disabled">disabled</option>
+          <option value="active">{tEnum('state', 'active')}</option>
+          <option value="disabled">{tEnum('state', 'disabled')}</option>
         </select>
       </div>
 
