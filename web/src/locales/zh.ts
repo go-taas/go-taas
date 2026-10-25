@@ -1709,7 +1709,7 @@ export const zh: Record<string, string> = {
 
   // ---- Usage (admin) ----
   'usage.title': '用量',
-  'usage.subtitle': '每个 API 密钥的 token 消耗与成本。用量在一小时内出现；当前小时为待定。',
+  'usage.subtitle': '每个 API 密钥的词元消耗与成本。用量在一小时内出现；当前小时为待定。',
   'usage.range24h': '最近 24 小时',
   'usage.range7d': '最近 7 天',
   'usage.range30d': '最近 30 天',
