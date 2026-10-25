@@ -103,6 +103,13 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 `GetInferenceEndpoint` 把 `<scheme>://<hostname>/v1` 报告给快速开始页、API 文档以及所有
 查询该接口的客户端。优先级为：控制台设置 → `infer.endpointBaseURL` → 集群内自动发现的网关。
 
+保存主机名不只是写数据库：服务端会把同一份值 patch 到数据面的 `HTTPRoute`
+（按 `app.kubernetes.io/component: data-plane` 标签选中），使路由恰好发布该主机名。
+写入发生在**落库之前**，找不到或改不动路由时更新会以 `12909` 失败——否则控制台会对外
+公布一个返回 404 的端点。清空主机名是空操作，避免误操作把数据面下线。路由的父 Gateway、
+后端 Service 与超时仍由 Chart 持有：它们是安装期事实，而主机名是运维在运行期唯一要改的部分。
+设置响应里的 `served_hostnames` 报告路由实际发布的主机名，控制台据此提示设置是否生效。
+
 存储值刻意分成两种形态：给用户的是**公网**地址，而平台自身的调用（控制台试用）优先使用
 **集群内**地址——公网主机名在 Pod 内不一定可解析，且把推理流量绕回公网入口会多一跳，
 正是这次拆分要避免的。集群内无法解析公网名称时，请设置 `inference_gateway_internal_url`。

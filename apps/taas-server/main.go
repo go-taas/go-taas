@@ -316,6 +316,12 @@ func main() {
 			if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
 				inferSvc.SetGatewayResolver(k8s.NewGatewayResolver(
 					k8sClient, cfg.Runtime.AIBrix.Gateway, cfg.Runtime.AIBrix.Namespace))
+				// The inference hostname an administrator saves in the
+				// console is applied to the data-plane route, so the
+				// setting publishes the gateway instead of only changing
+				// what the console advertises.
+				runtimeSvc.SetDataPlaneRouter(k8s.NewDataPlaneRouter(
+					k8sClient.Dynamic(), cfg.Controller.Namespace))
 			}
 			// The data-plane hostname users are told to call is an operator
 			// setting (platform settings page), so it wins over the static

@@ -318,8 +318,10 @@ dataPlane:
   enabled: false
   # -- Public hostname users call for inference, for example
   # `api.example.com`. It must be served by the parent Gateway's
-  # certificate. Set the same value in the console's platform settings so
-  # the quickstart page reports it.
+  # certificate. This is the route's initial hostname: the admin console's
+  # platform settings then keeps it in step, because saving a hostname there
+  # patches this same route. Set the console value to the same hostname so
+  # the quickstart page and the route agree from the first render.
   hostname: ""
   # -- Request timeout for a streaming inference call.
   requestTimeout: 600s

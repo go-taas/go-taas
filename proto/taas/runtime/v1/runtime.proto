@@ -204,6 +204,11 @@ message PlatformSettings {
   string updated_by = 5;
   // updated_at is the last change time (unix seconds).
   int64 updated_at = 6;
+  // served_hostnames are the hostnames the data-plane route actually
+  // publishes right now. When they do not contain
+  // inference_gateway_hostname the setting is not in effect (for example
+  // the chart's route was never created), which the console surfaces.
+  repeated string served_hostnames = 7;
 }
 
 message GetPlatformSettingsRequest {}

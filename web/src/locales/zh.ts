@@ -232,6 +232,8 @@ export const zh: Record<string, string> = {
   'settings.loadFailed': '加载平台设置失败',
   'settings.saveFailed': '保存平台设置失败',
   'settings.saved': '平台设置已保存。',
+  'settings.servedLabel': '路由当前发布的主机名',
+  'settings.notInEffect': '已保存的主机名 {host} 尚未被任何路由发布，用户访问时会得到 404。请确认 Chart 已启用 dataPlane。',
   'settings.permissionDenied': '需要平台管理员权限才能查看平台设置。',
   'nav.usageKeys': '用量密钥',
   'nav.cost': '成本',

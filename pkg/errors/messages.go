@@ -205,6 +205,7 @@ var messages = map[Code]string{
 	CodeRuntimeReplicasInvalid:   "invalid replica count",
 	CodeRuntimeModelNameInvalid:  "invalid model name",
 	CodeRuntimeSettingInvalid:    "runtime setting invalid",
+	CodeRuntimeRouteNotPublished: "runtime route not published",
 
 	// provider (feature #48, AD9)
 	CodeProviderNotFound:             "provider not found",

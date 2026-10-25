@@ -133,6 +133,7 @@ func (s *Service) GetPlatformSettings(ctx context.Context, _ *runtimev1.GetPlatf
 	}
 	projected := platformSettingsToProto(row)
 	projected.UpdatedBy = s.actorLabel(ctx, row.UpdatedBy)
+	projected.ServedHostnames = s.servedHostnames(ctx)
 	return &runtimev1.GetPlatformSettingsResponse{
 		Response: okResponse(),
 		Settings: projected,
@@ -163,6 +164,14 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 	if host, _, splitErr := net.SplitHostPort(hostname); splitErr == nil && host == "" {
 		return nil, apierrors.Newf(apierrors.CodeRuntimeSettingInvalid,
 			"runtime: inference gateway hostname %q has no host part", req.GetInferenceGatewayHostname())
+	}
+
+	// Publishing comes before persistence: a hostname that no route serves
+	// would be advertised to every tenant as the endpoint to call, and the
+	// gateway would answer 404. Failing here keeps the previously working
+	// hostname in place.
+	if err := s.publishHostname(ctx, hostname); err != nil {
+		return nil, err
 	}
 
 	repo, err := s.repository()
@@ -206,8 +215,37 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 	}
 	projected := platformSettingsToProto(updated)
 	projected.UpdatedBy = s.actorLabel(ctx, updated.UpdatedBy)
+	projected.ServedHostnames = s.servedHostnames(ctx)
 	return &runtimev1.UpdatePlatformSettingsResponse{
 		Response: okResponse(),
 		Settings: projected,
 	}, nil
+}
+
+// publishHostname makes the data-plane route serve the saved hostname.
+// An empty hostname is a no-op (clearing the setting must not take the
+// data plane offline), and a deployment without a router seam stores the
+// value without touching the cluster.
+func (s *Service) publishHostname(ctx context.Context, hostname string) error {
+	if hostname == "" || s.dataPlaneRouter == nil {
+		return nil
+	}
+	if err := s.dataPlaneRouter.SetHostname(ctx, hostname); err != nil {
+		return apierrors.Newf(apierrors.CodeRuntimeRouteNotPublished,
+			"runtime: could not publish the inference hostname %q: %v", hostname, err)
+	}
+	return nil
+}
+
+// servedHostnames reports what the data-plane route serves, for the
+// console to compare with the saved setting.
+func (s *Service) servedHostnames(ctx context.Context) []string {
+	if s.dataPlaneRouter == nil {
+		return nil
+	}
+	hostnames, err := s.dataPlaneRouter.DataPlaneRouteHostnames(ctx)
+	if err != nil {
+		return nil
+	}
+	return hostnames
 }

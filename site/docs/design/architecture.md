@@ -110,6 +110,19 @@ stores it, and `GetInferenceEndpoint` reports
 client that asks. Precedence is: the console setting, then
 `infer.endpointBaseURL`, then the gateway discovered in the cluster.
 
+Saving the hostname is not just a database write: the server patches the
+data-plane `HTTPRoute` (selected by the `app.kubernetes.io/component:
+data-plane` label) so the route serves exactly the saved hostname. The write
+happens **before** the value is stored, and a route that cannot be found or
+patched fails the update with `12909` — otherwise the console would advertise
+an endpoint that answers 404. Clearing the hostname is a no-op so an
+accidental empty field cannot take the data plane offline. The route's
+parent Gateway, backend Service and timeouts stay chart-owned: they are
+install-time facts, while the hostname is the one part an operator changes at
+runtime. `served_hostnames` in the settings response reports what the route
+actually publishes, which is how the console shows whether the setting is in
+effect.
+
 The stored value has two forms on purpose. Users are given the **public**
 URL, while the platform's own calls (the console playground) prefer an
 **in-cluster** URL — a public hostname is not necessarily resolvable from a

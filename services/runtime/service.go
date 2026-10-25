@@ -88,6 +88,12 @@ type Service struct {
 	// label, so the settings page shows a person rather than a UUID. Nil
 	// until wired: the raw id is reported.
 	userLabelResolver UserLabelResolver
+
+	// dataPlaneRouter applies the saved inference hostname to the
+	// data-plane HTTPRoute, so the setting actually publishes the gateway
+	// instead of only changing what the console advertises. Nil until
+	// wired: the setting is stored without touching the cluster.
+	dataPlaneRouter DataPlaneRouter
 }
 
 // New constructs the runtime service over a fresh projection cache.
@@ -136,6 +142,20 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 
 // SetRoleGuard injects the org role guard.
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// DataPlaneRouter applies the inference hostname to the data-plane route
+// and reports what that route currently serves. It is implemented in
+// pkg/k8s and injected at wiring time.
+type DataPlaneRouter interface {
+	// SetHostname makes the route serve exactly this hostname. An empty
+	// hostname leaves the route untouched.
+	SetHostname(ctx context.Context, hostname string) error
+	// DataPlaneRouteHostnames reports the hostnames the route serves.
+	DataPlaneRouteHostnames(ctx context.Context) ([]string, error)
+}
+
+// SetDataPlaneRouter injects the data-plane route reconciler.
+func (s *Service) SetDataPlaneRouter(r DataPlaneRouter) { s.dataPlaneRouter = r }
 
 // UserLabelResolver resolves user ids to display labels (auth's
 // ResolveUserLabels). Rosters and audit surfaces show people, not UUIDs.

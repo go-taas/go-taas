@@ -28,6 +28,12 @@ rules:
   - apiGroups: [""]
     resources: ["services"]
     verbs: ["get", "list"]
+  # Applying the inference hostname an administrator saves in the console
+  # to the data-plane HTTPRoute (namespaced; see the Role below for the
+  # write verbs, which stay inside the release namespace).
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["get", "list"]
 {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -41,6 +47,42 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ default $name $existing }}
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "go-taas.server.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+{{- $dpName := default (include "go-taas.server.name" .) (dig "rbac" "name" "" .Values.taasServer) }}
+---
+{{/*
+The write verbs are namespaced on purpose: the server only ever patches the
+data-plane route in its own namespace, so it must not hold cluster-wide write
+access to Gateway API objects.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ $dpName }}-data-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+rules:
+  - apiGroups: ["gateway.networking.k8s.io"]
+    resources: ["httproutes"]
+    verbs: ["patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ $dpName }}-data-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: server
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ $dpName }}-data-plane
 subjects:
   - kind: ServiceAccount
     name: {{ include "go-taas.server.serviceAccountName" . }}

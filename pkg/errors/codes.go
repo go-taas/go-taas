@@ -352,6 +352,7 @@ const (
 	CodeRuntimeReplicasInvalid   Code = 12906 // RUNTIME_REPLICAS_INVALID
 	CodeRuntimeModelNameInvalid  Code = 12907 // RUNTIME_MODEL_NAME_INVALID
 	CodeRuntimeSettingInvalid    Code = 12908 // RUNTIME_SETTING_INVALID
+	CodeRuntimeRouteNotPublished Code = 12909 // RUNTIME_ROUTE_NOT_PUBLISHED
 )
 
 // provider module error codes (feature #48, AD9). The provider module

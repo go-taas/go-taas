@@ -25,6 +25,9 @@ interface PlatformSettings {
   inferenceBaseUrl: string;
   updatedBy: string;
   updatedAt: string;
+  // Hostnames the data-plane route actually serves right now. When the
+  // saved hostname is missing here, the setting is not in effect.
+  servedHostnames?: string[];
 }
 
 interface SettingsResponse {
@@ -39,6 +42,7 @@ const EMPTY: PlatformSettings = {
   inferenceBaseUrl: '',
   updatedBy: '',
   updatedAt: '',
+  servedHostnames: [],
 };
 
 export default function PlatformSettingsPage() {
@@ -116,6 +120,12 @@ export default function PlatformSettingsPage() {
   const preview = hostname.trim()
     ? `${scheme}://${hostname.trim().replace(/\/+$/, '')}/v1`
     : '';
+
+  // A saved hostname is only real when the data-plane route serves it.
+  const served = meta.servedHostnames || [];
+  const savedHost = (meta.inferenceGatewayHostname || '').toLowerCase();
+  const inEffect = savedHost !== '' && served.some((h) => h.toLowerCase() === savedHost);
+  const notInEffect = savedHost !== '' && served.length > 0 && !inEffect;
 
   if (permissionDenied) {
     return (
@@ -210,7 +220,19 @@ export default function PlatformSettingsPage() {
                 <span className="kv-label">{t('settings.updatedByLabel')}</span>
                 <span>{meta.updatedBy || '—'}</span>
               </div>
+              <div>
+                <span className="kv-label">{t('settings.servedLabel')}</span>
+                <span className="mono">
+                  {served.length > 0 ? served.join(', ') : t('settings.previewEmpty')}
+                </span>
+              </div>
             </div>
+
+            {notInEffect && (
+              <div className="error" data-testid="settings-not-in-effect">
+                {t('settings.notInEffect', { host: meta.inferenceGatewayHostname })}
+              </div>
+            )}
 
             <button data-testid="settings-save" disabled={saving} onClick={() => void save()}>
               {saving ? t('common.saving') : t('common.save')}

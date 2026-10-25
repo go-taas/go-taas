@@ -228,3 +228,74 @@ func TestPlatformSettingsShowsTheActorName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "user-1", got.GetSettings().GetUpdatedBy())
 }
+
+// fakeDataPlaneRouter records what the settings update asked the cluster to
+// publish, and can fail on demand.
+type fakeDataPlaneRouter struct {
+	err       error
+	applied   []string
+	hostnames []string
+}
+
+func (f *fakeDataPlaneRouter) SetHostname(_ context.Context, hostname string) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.applied = append(f.applied, hostname)
+	return nil
+}
+
+func (f *fakeDataPlaneRouter) DataPlaneRouteHostnames(context.Context) ([]string, error) {
+	return f.hostnames, nil
+}
+
+// TestUpdatePlatformSettingsPublishesTheHostname is the whole point of the
+// setting: saving a hostname must make the data-plane route serve it,
+// before anything is persisted.
+func TestUpdatePlatformSettingsPublishesTheHostname(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewForFVT(db, nil)
+	router := &fakeDataPlaneRouter{hostnames: []string{"api.example.com"}}
+	svc.SetDataPlaneRouter(router)
+
+	resp, err := svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname: "api.example.com",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"api.example.com"}, router.applied)
+	assert.Equal(t, []string{"api.example.com"}, resp.GetSettings().GetServedHostnames())
+
+	// Clearing the hostname must not take the data plane offline.
+	router.applied = nil
+	_, err = svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, router.applied, "an empty hostname is a no-op")
+}
+
+// TestUpdatePlatformSettingsFailsWhenTheRouteCannotBePublished keeps the
+// console from advertising an endpoint that answers 404: the update is
+// rejected and the previous value survives.
+func TestUpdatePlatformSettingsFailsWhenTheRouteCannotBePublished(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewForFVT(db, nil)
+	router := &fakeDataPlaneRouter{}
+	svc.SetDataPlaneRouter(router)
+
+	_, err := svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname: "api.example.com",
+	})
+	require.NoError(t, err)
+
+	router.err = assert.AnError
+	_, err = svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname: "llm.example.com",
+	})
+	require.Error(t, err)
+	assert.EqualValues(t, apierrors.CodeRuntimeRouteNotPublished, apierrors.CodeOf(err))
+	assert.Contains(t, err.Error(), "llm.example.com")
+
+	got, err := svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "api.example.com", got.GetSettings().GetInferenceGatewayHostname(),
+		"a hostname that could not be published must not be stored")
+}

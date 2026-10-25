@@ -232,6 +232,8 @@ export const en: Record<string, string> = {
   'settings.loadFailed': 'Could not load the platform settings',
   'settings.saveFailed': 'Could not save the platform settings',
   'settings.saved': 'Platform settings saved.',
+  'settings.servedLabel': 'Hostnames the route serves',
+  'settings.notInEffect': 'The saved hostname {host} is not published by any route yet, so callers get a 404. Check that the chart has dataPlane enabled.',
   'settings.permissionDenied': 'Platform administrator permission is required to view the platform settings.',
   'nav.usageKeys': 'Usage Keys',
   'nav.cost': 'Cost',
