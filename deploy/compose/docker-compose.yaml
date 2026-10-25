@@ -97,6 +97,11 @@ services:
   # coexist with another local service on 8080; the issuer stays
   # container-internal (http://keycloak:8080) either way.
   keycloak:
+    # The platform ships its own account system (the seeded local admin),
+    # so Keycloak is NOT part of the default stack. Start it only when you
+    # want to exercise the SSO flow:
+    #   docker compose --profile sso up -d
+    profiles: ["sso"]
     image: quay.io/keycloak/keycloak:26.0
     command: ["start-dev", "--import-realm"]
     environment:
@@ -155,6 +160,11 @@ services:
       # Feature: model download. The weights directory is the JuiceFS
       # mount shared with the inference pods.
       CONFIG_MODEL_WEIGHTSDIR: /data/weights
+      # The platform's own account system is the default sign-in path (the
+      # seeded local admin below). SSO seeding is therefore off unless you
+      # start the optional `sso` profile and turn it back on:
+      #   CONFIG_AUTH_SEEDSSO_ENABLED: "true"
+      CONFIG_AUTH_SEEDSSO_ENABLED: ${AUTH_SEEDSSO_ENABLED:-false}
       # Feature: image import. The internal Harbor registry is read from
       # the .env file.
       CONFIG_IMAGE_HARBOR_URL: ${HARBOR_URL:-}

@@ -245,8 +245,10 @@ dependencies:
       affinity: {}
 
   keycloak:
-    # -- `internal` provisions Keycloak with this chart; `external` connects to an existing IdP.
-    mode: internal
+    # -- `disabled` (default) uses the platform's own account system only, so
+    # no IdP is installed or seeded; `internal` provisions Keycloak with this
+    # chart; `external` connects to an existing IdP.
+    mode: disabled
     # Connection used when `mode: external`. These values are also used to
     # seed the SSO provider row (auth.seedSso) so the console can log in.
     external:

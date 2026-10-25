@@ -24,7 +24,11 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         }
       }
     },
@@ -102,7 +106,10 @@
     "mode": {
       "type": "string",
       "description": "internal provisions the dependency with this chart; external connects to an operator-managed instance.",
-      "enum": ["internal", "external"]
+      "enum": [
+        "internal",
+        "external"
+      ]
     },
     "persistence": {
       "type": "object",
@@ -129,7 +136,11 @@
         },
         "pullPolicy": {
           "type": "string",
-          "enum": ["Always", "IfNotPresent", "Never"]
+          "enum": [
+            "Always",
+            "IfNotPresent",
+            "Never"
+          ]
         }
       }
     },
@@ -198,7 +209,12 @@
             },
             "pullPolicy": {
               "type": "string",
-              "enum": ["", "Always", "IfNotPresent", "Never"]
+              "enum": [
+                "",
+                "Always",
+                "IfNotPresent",
+                "Never"
+              ]
             }
           }
         },
@@ -224,7 +240,11 @@
           "properties": {
             "type": {
               "type": "string",
-              "enum": ["ClusterIP", "NodePort", "LoadBalancer"]
+              "enum": [
+                "ClusterIP",
+                "NodePort",
+                "LoadBalancer"
+              ]
             },
             "annotations": {
               "type": "object"
@@ -355,7 +375,13 @@
             },
             "sslMode": {
               "type": "string",
-              "enum": ["", "disable", "require", "verify-ca", "verify-full"]
+              "enum": [
+                "",
+                "disable",
+                "require",
+                "verify-ca",
+                "verify-full"
+              ]
             }
           }
         },
@@ -380,7 +406,10 @@
                   "minLength": 1
                 }
               },
-              "required": ["username", "database"]
+              "required": [
+                "username",
+                "database"
+              ]
             },
             "persistence": {
               "$ref": "#/definitions/persistence"
@@ -468,7 +497,10 @@
         },
         "driver": {
           "type": "string",
-          "enum": ["rabbitmq", "fake"]
+          "enum": [
+            "rabbitmq",
+            "fake"
+          ]
         },
         "namespace": {
           "type": "string"
@@ -513,7 +545,7 @@
       "type": "object",
       "properties": {
         "mode": {
-          "$ref": "#/definitions/mode"
+          "$ref": "#/definitions/dependencyMode"
         },
         "external": {
           "type": "object",
@@ -571,6 +603,15 @@
           ]
         }
       }
+    },
+    "dependencyMode": {
+      "type": "string",
+      "description": "disabled uses the platform account system only; internal provisions the dependency with this chart; external connects to an operator-managed instance.",
+      "enum": [
+        "disabled",
+        "internal",
+        "external"
+      ]
     }
   }
 }

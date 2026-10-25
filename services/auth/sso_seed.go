@@ -17,8 +17,8 @@ import (
 	"github.com/google/uuid"
 	"gorm.io/gorm"
 
-	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/config"
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
 
@@ -37,6 +37,7 @@ const seedKeycloakClientID = "go-taas-console"
 // It exists only in the realm-export.json and this seed; the design doc
 // §9 states seeded credentials are compose-only and production
 // deployments configure their own IdP.
+//
 //nolint:gosec // seeded credential, never used in production
 const seedKeycloakClientSecret = "go-taas-console-secret"
 
@@ -71,12 +72,12 @@ const seedKeycloakAttributeMapping = `{"username":"preferred_username","email":"
 // disables it.
 func seedSsoConfig() config.SeedSsoConfig {
 	cfg := config.SeedSsoConfig{
-		Enabled:       true,
-		ProviderID:    seedKeycloakProviderID,
-		Issuer:        seedKeycloakIssuer,
-		ClientID:      seedKeycloakClientID,
-		ClientSecret:  seedKeycloakClientSecret,
-		RedirectURI:   seedKeycloakRedirectURI,
+		Enabled:            true,
+		ProviderID:         seedKeycloakProviderID,
+		Issuer:             seedKeycloakIssuer,
+		ClientID:           seedKeycloakClientID,
+		ClientSecret:       seedKeycloakClientSecret,
+		RedirectURI:        seedKeycloakRedirectURI,
 		AdminUsername:      seedAdminUsername,
 		AdminPassword:      seedAdminPassword,
 		AdminLocalPassword: seedAdminLocalPassword,
@@ -125,38 +126,42 @@ func seedSsoConfig() config.SeedSsoConfig {
 // user, and the admin user's identity binding idempotently (feature-22
 // AD6/AD10). Each step checks existence before inserting, so re-running
 // startup does not duplicate the provider, the user, or the binding
-// (FR4.4). It is a no-op when auth.seedSso.enabled is false.
+// (FR4.4).
+//
+// The seeded local admin account (and its memberships) is always created:
+// the platform's own account system is the default sign-in path and must
+// work without an external IdP. The Keycloak provider row and the admin's
+// identity binding are seeded only when auth.seedSso.enabled is true.
 func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 	seed := seedSsoConfig()
-	if !seed.Enabled {
-		return nil
-	}
 	repo, err := s.ssoRepository()
 	if err != nil {
 		return err
 	}
 
-	// 1. The Keycloak OIDC provider row.
-	if _, err := repo.FindProvider(ctx, seed.ProviderID); isRecordNotFound(err) {
-		prov := &SSOProvider{
-			ID:                 seed.ProviderID,
-			Type:               ProviderTypeOIDC,
-			DisplayName:        "Keycloak",
-			Issuer:             seed.Issuer,
-			ClientID:           seed.ClientID,
-			ClientSecret:       seed.ClientSecret,
-			RedirectURI:        seed.RedirectURI,
-			Scopes:             "openid profile email",
-			Enabled:            true,
-			AllowAutoProvision: true,
-			PasswordLogin:      true,
-			AttributeMapping:   seedKeycloakAttributeMapping,
-		}
-		if err := repo.CreateProvider(ctx, prov); err != nil {
+	// 1. The Keycloak OIDC provider row (opt-in).
+	if seed.Enabled {
+		if _, err := repo.FindProvider(ctx, seed.ProviderID); isRecordNotFound(err) {
+			prov := &SSOProvider{
+				ID:                 seed.ProviderID,
+				Type:               ProviderTypeOIDC,
+				DisplayName:        "Keycloak",
+				Issuer:             seed.Issuer,
+				ClientID:           seed.ClientID,
+				ClientSecret:       seed.ClientSecret,
+				RedirectURI:        seed.RedirectURI,
+				Scopes:             "openid profile email",
+				Enabled:            true,
+				AllowAutoProvision: true,
+				PasswordLogin:      true,
+				AttributeMapping:   seedKeycloakAttributeMapping,
+			}
+			if err := repo.CreateProvider(ctx, prov); err != nil {
+				return err
+			}
+		} else if err != nil {
 			return err
 		}
-	} else if err != nil {
-		return err
 	}
 
 	// 2. The admin local account. The initial password is hashed with
@@ -190,14 +195,13 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 		adminUser.PasswordHash = hash
 	}
 
-	// 3. The admin user's identity binding. The external subject is
-	// issuer + ":" + the Keycloak admin subject. The realm-export.json
-	// does not fix the subject, so the seed resolves it from the IdP at
-	// first boot; if it cannot be resolved, the binding is created on
-	// the first successful login via JIT provisioning (AD10).
-	prov, err := repo.FindProvider(ctx, seed.ProviderID)
-	if err != nil {
-		return err
+	// 3. The admin user's identity binding (opt-in, with the provider).
+	var prov *SSOProvider
+	if seed.Enabled {
+		prov, err = repo.FindProvider(ctx, seed.ProviderID)
+		if err != nil {
+			return err
+		}
 	}
 
 	// 2b. The admin user's org membership with the admin role. When the
@@ -252,6 +256,9 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 		}
 	}
 
+	if prov == nil {
+		return nil
+	}
 	return s.seedAdminBinding(ctx, repo, prov, adminUser)
 }
 
@@ -326,6 +333,7 @@ func (s *Service) EnsureComposeSeed(ctx context.Context) error {
 	}
 	return s.seedComposeProviderAndAdmin(ctx)
 }
+
 // seedPlatformAdminMembership ensures the seeded admin holds the
 // platform-admin role on the dedicated "platform" organization, so a
 // session derived from org_members carries the platform-admin role.

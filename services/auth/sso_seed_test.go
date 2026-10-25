@@ -173,9 +173,10 @@ func TestSeedComposeProviderAndAdminJITFallback(t *testing.T) {
 	assert.EqualValues(t, 0, bindingCount, "no binding when the subject is unresolvable")
 }
 
-// TestSeedComposeProviderAndAdminDisabled verifies the seed is a no-op
-// when auth.seedSso.enabled is false (feature-22 AD6): no provider, user,
-// or binding is created.
+// TestSeedComposeProviderAndAdminDisabled verifies that disabling the SSO
+// seed (feature-22 AD6) skips the IdP provider and binding, while the
+// platform's own local admin account is still created so the install is
+// usable without an external IdP.
 func TestSeedComposeProviderAndAdminDisabled(t *testing.T) {
 	svc, db := newSSOService(t)
 	ctx := context.Background()
@@ -192,7 +193,7 @@ func TestSeedComposeProviderAndAdminDisabled(t *testing.T) {
 	require.NoError(t, db.Model(&User{}).Count(&userCount).Error)
 	require.NoError(t, db.Model(&IdentityBinding{}).Count(&bindingCount).Error)
 	assert.EqualValues(t, 0, providerCount, "no provider when seed disabled")
-	assert.EqualValues(t, 0, userCount, "no user when seed disabled")
+	assert.EqualValues(t, 1, userCount, "the local admin is still seeded")
 	assert.EqualValues(t, 0, bindingCount, "no binding when seed disabled")
 }
 // TestSeedLocalAdminPassword verifies the seeded admin gets a hashed
@@ -212,4 +213,27 @@ func TestSeedLocalAdminPassword(t *testing.T) {
 	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "admin", Password: "Pass4admin"})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.SessionToken)
+}
+
+// TestSeedDisabledStillSeedsLocalAdmin verifies a fresh install without an
+// IdP can sign in with the seeded local admin (the default deployment).
+func TestSeedDisabledStillSeedsLocalAdmin(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	config.SetConfigForTest(&config.Configuration{Auth: config.AuthConfig{
+		SeedSso: config.SeedSsoConfig{Enabled: false, AdminLocalPassword: "Pass4admin"},
+	}})
+	t.Cleanup(func() { config.SetConfigForTest(nil) })
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+
+	var admin User
+	require.NoError(t, db.First(&admin, "username = ?", "admin").Error)
+	assert.True(t, VerifyPassword("Pass4admin", admin.PasswordHash))
+
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "admin", Password: "Pass4admin"})
+	require.NoError(t, err)
+	assert.Equal(t, RealmAdmin, resp.Realm)
 }

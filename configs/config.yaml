@@ -66,15 +66,14 @@ auth:
     - org-admin
     - admin
     - owner
-  # seedSso configures the first-boot SSO provider seed (feature-22
-  # AD6/AD10). When enabled, the auth Migrate hook inserts a Keycloak
-  # provider row (and the admin user/binding) if none exists, so a fresh
-  # install is usable without manual IdP configuration. The Helm chart
-  # points issuer/redirectUri at the bundled Keycloak and the exposed
-  # URL; production deployments can set enabled: false and register
-  # their own IdP through the admin API.
+  # seedSso configures the opt-in first-boot SSO provider seed
+  # (feature-22 AD6/AD10). The platform ships its own account system, so
+  # this is disabled by default: a fresh install signs in with the seeded
+  # local admin account (adminLocalPassword below) and no IdP is needed.
+  # Set enabled: true (and the Helm chart's dependencies.keycloak.mode to
+  # internal/external) to also seed a Keycloak provider row.
   seedSso:
-    enabled: true
+    enabled: false
     providerId: keycloak
     issuer: http://keycloak:8080/realms/go-taas
     clientId: go-taas-console

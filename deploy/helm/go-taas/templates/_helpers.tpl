@@ -373,6 +373,19 @@ bundled Keycloak (internal) or the configured external IdP. */}}
 {{- $clientId := "go-taas-console" -}}
 {{- $clientSecret := "go-taas-console-secret" -}}
 {{- $redirectUri := "http://localhost:9091/api/v1/auth/sso/*" -}}
+{{- /* The seed is off by default: the platform's own account store
+       (the seeded local admin) is enough to sign in. Set
+       dependencies.keycloak.mode to internal/external to seed an IdP. */ -}}
+{{- if eq $dep.mode "disabled" -}}
+- name: CONFIG_AUTH_SEEDSSO_ENABLED
+  value: "false"
+{{- $adminLocal := "Pass4admin" }}
+{{- with (.Values.auth).seedSso }}
+{{- if .adminLocalPassword }}{{ $adminLocal = .adminLocalPassword }}{{ end }}
+{{- end }}
+- name: CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD
+  value: {{ $adminLocal | quote }}
+{{- else -}}
 {{- if eq $dep.mode "external" -}}
 {{- $issuer = required "go-taas: dependencies.keycloak.external.issuer is required when dependencies.keycloak.mode=external" $dep.external.issuer -}}
 {{- $clientId = $dep.external.clientId -}}
@@ -406,6 +419,7 @@ bundled Keycloak (internal) or the configured external IdP. */}}
 {{- end }}
 - name: CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD
   value: {{ $adminLocal | quote }}
+{{- end -}}
 {{- end -}}
 
 {{/* ---- misc ------------------------------------------------------------ */}}
