@@ -677,16 +677,23 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	// experimental combination deploys with a warning flag on the
 	// response. The check runs before any desired-state write, so a
 	// blocked deploy publishes nothing.
+	//
+	// A card type is optional (empty means "any card of this accelerator
+	// family"), and the matrix is keyed by a concrete (model, engine,
+	// card_type) triple. Without a card type there is no triple to look
+	// up, so the gate is skipped rather than failed: a missing optional
+	// field must never reject an otherwise valid deploy (10211).
+	cardType := strings.TrimSpace(req.GetAcceleratorType())
 	compatStatus := ""
-	if s.compatibilityChecker != nil {
-		compatStatus, err = s.compatibilityChecker(ctx, req.GetModelId(), img.Engine, strings.TrimSpace(req.GetAcceleratorType()))
+	if s.compatibilityChecker != nil && cardType != "" {
+		compatStatus, err = s.compatibilityChecker(ctx, req.GetModelId(), img.Engine, cardType)
 		if err != nil {
 			return nil, err
 		}
 		if compatStatus == image.StatusUnsupported {
 			return nil, apierrors.Newf(apierrors.CodeCompatibilityUnsupported,
 				"model %s is not supported on engine %s with card type %s; see the compatibility matrix",
-				req.GetModelId(), img.Engine, strings.TrimSpace(req.GetAcceleratorType()))
+				req.GetModelId(), img.Engine, cardType)
 		}
 	}
 	// Feature #16: validate the explicit autoscaling policy synchronously

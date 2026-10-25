@@ -1406,6 +1406,8 @@ export const en: Record<string, string> = {
   'deploy.noCompatibleImage': 'No compatible image',
   'deploy.serviceName': 'Service name',
   'deploy.placeholderServiceName': 'e.g. qwen-32b-prod',
+  'deploy.cardTypeHint': 'Leave empty to use any card of this accelerator family; a value must be a card type from the accelerator inventory.',
+  'deploy.cardTypeHintKnown': 'Leave empty for any card type. Available card types: {types}.',
   'deploy.cardType': 'Card type (optional)',
   'deploy.placeholderCardType': 'e.g. A800',
   'deploy.replicas': 'Replicas (1-100)',

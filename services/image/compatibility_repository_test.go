@@ -115,6 +115,10 @@ func TestCompatibilityEnsureCellLazySeed(t *testing.T) {
 	ae, ok = apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeCompatibilityDimensionInvalid, ae.Code)
+	// The message names the offending value and the valid ones, so the
+	// console can tell the operator what to type.
+	assert.Contains(t, ae.Message, "unknown-card")
+	assert.Contains(t, ae.Message, "known card types:")
 }
 
 // seedMultiAcceleratorEngine registers one model and one engine (vllm) on
@@ -315,4 +319,29 @@ func TestCompatibilityGetModelCompatibilityMasked(t *testing.T) {
 	for _, c := range cells {
 		assert.NotEqual(t, StatusUnsupported, c.Status, "unsupported combos are hidden")
 	}
+}
+
+// TestEnsureCellAcceptsCardTypeFromHistory verifies a card type a stored
+// cell already uses stays a valid dimension even when the current fleet no
+// longer reports it (the "not in fleet" case on the matrix page).
+func TestEnsureCellAcceptsCardTypeFromHistory(t *testing.T) {
+	db := newCompatTestDB(t)
+	repo := NewCompatibilityRepository(db)
+	ctx := context.Background()
+
+	// The cell exists for a card type the inventory does not report.
+	require.NoError(t, db.Create(&ModelRow{ID: testModelID, Name: "qwen-3b"}).Error)
+	require.NoError(t, db.Create(&Image{
+		ID: "img-vllm", Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3",
+		Accelerator: "nvidia", Engine: "vllm",
+	}).Error)
+	// H800 is not in testCardTypes but a cell already records it.
+	require.NoError(t, db.Create(&CompatibilityCell{
+		ModelID: testModelID, Engine: "vllm", CardType: "H800", Status: StatusSupported,
+	}).Error)
+
+	cell, err := repo.EnsureCell(ctx, testModelID, "vllm", "H800", testCardTypes, StatusExperimental)
+	require.NoError(t, err)
+	require.NotNil(t, cell)
+	assert.Equal(t, StatusSupported, cell.Status, "the stored cell wins over the lazy default")
 }

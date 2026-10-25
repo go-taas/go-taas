@@ -70,6 +70,10 @@ export default function DeployDialog({
   const [imageId, setImageId] = useState('');
   const [name, setName] = useState('');
   const [acceleratorType, setAcceleratorType] = useState('');
+  // Card types the accelerator inventory actually reports. The matrix is
+  // keyed by these values, so the field offers them instead of accepting
+  // any free text (a card *product* name fails the lookup with 10211).
+  const [cardTypes, setCardTypes] = useState<string[]>([]);
   const [replicas, setReplicas] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -111,6 +115,19 @@ export default function DeployDialog({
         )
       )
       .catch(() => setPools([]));
+  }, [orgId]);
+
+  useEffect(() => {
+    api
+      .get<{ cardTypes?: { cardType: string }[] }>('/api/v1/admin/compatibility/dimensions', orgId)
+      .then((data) =>
+        setCardTypes(
+          (data.cardTypes || [])
+            .map((c) => c.cardType)
+            .filter((c): c is string => Boolean(c)),
+        ),
+      )
+      .catch(() => setCardTypes([]));
   }, [orgId]);
 
   const selectedPool = pools.find((p) => p.poolId === poolId);
@@ -319,11 +336,22 @@ export default function DeployDialog({
           <input
             id="deploy-card-type"
             data-testid="deploy-card-type-input"
+            list="deploy-card-types"
             value={acceleratorType}
             maxLength={64}
             onChange={(e) => setAcceleratorType(e.target.value)}
             placeholder={t('deploy.placeholderCardType')}
           />
+          <datalist id="deploy-card-types">
+            {cardTypes.map((c) => (
+              <option key={c} value={c} />
+            ))}
+          </datalist>
+          <div className="field-hint">
+            {cardTypes.length > 0
+              ? t('deploy.cardTypeHintKnown', { types: cardTypes.join(', ') })
+              : t('deploy.cardTypeHint')}
+          </div>
         </div>
         <div className="form-field">
           <label htmlFor="deploy-replicas">{t('deploy.replicas')}</label>

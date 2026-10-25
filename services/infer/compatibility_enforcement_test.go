@@ -80,3 +80,29 @@ func TestCreateInferenceServiceNoCompatibilityChecker(t *testing.T) {
 	assert.NotEmpty(t, resp.GetServiceId())
 	assert.Empty(t, resp.GetWarning())
 }
+
+// TestCreateInferenceServiceCompatibilitySkipsEmptyCardType covers the
+// optional card-type contract: accelerator_type may be omitted ("any card
+// of this family"), and the matrix can only be consulted for a concrete
+// triple, so an empty card type must not fail the deploy with 10211.
+func TestCreateInferenceServiceCompatibilitySkipsEmptyCardType(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	called := false
+	svc.SetCompatibilityChecker(func(_ context.Context, _, _, _ string) (string, error) {
+		called = true
+		return image.StatusUnsupported, nil
+	})
+
+	resp, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "demo-svc", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		// AcceleratorType intentionally empty.
+	})
+	require.NoError(t, err)
+	assert.NotEmpty(t, resp.GetServiceId())
+	assert.False(t, called, "no card type means no matrix lookup")
+	assert.NotEmpty(t, client.published)
+}

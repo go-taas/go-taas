@@ -1383,6 +1383,8 @@ export const zh: Record<string, string> = {
   'deploy.noCompatibleImage': '没有兼容的镜像',
   'deploy.serviceName': '服务名称',
   'deploy.placeholderServiceName': '例如 qwen-32b-prod',
+  'deploy.cardTypeHint': '留空表示使用该加速卡家族中的任意卡型；填写时必须是加速卡清单中的卡型。',
+  'deploy.cardTypeHintKnown': '留空表示任意卡型。可选卡型：{types}。',
   'deploy.cardType': '卡型（可选）',
   'deploy.placeholderCardType': '例如 A800',
   'deploy.replicas': '副本数（1-100）',

@@ -253,7 +253,8 @@ func (r *CompatibilityRepository) validateDimensions(ctx context.Context, modelI
 		}
 	}
 	if !modelKnown {
-		return nil, apierrors.New(apierrors.CodeCompatibilityDimensionInvalid)
+		return nil, apierrors.Newf(apierrors.CodeCompatibilityDimensionInvalid,
+			"compatibility: model %q is not registered in the catalog", modelID)
 	}
 	engines, err := r.listEngines(ctx)
 	if err != nil {
@@ -268,7 +269,9 @@ func (r *CompatibilityRepository) validateDimensions(ctx context.Context, modelI
 		}
 	}
 	if !engineKnown {
-		return nil, apierrors.New(apierrors.CodeCompatibilityDimensionInvalid)
+		return nil, apierrors.Newf(apierrors.CodeCompatibilityDimensionInvalid,
+			"compatibility: engine %q is not registered on any image; known engines: %s",
+			engine, strings.Join(engineNames(engines), ", "))
 	}
 	cardKnown := false
 	for _, ct := range cardTypes {
@@ -277,10 +280,60 @@ func (r *CompatibilityRepository) validateDimensions(ctx context.Context, modelI
 			break
 		}
 	}
+	// A card type a stored cell already uses is a known dimension even when
+	// the current fleet does not report it (a card type that left the
+	// fleet keeps its history; the "not in fleet" marker says so).
 	if !cardKnown {
-		return nil, apierrors.New(apierrors.CodeCompatibilityDimensionInvalid)
+		known, kerr := r.cardTypeInCells(ctx, cardType)
+		if kerr != nil {
+			return nil, kerr
+		}
+		cardKnown = known
+	}
+	if !cardKnown {
+		return nil, apierrors.Newf(apierrors.CodeCompatibilityDimensionInvalid,
+			"compatibility: card type %q is not in the accelerator inventory; known card types: %s",
+			cardType, strings.Join(cardTypeNames(cardTypes), ", "))
 	}
 	return engineAccs, nil
+}
+
+// cardTypeInCells reports whether any stored cell already uses the card
+// type, so a card type that left the fleet stays a valid dimension.
+func (r *CompatibilityRepository) cardTypeInCells(ctx context.Context, cardType string) (bool, error) {
+	var count int64
+	if err := r.DB(ctx).Model(&CompatibilityCell{}).
+		Where("card_type = ?", cardType).Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// engineNames returns the distinct engine names, for error messages.
+func engineNames(engines []EngineDim) []string {
+	seen := make(map[string]struct{}, len(engines))
+	out := make([]string, 0, len(engines))
+	for _, e := range engines {
+		if _, ok := seen[e.Engine]; ok {
+			continue
+		}
+		seen[e.Engine] = struct{}{}
+		out = append(out, e.Engine)
+	}
+	return out
+}
+
+// cardTypeNames returns the card type names, for error messages. An empty
+// inventory is spelled out so the message is actionable.
+func cardTypeNames(cardTypes []CardType) []string {
+	if len(cardTypes) == 0 {
+		return []string{"(the accelerator inventory is empty)"}
+	}
+	out := make([]string, 0, len(cardTypes))
+	for _, ct := range cardTypes {
+		out = append(out, ct.CardType)
+	}
+	return out
 }
 
 // cardVendorFor returns the vendor of a card type, or "" when unknown.
