@@ -951,7 +951,12 @@ table.table tbody tr:hover {
 /* Model download job state: the failure message can be long, so the
    cell wraps it instead of widening the table. */
 .download-state {
+  min-width: 140px;
   max-width: 320px;
+}
+.download-state .badge,
+.download-state .link {
+  white-space: nowrap;
 }
 .download-state .small {
   word-break: break-word;
