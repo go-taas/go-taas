@@ -207,24 +207,30 @@ export default function PlatformSettingsPage() {
               <div className="hint">{t('settings.internalHint')}</div>
             </div>
 
-            <div className="kv-grid" data-testid="settings-gateway-preview">
-              <div>
-                <span className="kv-label">{t('settings.previewLabel')}</span>
-                <span className="mono">{preview || t('settings.previewEmpty')}</span>
-              </div>
+            {/* A grid of wide, wrap-anywhere cells: these values are URLs,
+                and a narrow cell silently truncates them into a wall of
+                text. The preview is hidden when it equals the saved value,
+                because two identical URLs side by side read as a bug. */}
+            <div className="kv-grid settings-summary" data-testid="settings-gateway-preview">
+              {preview && preview !== meta.inferenceBaseUrl && (
+                <div>
+                  <span className="kv-label">{t('settings.previewLabel')}</span>
+                  <span className="mono settings-url">{preview}</span>
+                </div>
+              )}
               <div>
                 <span className="kv-label">{t('settings.savedValueLabel')}</span>
-                <span className="mono">{meta.inferenceBaseUrl || t('settings.previewEmpty')}</span>
+                <span className="mono settings-url">{meta.inferenceBaseUrl || t('settings.previewEmpty')}</span>
+              </div>
+              <div>
+                <span className="kv-label">{t('settings.servedLabel')}</span>
+                <span className="mono settings-url">
+                  {served.length > 0 ? served.join(', ') : t('settings.previewEmpty')}
+                </span>
               </div>
               <div>
                 <span className="kv-label">{t('settings.updatedByLabel')}</span>
                 <span>{meta.updatedBy || '—'}</span>
-              </div>
-              <div>
-                <span className="kv-label">{t('settings.servedLabel')}</span>
-                <span className="mono">
-                  {served.length > 0 ? served.join(', ') : t('settings.previewEmpty')}
-                </span>
               </div>
             </div>
 
@@ -243,14 +249,14 @@ export default function PlatformSettingsPage() {
 
       <section className="panel">
         <h2>{t('settings.planeTitle')}</h2>
-        <div className="kv-grid">
+        <div className="kv-grid settings-summary">
           <div>
             <span className="kv-label">{t('settings.controlPlaneLabel')}</span>
-            <span className="mono">{window.location.origin}</span>
+            <span className="mono settings-url">{window.location.origin}</span>
           </div>
           <div>
             <span className="kv-label">{t('settings.dataPlaneLabel')}</span>
-            <span className="mono">{preview || t('settings.previewEmpty')}</span>
+            <span className="mono settings-url">{meta.inferenceBaseUrl || t('settings.previewEmpty')}</span>
           </div>
         </div>
         <p className="hint">{t('settings.planeBody')}</p>

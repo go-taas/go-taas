@@ -314,6 +314,18 @@ textarea {
   min-width: 0;
 }
 
+/* Platform settings summary: the values are URLs, so the cells are wider
+   than a normal key/value grid and long tokens wrap instead of being
+   clipped into the neighbouring column. */
+.kv-grid.settings-summary {
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+}
+
+.settings-url {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
 .kv-label {
   font-size: 11px;
   font-weight: 700;
