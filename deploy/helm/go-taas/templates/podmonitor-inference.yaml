@@ -1,4 +1,19 @@
-{{- if and .Values.monitoring.prometheusURL .Values.monitoring.inferencePodMonitor.enabled }}
+{{- $monitoring := .Values.monitoring | default dict }}
+{{- $pm := get $monitoring "inferencePodMonitor" | default dict }}
+{{- /*
+A `--reuse-values` upgrade reuses the previous release's values, so a
+sub-value added to values.yaml afterwards arrives absent rather than
+defaulted. Default it here rather than letting `nil` fail the render.
+*/}}
+{{- $_ := set $pm "enabled" (ternary true false (get $pm "enabled" | default true)) }}
+{{- $_ := set $pm "namespace" (get $pm "namespace" | default "taas-infer") }}
+{{- $_ := set $pm "serviceLabelKey" (get $pm "serviceLabelKey" | default "go-taas.com/service-id") }}
+{{- $_ := set $pm "port" (get $pm "port" | default "http") }}
+{{- $_ := set $pm "path" (get $pm "path" | default "/metrics") }}
+{{- $_ := set $pm "interval" (get $pm "interval" | default "15s") }}
+{{- $_ := set $pm "scrapeTimeout" (get $pm "scrapeTimeout" | default "10s") }}
+{{- $_ := set $pm "labels" (get $pm "labels" | default (dict "release" "kube-prometheus-stack")) }}
+{{- if and $monitoring.prometheusURL $pm.enabled }}
 {{- /*
 The inference engine exposes its own telemetry (TTFT, inter-token latency,
 KV-cache occupancy, queue depth, token counters) on the port it serves.
@@ -13,21 +28,21 @@ apiVersion: monitoring.coreos.com/v1
 kind: PodMonitor
 metadata:
   name: {{ include "go-taas.fullname" . }}-inference-engine
-  namespace: {{ .Values.monitoring.inferencePodMonitor.namespace }}
+  namespace: {{ $pm.namespace }}
   labels:
     {{- include "go-taas.labels" . | nindent 4 }}
-    {{- toYaml .Values.monitoring.inferencePodMonitor.labels | nindent 4 }}
+    {{- toYaml $pm.labels | nindent 4 }}
 spec:
   selector:
     matchExpressions:
-      - key: {{ .Values.monitoring.inferencePodMonitor.serviceLabelKey }}
+      - key: {{ $pm.serviceLabelKey }}
         operator: Exists
   namespaceSelector:
     matchNames:
-      - {{ .Values.monitoring.inferencePodMonitor.namespace }}
+      - {{ $pm.namespace }}
   podMetricsEndpoints:
-    - port: {{ .Values.monitoring.inferencePodMonitor.port }}
-      path: {{ .Values.monitoring.inferencePodMonitor.path }}
-      interval: {{ .Values.monitoring.inferencePodMonitor.interval }}
-      scrapeTimeout: {{ .Values.monitoring.inferencePodMonitor.scrapeTimeout }}
+    - port: {{ $pm.port }}
+      path: {{ $pm.path }}
+      interval: {{ $pm.interval }}
+      scrapeTimeout: {{ $pm.scrapeTimeout }}
 {{- end }}
