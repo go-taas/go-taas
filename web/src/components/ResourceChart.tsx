@@ -85,7 +85,9 @@ function niceCeiling(value: number): number {
   if (value <= 0) return 10;
   const exponent = Math.floor(Math.log10(value));
   const base = Math.pow(10, exponent);
-  for (const multiple of [1, 2, 2.5, 5, 10]) {
+  // The finer steps matter for bytes: with only 1/2/2.5/5/10 a 22.7 GiB
+  // reading jumped to a 47 GiB axis and halved the plot area.
+  for (const multiple of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) {
     if (value <= multiple * base) return multiple * base;
   }
   return 10 * base;
