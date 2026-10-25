@@ -1,3 +1,12 @@
+## [1.84.1](https://github.com/go-taas/go-taas/compare/v1.84.0...v1.84.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** tighten the chart's axis steps so memory is not half empty ([3df3779](https://github.com/go-taas/go-taas/commit/3df37797d39f99b42a5ed1b45b0f91b2826e7f55))
+* **metrics:** derive card capacity from used + free, and deflake a MQ test ([a4131c2](https://github.com/go-taas/go-taas/commit/a4131c23d08c4f5c21a9f601d9a2ad8e8d000250))
+* **metrics:** reject non-finite prometheus samples so NaN never reaches the API ([7a25bd5](https://github.com/go-taas/go-taas/commit/7a25bd513ea6ae707ff9f56b8de4e6d4f0979d92))
+
 # [1.84.0](https://github.com/go-taas/go-taas/compare/v1.83.0...v1.84.0) (2026-10-25)
 
 
