@@ -1,3 +1,16 @@
+# [1.83.0](https://github.com/go-taas/go-taas/compare/v1.82.0...v1.83.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **metrics:** scope the PromQL queries to the real inference namespace ([f4df7d0](https://github.com/go-taas/go-taas/commit/f4df7d0b879e5c87da93b9683151862e5c186584))
+* **metrics:** send the rate window in a form PromQL accepts ([2532ade](https://github.com/go-taas/go-taas/commit/2532ade5ffbfcef1da3092cd901f958129838aed))
+
+
+### Features
+
+* **metrics:** read service metrics from Prometheus and fix GPU availability ([76628dc](https://github.com/go-taas/go-taas/commit/76628dc579ea1917e0166ba0fb5a3fc8e126b170))
+
 # [1.82.0](https://github.com/go-taas/go-taas/compare/v1.81.3...v1.82.0) (2026-10-25)
 
 
