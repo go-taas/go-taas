@@ -84,9 +84,11 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	if svc.State != StateRunning {
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
 	}
-	// A service's access policy decides who may use it. The console is a
-	// platform-controlled entry point, so the policy is enforced here even
-	// while the gateway cannot verify callers yet.
+	// A service's access policy decides who may use it. The console enforces
+	// it here as well as at the data plane: the gateway plugin authenticates
+	// API keys and meters usage, but the access policy is a console-side rule
+	// about which people may use a service, and it is checked on this path too
+	// so a session without a grant is refused before any key is used.
 	userID, _, _ := s.resolveSessionActor(ctx)
 	if err := s.authorizeServiceUse(ctx, repo, svc.ID, orgID, userID); err != nil {
 		return nil, err

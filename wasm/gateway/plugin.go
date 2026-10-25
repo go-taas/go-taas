@@ -196,6 +196,22 @@ func (h *httpContext) OnHttpRequestHeaders(_ int, endOfStream bool) types.Action
 	}
 	h.lastDigest = keyDigest(token)
 
+	// Drop Content-Length before the headers go upstream.
+	//
+	// The plugin may rewrite the body — a token cap, or the usage request that
+	// makes a stream billable — and a rewritten body has a different length.
+	// Headers are forwarded in this callback, so a stale Content-Length would
+	// be sent and the upstream would truncate the body: a correct rewrite
+	// arrived at the engine as unparsable JSON and was rejected with "error
+	// processing request body". Without the header, Envoy frames the request
+	// itself and the length is whatever the body actually is.
+	//
+	// Removing it is only safe because Envoy re-frames; the alternative,
+	// pausing here to keep the headers mutable, does not buffer the body and
+	// the request never completes.
+	if err := proxywasm.RemoveHttpRequestHeader("content-length"); err != nil {
+		proxywasm.LogDebugf("go-taas gateway plugin: remove content-length: %v", err)
+	}
 	if endOfStream {
 		// No body to inspect: verify with an empty model. This is the only
 		// pause in this request, which is what makes the resume work.
@@ -203,13 +219,7 @@ func (h *httpContext) OnHttpRequestHeaders(_ int, endOfStream bool) types.Action
 		return types.ActionPause
 	}
 	// A body follows. Do not pause here: the pause happens in
-	// OnHttpRequestBody, where the model name is available.
-	//
-	// Pausing twice (headers, then body) looks safer but is not — Envoy
-	// resumes only the phase it last stopped in, so the request never leaves
-	// the filter and the client times out. Header-only forwarding costs
-	// nothing here: an engine answers nothing until the body arrives, and
-	// the body is where the pause is.
+	// OnHttpRequestBody, where the body can actually be buffered.
 	h.requestBody = nil
 	return types.ActionContinue
 }
@@ -222,23 +232,28 @@ func (h *httpContext) OnHttpRequestBody(bodySize int, endOfStream bool) types.Ac
 	if !h.protected {
 		return types.ActionContinue
 	}
-	if !h.bodyTooLarge {
-		frame, err := proxywasm.GetHttpRequestBody(0, bodySize)
-		if err != nil {
-			proxywasm.LogWarnf("go-taas gateway plugin: read request body: %v", err)
-			h.bodyTooLarge = true
-		} else if len(h.requestBody)+len(frame) > h.plugin.cfg.MaxBodyBytes {
-			// Past the budget the model name is unavailable. Authenticate
-			// anyway: skipping auth because a body was large would turn an
-			// upload into a way around the key check.
-			h.bodyTooLarge = true
-			h.requestBody = nil
-		} else {
-			h.requestBody = append(h.requestBody, frame...)
-		}
-	}
 	if !endOfStream {
+		// Buffer the rest so the body can be read whole at the end.
 		return types.ActionPause
+	}
+
+	// Read the buffered body once, at the end.
+	//
+	// Not per frame: a paused stream's host buffer already holds every byte
+	// received so far, so appending each frame's read duplicates the earlier
+	// ones. A duplicated body is invalid JSON — the rewrites silently stopped
+	// applying, and a body the plugin had "rewritten" reached the engine
+	// malformed.
+	body, err := proxywasm.GetHttpRequestBody(0, h.plugin.cfg.MaxBodyBytes)
+	if err != nil {
+		// Unreadable body: the request is still authenticated, but without the
+		// model name the per-key scope and the output-token cap cannot be
+		// applied, and a streamed answer will not be asked for usage. That
+		// degrades three protections at once, so it is a warning.
+		proxywasm.LogWarnf("go-taas gateway plugin: read request body (end=%v): %v", endOfStream, err)
+		h.bodyTooLarge = true
+	} else {
+		h.requestBody = body
 	}
 	if !h.bodyTooLarge {
 		if model, _, ok := requestIdentity(string(h.requestBody)); ok {
@@ -328,13 +343,21 @@ func (h *httpContext) applyVerdict(v *verdict) {
 					v.maxOutputTokensPerRequest)
 			}
 		}
+		streamed := wantsStream(body)
 		if rewritten, injected := ensureStreamUsage(body); injected {
 			body, changed = rewritten, true
 			proxywasm.LogDebugf("go-taas gateway plugin: requested usage on a streamed response")
+		} else if streamed {
+			// A streamed request that could not be completed with the usage
+			// flag will be served but not metered. That is a billing gap, so
+			// it is a warning rather than a debug line.
+			proxywasm.LogWarnf("go-taas gateway plugin: streamed request left without a usage request (body_bytes=%d)",
+				len(h.requestBody))
 		}
 		if changed {
 			if err := proxywasm.ReplaceHttpRequestBody([]byte(body)); err != nil {
 				proxywasm.LogWarnf("go-taas gateway plugin: rewrite request body: %v", err)
+				return
 			}
 		}
 	}
@@ -430,6 +453,12 @@ func (h *httpContext) emitUsage() {
 	h.usageEmitted = true
 	usage, ok := extractUsage(string(h.responseTail))
 	if !ok {
+		// The response completed without a usage object. For a streamed
+		// answer that means the engine was not asked for one (or ignored the
+		// request), and this request will not be billed — visible here rather
+		// than only as a shortfall in the reconciliation report.
+		proxywasm.LogWarnf("go-taas gateway plugin: response carried no usage (tail_bytes=%d)",
+			len(h.responseTail))
 		return
 	}
 	rep := &usageReport{

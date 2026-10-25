@@ -488,10 +488,17 @@ func headerPresent(headers [][2]string, key string) bool {
 
 // TestPausesExactlyOncePerRequest pins the pause discipline.
 //
-// Pausing at the headers and again at the body looks safer but is a hang:
-// Envoy resumes only the phase it last stopped in, so the request never
-// leaves the filter and the caller times out with no response at all. This
-// was a live failure, not a hypothetical.
+// The pause belongs at the headers, and nowhere else. Two failures came from
+// getting this wrong, both live:
+//
+//   - pausing at the headers and again at the body leaves the request stopped
+//     (Envoy resumes only the phase it last stopped in), so the caller times
+//     out with no response at all;
+//   - pausing only at the headers never buffers the body, so the rewrite has
+//     nothing to read and the request also never completes.
+//
+// Hence: headers continue (dropping Content-Length so a longer rewritten body
+// is not truncated), body pauses.
 func TestPausesExactlyOncePerRequest(t *testing.T) {
 	host, reset := newHost(t, pluginConfigJSON(""))
 	defer reset()
@@ -499,18 +506,14 @@ func TestPausesExactlyOncePerRequest(t *testing.T) {
 
 	headers := host.CallOnRequestHeaders(id,
 		requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
-	if headers == types.ActionPause {
-		body := host.CallOnRequestBody(id, []byte(`{"model":"m"}`), true)
-		t.Fatalf("paused at headers (%v) and at body (%v): one pause per request", headers, body)
-	}
+	assert.Equal(t, types.ActionContinue, headers, "the headers must go upstream; only the body pauses")
 
 	body := host.CallOnRequestBody(id, []byte(`{"model":"m"}`), true)
-	assert.Equal(t, types.ActionPause, body, "the body is where the model name becomes known")
+	assert.Equal(t, types.ActionPause, body, "the body is the one pause, where it can be buffered")
 
 	callouts := host.GetCalloutAttributesFromContext(id)
 	require.Len(t, callouts, 1)
 	host.CallOnHttpCallResponse(callouts[0].CalloutID, [][2]string{{":status", "200"}}, nil, verifyOK(""))
-	// Resuming is what releases the buffered body; nothing may re-pause it.
 	assert.Zero(t, len(localResponseBody(t, host, id)))
 }
 
@@ -591,4 +594,79 @@ func TestEnsureStreamUsageFormatting(t *testing.T) {
 		assert.Equal(t, tc.want, got, "input %q", tc.in)
 		assert.Equal(t, tc.in != tc.want, changed, "input %q", tc.in)
 	}
+}
+
+// TestReadsTheBodyOnce is the regression this was written from.
+//
+// Reading per frame and appending duplicates the earlier frames, because a
+// buffered stream's host buffer already holds every byte received so far. The
+// duplicated text parsed as garbage: the rewrites silently stopped applying,
+// and in production a "rewritten" body reached the engine malformed and was
+// rejected with "error processing request body". The body is therefore read
+// in one call.
+//
+// The emulator hands the whole body over in the final frame, so it can prove
+// the single-read path but not Envoy's buffering across frames; the
+// multi-frame case is covered by the live check against the cluster.
+func TestReadsTheBodyOnce(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	assert.Equal(t, types.ActionContinue,
+		host.CallOnRequestHeaders(id, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false))
+	host.CallOnRequestBody(id, []byte(`{"model":"m","messages":[],"stream":true}`), true)
+
+	callouts := host.GetCalloutAttributesFromContext(id)
+	require.Len(t, callouts, 1)
+	host.CallOnHttpCallResponse(callouts[0].CalloutID, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+
+	assert.Equal(t,
+		`{"model":"m","messages":[],"stream":true,"stream_options":{"include_usage":true}}`,
+		string(host.GetCurrentRequestBody(id)),
+		"the body must be the caller's once, plus the usage request")
+}
+
+// TestDropsContentLengthOnAProtectedPath is the regression this was written
+// from.
+//
+// Headers are forwarded before the body is rewritten, so a Content-Length sent
+// with them is the caller's original length. A rewritten body is longer, and
+// the upstream then reads a truncated one: a correct rewrite reached the engine
+// and was rejected as unparsable ("error processing request body"). Dropping
+// the header lets Envoy frame the request from the body it actually sends.
+func TestDropsContentLengthOnAProtectedPath(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	original := `{"model":"m","stream":true}`
+	headers := append(requestHeaders("/v1/chat/completions", "Bearer "+testKey),
+		[2]string{"content-length", formatInt(int64(len(original)))})
+	host.CallOnRequestHeaders(id, headers, false)
+
+	for _, kv := range host.GetCurrentRequestHeaders(id) {
+		assert.NotEqual(t, "content-length", kv[0],
+			"a stale content-length truncates a rewritten body")
+	}
+}
+
+// TestKeepsContentLengthOnAnUnprotectedPath leaves requests the plugin does not
+// rewrite alone.
+func TestKeepsContentLengthOnAnUnprotectedPath(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	headers := append(requestHeaders("/healthz", ""), [2]string{"content-length", "7"})
+	host.CallOnRequestHeaders(id, headers, true)
+
+	found := false
+	for _, kv := range host.GetCurrentRequestHeaders(id) {
+		if kv[0] == "content-length" {
+			found = true
+			assert.Equal(t, "7", kv[1])
+		}
+	}
+	assert.True(t, found, "an unprotected path must pass through untouched")
 }

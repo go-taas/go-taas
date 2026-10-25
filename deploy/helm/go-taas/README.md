@@ -22,6 +22,43 @@ The chart creates no Ingress. Choose the exposure mechanism with
 `taasServer.service.type` (`ClusterIP`, `NodePort`, `LoadBalancer`) or add
 your own Ingress in front of the gateway port.
 
+## Inference gateway plugin (authentication and metering)
+
+`gatewayPlugin.enabled` adds a Wasm filter to the inference gateway that
+verifies API keys and reports token usage, so inference traffic is
+authenticated at the data plane instead of being forwarded unverified.
+It is **off by default**: enabling it makes the gateway start rejecting
+unverified requests, which is a behaviour change an existing install should
+choose deliberately.
+
+```yaml
+gatewayPlugin:
+  enabled: true
+  # The chart generates a shared token into the release Secret when this is
+  # empty; set it to reuse a token you manage.
+  token: ""
+  protectedPrefixes: ["/v1/"]
+  cacheTTL: 30s          # how long a verdict is reused (per Envoy worker)
+  verifyTimeout: 500ms   # exceeding it fails closed
+  failOpen: false        # a broken plugin blocks traffic rather than admitting it
+  internalHostname: taas-internal.invalid   # route the filter calls; not in DNS
+```
+
+What it deploys: an `EnvoyExtensionPolicy` targeting the data-plane
+`HTTPRoute`, and an `HTTPRoute` for the plugin's own internal calls. The
+filter artifact is built into the server image and served from it, so one
+release produces one plugin version. Changing the artifact requires a restart
+of the Envoy deployment — Envoy caches the Wasm VM per worker, and a restart
+is also what re-fetches the code. On a fresh install this is automatic.
+
+If `gatewayPlugin.pluginSha256` is set, the policy refuses an artifact whose
+digest differs. Leave it empty when the URL points at this release's own
+server: Helm applies the policy before the new pods serve the new artifact,
+so a pinned digest fails the first reconcile until the rollout finishes.
+
+An install with the plugin **disabled** is unchanged: the gateway forwards
+requests, with or without a bearer token, exactly as before.
+
 Project links: [website](https://go-taas.com) ·
 [documentation](https://go-taas.com/docs.html) ·
 [source](https://github.com/go-taas/go-taas) ·

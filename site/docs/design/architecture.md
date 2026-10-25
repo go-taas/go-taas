@@ -457,12 +457,15 @@ Two trade-offs are deliberate:
 > invisible failure is worse than the failure itself.
 
 > **Implementation carrier.** The plugin contract above is what the data
-> plane must satisfy; the carrier in this repository is AIBrix's Go
-> `ext_proc` gateway plugin rather than a Wasm module. The request pipeline,
-> the idempotency rules and the degradation behaviour are the same, but a
-> Wasm build remains the target because it can be published, canaried and
-> rolled back independently of the gateway image. Treat "Wasm" in this
-> document as the target and "ext_proc" as today's shipping carrier.
+> plane must satisfy. The Wasm carrier now ships: a proxy-wasm filter on the
+> outer inference gateway performs step 01 (Auth) and step 04 (Meter), plus
+> the two limits whose contracts say the gateway enforces them locally
+> (`rate_limit_rpm` and the `max_tokens` cap). AIBrix's Go `ext_proc` plugin
+> keeps step 03 (Route) — the filter picks no backend. Steps 02 (quota lease),
+> 05–07 and 08 are not in the Wasm carrier yet; see
+> [Data-Plane Gateway Plugin](../architecture/data-plane-gateway-plugin.md)
+> for what is implemented, what is approximated per worker, and what is
+> deferred.
 
 
 ### 3.3 The Inference Gateway's API Key Authentication Chain

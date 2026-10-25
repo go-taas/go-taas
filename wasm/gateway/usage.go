@@ -247,3 +247,12 @@ func ensureStreamUsage(body string) (string, bool) {
 	b.WriteString(`"stream_options":{"include_usage":true}}`)
 	return b.String(), true
 }
+
+// wantsStream reports whether the request asked for a streamed response.
+func wantsStream(body string) bool {
+	root, ok := parseJSON(body)
+	if !ok || root.kind != jsonObject {
+		return false
+	}
+	return root.boolOr("stream")
+}

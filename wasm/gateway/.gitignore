@@ -1,1 +1,4 @@
+# Build output: the TinyGo artifact and any native binary `go build` leaves
+# behind (the module root is a `main` package).
 bin/
+/gateway
