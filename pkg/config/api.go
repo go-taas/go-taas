@@ -658,10 +658,13 @@ type ResourceMetricsConfig struct {
 	// GPUUtilizationMetric is the PromQL metric carrying GPU utilization.
 	// Default DCGM_FI_DEV_GPU_UTIL (the NVIDIA DCGM exporter).
 	GPUUtilizationMetric string `mapstructure:"gpuUtilizationMetric"`
-	// GPUMemoryUsedMetric / GPUMemoryTotalMetric report card memory in
-	// MiB. Defaults: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_TOTAL.
+	// GPUMemoryUsedMetric reports card memory in use, in MiB. Default
+	// DCGM_FI_DEV_FB_USED. DCGM has no "total" gauge in every version, so
+	// capacity comes from GPUMemoryTotalMetric when it exists and otherwise
+	// from used + GPUMemoryFreeMetric.
 	GPUMemoryUsedMetric  string `mapstructure:"gpuMemoryUsedMetric"`
 	GPUMemoryTotalMetric string `mapstructure:"gpuMemoryTotalMetric"`
+	GPUMemoryFreeMetric  string `mapstructure:"gpuMemoryFreeMetric"`
 	// Engine holds the inference engine's own metric names. They default
 	// to vLLM's, which is what the shipped images run; another engine's
 	// names are a configuration change, not a code change.

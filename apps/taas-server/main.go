@@ -438,6 +438,7 @@ func main() {
 						},
 						cfg.ResourceMetrics.GPUMemoryUsedMetric,
 						cfg.ResourceMetrics.GPUMemoryTotalMetric,
+						cfg.ResourceMetrics.GPUMemoryFreeMetric,
 					)
 				}
 			} else {

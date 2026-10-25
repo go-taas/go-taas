@@ -241,7 +241,7 @@ func TestEngineTelemetryReadsTheEngineAndVRAM(t *testing.T) {
 			"generation_tokens":   "180",
 		},
 		map[string]string{
-			"FB_TOTAL":          "24564", // MiB
+			"FB_FREE":           "1359", // MiB: capacity is used + free
 			"kv_cache_usage":    "0.42",  // fraction
 			"num_requests_run":  "3",
 			"num_requests_wait": "2",
@@ -250,7 +250,8 @@ func TestEngineTelemetryReadsTheEngineAndVRAM(t *testing.T) {
 	svc := New(nil)
 	svc.SetPrometheus(prom.URL, "taas-infer", "GPU_UTIL", time.Second)
 	svc.prometheus.gpuMemoryUsed = "FB_USED"
-	svc.prometheus.gpuMemoryTotal = "FB_TOTAL"
+	svc.prometheus.gpuMemoryTotal = "" // this DCGM has no total gauge
+	svc.prometheus.gpuMemoryFree = "FB_FREE"
 	svc.prometheus.engine = EngineMetricNames{
 		TTFTBucket:       "time_to_first_token",
 		TPOTBucket:       "inter_token_latency",
@@ -265,7 +266,8 @@ func TestEngineTelemetryReadsTheEngineAndVRAM(t *testing.T) {
 
 	assert.True(t, telemetry.gpuMemoryPresent)
 	assert.EqualValues(t, 23205*mibToBytes, telemetry.vramBytes)
-	assert.EqualValues(t, 24564*mibToBytes, telemetry.vramTotalBytes)
+	// 23205 used + 1359 free = 24564 MiB.
+	assert.EqualValues(t, (23205+1359)*mibToBytes, telemetry.vramTotalBytes)
 
 	assert.True(t, telemetry.enginePresent)
 	// The engine reports seconds; the page shows milliseconds.

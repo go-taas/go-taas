@@ -324,14 +324,12 @@ func (s *Service) readEngineTelemetry(ctx context.Context, selector string, sinc
 			warnPrometheus(err)
 		}
 	}
-	if s.prometheus.gpuMemoryTotal != "" {
-		// Capacity is not per pod: each card reports its own total, so the
-		// sum would multiply by the number of pods sharing a card.
-		total, err := s.prometheus.queryScalar(ctx,
-			`max(`+s.prometheus.gpuMemoryTotal+`{`+selector+`})`)
-		if err == nil && total > 0 {
-			out.vramTotalBytes = int64(total) * mibToBytes
-		}
+	// Capacity: not every DCGM version publishes a total gauge, so try it
+	// and fall back to used + free. Neither is per pod — each card reports
+	// its own numbers — so the queries aggregate across cards, not across
+	// pods, with max() over the per-card values summed by card count.
+	if totalMiB := s.cardMemoryCapacityMiB(ctx, selector, out.vramBytes); totalMiB > 0 {
+		out.vramTotalBytes = int64(totalMiB) * mibToBytes
 	}
 
 	// TTFT and TPOT: percentile over the engine's histograms. The rate
@@ -493,11 +491,36 @@ func applyEngineCards(card *resourcemetricsv1.ResourceMetricsCard, telemetry eng
 // SetEngineMetrics overrides the engine and card-memory metric names. The
 // defaults are vLLM's and DCGM's; wiring passes `resourceMetrics.*` so a
 // different engine is a configuration change.
-func (s *Service) SetEngineMetrics(engine EngineMetricNames, memoryUsed, memoryTotal string) {
+func (s *Service) SetEngineMetrics(engine EngineMetricNames, memoryUsed, memoryTotal, memoryFree string) {
 	if s.prometheus == nil {
 		return
 	}
 	s.prometheus.engine = engine
 	s.prometheus.gpuMemoryUsed = memoryUsed
 	s.prometheus.gpuMemoryTotal = memoryTotal
+	s.prometheus.gpuMemoryFree = memoryFree
+}
+
+// cardMemoryCapacityMiB reports the cards' total memory in MiB. It prefers
+// an explicit total gauge and otherwise derives capacity from used + free,
+// because DCGM only ships the free gauge in some versions.
+func (s *Service) cardMemoryCapacityMiB(ctx context.Context, selector string, usedBytes int64) float64 {
+	if s.prometheus.gpuMemoryTotal != "" {
+		if total, ok, err := s.prometheus.queryScalarOK(ctx,
+			`max(`+s.prometheus.gpuMemoryTotal+`{`+selector+`})`); err == nil && ok && total > 0 {
+			return total
+		}
+	}
+	if s.prometheus.gpuMemoryFree == "" {
+		return 0
+	}
+	// Free is per card like used, so capacity for the service is the sum
+	// the cards hold: (used + free) summed across the service's cards.
+	usedMiB := float64(usedBytes) / mibToBytes
+	free, ok, err := s.prometheus.queryScalarOK(ctx,
+		`sum(`+s.prometheus.gpuMemoryFree+`{`+selector+`})`)
+	if err != nil || !ok || free <= 0 {
+		return 0
+	}
+	return usedMiB + free
 }

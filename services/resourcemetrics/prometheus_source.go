@@ -32,6 +32,7 @@ type prometheusSource struct {
 	// change rather than a code change.
 	gpuMemoryUsed  string
 	gpuMemoryTotal string
+	gpuMemoryFree  string
 	engine         EngineMetricNames
 }
 
@@ -68,6 +69,7 @@ func newPrometheusSource(baseURL, namespace, gpuMetric string, timeout time.Dura
 		gpuMetric:      gpuMetric,
 		gpuMemoryUsed:  "DCGM_FI_DEV_FB_USED",
 		gpuMemoryTotal: "DCGM_FI_DEV_FB_TOTAL",
+		gpuMemoryFree:  "DCGM_FI_DEV_FB_FREE",
 		engine:         defaults,
 	}
 }
@@ -304,13 +306,6 @@ func (p *prometheusSource) queryRange(ctx context.Context, query string, since, 
 	}
 	sortSamples(points)
 	return points, nil
-}
-
-// queryScalar runs an instant query and returns the first value, or 0 when
-// there is no series.
-func (p *prometheusSource) queryScalar(ctx context.Context, query string) (float64, error) {
-	value, _, err := p.queryScalarOK(ctx, query)
-	return value, err
 }
 
 // queryScalarOK runs an instant query and reports whether a series existed.

@@ -305,7 +305,7 @@ func TestFVTServiceMetricsEnginePanels(t *testing.T) {
 		RequestsWaiting:  "REQWAIT_FVT",
 		GenerationTokens: "THROUGHPUT_FVT",
 		Quantile:         0.95,
-	}, "VRAM_USED_FVT", "VRAM_TOTAL_FVT")
+	}, "VRAM_USED_FVT", "VRAM_TOTAL_FVT", "")
 	env.rmSvc.SetPodLister(fakeMetricsPodLister{pods: []resourcemetrics.ServicePod{{
 		Name: "svc-abc", ReplicaIndex: "replica-1", CPULimitMilli: 1000,
 	}}})

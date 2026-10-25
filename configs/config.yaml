@@ -358,9 +358,12 @@ resourceMetrics:
   # gpuUtilizationMetric is the PromQL metric carrying GPU utilization
   # (the NVIDIA DCGM exporter's default name).
   gpuUtilizationMetric: DCGM_FI_DEV_GPU_UTIL
-  # Card memory, in MiB (DCGM), shown as used / total.
+  # Card memory, in MiB (DCGM), shown as used / total. DCGM does not
+  # publish a total gauge in every version, so capacity falls back to
+  # used + free when the total gauge is missing.
   gpuMemoryUsedMetric: DCGM_FI_DEV_FB_USED
   gpuMemoryTotalMetric: DCGM_FI_DEV_FB_TOTAL
+  gpuMemoryFreeMetric: DCGM_FI_DEV_FB_FREE
   # engine names the inference engine's own metrics. The defaults are
   # vLLM's; another engine's names are a configuration change, and a blank
   # name hides that panel instead of printing a misleading zero.

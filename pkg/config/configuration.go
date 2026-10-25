@@ -448,6 +448,9 @@ func (c *Configuration) applyDefaults() {
 	if c.ResourceMetrics.GPUMemoryTotalMetric == "" {
 		c.ResourceMetrics.GPUMemoryTotalMetric = "DCGM_FI_DEV_FB_TOTAL"
 	}
+	if c.ResourceMetrics.GPUMemoryFreeMetric == "" {
+		c.ResourceMetrics.GPUMemoryFreeMetric = "DCGM_FI_DEV_FB_FREE"
+	}
 	if c.ResourceMetrics.Engine.TTFTBucket == "" {
 		c.ResourceMetrics.Engine.TTFTBucket = "vllm:time_to_first_token_seconds_bucket"
 	}

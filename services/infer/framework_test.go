@@ -143,12 +143,18 @@ func TestStatusConsumerRunSubscribes(t *testing.T) {
 	svc := seedService(t, repo, "org", "svc", StateDeploying, time.Now().UTC())
 	body, err := json.Marshal(statusReport{ServiceID: svc.ID, State: StateRunning, Endpoints: []string{"http://e"}})
 	require.NoError(t, err)
-	require.NoError(t, bus.Publish(ctx, mq.DefaultSubjects().InferServiceStatus, body, nil))
 
+	// The fake bus drops a message published before Run has subscribed, so
+	// publishing once raced the goroutine above and the test failed
+	// intermittently. Republish inside the wait: the handler is idempotent
+	// (it applies an observed state), so a duplicate is harmless.
 	require.Eventually(t, func() bool {
+		if err := bus.Publish(ctx, mq.DefaultSubjects().InferServiceStatus, body, nil); err != nil {
+			return false
+		}
 		row, err := repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 		return err == nil && row.State == StateRunning
-	}, 5*time.Second, 10*time.Millisecond)
+	}, 5*time.Second, 20*time.Millisecond)
 
 	cancel()
 	select {
