@@ -223,11 +223,11 @@ export default function ModelDownloadsPage() {
             <tbody>
               {downloads.map((d) => (
                 <tr key={d.downloadId} data-testid={`download-row-${d.hubModelId}`}>
-                  <td>
+                  <td className="download-hub-id">
                     <strong className="mono">{d.hubModelId}</strong>
                     <div className="muted small">{d.source}</div>
                   </td>
-                  <td className="mono">
+                  <td className="mono download-target">
                     {d.name}
                     <div className="muted small">{d.version}</div>
                   </td>

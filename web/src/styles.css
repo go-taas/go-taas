@@ -954,6 +954,18 @@ table.table tbody tr:hover {
   min-width: 140px;
   max-width: 320px;
 }
+/* Hub ids and model names are long unbroken tokens; cap the columns so the
+   job table still fits the panel. */
+.download-hub-id {
+  max-width: 260px;
+}
+.download-target {
+  max-width: 180px;
+}
+.download-hub-id,
+.download-target {
+  word-break: break-word;
+}
 .download-state .badge,
 .download-state .link {
   white-space: nowrap;
