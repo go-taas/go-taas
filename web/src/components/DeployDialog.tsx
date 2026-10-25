@@ -60,7 +60,7 @@ export default function DeployDialog({
   initialVersion: string;
   onClose: () => void;
   onDeployed: (serviceId: string) => void;
-}) {  const { t } = useI18n();
+}) {  const { t, tEnum } = useI18n();
 
   const [authorizedModels, setAuthorizedModels] = useState<ModelSummary[]>([]);
   const [selectedModelId, setSelectedModelId] = useState(modelId);
@@ -255,7 +255,7 @@ export default function DeployDialog({
   };
 
   return (
-    <Dialog title={`Deploy ${title}`} onClose={onClose} testId="deploy-dialog">
+    <Dialog title={t('deploy.title', { name: title })} onClose={onClose} testId="deploy-dialog">
       <div className="form-grid">
         <div className="form-field full">
           <label htmlFor="deploy-model">{t('deploy.model')}</label>
@@ -299,7 +299,7 @@ export default function DeployDialog({
           >
             {ACCELERATORS.map((a) => (
               <option key={a} value={a}>
-                {a}
+                {tEnum('state', a)}
               </option>
             ))}
           </select>
@@ -381,7 +381,7 @@ export default function DeployDialog({
           />
           {pools.length === 0 && (
             <div className="muted" data-testid="deploy-pool-empty">
-              No shared-GPU pools are available for your organization
+              {t('deploy.noPools')}
             </div>
           )}
         </div>
