@@ -1,3 +1,11 @@
+# [1.85.0](https://github.com/go-taas/go-taas/compare/v1.84.1...v1.85.0) (2026-10-25)
+
+
+### Features
+
+* **gateway:** add the internal API the data-plane plugin calls ([fdbad7b](https://github.com/go-taas/go-taas/commit/fdbad7b888cc97f474bc85c260eea0b093c6a144))
+* **gateway:** add the Wasm plugin that authenticates and meters inference ([4d037fc](https://github.com/go-taas/go-taas/commit/4d037fc2a72841401e9cf11c3a387a895b6d8b5e))
+
 ## [1.84.1](https://github.com/go-taas/go-taas/compare/v1.84.0...v1.84.1) (2026-10-25)
 
 
