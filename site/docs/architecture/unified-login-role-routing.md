@@ -7,6 +7,7 @@
 | Owning modules | `services/auth` (password-grant login, role-derived realm, switch-surface session minting, provider/binding seeding), `pkg/server` (gateway realm guard — unchanged), `deploy/compose` (Keycloak realm-export.json seeding, provider seeding), `web/` (custom login pages, role-based landing, switch buttons), `pkg/config` (admin-role set), `pkg/errors` (reused codes) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/unified-login-role-routing.md) · [Architecture Design](../design/architecture.md) §2.1 `auth` and §3.1 admin/user surface separation · [SSO Federation & Account Binding](./sso-federation.md) (the IdP framework, `SSOAuthorize`/`SSOCallback`, identity binding, attribute-to-role mapping, sessions) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, realm-pinned sessions, the realm guard, the login pages this feature replaces, the `10038 REALM_MISMATCH` rule) · [Organization Members, Roles & Invitations](./org-members-rbac.md) (the roles the session carries and this feature routes on) |
 | Status | Architecture complete, handed to the Developer agent |
+| Implementation status | **Under construction** for the LDAP/LDAPS and SAML parts; the OIDC/OAuth 2.0 password grant and the built-in local account login are implemented. |
 
 ---
 

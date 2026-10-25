@@ -7,6 +7,7 @@
 | Owning modules | `auth` (IdP framework, identity bindings, sessions, and the session-derived org context every module consumes), with `tenancy` (org membership resolution for the session) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/sso-federation.md) · [Architecture Design](../design/architecture.md) Section 2.1 `auth` · [Multi-Tenancy](./multi-tenancy.md) — the validated org context this feature replaces with a session (its D4/FR3.3), the org directory and switcher this feature grounds in session membership (its D10/FR4.3) · [API Key Management](./api-key-management.md) — the data-plane key verification this feature leaves unchanged |
 | Status | Architecture complete, handed to the Developer agent |
+| Implementation status | **Under construction.** Implemented: the built-in local account system and the OIDC/OAuth 2.0 provider flow. Under construction: SAML 2.0, LDAP/LDAPS, the WeChat provider, attribute/role mapping, SCIM directory sync, and Single Logout. |
 
 ---
 

@@ -7,6 +7,7 @@
 | 归属模块 | `auth`（IdP 框架、身份绑定、会话，及各模块消费的会话派生组织上下文），配合 `tenancy`（会话的组织成员解析） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/sso-federation.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.1 节 `auth` · [多租户](./multi-tenancy.zh-cn.md) — 本特性以会话替换的经校验组织上下文（其 D4/FR3.3）、本特性以会话成员资格落地的组织目录与切换器（其 D10/FR4.3） · [API Key 管理](./api-key-management.zh-cn.md) — 本特性保持不变的数据面 Key 校验 |
 | 状态 | 架构完成，已移交研发代理 |
+| 实现状态 | **建设中。** 已实现：内置本地账号体系与 OIDC/OAuth 2.0 提供方流程。建设中：SAML 2.0、LDAP/LDAPS、微信提供方、属性/角色映射、SCIM 目录同步与统一登出。 |
 
 ---
 

@@ -7,6 +7,7 @@
 | 归属模块 | `web`（登录页、自定义登录表单、基于角色的落地、管理端切换按钮）、`auth`（密码授权登录、基于角色的会话 realm、切换表面的会话铸造）、`deploy/compose`（Keycloak realm-export.json 预置、提供商预置）、`pkg/server` 网关（用户前缀与管理端前缀绑定） |
 | 相关文档 | [架构设计](./architecture.md) — §2.1 `auth`（SSO 联邦、会话）、§3.1 管理端/用户表面分离 · [SSO 联邦与账号绑定](./sso-federation.md) — IdP 框架、`SSOAuthorize`/`SSOCallback`、身份绑定、属性到角色映射、会话 · [控制台表面分离](./console-surface-separation.md) — 两个表面、realm 固定的会话、本功能替换的登录页、`10038 REALM_MISMATCH` 规则 · [组织成员、角色与邀请](./org-members-rbac.md) — 会话携带的、本功能据此路由的角色 |
 | 状态 | 设计完成，已移交给架构师智能体 |
+| 实现状态 | **建设中**：LDAP/LDAPS 与 SAML 部分（OIDC/OAuth 2.0 密码模式与内置本地账号登录已实现）。 |
 
 ---
 

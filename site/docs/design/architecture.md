@@ -263,14 +263,14 @@ below with its responsibility boundary and the feature points it implements
 **Core responsibilities:**
 
 - **Local account authentication**: user registration, login, and password policies; credentials are stored only as salted hashes;
-- **Third-party SSO federated authentication**: a built-in **pluggable identity provider (IdP) framework** connects directly to existing enterprise account systems, without re-implementing the login chain for every protocol:
+- **Third-party SSO federated authentication**: a built-in **pluggable identity provider (IdP) framework** connects directly to existing enterprise account systems, without re-implementing the login chain for every protocol (OIDC and the built-in local account system are implemented; the remaining enterprise protocols are under construction):
   - **OIDC / OAuth 2.0**: GitHub, Google, GitLab, and self-hosted enterprise IdPs;
-  - **SAML 2.0**: enterprise-grade single sign-on;
-  - **LDAP / LDAPS**: connects to enterprise directory services (Active Directory, OpenLDAP, etc.), supporting user-DN bind and group-based filtering;
-  - **WeChat**: QR-code login via WeChat Open Platform and WeCom (Enterprise WeChat);
+  - **SAML 2.0** (under construction): enterprise-grade single sign-on;
+  - **LDAP / LDAPS** (under construction): connects to enterprise directory services (Active Directory, OpenLDAP, etc.), supporting user-DN bind and group-based filtering;
+  - **WeChat** (under construction): QR-code login via WeChat Open Platform and WeCom (Enterprise WeChat);
 - **Multiple coexisting IdPs with pluggable configuration**: administrators can enable multiple IdPs at the same time, configuring protocol parameters, visibility scope, default organization, and whether auto-registration is allowed for each one; new providers plug in as independent extensions without touching the core login logic;
 - **Account binding and JIT provisioning**: stable identifiers such as `issuer + subject` (OIDC / SAML) or `DN` (LDAP) serve as the primary key of the external identity and are bound to platform accounts; the first login can auto-create an account (Just-In-Time Provisioning), or auto-creation can be disabled so that administrators pre-assign accounts;
-- **Attribute and role mapping**: maps the username, email, group, and role claims returned by the IdP to platform organizations, projects, and roles, delivering permissions based on the enterprise organizational structure;
+- **Attribute and role mapping** (under construction): maps the username, email, group, and role claims returned by the IdP to platform organizations, projects, and roles, delivering permissions based on the enterprise organizational structure;
 - **Sessions and tokens**: after a successful SSO login, the platform issues a session and an access token, supporting token rotation and Single Logout; local password login can be toggled independently, coexisting with SSO or disabled entirely;
 - Management and isolation of the two-level (organization / project) multi-tenancy model;
 - Full API Key lifecycle management (creation, verification, revocation, expiry control); the plaintext is shown only once at creation, and the system stores only the salted hash digest;
