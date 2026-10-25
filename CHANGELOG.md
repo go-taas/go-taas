@@ -1,3 +1,21 @@
+# [1.77.0](https://github.com/go-taas/go-taas/compare/v1.76.0...v1.77.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** add the missing model downloads nav label and 90-day range ([2a468b1](https://github.com/go-taas/go-taas/commit/2a468b17e5e9dc95ab0fbb3a1ffad35d2d5ee35d))
+* **console:** cap hub id and model name columns in the download table ([b464da7](https://github.com/go-taas/go-taas/commit/b464da7097c6c67253927adee64a46943901809a))
+* **console:** keep download state badges on one line ([49f7a44](https://github.com/go-taas/go-taas/commit/49f7a44eefc988dd5828a7b6ff05639c6306304f))
+* **console:** scroll the download table inside its panel ([dafae52](https://github.com/go-taas/go-taas/commit/dafae52babf516bca138848a209b4a9cf49ca91b))
+* **console:** wrap long download failure messages inside the table cell ([ba6aecf](https://github.com/go-taas/go-taas/commit/ba6aecfbc395a57baffb9dbd1a157c5beb9e09d9))
+
+
+### Features
+
+* **auth:** ship without Keycloak, seed the local admin by default ([84f1ab1](https://github.com/go-taas/go-taas/commit/84f1ab18af16b5183225a28995f09ea3a1d2539b))
+* **console:** model downloads page, hub model id, full i18n pass ([6fc2790](https://github.com/go-taas/go-taas/commit/6fc2790178a766dd93af929855c5a85aaaadb93d))
+* **model:** globally unique hub model id and background hub downloads ([0c5b44d](https://github.com/go-taas/go-taas/commit/0c5b44d538d3fa6b40db8be7da59bbbf8c5f0bcb))
+
 # [1.76.0](https://github.com/go-taas/go-taas/compare/v1.75.0...v1.76.0) (2026-10-24)
 
 
