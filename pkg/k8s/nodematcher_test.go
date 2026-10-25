@@ -18,15 +18,17 @@ func TestAvailableAcceleratorLabels(t *testing.T) {
 		"kubernetes.io/hostname": "sd4090",
 	}
 	nodes[1].Labels = map[string]string{
-		"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
-		"go-taas.com/cluster":    "prod",
+		"nvidia.com/gpu.product":  "NVIDIA-GeForce-RTX-4090",
+		"go-taas.com/accelerator": "nvidia",
 	}
 	got := availableAcceleratorLabels(nodes)
 	assert.Contains(t, got, "nvidia.com/gpu.product=NVIDIA-GeForce-RTX-4090")
-	assert.Contains(t, got, "go-taas.com/cluster=prod")
+	assert.Contains(t, got, "go-taas.com/accelerator=nvidia")
 	assert.NotContains(t, got, "kubernetes.io/hostname=sd4090", "non-accelerator labels are omitted")
-	// De-duplicated and sorted.
-	assert.Len(t, got, 3)
+	// NVIDIA metadata keys are not selector candidates.
+	assert.NotContains(t, got, "nvidia.com/gpu.count=2")
+	// De-duplicated: product (both nodes) + the go-taas accelerator label.
+	assert.Len(t, got, 2)
 }
 
 func TestShortUID(t *testing.T) {

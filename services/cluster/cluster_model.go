@@ -30,7 +30,7 @@ type Cluster struct { //nolint:revive // cluster.Cluster is the documented domai
 	// NodeLabels caches the accelerator label keys present on the
 	// cluster's nodes (comma-separated), so the console can offer valid
 	// image-warmup selectors without a live API call.
-	NodeLabels string `gorm:"size:1024;not null;default:''"`
+	NodeLabels string `gorm:"type:text;not null"`
 	CreatedAt  time.Time
 }
 

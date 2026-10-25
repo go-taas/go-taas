@@ -56,7 +56,7 @@ func availableAcceleratorLabels(nodes []corev1.Node) []string {
 	seen := map[string]struct{}{}
 	for _, node := range nodes {
 		for key, value := range node.Labels {
-			if !hasAcceleratorPrefix(key) {
+			if !selectableAcceleratorLabel(key) {
 				continue
 			}
 			if value == "" {

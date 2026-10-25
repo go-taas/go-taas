@@ -12,9 +12,20 @@ import (
 	"github.com/go-taas/go-taas/services/cluster"
 )
 
-// acceleratorLabelPrefixes are the label key prefixes that describe the
-// node's accelerator, used to suggest valid image-warmup selectors.
-var acceleratorLabelPrefixes = []string{"nvidia.com/", "iluvatar.", "metax-tech.com/", "go-taas.com/"}
+// nvidiaSelectorLabels are the NVIDIA label keys worth offering as an
+// image-warmup selector. The other nvidia.com/* keys carry driver and
+// plugin metadata (versions, deploy flags, gfd timestamps) that no
+// selector should target.
+var nvidiaSelectorLabels = map[string]struct{}{
+	"nvidia.com/gpu.product":  {},
+	"nvidia.com/gpu.machine":  {},
+	"nvidia.com/gpu.family":   {},
+	"nvidia.com/gpu.memory":   {},
+	"nvidia.com/gpu.present":  {},
+	"nvidia.com/vgpu.present": {},
+	"go-taas.com/accelerator": {},
+	"gpu-vendor":              {},
+}
 
 // SelfClusterProvider reads the identity of the cluster the platform
 // runs in from the Kubernetes API: its name, topology region, node count
@@ -54,8 +65,8 @@ func (p *SelfClusterProvider) SelfCluster(ctx context.Context) (*cluster.SelfClu
 				node.Labels["topology.kubernetes.io/zone"],
 			)
 		}
-		for key := range node.Labels {
-			if hasAcceleratorPrefix(key) {
+		for key, value := range node.Labels {
+			if value != "" && selectableAcceleratorLabel(key) {
 				labelSet[key] = struct{}{}
 			}
 		}
@@ -108,15 +119,15 @@ func shortUID(uid string) string {
 	return uid
 }
 
-// hasAcceleratorPrefix reports whether a node label describes an
-// accelerator.
-func hasAcceleratorPrefix(key string) bool {
-	for _, prefix := range acceleratorLabelPrefixes {
-		if strings.HasPrefix(key, prefix) {
-			return true
-		}
+// selectableAcceleratorLabel reports whether a label key is useful as an
+// image-warmup selector. NVIDIA publishes dozens of metadata keys per
+// node; only the hardware-identifying ones are offered, while the other
+// vendors' namespaces are small enough to offer wholesale.
+func selectableAcceleratorLabel(key string) bool {
+	if _, ok := nvidiaSelectorLabels[key]; ok {
+		return true
 	}
-	return false
+	return strings.HasPrefix(key, "iluvatar.") || strings.HasPrefix(key, "metax-tech.com/")
 }
 
 // firstNonEmpty returns the first non-empty value.
