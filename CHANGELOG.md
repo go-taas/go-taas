@@ -1,3 +1,10 @@
+# [1.80.0](https://github.com/go-taas/go-taas/compare/v1.79.2...v1.80.0) (2026-10-25)
+
+
+### Features
+
+* **infer:** make the playground test request actually call the model ([69a890f](https://github.com/go-taas/go-taas/commit/69a890f3b87f5fabeba372d4da220b8d4158dc6b))
+
 ## [1.79.2](https://github.com/go-taas/go-taas/compare/v1.79.1...v1.79.2) (2026-10-25)
 
 
