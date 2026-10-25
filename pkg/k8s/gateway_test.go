@@ -30,13 +30,19 @@ func TestGatewayURLFromServices(t *testing.T) {
 			},
 		},
 	}
-	assert.Equal(t, "http://10.43.253.124:80",
+	// Port 80 is the default and is omitted from the URL.
+	assert.Equal(t, "http://10.43.253.124",
 		gatewayURLFromServices(svcs, "envoy-aibrix-system-aibrix-eg"))
 
 	// A load-balancer address wins: the quickstart snippet is copied by a
 	// tenant outside the cluster.
 	svcs[1].Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: "10.86.56.191"}}
-	assert.Equal(t, "http://10.86.56.191:80",
+	assert.Equal(t, "http://10.86.56.191",
+		gatewayURLFromServices(svcs, "envoy-aibrix-system-aibrix-eg"))
+
+	// A non-default port is kept.
+	svcs[1].Spec.Ports = []corev1.ServicePort{{Name: "http", Port: 8080}}
+	assert.Equal(t, "http://10.86.56.191:8080",
 		gatewayURLFromServices(svcs, "envoy-aibrix-system-aibrix-eg"))
 	assert.Empty(t, gatewayURLFromServices(svcs, "no-such-gateway"))
 	// A headless Service has no routable address.
@@ -57,7 +63,7 @@ func TestGatewayResolverFindsService(t *testing.T) {
 	}
 	client := &Client{clientset: fake.NewSimpleClientset(svc)}
 	resolver := NewGatewayResolver(client, "envoy-aibrix-system-aibrix-eg", "aibrix-system")
-	assert.Equal(t, "http://10.43.253.124:80", resolver.InferenceGatewayURL(context.Background()))
+	assert.Equal(t, "http://10.43.253.124", resolver.InferenceGatewayURL(context.Background()))
 
 	// An empty gateway name disables discovery.
 	assert.Empty(t, NewGatewayResolver(client, "", "").InferenceGatewayURL(context.Background()))

@@ -73,18 +73,23 @@ func gatewayURLFromServices(svcs []corev1.Service, name string) string {
 		if !strings.HasPrefix(svc.Name, name) {
 			continue
 		}
+		port, ok := proxyPort(svc.Spec.Ports)
+		if !ok {
+			continue
+		}
 		host := externalHost(svc)
-		port := int32(80)
 		if host == "" {
+			// No load balancer: the ClusterIP still works for in-cluster
+			// callers (batch, playground).
 			host = svc.Spec.ClusterIP
 			if host == "" || host == corev1.ClusterIPNone {
 				continue
 			}
-			p, ok := proxyPort(svc.Spec.Ports)
-			if !ok {
-				continue
-			}
-			port = p
+		}
+		// Omit the scheme's default port: ":80" is noise in a URL the
+		// console shows verbatim.
+		if port == 80 {
+			return fmt.Sprintf("http://%s", host)
 		}
 		return fmt.Sprintf("http://%s:%d", host, port)
 	}
