@@ -167,7 +167,7 @@ export default function ModelAuthorizationsPanel({
                 data-testid={`model-auth-row-${g.organizationId}`}
               >
                 <td className="mono">{g.organizationId}</td>
-                <td className="mono muted">{g.grantedBy}</td>
+                <td className="muted">{g.grantedByDisplayName || g.grantedBy}</td>
                 <td>{formatTime(g.createdAt)}</td>
                 <td>
                   <button

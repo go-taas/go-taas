@@ -715,6 +715,8 @@ export interface GetTraceResponse {
 export interface ModelAuthorization {
   organizationId: string;
   grantedBy: string;
+  // grantedByDisplayName is the grantor's display name (else username).
+  grantedByDisplayName?: string;
   createdAt: string;
 }
 

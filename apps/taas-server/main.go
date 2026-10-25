@@ -259,6 +259,8 @@ func main() {
 			// RPCs by the caller's role (AD).
 			modelSvc.SetSessionUserResolver(authSvc)
 			modelSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// The grant list shows grantors by display name, not UUID.
+			modelSvc.SetUserLabelResolver(authSvc)
 			// Per-tenant model authorization (feature #13): the model
 			// repository is the single default-allow check shared by the
 			// control plane (infer) and the data plane (auth, AD5), and the

@@ -239,6 +239,10 @@ type Service struct {
 	downloadSem     chan struct{}
 	downloadSemOnce sync.Once
 
+	// userLabelResolver resolves user ids to display labels for the grant
+	// list. Nil until wired.
+	userLabelResolver UserLabelResolver
+
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
@@ -1227,12 +1231,14 @@ func (s *Service) ListModelAuthorizations(ctx context.Context, req *modelv1.List
 		}
 	}
 
+	labels := s.grantorLabels(ctx, rows)
 	authorizations := make([]*modelv1.ModelAuthorization, 0, len(rows))
 	for _, row := range rows {
 		authorizations = append(authorizations, &modelv1.ModelAuthorization{
-			OrganizationId: row.OrganizationID,
-			GrantedBy:      row.GrantedBy,
-			CreatedAt:      row.CreatedAt.Unix(),
+			OrganizationId:       row.OrganizationID,
+			GrantedBy:            row.GrantedBy,
+			GrantedByDisplayName: labels[row.GrantedBy],
+			CreatedAt:            row.CreatedAt.Unix(),
 		})
 	}
 	return &modelv1.ListModelAuthorizationsResponse{
@@ -1356,4 +1362,37 @@ func normalizePagination(page *commonv1.PageRequest) (offset, limit int) {
 // okResponse builds the success envelope.
 func okResponse() *commonv1.Response {
 	return &commonv1.Response{Code: 0, Message: "OK"}
+}
+
+// UserLabelResolver resolves user ids to display labels. It is the auth
+// module's ResolveUserLabels injected at wiring time, so the grant list
+// shows people instead of UUIDs.
+type UserLabelResolver interface {
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
+// SetUserLabelResolver injects the grantor display-name resolver.
+func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolver = r }
+
+// grantorLabels resolves the display labels of the grant rows' grantors in
+// one batch. A missing resolver or an error yields an empty map so the
+// list falls back to ids.
+func (s *Service) grantorLabels(ctx context.Context, rows []*Authorization) map[string]string {
+	if s.userLabelResolver == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.GrantedBy != "" {
+			ids = append(ids, row.GrantedBy)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return labels
 }

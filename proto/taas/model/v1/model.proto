@@ -235,6 +235,9 @@ message ModelAuthorization {
   string organization_id = 1;
   string granted_by = 2;
   int64 created_at = 3;
+  // granted_by_display_name is the granting user's display name (else the
+  // username), resolved for display.
+  string granted_by_display_name = 4;
 }
 
 message ListModelAuthorizationsRequest {

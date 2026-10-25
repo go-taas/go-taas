@@ -322,7 +322,7 @@ export const zh: Record<string, string> = {
 
   // ---- Members ----
   'members.title': '成员',
-  'members.subtitle': '<strong>{orgId}</strong> 的组织成员名单。角色：owner（受保护）、admin、member、viewer。',
+  'members.subtitle': '<strong>{orgId}</strong> 的组织成员名单。角色：所有者（受保护）、管理员、成员、只读。',
   'members.add': '添加成员',
   'members.empty': '还没有成员。添加第一位成员。',
   'members.colUser': '用户',
