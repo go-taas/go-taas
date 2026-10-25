@@ -1,3 +1,11 @@
+## [1.78.2](https://github.com/go-taas/go-taas/compare/v1.78.1...v1.78.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** only suggest in-fleet card types in the deploy form ([7999dc6](https://github.com/go-taas/go-taas/commit/7999dc60004c803ba3023ecb69ca29706a333072))
+* **inventory:** report the card model as the card type, not "gpu" ([2d2fbc2](https://github.com/go-taas/go-taas/commit/2d2fbc2d2aad1bff1a405be92b8173594358a790))
+
 ## [1.78.1](https://github.com/go-taas/go-taas/compare/v1.78.0...v1.78.1) (2026-10-25)
 
 
