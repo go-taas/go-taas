@@ -220,7 +220,11 @@ func (s *commonServer) initGatewayAPI() {
 	if sink != nil {
 		s.monitorMux.HandleFunc(gatewayUsagePath, guard(s.usageHandler(sink)))
 	}
-	s.monitorMux.HandleFunc(gatewayPluginPath, guard(s.pluginHandler(opts.PluginPath)))
+	// The artifact is served without the token on purpose: Envoy's Wasm code
+	// source has no way to send a header, and the artifact is not a secret —
+	// it is the filter binary, which is public source. The API that verifies
+	// keys and records usage stays guarded.
+	s.monitorMux.HandleFunc(gatewayPluginPath, s.pluginHandler(opts.PluginPath))
 	for _, c := range gatewayCollectors() {
 		if err := s.monitorRegistry.Register(c); err != nil {
 			logger.S().Debugw("gateway plugin: collector already registered", "err", err)

@@ -197,6 +197,52 @@ Call with (dict "root" $ "key" "postgresql-password").
 {{- end -}}
 {{- end -}}
 
+{{/*
+The cluster name the Wasm filter dispatches to.
+
+Envoy requires a configured cluster for a Wasm HTTP call, and Envoy Gateway
+creates exactly one cluster per HTTPRoute rule, named
+`httproute/<ns>/<route>/rule/<index>`. Deriving it here keeps the policy and
+the route in step: they are rendered together.
+*/}}
+{{- define "go-taas.gatewayPluginCluster" -}}
+{{- printf "httproute/%s/%s-internal-api/rule/0" .Release.Namespace (include "go-taas.fullname" .) -}}
+{{- end -}}
+
+{{/* URL the EnvoyExtensionPolicy fetches the Wasm artifact from. */}}
+{{- define "go-taas.gatewayPluginArtifactURL" -}}
+{{- $port := .Values.taasServer.service.monitor.port | default 9092 -}}
+{{- printf "http://%s-server.%s.svc.cluster.local:%v/internal/gateway/plugin.wasm" (include "go-taas.fullname" .) .Release.Namespace $port -}}
+{{- end -}}
+
+{{/*
+Durations arrive as Go strings ("30s", "500ms") because that is what the
+server's config parser expects; the filter's config wants milliseconds.
+*/}}
+{{- define "go-taas.gatewayPluginMillis" -}}
+{{- $raw := .value -}}
+{{- $fallback := .fallback -}}
+{{- if hasSuffix "ms" $raw -}}
+{{- trimSuffix "ms" $raw -}}
+{{- else if hasSuffix "s" $raw -}}
+{{- mul (atoi (trimSuffix "s" $raw)) 1000 -}}
+{{- else if hasSuffix "m" $raw -}}
+{{- mul (atoi (trimSuffix "m" $raw)) 60000 -}}
+{{- else -}}
+{{- $fallback -}}
+{{- end -}}
+{{- end -}}
+
+{{/* Data-plane gateway plugin token: configured, or generated. */}}
+{{- define "go-taas.gatewayPluginToken" -}}
+{{- $token := .Values.gatewayPlugin.token -}}
+{{- if $token -}}
+{{- $token -}}
+{{- else -}}
+{{- include "go-taas.generatedSecret" (dict "root" . "key" "gateway-plugin-token") -}}
+{{- end -}}
+{{- end -}}
+
 {{/* ---- configuration rendering ----------------------------------------- */}}
 
 {{/*
@@ -448,6 +494,16 @@ route; these are its install-time parts.
 {{- $runtime := get $overrides "runtime" | default dict -}}
 {{- $_ := set $runtime "dataPlane" $dataPlane -}}
 {{- $_ := set $overrides "runtime" $runtime -}}
+{{- $gp := .Values.gatewayPlugin | default dict -}}
+{{- $gatewayPlugin := dict
+      "enabled" (ternary true false ($gp.enabled | default false))
+      "token" ""
+      "cacheTTL" ($gp.cacheTTL | default "30s")
+      "verifyTimeout" ($gp.verifyTimeout | default "500ms")
+      "failOpen" (ternary true false ($gp.failOpen | default false))
+      "protectedPrefixes" ($gp.protectedPrefixes | default (list "/v1/"))
+      "pluginPath" "/usr/local/bin/gateway-plugin.wasm" -}}
+{{- $_ := set $overrides "gatewayPlugin" $gatewayPlugin -}}
 {{- $monitoring := .Values.monitoring | default dict -}}
 {{- if $monitoring.prometheusURL -}}
 {{- $rm := get $overrides "resourceMetrics" | default dict -}}
@@ -460,7 +516,7 @@ route; these are its install-time parts.
 {{- end -}}
 
 {{- define "go-taas.hasConfigOverrides" -}}
-{{- if or .Values.configOverrides .Values.dataPlane.enabled .Values.monitoring.prometheusURL -}}true{{- end -}}
+{{- if or .Values.configOverrides .Values.dataPlane.enabled .Values.monitoring.prometheusURL .Values.gatewayPlugin.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Checksum of the config-overrides file, to roll pods when it changes. */}}

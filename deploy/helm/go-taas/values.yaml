@@ -371,6 +371,40 @@ dataPlane:
     namespace: yunzhi-system
     port: 80
 
+# The data-plane gateway plugin (Wasm) in front of the inference gateway.
+#
+# It performs API-key authentication and token metering at the gateway, so
+# inference traffic never passes through the control plane. Disabled by
+# default: enabling it makes the gateway start rejecting unverified requests,
+# which is a behaviour change an existing install must opt into.
+gatewayPlugin:
+  # -- Render the EnvoyExtensionPolicy and serve the plugin's internal API.
+  # When false the inference gateway keeps working without authentication.
+  enabled: false
+  # -- Work with the Wasm filter: fail open when the filter cannot run.
+  # Leave false so a broken plugin blocks traffic instead of admitting it.
+  failOpen: false
+  # -- Shared secret the filter presents on its internal calls. Empty means
+  # the chart generates one into the release Secret; an unauthenticated
+  # verification endpoint would let anyone probe keys.
+  token: ""
+  # -- Path prefixes that require a verified API key.
+  protectedPrefixes:
+    - /v1/
+  # -- How long the filter may reuse a verification verdict. A revocation
+  # becomes effective within this window (per worker thread).
+  cacheTTL: 30s
+  # -- Budget for one filter -> server call. Exceeding it fails closed
+  # unless `failOpen` is set.
+  verifyTimeout: 500ms
+  # -- Largest request body the filter buffers to read `model` and
+  # `max_tokens`. Larger bodies are still authenticated, just not inspected.
+  maxBodyBytes: 1048576
+  # -- Hostname of the internal route the filter dispatches to. It is never
+  # published in DNS and is attached to the TLS listener only, so the
+  # endpoint is reachable from Envoy but not from the internet.
+  internalHostname: taas-internal.invalid
+
 taasServer:
   # -- Deploy the control-plane server.
   enabled: true

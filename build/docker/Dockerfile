@@ -66,6 +66,27 @@ COPY buf.yaml buf.gen.yaml buf.lock ./
 COPY proto/ ./proto/
 RUN buf generate
 
+# ---- Wasm plugin stage ------------------------------------------------
+# The data-plane gateway filter is built with TinyGo, not the Go toolchain:
+# the output is a proxy-wasm module, which needs TinyGo's Wasm backend. The
+# image tag is pinned so the artifact is reproducible from the repository
+# alone, and no TinyGo install is needed on a developer's machine.
+FROM tinygo/tinygo:0.34.0 AS wasm-builder
+WORKDIR /src
+ARG GOPROXY
+ENV GOPROXY=${GOPROXY}
+COPY wasm/gateway/go.mod wasm/gateway/go.sum ./
+RUN go mod download
+COPY wasm/gateway/ ./
+# -buildmode=c-shared is deliberately absent: it links but drops all but one
+# proxy-wasm host function, producing a filter that fails on its first
+# hostcall. verify-wasm.sh proves the ABI surface survived.
+# The TinGo image runs as an unprivileged user, so the artifact is written
+# under the workdir rather than the filesystem root.
+RUN tinygo build -target=wasi -scheduler=none -opt=z -no-debug \
+      -o /tmp/gateway-plugin.wasm . \
+    && /src/verify-wasm.sh /tmp/gateway-plugin.wasm
+
 # ---- Go build stage ---------------------------------------------------
 FROM golang:1.26-alpine AS builder
 WORKDIR /src
@@ -129,6 +150,10 @@ RUN if [ -n "$APT_MIRROR" ]; then \
     && rm -rf /var/lib/apt/lists/* \
     && useradd --uid 65532 --create-home nonroot
 COPY --from=builder /out/taas-server /usr/local/bin/taas-server
+# The plugin sits next to the binary: the server serves it at
+# /internal/gateway/plugin.wasm so the EnvoyExtensionPolicy can load it with
+# a pinned digest, and one release produces exactly one plugin version.
+COPY --from=wasm-builder /tmp/gateway-plugin.wasm /usr/local/bin/gateway-plugin.wasm
 COPY configs /etc/taas/configs
 WORKDIR /etc/taas
 USER nonroot:nonroot

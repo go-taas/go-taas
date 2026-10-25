@@ -79,6 +79,16 @@ spec:
                   key: webhook-secret-encryption-key
                   optional: true
             {{- end }}
+            {{- if .Values.gatewayPlugin.enabled }}
+            # Shared secret the data-plane gateway plugin presents. It rides
+            # the environment, not the values file, so it never lands in the
+            # rendered ConfigMap.
+            - name: CONFIG_GATEWAYPLUGIN_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ $secretName }}
+                  key: gateway-plugin-token
+            {{- end }}
             {{- if not (dig "provider" "secretEncryptionKey" "" .Values.taasServer.secretConfig) }}
             # Master key for external-provider API keys at rest.
             - name: CONFIG_PROVIDER_SECRETENCRYPTIONKEY

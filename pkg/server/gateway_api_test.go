@@ -299,8 +299,9 @@ func TestGatewayPluginArtifactIsServed(t *testing.T) {
 	mux := newGatewayTestServer(t, &fakeGatewayService{},
 		GatewayPluginOptions{Enabled: true, PluginPath: artifact})
 
+	// Envoy's Wasm code source cannot send a header, so the artifact is
+	// deliberately reachable without the token.
 	req := httptest.NewRequest(http.MethodGet, gatewayPluginPath, nil)
-	req.Header.Set(gatewayTokenHeader, testGatewayToken)
 	rec := httptest.NewRecorder()
 	mux.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
