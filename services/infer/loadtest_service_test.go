@@ -158,8 +158,7 @@ func TestGetLoadTestProgressFromRowWhenNotInFlight(t *testing.T) {
 // table must exist after Migrate. The FVT helper is a separate path and
 // does not prove this (a bug that shipped once).
 func TestResponseMigrateCreatesLoadTestSchema(t *testing.T) {
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(testDSN(t)), &gorm.Config{})
 	require.NoError(t, err)
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()

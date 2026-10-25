@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -18,10 +19,22 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
+// testDSN returns a file-backed SQLite DSN for one test.
+//
+// A shared-cache in-memory database (`mode=memory&cache=shared`) reports
+// SQLITE_LOCKED ("database table is locked") when two connections write at
+// once, and `_busy_timeout` does not apply to that error class — so tests
+// that write from a background goroutine (the load-test runner does) failed
+// intermittently. A real file with WAL serialises writers properly, and
+// t.TempDir() removes it afterwards.
+func testDSN(t *testing.T) string {
+	t.Helper()
+	return "file:" + filepath.Join(t.TempDir(), "test.db") + "?_busy_timeout=10000&_txlock=immediate&_journal_mode=WAL"
+}
+
 func newInferTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
-	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", t.Name())
-	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(testDSN(t)), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &InferenceServiceAccess{}))
 	require.NoError(t, model.MigrateSchemaForFVT(db))
