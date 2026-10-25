@@ -425,6 +425,9 @@ func TestApplyImageWarmupNoMatchingNode(t *testing.T) {
 		Body:    []byte(task),
 	})
 	require.Error(t, err)
+	// The failure is permanent: the task is terminal and already
+	// reported, so the broker must not redeliver it.
+	assert.True(t, mq.IsPermanent(err), "a reported failure is not retried")
 
 	// The failure was reported with a reason.
 	require.NotEmpty(t, publisher.warmupReports)

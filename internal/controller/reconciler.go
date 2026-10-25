@@ -461,8 +461,13 @@ func (r *k8sReconciler) reportWarmupFailure(ctx context.Context, task warmupTask
 	return r.reportWarmupFailureWithResults(ctx, task, reason, nil)
 }
 
-// reportWarmupFailureWithResults publishes the failed warmup status
-// with per-node results and returns the wrapped error.
+// reportWarmupFailureWithResults publishes the failed warmup status with
+// per-node results.
+//
+// It returns a Permanent error so the broker stops redelivering the task:
+// the failure has been reported and the task is terminal, so a retry would
+// only repeat the same failing pull. Only a publish failure is retryable
+// (the status never reached the platform).
 func (r *k8sReconciler) reportWarmupFailureWithResults(ctx context.Context, task warmupTask, reason string, results []warmupNodeResult) error {
 	if len(reason) > 512 {
 		reason = reason[:512]
@@ -470,8 +475,11 @@ func (r *k8sReconciler) reportWarmupFailureWithResults(ctx context.Context, task
 	if err := r.publishWarmupStatus(ctx, task.TaskID, "failed", results, &reason); err != nil {
 		logger.S().Errorw("controller: publish warmup failed status failed",
 			"task_id", task.TaskID, "err", err)
+		return fmt.Errorf("controller: publish warmup %s failed status: %w", task.TaskID, err)
 	}
-	return fmt.Errorf("controller: warmup %s failed: %s", task.TaskID, reason)
+	logger.S().Warnw("controller: image warmup failed",
+		"task_id", task.TaskID, "reference", task.Reference, "reason", reason)
+	return mq.Permanent(fmt.Errorf("controller: warmup %s failed: %s", task.TaskID, reason))
 }
 
 // publishWarmupStatus publishes a warmup observed-state report on the
