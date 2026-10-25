@@ -106,7 +106,7 @@ never enters the control-plane process, and a control-plane rollout cannot
 interrupt a streaming response in flight.
 
 Because the inference hostname is a deployment fact rather than a build
-constant, it is also an operator setting: the admin console's **Platform
+constant, it is also an operator setting: the admin console's **Gateway
 settings** page (`/admin/settings`, `GET|PUT /api/v1/admin/platform-settings`)
 stores it, and `GetInferenceEndpoint` reports
 `<scheme>://<hostname>/v1` to the quickstart page, the API docs and every
