@@ -34,6 +34,7 @@ import InvitationsPage from './pages/InvitationsPage';
 import SSOProvidersPage from './pages/SSOProvidersPage';
 import IdentityBindingsPage from './pages/IdentityBindingsPage';
 import ModelsPage from './pages/ModelsPage';
+import ModelDownloadsPage from './pages/ModelDownloadsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
 import ModelVersionsPage from './pages/ModelVersionsPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
@@ -235,6 +236,7 @@ function AdminSurface() {
               <Route path="/admin/sso" element={<SSOProvidersPage />} />
               <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
               <Route path="/admin/models" element={<ModelsPage />} />
+              <Route path="/admin/model-downloads" element={<ModelDownloadsPage />} />
               <Route path="/admin/models/:id" element={<ModelDetailPage />} />
               <Route path="/admin/models/:id/versions" element={<ModelVersionsPage />} />
               <Route path="/admin/images" element={<ImagesPage />} />

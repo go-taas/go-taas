@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import type { CostSeriesPoint } from '../api';
+import { useI18n } from '../i18n';
 
 export type CostMetric = 'cost' | 'tokens' | 'costPerToken';
 
@@ -33,6 +34,7 @@ export default function CostChart({
   series: CostSeriesPoint[];
   metric: CostMetric;
 }) {
+  const { t } = useI18n();
   const { width, height, bars } = useMemo(() => {
     const W = 720;
     const H = 220;
@@ -66,7 +68,7 @@ export default function CostChart({
   }, [series, metric]);
 
   if (series.length === 0) {
-    return <div className="empty-state">No cost data in this range.</div>;
+    return <div className="empty-state">{t('cost.empty')}</div>;
   }
 
   return (
@@ -76,7 +78,7 @@ export default function CostChart({
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Cost analytics chart"
+        aria-label={t('cost.chartAria')}
       >
         {bars.map((b) => (
           <rect
@@ -94,7 +96,7 @@ export default function CostChart({
       <div className="chart-legend">
         <span className="chart-legend-item">
           <span className="chart-legend-swatch" style={{ background: PALETTE[0] }} />
-          <span className="mono">{metricLabel(metric)}</span>
+          <span className="mono">{metricLabel(metric, t)}</span>
         </span>
       </div>
     </div>
@@ -108,14 +110,14 @@ function barWidth(count: number): number {
   return Math.max(4, Math.min(28, (W - pad * 2) / Math.max(count, 1) - 4));
 }
 
-// metricLabel returns a stable label for the legend.
-function metricLabel(metric: CostMetric): string {
+// metricLabel returns the localized legend label of a metric.
+function metricLabel(metric: CostMetric, t: (key: string) => string): string {
   switch (metric) {
     case 'tokens':
-      return 'tokens';
+      return t('cost.metric.tokens');
     case 'costPerToken':
-      return 'cost per token';
+      return t('cost.metricCostPerToken');
     default:
-      return 'cost ($)';
+      return t('cost.metricCost');
   }
 }

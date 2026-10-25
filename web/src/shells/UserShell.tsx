@@ -107,7 +107,7 @@ export function UserShell({ children }: { children: ReactNode }) {
           <img src={brandLogo} alt="Go TaaS" className="brand-logo" />
           <span>Go TaaS</span>
         </div>
-        <nav className="topbar-nav" aria-label="User categories">
+        <nav className="topbar-nav" aria-label={t('nav.userCategoriesAria')}>
           {USER_NAV_CATEGORIES.map((cat) => {
             const IconComp = cat.icon;
             const active = categoryForPath(USER_NAV_CATEGORIES, path).id === cat.id;

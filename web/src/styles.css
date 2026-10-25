@@ -364,6 +364,31 @@ textarea {
 }
 
 /* Progress bars. */
+.progress-track {
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.08);
+  overflow: hidden;
+  margin-top: 8px;
+}
+.progress-bar.indeterminate {
+  height: 100%;
+  width: 40%;
+  border-radius: 999px;
+  background: var(--accent, #2563eb);
+  animation: progress-indeterminate 1.2s ease-in-out infinite;
+}
+@keyframes progress-indeterminate {
+  0% {
+    margin-left: 0;
+  }
+  50% {
+    margin-left: 60%;
+  }
+  100% {
+    margin-left: 0;
+  }
+}
 .progress-bar {
   height: 8px;
   border-radius: 999px;
@@ -921,6 +946,12 @@ table.table tbody tr:hover {
 
 .muted {
   color: var(--muted);
+}
+
+/* Secondary line inside a table cell or a form field. */
+.small {
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 /* ============================================================

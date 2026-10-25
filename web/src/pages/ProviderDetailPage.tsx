@@ -444,7 +444,7 @@ export default function ProviderDetailPage() {
               </div>
               <div className="toolbar">
                 <input
-                  aria-label="search upstream id"
+                  aria-label={t('providers.searchUpstreamAria')}
                   value={search}
                   placeholder={t('providers.searchUpstream')}
                   onChange={(e) => {
@@ -453,7 +453,7 @@ export default function ProviderDetailPage() {
                   }}
                 />
                 <select
-                  aria-label="enabled filter"
+                  aria-label={t('providers.enabledFilterAria')}
                   value={enabledFilter}
                   onChange={(e) => {
                     setOffset(0);
@@ -465,7 +465,7 @@ export default function ProviderDetailPage() {
                   <option value="false">{t('common.disabled')}</option>
                 </select>
                 <select
-                  aria-label="published filter"
+                  aria-label={t('providers.publishedFilterAria')}
                   value={publishedFilter}
                   onChange={(e) => {
                     setOffset(0);
@@ -606,7 +606,7 @@ export default function ProviderDetailPage() {
           </label>
           <div className="dialog-actions">
             <button className="secondary" data-testid="provider-model-form-cancel" onClick={() => setModelDialogOpen(false)}>
-              Cancel
+              {t('common.cancel')}
             </button>
             <button className="primary" data-testid="provider-model-form-submit" onClick={() => void submitModel()}>
               {t('providers.saveModel')}

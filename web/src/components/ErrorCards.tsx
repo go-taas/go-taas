@@ -5,6 +5,7 @@
 
 import type { ErrorAnalysisCard } from '../api';
 import { formatTime } from '../api';
+import { useI18n } from '../i18n';
 
 // errorRatePercent derives the error rate as a percentage.
 function errorRatePercent(card: ErrorAnalysisCard): string {
@@ -14,28 +15,29 @@ function errorRatePercent(card: ErrorAnalysisCard): string {
 }
 
 export default function ErrorCards({ cards }: { cards: ErrorAnalysisCard }) {
+  const { t } = useI18n();
   const dataThrough = cards.dataThrough ? formatTime(cards.dataThrough) : '—';
   return (
     <div className="card-row" data-testid="errors-cards">
       <div className="card" data-testid="errors-card-error-rate">
         <div className="card-value">{errorRatePercent(cards)}</div>
-        <div className="card-label">Error rate</div>
-        <div className="card-note">data through {dataThrough}</div>
+        <div className="card-label">{t('errors.rate')}</div>
+        <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>
       <div className="card" data-testid="errors-card-error-count">
         <div className="card-value">{parseInt(cards.errorCount || '0', 10).toLocaleString()}</div>
-        <div className="card-label">Error count</div>
-        <div className="card-note">data through {dataThrough}</div>
+        <div className="card-label">{t('errors.count')}</div>
+        <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>
       <div className="card" data-testid="errors-card-request-count">
         <div className="card-value">{parseInt(cards.requestCount || '0', 10).toLocaleString()}</div>
-        <div className="card-label">Request count</div>
-        <div className="card-note">data through {dataThrough}</div>
+        <div className="card-label">{t('errors.requestCount')}</div>
+        <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>
       <div className="card" data-testid="errors-card-top-cause">
         <div className="card-value">{cards.topCause || '—'}</div>
-        <div className="card-label">Top cause</div>
-        <div className="card-note">{cards.topCauseSharePct ? `${cards.topCauseSharePct}% share` : 'data through ' + dataThrough}</div>
+        <div className="card-label">{t('errors.topCause')}</div>
+        <div className="card-note">{cards.topCauseSharePct ? t('common.share', { pct: cards.topCauseSharePct }) : t('common.dataThrough', { time: dataThrough })}</div>
       </div>
     </div>
   );

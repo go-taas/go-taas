@@ -109,7 +109,7 @@ export function AdminShell({ children }: { children: ReactNode }) {
           <img src={brandLogo} alt="Go TaaS" className="brand-logo" />
           <span>Go TaaS</span>
         </div>
-        <nav className="topbar-nav" aria-label="Admin categories">
+        <nav className="topbar-nav" aria-label={t('nav.adminCategoriesAria')}>
           {navCategories.map((cat) => {
             const IconComp = cat.icon;
             const active = categoryForPath(navCategories, path).id === cat.id;

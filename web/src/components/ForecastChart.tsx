@@ -4,6 +4,7 @@
 // dependency — a small, testable SVG component.
 
 import { useMemo } from 'react';
+import { useI18n } from '../i18n';
 
 export type ForecastMetric = 'tokens' | 'cost';
 
@@ -36,6 +37,7 @@ export default function ForecastChart({
   forecast: ForecastPoint[];
   metric: ForecastMetric;
 }) {
+  const { t } = useI18n();
   const { width, height, histPoints, forePoints, band } = useMemo(() => {
     const W = 720;
     const H = 220;
@@ -82,7 +84,7 @@ export default function ForecastChart({
   }, [history, forecast, metric]);
 
   if (history.length === 0) {
-    return <div className="empty-state">No forecast data.</div>;
+    return <div className="empty-state">{t('forecast.empty')}</div>;
   }
 
   const histLine = histPoints.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
@@ -107,7 +109,7 @@ export default function ForecastChart({
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Forecast chart"
+        aria-label={t('forecast.chartAria')}
       >
         {bandPath && <path d={bandPath} fill="#007F86" opacity="0.15" data-testid="forecast-band" />}
         {histLine && (

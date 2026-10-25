@@ -104,6 +104,7 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
     icon: Stack,
     items: [
       { path: '/admin/models', labelKey: 'nav.models', testid: 'nav-models', icon: Cube },
+      { path: '/admin/model-downloads', labelKey: 'nav.modelDownloads', testid: 'nav-model-downloads', icon: DownloadSimple },
       { path: '/admin/inference-services', labelKey: 'nav.inferenceServices', testid: 'nav-inference-services', icon: Rocket },
       { path: '/admin/clusters', labelKey: 'nav.clusters', testid: 'nav-clusters', icon: Globe },
       { path: '/admin/runtime', labelKey: 'nav.runtime', testid: 'nav-runtime', icon: Pulse },

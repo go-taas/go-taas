@@ -185,6 +185,28 @@ export interface ModelSummary {
   providerId?: string;
   upstreamModelId?: string;
   published?: boolean;
+  // hubModelId is the model's globally unique id on a public model hub
+  // ("<vendor>/<model>"), empty when the model is not bound to a hub.
+  hubModelId?: string;
+}
+
+// ModelDownload is one background hub download job.
+export interface ModelDownload {
+  downloadId: string;
+  source: string;
+  hubModelId: string;
+  name: string;
+  version: string;
+  // state is queued, downloading, succeeded or failed.
+  state: string;
+  message?: string;
+  // bytes is the number of weight bytes already on disk (JSON string for
+  // the int64 proto field).
+  bytes: string | number;
+  weightPath?: string;
+  modelId?: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // AvailableModel is the masked user-realm catalog projection (feature-17

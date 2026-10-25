@@ -8,6 +8,7 @@ import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { navigate } from '../router';
 import { subscribeUnreadChanged } from '../notificationsBus';
+import { useI18n } from '../i18n';
 
 interface UnreadResponse {
   response: { code: number; message: string };
@@ -20,7 +21,8 @@ export default function NotificationBell({
 }: {
   path: string;
   testId: string;
-}) {
+}) {  const { t } = useI18n();
+
   const api = useApi();
   const { orgId } = useOrg();
   const [unread, setUnread] = useState(0);
@@ -54,7 +56,7 @@ export default function NotificationBell({
       className="notification-bell"
       data-testid={testId}
       onClick={() => navigate(target)}
-      aria-label="Notifications"
+      aria-label={t('notifications.title')}
     >
       <Bell size={20} weight="duotone" aria-hidden="true" />
       {unread > 0 && <span className="notification-badge">{unread}</span>}

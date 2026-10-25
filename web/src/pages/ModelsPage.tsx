@@ -69,9 +69,18 @@ export default function ModelsPage() {
           <h1>{t('models.title')}</h1>
           <div className="subtitle">{t('models.subtitle')}</div>
         </div>
-        <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
-          {t('models.register')}
-        </button>
+        <div className="toolbar">
+          <button
+            className="secondary"
+            data-testid="open-model-downloads"
+            onClick={() => navigate('/admin/model-downloads')}
+          >
+            {t('models.downloads.open')}
+          </button>
+          <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
+            {t('models.register')}
+          </button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}
@@ -98,6 +107,7 @@ export default function ModelsPage() {
             <thead>
               <tr>
                 <th>{t('models.colName')}</th>
+                <th>{t('models.colHubModelId')}</th>
                 <th>{t('models.colLatestVersion')}</th>
                 <th>{t('models.colWeightPath')}</th>
                 <th>{t('models.colCreated')}</th>
@@ -116,7 +126,7 @@ export default function ModelsPage() {
                     <strong>{m.name}</strong>
                     {m.external && (
                       <span className="badge external" data-testid="model-external-badge">
-                        External
+                        {t('modeldetail.external')}
                       </span>
                     )}
                     {m.restricted && (
@@ -128,6 +138,9 @@ export default function ModelsPage() {
                         {t('models.restricted')}
                       </span>
                     )}
+                  </td>
+                  <td className="mono muted" data-testid={`model-hub-id-${m.name}`}>
+                    {m.hubModelId || '—'}
                   </td>
                   <td className="mono">{m.external ? '—' : m.latestVersion}</td>
                   <td className="mono muted">{m.external ? `${m.providerName} · ${m.upstreamModelId}` : m.weightPath}</td>
@@ -203,11 +216,9 @@ function RegisterDialog({
   const [version, setVersion] = useState('');
   const [weightPath, setWeightPath] = useState('');
   const [description, setDescription] = useState('');
-  // Download mode: fetch the weights from a model hub instead of
-  // supplying a weight path.
-  const [download, setDownload] = useState(false);
-  const [source, setSource] = useState('huggingface');
-  const [sourceModelId, setSourceModelId] = useState('');
+  // The hub id binds the model to its identity on a public hub; weights
+  // themselves are imported from the model downloads page.
+  const [hubModelId, setHubModelId] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { t } = useI18n();
@@ -222,13 +233,12 @@ function RegisterDialog({
       setError(t('models.validationVersion'));
       return;
     }
-    if (download) {
-      if (!sourceModelId.trim()) {
-        setError(t('models.validationSourceModelId'));
-        return;
-      }
-    } else if (!weightPath.trim()) {
+    if (!weightPath.trim()) {
       setError(t('models.validationWeightPath'));
+      return;
+    }
+    if (hubModelId.trim() && !/^[^/\s]+\/[^/\s]+$/.test(hubModelId.trim())) {
+      setError(t('models.downloads.validationHubModelId'));
       return;
     }
     setSubmitting(true);
@@ -239,11 +249,9 @@ function RegisterDialog({
         version: version.trim(),
         description: description.trim(),
       };
-      if (download) {
-        body.source = source;
-        body.sourceModelId = sourceModelId.trim();
-      } else {
-        body.weightPath = weightPath.trim();
+      body.weightPath = weightPath.trim();
+      if (hubModelId.trim()) {
+        body.hubModelId = hubModelId.trim();
       }
       await api.post('/api/v1/admin/models', orgId, body);
       onRegistered();
@@ -280,54 +288,28 @@ function RegisterDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="model-download-mode">
-            <input
-              id="model-download-mode"
-              type="checkbox"
-              data-testid="model-download-mode"
-              checked={download}
-              onChange={(e) => setDownload(e.target.checked)}
-            />{' '}
-            {t('models.downloadFromHub')}
-          </label>
+          <label htmlFor="model-hub-id">{t('models.fieldHubModelId')}</label>
+          <input
+            id="model-hub-id"
+            data-testid="model-hub-id-input"
+            value={hubModelId}
+            maxLength={255}
+            onChange={(e) => setHubModelId(e.target.value)}
+            placeholder={t('models.placeholderHubModelId')}
+          />
+          <div className="field-hint">{t('models.hubModelIdHint')}</div>
         </div>
-        {download ? (
-          <>
-            <div className="form-field">
-              <label htmlFor="model-source">{t('models.fieldSource')}</label>
-              <select
-                id="model-source"
-                data-testid="model-source-select"
-                value={source}
-                onChange={(e) => setSource(e.target.value)}
-              >
-                <option value="huggingface">HuggingFace</option>
-                <option value="modelscope">ModelScope</option>
-              </select>
-            </div>
-            <div className="form-field">
-              <label htmlFor="model-source-id">{t('models.fieldSourceModelId')}</label>
-              <input
-                id="model-source-id"
-                data-testid="model-source-id-input"
-                value={sourceModelId}
-                onChange={(e) => setSourceModelId(e.target.value)}
-                placeholder={t('models.placeholderSourceModelId')}
-              />
-            </div>
-          </>
-        ) : (
-          <div className="form-field full">
-            <label htmlFor="model-weight-path">{t('models.fieldWeightPath')}</label>
-            <input
-              id="model-weight-path"
-              data-testid="model-weight-path-input"
-              value={weightPath}
-              onChange={(e) => setWeightPath(e.target.value)}
-              placeholder={t('models.placeholderWeightPath')}
-            />
-          </div>
-        )}
+        <div className="form-field full">
+          <label htmlFor="model-weight-path">{t('models.fieldWeightPath')}</label>
+          <input
+            id="model-weight-path"
+            data-testid="model-weight-path-input"
+            value={weightPath}
+            onChange={(e) => setWeightPath(e.target.value)}
+            placeholder={t('models.placeholderWeightPath')}
+          />
+          <div className="field-hint">{t('models.weightPathHint')}</div>
+        </div>
         <div className="form-field full">
           <label htmlFor="model-description">{t('common.descriptionOptional')}</label>
           <textarea

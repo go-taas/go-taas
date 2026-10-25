@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import type { ErrorSeriesPoint } from '../api';
+import { useI18n } from '../i18n';
 
 export type ErrorMetric = 'errorCount' | 'errorRate';
 
@@ -31,6 +32,7 @@ export default function ErrorChart({
   series: ErrorSeriesPoint[];
   metric: ErrorMetric;
 }) {
+  const { t } = useI18n();
   const { width, height, bars } = useMemo(() => {
     const W = 720;
     const H = 220;
@@ -64,7 +66,7 @@ export default function ErrorChart({
   }, [series, metric]);
 
   if (series.length === 0) {
-    return <div className="empty-state">No error data in this range.</div>;
+    return <div className="empty-state">{t('errors.empty')}</div>;
   }
 
   return (
@@ -74,7 +76,7 @@ export default function ErrorChart({
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Error analysis chart"
+        aria-label={t('errors.chartAria')}
       >
         {bars.map((b) => (
           <rect
@@ -92,7 +94,7 @@ export default function ErrorChart({
       <div className="chart-legend">
         <span className="chart-legend-item">
           <span className="chart-legend-swatch" style={{ background: PALETTE[0] }} />
-          <span className="mono">{metricLabel(metric)}</span>
+          <span className="mono">{metricLabel(metric, t)}</span>
         </span>
       </div>
     </div>
@@ -106,7 +108,7 @@ function barWidth(count: number): number {
   return Math.max(4, Math.min(28, (W - pad * 2) / Math.max(count, 1) - 4));
 }
 
-// metricLabel returns a stable label for the legend.
-function metricLabel(metric: ErrorMetric): string {
-  return metric === 'errorRate' ? 'error rate (%)' : 'error count';
+// metricLabel returns the localized legend label of a metric.
+function metricLabel(metric: ErrorMetric, t: (key: string) => string): string {
+  return metric === 'errorRate' ? t('errors.metricRate') : t('errors.metricCount');
 }

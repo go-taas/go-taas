@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import type { ResourceMetricsSeriesPoint } from '../api';
+import { useI18n } from '../i18n';
 
 export type ResourceMetric = 'cpu' | 'memory' | 'gpu';
 
@@ -28,6 +29,7 @@ export default function ResourceChart({
   series: ResourceMetricsSeriesPoint[];
   metric: ResourceMetric;
 }) {
+  const { t } = useI18n();
   const { width, height, bars } = useMemo(() => {
     const W = 720;
     const H = 220;
@@ -66,7 +68,7 @@ export default function ResourceChart({
       height={height}
       viewBox={`0 0 ${width} ${height}`}
       role="img"
-      aria-label="resource utilization chart"
+      aria-label={t('resource.chartAria')}
     >
       {bars.map((b) => (
         <rect

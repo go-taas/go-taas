@@ -3,6 +3,7 @@
 // share_pct are derived client-side.
 
 import type { ErrorCauseRow } from '../api';
+import { useI18n } from '../i18n';
 
 // errorRatePercent derives the error rate as a percentage.
 function errorRatePercent(row: ErrorCauseRow): string {
@@ -17,18 +18,19 @@ export default function ErrorCausesTable({
   rows: ErrorCauseRow[];
   onSelect?: (errorCode: string) => void;
 }) {
+  const { t } = useI18n();
   if (rows.length === 0) {
-    return <div className="empty-state">No error data in this range.</div>;
+    return <div className="empty-state">{t('errors.empty')}</div>;
   }
   return (
     <table className="data" data-testid="errors-causes">
       <thead>
         <tr>
-          <th>Error code</th>
-          <th>Error message</th>
-          <th>Error count</th>
-          <th>Error rate</th>
-          <th>Share</th>
+          <th>{t('errors.colCode')}</th>
+          <th>{t('errors.colMessage')}</th>
+          <th>{t('errors.colCount')}</th>
+          <th>{t('errors.colRate')}</th>
+          <th>{t('common.shareCol')}</th>
         </tr>
       </thead>
       <tbody>

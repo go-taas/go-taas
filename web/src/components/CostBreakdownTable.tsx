@@ -3,6 +3,7 @@
 // bars. cost_per_token and share_pct are derived client-side.
 
 import type { CostBreakdownRow } from '../api';
+import { useI18n } from '../i18n';
 
 // costDollars formats integer cents as dollars.
 function costDollars(cents: string): string {
@@ -24,18 +25,19 @@ export default function CostBreakdownTable({
   rows: CostBreakdownRow[];
   onSelect?: (value: string) => void;
 }) {
+  const { t } = useI18n();
   if (rows.length === 0) {
-    return <div className="empty-state">No cost data in this range.</div>;
+    return <div className="empty-state">{t('cost.empty')}</div>;
   }
   return (
     <table className="data" data-testid="cost-breakdown">
       <thead>
         <tr>
-          <th>Dimension value</th>
-          <th>Cost</th>
-          <th>Tokens</th>
-          <th>Cost per token</th>
-          <th>Share</th>
+          <th>{t('cost.colDimensionValue')}</th>
+          <th>{t('cost.colCost')}</th>
+          <th>{t('cost.colTokens')}</th>
+          <th>{t('cost.colCostPerToken')}</th>
+          <th>{t('common.shareCol')}</th>
         </tr>
       </thead>
       <tbody>

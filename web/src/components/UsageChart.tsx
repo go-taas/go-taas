@@ -5,6 +5,7 @@
 
 import { useMemo } from 'react';
 import type { DailyBucket, DashboardGroup } from '../api';
+import { useI18n } from '../i18n';
 
 export type ChartMetric = 'cost' | 'tokens' | 'requests';
 
@@ -42,6 +43,7 @@ export default function UsageChart({
   buckets: DailyBucket[];
   metric: ChartMetric;
 }) {
+  const { t } = useI18n();
   const { width, height, bars, legend } = useMemo(() => {
     const W = 720;
     const H = 220;
@@ -93,7 +95,7 @@ export default function UsageChart({
   }, [buckets, metric]);
 
   if (buckets.length === 0) {
-    return <div className="empty-state">No usage in this range.</div>;
+    return <div className="empty-state">{t('usage.empty')}</div>;
   }
 
   return (
@@ -103,7 +105,7 @@ export default function UsageChart({
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Daily usage chart"
+        aria-label={t('usage.chartAria')}
       >
         {bars.map((b) => (
           <g key={b.date}>{b.rects}</g>

@@ -14,6 +14,7 @@ import {
   type OrganizationSummary,
 } from '../api';
 import { ErrorBanner, usePolling } from '../components';
+import { useI18n } from '../i18n';
 
 interface ListOrganizationsResponse {
   response: { code: number; message: string };
@@ -32,7 +33,8 @@ export default function ModelAuthorizationsPanel({
   orgId: string;
   modelId: string;
   onChanged?: () => void;
-}) {
+}) {  const { t } = useI18n();
+
   const [grants, setGrants] = useState<ModelAuthorization[]>([]);
   const [organizations, setOrganizations] = useState<OrganizationSummary[]>([]);
   const [selectedOrg, setSelectedOrg] = useState('');
@@ -135,30 +137,27 @@ export default function ModelAuthorizationsPanel({
 
   return (
     <div className="panel" data-testid="model-auth-panel">
-      <h3 style={{ marginTop: 0 }}>Authorized organizations</h3>
+      <h3 style={{ marginTop: 0 }}>{t('modelAuth.title')}</h3>
       <div className="subtitle" style={{ marginBottom: 12 }}>
-        A model with no authorized organization is open to every
-        organization. The first grant restricts it to the organizations
-        listed here — for both deployment and inference calls.
+        {t('modelAuth.subtitle')}
       </div>
 
       {error && <ErrorBanner message={error} />}
 
       {loading ? (
-        <div className="loading">Loading…</div>
+        <div className="loading">{t('common.loading')}</div>
       ) : grants.length === 0 ? (
         <div className="empty-state" data-testid="model-auth-empty">
-          No organizations authorized — this model is open to all
-          organizations.
+          {t('modelAuth.empty')}
         </div>
       ) : (
         <table className="data" data-testid="model-auth-table">
           <thead>
             <tr>
-              <th>Organization</th>
-              <th>Granted by</th>
-              <th>Granted at</th>
-              <th>Actions</th>
+              <th>{t('modelAuth.colOrganization')}</th>
+              <th>{t('modelAuth.colGrantedBy')}</th>
+              <th>{t('modelAuth.colGrantedAt')}</th>
+              <th>{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -177,7 +176,7 @@ export default function ModelAuthorizationsPanel({
                     disabled={busy}
                     onClick={() => void revoke(g.organizationId)}
                   >
-                    Revoke
+                    {t('modelAuth.revoke')}
                   </button>
                 </td>
               </tr>
@@ -196,8 +195,8 @@ export default function ModelAuthorizationsPanel({
           {selectable.length === 0 && (
             <option value="">
               {organizations.length === 0
-                ? 'No organizations available'
-                : 'Every organization is authorized'}
+                ? t('modelAuth.noOrganizations')
+                : t('modelAuth.everyAuthorized')}
             </option>
           )}
           {selectable.map((o) => (
@@ -211,7 +210,7 @@ export default function ModelAuthorizationsPanel({
           disabled={busy || !selectedOrg}
           onClick={() => void grant()}
         >
-          {busy ? 'Working…' : 'Grant access'}
+          {busy ? t('common.working') : t('modelAuth.grant')}
         </button>
       </div>
     </div>

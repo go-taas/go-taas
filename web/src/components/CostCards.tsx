@@ -6,6 +6,7 @@
 
 import type { CostAnalyticsCard } from '../api';
 import { formatTime } from '../api';
+import { useI18n } from '../i18n';
 
 // costDollars formats integer cents as dollars.
 function costDollars(cents: string): string {
@@ -21,28 +22,29 @@ function costPerToken(card: CostAnalyticsCard): string {
 }
 
 export default function CostCards({ cards }: { cards: CostAnalyticsCard }) {
+  const { t } = useI18n();
   const dataThrough = cards.dataThrough ? formatTime(cards.dataThrough) : '—';
   return (
     <div className="card-row" data-testid="cost-cards">
       <div className="card" data-testid="cost-card-total-cost">
         <div className="card-value">{costDollars(cards.totalCostCents)}</div>
-        <div className="card-label">Total cost</div>
-        <div className="card-note">data through {dataThrough}</div>
+        <div className="card-label">{t('costCards.totalCost')}</div>
+        <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>
       <div className="card" data-testid="cost-card-tokens">
         <div className="card-value">{parseInt(cards.totalTokens || '0', 10).toLocaleString()}</div>
-        <div className="card-label">Total tokens</div>
-        <div className="card-note">data through {dataThrough}</div>
+        <div className="card-label">{t('costCards.totalTokens')}</div>
+        <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>
       <div className="card" data-testid="cost-card-per-token">
         <div className="card-value">{costPerToken(cards)}</div>
-        <div className="card-label">Cost per token</div>
-        <div className="card-note">data through {dataThrough}</div>
+        <div className="card-label">{t('costCards.costPerToken')}</div>
+        <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>
       <div className="card" data-testid="cost-card-top-dimension">
         <div className="card-value">{cards.topDimensionValue || '—'}</div>
-        <div className="card-label">Top dimension</div>
-        <div className="card-note">{cards.topDimensionSharePct ? `${cards.topDimensionSharePct}% share` : 'data through ' + dataThrough}</div>
+        <div className="card-label">{t('costCards.topDimension')}</div>
+        <div className="card-note">{cards.topDimensionSharePct ? t('costCards.share', { pct: cards.topDimensionSharePct }) : t('common.dataThrough', { time: dataThrough })}</div>
       </div>
     </div>
   );

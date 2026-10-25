@@ -3,6 +3,7 @@
 // as key cost / total cost.
 
 import type { UsageKeyTopRow } from '../api';
+import { useI18n } from '../i18n';
 
 // costDollars formats integer cents as dollars.
 function costDollars(cents: string): string {
@@ -16,8 +17,9 @@ export default function TopKeysList({
   topKeys: UsageKeyTopRow[];
   onSelect?: (apiKeyId: string) => void;
 }) {
+  const { t } = useI18n();
   if (topKeys.length === 0) {
-    return <div className="empty-state">No usage data in this range.</div>;
+    return <div className="empty-state">{t('usageKeys.empty')}</div>;
   }
   return (
     <div data-testid="usage-keys-top">

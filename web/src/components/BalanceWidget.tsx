@@ -6,6 +6,7 @@
 import { useEffect, useState } from 'react';
 import { api, type BalanceResponse } from '../api';
 import { useOrg } from '../org';
+import { useI18n } from '../i18n';
 
 // formatCents renders integer minor units as a currency string.
 function formatCents(cents: string): string {
@@ -14,6 +15,7 @@ function formatCents(cents: string): string {
 }
 
 export default function BalanceWidget() {
+  const { t } = useI18n();
   const { orgId } = useOrg();
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [noAccount, setNoAccount] = useState(false);
@@ -55,7 +57,7 @@ export default function BalanceWidget() {
     const pct = quota > 0 ? Math.round((used / quota) * 100) : 0;
     return (
       <div className="balance-widget" data-testid="usage-balance-widget">
-        <span className="balance-widget-label">Spend this month</span>
+        <span className="balance-widget-label">{t('balance.spendThisMonth')}</span>
         <strong>
           {formatCents(String(used))} {currency}
         </strong>
@@ -70,7 +72,7 @@ export default function BalanceWidget() {
   }
   return (
     <div className="balance-widget" data-testid="usage-balance-widget">
-      <span className="balance-widget-label">Balance</span>
+      <span className="balance-widget-label">{t('balance.balance')}</span>
       <strong>
         {formatCents(balance.balanceCents)} {currency}
       </strong>

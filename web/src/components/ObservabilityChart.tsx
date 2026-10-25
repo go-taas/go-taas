@@ -7,6 +7,7 @@
 
 import { useMemo } from 'react';
 import type { ObservabilitySeriesPoint } from '../api';
+import { useI18n } from '../i18n';
 
 export type ObservabilityMetric = 'latency' | 'throughput' | 'errorRate' | 'tokens';
 
@@ -36,6 +37,7 @@ export default function ObservabilityChart({
   series: ObservabilitySeriesPoint[];
   metric: ObservabilityMetric;
 }) {
+  const { t } = useI18n();
   const { width, height, bars } = useMemo(() => {
     const W = 720;
     const H = 220;
@@ -69,7 +71,7 @@ export default function ObservabilityChart({
   }, [series, metric]);
 
   if (series.length === 0) {
-    return <div className="empty-state">No request data in this range.</div>;
+    return <div className="empty-state">{t('observability.empty')}</div>;
   }
 
   return (
@@ -79,7 +81,7 @@ export default function ObservabilityChart({
         height={height}
         viewBox={`0 0 ${width} ${height}`}
         role="img"
-        aria-label="Model observability chart"
+        aria-label={t('observability.chartAria')}
       >
         {bars.map((b) => (
           <rect
@@ -97,7 +99,7 @@ export default function ObservabilityChart({
       <div className="chart-legend">
         <span className="chart-legend-item">
           <span className="chart-legend-swatch" style={{ background: PALETTE[0] }} />
-          <span className="mono">{metricLabel(metric)}</span>
+          <span className="mono">{metricLabel(metric, t)}</span>
         </span>
       </div>
     </div>
@@ -112,16 +114,16 @@ function barWidth(count: number): number {
   return Math.max(4, Math.min(28, (W - pad * 2) / Math.max(count, 1) - 4));
 }
 
-// metricLabel returns a stable label for the legend.
-function metricLabel(metric: ObservabilityMetric): string {
+// metricLabel returns the localized legend label of a metric.
+function metricLabel(metric: ObservabilityMetric, t: (key: string) => string): string {
   switch (metric) {
     case 'latency':
-      return 'p95 latency (ms)';
+      return t('observability.metricLatency');
     case 'throughput':
-      return 'requests/sec';
+      return t('observability.metricThroughput');
     case 'errorRate':
-      return 'error rate (%)';
+      return t('observability.metricErrorRate');
     default:
-      return 'output tokens/sec';
+      return t('observability.metric.tokens');
   }
 }

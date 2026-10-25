@@ -4,6 +4,7 @@
 // label. No charting dependency.
 
 import type { TraceSpan } from '../api';
+import { useI18n } from '../i18n';
 
 interface Props {
   spans: TraceSpan[];
@@ -11,6 +12,7 @@ interface Props {
 }
 
 export default function TraceWaterfall({ spans, totalMs }: Props) {
+  const { t } = useI18n();
   const width = 720;
   const rowHeight = 28;
   const labelWidth = 120;
@@ -28,7 +30,7 @@ export default function TraceWaterfall({ spans, totalMs }: Props) {
       viewBox={`0 0 ${width} ${height}`}
       data-testid="trace-waterfall"
       role="img"
-      aria-label="Trace span waterfall"
+      aria-label={t('traces.waterfallAria')}
     >
       {spans.map((span, i) => {
         const start = parseInt(span.startOffsetMs || '0', 10);

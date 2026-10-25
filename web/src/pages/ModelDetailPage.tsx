@@ -67,7 +67,7 @@ export default function ModelDetailPage() {
             {model.model.name}
             {model.model.external && (
               <span className="badge external" data-testid="model-detail-external-marker">
-                External
+                {t('modeldetail.external')}
               </span>
             )}
             {model.model.restricted && (
@@ -85,7 +85,7 @@ export default function ModelDetailPage() {
             {model.model.external && (
               <span data-testid="model-detail-provider-name">
                 {' '}
-                · Provided by {model.model.providerName} (external)
+                · {t('modeldetail.providedBy', { name: model.model.providerName || '' })}
               </span>
             )}
           </div>
@@ -106,6 +106,12 @@ export default function ModelDetailPage() {
       <div className="panel" style={{ marginBottom: 16 }}>
         <h3 style={{ marginTop: 0 }}>{t('modeldetail.metadata')}</h3>
         <div className="detail-grid">
+          <div className="detail-item">
+            <div className="label">{t('modeldetail.hubModelId')}</div>
+            <div className="value mono" data-testid="model-hub-model-id">
+              {model.model.hubModelId || '—'}
+            </div>
+          </div>
           <div className="detail-item">
             <div className="label">{t('modeldetail.latestVersion')}</div>
             <div className="value mono" data-testid="model-latest-version">

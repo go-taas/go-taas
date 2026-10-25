@@ -19,6 +19,7 @@ import {
   type VGPUPool,
 } from '../api';
 import { Dialog, ErrorBanner } from '../components';
+import { useI18n } from '../i18n';
 
 interface ImageEntry {
   imageId: string;
@@ -59,7 +60,8 @@ export default function DeployDialog({
   initialVersion: string;
   onClose: () => void;
   onDeployed: (serviceId: string) => void;
-}) {
+}) {  const { t } = useI18n();
+
   const [authorizedModels, setAuthorizedModels] = useState<ModelSummary[]>([]);
   const [selectedModelId, setSelectedModelId] = useState(modelId);
   const [version, setVersion] = useState(initialVersion);
@@ -202,7 +204,7 @@ export default function DeployDialog({
       setSliceError('');
     }
     // Feature #16 FR1.3: validate the autoscaling section inline.
-    const asErrs = validateAutoscaling(autoscaling);
+    const asErrs = validateAutoscaling(autoscaling, t);
     setAutoscalingErrors(asErrs);
     if (Object.keys(asErrs).length > 0) {
       setError('Fix the autoscaling fields.');
@@ -239,7 +241,7 @@ export default function DeployDialog({
     <Dialog title={`Deploy ${title}`} onClose={onClose} testId="deploy-dialog">
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="deploy-model">Model (authorized for this organization)</label>
+          <label htmlFor="deploy-model">{t('deploy.model')}</label>
           <select
             id="deploy-model"
             data-testid="deploy-model-select"
@@ -256,13 +258,13 @@ export default function DeployDialog({
             {authorizedModels.map((m) => (
               <option key={m.modelId} value={m.modelId}>
                 {m.name}
-                {m.restricted ? ' (restricted)' : ''}
+                {m.restricted ? ` ${t('models.restricted')}` : ''}
               </option>
             ))}
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-version">Model version</label>
+          <label htmlFor="deploy-version">{t('deploy.version')}</label>
           <input
             id="deploy-version"
             data-testid="deploy-version-input"
@@ -271,7 +273,7 @@ export default function DeployDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-accelerator">Accelerator</label>
+          <label htmlFor="deploy-accelerator">{t('deploy.accelerator')}</label>
           <select
             id="deploy-accelerator"
             data-testid="deploy-accelerator-select"
@@ -286,14 +288,14 @@ export default function DeployDialog({
           </select>
         </div>
         <div className="form-field full">
-          <label htmlFor="deploy-image">Image (filtered by accelerator)</label>
+          <label htmlFor="deploy-image">{t('deploy.image')}</label>
           <select
             id="deploy-image"
             data-testid="deploy-image-select"
             value={imageId}
             onChange={(e) => setImageId(e.target.value)}
           >
-            {compatible.length === 0 && <option value="">No compatible image</option>}
+            {compatible.length === 0 && <option value="">{t('deploy.noCompatibleImage')}</option>}
             {compatible.map((i) => (
               <option key={i.imageId} value={i.imageId}>
                 {i.name}:{i.tag} ({i.engine})
@@ -302,29 +304,29 @@ export default function DeployDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-name">Service name</label>
+          <label htmlFor="deploy-name">{t('deploy.serviceName')}</label>
           <input
             id="deploy-name"
             data-testid="deploy-name-input"
             value={name}
             maxLength={63}
             onChange={(e) => setName(e.target.value)}
-            placeholder="e.g. qwen-32b-prod"
+            placeholder={t('deploy.placeholderServiceName')}
           />
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-card-type">Card type (optional)</label>
+          <label htmlFor="deploy-card-type">{t('deploy.cardType')}</label>
           <input
             id="deploy-card-type"
             data-testid="deploy-card-type-input"
             value={acceleratorType}
             maxLength={64}
             onChange={(e) => setAcceleratorType(e.target.value)}
-            placeholder="e.g. A800"
+            placeholder={t('deploy.placeholderCardType')}
           />
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-replicas">Replicas (1-100)</label>
+          <label htmlFor="deploy-replicas">{t('deploy.replicas')}</label>
           <input
             id="deploy-replicas"
             data-testid="deploy-replicas-input"
@@ -337,10 +339,10 @@ export default function DeployDialog({
         </div>
       </div>
 
-      <h4 style={{ marginBottom: 8 }}>Shared GPU</h4>
+      <h4 style={{ marginBottom: 8 }}>{t('deploy.sharedGpu')}</h4>
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="deploy-shared-gpu">Shared GPU (vGPU slice)</label>
+          <label htmlFor="deploy-shared-gpu">{t('deploy.sharedGpuSlice')}</label>
           <input
             id="deploy-shared-gpu"
             data-testid="deploy-shared-gpu-toggle"
@@ -358,14 +360,14 @@ export default function DeployDialog({
         {sharedGpu && (
           <>
             <div className="form-field">
-              <label htmlFor="deploy-pool">vGPU pool</label>
+              <label htmlFor="deploy-pool">{t('deploy.vgpuPool')}</label>
               <select
                 id="deploy-pool"
                 data-testid="deploy-pool-select"
                 value={poolId}
                 onChange={(e) => setPoolId(e.target.value)}
               >
-                <option value="">Select a pool</option>
+                <option value="">{t('deploy.selectPool')}</option>
                 {pools.map((p) => (
                   <option key={p.poolId} value={p.poolId}>
                     {p.name}
@@ -374,7 +376,7 @@ export default function DeployDialog({
               </select>
             </div>
             <div className="form-field">
-              <label htmlFor="deploy-slice-template">Slice template</label>
+              <label htmlFor="deploy-slice-template">{t('deploy.sliceTemplate')}</label>
               <select
                 id="deploy-slice-template"
                 data-testid="deploy-slice-template-select"
@@ -383,7 +385,7 @@ export default function DeployDialog({
               >
                 {(selectedPool?.templates || []).map((tpl) => (
                   <option key={tpl.name} value={tpl.name}>
-                    {tpl.name} — {tpl.memoryGib} GiB / {tpl.computePct}% compute
+                    {tpl.name} — {tpl.memoryGib} GiB / {tpl.computePct}% {t('deploy.compute')}
                   </option>
                 ))}
               </select>
@@ -391,18 +393,17 @@ export default function DeployDialog({
             </div>
             <div className="form-field full">
               <div className="muted" data-testid="deploy-shared-gpu-note">
-                This service will share a physical GPU with other services. Memory and compute
-                are isolated best-effort; performance is not guaranteed.
+                {t('deploy.sharedGpuNote')}
               </div>
             </div>
           </>
         )}
       </div>
 
-      <h4 style={{ marginBottom: 8 }}>Autoscaling</h4>
+      <h4 style={{ marginBottom: 8 }}>{t('deploy.autoscaling')}</h4>
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="deploy-as-enabled">Enabled</label>
+          <label htmlFor="deploy-as-enabled">{t('common.enabled')}</label>
           <input
             id="deploy-as-enabled"
             data-testid="deploy-as-enabled"
@@ -412,7 +413,7 @@ export default function DeployDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-min">Min replicas</label>
+          <label htmlFor="deploy-as-min">{t('deploy.minReplicas')}</label>
           <input
             id="deploy-as-min"
             data-testid="deploy-as-min"
@@ -428,7 +429,7 @@ export default function DeployDialog({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-max">Max replicas</label>
+          <label htmlFor="deploy-as-max">{t('deploy.maxReplicas')}</label>
           <input
             id="deploy-as-max"
             data-testid="deploy-as-max"
@@ -444,7 +445,7 @@ export default function DeployDialog({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-target">Target concurrency</label>
+          <label htmlFor="deploy-as-target">{t('deploy.targetConcurrency')}</label>
           <input
             id="deploy-as-target"
             data-testid="deploy-as-target"
@@ -460,7 +461,7 @@ export default function DeployDialog({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-scale-to-zero">Scale to zero</label>
+          <label htmlFor="deploy-as-scale-to-zero">{t('deploy.scaleToZero')}</label>
           <input
             id="deploy-as-scale-to-zero"
             data-testid="deploy-as-scale-to-zero"
@@ -474,7 +475,7 @@ export default function DeployDialog({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-cooldown">Cooldown seconds</label>
+          <label htmlFor="deploy-as-cooldown">{t('deploy.cooldown')}</label>
           <input
             id="deploy-as-cooldown"
             data-testid="deploy-as-cooldown"
@@ -493,14 +494,14 @@ export default function DeployDialog({
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
-          Cancel
+          {t('common.cancel')}
         </button>
         <button
           data-testid="submit-deploy"
           disabled={submitting}
           onClick={() => void submit()}
         >
-          {submitting ? 'Deploying…' : 'Deploy'}
+          {submitting ? t('deploy.deploying') : t('models.deploy')}
         </button>
       </div>
     </Dialog>
@@ -509,13 +510,16 @@ export default function DeployDialog({
 
 // validateAutoscaling mirrors the server-side validation matrix
 // (feature #16, §5.3).
-function validateAutoscaling(p: AutoscalingPolicy): Record<string, string> {
+function validateAutoscaling(
+  p: AutoscalingPolicy,
+  t: (key: string) => string,
+): Record<string, string> {
   const errs: Record<string, string> = {};
-  if (p.minReplicas > p.maxReplicas) errs.maxReplicas = 'Max replicas must be ≥ min replicas and ≤ 100.';
-  if (p.minReplicas === 0 && !p.scaleToZero) errs.minReplicas = 'Min replicas must be 0 to enable scale-to-zero.';
-  if (p.scaleToZero && p.minReplicas !== 0) errs.scaleToZero = 'Set min replicas to 0 to enable scale-to-zero.';
-  if (p.targetConcurrency < 1 || p.targetConcurrency > 1000) errs.targetConcurrency = 'Target concurrency must be between 1 and 1000.';
-  if (p.cooldownSeconds < 0 || p.cooldownSeconds > 3600) errs.cooldownSeconds = 'Cooldown must be between 0 and 3600 seconds.';
-  if (p.maxReplicas < 1 || p.maxReplicas > 100) errs.maxReplicas = 'Max replicas must be ≥ min replicas and ≤ 100.';
+  if (p.minReplicas > p.maxReplicas) errs.maxReplicas = t('deploy.errorMaxReplicas');
+  if (p.minReplicas === 0 && !p.scaleToZero) errs.minReplicas = t('deploy.errorMinZero');
+  if (p.scaleToZero && p.minReplicas !== 0) errs.scaleToZero = t('deploy.errorScaleToZero');
+  if (p.targetConcurrency < 1 || p.targetConcurrency > 1000) errs.targetConcurrency = t('deploy.errorTargetConcurrency');
+  if (p.cooldownSeconds < 0 || p.cooldownSeconds > 3600) errs.cooldownSeconds = t('deploy.errorCooldown');
+  if (p.maxReplicas < 1 || p.maxReplicas > 100) errs.maxReplicas = t('deploy.errorMaxReplicas');
   return errs;
 }
