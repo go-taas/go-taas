@@ -123,24 +123,42 @@ func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolve
 // SetSessionRolesResolver injects the caller-roles resolver.
 func (s *Service) SetSessionRolesResolver(r SessionRolesResolver) { s.sessionRolesResolver = r }
 
-// isPlatformAdmin reports whether the caller's session carries the
-// platform-admin role.
-func (s *Service) isPlatformAdmin(ctx context.Context) bool {
+// IsPlatformAdmin reports whether the caller's session carries the
+// platform-admin role. It is the exported seam other modules inject to
+// decide whether the operator surface is platform-wide (the caller manages
+// every organization) or organization-scoped.
+func (s *Service) IsPlatformAdmin(ctx context.Context) (bool, error) {
 	if s.sessionRolesResolver == nil {
-		// No resolver wired (unit tests): allow, matching the other
-		// nil-guard conventions.
-		return true
+		// No resolver wired (unit tests): not a platform admin. The
+		// nil-guard convention elsewhere is permissive; this one is not,
+		// because being wrong here widens the visible blast radius.
+		return false, nil
 	}
 	roles, err := s.sessionRolesResolver.SessionRoles(ctx)
 	if err != nil {
-		return false
+		return false, err
 	}
 	for _, r := range roles {
 		if r == RolePlatformAdmin {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, nil
+}
+
+// callerIsPlatformAdmin reports whether the caller's session carries the
+// platform-admin role, permissively: with no resolver wired (unit tests) the
+// caller is treated as a platform administrator, matching the other
+// nil-guard conventions of this package.
+func (s *Service) callerIsPlatformAdmin(ctx context.Context) bool {
+	if s.sessionRolesResolver == nil {
+		return true
+	}
+	ok, err := s.IsPlatformAdmin(ctx)
+	if err != nil {
+		return false
+	}
+	return ok
 }
 
 // SetSessionOrgResolver injects the session active-org resolver
@@ -255,7 +273,7 @@ func (s *Service) repository() (*Repository, error) {
 // (validation matrix: architecture Section 4.3, AC1).
 func (s *Service) CreateOrganization(ctx context.Context, req *tenancyv1.CreateOrganizationRequest) (*tenancyv1.CreateOrganizationResponse, error) {
 	// Only platform administrators may create organizations.
-	if !s.isPlatformAdmin(ctx) {
+	if !s.callerIsPlatformAdmin(ctx) {
 		return nil, apierrors.New(apierrors.CodeForbidden)
 	}
 	id := strings.TrimSpace(req.GetOrganizationId())

@@ -8,7 +8,6 @@ import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
 import { realmLoginPath } from '../surface-routes';
-import { OrgSwitcher } from '../org';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
@@ -165,7 +164,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
-        <OrgSwitcher />
         {getSessionToken(realm) && (
           <div className="account-card" data-testid="admin-account-block">
             {session && (

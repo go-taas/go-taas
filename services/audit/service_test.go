@@ -486,3 +486,35 @@ func TestResolveErrors(t *testing.T) {
 	_, err = svc.ListMyActivity(context.Background(), &auditv1.ListMyActivityRequest{})
 	assertCode(t, err, apierrors.CodeUnauthorized)
 }
+
+// fakePlatformAdmin reports a fixed platform-administrator verdict.
+type fakePlatformAdmin struct{ admin bool }
+
+func (f fakePlatformAdmin) IsPlatformAdmin(context.Context) (bool, error) { return f.admin, nil }
+
+// TestListAuditEventsPlatformWide verifies a platform administrator's
+// governance view spans every organization (the console has no organization
+// switcher), while an organization-scoped caller stays confined to its own.
+func TestListAuditEventsPlatformWide(t *testing.T) {
+	svc := newServiceTestEnv(t)
+	ctx := withOrg(context.Background(), "org-a")
+
+	for _, org := range []string{"org-a", "org-b"} {
+		_, err := svc.RecordAuditEvent(ctx, &auditv1.RecordAuditEventRequest{
+			OrganizationId: org, ActorUserId: "u1", ActorType: auditv1.AuditActorType_AUDIT_ACTOR_TYPE_USER,
+			Action: "auth.login", ResourceType: "session", Result: auditv1.AuditResult_AUDIT_RESULT_SUCCESS,
+		})
+		require.NoError(t, err)
+	}
+
+	// Organization-scoped: only org-a's event.
+	scoped, err := svc.ListAuditEvents(ctx, &auditv1.ListAuditEventsRequest{})
+	require.NoError(t, err)
+	assert.Len(t, scoped.GetAuditEvents(), 1)
+
+	// Platform admin: both organizations' events.
+	svc.SetPlatformAdminResolver(fakePlatformAdmin{admin: true})
+	all, err := svc.ListAuditEvents(ctx, &auditv1.ListAuditEventsRequest{})
+	require.NoError(t, err)
+	assert.Len(t, all.GetAuditEvents(), 2)
+}

@@ -129,15 +129,6 @@ export default function ModelsPage() {
                         {t('modeldetail.external')}
                       </span>
                     )}
-                    {m.restricted && (
-                      <span
-                        className="badge restricted"
-                        data-testid="model-restricted-badge"
-                        title={t('models.restrictedTooltip')}
-                      >
-                        {t('models.restricted')}
-                      </span>
-                    )}
                   </td>
                   <td className="mono muted" data-testid={`model-hub-id-${m.name}`}>
                     {m.hubModelId || '—'}

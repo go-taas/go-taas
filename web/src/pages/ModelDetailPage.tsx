@@ -11,7 +11,6 @@ import { useI18n } from '../i18n';
 import { usePolling } from '../components';
 import { BackLink, ErrorBanner } from '../components';
 import DeployDialog from '../components/DeployDialog';
-import ModelAuthorizationsPanel from '../components/ModelAuthorizationsPanel';
 
 interface ModelResponse {
   response: { code: number; message: string };
@@ -68,15 +67,6 @@ export default function ModelDetailPage() {
             {model.model.external && (
               <span className="badge external" data-testid="model-detail-external-marker">
                 {t('modeldetail.external')}
-              </span>
-            )}
-            {model.model.restricted && (
-              <span
-                className="badge restricted"
-                data-testid="model-restricted-badge"
-                title={t('modeldetail.restrictedTooltip')}
-              >
-                {t('modeldetail.restricted')}
               </span>
             )}
           </h1>
@@ -180,12 +170,6 @@ export default function ModelDetailPage() {
           }}
         />
       )}
-
-      <ModelAuthorizationsPanel
-        orgId={orgId}
-        modelId={model.model.modelId}
-        onChanged={() => void load()}
-      />
     </div>
   );
 }

@@ -242,6 +242,9 @@ export interface InferenceServiceSummary {
   minReplicas?: number;
   maxReplicas?: number;
   autoscalingState?: string;
+  // organizationId is the owning organization. The admin list is
+  // platform-wide, so each row names its organization.
+  organizationId?: string;
 }
 
 // ---- inference autoscaling (feature #16) ----

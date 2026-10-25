@@ -3,14 +3,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type OrgMember } from '../api';
-import { useOrg } from '../org';
+import { OrganizationPicker, useOrganizationPicker } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
 export default function MembersPage() {
-  const { orgId } = useOrg();
+  const { orgId, orgs, choose } = useOrganizationPicker();
   const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,9 +96,17 @@ export default function MembersPage() {
             dangerouslySetInnerHTML={{ __html: t('members.subtitle', { orgId }) }}
           />
         </div>
-        <button data-testid="add-member-button" onClick={() => setAddOpen(true)}>
-          {t('members.add')}
-        </button>
+        <div className="toolbar">
+          <OrganizationPicker
+            orgs={orgs}
+            value={orgId}
+            onChange={choose}
+            testId="members-org-picker"
+          />
+          <button data-testid="add-member-button" onClick={() => setAddOpen(true)}>
+            {t('members.add')}
+          </button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}

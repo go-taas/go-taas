@@ -306,6 +306,9 @@ func main() {
 			// compare RPCs by the caller's role (AD).
 			inferSvc.SetSessionUserResolver(authSvc)
 			inferSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// The operator surface is platform-wide: a platform admin lists
+			// every organization's inference services.
+			inferSvc.SetPlatformAdminResolver(tenancySvc)
 			// Feature #25: the billing service resolves the session's
 			// active org and caller, and gates the admin billing-report
 			// RPCs by the caller's role (AD6).
@@ -340,6 +343,8 @@ func main() {
 			auditSvc.SetSessionUserResolver(authSvc)
 			// The audit log shows actors by display name, not UUID.
 			auditSvc.SetActorLabelResolver(authSvc)
+			// A platform administrator's audit log spans every organization.
+			auditSvc.SetPlatformAdminResolver(tenancySvc)
 			auditSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			// Feature #23: the webhook service resolves the session's
 			// active org and caller, gates the admin webhook RPCs by the

@@ -91,6 +91,7 @@ export default function InferenceServicesPage() {
             <thead>
               <tr>
                 <th>{t('services.colName')}</th>
+                <th>{t('services.colOrganization')}</th>
                 <th>{t('services.colModel')}</th>
                 <th>{t('services.colReplicas')}</th>
                 <th>{t('services.colState')}</th>
@@ -111,6 +112,7 @@ export default function InferenceServicesPage() {
                     <strong>{s.name}</strong>
                     <ServiceStatusBanner serviceId={s.serviceId} />
                   </td>
+                  <td className="mono muted">{s.organizationId || '—'}</td>
                   <td className="mono muted">
                     {s.modelId.slice(0, 8)}… @ {s.modelVersion}
                   </td>

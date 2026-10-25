@@ -138,6 +138,25 @@ func (r *InferenceServiceRepository) ListByOrganization(ctx context.Context, org
 	return r.Paginate(ctx, offset, limit, conds, "updated_at DESC", "id DESC")
 }
 
+// ListAll returns one page of every organization's services ordered by
+// updated_at DESC (newest first) and the total count: the platform-admin
+// view of the operator surface, which is not organization-isolated. An
+// empty orgFilter lists every organization.
+func (r *InferenceServiceRepository) ListAll(ctx context.Context, orgFilter string, offset, limit int, includeTerminated bool) ([]*InferenceService, int64, error) {
+	var conds []any
+	switch {
+	case orgFilter != "" && !includeTerminated:
+		conds = []any{"organization_id = ? AND state != ?", orgFilter, StateTerminated}
+	case orgFilter != "":
+		conds = []any{"organization_id = ?", orgFilter}
+	case !includeTerminated:
+		conds = []any{"state != ?", StateTerminated}
+	default:
+		conds = nil
+	}
+	return r.Paginate(ctx, offset, limit, conds, "updated_at DESC", "id DESC")
+}
+
 // UpdateReplicas applies a spec-only replica update (state untouched).
 func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, serviceID string, replicas int) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {

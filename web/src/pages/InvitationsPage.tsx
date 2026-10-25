@@ -4,14 +4,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type Invitation } from '../api';
-import { useOrg } from '../org';
+import { OrganizationPicker, useOrganizationPicker } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
 export default function InvitationsPage() {
-  const { orgId } = useOrg();
+  const { orgId, orgs, choose } = useOrganizationPicker();
   const { t, tEnum } = useI18n();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -103,9 +103,17 @@ export default function InvitationsPage() {
             dangerouslySetInnerHTML={{ __html: t('invitations.subtitle', { orgId }) }}
           />
         </div>
-        <button data-testid="invite-button" onClick={() => setInviteOpen(true)}>
-          {t('invitations.invite')}
-        </button>
+        <div className="toolbar">
+          <OrganizationPicker
+            orgs={orgs}
+            value={orgId}
+            onChange={choose}
+            testId="invitations-org-picker"
+          />
+          <button data-testid="invite-button" onClick={() => setInviteOpen(true)}>
+            {t('invitations.invite')}
+          </button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}

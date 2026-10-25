@@ -665,3 +665,38 @@ func TestStatusConsumerHandle(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StateRunning, row.State)
 }
+
+// fakePlatformAdmin reports a fixed platform-administrator verdict.
+type fakePlatformAdmin struct{ admin bool }
+
+func (f fakePlatformAdmin) IsPlatformAdmin(context.Context) (bool, error) { return f.admin, nil }
+
+// TestListInferenceServicesPlatformWide verifies the operator surface is not
+// organization-isolated: a platform administrator sees services of every
+// organization (so the console does not need an organization selector),
+// while an organization-scoped caller keeps the org view.
+func TestListInferenceServicesPlatformWide(t *testing.T) {
+	svc, _, db := newInferTestService(t)
+	svc.SetPlatformAdminResolver(fakePlatformAdmin{admin: true})
+	require.NoError(t, db.Create(&InferenceService{
+		ID: "svc-a", OrganizationID: "org-a", Name: "a", ModelID: "m",
+		ModelVersion: "v1", ImageID: "img-vllm-nvidia", Replicas: 1, State: StateRunning,
+	}).Error)
+	require.NoError(t, db.Create(&InferenceService{
+		ID: "svc-b", OrganizationID: "org-b", Name: "b", ModelID: "m",
+		ModelVersion: "v1", ImageID: "img-vllm-nvidia", Replicas: 1, State: StateRunning,
+	}).Error)
+
+	list, err := svc.ListInferenceServices(orgContext("org-a"), &inferv1.ListInferenceServicesRequest{})
+	require.NoError(t, err)
+	assert.Len(t, list.GetServices(), 2, "both organizations' services are listed")
+
+	// The optional filter narrows to one organization.
+	filtered, err := svc.ListInferenceServices(orgContext("org-a"), &inferv1.ListInferenceServicesRequest{
+		OrganizationId: "org-b",
+	})
+	require.NoError(t, err)
+	require.Len(t, filtered.GetServices(), 1)
+	assert.Equal(t, "svc-b", filtered.GetServices()[0].GetServiceId())
+	assert.Equal(t, "org-b", filtered.GetServices()[0].GetOrganizationId())
+}

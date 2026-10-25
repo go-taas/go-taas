@@ -37,6 +37,97 @@ export function useOrg() {
   return useContext(OrgContext);
 }
 
+// useOrganizationPicker is the per-page organization selector for the
+// pages that are inherently scoped to one organization (its member roster,
+// its invitation pipeline). The admin console no longer renders a global
+// organization switcher — a platform administrator manages every
+// organization, and the platform-wide catalogs (models, images, inference
+// services) are not organization-scoped — so the choice belongs on the page
+// that needs it.
+//
+// The selected organization defaults to the session's active organization
+// (so it matches what the server resolves) and falls back to the first
+// organization in the directory.
+export function useOrganizationPicker(initial = '') {
+  const realm = useRealm();
+  const api = useApi();
+  const { orgId, setOrgId } = useOrg();
+  const [orgs, setOrgs] = useState<OrganizationSummary[]>([]);
+  const [selected, setSelected] = useState(initial || orgId);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const data = await api.get<{ organizations: OrganizationSummary[] }>(
+          '/api/v1/admin/tenancy/organizations?page.limit=100',
+          orgId,
+        );
+        if (cancelled) return;
+        const list = data.organizations || [];
+        setOrgs(list);
+        setSelected((prev) => {
+          if (prev && list.some((o) => o.organizationId === prev)) return prev;
+          return list[0]?.organizationId || prev || '';
+        });
+      } catch {
+        // The directory is unavailable: keep whatever was selected so the
+        // page still renders (its requests will surface the real error).
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+    // Load once: the organization directory does not change per render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const choose = (id: string) => {
+    setSelected(id);
+    // Keep the realm context in sync so child dialogs use the same org.
+    setOrgId(id);
+  };
+
+  return { orgId: selected, orgs, loaded, choose, realm };
+}
+
+// OrganizationPicker renders the select of useOrganizationPicker.
+export function OrganizationPicker({
+  orgs,
+  value,
+  onChange,
+  testId = 'org-picker',
+}: {
+  orgs: OrganizationSummary[];
+  value: string;
+  onChange: (id: string) => void;
+  testId?: string;
+}) {
+  const { t } = useI18n();
+  return (
+    <label className="field">
+      <span>{t('org.organization')}</span>
+      <select data-testid={testId} value={value} onChange={(e) => onChange(e.target.value)}>
+        {orgs.length === 0 ? (
+          <option value={value}>{value || '—'}</option>
+        ) : (
+          orgs.map((o) => (
+            <option key={o.organizationId} value={o.organizationId}>
+              {o.displayName && o.displayName !== o.organizationId
+                ? `${o.displayName} (${o.organizationId})`
+                : o.organizationId}
+            </option>
+          ))
+        )}
+      </select>
+    </label>
+  );
+}
+
 // OrgSwitcher is the organization selector rendered in the sidebar. When
 // a session is present it lists the session's accessible orgs and
 // switching calls UpdateSessionOrg; when no session exists it falls back

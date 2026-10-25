@@ -124,6 +124,11 @@ type Service struct {
 	// no role check (unit tests).
 	roleGuard RoleGuard
 
+	// platformAdmin reports whether the caller is a platform
+	// administrator, whose operator surface is not organization-isolated.
+	// Nil until wired: the caller is treated as organization-scoped.
+	platformAdmin PlatformAdminResolver
+
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
@@ -284,6 +289,29 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 // SetRoleGuard injects the org role guard that gates the admin infer
 // RPCs by the caller's role (features #32/#33/#34/#35).
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// PlatformAdminResolver reports whether the caller carries the
+// platform-admin role. It is implemented by the tenancy module and injected
+// at wiring time, so the operator surface can list every organization's
+// inference services without importing tenancy's role model here.
+type PlatformAdminResolver interface {
+	IsPlatformAdmin(ctx context.Context) (bool, error)
+}
+
+// SetPlatformAdminResolver injects the platform-administrator check.
+func (s *Service) SetPlatformAdminResolver(r PlatformAdminResolver) { s.platformAdmin = r }
+
+// isPlatformAdmin reports whether the caller is a platform administrator.
+func (s *Service) isPlatformAdmin(ctx context.Context) bool {
+	if s.platformAdmin == nil {
+		return false
+	}
+	ok, err := s.platformAdmin.IsPlatformAdmin(ctx)
+	if err != nil {
+		return false
+	}
+	return ok
+}
 
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
@@ -827,7 +855,18 @@ func (s *Service) ListInferenceServices(ctx context.Context, req *inferv1.ListIn
 	}
 
 	offset, limit := normalizePagination(req.GetPage())
-	rows, total, err := repo.ListByOrganization(ctx, orgID, offset, limit, false)
+	// The operator surface is not organization-isolated: a platform
+	// administrator manages every organization's services, while an
+	// organization-scoped caller still sees only their own.
+	var (
+		rows  []*InferenceService
+		total int64
+	)
+	if s.isPlatformAdmin(ctx) {
+		rows, total, err = repo.ListAll(ctx, strings.TrimSpace(req.GetOrganizationId()), offset, limit, false)
+	} else {
+		rows, total, err = repo.ListByOrganization(ctx, orgID, offset, limit, false)
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -1589,6 +1628,7 @@ func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *infe
 		MinReplicas:        clampToInt32(min),
 		MaxReplicas:        clampToInt32(max),
 		AutoscalingState:   autoscalingStateProto(row.AutoscalingState),
+		OrganizationId:     row.OrganizationID,
 	}
 }
 

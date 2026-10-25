@@ -89,6 +89,11 @@ type Service struct {
 	// actorLabelResolver resolves user ids to display labels so the audit
 	// log shows people instead of UUIDs. Nil until wired.
 	actorLabelResolver ActorLabelResolver
+
+	// platformAdmin reports whether the caller is a platform
+	// administrator, whose governance surface spans every organization.
+	// Nil until wired: the caller is treated as organization-scoped.
+	platformAdmin PlatformAdminResolver
 }
 
 // New constructs the audit service. The repository is wired lazily on
@@ -390,9 +395,11 @@ func (s *Service) ListAuditEvents(ctx context.Context, req *auditv1.ListAuditEve
 	offset, limit := normalizePagination(req.GetPage())
 	// Org isolation (AC8): when the request does not name an org, scope
 	// the list to the caller's resolved org so a caller never sees
-	// events for orgs they cannot access.
+	// events for orgs they cannot access — except a platform
+	// administrator, whose governance surface covers every organization
+	// (the console no longer renders an organization switcher).
 	orgFilter := req.GetOrganizationId()
-	if orgFilter == "" {
+	if orgFilter == "" && !s.isPlatformAdmin(ctx) {
 		orgFilter = orgID
 	}
 
@@ -699,4 +706,27 @@ func (s *Service) actorLabels(ctx context.Context, rows []*AuditEvent) map[strin
 		return nil
 	}
 	return labels
+}
+
+// PlatformAdminResolver reports whether the caller carries the
+// platform-admin role. It is implemented by the tenancy module and injected
+// at wiring time so the governance surface can span every organization
+// without importing tenancy's role model here.
+type PlatformAdminResolver interface {
+	IsPlatformAdmin(ctx context.Context) (bool, error)
+}
+
+// SetPlatformAdminResolver injects the platform-administrator check.
+func (s *Service) SetPlatformAdminResolver(r PlatformAdminResolver) { s.platformAdmin = r }
+
+// isPlatformAdmin reports whether the caller is a platform administrator.
+func (s *Service) isPlatformAdmin(ctx context.Context) bool {
+	if s.platformAdmin == nil {
+		return false
+	}
+	ok, err := s.platformAdmin.IsPlatformAdmin(ctx)
+	if err != nil {
+		return false
+	}
+	return ok
 }

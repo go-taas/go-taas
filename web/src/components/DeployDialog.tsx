@@ -165,14 +165,11 @@ export default function DeployDialog({
   }, [orgId]);
 
   useEffect(() => {
-    // FR5.3: the picker only offers models the current organization may
-    // use. A failure leaves the dialog usable with the pre-selected model
-    // (the server rejects an unauthorized deploy anyway).
+    // The model catalog is platform-wide: models, images and inference
+    // services are operator-owned resources, so the picker offers every
+    // registered model rather than one organization's subset.
     api
-      .get<ListModelsResponse>(
-        `/api/v1/admin/models?organization_id=${encodeURIComponent(orgId)}&page.limit=100`,
-        orgId,
-      )
+      .get<ListModelsResponse>('/api/v1/admin/models?page.limit=200', orgId)
       .then((data) => setAuthorizedModels(data.models || []))
       .catch(() => setAuthorizedModels([]));
   }, [orgId]);
@@ -264,7 +261,7 @@ export default function DeployDialog({
     <Dialog title={t('deploy.title', { name: title })} onClose={onClose} testId="deploy-dialog">
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="deploy-model">{t('deploy.model')}</label>
+          <label htmlFor="deploy-model">{t('deploy.modelAny')}</label>
           <select
             id="deploy-model"
             data-testid="deploy-model-select"
@@ -281,7 +278,6 @@ export default function DeployDialog({
             {authorizedModels.map((m) => (
               <option key={m.modelId} value={m.modelId}>
                 {m.name}
-                {m.restricted ? ` ${t('models.restricted')}` : ''}
               </option>
             ))}
           </select>
