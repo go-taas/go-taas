@@ -1,3 +1,10 @@
+## [1.79.2](https://github.com/go-taas/go-taas/compare/v1.79.1...v1.79.2) (2026-10-25)
+
+
+### Bug Fixes
+
+* **controller:** make deployed models routable through the serving gateway ([353fe78](https://github.com/go-taas/go-taas/commit/353fe787216d5d08b75ffab7e6ab719c90694d81))
+
 ## [1.79.1](https://github.com/go-taas/go-taas/compare/v1.79.0...v1.79.1) (2026-10-25)
 
 
