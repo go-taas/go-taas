@@ -1,3 +1,12 @@
+## [1.79.1](https://github.com/go-taas/go-taas/compare/v1.79.0...v1.79.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** use the served model name in the quickstart snippet ([bdfcfd9](https://github.com/go-taas/go-taas/commit/bdfcfd9207f5842ee292acf400050611061e891d))
+* **infer:** derive the quickstart endpoint instead of failing with 500 ([3424d0a](https://github.com/go-taas/go-taas/commit/3424d0a2d82593c5f61f8b74656e81efd6dedf36))
+* **k8s:** omit the default :80 from the discovered gateway URL ([31b9730](https://github.com/go-taas/go-taas/commit/31b9730a3f279ecb4e8e109126b0949c07f36762))
+
 # [1.79.0](https://github.com/go-taas/go-taas/compare/v1.78.2...v1.79.0) (2026-10-25)
 
 
