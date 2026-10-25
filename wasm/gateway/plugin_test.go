@@ -522,3 +522,73 @@ func localResponseBody(t *testing.T, host proxytest.HostEmulator, id uint32) str
 	}
 	return ""
 }
+
+// TestRequestsUsageOnAStreamedResponse closes the gap that made streaming
+// unmetered: an OpenAI-compatible engine omits `usage` from a stream unless
+// the caller asks for it, so every `stream: true` request would reach the
+// ledger as zero tokens.
+func TestRequestsUsageOnAStreamedResponse(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	host.CallOnRequestHeaders(id, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+	host.CallOnRequestBody(id, []byte(`{"model":"m","stream":true}`), true)
+	callouts := host.GetCalloutAttributesFromContext(id)
+	require.Len(t, callouts, 1)
+	host.CallOnHttpCallResponse(callouts[0].CalloutID, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+
+	body := string(host.GetCurrentRequestBody(id))
+	assert.Contains(t, body, `"include_usage":true`, "the engine must be asked for usage")
+	assert.Contains(t, body, `"stream":true`, "and the stream flag must survive")
+}
+
+// TestKeepsTheCallersStreamOptions proves the plugin completes the request
+// rather than overriding it: a caller who set the flag keeps their value.
+func TestKeepsTheCallersStreamOptions(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	original := `{"model":"m","stream":true,"stream_options":{"include_usage":false}}`
+	host.CallOnRequestHeaders(id, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+	host.CallOnRequestBody(id, []byte(original), true)
+	callouts := host.GetCalloutAttributesFromContext(id)
+	require.Len(t, callouts, 1)
+	host.CallOnHttpCallResponse(callouts[0].CalloutID, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+
+	assert.Equal(t, original, string(host.GetCurrentRequestBody(id)),
+		"an explicit stream_options must be left alone")
+}
+
+// TestLeavesANonStreamingRequestAlone keeps a plain completion untouched.
+func TestLeavesANonStreamingRequestAlone(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	original := `{"model":"m","messages":[]}`
+	host.CallOnRequestHeaders(id, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+	host.CallOnRequestBody(id, []byte(original), true)
+	callouts := host.GetCalloutAttributesFromContext(id)
+	require.Len(t, callouts, 1)
+	host.CallOnHttpCallResponse(callouts[0].CalloutID, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+
+	assert.Equal(t, original, string(host.GetCurrentRequestBody(id)))
+}
+
+// TestEnsureStreamUsageFormatting covers the splice on differently formatted
+// bodies, including the empty-object case that must not gain a leading comma.
+func TestEnsureStreamUsageFormatting(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		{`{"stream":true}`, `{"stream":true,"stream_options":{"include_usage":true}}`},
+		{`{"stream":true }`, `{"stream":true,"stream_options":{"include_usage":true}}`},
+		{"{\n  \"stream\": true\n}", "{\n  \"stream\": true,\"stream_options\":{\"include_usage\":true}}"},
+		{`{"stream":false}`, `{"stream":false}`},
+		{`{"model":"m"}`, `{"model":"m"}`},
+	} {
+		got, changed := ensureStreamUsage(tc.in)
+		assert.Equal(t, tc.want, got, "input %q", tc.in)
+		assert.Equal(t, tc.in != tc.want, changed, "input %q", tc.in)
+	}
+}

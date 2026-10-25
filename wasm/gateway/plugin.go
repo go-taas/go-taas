@@ -312,14 +312,29 @@ func (h *httpContext) applyVerdict(v *verdict) {
 		h.rejectLocal(429, "rate limit exceeded", "rate_limit_error", "rate_limit_exceeded")
 		return
 	}
-	// Output-token cap: clamp rather than reject, as the contract promises.
-	if v.maxOutputTokensPerRequest > 0 && !h.bodyTooLarge && len(h.requestBody) > 0 {
-		if rewritten, changed, ok := clampMaxTokens(string(h.requestBody), v.maxOutputTokensPerRequest); ok && changed {
-			if err := proxywasm.ReplaceHttpRequestBody([]byte(rewritten)); err != nil {
-				proxywasm.LogWarnf("go-taas gateway plugin: clamp max_tokens: %v", err)
-			} else {
+	// Rewrite the request where it is safe and useful, then release it.
+	//
+	// Both rewrites work on one buffer: the token cap the platform asked for,
+	// and the usage flag that makes a streamed response report its tokens at
+	// all. Anything unreadable is left alone — a request that cannot be
+	// rewritten is still authenticated and routed.
+	if !h.bodyTooLarge && len(h.requestBody) > 0 {
+		body := string(h.requestBody)
+		changed := false
+		if v.maxOutputTokensPerRequest > 0 {
+			if rewritten, clamped, ok := clampMaxTokens(body, v.maxOutputTokensPerRequest); ok && clamped {
+				body, changed = rewritten, true
 				proxywasm.LogDebugf("go-taas gateway plugin: clamped max_tokens to %d",
 					v.maxOutputTokensPerRequest)
+			}
+		}
+		if rewritten, injected := ensureStreamUsage(body); injected {
+			body, changed = rewritten, true
+			proxywasm.LogDebugf("go-taas gateway plugin: requested usage on a streamed response")
+		}
+		if changed {
+			if err := proxywasm.ReplaceHttpRequestBody([]byte(body)); err != nil {
+				proxywasm.LogWarnf("go-taas gateway plugin: rewrite request body: %v", err)
 			}
 		}
 	}

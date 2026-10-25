@@ -209,3 +209,41 @@ func usageBody(rep *usageReport) []byte {
 	b.WriteString(`"}`)
 	return []byte(b.String())
 }
+
+// ensureStreamUsage adds `stream_options.include_usage` to a streaming
+// request that does not already ask for it.
+//
+// This is not cosmetic. An OpenAI-compatible engine omits `usage` from a
+// streamed response unless the caller requests it, so without this the
+// primary billing path — every `stream: true` request — would never be
+// metered, and the ledger would silently undercount exactly the traffic that
+// matters most. vLLM emits a final chunk carrying `usage` when the flag is
+// present.
+//
+// A caller that already set the field keeps their value, including an explicit
+// false: overriding it would be changing the caller's contract rather than
+// completing it.
+func ensureStreamUsage(body string) (string, bool) {
+	root, ok := parseJSON(body)
+	if !ok || root.kind != jsonObject {
+		return body, false
+	}
+	if !root.boolOr("stream") {
+		return body, false
+	}
+	if root.get("stream_options") != nil {
+		return body, false
+	}
+	trimmed := strings.TrimRight(body, " \t\r\n")
+	if len(trimmed) < 2 || trimmed[len(trimmed)-1] != '}' {
+		return body, false
+	}
+	inner := strings.TrimRight(trimmed[:len(trimmed)-1], " \t\r\n")
+	var b strings.Builder
+	b.WriteString(inner)
+	if !strings.HasSuffix(inner, "{") {
+		b.WriteString(",")
+	}
+	b.WriteString(`"stream_options":{"include_usage":true}}`)
+	return b.String(), true
+}
