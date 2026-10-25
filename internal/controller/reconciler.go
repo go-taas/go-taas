@@ -327,9 +327,17 @@ func (r *k8sReconciler) warmupNode(ctx context.Context, task warmupTask, node st
 	return warmupNodeResult{Node: node, State: "failed", Message: message}
 }
 
+// warmupTimeout bounds how long one node's helper pod may take. An
+// unreachable registry keeps the pod in ImagePullBackOff forever, so the
+// task must fail with the pull reason instead of staying "running".
+const warmupTimeout = 10 * time.Minute
+
 // awaitPodTerminal polls the pod until it reaches a terminal phase
 // (Succeeded/Failed) or a Running phase (pull done, container started).
+// It gives up after warmupTimeout with the current container wait reason.
 func (r *k8sReconciler) awaitPodTerminal(ctx context.Context, podName string) (corev1.PodPhase, string, error) {
+	ctx, cancel := context.WithTimeout(ctx, warmupTimeout)
+	defer cancel()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
@@ -348,7 +356,17 @@ func (r *k8sReconciler) awaitPodTerminal(ctx context.Context, podName string) (c
 		}
 		select {
 		case <-ctx.Done():
-			return "", "", fmt.Errorf("controller: pod %s not terminal before shutdown: %w", podName, ctx.Err())
+			// A timeout means the pull never completed; report the wait
+			// reason (e.g. ErrImagePull) so the console explains why.
+			latest, getErr := r.clientset.CoreV1().Pods(r.namespace).
+				Get(context.WithoutCancel(ctx), podName, metav1.GetOptions{})
+			if getErr == nil {
+				msg := podFailureMessage(latest)
+				return "", msg, fmt.Errorf("controller: image pull did not complete within %s: %s",
+					warmupTimeout, msg)
+			}
+			return "", "", fmt.Errorf("controller: pod %s not terminal within %s: %w",
+				podName, warmupTimeout, ctx.Err())
 		case <-ticker.C:
 			// keep polling
 		}

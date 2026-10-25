@@ -813,3 +813,36 @@ func TestChangeEventDecodeAutoscaling(t *testing.T) {
 	assert.Equal(t, 48, decoded.Autoscaling.TargetConcurrency)
 	assert.Equal(t, 200, decoded.Autoscaling.CooldownSeconds)
 }
+
+// TestAwaitPodTerminalReportsPullFailure verifies a pod stuck in
+// ImagePullBackOff fails with the pull reason instead of hanging the task
+// forever: the wait is bounded by warmupTimeout.
+func TestAwaitPodTerminalReportsPullFailure(t *testing.T) {
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{Name: "warmup-x", Namespace: "taas-infer"},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			ContainerStatuses: []corev1.ContainerStatus{{
+				State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{
+					Reason:  "ErrImagePull",
+					Message: `failed to resolve reference "hub.example.com/x": no such host`,
+				}},
+			}},
+		},
+	}
+	reconciler := &k8sReconciler{
+		clientset: fake.NewSimpleClientset(pod),
+		namespace: "taas-infer",
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately after the first poll so the bounded wait ends;
+	// the helper reads the latest pod and reports its wait reason.
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	_, msg, err := reconciler.awaitPodTerminal(ctx, "warmup-x")
+	require.Error(t, err)
+	assert.Contains(t, msg, "ErrImagePull")
+	assert.Contains(t, err.Error(), "image pull did not complete")
+}
