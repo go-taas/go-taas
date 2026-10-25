@@ -130,6 +130,9 @@ type k8sReconciler struct {
 	// cluster's nodes, so the deploy path does not list nodes per event.
 	accelKeyMu            sync.Mutex
 	resolvedAccelLabelKey string
+	// cardTypeLabelKeys caches card model -> node label key ("" = no node
+	// reports that card).
+	cardTypeLabelKeys map[string]string
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -915,8 +918,12 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 	// label selector so HAMI schedules only onto pool nodes.
 	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
 	annotations := map[string]string{}
-	nodeSelector := acceleratorNodeSelector(
-		r.acceleratorLabelKeyFor(ctx), evt.Accelerator, evt.AcceleratorType)
+	nodeSelector := acceleratorNodeSelector(r.acceleratorLabelKeyFor(ctx), evt.Accelerator)
+	if evt.AcceleratorType != "" {
+		if key := r.cardTypeLabelKeyFor(ctx, evt.AcceleratorType); key != "" {
+			nodeSelector[key] = evt.AcceleratorType
+		}
+	}
 	resources := engineResources(evt.Accelerator)
 	if slice {
 		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
@@ -1201,16 +1208,70 @@ func resourceLabels(evt changeEvent) map[string]string {
 	}
 }
 
-// acceleratorNodeSelector maps the accelerator request to node labels
-// using the given label key.
-func acceleratorNodeSelector(labelKey, accelerator, acceleratorType string) map[string]string {
-	selector := map[string]string{
-		labelKey: accelerator,
+// acceleratorNodeSelector maps the accelerator vendor request to a node
+// label selector. A card type is resolved separately (see
+// cardTypeLabelKeyFor) because the label that carries the card model is
+// vendor-specific, not derived from the vendor label key.
+func acceleratorNodeSelector(labelKey, accelerator string) map[string]string {
+	return map[string]string{labelKey: accelerator}
+}
+
+// cardModelLabelCandidates are the node label keys that may carry a card
+// model. The controller resolves a requested card type to the key a node
+// actually uses, so the pod pins a real label instead of a synthesized
+// "<vendor-label>-type" key that matches nothing.
+var cardModelLabelCandidates = []string{
+	"nvidia.com/gpu.product",
+	"nvidia.com/gpu.model",
+	"iluvatar.ai/gpu.product",
+	"iluvatar.ai/product",
+	"metax-tech.com/gpu.product",
+	"metax-tech.com/product",
+	"go-taas.com/accelerator-type",
+	"gpu-product",
+}
+
+// cardTypeLabelKeyFor returns the node label key whose value is the given
+// card type, or "" when no node reports that card. The answer is cached:
+// card models rarely change and the deploy path must not list nodes per
+// event. An unresolvable card type degrades the selector to the vendor
+// family instead of emitting an unsatisfiable label (which would leave the
+// pod Pending forever).
+func (r *k8sReconciler) cardTypeLabelKeyFor(ctx context.Context, cardType string) string {
+	if cardType == "" {
+		return ""
 	}
-	if acceleratorType != "" {
-		selector[labelKey+"-type"] = acceleratorType
+	r.accelKeyMu.Lock()
+	defer r.accelKeyMu.Unlock()
+	if r.cardTypeLabelKeys == nil {
+		r.cardTypeLabelKeys = map[string]string{}
 	}
-	return selector
+	if key, ok := r.cardTypeLabelKeys[cardType]; ok {
+		return key
+	}
+	nodes, err := r.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		// Do not cache a transient API failure.
+		return ""
+	}
+	resolved := ""
+	for _, key := range cardModelLabelCandidates {
+		for _, node := range nodes.Items {
+			if node.Labels[key] == cardType {
+				resolved = key
+				break
+			}
+		}
+		if resolved != "" {
+			break
+		}
+	}
+	r.cardTypeLabelKeys[cardType] = resolved
+	if resolved == "" {
+		logger.S().Warnw("controller: no node reports the requested card type, pinning the accelerator family only",
+			"card_type", cardType)
+	}
+	return resolved
 }
 
 // acceleratorLabelKeyFor resolves the node label key that carries the

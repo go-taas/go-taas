@@ -208,6 +208,14 @@ func (r *CompatibilityRepository) EnsureCell(ctx context.Context, modelID, engin
 	if cell != nil {
 		return cell, nil
 	}
+	// Backward compatibility: before card types became card models they
+	// were keyed by the device-plugin resource family ("gpu"). A decision
+	// an administrator recorded under that family still applies to the
+	// concrete card models of the same engine, so read it instead of
+	// materializing a fresh default that would silently override it.
+	if legacy, lerr := r.findCell(ctx, modelID, engine, legacyFamilyCardType); lerr == nil && legacy != nil {
+		return legacy, nil
+	}
 	// Validate the dimensions before materializing a default row.
 	engineAccs, err := r.validateDimensions(ctx, modelID, engine, cardType, cardTypes)
 	if err != nil {
@@ -297,6 +305,10 @@ func (r *CompatibilityRepository) validateDimensions(ctx context.Context, modelI
 	}
 	return engineAccs, nil
 }
+
+// legacyFamilyCardType is the card type older rows use: the device-plugin
+// resource family, before the inventory reported card models.
+const legacyFamilyCardType = "gpu"
 
 // cardTypeInCells reports whether any stored cell already uses the card
 // type, so a card type that left the fleet stays a valid dimension.

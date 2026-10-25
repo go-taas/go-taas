@@ -153,6 +153,12 @@ func nodeToInventory(n *corev1.Node) inventoryNode {
 	driverVersion := labels[labelDriverVersion]
 	devicePlugin := devicePluginFromNode(n, labels)
 
+	// The card type is the card model (nvidia.com/gpu.product =
+	// NVIDIA-GeForce-RTX-4090, ...), not the device-plugin resource family
+	// ("gpu"): the compatibility matrix and the deploy form are keyed by
+	// card type, and "gpu" cannot tell an A800 from a 4090.
+	model := cardModelFromNode(vendor, labels)
+
 	cardTypes := []string{}
 	resources := []inventoryResource{}
 	var gpusAllocated, gpusFree int64
@@ -160,6 +166,9 @@ func nodeToInventory(n *corev1.Node) inventoryNode {
 		cardType, ok := cardTypeFromResource(name)
 		if !ok {
 			continue
+		}
+		if model != "" {
+			cardType = model
 		}
 		allocatable := qty.Value()
 		allocated := allocatedForResource(n, name)
@@ -283,9 +292,38 @@ func devicePluginFromNode(n *corev1.Node, labels map[string]string) string {
 	return "unknown"
 }
 
-// cardTypeFromResource parses a card type from an accelerator-specific
-// extended-resource name (e.g. nvidia.com/gpu -> gpu). It returns false
-// for non-accelerator resources.
+// cardModelLabelKeys returns the vendor label keys that carry the card
+// model, most specific first. Vendors publish the product name under
+// their own prefix; go-taas.com/accelerator-type and gpu-product are the
+// generic spellings an operator may use.
+func cardModelLabelKeys(vendor string) []string {
+	switch vendor {
+	case "nvidia":
+		return []string{"nvidia.com/gpu.product", "nvidia.com/gpu.model"}
+	case "iluvatar":
+		return []string{"iluvatar.ai/gpu.product", "iluvatar.ai/product", "gpu-product"}
+	case "metax":
+		return []string{"metax-tech.com/gpu.product", "metax-tech.com/product", "gpu-product"}
+	default:
+		return []string{"go-taas.com/accelerator-type", "gpu-product"}
+	}
+}
+
+// cardModelFromNode returns the node's card model from the vendor product
+// label, or "" when the vendor publishes none.
+func cardModelFromNode(vendor string, labels map[string]string) string {
+	for _, key := range cardModelLabelKeys(vendor) {
+		if v := strings.TrimSpace(labels[key]); v != "" {
+			return v
+		}
+	}
+	return ""
+}
+
+// cardTypeFromResource parses the device-plugin resource family from an
+// accelerator extended-resource name (e.g. nvidia.com/gpu -> gpu). It is
+// the fallback card type when the vendor publishes no product label, and
+// it returns false for non-accelerator resources.
 func cardTypeFromResource(name corev1.ResourceName) (string, bool) {
 	switch string(name) {
 	case "nvidia.com/gpu", "iluvatar.com/gpu", "iluvatar.ai/gpu",

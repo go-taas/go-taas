@@ -345,3 +345,31 @@ func TestEnsureCellAcceptsCardTypeFromHistory(t *testing.T) {
 	require.NotNil(t, cell)
 	assert.Equal(t, StatusSupported, cell.Status, "the stored cell wins over the lazy default")
 }
+
+// TestEnsureCellHonorsLegacyFamilyCell verifies an admin decision recorded
+// before card types became card models still applies: cells used to be
+// keyed by the device-plugin resource family ("gpu"), so a model/engine
+// marked supported there must stay supported when a deploy names the
+// concrete card model instead of silently falling back to the lazy default.
+func TestEnsureCellHonorsLegacyFamilyCell(t *testing.T) {
+	db := newCompatTestDB(t)
+	repo := NewCompatibilityRepository(db)
+	require.NoError(t, db.Create(&ModelRow{ID: testModelID, Name: "qwen-3b"}).Error)
+	require.NoError(t, db.Create(&Image{
+		ID: "img-vllm", Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3",
+		Accelerator: "nvidia", Engine: "vllm",
+	}).Error)
+	// The pre-upgrade cell uses the resource family as the card type.
+	require.NoError(t, db.Create(&CompatibilityCell{
+		ModelID: testModelID, Engine: "vllm", CardType: "gpu", Status: StatusUnsupported,
+	}).Error)
+
+	cardTypes := []CardType{{Vendor: "nvidia", CardType: "NVIDIA-GeForce-RTX-4090"}}
+	cell, err := repo.EnsureCell(context.Background(), testModelID, "vllm",
+		"NVIDIA-GeForce-RTX-4090", cardTypes, StatusExperimental)
+	require.NoError(t, err)
+	require.NotNil(t, cell)
+	assert.Equal(t, StatusUnsupported, cell.Status,
+		"the admin's family-level decision still applies")
+	assert.Equal(t, "gpu", cell.CardType, "the legacy row is read, not rewritten")
+}

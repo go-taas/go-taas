@@ -279,3 +279,51 @@ func TestCardTypeFromResourceVendors(t *testing.T) {
 	_, ok := cardTypeFromResource("example.com/other")
 	assert.False(t, ok)
 }
+
+// TestNodeToInventoryCardModel verifies the reported card type is the card
+// model (the vendor's product label), not the bare device-plugin resource
+// family: a compatibility matrix keyed by "gpu" cannot distinguish an A800
+// from a 4090, which is the whole point of the dimension.
+func TestNodeToInventoryCardModel(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "sd4090",
+			UID:  "uid-4090",
+			Labels: map[string]string{
+				"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
+				"gpu-vendor":             "nvidia",
+			},
+		},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}},
+			Allocatable: corev1.ResourceList{
+				"nvidia.com/gpu": resource.MustParse("2"),
+			},
+		},
+	}
+	inv := nodeToInventory(node)
+	assert.Equal(t, "nvidia", inv.Vendor)
+	assert.Equal(t, []string{"NVIDIA-GeForce-RTX-4090"}, inv.CardTypes)
+	require.Len(t, inv.Resources, 1)
+	assert.Equal(t, "NVIDIA-GeForce-RTX-4090", inv.Resources[0].CardType,
+		"the resource row is keyed by the card model too")
+	assert.EqualValues(t, 2, inv.Resources[0].Allocatable)
+}
+
+// TestNodeToInventoryCardTypeFallsBack verifies a node whose vendor
+// publishes no product label keeps the resource family as its card type
+// rather than an empty dimension.
+func TestNodeToInventoryCardTypeFallsBack(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "metax-1", UID: "uid-metax",
+			Labels: map[string]string{"metax-tech.com/gpu.present": "true"},
+		},
+		Status: corev1.NodeStatus{
+			Allocatable: corev1.ResourceList{"metax-tech.com/gpu": resource.MustParse("1")},
+		},
+	}
+	inv := nodeToInventory(node)
+	assert.Equal(t, "metax", inv.Vendor)
+	assert.Equal(t, []string{"gpu"}, inv.CardTypes)
+}

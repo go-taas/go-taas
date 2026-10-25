@@ -28,9 +28,18 @@ const reconcileNamespace = "taas-infer"
 
 // testReconciler returns a reconciler over a fake clientset for the
 // build-function tests.
+// testReconciler builds a reconciler over a fleet with one A100 node, so
+// the card type in testChangeEvent resolves to a real node label.
 func testReconciler() *k8sReconciler {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "gpu-node-1",
+		Labels: map[string]string{
+			labelAcceleratorVendor:   "nvidia",
+			"nvidia.com/gpu.product": "A100",
+		},
+	}}
 	return &k8sReconciler{
-		clientset: fake.NewSimpleClientset(),
+		clientset: fake.NewSimpleClientset(node),
 		namespace: reconcileNamespace,
 		weights:   WeightsConfig{PVCName: "model-weights", MountPath: "/data/weights"},
 	}
@@ -88,7 +97,8 @@ func TestBuildDeployment(t *testing.T) {
 
 	// Accelerator node selector.
 	assert.Equal(t, "nvidia", dep.Spec.Template.Spec.NodeSelector["go-taas.com/accelerator"])
-	assert.Equal(t, "A100", dep.Spec.Template.Spec.NodeSelector["go-taas.com/accelerator-type"])
+	assert.Equal(t, "A100", dep.Spec.Template.Spec.NodeSelector["nvidia.com/gpu.product"],
+		"the card model is pinned through the label that carries it")
 
 	// Labels are consistent between selector and template.
 	assert.Equal(t, dep.Spec.Selector.MatchLabels, dep.Spec.Template.Labels)
@@ -500,12 +510,14 @@ func TestResourceLabels(t *testing.T) {
 }
 
 func TestAcceleratorNodeSelector(t *testing.T) {
-	selector := acceleratorNodeSelector(labelAcceleratorVendor, "nvidia", "")
+	// The vendor family is pinned by the vendor label; a card type is
+	// resolved to the label that actually carries it (see
+	// TestBuildDeploymentPinsCardModelLabel).
+	selector := acceleratorNodeSelector(labelAcceleratorVendor, "nvidia")
 	assert.Equal(t, map[string]string{"go-taas.com/accelerator": "nvidia"}, selector)
 
-	selector = acceleratorNodeSelector(labelAcceleratorVendor, "metax", "m100")
-	assert.Equal(t, "metax", selector["go-taas.com/accelerator"])
-	assert.Equal(t, "m100", selector["go-taas.com/accelerator-type"])
+	selector = acceleratorNodeSelector("gpu-vendor", "metax")
+	assert.Equal(t, map[string]string{"gpu-vendor": "metax"}, selector)
 }
 
 func TestGPUResourceName(t *testing.T) {
@@ -920,4 +932,54 @@ func TestBuildDeploymentUsesResolvedLabelKey(t *testing.T) {
 	dep := reconciler.buildDeployment(context.Background(), testChangeEvent("upsert", "demo"))
 	assert.Equal(t, "nvidia", dep.Spec.Template.Spec.NodeSelector["gpu-vendor"],
 		"the pod pins the label the node actually carries")
+}
+
+// TestBuildDeploymentPinsCardModelLabel verifies that asking for a card
+// type pins the node label that actually carries the card model
+// (nvidia.com/gpu.product=NVIDIA-GeForce-RTX-4090). Synthesizing a
+// "<vendor-label>-type" key matches no node, which made every
+// card-type-specific deploy unschedulable.
+func TestBuildDeploymentPinsCardModelLabel(t *testing.T) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "sd4090",
+		Labels: map[string]string{
+			"gpu-vendor":             "nvidia",
+			"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
+		},
+	}}
+	reconciler := &k8sReconciler{clientset: fake.NewSimpleClientset(node), namespace: "taas-infer"}
+	evt := testChangeEvent("upsert", "demo")
+	evt.Accelerator = "nvidia"
+	evt.AcceleratorType = "NVIDIA-GeForce-RTX-4090"
+
+	dep := reconciler.buildDeployment(context.Background(), evt)
+	selector := dep.Spec.Template.Spec.NodeSelector
+	assert.Equal(t, "nvidia", selector["gpu-vendor"], "the vendor family is still pinned")
+	assert.Equal(t, "NVIDIA-GeForce-RTX-4090", selector["nvidia.com/gpu.product"],
+		"the card model is pinned through the label that carries it")
+	for key := range selector {
+		assert.NotContains(t, key, "-type", "no synthesized label key is used")
+	}
+}
+
+// TestBuildDeploymentUnknownCardTypeKeepsVendorOnly verifies a card type no
+// node reports degrades to the vendor selector instead of emitting an
+// unsatisfiable label.
+func TestBuildDeploymentUnknownCardTypeKeepsVendorOnly(t *testing.T) {
+	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
+		Name: "sd4090",
+		Labels: map[string]string{
+			"gpu-vendor":             "nvidia",
+			"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
+		},
+	}}
+	reconciler := &k8sReconciler{clientset: fake.NewSimpleClientset(node), namespace: "taas-infer"}
+	evt := testChangeEvent("upsert", "demo")
+	evt.Accelerator = "nvidia"
+	evt.AcceleratorType = "gpu" // the legacy resource family
+
+	dep := reconciler.buildDeployment(context.Background(), evt)
+	selector := dep.Spec.Template.Spec.NodeSelector
+	assert.Equal(t, "nvidia", selector["gpu-vendor"])
+	assert.Len(t, selector, 1)
 }
