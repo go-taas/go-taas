@@ -709,6 +709,14 @@ func (r *k8sReconciler) createOrUpdateHPA(ctx context.Context, hpa *autoscalingv
 // reportFailure publishes the failed status with the reason and returns
 // the wrapped error (AC7). A status-publish failure is logged; the
 // service stays in its last known state (never silently running).
+// reportFailure publishes the failed status for a reconcile and returns
+// the error the broker sees.
+//
+// The failure is permanent once reported: the task is terminal, and a
+// redelivery would re-run the same failing reconcile while blocking the
+// single-prefetch consumer (every later deploy would queue behind it).
+// Only a failed status publish stays retryable, because the platform never
+// learned the outcome.
 func (r *k8sReconciler) reportFailure(ctx context.Context, evt changeEvent, cause error) error {
 	reason := cause.Error()
 	if len(reason) > 512 {
@@ -717,19 +725,35 @@ func (r *k8sReconciler) reportFailure(ctx context.Context, evt changeEvent, caus
 	if err := r.publishStatus(ctx, evt.ServiceID, "failed", nil, &reason); err != nil {
 		logger.S().Errorw("controller: publish failed status failed",
 			"service_id", evt.ServiceID, "err", err)
+		return fmt.Errorf("controller: publish %s failed status: %w", evt.Name, err)
 	}
-	return fmt.Errorf("controller: reconcile %s failed: %w", evt.Name, cause)
+	logger.S().Warnw("controller: inference service failed",
+		"service_id", evt.ServiceID, "name", evt.Name, "reason", reason)
+	return mq.Permanent(fmt.Errorf("controller: reconcile %s failed: %w", evt.Name, cause))
 }
 
-// awaitReadiness polls the Deployment until its ready replicas match
-// the desired count or the context is cancelled.
+// deployReadinessTimeout bounds how long one deploy waits for its pods to
+// become ready. A pod that can never start (unbound weights PVC, a bad
+// image, no schedulable accelerator) would otherwise block this consumer
+// forever, and with a single prefetch every later deploy queues behind it.
+const deployReadinessTimeout = 10 * time.Minute
+
+// awaitReadiness polls the Deployment until its ready replicas match the
+// desired count, the context is cancelled, or deployReadinessTimeout
+// elapses. A timeout reports the pods' own explanation (unschedulable,
+// image pull error, crash loop) so the console says why the deploy failed.
 func (r *k8sReconciler) awaitReadiness(ctx context.Context, evt changeEvent) error {
+	ctx, cancel := context.WithTimeout(ctx, deployReadinessTimeout)
+	defer cancel()
 	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 	for {
 		dep, err := r.clientset.AppsV1().Deployments(r.namespace).
 			Get(ctx, deploymentName(evt.Name), metav1.GetOptions{})
 		if err != nil {
+			if ctx.Err() != nil {
+				return fmt.Errorf("controller: deployment %s not ready within %s", evt.Name, deployReadinessTimeout)
+			}
 			return fmt.Errorf("controller: get deployment %s: %w", evt.Name, err)
 		}
 		if dep.Status.ReadyReplicas >= clampReplicas(evt.Replicas) {
@@ -737,11 +761,47 @@ func (r *k8sReconciler) awaitReadiness(ctx context.Context, evt changeEvent) err
 		}
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("controller: deployment %s not ready before shutdown: %w", evt.Name, ctx.Err())
+			detail := r.deployBlockedReason(context.WithoutCancel(ctx), evt.Name)
+			if detail == "" {
+				detail = "pods did not become ready"
+			}
+			return fmt.Errorf("controller: deployment %s not ready within %s: %s",
+				evt.Name, deployReadinessTimeout, detail)
 		case <-ticker.C:
 			// keep polling
 		}
 	}
+}
+
+// deployBlockedReason explains why a Deployment's pods are not ready: the
+// first pod's scheduling or container waiting reason (unschedulable,
+// ImagePullBackOff, CrashLoopBackOff, ...). Empty when nothing is
+// available to report.
+func (r *k8sReconciler) deployBlockedReason(ctx context.Context, name string) string {
+	pods, err := r.clientset.CoreV1().Pods(r.namespace).
+		List(ctx, metav1.ListOptions{LabelSelector: "app=" + name})
+	if err != nil || len(pods.Items) == 0 {
+		return ""
+	}
+	pod := pods.Items[0]
+	for _, cs := range pod.Status.ContainerStatuses {
+		if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+			msg := cs.State.Waiting.Reason
+			if cs.State.Waiting.Message != "" {
+				msg += ": " + cs.State.Waiting.Message
+			}
+			return msg
+		}
+	}
+	for _, cond := range pod.Status.Conditions {
+		if cond.Type == corev1.PodScheduled && cond.Status == corev1.ConditionFalse && cond.Message != "" {
+			return cond.Message
+		}
+	}
+	if pod.Status.Phase != "" {
+		return "pod phase " + string(pod.Status.Phase)
+	}
+	return ""
 }
 
 // createOrUpdateDeployment creates the Deployment or patches the

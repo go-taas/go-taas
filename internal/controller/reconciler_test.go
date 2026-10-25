@@ -849,3 +849,41 @@ func TestAwaitPodTerminalReportsPullFailure(t *testing.T) {
 	assert.Contains(t, msg, "ErrImagePull")
 	assert.Contains(t, err.Error(), "image pull did not complete")
 }
+
+// TestAwaitReadinessTimesOutWithPodReason verifies a Deployment that can
+// never become ready does not block the reconcile forever: the wait is
+// bounded, and the failure names the pod's own reason (an unbound weights
+// PVC shows up as the scheduler's message).
+func TestAwaitReadinessTimesOutWithPodReason(t *testing.T) {
+	dep := &appsv1.Deployment{
+		ObjectMeta: metav1.ObjectMeta{Name: deploymentName("demo"), Namespace: "taas-infer"},
+		Status:     appsv1.DeploymentStatus{ReadyReplicas: 0},
+	}
+	pod := &corev1.Pod{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "demo-0", Namespace: "taas-infer", Labels: map[string]string{"app": "demo"},
+		},
+		Status: corev1.PodStatus{
+			Phase: corev1.PodPending,
+			Conditions: []corev1.PodCondition{{
+				Type:    corev1.PodScheduled,
+				Status:  corev1.ConditionFalse,
+				Message: "0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims",
+			}},
+		},
+	}
+	reconciler := &k8sReconciler{
+		clientset: fake.NewSimpleClientset(dep, pod),
+		namespace: "taas-infer",
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(50 * time.Millisecond)
+		cancel()
+	}()
+	err := reconciler.awaitReadiness(ctx, changeEvent{Name: "demo", Replicas: 1})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "not ready within")
+	assert.Contains(t, err.Error(), "unbound immediate PersistentVolumeClaims",
+		"the failure explains why the pods are stuck")
+}
