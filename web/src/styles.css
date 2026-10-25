@@ -948,6 +948,15 @@ table.table tbody tr:hover {
   color: var(--muted);
 }
 
+/* Model download job state: the failure message can be long, so the
+   cell wraps it instead of widening the table. */
+.download-state {
+  max-width: 320px;
+}
+.download-state .small {
+  word-break: break-word;
+}
+
 /* Secondary line inside a table cell or a form field. */
 .small {
   font-size: 12px;

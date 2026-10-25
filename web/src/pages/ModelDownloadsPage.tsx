@@ -231,7 +231,7 @@ export default function ModelDownloadsPage() {
                     {d.name}
                     <div className="muted small">{d.version}</div>
                   </td>
-                  <td>
+                  <td className="download-state">
                     <span className={`badge ${stateBadgeClass(d.state)}`}>
                       {t(`models.downloads.state.${d.state}`)}
                     </span>
