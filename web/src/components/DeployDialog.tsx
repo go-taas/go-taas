@@ -119,10 +119,16 @@ export default function DeployDialog({
 
   useEffect(() => {
     api
-      .get<{ cardTypes?: { cardType: string }[] }>('/api/v1/admin/compatibility/dimensions', orgId)
+      .get<{ cardTypes?: { cardType: string; inFleet?: boolean }[] }>(
+        '/api/v1/admin/compatibility/dimensions',
+        orgId,
+      )
       .then((data) =>
         setCardTypes(
           (data.cardTypes || [])
+            // Only suggest cards the fleet actually reports: a historical
+            // card type (a card that left the fleet) cannot be scheduled.
+            .filter((c) => c.inFleet !== false)
             .map((c) => c.cardType)
             .filter((c): c is string => Boolean(c)),
         ),
