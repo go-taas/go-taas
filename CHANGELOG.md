@@ -1,3 +1,10 @@
+# [1.87.0](https://github.com/go-taas/go-taas/compare/v1.86.0...v1.87.0) (2026-10-25)
+
+
+### Features
+
+* **gateway:** give the data plane its own gateway ([c2b5dcf](https://github.com/go-taas/go-taas/commit/c2b5dcfdf22a2c09763dd49300a2d37ecfb8b465))
+
 # [1.86.0](https://github.com/go-taas/go-taas/compare/v1.85.0...v1.86.0) (2026-10-25)
 
 
