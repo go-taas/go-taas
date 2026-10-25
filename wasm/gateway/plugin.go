@@ -63,6 +63,8 @@ type pluginContext struct {
 	cfg *config
 	// vmID makes generated request ids unique per worker.
 	vmID uint32
+	// clock is the coarse second counter this worker ticks forward.
+	clock int64
 }
 
 // httpContext is one request's state.
@@ -139,7 +141,7 @@ func (p *pluginContext) OnPluginStart(pluginConfigurationSize int) types.OnPlugi
 // OnTick advances the coarse clock. It runs once per tickPeriodMs on the
 // plugin context, independently of any request.
 func (p *pluginContext) OnTick() {
-	bumpClock()
+	p.bumpClock()
 }
 
 // NewHttpContext creates one filter instance per request.
@@ -151,7 +153,7 @@ func (p *pluginContext) NewHttpContext(contextID uint32) types.HttpContext {
 // needs a credential, and pauses the stream so the body can be inspected for
 // the model name before verification.
 func (h *httpContext) OnHttpRequestHeaders(_ int, endOfStream bool) types.Action {
-	h.startedAtSeconds = clockSeconds()
+	h.startedAtSeconds = h.plugin.nowSeconds()
 	h.method, _ = proxywasm.GetHttpRequestHeader(":method")
 	h.path, _ = proxywasm.GetHttpRequestHeader(":path")
 	if h.path == "" {
@@ -195,15 +197,21 @@ func (h *httpContext) OnHttpRequestHeaders(_ int, endOfStream bool) types.Action
 	h.lastDigest = keyDigest(token)
 
 	if endOfStream {
-		// No body to inspect: verify with an empty model.
+		// No body to inspect: verify with an empty model. This is the only
+		// pause in this request, which is what makes the resume work.
 		h.dispatchVerify()
 		return types.ActionPause
 	}
-	// Buffer the body so the model name and max_tokens are known before the
-	// platform is asked to authorize the request. Pausing here is what makes
-	// per-key model scope enforceable at the gateway at all.
+	// A body follows. Do not pause here: the pause happens in
+	// OnHttpRequestBody, where the model name is available.
+	//
+	// Pausing twice (headers, then body) looks safer but is not — Envoy
+	// resumes only the phase it last stopped in, so the request never leaves
+	// the filter and the client times out. Header-only forwarding costs
+	// nothing here: an engine answers nothing until the body arrives, and
+	// the body is where the pause is.
 	h.requestBody = nil
-	return types.ActionPause
+	return types.ActionContinue
 }
 
 // OnHttpRequestBody accumulates the body, then verifies.
@@ -254,24 +262,30 @@ func (h *httpContext) OnHttpCallResponse(calloutID uint32, _ int, bodySize int, 
 		return
 	}
 	h.verifyPending = false
-	body, err := proxywasm.GetHttpCallResponseBody(0, bodySize)
-	if err != nil {
+	headers, _ := proxywasm.GetHttpCallResponseHeaders()
+	if !httpStatusOK(headers) {
+		// The platform could not answer — a timeout, an unreachable cluster
+		// or a 5xx. Fail closed: a failed call must never be read as
+		// permission. The status is logged because "the plugin returned 503"
+		// is otherwise unattributable.
+		proxywasm.LogWarnf("go-taas gateway plugin: verification failed: status=%s flags=%s",
+			headerValue(headers, ":status"), headerValue(headers, "x-envoy-upstream-service-time"))
 		h.rejectLocal(503, "authorization unavailable", "server_error", "service_unavailable")
 		return
 	}
-	headers, _ := proxywasm.GetHttpCallResponseHeaders()
-	if !httpStatusOK(headers) {
-		// The platform could not answer. Fail closed: a timeout must not be
-		// read as permission.
+	body, err := proxywasm.GetHttpCallResponseBody(0, bodySize)
+	if err != nil {
+		proxywasm.LogWarnf("go-taas gateway plugin: read verification response: %v", err)
 		h.rejectLocal(503, "authorization unavailable", "server_error", "service_unavailable")
 		return
 	}
 	v, ok := parseVerdict(body)
 	if !ok {
+		proxywasm.LogWarnf("go-taas gateway plugin: unparsable verification response: %d bytes", len(body))
 		h.rejectLocal(503, "authorization unavailable", "server_error", "service_unavailable")
 		return
 	}
-	v.fetchedAtSeconds = clockSeconds()
+	v.fetchedAtSeconds = h.plugin.nowSeconds()
 	h.applyVerdict(v)
 }
 
@@ -410,7 +424,7 @@ func (h *httpContext) emitUsage() {
 		model:          h.model,
 		usage:          usage,
 		status:         "success",
-		latencyMs:      (clockSeconds() - h.startedAtSeconds) * 1000,
+		latencyMs:      (h.plugin.nowSeconds() - h.startedAtSeconds) * 1000,
 	}
 	if h.verdict.maxOutputTokensPerRequest > 0 && usage.completion >= h.verdict.maxOutputTokensPerRequest {
 		// Hitting the cap is normal, but worth recording so a
@@ -439,7 +453,7 @@ func (h *httpContext) allowRate() bool {
 	}
 	key := sharedPrefixRateLimit + h.verdict.keyID
 	state := h.loadRateState(key)
-	allowed, next := allowRequest(state, rpm, clockSeconds())
+	allowed, next := allowRequest(state, rpm, h.plugin.nowSeconds())
 	if next != nil {
 		if err := setSharedData(key, encodeRateState(next)); err != nil {
 			proxywasm.LogWarnf("go-taas gateway plugin: persist rate limit: %v", err)
@@ -463,7 +477,7 @@ func (h *httpContext) cachedVerdict() (*verdict, bool) {
 		return nil, false
 	}
 	// The coarse clock is in seconds; the TTL is configured in milliseconds.
-	if clockSeconds()-v.fetchedAtSeconds > int64(h.plugin.cfg.CacheTTLMs/1000) {
+	if h.plugin.nowSeconds()-v.fetchedAtSeconds > int64(h.plugin.cfg.CacheTTLMs/1000) {
 		return nil, false
 	}
 	return v, true
@@ -515,6 +529,16 @@ func appendTail(buf, frame []byte, limit int) []byte {
 		buf = append(buf[:0], buf[drop:]...)
 	}
 	return append(buf, frame...)
+}
+
+// headerValue returns a header's value, or "".
+func headerValue(headers [][2]string, key string) string {
+	for _, kv := range headers {
+		if strings.EqualFold(kv[0], key) {
+			return kv[1]
+		}
+	}
+	return ""
 }
 
 // httpStatusOK reports whether a header list carries a 2xx status.

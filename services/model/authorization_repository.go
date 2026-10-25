@@ -6,6 +6,8 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm/clause"
+
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
 // GrantAccess adds an organization to the model's grant list, recording
@@ -67,7 +69,23 @@ func (r *Repository) HasAuthorization(ctx context.Context, modelID, organization
 // every organization, a restricted model only for the organizations in
 // its grant list. One implementation, so the control plane and the data
 // plane cannot drift.
-func (r *Repository) IsModelAuthorized(ctx context.Context, modelID, organizationID string) (bool, error) {
+func (r *Repository) IsModelAuthorized(ctx context.Context, modelRef, organizationID string) (bool, error) {
+	// Callers name the model differently: the control plane passes the
+	// catalog id, while the data plane only has what the caller typed in the
+	// request body (the served name). Resolve first, because model_id is a
+	// uuid column and comparing it to a name is a SQL type error rather than
+	// a "no grants" answer — an error that turned every gateway-verified
+	// request into a 503.
+	modelID, err := r.resolveModelRef(ctx, modelRef)
+	if err != nil {
+		return false, err
+	}
+	if modelID == "" {
+		// Not in the catalog: it cannot carry a grant, so it is open by the
+		// same default-allow rule (AD2). Routing rejects an unknown model, and
+		// authorization is not the layer that should answer for it.
+		return true, nil
+	}
 	count, err := r.CountAuthorizations(ctx, modelID)
 	if err != nil {
 		return false, err
@@ -77,6 +95,28 @@ func (r *Repository) IsModelAuthorized(ctx context.Context, modelID, organizatio
 		return true, nil
 	}
 	return r.HasAuthorization(ctx, modelID, organizationID)
+}
+
+// resolveModelRef maps a model id or a served model name to the catalog id.
+// It returns "" when the reference is neither.
+func (r *Repository) resolveModelRef(ctx context.Context, ref string) (string, error) {
+	if ref == "" {
+		return "", nil
+	}
+	if _, err := uuid.Parse(ref); err == nil {
+		return ref, nil
+	}
+	row, err := r.FindByName(ctx, ref)
+	if err != nil {
+		if apierrors.CodeOf(err) == apierrors.CodeModelNotFound {
+			return "", nil
+		}
+		return "", err
+	}
+	if row == nil {
+		return "", nil
+	}
+	return row.ID, nil
 }
 
 // RestrictedModelIDs returns the subset of modelIDs carrying at least one

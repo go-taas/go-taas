@@ -35,6 +35,13 @@ spec:
           # Served by the server from its own image, so one release produces
           # exactly one plugin version and no registry credentials are needed.
           url: {{ include "go-taas.gatewayPluginArtifactURL" . | quote }}
+          {{- /*
+          Opt-in integrity pin. It is empty by default because the artifact is
+          served by this release's own server image and Helm applies the
+          policy before the new pods serve it: a pinned digest makes the first
+          reconcile fail until the rollout finishes. Set it when the URL is
+          shared or mirrored and the extra reconcile is acceptable.
+          */}}
           {{- with .Values.gatewayPlugin.pluginSha256 }}
           sha256: {{ . | quote }}
           {{- end }}

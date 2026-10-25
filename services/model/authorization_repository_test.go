@@ -224,3 +224,48 @@ func TestDeleteModelCascadesAuthorizations(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count, "another model's grants are untouched")
 }
+
+// TestIsModelAuthorizedAcceptsTheServedName covers the data-plane caller.
+//
+// The gateway only knows what the caller typed in the request body, so it
+// sends the served model name rather than the catalog id. Comparing a name to
+// the uuid-typed model_id column is a SQL type error, not a "no grants"
+// answer — and that error surfaced as a 503 on every gateway-verified
+// inference request.
+func TestIsModelAuthorizedAcceptsTheServedName(t *testing.T) {
+	repo := newModelTestRepo(t)
+	ctx := context.Background()
+	m := seedModel(t, repo, "qwen2.5-0.5b")
+
+	allowed, err := repo.IsModelAuthorized(ctx, "qwen2.5-0.5b", "org-a")
+	require.NoError(t, err, "a served name must not be compared to a uuid column")
+	assert.True(t, allowed, "an unrestricted model stays open when named")
+
+	// The name must reach the same grant list as the id.
+	require.NoError(t, repo.GrantAccess(ctx, m.ID, "org-a", "u-admin"))
+	allowed, err = repo.IsModelAuthorized(ctx, "qwen2.5-0.5b", "org-a")
+	require.NoError(t, err)
+	assert.True(t, allowed, "the granted organization is allowed by name")
+
+	allowed, err = repo.IsModelAuthorized(ctx, "qwen2.5-0.5b", "org-b")
+	require.NoError(t, err)
+	assert.False(t, allowed, "a restricted model denies a non-granted organization by name")
+}
+
+// TestIsModelAuthorizedUnknownNameIsOpen covers an alias the catalog has never
+// seen. It cannot carry a grant, so default-allow applies and routing is left
+// to answer for it.
+func TestIsModelAuthorizedUnknownNameIsOpen(t *testing.T) {
+	repo := newModelTestRepo(t)
+	allowed, err := repo.IsModelAuthorized(context.Background(), "some-fine-tune", "org-a")
+	require.NoError(t, err)
+	assert.True(t, allowed)
+}
+
+// TestIsModelAuthorizedEmptyReferenceIsOpen covers a model-less call.
+func TestIsModelAuthorizedEmptyReferenceIsOpen(t *testing.T) {
+	repo := newModelTestRepo(t)
+	allowed, err := repo.IsModelAuthorized(context.Background(), "", "org-a")
+	require.NoError(t, err)
+	assert.True(t, allowed)
+}

@@ -24,58 +24,49 @@ package main
 //
 // Envoy's tick is part of the ABI the plugin already relies on, so the clock
 // is a counter this plugin bumps itself. The resolution is the tick period
-// (one second), which is coarse but sufficient for every use above, and it is
-// the same on every host. Anything finer would be invented precision.
+// (one second), which is coarse but sufficient for every use above and is the
+// same on every host. Anything finer would be invented precision.
+//
+// The counter lives in the plugin context rather than in shared data: a
+// plugin context belongs to one VM, which is exactly one Envoy worker thread,
+// so a plain field is already per-worker and needs no hostcall — and no
+// compare-and-swap, which ten ticking workers would otherwise fight over.
 
-import (
-	"github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
-)
+import "github.com/tetratelabs/proxy-wasm-go-sdk/proxywasm"
 
 const (
-	// tickPeriodMs is the clock resolution. A one-second tick keeps the
-	// shared-data write rate negligible even with thousands of requests.
+	// tickPeriodMs is the clock resolution. A one-second tick keeps the work
+	// negligible even with thousands of requests per second.
 	tickPeriodMs = 1000
-	// clockKey holds the counter in shared data. Shared data is per-VM, so
-	// each worker keeps its own clock — consistent with the per-worker cache
-	// and token bucket it serves.
-	clockKey = "go-taas:clock"
-	// clockStart is where a fresh VM's clock begins. It is a monotonic
+	// clockStart is where a fresh worker's clock begins. It is a monotonic
 	// counter, not a wall clock: nothing here needs absolute time, and the
 	// platform stamps `completed_at` itself.
 	clockStart = 1
 )
 
-// clockSeconds reads the coarse clock.
-//
-// A read failure returns the start value rather than an error: a request must
-// not be rejected because a counter was unreadable, and starting the clock at
-// zero only shortens a cache TTL.
-func clockSeconds() int64 {
-	raw, _, err := proxywasm.GetSharedData(clockKey)
-	if err != nil || len(raw) == 0 {
+// nowSeconds reads the coarse clock.
+func (p *pluginContext) nowSeconds() int64 {
+	if p == nil || p.clock < clockStart {
 		return clockStart
 	}
-	v, ok := parseFloat(string(raw))
-	if !ok {
-		return clockStart
-	}
-	return int64(v)
+	return p.clock
 }
 
 // bumpClock advances the coarse clock by one tick.
-func bumpClock() {
-	if err := setSharedData(clockKey, []byte(formatInt(clockSeconds()+1))); err != nil {
-		proxywasm.LogWarnf("go-taas gateway plugin: advance clock: %v", err)
+func (p *pluginContext) bumpClock() {
+	if p == nil {
+		return
 	}
+	p.clock++
 }
 
-// setSharedData writes a key using the compare-and-swap token the host
-// handed out on read.
+// setSharedData writes a key using the compare-and-swap token the host hands
+// out on read.
 //
 // The token is not optional: a write with a stale (or zero) token against an
-// existing key can be rejected, and a silently rejected write is a cache or
-// token bucket that never updates. Reading first is also what Envoy's own
-// documentation recommends for read-modify-write.
+// existing key is rejected, and a silently rejected write is a cache or token
+// bucket that never updates. Reading first is also Envoy's own recommendation
+// for read-modify-write.
 func setSharedData(key string, value []byte) error {
 	_, cas, err := proxywasm.GetSharedData(key)
 	if err != nil {

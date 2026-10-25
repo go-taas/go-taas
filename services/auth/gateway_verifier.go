@@ -20,6 +20,7 @@ import (
 	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
 )
 
@@ -55,9 +56,15 @@ func (s *Service) VerifyGatewayKey(ctx context.Context, req *server.GatewayVerif
 		// An infrastructure failure (Redis, database) is not a verdict:
 		// the plugin must fail closed on it, which it can only tell apart
 		// from a rejection if this returns an error.
-		if code := apierrors.CodeOf(err); isVerdictCode(code) {
+		code := apierrors.CodeOf(err)
+		if isVerdictCode(code) {
 			return rejectWith(code), nil
 		}
+		// A platform-side failure becomes a 503 at the gateway, which fails
+		// closed — correct, but unattributable without this line. Log it with
+		// the code and the model, never with the digest or the key.
+		logger.S().Warnw("auth: gateway key verification failed",
+			"code", code, "model", req.Model, "err", err)
 		return nil, err
 	}
 	return &server.GatewayVerifyResponse{

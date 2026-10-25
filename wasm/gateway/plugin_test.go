@@ -485,3 +485,40 @@ func headerPresent(headers [][2]string, key string) bool {
 	}
 	return false
 }
+
+// TestPausesExactlyOncePerRequest pins the pause discipline.
+//
+// Pausing at the headers and again at the body looks safer but is a hang:
+// Envoy resumes only the phase it last stopped in, so the request never
+// leaves the filter and the caller times out with no response at all. This
+// was a live failure, not a hypothetical.
+func TestPausesExactlyOncePerRequest(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	headers := host.CallOnRequestHeaders(id,
+		requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+	if headers == types.ActionPause {
+		body := host.CallOnRequestBody(id, []byte(`{"model":"m"}`), true)
+		t.Fatalf("paused at headers (%v) and at body (%v): one pause per request", headers, body)
+	}
+
+	body := host.CallOnRequestBody(id, []byte(`{"model":"m"}`), true)
+	assert.Equal(t, types.ActionPause, body, "the body is where the model name becomes known")
+
+	callouts := host.GetCalloutAttributesFromContext(id)
+	require.Len(t, callouts, 1)
+	host.CallOnHttpCallResponse(callouts[0].CalloutID, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+	// Resuming is what releases the buffered body; nothing may re-pause it.
+	assert.Zero(t, len(localResponseBody(t, host, id)))
+}
+
+// localResponseBody returns the local response body, or "" when none was sent.
+func localResponseBody(t *testing.T, host proxytest.HostEmulator, id uint32) string {
+	t.Helper()
+	if resp := host.GetSentLocalResponse(id); resp != nil {
+		return string(resp.Data)
+	}
+	return ""
+}

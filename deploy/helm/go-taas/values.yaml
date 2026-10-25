@@ -400,6 +400,12 @@ gatewayPlugin:
   # -- Largest request body the filter buffers to read `model` and
   # `max_tokens`. Larger bodies are still authenticated, just not inspected.
   maxBodyBytes: 1048576
+  # -- Optional SHA-256 of the Wasm artifact. Empty by default: the artifact is
+  # served by this release's own server image, and Helm applies the policy
+  # before the new pods serve it, so a pinned digest fails the first
+  # reconcile until the rollout completes. Set it when the URL is shared or
+  # mirrored and one extra reconcile is acceptable.
+  pluginSha256: ""
   # -- Hostname of the internal route the filter dispatches to. It is never
   # published in DNS and is attached to the TLS listener only, so the
   # endpoint is reachable from Envoy but not from the internet.
