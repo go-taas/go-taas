@@ -912,6 +912,41 @@ type RuntimeDataPlaneConfig struct {
 	BackendPort int32 `mapstructure:"backendPort"`
 }
 
+// GatewayPluginConfig holds the data-plane gateway plugin settings
+// (feature #54). The plugin is a Wasm filter inside Envoy: it verifies the
+// caller's API key and reports token usage, but makes no business decision
+// of its own — every call it makes lands on the internal endpoints below,
+// which delegate to the auth and metering modules.
+type GatewayPluginConfig struct {
+	// Enabled renders the EnvoyExtensionPolicy and serves the internal
+	// endpoints. The default is false: an install without Prometheus-style
+	// observability should not silently start rejecting inference traffic
+	// the day it upgrades.
+	Enabled bool `mapstructure:"enabled"`
+	// Token is the shared secret the plugin presents on every internal
+	// call. Empty disables the endpoints even when Enabled is true: an
+	// unauthenticated verification endpoint would let anyone probe keys.
+	// The chart generates it into the release Secret.
+	Token string `mapstructure:"token"`
+	// CacheTTL is the plugin's local verdict lifetime. A revocation
+	// becomes effective within this window, not instantly. Default 30s.
+	CacheTTL time.Duration `mapstructure:"cacheTTL"`
+	// VerifyTimeout bounds one plugin->server verification call. Exceeding
+	// it fails closed. Default 500ms.
+	VerifyTimeout time.Duration `mapstructure:"verifyTimeout"`
+	// FailOpen passes through to the policy when the filter itself cannot
+	// initialize or run. Default false (block), because the alternative is
+	// an unauthenticated inference surface.
+	FailOpen bool `mapstructure:"failOpen"`
+	// ProtectedPrefixes are the request paths that require a verified key.
+	// Default ["/v1/"]; health and discovery paths stay open so probes work.
+	ProtectedPrefixes []string `mapstructure:"protectedPrefixes"`
+	// PluginPath is the Wasm artifact the internal API serves. Empty means
+	// gateway-plugin.wasm next to the server binary. The policy pins its
+	// SHA-256 in the chart, so a mismatched artifact is refused by Envoy.
+	PluginPath string `mapstructure:"pluginPath"`
+}
+
 // ProviderConfig holds the external-model-provider module settings
 // (feature #48, Section 9). The provider module owns the registry, the
 // encrypted write-only keys, upstream-model curation, publishing, the
@@ -1221,20 +1256,23 @@ type Configuration struct {
 	Notification    NotificationConfig    `mapstructure:"notification"`
 	Tracing         TracingConfig         `mapstructure:"tracing"`
 	ResourceMetrics ResourceMetricsConfig `mapstructure:"resourcemetrics"`
-	Docs            DocsConfig            `mapstructure:"docs"`
-	Cluster         ClusterConfig         `mapstructure:"cluster"`
-	Account         AccountConfig         `mapstructure:"account"`
-	Batch           BatchConfig           `mapstructure:"batch"`
-	Prompt          PromptConfig          `mapstructure:"prompt"`
-	Evaluation      EvaluationConfig      `mapstructure:"evaluation"`
-	Runtime         RuntimeConfig         `mapstructure:"runtime"`
-	Provider        ProviderConfig        `mapstructure:"provider"`
-	Routing         RoutingConfig         `mapstructure:"routing"`
-	Optimization    OptimizationConfig    `mapstructure:"optimization"`
-	Quota           QuotaConfig           `mapstructure:"quota"`
-	VGPU            VGPUConfig            `mapstructure:"vgpu"`
-	Fault           FaultConfig           `mapstructure:"fault"`
-	Log             LogConfig             `mapstructure:"log"`
+	// GatewayPlugin configures the data-plane gateway's Wasm plugin: the
+	// internal endpoints it calls and the artifact it loads (feature #54).
+	GatewayPlugin GatewayPluginConfig `mapstructure:"gatewayPlugin"`
+	Docs          DocsConfig          `mapstructure:"docs"`
+	Cluster       ClusterConfig       `mapstructure:"cluster"`
+	Account       AccountConfig       `mapstructure:"account"`
+	Batch         BatchConfig         `mapstructure:"batch"`
+	Prompt        PromptConfig        `mapstructure:"prompt"`
+	Evaluation    EvaluationConfig    `mapstructure:"evaluation"`
+	Runtime       RuntimeConfig       `mapstructure:"runtime"`
+	Provider      ProviderConfig      `mapstructure:"provider"`
+	Routing       RoutingConfig       `mapstructure:"routing"`
+	Optimization  OptimizationConfig  `mapstructure:"optimization"`
+	Quota         QuotaConfig         `mapstructure:"quota"`
+	VGPU          VGPUConfig          `mapstructure:"vgpu"`
+	Fault         FaultConfig         `mapstructure:"fault"`
+	Log           LogConfig           `mapstructure:"log"`
 }
 
 // LoadTestConfig holds the feature-20 load-testing settings.

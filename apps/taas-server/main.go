@@ -5,6 +5,8 @@
 package main
 
 import (
+	"context"
+
 	goredis "github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
@@ -81,6 +83,15 @@ func main() {
 		EnableComponentRedis: true,
 		EnableComponentMQ:    true,
 		ConfigPath:           args.ConfigPath,
+		// The data-plane gateway's Wasm plugin calls back into this process
+		// to verify keys and report usage (feature #54). Disabled unless
+		// configured: a fresh install must not start rejecting inference
+		// traffic on upgrade.
+		GatewayPlugin: server.GatewayPluginOptions{
+			Enabled:    cfg.GatewayPlugin.Enabled,
+			Token:      cfg.GatewayPlugin.Token,
+			PluginPath: cfg.GatewayPlugin.PluginPath,
+		},
 	})
 	if err != nil {
 		logger.S().Fatalw("build server failed", "err", err)
@@ -343,6 +354,18 @@ func main() {
 			// The per-request cost attributor reads billing's
 			// price_entries over the shared database (feature #9, AD3).
 			meteringSvc.SetCostAttributor(metering.NewCostAttributor(gormDB))
+			// Feature #54: a usage event from the inference gateway names
+			// the model the caller asked for, not a service id. Resolving
+			// it here attributes the voucher to the service that actually
+			// served the request.
+			meteringSvc.SetServiceLookup(func(ctx context.Context, modelID string) string {
+				row, err := infer.NewInferenceServiceRepository(gormDB).
+					FindRunningServiceByModel(ctx, modelID)
+				if err != nil || row == nil {
+					return ""
+				}
+				return row.ID
+			})
 			// The membership RoleGuard gates member/invitation management
 			// (feature #10, AD7); the SessionResolver lets the tenancy
 			// service resolve the authenticated caller (feature #10).

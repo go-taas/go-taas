@@ -355,6 +355,12 @@ const (
 	CodeRuntimeModelNameInvalid  Code = 12907 // RUNTIME_MODEL_NAME_INVALID
 	CodeRuntimeSettingInvalid    Code = 12908 // RUNTIME_SETTING_INVALID
 	CodeRuntimeRouteNotPublished Code = 12909 // RUNTIME_ROUTE_NOT_PUBLISHED
+	// CodeGatewayTokenInvalid rejects a data-plane gateway plugin that
+	// called an internal gateway endpoint without the shared token. It is
+	// never shown to an inference caller: the plugin authenticates itself
+	// with a cluster-internal secret, so a failure here is a deployment
+	// fault, not a user error.
+	CodeGatewayTokenInvalid Code = 12910 // GATEWAY_TOKEN_INVALID
 )
 
 // provider module error codes (feature #48, AD9). The provider module

@@ -313,6 +313,27 @@ func (r *InferenceServiceRepository) FindReadyByModelAndOrganization(ctx context
 	return &row, nil
 }
 
+// FindRunningServiceByModel returns the newest running inference service
+// serving a model, across organizations.
+//
+// It is platform-wide on purpose: services are platform assets, and a
+// voucher produced by the inference gateway is attributed to whichever
+// service is actually serving the model, not to a tenant's copy of it.
+func (r *InferenceServiceRepository) FindRunningServiceByModel(ctx context.Context, modelID string) (*InferenceService, error) {
+	var row InferenceService
+	err := r.DB(ctx).
+		Where("model_id = ? AND state = ?", modelID, StateRunning).
+		Order("updated_at DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // CountByModelID counts the inference services referencing the model.
 // With excludeTerminated, terminated services do not block a model
 // delete (AC3).

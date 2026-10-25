@@ -493,6 +493,18 @@ func (c *Configuration) applyDefaults() {
 	if c.Runtime.AIBrix.GatewayName == "" {
 		c.Runtime.AIBrix.GatewayName = "aibrix-eg"
 	}
+	// Feature #54: the data-plane gateway plugin. The defaults are the
+	// values the shipped Wasm filter assumes, so an operator who sets only
+	// `enabled` and `token` gets a working gateway.
+	if c.GatewayPlugin.CacheTTL == 0 {
+		c.GatewayPlugin.CacheTTL = 30 * time.Second
+	}
+	if c.GatewayPlugin.VerifyTimeout == 0 {
+		c.GatewayPlugin.VerifyTimeout = 500 * time.Millisecond
+	}
+	if len(c.GatewayPlugin.ProtectedPrefixes) == 0 {
+		c.GatewayPlugin.ProtectedPrefixes = []string{"/v1/"}
+	}
 	if c.Runtime.AIBrix.Gateway == "" {
 		c.Runtime.AIBrix.Gateway = "envoy-aibrix-system-aibrix-eg"
 	}

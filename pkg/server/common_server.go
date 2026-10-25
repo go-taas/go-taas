@@ -52,10 +52,11 @@ type Server interface {
 type commonServer struct {
 	opts Options
 
-	grpcServer   *grpc.Server
-	gatewayMux   *runtime.ServeMux
-	monitorMux   *http.ServeMux
-	healthServer *healthServer
+	grpcServer      *grpc.Server
+	gatewayMux      *runtime.ServeMux
+	monitorMux      *http.ServeMux
+	monitorRegistry *prometheus.Registry
+	healthServer    *healthServer
 
 	services []Service
 	runners  []Runner
@@ -176,6 +177,10 @@ func (s *commonServer) Init() {
 
 	// Build the monitor server (metrics + health + pprof).
 	s.initMonitor()
+
+	// The data-plane gateway plugin's internal API shares the monitor
+	// mux, so it is registered after the mux exists.
+	s.initGatewayAPI()
 }
 
 // initGateway dials the local gRPC server and registers every
@@ -206,6 +211,7 @@ func (s *commonServer) initMonitor() {
 	s.monitorMux = http.NewServeMux()
 
 	registry := prometheus.NewRegistry()
+	s.monitorRegistry = registry
 	registry.MustRegister(
 		collectors.NewGoCollector(),
 		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),

@@ -70,6 +70,11 @@ type Options struct {
 
 	// UnaryInterceptors are chained in front of the built-in ones.
 	UnaryInterceptors []grpc.UnaryServerInterceptor
+
+	// GatewayPlugin configures the data-plane gateway plugin's internal
+	// API. Disabled by default; the inference gateway keeps working
+	// without it, unverified.
+	GatewayPlugin GatewayPluginOptions
 }
 
 // Components gives services access to shared platform components.

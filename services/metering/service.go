@@ -127,6 +127,12 @@ type Service struct {
 	repo      *Repository
 	publisher mq.Client
 
+	// serviceLookup maps a catalog model id to the inference service
+	// running it, so a gateway-originated voucher can be attributed to
+	// the service that served the request. Nil until wired: the voucher
+	// then only carries the model, which is still priced correctly.
+	serviceLookup func(ctx context.Context, modelID string) string
+
 	// costAttributor computes per-request estimated cost on read
 	// (feature #9, AD3). Nil until wired: unit tests skip attribution;
 	// main.go and FVT always wire it.

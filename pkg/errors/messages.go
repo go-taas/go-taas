@@ -208,6 +208,7 @@ var messages = map[Code]string{
 	CodeRuntimeModelNameInvalid:  "invalid model name",
 	CodeRuntimeSettingInvalid:    "runtime setting invalid",
 	CodeRuntimeRouteNotPublished: "runtime route not published",
+	CodeGatewayTokenInvalid:      "invalid data-plane gateway token",
 
 	// provider (feature #48, AD9)
 	CodeProviderNotFound:             "provider not found",
