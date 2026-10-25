@@ -358,6 +358,26 @@ resourceMetrics:
   # gpuUtilizationMetric is the PromQL metric carrying GPU utilization
   # (the NVIDIA DCGM exporter's default name).
   gpuUtilizationMetric: DCGM_FI_DEV_GPU_UTIL
+  # Card memory, in MiB (DCGM), shown as used / total.
+  gpuMemoryUsedMetric: DCGM_FI_DEV_FB_USED
+  gpuMemoryTotalMetric: DCGM_FI_DEV_FB_TOTAL
+  # engine names the inference engine's own metrics. The defaults are
+  # vLLM's; another engine's names are a configuration change, and a blank
+  # name hides that panel instead of printing a misleading zero.
+  engine:
+    # Time to first token histogram (seconds).
+    ttftBucket: vllm:time_to_first_token_seconds_bucket
+    # Inter-token latency histogram (seconds), i.e. time per output token.
+    tpotBucket: vllm:inter_token_latency_seconds_bucket
+    # KV-cache occupancy gauge (0-1).
+    kvCacheUsage: vllm:kv_cache_usage_perc
+    # Queue depths.
+    requestsRunning: vllm:num_requests_running
+    requestsWaiting: vllm:num_requests_waiting
+    # Output-token counter, used for throughput.
+    generationTokens: vllm:generation_tokens_total
+    # Percentile used for the latency cards and series.
+    quantile: 0.95
 
 tenancy:
   # The organization seeded on first boot (when the organizations table

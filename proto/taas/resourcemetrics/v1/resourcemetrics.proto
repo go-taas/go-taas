@@ -55,6 +55,33 @@ message ResourceMetricsCard {
   // the console can say "not available" instead of showing 0% — an idle
   // GPU is 0%, a cluster without the exporter is not.
   bool gpu_available = 6;
+
+  // The fields below come from the inference engine's own metrics and the
+  // GPU exporter's memory gauges. They are the numbers an operator sizes a
+  // deployment with: how fast the first token arrives, how fast tokens
+  // stream, how full the KV cache is, and how much card memory is in use.
+
+  // current_gpu_memory_bytes is the memory the service's cards hold.
+  int64 current_gpu_memory_bytes = 7;
+  // gpu_memory_total_bytes is the cards' capacity, so the console can show
+  // a ratio instead of a bare number.
+  int64 gpu_memory_total_bytes = 8;
+  // ttft_p95_ms is the 95th percentile time to first token, in
+  // milliseconds. 0 when the engine reports no TTFT histogram.
+  double ttft_p95_ms = 9;
+  // tpot_p95_ms is the 95th percentile inter-token latency (time per output
+  // token), in milliseconds. 0 when the engine has no samples.
+  double tpot_p95_ms = 10;
+  // kv_cache_percent is the engine's KV-cache occupancy, 0-100.
+  double kv_cache_percent = 11;
+  // requests_running / requests_waiting are the engine's queue depths.
+  double requests_running = 12;
+  double requests_waiting = 13;
+  // tokens_per_second is the current output-token throughput.
+  double tokens_per_second = 14;
+  // engine_available reports whether the engine's metrics are scraped at
+  // all, so the console can distinguish "0 requests" from "not measured".
+  bool engine_available = 15;
 }
 
 // ResourceMetricsSeriesPoint is one time bucket of the series (hourly for
@@ -65,6 +92,14 @@ message ResourceMetricsSeriesPoint {
   double cpu_percent = 2;
   int64 memory_bytes = 3;
   double gpu_percent = 4;
+  // gpu_memory_bytes is the card memory in use at this bucket.
+  int64 gpu_memory_bytes = 5;
+  // ttft_p95_ms / tpot_p95_ms are the engine's latency percentiles at this
+  // bucket (0 when the engine reported none).
+  double ttft_p95_ms = 6;
+  double tpot_p95_ms = 7;
+  // tokens_per_second is the output-token throughput at this bucket.
+  double tokens_per_second = 8;
 }
 
 // ResourceMetricsReplicaRow is one replica's aggregate in the per-replica

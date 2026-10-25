@@ -9,7 +9,7 @@ import { api, type GetServiceResourceMetricsResponse, type ResourceMetricsReplic
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { BackLink, ErrorBanner } from '../components';
-import ResourceChart, { type ResourceMetric } from '../components/ResourceChart';
+import ResourceChart, { formatMillis, type ResourceMetric } from '../components/ResourceChart';
 
 const RANGE_PRESETS = [
   { id: '24h', labelKey: 'usage.range24h', hours: 24 },
@@ -85,6 +85,27 @@ export default function ServiceMetricsPage() {
   // that apart from "no GPU exporter scrapes these pods". Inferring it
   // from "> 0" made every idle GPU look unavailable.
   const hasGPU = cards?.gpuAvailable !== false;
+  // engineAvailable is the server's word on whether the engine's metrics are
+  // scraped at all. Without it, "0 requests" and "not scraped" look alike.
+  const hasEngine = cards?.engineAvailable !== false;
+  // A metric the backend has no data for should say so rather than draw a
+  // flat line at zero, which reads as "measured, and it is zero".
+  const metricUnavailable =
+    (metric === 'gpu' && !hasGPU) ||
+    ((metric === 'ttft' || metric === 'tpot' || metric === 'throughput') && !hasEngine);
+
+  // VRAM: used / total with a bar, so the number is readable at a glance.
+  const vramUsed = parseInt(cards?.currentGpuMemoryBytes || '0', 10);
+  const vramTotal = parseInt(cards?.gpuMemoryTotalBytes || '0', 10);
+  const vramRatio = vramTotal > 0 ? vramUsed / vramTotal : null;
+  const vramText =
+    vramUsed > 0
+      ? vramTotal > 0
+        ? `${formatBytes(vramUsed)} / ${formatBytes(vramTotal)}`
+        : formatBytes(vramUsed)
+      : hasGPU
+        ? '0 B'
+        : t('servicemetrics.unavailable');
 
   return (
     <div>
@@ -155,32 +176,87 @@ export default function ServiceMetricsPage() {
       )}
 
       {cards && (
-        <div className="card-row" data-testid="metrics-cards">
-          <div className="card" data-testid="metrics-card-cpu">
-            <div className="label">{t('servicemetrics.cpu')}</div>
-            <div className="value">{parseFloat(cards.currentCpuPercent || '0').toFixed(1)}%</div>
-          </div>
-          <div className="card" data-testid="metrics-card-memory">
-            <div className="label">{t('servicemetrics.memory')}</div>
-            <div className="value">{formatBytes(parseInt(cards.currentMemoryBytes || '0', 10))}</div>
-          </div>
-          <div className="card" data-testid="metrics-card-gpu">
-            <div className="label">{t('servicemetrics.gpu')}</div>
-            <div className="value">
-              {hasGPU ? `${parseFloat(cards.currentGpuPercent || '0').toFixed(1)}%` : t('servicemetrics.unavailable')}
+        <>
+          {/* Two groups, because they answer different questions: how much
+              resource the service consumes, and how fast it answers. */}
+          <div className="metrics-group-label">{t('servicemetrics.groupResource')}</div>
+          <div className="card-row" data-testid="metrics-cards">
+            <div className="card" data-testid="metrics-card-cpu">
+              <div className="label">{t('servicemetrics.cpu')}</div>
+              <div className="value">{parseFloat(cards.currentCpuPercent || '0').toFixed(1)}%</div>
+            </div>
+            <div className="card" data-testid="metrics-card-memory">
+              <div className="label">{t('servicemetrics.memory')}</div>
+              <div className="value">{formatBytes(parseInt(cards.currentMemoryBytes || '0', 10))}</div>
+            </div>
+            <div className="card" data-testid="metrics-card-gpu">
+              <div className="label">{t('servicemetrics.gpu')}</div>
+              <div className="value">
+                {hasGPU ? `${parseFloat(cards.currentGpuPercent || '0').toFixed(1)}%` : t('servicemetrics.unavailable')}
+              </div>
+            </div>
+            <div className="card" data-testid="metrics-card-vram">
+              <div className="label">{t('servicemetrics.vram')}</div>
+              <div className="value">{vramText}</div>
+              {vramRatio !== null && (
+                <div className="metrics-ratio">
+                  <span style={{ width: `${Math.min(100, vramRatio * 100).toFixed(1)}%` }} />
+                </div>
+              )}
+            </div>
+            <div className="card" data-testid="metrics-card-replicas">
+              <div className="label">{t('servicemetrics.replicas')}</div>
+              <div className="value">{cards.replicaCount}</div>
             </div>
           </div>
-          <div className="card" data-testid="metrics-card-replicas">
-            <div className="label">{t('servicemetrics.replicas')}</div>
-            <div className="value">{cards.replicaCount}</div>
+
+          <div className="metrics-group-label">{t('servicemetrics.groupEngine')}</div>
+          <div className="card-row" data-testid="metrics-engine-cards">
+            <div className="card" data-testid="metrics-card-ttft">
+              <div className="label">{t('servicemetrics.ttft')}</div>
+              <div className="value">
+                {hasEngine && cards.ttftP95Ms ? formatMillis(cards.ttftP95Ms) : t('servicemetrics.notMeasured')}
+              </div>
+              <div className="metrics-hint">{t('servicemetrics.p95')}</div>
+            </div>
+            <div className="card" data-testid="metrics-card-tpot">
+              <div className="label">{t('servicemetrics.tpot')}</div>
+              <div className="value">
+                {hasEngine && cards.tpotP95Ms ? formatMillis(cards.tpotP95Ms) : t('servicemetrics.notMeasured')}
+              </div>
+              <div className="metrics-hint">{t('servicemetrics.p95')}</div>
+            </div>
+            <div className="card" data-testid="metrics-card-throughput">
+              <div className="label">{t('servicemetrics.throughput')}</div>
+              <div className="value">
+                {hasEngine
+                  ? `${(cards.tokensPerSecond || 0).toFixed(1)} tok/s`
+                  : t('servicemetrics.notMeasured')}
+              </div>
+            </div>
+            <div className="card" data-testid="metrics-card-kvcache">
+              <div className="label">{t('servicemetrics.kvCache')}</div>
+              <div className="value">
+                {hasEngine ? `${(cards.kvCachePercent || 0).toFixed(1)}%` : t('servicemetrics.notMeasured')}
+              </div>
+            </div>
+            <div className="card" data-testid="metrics-card-requests">
+              <div className="label">{t('servicemetrics.requests')}</div>
+              <div className="value">
+                {hasEngine
+                  ? `${Math.round(cards.requestsRunning || 0)} / ${Math.round(cards.requestsWaiting || 0)}`
+                  : t('servicemetrics.notMeasured')}
+              </div>
+              <div className="metrics-hint">{t('servicemetrics.runningWaiting')}</div>
+            </div>
           </div>
-        </div>
+        </>
       )}
 
       {!loading && !error && series.length > 0 && (
         <div className="panel" data-testid="metrics-chart-panel">
           <div className="metric-switcher" data-testid="metrics-metric-switcher">
-            {(['cpu', 'memory', 'gpu'] as ResourceMetric[]).map((m) => (
+            {(['cpu', 'memory', 'gpu', 'vram', 'ttft', 'tpot', 'throughput'] as ResourceMetric[]).map((m) => (
               <button
                 key={m}
                 className={metric === m ? 'primary' : 'secondary'}
@@ -191,9 +267,9 @@ export default function ServiceMetricsPage() {
               </button>
             ))}
           </div>
-          {!hasGPU && metric === 'gpu' ? (
-            <div className="chart-empty" data-testid="metrics-gpu-unavailable">
-              {t('servicemetrics.gpuUnavailable')}
+          {metricUnavailable ? (
+            <div className="chart-empty" data-testid="metrics-metric-unavailable">
+              {metric === 'gpu' ? t('servicemetrics.gpuUnavailable') : t('servicemetrics.engineUnavailable')}
             </div>
           ) : (
             <ResourceChart series={series} metric={metric} />

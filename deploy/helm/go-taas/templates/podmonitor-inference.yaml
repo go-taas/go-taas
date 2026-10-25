@@ -1,0 +1,33 @@
+{{- if and .Values.monitoring.prometheusURL .Values.monitoring.inferencePodMonitor.enabled }}
+{{- /*
+The inference engine exposes its own telemetry (TTFT, inter-token latency,
+KV-cache occupancy, queue depth, token counters) on the port it serves.
+Without a scrape target those series never reach Prometheus, so the service
+metrics page cannot show latency at all.
+
+Selection is by the label the controller stamps on every inference pod, so
+pods created later are picked up with no chart change. The `release` label is
+what kube-prometheus-stack's Prometheus selects on by default.
+*/}}
+apiVersion: monitoring.coreos.com/v1
+kind: PodMonitor
+metadata:
+  name: {{ include "go-taas.fullname" . }}-inference-engine
+  namespace: {{ .Values.monitoring.inferencePodMonitor.namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    {{- toYaml .Values.monitoring.inferencePodMonitor.labels | nindent 4 }}
+spec:
+  selector:
+    matchExpressions:
+      - key: {{ .Values.monitoring.inferencePodMonitor.serviceLabelKey }}
+        operator: Exists
+  namespaceSelector:
+    matchNames:
+      - {{ .Values.monitoring.inferencePodMonitor.namespace }}
+  podMetricsEndpoints:
+    - port: {{ .Values.monitoring.inferencePodMonitor.port }}
+      path: {{ .Values.monitoring.inferencePodMonitor.path }}
+      interval: {{ .Values.monitoring.inferencePodMonitor.interval }}
+      scrapeTimeout: {{ .Values.monitoring.inferencePodMonitor.scrapeTimeout }}
+{{- end }}

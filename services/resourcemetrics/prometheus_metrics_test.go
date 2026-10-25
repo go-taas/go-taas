@@ -10,6 +10,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	resourcemetricsv1 "github.com/go-taas/go-taas/proto/taas/resourcemetrics/v1"
 )
 
 // fakePodLister returns a fixed pod set.
@@ -225,4 +227,106 @@ func TestPrometheusReadRangeFilter(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.GetReplicas(), 1)
 	assert.Equal(t, "replica-2", resp.GetReplicas()[0].GetReplicaIndex())
+}
+
+// TestEngineTelemetryReadsTheEngineAndVRAM covers the panels the page added:
+// card memory in bytes, TTFT/TPOT converted from seconds to milliseconds,
+// KV-cache as a percentage, queue depths and throughput.
+func TestEngineTelemetryReadsTheEngineAndVRAM(t *testing.T) {
+	prom := newPromServer(t,
+		map[string]string{
+			"FB_USED":             "23205", // MiB
+			"time_to_first_token": "0.25",  // seconds
+			"inter_token_latency": "0.012", // seconds
+			"generation_tokens":   "180",
+		},
+		map[string]string{
+			"FB_TOTAL":          "24564", // MiB
+			"kv_cache_usage":    "0.42",  // fraction
+			"num_requests_run":  "3",
+			"num_requests_wait": "2",
+		},
+	)
+	svc := New(nil)
+	svc.SetPrometheus(prom.URL, "taas-infer", "GPU_UTIL", time.Second)
+	svc.prometheus.gpuMemoryUsed = "FB_USED"
+	svc.prometheus.gpuMemoryTotal = "FB_TOTAL"
+	svc.prometheus.engine = EngineMetricNames{
+		TTFTBucket:       "time_to_first_token",
+		TPOTBucket:       "inter_token_latency",
+		KVCacheUsage:     "kv_cache_usage",
+		RequestsRunning:  "num_requests_run",
+		RequestsWaiting:  "num_requests_wait",
+		GenerationTokens: "generation_tokens",
+		Quantile:         0.95,
+	}
+
+	telemetry := svc.readEngineTelemetry(context.Background(), `pod=~"svc-abc"`, 1700000000, 1700000120, 60*time.Second)
+
+	assert.True(t, telemetry.gpuMemoryPresent)
+	assert.EqualValues(t, 23205*mibToBytes, telemetry.vramBytes)
+	assert.EqualValues(t, 24564*mibToBytes, telemetry.vramTotalBytes)
+
+	assert.True(t, telemetry.enginePresent)
+	// The engine reports seconds; the page shows milliseconds.
+	assert.InDelta(t, 250, telemetry.ttftP95Ms, 0.01)
+	assert.InDelta(t, 12, telemetry.tpotP95Ms, 0.01)
+	// A fraction becomes a percentage.
+	assert.InDelta(t, 42, telemetry.kvCachePercent, 0.01)
+	assert.InDelta(t, 3, telemetry.requestsRunning, 0.001)
+	assert.InDelta(t, 2, telemetry.requestsWaiting, 0.001)
+	assert.InDelta(t, 180, telemetry.tokensPerSecond, 0.001)
+}
+
+// TestEngineTelemetryDegradesPanelByPanel keeps a partial stack useful: no
+// GPU exporter still gives latency, no engine still gives card memory.
+func TestEngineTelemetryDegradesPanelByPanel(t *testing.T) {
+	prom := newPromServer(t,
+		map[string]string{"time_to_first_token": "0.1"},
+		nil,
+	)
+	svc := New(nil)
+	svc.SetPrometheus(prom.URL, "taas-infer", "GPU_UTIL", time.Second)
+	svc.prometheus.gpuMemoryUsed = "FB_USED"
+	svc.prometheus.engine = EngineMetricNames{
+		TTFTBucket: "time_to_first_token",
+		Quantile:   0.95,
+	}
+
+	telemetry := svc.readEngineTelemetry(context.Background(), `pod=~"svc-abc"`, 1700000000, 1700000120, 60*time.Second)
+	assert.False(t, telemetry.gpuMemoryPresent, "no VRAM series means the panel stays empty")
+	assert.EqualValues(t, 0, telemetry.vramBytes)
+	assert.True(t, telemetry.enginePresent)
+	assert.InDelta(t, 100, telemetry.ttftP95Ms, 0.01)
+}
+
+// TestMergeEngineSeriesAlignsBuckets proves a scrape-interval offset does
+// not drop the engine value: the nearest bucket takes it.
+func TestMergeEngineSeriesAlignsBuckets(t *testing.T) {
+	series := []*resourcemetricsv1.ResourceMetricsSeriesPoint{
+		{Bucket: 1000},
+		{Bucket: 1060},
+		{Bucket: 1120},
+	}
+	mergeEngineSeries(series, engineRead{
+		vramSeries: []promSample{{timestamp: 1058, value: 12345}},
+		ttftSeries: []promSample{{timestamp: 1119, value: 87}},
+	})
+	assert.EqualValues(t, 12345, series[1].GpuMemoryBytes, "1058 belongs to the 1060 bucket")
+	assert.InDelta(t, 87, series[2].TtftP95Ms, 0.001)
+	assert.EqualValues(t, 0, series[0].GpuMemoryBytes)
+}
+
+// TestApplyEngineCardsKeepsZeroAndNotMeasuredApart is the distinction the
+// console needs: an engine with zero throughput is measured, an engine that
+// is not scraped is not.
+func TestApplyEngineCardsKeepsZeroAndNotMeasuredApart(t *testing.T) {
+	card := &resourcemetricsv1.ResourceMetricsCard{}
+	applyEngineCards(card, engineRead{enginePresent: true})
+	assert.True(t, card.EngineAvailable)
+	assert.InDelta(t, 0, card.TokensPerSecond, 0.001)
+
+	card = &resourcemetricsv1.ResourceMetricsCard{}
+	applyEngineCards(card, engineRead{})
+	assert.False(t, card.EngineAvailable)
 }

@@ -12,7 +12,20 @@ import { useMemo, useRef, useState } from 'react';
 import type { ResourceMetricsSeriesPoint } from '../api';
 import { useI18n } from '../i18n';
 
-export type ResourceMetric = 'cpu' | 'memory' | 'gpu';
+export type ResourceMetric =
+  | 'cpu'
+  | 'memory'
+  | 'gpu'
+  | 'vram'
+  | 'ttft'
+  | 'tpot'
+  | 'throughput';
+
+// isLatencyMetric reports whether a metric is measured in milliseconds, so
+// the axis formats it as a duration instead of a percentage.
+function isLatencyMetric(metric: ResourceMetric): boolean {
+  return metric === 'ttft' || metric === 'tpot';
+}
 
 // CHART geometry. The viewBox is fixed and the SVG scales to its
 // container, so the chart is responsive without a resize observer.
@@ -30,9 +43,27 @@ function metricValue(p: ResourceMetricsSeriesPoint, metric: ResourceMetric): num
       return parseFloat(p.cpuPercent || '0');
     case 'memory':
       return parseInt(p.memoryBytes || '0', 10);
-    default:
+    case 'gpu':
       return parseFloat(p.gpuPercent || '0');
+    case 'vram':
+      return parseInt(p.gpuMemoryBytes || '0', 10);
+    case 'ttft':
+      return p.ttftP95Ms || 0;
+    case 'tpot':
+      return p.tpotP95Ms || 0;
+    case 'throughput':
+      return p.tokensPerSecond || 0;
+    default:
+      return 0;
   }
+}
+
+// formatMillis renders a latency in milliseconds, switching to seconds once
+// the value is large enough that "1234 ms" stops being readable.
+export function formatMillis(ms: number): string {
+  if (ms >= 1000) return `${(ms / 1000).toFixed(2)} s`;
+  if (ms >= 10) return `${ms.toFixed(0)} ms`;
+  return `${ms.toFixed(1)} ms`;
 }
 
 // formatMemory renders bytes with a binary unit.
@@ -67,8 +98,19 @@ function niceCeiling(value: number): number {
 // line along the axis, which hides exactly the shape the page exists to
 // show. The floor keeps a near-zero series from being magnified into noise.
 function axisFor(metric: ResourceMetric, max: number): { ceiling: number; format: (v: number) => string } {
-  if (metric === 'memory') {
+  if (metric === 'memory' || metric === 'vram') {
     return { ceiling: niceCeiling(Math.max(max * 1.15, 1)), format: (v) => formatMemory(v) };
+  }
+  if (isLatencyMetric(metric)) {
+    // Latency has no natural ceiling: scale to the data but keep the axis
+    // honest by labelling the real millisecond values.
+    return { ceiling: niceCeiling(Math.max(max * 1.25, 1)), format: (v) => formatMillis(v) };
+  }
+  if (metric === 'throughput') {
+    return {
+      ceiling: niceCeiling(Math.max(max * 1.2, 1)),
+      format: (v) => `${v.toFixed(v < 10 ? 1 : 0)}/s`,
+    };
   }
   return {
     ceiling: Math.min(100, niceCeiling(Math.max(max * 1.2, 10))),

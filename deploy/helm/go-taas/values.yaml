@@ -319,6 +319,27 @@ monitoring:
   gpuUtilizationMetric: DCGM_FI_DEV_GPU_UTIL
   # -- Upper bound on one Prometheus query.
   timeout: 10s
+  # Scrape the inference engine's own metrics. The engine exposes TTFT,
+  # inter-token latency, KV-cache occupancy, queue depth and token counters
+  # on its serving port; without a scrape target those series never reach
+  # Prometheus and the latency panels stay empty. Requires the Prometheus
+  # Operator CRDs (PodMonitor).
+  inferencePodMonitor:
+    # -- Create the PodMonitor that scrapes inference engine pods.
+    enabled: true
+    # -- Namespace the inference pods run in (the PodMonitor lives here).
+    namespace: taas-infer
+    # -- Label the controller stamps on every inference pod.
+    serviceLabelKey: go-taas.com/service-id
+    # -- Container port name the engine serves on.
+    port: http
+    path: /metrics
+    interval: 15s
+    scrapeTimeout: 10s
+    # -- Labels Prometheus uses to select PodMonitors (kube-prometheus-stack
+    # uses `release: kube-prometheus-stack`).
+    labels:
+      release: kube-prometheus-stack
 
 # Data plane (inference gateway) exposure.
 #

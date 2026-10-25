@@ -1250,11 +1250,29 @@ export interface ResourceMetricsCard {
   // this service. An idle GPU is 0%, which is a value; this flag is the
   // difference between "idle" and "not measurable".
   gpuAvailable?: boolean;
+  // Engine and card-memory telemetry (all optional so an older server
+  // still renders).
+  currentGpuMemoryBytes?: string;
+  gpuMemoryTotalBytes?: string;
+  ttftP95Ms?: number;
+  tpotP95Ms?: number;
+  kvCachePercent?: number;
+  requestsRunning?: number;
+  requestsWaiting?: number;
+  tokensPerSecond?: number;
+  // engineAvailable is false when the engine's metrics are not scraped, so
+  // the page says "not measured" instead of showing a misleading zero.
+  engineAvailable?: boolean;
 }
 
 export interface ResourceMetricsSeriesPoint {
   bucket: string;
   cpuPercent: string;
+  // Engine and card-memory series (optional: absent from an older server).
+  gpuMemoryBytes?: string;
+  ttftP95Ms?: number;
+  tpotP95Ms?: number;
+  tokensPerSecond?: number;
   memoryBytes: string;
   gpuPercent: string;
 }

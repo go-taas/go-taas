@@ -310,6 +310,41 @@ textarea {
 /* ============================================================
    Monitoring chart (service metrics page)
    ============================================================ */
+.metrics-group-label {
+  margin: 18px 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.metrics-group-label:first-of-type {
+  margin-top: 6px;
+}
+
+/* VRAM usage bar: a bare "23 GiB / 24 GiB" reads slower than a fill. */
+.metrics-ratio {
+  margin-top: 6px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.25);
+  overflow: hidden;
+}
+
+.metrics-ratio > span {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--chart-line, #0080ff), rgba(0, 128, 255, 0.55));
+}
+
+.metrics-hint {
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
 .metrics-through {
   margin: 4px 0 10px;
   font-size: 12px;

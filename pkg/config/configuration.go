@@ -442,6 +442,33 @@ func (c *Configuration) applyDefaults() {
 	if c.ResourceMetrics.GPUUtilizationMetric == "" {
 		c.ResourceMetrics.GPUUtilizationMetric = "DCGM_FI_DEV_GPU_UTIL"
 	}
+	if c.ResourceMetrics.GPUMemoryUsedMetric == "" {
+		c.ResourceMetrics.GPUMemoryUsedMetric = "DCGM_FI_DEV_FB_USED"
+	}
+	if c.ResourceMetrics.GPUMemoryTotalMetric == "" {
+		c.ResourceMetrics.GPUMemoryTotalMetric = "DCGM_FI_DEV_FB_TOTAL"
+	}
+	if c.ResourceMetrics.Engine.TTFTBucket == "" {
+		c.ResourceMetrics.Engine.TTFTBucket = "vllm:time_to_first_token_seconds_bucket"
+	}
+	if c.ResourceMetrics.Engine.TPOTBucket == "" {
+		c.ResourceMetrics.Engine.TPOTBucket = "vllm:inter_token_latency_seconds_bucket"
+	}
+	if c.ResourceMetrics.Engine.KVCacheUsage == "" {
+		c.ResourceMetrics.Engine.KVCacheUsage = "vllm:kv_cache_usage_perc"
+	}
+	if c.ResourceMetrics.Engine.RequestsRunning == "" {
+		c.ResourceMetrics.Engine.RequestsRunning = "vllm:num_requests_running"
+	}
+	if c.ResourceMetrics.Engine.RequestsWaiting == "" {
+		c.ResourceMetrics.Engine.RequestsWaiting = "vllm:num_requests_waiting"
+	}
+	if c.ResourceMetrics.Engine.GenerationTokens == "" {
+		c.ResourceMetrics.Engine.GenerationTokens = "vllm:generation_tokens_total"
+	}
+	if c.ResourceMetrics.Engine.Quantile <= 0 || c.ResourceMetrics.Engine.Quantile > 1 {
+		c.ResourceMetrics.Engine.Quantile = 0.95
+	}
 	if c.ResourceMetrics.InferenceNamespace == "" {
 		// controller.namespace is optional and often unset, so falling
 		// back to it alone would leave the PromQL namespace matcher empty

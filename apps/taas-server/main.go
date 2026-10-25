@@ -422,6 +422,23 @@ func main() {
 						cfg.ResourceMetrics.GPUUtilizationMetric,
 						cfg.ResourceMetrics.PrometheusTimeout,
 					)
+					// Card memory comes from the GPU exporter and the
+					// latency panels from the engine's own metrics; both
+					// are named in configuration so a different engine is a
+					// setting, not a code change.
+					resourceMetricsSvc.SetEngineMetrics(
+						resourcemetrics.EngineMetricNames{
+							TTFTBucket:       cfg.ResourceMetrics.Engine.TTFTBucket,
+							TPOTBucket:       cfg.ResourceMetrics.Engine.TPOTBucket,
+							KVCacheUsage:     cfg.ResourceMetrics.Engine.KVCacheUsage,
+							RequestsRunning:  cfg.ResourceMetrics.Engine.RequestsRunning,
+							RequestsWaiting:  cfg.ResourceMetrics.Engine.RequestsWaiting,
+							GenerationTokens: cfg.ResourceMetrics.Engine.GenerationTokens,
+							Quantile:         cfg.ResourceMetrics.Engine.Quantile,
+						},
+						cfg.ResourceMetrics.GPUMemoryUsedMetric,
+						cfg.ResourceMetrics.GPUMemoryTotalMetric,
+					)
 				}
 			} else {
 				logger.S().Warnw("resourcemetrics: prometheus path disabled, k8s client unavailable", "err", k8sErr)

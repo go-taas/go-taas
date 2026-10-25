@@ -190,6 +190,14 @@ func fakePrometheus(t *testing.T) *httptest.Server {
 			value = "2147483648" // 2 GiB
 		case strings.Contains(query, "GPU_FVT"):
 			value = "37"
+		case strings.Contains(query, "VRAM_USED_FVT"):
+			value = "20480" // MiB
+		case strings.Contains(query, "TTFT_FVT"):
+			value = "0.18" // seconds
+		case strings.Contains(query, "TPOT_FVT"):
+			value = "0.011" // seconds
+		case strings.Contains(query, "THROUGHPUT_FVT"):
+			value = "240"
 		}
 		result := []any{}
 		if r.URL.Path == "/api/v1/query_range" {
@@ -202,6 +210,21 @@ func fakePrometheus(t *testing.T) *httptest.Server {
 			})
 		} else if strings.Contains(query, "count(") {
 			result = append(result, map[string]any{"metric": map[string]string{}, "value": []any{float64(1700000000), "1"}})
+		} else {
+			instant := ""
+			switch {
+			case strings.Contains(query, "VRAM_TOTAL_FVT"):
+				instant = "24564" // MiB
+			case strings.Contains(query, "KVCACHE_FVT"):
+				instant = "0.5"
+			case strings.Contains(query, "REQRUN_FVT"):
+				instant = "4"
+			case strings.Contains(query, "REQWAIT_FVT"):
+				instant = "3"
+			}
+			if instant != "" {
+				result = append(result, map[string]any{"metric": map[string]string{}, "value": []any{float64(1700000000), instant}})
+			}
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{
@@ -264,4 +287,55 @@ func anyToFloat(v any) float64 {
 	default:
 		return 0
 	}
+}
+
+// TestFVTServiceMetricsEnginePanels covers the engine telemetry over HTTP:
+// card memory, TTFT, TPOT, KV cache, queue depth and throughput all reach
+// the response, with the unit conversions applied (MiB→bytes, s→ms,
+// fraction→percent).
+func TestFVTServiceMetricsEnginePanels(t *testing.T) {
+	env := newResourceMetricsEnv(t)
+	prom := fakePrometheus(t)
+	env.rmSvc.SetPrometheus(prom.URL, "taas-infer", "GPU_FVT", 5*time.Second)
+	env.rmSvc.SetEngineMetrics(resourcemetrics.EngineMetricNames{
+		TTFTBucket:       "TTFT_FVT",
+		TPOTBucket:       "TPOT_FVT",
+		KVCacheUsage:     "KVCACHE_FVT",
+		RequestsRunning:  "REQRUN_FVT",
+		RequestsWaiting:  "REQWAIT_FVT",
+		GenerationTokens: "THROUGHPUT_FVT",
+		Quantile:         0.95,
+	}, "VRAM_USED_FVT", "VRAM_TOTAL_FVT")
+	env.rmSvc.SetPodLister(fakeMetricsPodLister{pods: []resourcemetrics.ServicePod{{
+		Name: "svc-abc", ReplicaIndex: "replica-1", CPULimitMilli: 1000,
+	}}})
+
+	serviceID := "33333333-3333-3333-3333-333333333333"
+	require.NoError(t, env.db.Exec(
+		`INSERT INTO inference_services (id, organization_id, name) VALUES (?, 'org-fvt', 'engine-svc')`, serviceID).Error)
+
+	code, body := env.call(t, http.MethodGet,
+		"/api/v1/admin/services/"+serviceID+"/metrics", "org-fvt")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+
+	cards := body["cards"].(map[string]any)
+	// 20480 MiB, 24564 MiB.
+	assert.InDelta(t, 20480*1024*1024, anyToFloat(cards["currentGpuMemoryBytes"]), 1)
+	assert.InDelta(t, 24564*1024*1024, anyToFloat(cards["gpuMemoryTotalBytes"]), 1)
+	// 0.18 s and 0.011 s in milliseconds.
+	assert.InDelta(t, 180, anyToFloat(cards["ttftP95Ms"]), 0.01)
+	assert.InDelta(t, 11, anyToFloat(cards["tpotP95Ms"]), 0.01)
+	// 0.5 fraction as a percentage.
+	assert.InDelta(t, 50, anyToFloat(cards["kvCachePercent"]), 0.01)
+	assert.InDelta(t, 4, anyToFloat(cards["requestsRunning"]), 0.001)
+	assert.InDelta(t, 3, anyToFloat(cards["requestsWaiting"]), 0.001)
+	assert.InDelta(t, 240, anyToFloat(cards["tokensPerSecond"]), 0.001)
+	assert.Equal(t, true, cards["engineAvailable"])
+
+	series, ok := body["series"].([]any)
+	require.True(t, ok)
+	require.NotEmpty(t, series)
+	last := series[len(series)-1].(map[string]any)
+	assert.InDelta(t, 180, anyToFloat(last["ttftP95Ms"]), 0.01)
+	assert.InDelta(t, 11, anyToFloat(last["tpotP95Ms"]), 0.01)
 }

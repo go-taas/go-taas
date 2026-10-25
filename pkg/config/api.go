@@ -658,6 +658,33 @@ type ResourceMetricsConfig struct {
 	// GPUUtilizationMetric is the PromQL metric carrying GPU utilization.
 	// Default DCGM_FI_DEV_GPU_UTIL (the NVIDIA DCGM exporter).
 	GPUUtilizationMetric string `mapstructure:"gpuUtilizationMetric"`
+	// GPUMemoryUsedMetric / GPUMemoryTotalMetric report card memory in
+	// MiB. Defaults: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_TOTAL.
+	GPUMemoryUsedMetric  string `mapstructure:"gpuMemoryUsedMetric"`
+	GPUMemoryTotalMetric string `mapstructure:"gpuMemoryTotalMetric"`
+	// Engine holds the inference engine's own metric names. They default
+	// to vLLM's, which is what the shipped images run; another engine's
+	// names are a configuration change, not a code change.
+	Engine EngineMetricsConfig `mapstructure:"engine"`
+}
+
+// EngineMetricsConfig names the engine-reported PromQL metrics the
+// metrics page reads. Each panel is skipped when its metric is empty.
+type EngineMetricsConfig struct {
+	// TTFTBucket is the time-to-first-token histogram (seconds).
+	TTFTBucket string `mapstructure:"ttftBucket"`
+	// TPOTBucket is the inter-token-latency histogram (seconds), i.e. the
+	// time per output token.
+	TPOTBucket string `mapstructure:"tpotBucket"`
+	// KVCacheUsage is the KV-cache occupancy gauge (0-1).
+	KVCacheUsage string `mapstructure:"kvCacheUsage"`
+	// RequestsRunning / RequestsWaiting are the engine's queue depths.
+	RequestsRunning string `mapstructure:"requestsRunning"`
+	RequestsWaiting string `mapstructure:"requestsWaiting"`
+	// GenerationTokens is the output-token counter, used for throughput.
+	GenerationTokens string `mapstructure:"generationTokens"`
+	// Quantile is the percentile used for the latency cards. Default 0.95.
+	Quantile float64 `mapstructure:"quantile"`
 }
 
 // ControllerResourceMetricsConfig holds the controller's per-service

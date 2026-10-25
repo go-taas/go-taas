@@ -160,8 +160,15 @@ func (s *Service) prometheusRead(ctx context.Context, serviceID string, since, u
 		replicaRows = append(replicaRows, row)
 	}
 
+	// Engine and card-memory telemetry sits alongside utilization: TTFT and
+	// TPOT are what an operator sizes a deployment by, and they only exist
+	// in the engine's own metrics.
+	telemetry := s.readEngineTelemetry(ctx, selector, since, until, step)
+	mergeEngineSeries(series, telemetry)
+
 	cards := buildPrometheusCards(series, replicaRows)
 	cards.GpuAvailable = s.gpuAvailable(ctx, selector)
+	applyEngineCards(cards, telemetry)
 	return &resourcemetricsv1.GetServiceResourceMetricsResponse{
 		Response: okResponse(),
 		Cards:    cards,
@@ -262,4 +269,235 @@ func rateWindow(step time.Duration) string {
 		window = 5 * time.Minute
 	}
 	return strconv.Itoa(int(window.Seconds())) + "s"
+}
+
+// engineRead is the engine/VRAM telemetry the page shows next to CPU,
+// memory and GPU utilization. Any field whose metric is missing stays
+// zero, and the availability flags let the console say "not measured"
+// rather than print a misleading 0.
+type engineRead struct {
+	// vramSeries / ttftSeries / tpotSeries / throughputSeries feed the
+	// chart, so the same numbers are visible over time rather than only at
+	// the last sample.
+	vramSeries       []promSample
+	ttftSeries       []promSample
+	tpotSeries       []promSample
+	throughputSeries []promSample
+
+	vramBytes        int64
+	vramTotalBytes   int64
+	ttftP95Ms        float64
+	tpotP95Ms        float64
+	kvCachePercent   float64
+	requestsRunning  float64
+	requestsWaiting  float64
+	tokensPerSecond  float64
+	gpuMemoryPresent bool
+	enginePresent    bool
+}
+
+// readEngineTelemetry collects the engine and card-memory numbers.
+//
+// Each panel is independent: a cluster with DCGM but no engine scrape still
+// shows VRAM, and an engine with metrics but no GPU exporter still shows
+// TTFT and TPOT. A failure in one query never blanks the others — the page
+// is a monitoring view, and half the numbers beat none.
+func (s *Service) readEngineTelemetry(ctx context.Context, selector string, since, until int64, step time.Duration) engineRead {
+	var out engineRead
+	names := s.prometheus.engine
+	if names.Quantile <= 0 || names.Quantile > 1 {
+		names.Quantile = 0.95
+	}
+	quantile := strconv.FormatFloat(names.Quantile, 'f', 2, 64)
+
+	// Card memory: DCGM reports MiB, the page works in bytes.
+	if s.prometheus.gpuMemoryUsed != "" {
+		usedByPod, err := s.prometheus.queryRangeByPod(ctx,
+			`sum by (pod) (`+s.prometheus.gpuMemoryUsed+`{`+selector+`})`, since, until, step)
+		if err == nil {
+			out.vramSeries = scaledSamples(sumByTimestamp(usedByPod), mibToBytes)
+			if last := lastPoint(out.vramSeries); last != nil {
+				out.vramBytes = int64(last.value)
+				out.gpuMemoryPresent = true
+			}
+		} else {
+			warnPrometheus(err)
+		}
+	}
+	if s.prometheus.gpuMemoryTotal != "" {
+		// Capacity is not per pod: each card reports its own total, so the
+		// sum would multiply by the number of pods sharing a card.
+		total, err := s.prometheus.queryScalar(ctx,
+			`max(`+s.prometheus.gpuMemoryTotal+`{`+selector+`})`)
+		if err == nil && total > 0 {
+			out.vramTotalBytes = int64(total) * mibToBytes
+		}
+	}
+
+	// TTFT and TPOT: percentile over the engine's histograms. The rate
+	// window is the query step, so a long range does not average away a
+	// spike and a short one still has samples.
+	window := rateWindow(step)
+	if names.TTFTBucket != "" {
+		series, err := s.prometheus.queryRange(
+			ctx,
+			`histogram_quantile(`+quantile+`, sum by (le) (rate(`+names.TTFTBucket+`{`+selector+`}[`+window+`])))`,
+			since, until, step)
+		if err == nil {
+			out.ttftSeries = scaledSamples(series, secondsToMillis)
+			if last := lastPoint(out.ttftSeries); last != nil {
+				out.ttftP95Ms = last.value
+				out.enginePresent = true
+			}
+		} else {
+			warnPrometheus(err)
+		}
+	}
+	if names.TPOTBucket != "" {
+		series, err := s.prometheus.queryRange(
+			ctx,
+			`histogram_quantile(`+quantile+`, sum by (le) (rate(`+names.TPOTBucket+`{`+selector+`}[`+window+`])))`,
+			since, until, step)
+		if err == nil {
+			out.tpotSeries = scaledSamples(series, secondsToMillis)
+			if last := lastPoint(out.tpotSeries); last != nil {
+				out.tpotP95Ms = last.value
+				out.enginePresent = true
+			}
+		} else {
+			warnPrometheus(err)
+		}
+	}
+
+	// Output-token throughput.
+	if names.GenerationTokens != "" {
+		series, err := s.prometheus.queryRange(
+			ctx, `sum(rate(`+names.GenerationTokens+`{`+selector+`}[`+window+`]))`, since, until, step)
+		if err == nil {
+			out.throughputSeries = series
+			if last := lastPoint(series); last != nil {
+				out.tokensPerSecond = last.value
+				out.enginePresent = true
+			}
+		} else {
+			warnPrometheus(err)
+		}
+	}
+
+	// Gauges: one instant query each, since only the current value is shown.
+	if names.KVCacheUsage != "" {
+		if value, ok, err := s.prometheus.queryScalarOK(ctx, `avg(`+names.KVCacheUsage+`{`+selector+`})`); err == nil && ok {
+			// The engine reports a fraction; the page shows a percentage.
+			out.kvCachePercent = value * 100
+			out.enginePresent = true
+		}
+	}
+	if names.RequestsRunning != "" {
+		if value, ok, err := s.prometheus.queryScalarOK(ctx, `sum(`+names.RequestsRunning+`{`+selector+`})`); err == nil && ok {
+			out.requestsRunning = value
+			out.enginePresent = true
+		}
+	}
+	if names.RequestsWaiting != "" {
+		if value, ok, err := s.prometheus.queryScalarOK(ctx, `sum(`+names.RequestsWaiting+`{`+selector+`})`); err == nil && ok {
+			out.requestsWaiting = value
+			out.enginePresent = true
+		}
+	}
+	return out
+}
+
+// mibToBytes converts DCGM's MiB to bytes.
+const mibToBytes = 1024 * 1024
+
+// scaledSamples multiplies every sample by a factor (unit conversion).
+func scaledSamples(samples []promSample, factor float64) []promSample {
+	out := make([]promSample, 0, len(samples))
+	for _, sample := range samples {
+		out = append(out, promSample{timestamp: sample.timestamp, value: sample.value * factor})
+	}
+	return out
+}
+
+// secondsToMillis converts a latency in seconds to milliseconds.
+const secondsToMillis = 1000.0
+
+// mergeEngineSeries attaches the engine series to the utilization points so
+// one bucket carries every metric. The timestamps can differ by a scrape
+// interval, so each engine series is matched to its nearest utilization
+// bucket rather than requiring an exact timestamp.
+func mergeEngineSeries(series []*resourcemetricsv1.ResourceMetricsSeriesPoint, telemetry engineRead) {
+	if len(series) == 0 {
+		return
+	}
+	applyToNearest := func(samples []promSample, set func(point *resourcemetricsv1.ResourceMetricsSeriesPoint, value float64)) {
+		for _, sample := range samples {
+			point := nearestPoint(series, sample.timestamp)
+			if point != nil {
+				set(point, sample.value)
+			}
+		}
+	}
+	applyToNearest(telemetry.vramSeries, func(p *resourcemetricsv1.ResourceMetricsSeriesPoint, v float64) {
+		p.GpuMemoryBytes = int64(v)
+	})
+	applyToNearest(telemetry.ttftSeries, func(p *resourcemetricsv1.ResourceMetricsSeriesPoint, v float64) {
+		p.TtftP95Ms = v
+	})
+	applyToNearest(telemetry.tpotSeries, func(p *resourcemetricsv1.ResourceMetricsSeriesPoint, v float64) {
+		p.TpotP95Ms = v
+	})
+	applyToNearest(telemetry.throughputSeries, func(p *resourcemetricsv1.ResourceMetricsSeriesPoint, v float64) {
+		p.TokensPerSecond = v
+	})
+}
+
+// nearestPoint returns the bucket closest to a timestamp, or nil when the
+// series is empty.
+func nearestPoint(series []*resourcemetricsv1.ResourceMetricsSeriesPoint, timestamp int64) *resourcemetricsv1.ResourceMetricsSeriesPoint {
+	if len(series) == 0 {
+		return nil
+	}
+	best := series[0]
+	bestDistance := absInt64(series[0].Bucket - timestamp)
+	for _, point := range series[1:] {
+		if distance := absInt64(point.Bucket - timestamp); distance < bestDistance {
+			best = point
+			bestDistance = distance
+		}
+	}
+	return best
+}
+
+// absInt64 returns the absolute value.
+func absInt64(v int64) int64 {
+	if v < 0 {
+		return -v
+	}
+	return v
+}
+
+// applyEngineCards fills the engine and VRAM fields on the summary card.
+func applyEngineCards(card *resourcemetricsv1.ResourceMetricsCard, telemetry engineRead) {
+	card.CurrentGpuMemoryBytes = telemetry.vramBytes
+	card.GpuMemoryTotalBytes = telemetry.vramTotalBytes
+	card.TtftP95Ms = telemetry.ttftP95Ms
+	card.TpotP95Ms = telemetry.tpotP95Ms
+	card.KvCachePercent = telemetry.kvCachePercent
+	card.RequestsRunning = telemetry.requestsRunning
+	card.RequestsWaiting = telemetry.requestsWaiting
+	card.TokensPerSecond = telemetry.tokensPerSecond
+	card.EngineAvailable = telemetry.enginePresent
+}
+
+// SetEngineMetrics overrides the engine and card-memory metric names. The
+// defaults are vLLM's and DCGM's; wiring passes `resourceMetrics.*` so a
+// different engine is a configuration change.
+func (s *Service) SetEngineMetrics(engine EngineMetricNames, memoryUsed, memoryTotal string) {
+	if s.prometheus == nil {
+		return
+	}
+	s.prometheus.engine = engine
+	s.prometheus.gpuMemoryUsed = memoryUsed
+	s.prometheus.gpuMemoryTotal = memoryTotal
 }
