@@ -91,6 +91,14 @@ func newRoutingGroupEnv(t *testing.T) *routingGroupEnv {
 	routingSvc.SetModelCatalog(modelSvc)
 	modelSvc.SetVirtualModelLister(routingSvc)
 	inferSvc.SetRoutingResolver(routingSvc)
+	// The virtual playground calls the serving gateway with the caller's
+	// key, so the test points the resolver at a fake gateway.
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices":[{"message":{"role":"assistant","content":"hi"}}],"usage":{"prompt_tokens":3,"completion_tokens":1}}`))
+	}))
+	t.Cleanup(gateway.Close)
+	inferSvc.SetGatewayResolver(fvtGatewayResolver{url: gateway.URL})
 
 	env := &routingGroupEnv{db: db, grpcLn: ln, routingSvc: routingSvc, modelSvc: modelSvc, inferSvc: inferSvc}
 
@@ -446,7 +454,7 @@ func TestFVTRoutingGroupResolutionAndDecisions(t *testing.T) {
 	// AC8: the playground serves the virtual model and records the
 	// decision with the served-model attribution.
 	code, body = env.call(t, http.MethodPost, "/api/v1/models/auto-chat:playground", map[string]any{
-		"modelId": "auto-chat", "prompt": "hello world",
+		"modelId": "auto-chat", "prompt": "hello world", "apiKey": "sk-fvt",
 	}, false)
 	require.Equal(t, http.StatusOK, code, "virtual playground must succeed: %v", body)
 	assert.NotEmpty(t, body["servedModel"], "the response must name the served model")
@@ -559,3 +567,8 @@ func TestFVTRoutingGroupVirtualModelListing(t *testing.T) {
 	assert.Equal(t, "auto-chat", m["name"])
 	assert.Equal(t, true, m["virtual"])
 }
+
+// fvtGatewayResolver points the infer service at a fake serving gateway.
+type fvtGatewayResolver struct{ url string }
+
+func (r fvtGatewayResolver) InferenceGatewayURL(context.Context) string { return r.url }

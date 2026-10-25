@@ -126,6 +126,11 @@ export default function QuickstartPage() {
 
   // Step 4 — code & test.
   const [lang, setLang] = useState<Lang>('python');
+  // pastedKey is the plaintext the user supplies to run a test call. The
+  // server stores API keys only as hashes, so it cannot answer with one:
+  // a key created in an earlier session has to be pasted again. Held in
+  // component state only and cleared on unmount.
+  const [pastedKey, setPastedKey] = useState('');
   const [testing, setTesting] = useState(false);
   const [testResponse, setTestResponse] = useState<PlaygroundInferResponse | null>(null);
   const [testError, setTestError] = useState('');
@@ -197,7 +202,13 @@ export default function QuickstartPage() {
     [lang, baseUrl, selectedModel, snippetKey],
   );
 
-  const canTest = selectedModelId !== '' && (selectedKeyId !== '' || createdSecret !== '');
+  // The test call authenticates with the caller's own key, so a key's
+  // plaintext is required: the created one when it is still on screen,
+  // otherwise whatever the user pasted. An external model is proxied with
+  // its provider's key instead, so it needs none.
+  const testKey = createdSecret || pastedKey.trim();
+  const needsKey = !selectedModel?.external;
+  const canTest = selectedModelId !== '' && baseUrl !== '' && (!needsKey || testKey !== '');
 
   const createKey = async () => {
     if (!keyName.trim()) {
@@ -235,7 +246,10 @@ export default function QuickstartPage() {
   };
 
   const runTest = async () => {
-    if (!canTest) return;
+    if (!canTest) {
+      setTestError(needsKey ? t('quickstart.testKeyRequired') : t('quickstart.baseUrlFailed'));
+      return;
+    }
     setTesting(true);
     setTestError('');
     setTestResponse(null);
@@ -243,7 +257,7 @@ export default function QuickstartPage() {
       const data = await api.post<PlaygroundInferResponse>(
         `/api/v1/models/${selectedModelId}:playground`,
         orgId,
-        { modelId: selectedModelId, prompt: SAMPLE_PROMPT },
+        { modelId: selectedModelId, prompt: SAMPLE_PROMPT, apiKey: testKey },
       );
       setTestResponse(data);
     } catch (e) {
@@ -484,7 +498,25 @@ export default function QuickstartPage() {
           {snippet}
         </div>
         <CopyControl text={snippet} testId="quickstart-copy" label={t('quickstart.copySnippet')} />
-        <div style={{ marginTop: 20 }}>
+        {needsKey && (
+        <div className="form-row" style={{ marginTop: 20 }}>
+          <label htmlFor="quickstart-test-key">{t('quickstart.testKeyLabel')}</label>
+          <input
+            id="quickstart-test-key"
+            data-testid="quickstart-test-key"
+            type="password"
+            autoComplete="off"
+            value={createdSecret || pastedKey}
+            readOnly={createdSecret !== ''}
+            placeholder={t('quickstart.testKeyPlaceholder')}
+            onChange={(e) => setPastedKey(e.target.value)}
+          />
+          <div className="hint" data-testid="quickstart-test-key-hint">
+            {createdSecret ? t('quickstart.testKeyHintCreated') : t('quickstart.testKeyHintPaste')}
+          </div>
+        </div>
+        )}
+        <div style={{ marginTop: 12 }}>
           <button data-testid="quickstart-test" disabled={!canTest || testing} onClick={() => void runTest()}>
             {testing ? t('quickstart.testing') : t('quickstart.test')}
           </button>

@@ -84,16 +84,7 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	if svc.State != StateRunning {
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
 	}
-
-	// The playground forwards by model identity (AD8); the data-plane
-	// gateway verifies the key and meters the call, producing a
-	// request-log row through the normal metered path. The data-plane
-	// gateway is a separate deployment (out of repository scope); the
-	// proxy seam is pinned here, mirroring PlaygroundInfer.
-	return &inferv1.PlaygroundModelResponse{
-		Response:  okResponse(),
-		RequestId: uuid.NewString(),
-	}, nil
+	return s.playSelfHostedModel(ctx, req, m)
 }
 
 // playExternalModel proxies a published external model to its provider on
@@ -203,10 +194,7 @@ func (s *Service) playCandidate(ctx context.Context, req *inferv1.PlaygroundMode
 	if svc == nil || svc.State != StateRunning {
 		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
 	}
-	return &inferv1.PlaygroundModelResponse{
-		Response:  okResponse(),
-		RequestId: uuid.NewString(),
-	}, nil
+	return s.playSelfHostedModel(ctx, req, m)
 }
 
 // externalChatRequest is the OpenAI-compatible chat request the proxy sends

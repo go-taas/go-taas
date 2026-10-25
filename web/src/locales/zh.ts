@@ -1303,6 +1303,10 @@ export const zh: Record<string, string> = {
   'umodels.auto': '自动',
   'umodeldetail.auto': '自动',
   'umodeldetail.virtualNote': '平台管理的模型组——平台为每个请求选择服务模型。',
+  'uplayground.keyLabel': '调用密钥',
+  'uplayground.keyPlaceholder': 'sk-…',
+  'uplayground.keyHint': '密钥创建后无法再次读取，请粘贴您自己的密钥。它仅在本次请求中使用，不会被保存，也不会出现在日志里。',
+  'uplayground.keyRequired': '请先填写调用密钥。',
   'uplayground.autoSuffix': '（自动）',
   'uplayground.servedBy': '由 {model} 服务',
 
@@ -2316,6 +2320,11 @@ export const zh: Record<string, string> = {
   'quickstart.nameTooLong': '密钥名称最多 64 个字符。',
   'quickstart.createFailed': '创建密钥失败',
   'quickstart.testFailed': '测试请求失败',
+  'quickstart.testKeyLabel': '测试用密钥',
+  'quickstart.testKeyPlaceholder': 'sk-…',
+  'quickstart.testKeyHintCreated': '将使用上方刚创建的密钥。该密钥仅在本次测试中使用，不会被保存，也不会出现在日志里。',
+  'quickstart.testKeyHintPaste': '密钥创建后无法再次读取，请粘贴您自己的密钥。它仅在本次测试中使用，不会被保存，也不会出现在日志里。',
+  'quickstart.testKeyRequired': '请先填写测试用密钥。',
 
   // ---- User: Models ----
   'umodels.title': '模型',

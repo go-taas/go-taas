@@ -471,6 +471,14 @@ message PlaygroundModelRequest {
   string prompt = 3;
   double temperature = 4;
   int32 max_tokens = 5;
+  // api_key is the caller's API key plaintext, forwarded to the serving
+  // gateway as-is so the test call is authenticated, rate-limited and
+  // metered exactly like the caller's own traffic. It is used for this
+  // one request and never persisted, logged or echoed back; a caller
+  // whose key material is gone (created in an earlier session) leaves it
+  // empty and the request fails closed. Server-side keys are stored only
+  // as hashes (see APIKey), so it cannot be recovered here.
+  string api_key = 6;
 }
 message PlaygroundModelResponse {
   taas.common.v1.Response response = 1;

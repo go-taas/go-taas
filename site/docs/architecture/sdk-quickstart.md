@@ -179,6 +179,7 @@ message GetInferenceEndpointResponse {
 - Success responses are HTTP 200; business errors render as `{"code": <int>, "message": "..."}`.
 - `GetInferenceEndpoint` is a **user-realm read with no organization context** (design §6 contract note 1): it returns the configured base URL regardless of the caller's organization. It is reached only through the user prefix, so the realm guard already guarantees a user-realm session (or transitional access).
 - The reused RPCs keep their existing wire semantics unchanged: `ListAPIKeys` supports `active_only` and pagination; `CreateAPIKey` returns the plaintext `api_key` once; `ListAvailableModels` returns the masked `AvailableModel` projection; `PlaygroundModel` takes `model_id` (path), `api_key_id`, `prompt`, `temperature`, `max_tokens` and returns `completion`, `prompt_tokens`, `completion_tokens`, `latency_ms`.
+- `PlaygroundModel` additionally accepts a write-only `api_key` (the plaintext). A self-hosted model is served by calling the serving gateway with that key as the bearer token, so the test exercises the same authentication, per-key rate limits, model allow-list and metering as the caller's real traffic. The key is used for that one call and is never persisted, logged or echoed — API keys are stored only as salted hashes, so it cannot be recovered server-side and the caller must supply it every time. A missing key fails closed with 10314; a gateway rejection is relayed as 10315 with the gateway's own message. An external model is proxied with the provider's key and needs none.
 
 ### 5.4 Validation matrix
 
@@ -188,7 +189,9 @@ message GetInferenceEndpointResponse {
 | `ListAPIKeys` | (reused) | — | unchanged |
 | `CreateAPIKey` | (reused) | — | unchanged |
 | `ListAvailableModels` | (reused) | — | unchanged |
-| `PlaygroundModel` | (reused) | — | unchanged |
+| `PlaygroundModel` | `api_key` present for a self-hosted model | 10314 `CodePlaygroundKeyMissing` | "playground: send the API key with the request; keys are stored hashed and cannot be read back" |
+| `PlaygroundModel` | serving gateway reachable | 10304 `CodeInferEndpointNotFound` | "inference endpoint not found" |
+| `PlaygroundModel` | gateway accepts the call | 10315 `CodePlaygroundRequestFailed` | "playground: the serving gateway returned <status>: <its message>" |
 
 ---
 

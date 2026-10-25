@@ -1326,6 +1326,10 @@ export const en: Record<string, string> = {
   'umodeldetail.auto': 'Auto',
   'umodeldetail.virtualNote':
     'A platform-managed model group — the platform selects the serving model for each request.',
+  'uplayground.keyLabel': 'API key',
+  'uplayground.keyPlaceholder': 'sk-…',
+  'uplayground.keyHint': 'A key cannot be read again after it is created, so paste your own. It is only used for this request: never stored, never logged.',
+  'uplayground.keyRequired': 'Enter the API key to call with.',
   'uplayground.autoSuffix': '(Auto)',
   'uplayground.servedBy': 'Served by {model}',
 
@@ -2339,6 +2343,11 @@ export const en: Record<string, string> = {
   'quickstart.nameTooLong': 'Key name must be at most 64 characters.',
   'quickstart.createFailed': 'failed to create key',
   'quickstart.testFailed': 'test request failed',
+  'quickstart.testKeyLabel': 'Key for this test',
+  'quickstart.testKeyPlaceholder': 'sk-…',
+  'quickstart.testKeyHintCreated': 'Uses the key just created above. It is only used for this test: never stored, never logged.',
+  'quickstart.testKeyHintPaste': 'A key cannot be read again after it is created, so paste your own. It is only used for this test: never stored, never logged.',
+  'quickstart.testKeyRequired': 'Enter the key to test with.',
 
   // ---- User: Models ----
   'umodels.title': 'Models',

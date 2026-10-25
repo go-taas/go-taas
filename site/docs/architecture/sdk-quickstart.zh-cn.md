@@ -178,6 +178,7 @@ message GetInferenceEndpointResponse {
 - 成功响应为 HTTP 200；业务错误渲染为 `{"code": <int>, "message": "..."}`。
 - `GetInferenceEndpoint` 是**无需组织上下文的用户面读取**（设计 §6 契约注 1）：无论调用方属于哪个组织，都返回配置的 base URL。它只能通过用户前缀到达，因此 realm 守卫已保证是用户 realm 会话（或过渡态访问）。
 - 复用的 RPC 保持其现有线上语义不变：`ListAPIKeys` 支持 `active_only` 与分页；`CreateAPIKey` 一次性返回明文 `api_key`；`ListAvailableModels` 返回掩码的 `AvailableModel` 投影；`PlaygroundModel` 接收 `model_id`（路径）、`api_key_id`、`prompt`、`temperature`、`max_tokens`，返回 `completion`、`prompt_tokens`、`completion_tokens`、`latency_ms`。
+- `PlaygroundModel` 额外接收只写的 `api_key`（明文）。自建模型会带着该 Key 作为 bearer token 调用服务网关，因此测试走的是与用户真实流量完全相同的鉴权、按 Key 限流、模型白名单与计量链路。该 Key 仅用于这一次调用，绝不落库、不写日志、不回显——API Key 只以加盐哈希形式存储，服务端无法还原，故每次都需要调用方提供。缺少 Key 时以 10314 关闭；网关拒绝时以 10315 透传网关自身的消息。外部模型由平台持有的供应商 Key 代理，无需提供。
 
 ### 5.4 校验矩阵
 
@@ -187,7 +188,9 @@ message GetInferenceEndpointResponse {
 | `ListAPIKeys` | （复用） | — | 不变 |
 | `CreateAPIKey` | （复用） | — | 不变 |
 | `ListAvailableModels` | （复用） | — | 不变 |
-| `PlaygroundModel` | （复用） | — | 不变 |
+| `PlaygroundModel` | 自建模型必须带 `api_key` | 10314 `CodePlaygroundKeyMissing` | "playground: send the API key with the request; keys are stored hashed and cannot be read back" |
+| `PlaygroundModel` | 服务网关可达 | 10304 `CodeInferEndpointNotFound` | "inference endpoint not found" |
+| `PlaygroundModel` | 网关接受调用 | 10315 `CodePlaygroundRequestFailed` | "playground: the serving gateway returned <状态>: <网关消息>" |
 
 ---
 

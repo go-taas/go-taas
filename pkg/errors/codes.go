@@ -133,6 +133,10 @@ const (
 	// Routing-policy error codes (feature #45, §5.2).
 	CodeRoutingPolicyInvalid          Code = 10312 // ROUTING_POLICY_INVALID
 	CodeRoutingPolicyRevisionConflict Code = 10313 // ROUTING_POLICY_REVISION_CONFLICT
+
+	// Playground test-request error codes (feature-17 AD8).
+	CodePlaygroundKeyMissing    Code = 10314 // PLAYGROUND_KEY_MISSING
+	CodePlaygroundRequestFailed Code = 10315 // PLAYGROUND_REQUEST_FAILED
 )
 
 // metering module error codes.

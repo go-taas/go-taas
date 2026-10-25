@@ -18,6 +18,11 @@ export default function PlaygroundPage() {
   const [prompt, setPrompt] = useState('');
   const [response, setResponse] = useState<PlaygroundInferResponse | null>(null);
   const [error, setError] = useState('');
+  // apiKey is the caller's own key plaintext, sent with each call so the
+  // test is authenticated and metered exactly like real traffic. The
+  // server stores keys only as hashes and cannot supply one, so it is
+  // pasted here; it lives in component state only and is never persisted.
+  const [apiKey, setApiKey] = useState('');
 
   // Feature-43 AC10: a prompt link (?prompt=<id>&version=<n>) pre-fills
   // the editor with that version's content.
@@ -55,14 +60,24 @@ export default function PlaygroundPage() {
       .catch((e) => setError(e instanceof Error ? e.message : t('uplayground.modelsFailed')));
   }, [api, orgId, t]);
 
+  // An external model is proxied with the provider's own key, and a
+  // virtual (routing-group) name may resolve to one, so only a self-hosted
+  // model needs the caller's key.
+  const selected = models.find((m) => m.modelId === modelId);
+  const needsKey = !selected?.external;
+
   const send = async () => {
     setError('');
     setResponse(null);
+    if (needsKey && !apiKey.trim()) {
+      setError(t('uplayground.keyRequired'));
+      return;
+    }
     try {
       const data = await api.post<PlaygroundInferResponse>(
         `/api/v1/models/${modelId}:playground`,
         orgId,
-        { modelId, prompt },
+        { modelId, prompt, apiKey: apiKey.trim() },
       );
       setResponse(data);
     } catch (e) {
@@ -103,6 +118,21 @@ export default function PlaygroundPage() {
               onChange={(e) => setPrompt(e.target.value)}
             />
           </div>
+          {needsKey && (
+          <div className="form-row">
+            <label htmlFor="playground-api-key">{t('uplayground.keyLabel')}</label>
+            <input
+              id="playground-api-key"
+              data-testid="playground-api-key"
+              type="password"
+              autoComplete="off"
+              value={apiKey}
+              placeholder={t('uplayground.keyPlaceholder')}
+              onChange={(e) => setApiKey(e.target.value)}
+            />
+            <div className="hint">{t('uplayground.keyHint')}</div>
+          </div>
+          )}
           <button data-testid="playground-send" onClick={() => void send()}>
             {t('uplayground.send')}
           </button>

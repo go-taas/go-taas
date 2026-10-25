@@ -2,6 +2,7 @@ package infer
 
 import (
 	"context"
+	"net/http"
 	"testing"
 	"time"
 
@@ -60,25 +61,31 @@ func TestPlaygroundModel(t *testing.T) {
 	})
 	assert.EqualValues(t, apierrors.CodeModelUnauthorized, apierrors.CodeOf(err))
 
-	// Grant org-a → success with a request_id.
+	// Grant org-a, point the service at a fake serving gateway, then the
+	// request succeeds with a request_id and the forwarded completion.
 	grantModelAccess(t, db, modelID, "org-a")
+	resolver, _ := playgroundGateway(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(openAIChatResponse("ok"))
+	})
+	svc.SetGatewayResolver(resolver)
 	resp, err := svc.PlaygroundModel(orgContext("org-a"), &inferv1.PlaygroundModelRequest{
-		ModelId: modelID, Prompt: "hello",
+		ModelId: modelID, Prompt: "hello", ApiKey: "sk-test",
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.GetRequestId())
+	assert.Equal(t, "ok", resp.GetCompletion())
 
 	// Session resolver wins over the header (feature-17 AD6).
 	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: "org-a"})
 	resp, err = svc.PlaygroundModel(orgContext("org-b"), &inferv1.PlaygroundModelRequest{
-		ModelId: modelID, Prompt: "hello",
+		ModelId: modelID, Prompt: "hello", ApiKey: "sk-test",
 	})
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.GetRequestId())
 
 	// Empty prompt → error.
 	_, err = svc.PlaygroundModel(orgContext("org-a"), &inferv1.PlaygroundModelRequest{
-		ModelId: modelID, Prompt: "",
+		ModelId: modelID, Prompt: "", ApiKey: "sk-test",
 	})
 	require.Error(t, err)
 }
