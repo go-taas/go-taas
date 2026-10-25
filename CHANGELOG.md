@@ -1,3 +1,16 @@
+# [1.81.0](https://github.com/go-taas/go-taas/compare/v1.80.0...v1.81.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** treat a wrong-console session as "sign in as admin" ([0506321](https://github.com/go-taas/go-taas/commit/0506321e56a3b454f0f61546fa8a90774c30608a))
+* **runtime:** show the actor's display name on the platform settings page ([2f21bf6](https://github.com/go-taas/go-taas/commit/2f21bf6248af5b5e23dd01cc202e342bbc24d23d))
+
+
+### Features
+
+* separate the control and data planes, with a configurable inference hostname ([b9f5eb6](https://github.com/go-taas/go-taas/commit/b9f5eb6587f2ed3084c6e5101f7507abc8b73427))
+
 # [1.80.0](https://github.com/go-taas/go-taas/compare/v1.79.2...v1.80.0) (2026-10-25)
 
 
