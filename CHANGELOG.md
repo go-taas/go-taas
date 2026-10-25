@@ -1,3 +1,15 @@
+## [1.78.1](https://github.com/go-taas/go-taas/compare/v1.78.0...v1.78.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** normalize the autoscaling state enum and translate On/Off ([6afdffe](https://github.com/go-taas/go-taas/commit/6afdffe9612f223b5174be61295f07c3340c6ca5))
+* **console:** translate the deploy dialog's remaining English strings ([5c4dda3](https://github.com/go-taas/go-taas/commit/5c4dda3683035397c9292070ca798e1508ee9d97))
+* **controller:** bound the deploy readiness wait and stop queue stalls ([bfcc223](https://github.com/go-taas/go-taas/commit/bfcc223ccc86087ff351ece9338b077d6707e418))
+* **controller:** pin the accelerator label the nodes actually carry ([42bb087](https://github.com/go-taas/go-taas/commit/42bb087a5f2468a6a69831567c3a32cafbe8ffa0))
+* **infer:** don't reject a deploy whose optional card type is empty ([d98c642](https://github.com/go-taas/go-taas/commit/d98c642689ac916017ca2ead932181d4438e8492))
+* **mq:** bound the consumer's unacked window ([b671f8b](https://github.com/go-taas/go-taas/commit/b671f8b1ec18168ab04fb47f892fd7eb79f65a47))
+
 # [1.78.0](https://github.com/go-taas/go-taas/compare/v1.77.0...v1.78.0) (2026-10-25)
 
 
