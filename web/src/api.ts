@@ -242,9 +242,26 @@ export interface InferenceServiceSummary {
   minReplicas?: number;
   maxReplicas?: number;
   autoscalingState?: string;
-  // organizationId is the owning organization. The admin list is
-  // platform-wide, so each row names its organization.
+  // organizationId is the organization that created the service. A
+  // service belongs to the platform, so this is provenance, not an access
+  // boundary.
   organizationId?: string;
+  // accessRestricted is true when the access policy names specific
+  // organizations, projects or users. False means every platform user may
+  // use the service.
+  accessRestricted?: boolean;
+}
+
+// InferenceServiceAccessSubject is one grant in a service's access policy.
+export interface InferenceServiceAccessSubject {
+  subjectType: string; // org | project | user
+  subjectId: string;
+  label?: string;
+}
+
+export interface InferenceServiceAccess {
+  restricted: boolean;
+  subjects: InferenceServiceAccessSubject[];
 }
 
 // ---- inference autoscaling (feature #16) ----

@@ -133,6 +133,10 @@ type Service struct {
 	// hostname. Nil until wired: the static configuration wins.
 	platformSettings PlatformSettingsResolver
 
+	// subjectLabeller resolves access-policy subject ids to display
+	// labels. Nil until wired: the raw id is reported.
+	subjectLabeller SubjectLabeller
+
 	// platformAdmin reports whether the caller is a platform
 	// administrator, whose operator surface is not organization-isolated.
 	// Nil until wired: the caller is treated as organization-scoped.
@@ -335,18 +339,6 @@ type PlatformAdminResolver interface {
 // SetPlatformAdminResolver injects the platform-administrator check.
 func (s *Service) SetPlatformAdminResolver(r PlatformAdminResolver) { s.platformAdmin = r }
 
-// isPlatformAdmin reports whether the caller is a platform administrator.
-func (s *Service) isPlatformAdmin(ctx context.Context) bool {
-	if s.platformAdmin == nil {
-		return false
-	}
-	ok, err := s.platformAdmin.IsPlatformAdmin(ctx)
-	if err != nil {
-		return false
-	}
-	return ok
-}
-
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
@@ -417,6 +409,25 @@ func (s *Service) resolveOrg(ctx context.Context) (string, error) {
 		}
 	}
 	return resolveOrganizationID(ctx)
+}
+
+// clientEndpoints returns the endpoints a caller should use for a
+// service: the platform inference gateway's public base URL. It falls back
+// to the stored (in-cluster) endpoints when the platform has no gateway
+// configured, so the field is never empty for a running service.
+func (s *Service) clientEndpoints(ctx context.Context, row *InferenceService) []string {
+	if resolved := s.resolveGatewaySettings(ctx); resolved.publicBaseURL != "" {
+		return []string{resolved.publicBaseURL + "/v1"}
+	}
+	return row.Endpoints
+}
+
+// findService returns a service by id. Inference services are platform
+// assets (like images), so nothing is scoped by organization: every
+// management RPC resolves the row directly. Who may *use* a service is a
+// separate question, answered by its access policy.
+func (s *Service) findService(ctx context.Context, repo *InferenceServiceRepository, serviceID string) (*InferenceService, error) {
+	return repo.FindByID(ctx, serviceID)
 }
 
 // checkOrg validates the org context: existence on reads, active
@@ -567,7 +578,7 @@ func NewForFVT(db *gorm.DB, mqClient mq.Client) *Service {
 // routing_policy_revisions, routing_policy_outbox) to the given
 // database. FVT-only helper.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}); err != nil {
+	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}, &InferenceServiceAccess{}); err != nil {
 		return err
 	}
 	return NewAutoscalingPolicyRepository(db).SeedDefault(context.Background())
@@ -592,7 +603,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}, &InferenceServiceAccess{}); err != nil {
 		return err
 	}
 	// Seed the singleton global-default policy (feature #16, §4.3): the
@@ -711,6 +722,23 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	name := strings.TrimSpace(req.GetName())
 	if !serviceNamePattern.MatchString(name) {
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
+	}
+	// Service names are platform-unique: a service is a platform asset, so
+	// two organizations must not be able to claim the same name — they
+	// would share one Kubernetes Deployment and one serving-gateway route.
+	{
+		nameRepo, repoErr := s.repository()
+		if repoErr != nil {
+			return nil, repoErr
+		}
+		taken, nameErr := nameRepo.NameTaken(ctx, name)
+		if nameErr != nil {
+			return nil, nameErr
+		}
+		if taken {
+			return nil, apierrors.Newf(apierrors.CodeInferServiceExists,
+				"infer: a service named %q already exists; service names are platform-wide", name)
+		}
 	}
 	replicas := int(req.GetReplicas())
 	if replicas < minReplicas || replicas > maxReplicas {
@@ -908,18 +936,11 @@ func (s *Service) ListInferenceServices(ctx context.Context, req *inferv1.ListIn
 	}
 
 	offset, limit := normalizePagination(req.GetPage())
-	// The operator surface is not organization-isolated: a platform
-	// administrator manages every organization's services, while an
-	// organization-scoped caller still sees only their own.
-	var (
-		rows  []*InferenceService
-		total int64
-	)
-	if s.isPlatformAdmin(ctx) {
-		rows, total, err = repo.ListAll(ctx, strings.TrimSpace(req.GetOrganizationId()), offset, limit, false)
-	} else {
-		rows, total, err = repo.ListByOrganization(ctx, orgID, offset, limit, false)
-	}
+	// Inference services are platform assets, so the list is platform-wide
+	// for everyone: there is no organization to scope it by. The legacy
+	// organization_id request field is still honoured as a filter, which is
+	// how an operator narrows the list by the creating organization.
+	rows, total, err := repo.ListAll(ctx, strings.TrimSpace(req.GetOrganizationId()), offset, limit, false)
 	if err != nil {
 		return nil, err
 	}
@@ -931,10 +952,17 @@ func (s *Service) ListInferenceServices(ctx context.Context, req *inferv1.ListIn
 		return nil, err
 	}
 
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	restricted := s.restrictedServiceIDs(ctx, repo, ids)
 	services := make([]*inferv1.InferenceServiceSummary, 0, len(rows))
 	for _, row := range rows {
 		effective := effectivePolicyForRow(row, globalDefault)
-		services = append(services, summarizeService(row, effective))
+		summary := summarizeService(row, effective)
+		summary.AccessRestricted = restricted[row.ID]
+		services = append(services, summary)
 	}
 	return &inferv1.ListInferenceServicesResponse{
 		Response: okResponse(),
@@ -957,7 +985,7 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		return nil, err
 	}
 
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}
@@ -969,14 +997,20 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		return nil, err
 	}
 
-	// Endpoints are only exposed while running.
+	// Endpoints are only exposed while running, and they name the platform
+	// inference gateway rather than this service's in-cluster address: the
+	// gateway is what a caller actually talks to, and it routes to the
+	// service by model name. The controller still stores the in-cluster
+	// address, which stays useful for debugging.
 	var endpoints []string
 	if row.State == StateRunning {
-		endpoints = row.Endpoints
+		endpoints = s.clientEndpoints(ctx, row)
 	}
+	summary := summarizeService(row, effective)
+	summary.AccessRestricted = s.restrictedServiceIDs(ctx, repo, []string{row.ID})[row.ID]
 	return &inferv1.GetInferenceServiceResponse{
 		Response:          okResponse(),
-		Service:           summarizeService(row, effective),
+		Service:           summary,
 		Endpoints:         endpoints,
 		Autoscaling:       policyToProto(effective),
 		AutoscalingStatus: autoscalingStatusFromRow(row),
@@ -1071,7 +1105,7 @@ func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleI
 		return nil, err
 	}
 
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}
@@ -1120,7 +1154,7 @@ func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleI
 	})
 	// Feature #34: record the scale event in the deployment trail with
 	// the before (old replicas) and after (new replicas) states.
-	scaledRow, _ := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	scaledRow, _ := s.findService(ctx, repo, req.GetServiceId())
 	if scaledRow != nil {
 		s.recordLifecycleEvent(ctx, row, scaledRow, DeploymentEventScale, s.actorFor(ctx, orgID))
 	}
@@ -1146,7 +1180,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 		return nil, err
 	}
 
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}
@@ -1208,7 +1242,7 @@ func (s *Service) UpdateInferenceServiceVersion(ctx context.Context, req *inferv
 		return nil, err
 	}
 
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}
@@ -1295,11 +1329,12 @@ func (s *Service) ListServiceLogPods(ctx context.Context, req *inferv1.ListServi
 	if err != nil {
 		return nil, err
 	}
-	if _, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId()); err != nil {
+	if _, err := s.findService(ctx, repo, req.GetServiceId()); err != nil {
 		return nil, err
 	}
 	if s.logFetcher == nil {
-		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+		return nil, apierrors.Newf(apierrors.CodeInferLogsUnavailable,
+			"infer: service logs are unavailable; the server has no Kubernetes client")
 	}
 	pods, err := s.logFetcher.ListServiceLogPods(ctx, req.GetServiceId())
 	if err != nil {
@@ -1341,7 +1376,7 @@ func (s *Service) GetServiceLogs(ctx context.Context, req *inferv1.GetServiceLog
 	if err != nil {
 		return nil, err
 	}
-	if _, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId()); err != nil {
+	if _, err := s.findService(ctx, repo, req.GetServiceId()); err != nil {
 		return nil, err
 	}
 	tail := int(req.GetTail())
@@ -1357,7 +1392,8 @@ func (s *Service) GetServiceLogs(ctx context.Context, req *inferv1.GetServiceLog
 		}
 	}
 	if s.logFetcher == nil {
-		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+		return nil, apierrors.Newf(apierrors.CodeInferLogsUnavailable,
+			"infer: service logs are unavailable; the server has no Kubernetes client")
 	}
 	window, err := s.logFetcher.GetServiceLogs(
 		ctx, req.GetServiceId(), strings.TrimSpace(req.GetPod()),
@@ -1411,7 +1447,7 @@ func (s *Service) ListDeploymentEvents(ctx context.Context, req *inferv1.ListDep
 	}
 	serviceID := strings.TrimSpace(req.GetServiceId())
 	if serviceID != "" {
-		if _, err := repo.FindByIDAndOrganization(ctx, orgID, serviceID); err != nil {
+		if _, err := s.findService(ctx, repo, serviceID); err != nil {
 			return nil, err
 		}
 	}
@@ -1483,7 +1519,7 @@ func (s *Service) RollbackDeployment(ctx context.Context, req *inferv1.RollbackD
 		return nil, err
 	}
 
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}
@@ -1686,6 +1722,26 @@ func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *infe
 		AutoscalingState:   autoscalingStateProto(row.AutoscalingState),
 		OrganizationId:     row.OrganizationID,
 	}
+}
+
+// restrictedServiceIDs returns which of the given services carry an access
+// policy. One query, so a page of 20 services does not cost 20 round trips.
+func (s *Service) restrictedServiceIDs(ctx context.Context, repo *InferenceServiceRepository, serviceIDs []string) map[string]bool {
+	out := make(map[string]bool, len(serviceIDs))
+	if len(serviceIDs) == 0 {
+		return out
+	}
+	restricted, err := repo.RestrictedServiceIDs(ctx, serviceIDs)
+	if err != nil {
+		// A policy read failure must not hide the list; the console shows
+		// the row as unrestricted, which is the safe default for display
+		// only (the enforcement path reads the policy directly).
+		return out
+	}
+	for _, id := range restricted {
+		out[id] = true
+	}
+	return out
 }
 
 // autoscalingStateProto maps the stored autoscaling state string to the

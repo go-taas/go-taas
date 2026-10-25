@@ -55,6 +55,24 @@ service InferServiceService {
     };
   }
 
+  // GetInferenceServiceAccess returns who may use a service. An empty
+  // subject list means every platform user may use it (the default).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetInferenceServiceAccess(GetInferenceServiceAccessRequest) returns (GetInferenceServiceAccessResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/inference-services/{service_id}/access"};
+  }
+
+  // SetInferenceServiceAccess replaces a service's access policy. An
+  // empty subject list restores "everyone"; an unknown subject type is
+  // rejected with 10317.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc SetInferenceServiceAccess(SetInferenceServiceAccessRequest) returns (SetInferenceServiceAccessResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/inference-services/{service_id}/access"
+      body: "*"
+    };
+  }
+
   // DeleteInferenceService tears an inference service down.
   // Admin-surface API: served under /api/v1/admin.
   rpc DeleteInferenceService(DeleteInferenceServiceRequest) returns (DeleteInferenceServiceResponse) {
@@ -311,10 +329,10 @@ message CreateInferenceServiceResponse {
 
 message ListInferenceServicesRequest {
   taas.common.v1.PageRequest page = 1;
-  // organization_id optionally narrows the platform-wide admin list to one
-  // organization. A platform administrator sees every organization's
-  // services (the operator surface is not organization-isolated);
-  // an organization-scoped caller always sees only their own.
+  // organization_id optionally narrows the platform-wide list to the
+  // services one organization created. Inference services are platform
+  // assets, so this is a filter, not a boundary: every caller sees the
+  // same platform-wide set.
   string organization_id = 2;
 }
 
@@ -347,9 +365,14 @@ message InferenceServiceSummary {
   // autoscaling_state is the closed autoscaling state enum (feature #16,
   // FR3.2).
   AutoscalingState autoscaling_state = 13;
-  // organization_id is the owning organization. The admin list is
-  // platform-wide, so the console shows it per row.
+  // organization_id is the organization that created the service. It is
+  // provenance for event routing, never an access boundary: the service
+  // belongs to the platform.
   string organization_id = 14;
+  // access_restricted is true when the service's access policy names
+  // specific orgs, projects or users. False means every platform user may
+  // use it, which is the default.
+  bool access_restricted = 15;
 }
 
 message GetInferenceServiceRequest {
@@ -936,4 +959,41 @@ message ListRoutingPolicyRevisionsResponse {
   taas.common.v1.Response response = 1;
   repeated RoutingPolicyRevision revisions = 2;
   taas.common.v1.PageMeta page_meta = 3;
+}
+
+// InferenceServiceAccessSubject is one grant in a service's access policy.
+message InferenceServiceAccessSubject {
+  // subject_type is org, project or user.
+  string subject_type = 1;
+  // subject_id is the organization id, project id or user id.
+  string subject_id = 2;
+  // label is the resolved display name (organization name, project name
+  // or user display name). Read-only.
+  string label = 3;
+}
+
+message GetInferenceServiceAccessRequest {
+  string service_id = 1;
+}
+
+message GetInferenceServiceAccessResponse {
+  taas.common.v1.Response response = 1;
+  // restricted is false when every platform user may use the service.
+  bool restricted = 2;
+  repeated InferenceServiceAccessSubject subjects = 3;
+}
+
+message SetInferenceServiceAccessRequest {
+  string service_id = 1;
+  // restricted true applies the subject list; false clears it, restoring
+  // "everyone". Sending an empty list with restricted=true is rejected:
+  // it would mean "nobody", which no operator intends.
+  bool restricted = 2;
+  repeated InferenceServiceAccessSubject subjects = 3;
+}
+
+message SetInferenceServiceAccessResponse {
+  taas.common.v1.Response response = 1;
+  bool restricted = 2;
+  repeated InferenceServiceAccessSubject subjects = 3;
 }

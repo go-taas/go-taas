@@ -309,6 +309,10 @@ func main() {
 			// The operator surface is platform-wide: a platform admin lists
 			// every organization's inference services.
 			inferSvc.SetPlatformAdminResolver(tenancySvc)
+			// The access policy reads as names, not UUIDs: auth resolves
+			// users, tenancy resolves organizations and projects.
+			subjectLabeller := tenancy.NewSubjectLabeller(gormDB)
+			inferSvc.SetSubjectLabeller(infer.NewSubjectLabeller(authSvc, subjectLabeller))
 			// The quickstart endpoint needs the serving gateway's base URL.
 			// An explicit infer.endpointBaseURL still wins; otherwise the
 			// gateway is discovered from the Kubernetes API so a fresh
@@ -600,14 +604,15 @@ func main() {
 			inferSvc.SetCompatibilityChecker(image.NewCompatibilityChecker(imageSvc))
 			modelSvc.SetCompatibilityProvider(image.NewModelCompatibilitySummaryProvider(imageSvc))
 			// Feature #33: the service-logs viewer reads container logs
-			// from the Kubernetes API through the Controller. The server
-			// builds its own k8s client from the controller config so the
-			// log RPCs work in a single-process topology; when no
-			// kubeconfig is configured the log RPCs fail closed (10301).
-			if cfg.Controller.Kubeconfig != "" {
-				if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
-					inferSvc.SetLogFetcher(controller.NewLogFetcher(k8sClient, cfg.Controller.Namespace))
-				}
+			// from the Kubernetes API. The client falls back to the
+			// in-cluster service account when no kubeconfig is configured,
+			// so the RPCs work in a normal deployment too — guarding on a
+			// non-empty kubeconfig left logFetcher nil in every in-cluster
+			// install, and the viewer answered 10301.
+			if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
+				inferSvc.SetLogFetcher(controller.NewLogFetcher(k8sClient, cfg.Controller.Namespace))
+			} else {
+				logger.S().Warnw("infer: service logs disabled, k8s client unavailable", "err", k8sErr)
 			}
 			// Feature #20: the load-test runner persists runs and drives
 			// real inference traffic with the synthetic platform

@@ -22,7 +22,7 @@ func (s *Service) GetServiceStatus(ctx context.Context, req *inferv1.GetServiceS
 	if err != nil {
 		return nil, err
 	}
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (s *Service) GetAdminServiceStatus(ctx context.Context, req *inferv1.GetAdm
 	if err != nil {
 		return nil, err
 	}
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}

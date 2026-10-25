@@ -479,3 +479,75 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(msg, "23505") ||
 		strings.Contains(msg, "UNIQUE constraint failed")
 }
+
+// ListAccess returns a service's access-policy grants, ordered so the
+// console renders a stable list.
+func (r *InferenceServiceRepository) ListAccess(ctx context.Context, serviceID string) ([]*InferenceServiceAccess, error) {
+	var rows []*InferenceServiceAccess
+	if err := r.DB(ctx).
+		Where("service_id = ?", serviceID).
+		Order("subject_type ASC, subject_id ASC").
+		Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ReplaceAccess swaps a service's whole access policy in one transaction.
+// An empty list means "everyone", so the delete is the whole write: a
+// half-applied policy would silently widen or narrow access.
+func (r *InferenceServiceRepository) ReplaceAccess(ctx context.Context, serviceID, actor string, subjects []*InferenceServiceAccess) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		if err := r.DB(ctx).Where("service_id = ?", serviceID).
+			Delete(&InferenceServiceAccess{}).Error; err != nil {
+			return err
+		}
+		if len(subjects) == 0 {
+			return nil
+		}
+		now := time.Now().UTC()
+		rows := make([]*InferenceServiceAccess, 0, len(subjects))
+		for _, subject := range subjects {
+			rows = append(rows, &InferenceServiceAccess{
+				ID:          uuid.NewString(),
+				ServiceID:   serviceID,
+				SubjectType: subject.SubjectType,
+				SubjectID:   subject.SubjectID,
+				CreatedBy:   actor,
+				CreatedAt:   now,
+			})
+		}
+		return r.DB(ctx).Create(&rows).Error
+	})
+}
+
+// RestrictedServiceIDs returns the subset of service ids that carry at
+// least one access-policy grant. A service with no rows is unrestricted,
+// which is the default.
+func (r *InferenceServiceRepository) RestrictedServiceIDs(ctx context.Context, serviceIDs []string) ([]string, error) {
+	if len(serviceIDs) == 0 {
+		return nil, nil
+	}
+	var ids []string
+	if err := r.DB(ctx).Model(&InferenceServiceAccess{}).
+		Where("service_id IN ?", serviceIDs).
+		Distinct("service_id").
+		Pluck("service_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// NameTaken reports whether any service already uses this name. Service
+// names are platform-unique because a service is a platform asset: two
+// rows with the same name would render the same Kubernetes Deployment and
+// fight over it.
+func (r *InferenceServiceRepository) NameTaken(ctx context.Context, name string) (bool, error) {
+	var count int64
+	if err := r.DB(ctx).Model(&InferenceService{}).
+		Where("name = ?", name).
+		Count(&count).Error; err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}

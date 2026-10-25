@@ -42,14 +42,14 @@ func TestK8sResourceSampleProvider(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "svc-1-replica-1-abc",
 			Namespace: "taas-infer",
-			Labels:    map[string]string{labelServiceID: "svc-1", labelReplicaIndex: "replica-1"},
+			Labels:    map[string]string{labelServiceID: "svc-1"},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning},
 	}, &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "svc-1-replica-2-def",
 			Namespace: "taas-infer",
-			Labels:    map[string]string{labelServiceID: "svc-1", labelReplicaIndex: "replica-2"},
+			Labels:    map[string]string{labelServiceID: "svc-1"},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning},
 	})
@@ -95,7 +95,7 @@ func TestK8sResourceSampleProviderNoGPU(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "svc-1-replica-1-abc",
 			Namespace: "taas-infer",
-			Labels:    map[string]string{labelServiceID: "svc-1", labelReplicaIndex: "replica-1"},
+			Labels:    map[string]string{labelServiceID: "svc-1"},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodRunning},
 	})
@@ -124,7 +124,7 @@ func TestK8sResourceSampleProviderSkipsNonRunning(t *testing.T) {
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      "svc-1-replica-1-abc",
 			Namespace: "taas-infer",
-			Labels:    map[string]string{labelServiceID: "svc-1", labelReplicaIndex: "replica-1"},
+			Labels:    map[string]string{labelServiceID: "svc-1"},
 		},
 		Status: corev1.PodStatus{Phase: corev1.PodPending},
 	})

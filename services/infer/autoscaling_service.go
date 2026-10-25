@@ -182,7 +182,7 @@ func (s *Service) UpdateInferenceServiceAutoscaling(ctx context.Context, req *in
 		return nil, err
 	}
 
-	row, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	row, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}

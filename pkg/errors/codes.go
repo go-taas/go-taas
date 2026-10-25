@@ -137,6 +137,8 @@ const (
 	// Playground test-request error codes (feature-17 AD8).
 	CodePlaygroundKeyMissing    Code = 10314 // PLAYGROUND_KEY_MISSING
 	CodePlaygroundRequestFailed Code = 10315 // PLAYGROUND_REQUEST_FAILED
+	CodeInferLogsUnavailable    Code = 10316 // INFER_LOGS_UNAVAILABLE
+	CodeInferAccessInvalid      Code = 10317 // INFER_ACCESS_INVALID
 )
 
 // metering module error codes.

@@ -20,6 +20,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/grpcmiddleware"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
@@ -384,9 +385,12 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, code, "deleted model is gone")
 }
 
-// TestFVTCrossOrgIsolation verifies inference services are scoped to
-// the caller organization.
-func TestFVTCrossOrgIsolation(t *testing.T) {
+// TestFVTInferenceServiceIsPlatformAsset verifies an inference service
+// belongs to the platform, not to an organization: every caller lists and
+// resolves the same set, the organization is provenance only, and a name
+// is unique platform-wide because a name maps to one Kubernetes
+// Deployment.
+func TestFVTInferenceServiceIsPlatformAsset(t *testing.T) {
 	env := newModelInferEnv(t)
 
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
@@ -402,20 +406,99 @@ func TestFVTCrossOrgIsolation(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	serviceID, _ := body["serviceId"].(string)
 
-	// org-b sees neither the service in its list...
+	// Another organization sees the same platform-wide set...
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services", nil, "org-b")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	services, _ := body["services"].([]any)
-	assert.Empty(t, services)
+	require.Len(t, services, 1)
+	assert.Equal(t, serviceID, services[0].(map[string]any)["serviceId"])
 
-	// ...nor by id.
-	code, _ = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-b")
-	assert.NotEqual(t, http.StatusOK, code)
+	// ...and resolves it by id.
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services/"+serviceID, nil, "org-b")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
 
-	// The same name is available in another organization.
+	// The creating organization is provenance, not a boundary: it is still
+	// reported, and it filters the platform-wide list.
+	assert.Equal(t, "org-a", body["service"].(map[string]any)["organizationId"])
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services?organizationId=org-b", nil, "org-a")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Empty(t, body["services"].([]any))
+
+	// A name is platform-unique: a second organization cannot claim it,
+	// because both rows would render into one Kubernetes Deployment.
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name": "org-a-svc", "modelId": modelID, "modelVersion": "v1",
 		"imageId": "img-vllm-nvidia", "replicas": "1", "accelerator": "nvidia",
 	}, "org-b")
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.EqualValues(t, apierrors.CodeInferServiceExists, body["code"])
+}
+
+// TestFVTInferenceServiceAccessPolicy covers the access policy over HTTP: a
+// new service is open to everyone, restricting it records named subjects,
+// an unlabelled but valid subject still round-trips, and clearing restores
+// the open default. The policy, not the creating organization, is what
+// decides who may use a service.
+func TestFVTInferenceServiceAccessPolicy(t *testing.T) {
+	env := newModelInferEnv(t)
+
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
+		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
+	}, "org-a")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	modelID, _ := body["modelId"].(string)
+
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
+		"name": "access-svc", "modelId": modelID, "modelVersion": "v1",
+		"imageId": "img-vllm-nvidia", "replicas": "1", "accelerator": "nvidia",
+	}, "org-a")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	serviceID, _ := body["serviceId"].(string)
+	accessPath := "/api/v1/admin/inference-services/" + serviceID + "/access"
+
+	// Default: everyone.
+	code, body = env.call(t, http.MethodGet, accessPath, nil, "org-a")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Equal(t, false, body["restricted"])
+	assert.Empty(t, body["subjects"])
+
+	// Restrict to one organization and one user.
+	code, body = env.call(t, http.MethodPut, accessPath, map[string]any{
+		"restricted": true,
+		"subjects": []any{
+			map[string]any{"subjectType": "org", "subjectId": "org-a"},
+			map[string]any{"subjectType": "user", "subjectId": "user-1"},
+		},
+	}, "org-a")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Equal(t, true, body["restricted"])
+	subjects, _ := body["subjects"].([]any)
+	require.Len(t, subjects, 2)
+
+	// The list marks the service as restricted.
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services", nil, "org-a")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	services, _ := body["services"].([]any)
+	require.Len(t, services, 1)
+	assert.Equal(t, true, services[0].(map[string]any)["accessRestricted"])
+
+	// A restricted policy with no subjects is rejected, not stored as
+	// "nobody".
+	code, body = env.call(t, http.MethodPut, accessPath, map[string]any{"restricted": true}, "org-a")
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.EqualValues(t, apierrors.CodeInferAccessInvalid, body["code"])
+
+	// An unknown subject type is rejected.
+	code, body = env.call(t, http.MethodPut, accessPath, map[string]any{
+		"restricted": true,
+		"subjects":   []any{map[string]any{"subjectType": "team", "subjectId": "t-1"}},
+	}, "org-a")
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.EqualValues(t, apierrors.CodeInferAccessInvalid, body["code"])
+
+	// Clearing restores everyone.
+	code, body = env.call(t, http.MethodPut, accessPath, map[string]any{"restricted": false}, "org-a")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Equal(t, false, body["restricted"])
+	assert.Empty(t, body["subjects"])
 }

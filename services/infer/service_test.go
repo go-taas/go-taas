@@ -231,9 +231,11 @@ func TestGetAdminServiceStatus(t *testing.T) {
 	require.NotNil(t, resp.GetIncident())
 	assert.Equal(t, "inc-1", resp.GetIncident().GetIncidentId())
 
-	// Another org's service: not found (no cross-org leak).
+	// A service is a platform asset: another organization reading it is
+	// not a leak, it is the point. Access policy, not the organization
+	// field, decides who may *use* a service.
 	_, err = svc2.GetAdminServiceStatus(orgContext("org-b"), &inferv1.GetAdminServiceStatusRequest{ServiceId: svc.ID})
-	assert.EqualValues(t, apierrors.CodeInferServiceNotFound, apierrors.CodeOf(err))
+	require.NoError(t, err)
 
 	// A malformed (non-UUID) id maps to not-found, not a uuid cast error.
 	_, err = svc2.GetAdminServiceStatus(orgContext("org-a"), &inferv1.GetAdminServiceStatusRequest{ServiceId: "not-a-uuid"})
@@ -328,9 +330,11 @@ func TestCreateInferenceServiceDuplicate(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeInferServiceExists, ae.Code)
 
-	// The same name in another organization is fine.
+	// A name is unique platform-wide, not per organization: a service is a
+	// platform asset, and two rows with one name would render into one
+	// Kubernetes Deployment.
 	_, err = svc.CreateInferenceService(orgContext("org-2"), req)
-	require.NoError(t, err)
+	assert.EqualValues(t, apierrors.CodeInferServiceExists, apierrors.CodeOf(err))
 }
 
 func TestCreateInferenceServiceRequiresOrganization(t *testing.T) {
@@ -361,11 +365,17 @@ func TestListAndGetInferenceServices(t *testing.T) {
 	create("org-1", "svc-two")
 	create("org-2", "other-org-svc")
 
-	// Org-scoped list.
+	// The list is platform-wide: a service is a platform asset, so every
+	// caller sees the same set no matter which organization created it.
 	resp, err := svc.ListInferenceServices(orgContext("org-1"), &inferv1.ListInferenceServicesRequest{})
 	require.NoError(t, err)
+	assert.Len(t, resp.GetServices(), 3)
+	assert.Equal(t, int64(3), resp.GetPageMeta().GetTotal())
+
+	// The provenance filter still narrows by creating organization.
+	resp, err = svc.ListInferenceServices(orgContext("org-1"), &inferv1.ListInferenceServicesRequest{OrganizationId: "org-1"})
+	require.NoError(t, err)
 	assert.Len(t, resp.GetServices(), 2)
-	assert.Equal(t, int64(2), resp.GetPageMeta().GetTotal())
 
 	// Get: endpoints hidden while pending.
 	get, err := svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: id1})
@@ -380,14 +390,15 @@ func TestListAndGetInferenceServices(t *testing.T) {
 	get, err = svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: id1})
 	require.NoError(t, err)
 	assert.Equal(t, StateRunning, get.GetService().GetState())
+	// No platform gateway is configured in this test, so the stored
+	// in-cluster endpoint is reported as the fallback.
 	assert.Equal(t, []string{"http://demo/v1"}, get.GetEndpoints())
 
-	// Cross-org get: not found.
-	_, err = svc.GetInferenceService(orgContext("org-2"), &inferv1.GetInferenceServiceRequest{ServiceId: id1})
-	require.Error(t, err)
-	ae, ok := apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeInferServiceNotFound, ae.Code)
+	// Any caller resolves the same service: there is no organization
+	// boundary to cross.
+	crossOrg, err := svc.GetInferenceService(orgContext("org-2"), &inferv1.GetInferenceServiceRequest{ServiceId: id1})
+	require.NoError(t, err)
+	assert.Equal(t, id1, crossOrg.GetService().GetServiceId())
 }
 
 func TestScaleInferenceService(t *testing.T) {
@@ -671,10 +682,9 @@ type fakePlatformAdmin struct{ admin bool }
 
 func (f fakePlatformAdmin) IsPlatformAdmin(context.Context) (bool, error) { return f.admin, nil }
 
-// TestListInferenceServicesPlatformWide verifies the operator surface is not
-// organization-isolated: a platform administrator sees services of every
-// organization (so the console does not need an organization selector),
-// while an organization-scoped caller keeps the org view.
+// TestListInferenceServicesPlatformWide verifies the list is platform-wide
+// for every caller: a service is a platform asset, so there is no
+// organization view to fall back to and the console needs no selector.
 func TestListInferenceServicesPlatformWide(t *testing.T) {
 	svc, _, db := newInferTestService(t)
 	svc.SetPlatformAdminResolver(fakePlatformAdmin{admin: true})

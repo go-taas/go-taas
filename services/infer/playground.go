@@ -36,7 +36,7 @@ func (s *Service) PlaygroundInfer(ctx context.Context, req *inferv1.PlaygroundIn
 	if err != nil {
 		return nil, err
 	}
-	svc, err := repo.FindByIDAndOrganization(ctx, orgID, req.GetServiceId())
+	svc, err := s.findService(ctx, repo, req.GetServiceId())
 	if err != nil {
 		return nil, err
 	}

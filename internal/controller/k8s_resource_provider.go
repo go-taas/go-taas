@@ -3,9 +3,11 @@ package controller
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 	"strings"
 
+	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
@@ -18,10 +20,6 @@ import (
 // identify the owning service (feature #37, AD2). It matches the label
 // the reconciler applies to inference Deployments.
 const labelServiceID = "go-taas.com/service-id"
-
-// labelReplicaIndex is the label the controller sets on inference pods
-// to carry the masked replica index (feature #37, AD1).
-const labelReplicaIndex = "go-taas.com/replica-index"
 
 // K8sResourceSampleProvider reads per-service per-replica CPU/memory
 // from the Kubernetes metrics-server and GPU utilization from the
@@ -85,17 +83,34 @@ func (p *K8sResourceSampleProvider) SampleServices(ctx context.Context) ([]Resou
 		byName[metrics.Items[i].Name] = metrics.Items[i]
 	}
 
-	samples := make([]ResourceSample, 0, len(pods.Items))
+	// Order the service's pods the way the log viewer does (oldest first)
+	// so "replica-2" means the same pod on both pages.
+	//
+	// The replica index is derived here rather than read from a label: a
+	// Deployment's pod template cannot carry a per-replica value, so the
+	// label never existed and every sample used to be skipped, leaving the
+	// metrics page permanently empty.
+	ordered := make([]corev1.Pod, 0, len(pods.Items))
 	for i := range pods.Items {
-		pod := &pods.Items[i]
-		if pod.Status.Phase != "Running" {
-			continue
+		if pods.Items[i].Status.Phase == corev1.PodRunning {
+			ordered = append(ordered, pods.Items[i])
 		}
+	}
+	sort.Slice(ordered, func(i, j int) bool {
+		if ordered[i].CreationTimestamp.Equal(&ordered[j].CreationTimestamp) {
+			return ordered[i].Name < ordered[j].Name
+		}
+		return ordered[i].CreationTimestamp.Before(&ordered[j].CreationTimestamp)
+	})
+
+	samples := make([]ResourceSample, 0, len(ordered))
+	for i := range ordered {
+		pod := &ordered[i]
 		serviceID := pod.Labels[labelServiceID]
-		replicaIndex := pod.Labels[labelReplicaIndex]
-		if serviceID == "" || replicaIndex == "" {
+		if serviceID == "" {
 			continue
 		}
+		replicaIndex := replicaLabel(i + 1)
 		pm, ok := byName[pod.Name]
 		if !ok {
 			continue
@@ -159,3 +174,8 @@ func parseReplicaIndex(index string) int {
 	}
 	return n
 }
+
+// replicaLabel renders the masked replica index for the n-th running pod
+// of a service (1-based). The log viewer uses the same scheme, so a pod
+// has one name on both pages.
+func replicaLabel(index int) string { return "replica-" + strconv.Itoa(index) }
