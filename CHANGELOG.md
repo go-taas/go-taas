@@ -1,3 +1,17 @@
+# [1.79.0](https://github.com/go-taas/go-taas/compare/v1.78.2...v1.79.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** drop organization wording from the deploy form ([ef68496](https://github.com/go-taas/go-taas/commit/ef684963d0650b89d1aac8e0367bdd0f98edd480))
+* **console:** show a loading state instead of an empty audit log ([de316ab](https://github.com/go-taas/go-taas/commit/de316ab5b9767c0ce066358602b6ec2e19be3694))
+
+
+### Features
+
+* **console:** platform-wide operator surface, no organization switcher ([7bcf4b5](https://github.com/go-taas/go-taas/commit/7bcf4b5a7e2ab312bdde56c189f47180aabedb98))
+* **console:** resolve proto enum names and add audit organization filter ([2bfe17d](https://github.com/go-taas/go-taas/commit/2bfe17d90a5a14441f3d436a0bcf7469f2245fdb))
+
 ## [1.78.2](https://github.com/go-taas/go-taas/compare/v1.78.1...v1.78.2) (2026-10-25)
 
 
