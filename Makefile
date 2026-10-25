@@ -95,6 +95,14 @@ lint: pbgen-ensure
 ut: pbgen-ensure
 	$(GO) test -count=1 ./...
 
+## wasm: build the data-plane gateway plugin (TinyGo, separate module)
+wasm:
+	$(MAKE) -C wasm/gateway build GOPROXY=$(GOPROXY)
+
+## wasm-test: unit-test the data-plane gateway plugin
+wasm-test:
+	$(MAKE) -C wasm/gateway test
+
 ## fvt: run full-verification tests (in-process full stack)
 fvt: pbgen-ensure
 	$(GO) test -count=1 ./test/fvt/...
