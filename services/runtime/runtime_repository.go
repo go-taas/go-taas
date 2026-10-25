@@ -87,3 +87,74 @@ func (r *RuntimeRepository) UpdateScheme(ctx context.Context, scheme, updatedBy 
 	}
 	return out, nil
 }
+
+// GetPlatformSettings returns the singleton platform_settings row,
+// defaulting to an empty setting (https, no hostname) when no row exists.
+func (r *RuntimeRepository) GetPlatformSettings(ctx context.Context) (*PlatformSetting, error) {
+	var row PlatformSetting
+	err := r.db.DB(ctx).Where("id = ?", platformSettingID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return &PlatformSetting{ID: platformSettingID, InferenceGatewayScheme: GatewaySchemeHTTPS}, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if row.InferenceGatewayScheme == "" {
+		row.InferenceGatewayScheme = GatewaySchemeHTTPS
+	}
+	return &row, nil
+}
+
+// UpdatePlatformSettings upserts the singleton row and returns it.
+func (r *RuntimeRepository) UpdatePlatformSettings(ctx context.Context, setting *PlatformSetting) (*PlatformSetting, error) {
+	now := time.Now().UTC()
+	var out *PlatformSetting
+	err := r.db.WithinTx(ctx, func(ctx context.Context) error {
+		var existing PlatformSetting
+		err := r.db.DB(ctx).Where("id = ?", platformSettingID).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			row := &PlatformSetting{
+				ID:                          platformSettingID,
+				InferenceGatewayHostname:    setting.InferenceGatewayHostname,
+				InferenceGatewayScheme:      setting.InferenceGatewayScheme,
+				InferenceGatewayInternalURL: setting.InferenceGatewayInternalURL,
+				UpdatedBy:                   setting.UpdatedBy,
+				UpdatedAt:                   now,
+				CreatedAt:                   now,
+			}
+			if err := r.db.DB(ctx).Create(row).Error; err != nil {
+				return err
+			}
+			out = row
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := r.db.DB(ctx).Model(&PlatformSetting{}).
+			Where("id = ?", platformSettingID).
+			Updates(map[string]any{
+				"inference_gateway_hostname":     setting.InferenceGatewayHostname,
+				"inference_gateway_scheme":       setting.InferenceGatewayScheme,
+				"inference_gateway_internal_url": setting.InferenceGatewayInternalURL,
+				"updated_by":                     setting.UpdatedBy,
+				"updated_at":                     now,
+			}).Error; err != nil {
+			return err
+		}
+		out = &PlatformSetting{
+			ID:                          platformSettingID,
+			InferenceGatewayHostname:    setting.InferenceGatewayHostname,
+			InferenceGatewayScheme:      setting.InferenceGatewayScheme,
+			InferenceGatewayInternalURL: setting.InferenceGatewayInternalURL,
+			UpdatedBy:                   setting.UpdatedBy,
+			UpdatedAt:                   now,
+			CreatedAt:                   existing.CreatedAt,
+		}
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}

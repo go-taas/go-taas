@@ -174,7 +174,7 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 - 流量按受众分流：管理员经**控制面 Gateway**（HTTP，由 `grpc-gateway` 从 Protobuf 契约生成）进入，智能体与 SDK 调用**推理 Gateway**（Envoy + Wasm）；两者都通过集群的南北向入口（Envoy Gateway + TLS 终结）对外暴露。
 - 两个网关作为独立工作负载部署，控制面 API 与推理 API 的扩缩容、升级与故障域完全隔离。
 - API 按受众分区：普通用户控制台及其租户调用 `/api/v1/*`，`/api/v1/admin/*` 专供 admin 控制台；携带错误面会话的请求会在进入任何 handler 之前被拒绝。
-- **gRPC Server 以单个 Deployment 承载全部 24 个微服务** —— `auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`docs` —— 模块间进程内调用，并经**消息队列**（Kafka / RabbitMQ）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
+- **gRPC Server 以单个 Deployment 承载全部 26 个微服务** —— `auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`fault`、`vgpu`、`docs` —— 模块间进程内调用，并经**消息队列**（Kafka / RabbitMQ）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
 - 鉴权、计量与路由运行在推理 Gateway 的 **Wasm 插件**中，推理流量不经过业务进程。
 - 推理 Gateway 通过 **gRPC 调用 `auth` 模块**校验每个 API Key，两级缓存（Wasm 本地 TTL 缓存 → Redis）支撑；超时或 `auth` 不可用时按 fail-closed 拒绝。
 - **集群网络**：Pod 之间经集群 CNI 网络通信并使用 ClusterIP Service 与 CoreDNS 服务发现；南北向流量经 Envoy Gateway + TLS 终结进入；NetworkPolicy 隔离控制面、数据面与租户命名空间；推理数据链路可选走 **RDMA 网络**（RoCE / InfiniBand），控制面保持常规以太网。

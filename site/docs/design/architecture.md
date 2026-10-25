@@ -3,9 +3,10 @@
 | Attribute | Content |
 | --- | --- |
 | Project name | Go TaaS (Token as a Service) |
-| Overall positioning | A one-stop, open-source LLM inference service and metering/billing platform built on Kubernetes, providing OpenAI-compatible inference access and metered settlement for agents / SDKs |
-| Document scope | Defines the system topology, the 24 microservice modules and their responsibility boundaries, control plane/data plane partitioning, cluster networking, and collaboration flows; implementation details such as data models, storage parameters, and runtime configuration are carried by each module's detailed design documents |
-| Core architecture principles | Separate control plane and data plane gateways; the 24 microservice gRPC servers deployed as a single unit and decoupled from the Controller through a message queue; inference services and the control plane deployed in the same Kubernetes cluster; admission control applied at the gateway and control-plane create paths rather than in a dedicated quota service |
+| Overall positioning | An open-source, privately deployable **Token factory**: it turns heterogeneous, fragmented accelerator capacity into metered, billable, SLA-backed tokens. Not another MaaS — a TaaS operates the supply side: deployment, scheduling, metering, billing, routing and governance |
+| Document scope | Defines the system topology, the 26 microservice modules and their responsibility boundaries, control plane/data plane partitioning, cluster networking, and collaboration flows; implementation details such as data models, storage parameters, and runtime configuration are carried by each module's detailed design documents |
+| What makes it a TaaS | Tokens are metered per class (prompt / completion / cached / reasoning); tenants are isolated by key, quota and data boundary; quota, balance, billing and settlement form a closed loop; the SLA binds model, card type and context length; and the core KPI is cost per token, not call volume |
+| Core architecture principles | Separate control plane and data plane gateways; the 26 microservice gRPC servers deployed as a single unit and decoupled from the Controller through a message queue; inference services and the control plane deployed in the same Kubernetes cluster; admission control applied at the gateway and control-plane create paths rather than in a dedicated quota service |
 
 ---
 
@@ -25,7 +26,7 @@ end
 subgraph L2["LAYER 02 · Gateways"]
     direction LR
     G1["TaaS Gateway (control plane)<br/>TLS · AuthN · RBAC · Rate limiting · Audit · Request validation · Routing to TaaS Server"]:::cp
-    G2["Aibrix Gateway + TaaS Plugin (data plane)<br/>OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace"]:::dp
+    G2["Inference Gateway + TaaS Plugin (data plane)<br/>OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace"]:::dp
     G1 ~~~ G2
 end
 
@@ -84,9 +85,41 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 - **Data plane**: hosts inference service APIs — OpenAI-compatible endpoints such as `/v1/chat/completions` and `/v1/embeddings`. Its entry point is the **Inference Gateway**, built on **Envoy** and serving programmatic callers such as **agents / SDKs**; authentication, metering, and routing are all performed at the gateway by **Wasm plugins**.
 - **Independent deployment**: the two gateways are deployed as separate workloads. Control plane APIs and inference APIs are fully isolated in scaling, upgrade cadence, and failure domains — an overloaded or upgrading Inference Gateway does not affect platform management capabilities, and vice versa.
 
+#### 1.1.1 How the split is deployed
+
+The two gateways are separate workloads with separate addresses, and the
+chart publishes both:
+
+| Plane | Workload | Entry point | Serves |
+| --- | --- | --- | --- |
+| Control | `taasServer` (Deployment) | the platform Gateway's route for the console hostname (e.g. `taas.example.com`) | `/api/v1/*`, `/api/v1/admin/*`, the console |
+| Data | AIBrix Envoy gateway (`aibrix-eg` Gateway → Envoy proxy Service) | the platform Gateway's route for the inference hostname (e.g. `api.example.com`) | `/v1/chat/completions`, `/v1/embeddings`, … |
+
+`dataPlane.enabled` + `dataPlane.hostname` make the chart create an
+`HTTPRoute` that forwards the inference hostname straight to the inference
+gateway's Service (plus the `ReferenceGrant` the cross-namespace backend
+needs). Inference traffic therefore never enters the control-plane
+process, and a control-plane rollout cannot interrupt a streaming response
+in flight.
+
+Because the inference hostname is a deployment fact rather than a build
+constant, it is also an operator setting: the admin console's **Platform
+settings** page (`/admin/settings`, `GET|PUT /api/v1/admin/platform-settings`)
+stores it, and `GetInferenceEndpoint` reports
+`<scheme>://<hostname>/v1` to the quickstart page, the API docs and every
+client that asks. Precedence is: the console setting, then
+`infer.endpointBaseURL`, then the gateway discovered in the cluster.
+
+The stored value has two forms on purpose. Users are given the **public**
+URL, while the platform's own calls (the console playground) prefer an
+**in-cluster** URL — a public hostname is not necessarily resolvable from a
+pod, and hairpinning inference through the public ingress would add a hop
+the split exists to avoid. Set `inference_gateway_internal_url` when the
+cluster cannot resolve the public name.
+
 ### 1.2 Service Topology and Communication Mechanisms
 
-- **Unified gRPC service process**: the gRPC servers of **all 24 microservices** (`auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `docs`) are deployed together in a single Deployment; modules call each other in-process, with no separate process per module;
+- **Unified gRPC service process**: the gRPC servers of **all 26 microservices** (`auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `fault`, `vgpu`, `docs`) are deployed together in a single Deployment; modules call each other in-process, with no separate process per module;
 - **Message queue decouples gRPC servers from the Controller**: the message queue (Kafka / RabbitMQ) carries **message passing between the microservice gRPC servers and the Controller**. gRPC servers only expose APIs, write desired state, and publish messages; the Controller consumes messages and drives Kubernetes resources, so the two can scale and restart independently;
 - **Auto-generated RESTful APIs**: control plane HTTP/JSON APIs and OpenAPI documents are auto-generated from the Protobuf contract by `grpc-gateway`;
 - **The data plane bypasses business processes**: inference requests are proxied by Envoy directly to inference instances; authentication and metering happen inside Wasm plugins, so business processes never become a forwarding bottleneck and streaming responses are not copied twice.
@@ -114,7 +147,7 @@ flowchart TD
         DGW["Inference Gateway<br/>Envoy + Wasm (auth · metering · routing)"]
     end
 
-    subgraph mods["Microservices — one Deployment (24 modules)"]
+    subgraph mods["Microservices — one Deployment (26 modules)"]
         direction TB
         subgraph m_acc["Access and tenancy"]
             direction LR
@@ -226,7 +259,7 @@ flowchart TD
 
 ### Microservice inventory
 
-The single Deployment hosts 24 microservice modules. Every module is listed
+The single Deployment hosts 26 microservice modules. Every module is listed
 below with its responsibility boundary and the feature points it implements
 (backlog numbers):
 
@@ -255,7 +288,9 @@ below with its responsibility boundary and the feature points it implements
 | 21 | `optimization` | Cost optimization recommendations: rule-based, quantified, dismissible savings advice (advice-only, never acts) | #50 |
 | 22 | `prompt` | Prompt library: create, version, organize, search, per-prompt usage counters, playground hand-off | #43 |
 | 23 | `evaluation` | Prompt evaluation suites: variable-based cases, scored runs, run comparison | #44 |
-| 24 | `docs` | Curated user-realm API catalog served to the in-console API documentation explorer | #38 |
+| 24 | `fault` | Incident management: fault policies, detected faults, root-cause analysis and deployment correlation | — |
+| 25 | `vgpu` | vGPU slicing pools and slice templates over HAMi; slice accounting consumed by the deploy path | #52 |
+| 26 | `docs` | Curated user-realm API catalog served to the in-console API documentation explorer | #38 |
 
 
 ### 2.1 `auth` — Authentication, SSO Federation, and Multi-Tenancy
@@ -369,6 +404,49 @@ The Inference Gateway is built on **Envoy** and implements the following capabil
 
 > Note: because authentication and metering are pushed down to gateway Wasm plugins, the platform needs no standalone quota/rate-limiting service. Admission control is applied where the traffic is: per-API-key request-rate limits and per-organization service quotas (max concurrent requests, max inference services, max batch jobs per day, max output tokens per request) are enforced at the inference gateway and on the control-plane create paths, with organization spend limits enforced by the billing chain; the check order is rate → quota → funds.
 
+#### 3.2.1 The plugin pipeline, in order
+
+Every inference request traverses the same ordered pipeline inside Envoy. The
+order matters: an authentication failure must be cheaper than a quota check,
+and metering must never be able to reject a request.
+
+| # | Step | What it does |
+| --- | --- | --- |
+| 01 | **Auth** | Parses `Authorization: Bearer sk-…`, verifies the key against the `auth` module (local cache → gRPC), and resolves the tenant, key id, scopes and model allow-list |
+| 02 | **Quota** | Token-bucket rate limit plus a concurrency lease; atomic decrement in Redis; fail-closed by default, or degrade per policy |
+| 03 | **Route** | `RoutingGroup` → healthy deployment → weighted / latency / cost selection; failover only between deployments of the *same* model |
+| 04 | **Meter** | Takes token usage from the engine's `usage` object, falls back to gateway counting; emits an event keyed by `request_id`, written to the queue asynchronously |
+| 05 | **Trace** | Injects `traceparent`; records queueing, prefill, decode and total latency; redacts prompt content in logs |
+| 06 | **Guard** | Body size, `max_tokens`, timeout and cancellation propagation; fast ejection of an unhealthy upstream |
+| 07 | **Cache** | Optional idempotent result cache; prefix-cache affinity. A cache hit does not change how the request is billed |
+| 08 | **Degrade** | On Redis or queue unavailability: local token bucket plus local buffering, then compensating replay after recovery |
+
+Two trade-offs are deliberate:
+
+- **A metering failure must not block inference.** Refusing service when the
+  metering component is down widens the blast radius from "the bill is
+  slightly off" to "everything is down". The request is admitted, the event
+  enters a compensation queue, and reconciliation attributes the difference
+  afterwards by `request_id`.
+- **The plugin runs inside Envoy rather than as a sidecar.** It ships,
+  canaries and rolls back independently of the server, and adds no network
+  hop. At the P99 that streaming inference targets, one extra hop is tens of
+  milliseconds.
+
+> **Hard constraint.** The plugin must be stateless, hot-upgradable and able
+> to degrade. A metering failure may never block inference, but it must land
+> in the compensation queue and be visible in the reconciliation report. An
+> invisible failure is worse than the failure itself.
+
+> **Implementation carrier.** The plugin contract above is what the data
+> plane must satisfy; the carrier in this repository is AIBrix's Go
+> `ext_proc` gateway plugin rather than a Wasm module. The request pipeline,
+> the idempotency rules and the degradation behaviour are the same, but a
+> Wasm build remains the target because it can be published, canaried and
+> rolled back independently of the gateway image. Treat "Wasm" in this
+> document as the target and "ext_proc" as today's shipping carrier.
+
+
 ### 3.3 The Inference Gateway's API Key Authentication Chain
 
 Every request on the inference data plane must have its API Key verified, and the authoritative decision belongs to the `auth` module. The Wasm plugin therefore makes no business decisions of its own — it **calls the `auth` module over gRPC** to complete verification:
@@ -440,6 +518,22 @@ sequenceDiagram
 - **Security**: callbacks strictly validate `state` / `nonce` / signatures to prevent request forgery; external identities serve only as binding identifiers, and the platform always authorizes by its internal user ID.
 
 ### 4.2 One-Click Model Deployment Flow
+The two flows are asymmetric, and that asymmetry is the design: the deployment
+path is asynchronous and every hop can fail, so it needs a state machine,
+retries and rollback; the inference path is synchronous and must be fast, so
+everything after metering is asynchronous and never blocks the response.
+
+| # | Deployment (control plane, asynchronous) |
+| --- | --- |
+| 1 | The console or API submits model, engine, card type, replicas and inference parameters |
+| 2 | The gateway authenticates; the server validates quota and parameters |
+| 3 | The server writes the deployment row (`PENDING`) plus an outbox event and returns a deployment id |
+| 4 | The outbox publisher delivers the event to the queue |
+| 5 | The controller reconciles: creates the workload objects, renders the Deployment, Service and autoscaling policy |
+| 6 | Kubernetes + HAMi + Volcano place devices; the image is pre-pulled; the model cache is mounted |
+| 7 | Health checks and warmup pass; the state becomes `READY` and endpoints are registered |
+| 8 | The gateway refreshes routing; the model is callable; audit and notification complete |
+
 
 ```mermaid
 sequenceDiagram
@@ -464,6 +558,17 @@ sequenceDiagram
 ```
 
 ### 4.3 Inference Request and Billing Loop
+| # | Inference (data plane, synchronous until metering) |
+| --- | --- |
+| 1 | The client calls `/v1/chat/completions` with an API key and `stream=true` |
+| 2 | The plugin verifies the key, the tenant/user state and the model scope |
+| 3 | Quota: concurrency, rate and balance are checked; Redis decrements atomically; failure returns 429/402 |
+| 4 | Routing: the routing group picks a healthy deployment, then an instance by weight, latency, cost and prefix affinity |
+| 5 | The request is forwarded to the vLLM / SGLang pod and streamed back as SSE |
+| 6 | Metering reads the upstream `usage` and emits an idempotent usage event keyed by `request_id` |
+| 7 | Async: event → queue → consumer → the PostgreSQL usage ledger |
+| 8 | Settlement: daily/hourly aggregation → bills, balances, quota; dashboards and alerts update |
+
 
 ```mermaid
 sequenceDiagram
@@ -494,6 +599,41 @@ sequenceDiagram
 
 ---
 
+### 3.4 Metering Discipline and Ledger Rules
+
+Metering accuracy decides everything downstream: pricing, quota, billing,
+gross margin. A customer will tolerate an expensive price; nobody tolerates a
+bill they cannot explain.
+
+The difficulty is not counting tokens, it is the **definition**. A gateway
+that tokenizes on its own is affected by chat templates, tool-call framing and
+multimodal input, so its count differs slightly from what the engine actually
+computed. The engine's `usage` is therefore authoritative, with gateway
+counting as a fallback, reconciled daily.
+
+Usage also splits into four token classes — **prompt, completion, cached,
+reasoning** — because their cost structures differ and they should be priced
+differently.
+
+A stream that disconnects mid-response is the canonical edge case: the engine
+may already have computed tokens the gateway never received the full response
+for, and a retry may double-bill. The rules below exist to make that
+impossible rather than to be fixed later.
+
+| Rule | Why |
+| --- | --- |
+| Engine `usage` is authoritative; gateway counting is the fallback | The engine is the only party that knows what it computed |
+| Every request carries a `request_id`; metering events are idempotent on it | Disconnects and retries must not double-bill |
+| The ledger is **append-only**, partitioned by day, never updated in place | An auditable bill needs an immutable history |
+| Balances are derived by an idempotent aggregation job, never per request | Updating a balance per request cannot survive inference peak load |
+| Each tenant gets a daily hash chain | Tamper-evident history without a blockchain |
+| Bills are aggregated from the ledger; daily reconciliation covers ≥ 99.5 % of events with ≤ 0.1 % variance | Reconciliation is a product feature, not an accounting chore |
+
+The reason these read like finance requirements is that they are product
+requirements: a customer must be able to drill from an invoice down to a
+single call by `request_id`, and any difference must be attributable. Without
+those two, an SLA is an empty promise.
+
 ## 5. Storage and Network
 
 ### 5.1 Storage Tiers
@@ -515,7 +655,7 @@ topology diagram. It has four concerns:
 | Plane | Purpose | Design |
 | --- | --- | --- |
 | **Pod network (east-west)** | Pod-to-pod and pod-to-service traffic | A standard CNI plugin provides the flat pod network and IPAM; every microservice, the Controller, the gateways, and the inference instances live on it |
-| **Service discovery** | Stable addressing for the 24 microservice modules and the Controller | ClusterIP Services per exposure unit (gRPC server, gateways, message queue, Redis, PostgreSQL) resolved through CoreDNS; modules call each other in-process, so service discovery is only needed between workloads |
+| **Service discovery** | Stable addressing for the 26 microservice modules and the Controller | ClusterIP Services per exposure unit (gRPC server, gateways, message queue, Redis, PostgreSQL) resolved through CoreDNS; modules call each other in-process, so service discovery is only needed between workloads |
 | **North-south entry** | Console and API access from outside the cluster | An Envoy Gateway terminates TLS and routes `/` (end-user console), `/admin` (admin console), `/v1/*` (inference API), and `/api/v1/*` to the Control Gateway or the Inference Gateway |
 | **Isolation & policy** | Blast-radius containment between the control plane, the data plane, and tenants | Namespace separation plus NetworkPolicies that allow only the flows in the topology diagram (consoles → gateways, gateways → gRPC server/data plane, gRPC server ↔ message queue, Controller → Kubernetes API, inference → weight storage); egress from the `provider` module to external LLM endpoints and from `webhook` to customer endpoints is explicitly allow-listed |
 | **Transport tiers** | Separate high-bandwidth inference traffic from management traffic | The control plane uses the standard Ethernet network; the inference data path (requests/responses, KV Cache transfer, multi-card communication) can be placed on an optional RDMA fabric (RoCE / InfiniBand) |
@@ -545,5 +685,94 @@ topology diagram. It has four concerns:
 | External identity providers (LDAP / OIDC / SAML / WeChat) | auth | Third-party SSO federated login and the source of user attributes |
 | Customer webhook endpoints (HTTPS) | webhook | Outbound event delivery with HMAC signing and retry policy |
 | Model hubs (ModelScope / HuggingFace) | model | Model weight download into the shared JuiceFS volume |
+| **AIBrix** | Controller · infer · runtime | Distributed inference runtime and the inference gateway: model deployment objects (`ModelClaim`, `PodAutoscaler`), KV-cache-aware routing, and the Envoy proxy that fronts the data plane. Installed as its own Helm release; the chart's `dataPlane` values publish its gateway under the inference hostname |
+| **HAMi** | Controller · vgpu | Heterogeneous accelerator virtualisation: device plugin, per-pod slice scheduling and the placement-policy annotation the controller sets for a shared-GPU service |
+| **Volcano** (`under construction`) | Controller · batch | Gang scheduling, queues and fair sharing for batch jobs and multi-pod inference roles. Optional: plain Kubernetes scheduling is used when it is not installed |
+| **GPU / NPU operators** | Controller · accelerator | Vendor driver, device plugin, topology and health; the accelerator inventory reads the node labels they publish |
+| **Observability stack** (Prometheus · OpenTelemetry · Loki) | observability · tracing · all workloads | Metrics, traces and log aggregation; the console's observability pages read the aggregates the platform already stores |
+| **Inference engines** (vLLM · SGLang · TensorRT-LLM · MindIE · bring-your-own) | Controller · infer | Serve the model behind an OpenAI-compatible API. Registered as an image so a new engine is a registry entry, not a code change |
 
 > Authentication chain: before allowing a request through, the Inference Gateway's Wasm plugin verifies the API Key by **calling the `auth` module over gRPC**; on a Wasm local-cache miss it falls back to `auth`, which is fronted by a Redis positive cache — the two cache layers keep latency low under high concurrency, and requests are rejected fail-closed on timeout or unavailability.
+
+## 7. Capacity, SLO and Platform Design Decisions
+
+### 7.1 Capacity
+
+```
+replicas = ceil(peak QPS × mean tokens per request ÷ (per-replica tokens/s × target utilisation))
+```
+
+Example: `100 × 1200 ÷ (8000 × 0.7) ≈ 3` replicas.
+
+Two mistakes are common. Per-replica throughput must be **measured**, not
+taken from a datasheet: the gap between nominal peak and real aggregate
+throughput is typically one batching pipeline wide. And mean tokens per
+request must come from the traffic distribution, not from an average —
+long-tail requests dominate residence time.
+
+Concurrency follows from throughput rather than the other way round: an
+8-GPU instance at 2,000 output tokens/s with 50 tokens/s per request serves
+about 40 concurrent streams, not 2,000. Little's Law gives the sanity check
+(`arrival rate × residence time ≈ concurrency`).
+
+### 7.2 SLO targets
+
+| Metric | Target | Note |
+| --- | --- | --- |
+| Gateway availability | ≥ 99.95% | The data plane is the entry point for all traffic; the target is deliberately higher than inference itself |
+| Inference availability | ≥ 99.9% | Counted per model and per card type, never mixed |
+| TTFT P95 | < 1.5 s | Baseline: 7B model, 1K prompt; must be calibrated per deployment |
+| TPOT P95 | < 50 ms | Per-token latency; it is what streaming responsiveness means |
+| Metering accuracy | ≥ 99.5% | Reconciled against engine `usage`; every difference attributed |
+| Control-plane API P95 | < 300 ms | Excludes asynchronous deployment time |
+
+These are targets to be calibrated against a real baseline, not contract
+figures. An SLA must bind the model, card type, context length and
+concurrency, and publish a baseline plus a degradation policy rather than a
+single number: 99.9% availability means something different for a 7B model at
+1K context and a 70B model at 128K context, and an SLA that does not say so
+is easy to sign and impossible to settle.
+
+### 7.3 Platform design decisions
+
+| Decision | Rationale |
+| --- | --- |
+| **A CRD is the single source of truth for desired state.** The server writes a CR; the controller reconciles it. | Drift detection and rollback need an object the cluster owns, not a one-shot command. See the current-status note below. |
+| **Outbox + idempotent consumers.** Business transactions commit with the event, and delivery is decoupled from the commit. | Idempotency on `request_id` / `deployment_id` is what makes at-least-once delivery safe |
+| **Metering trusts the engine's `usage`.** | A gateway tokenizer drifts from the engine under chat templates; the engine is authoritative and the gateway count is the fallback |
+| **The hot path never writes the database.** The gateway only touches local cache and the queue; PostgreSQL is written by the server and async consumers. | Inference peak can be orders of magnitude above management traffic; one promotional campaign must not kill the platform |
+| **Support multiple clusters from day one.** P0 may deploy a single cluster, but the data model carries `cluster_id` and `placement_policy`. | Adding these fields later means changing tables, APIs and permissions at once — and something always gets missed |
+| **Cell-based (unitised) architecture.** A cell of roughly 100–500 accelerators carries its own gateway, controller and Redis. | Contain the blast radius: one failing cell must not take every tenant with it. The cost is operational complexity; the benefit is fault isolation and elastic capacity |
+| **API-first, SDK generated.** OpenAPI is the contract; the console, SDK and CLI all call the same API. | Behaviour drift between entry points is otherwise inevitable |
+| **Choose boring technology.** Go + PostgreSQL + Redis + RabbitMQ + Kubernetes. | Innovation belongs in inference optimisation and the compatibility matrix, not in the substrate |
+
+> **Current-status note.** CRD-as-source-of-truth is the target design. The
+> repository today publishes desired-state **change events** over the message
+> queue and the controller writes the Deployment, Service, autoscaler and
+> serving-gateway routing objects directly; `ModelClaim` is written as an
+> AIBrix CR. Moving the workload objects themselves behind a CRD is the
+> remaining step of this decision, tracked as a gap rather than described as
+> done.
+
+## 8. Repository Layout
+
+The repository is split by responsibility boundary, not by technical layer.
+
+| Path | Content | Note |
+| --- | --- | --- |
+| `services/` | 26 business-service packages | One package per domain: `auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `fault`, `vgpu`, `docs` |
+| `apps/` | Executables | `taas-server` and `taas-controller` |
+| `internal/controller` | Kubernetes operator | Reconciliation, workload orchestration, state machine and rollback |
+| `pkg/` | Shared libraries | `config`, `database`, `grpcmiddleware`, `k8s`, `mq`, `redisx`, `registry`, `modelhub`, `logger`, `errors`, `server` |
+| `proto/` | Interface contract | Protobuf definitions; `buf` generates the gRPC stubs, the HTTP gateway and the OpenAPI document |
+| `web/` | Frontend SPA | React 18 + TypeScript + Vite; one build serves both the user console and the admin console |
+| `deploy/` | Deployment | `helm/go-taas` (production chart) and `compose` (local development) |
+| `site/` | Documentation site | Bilingual architecture and design documents, one per feature |
+| `test/` | Tests | `fvt` (in-process full-stack verification) and `e2e` (browser end-to-end) |
+
+All 26 services run in **one Deployment** and call each other in-process.
+That is a deliberate avoidance of distributed complexity at this stage, not
+an oversight. The only real asynchronous boundary is the one that matters:
+a business transaction hands the desired state to the controller over the
+message queue, so API response time and cluster convergence time are
+decoupled and a failed deployment never holds a request thread.

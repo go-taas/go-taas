@@ -317,6 +317,10 @@ func main() {
 				inferSvc.SetGatewayResolver(k8s.NewGatewayResolver(
 					k8sClient, cfg.Runtime.AIBrix.Gateway, cfg.Runtime.AIBrix.Namespace))
 			}
+			// The data-plane hostname users are told to call is an operator
+			// setting (platform settings page), so it wins over the static
+			// configuration without a redeploy.
+			inferSvc.SetPlatformSettings(runtimeSvc)
 			// Feature #25: the billing service resolves the session's
 			// active org and caller, and gates the admin billing-report
 			// RPCs by the caller's role (AD6).

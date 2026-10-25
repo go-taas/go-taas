@@ -441,3 +441,47 @@ func TestRuntimeFVTRoleDenied(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, code)
 	assert.EqualValues(t, apierrors.CodeForbidden, body["code"])
 }
+
+// TestRuntimeFVTPlatformSettings covers the operator-editable data-plane
+// endpoint: the round trip through the admin API, the normalisation, the
+// rejection of a malformed hostname (12908), and the audit trail — the
+// value decides where every tenant's inference traffic goes.
+func TestRuntimeFVTPlatformSettings(t *testing.T) {
+	env := newRuntimeFvtEnv(t)
+
+	code, body := env.call(t, http.MethodGet, "/api/v1/admin/platform-settings", nil, nil)
+	require.Equal(t, http.StatusOK, code)
+	settings, ok := body["settings"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "", settings["inferenceGatewayHostname"])
+	assert.Equal(t, "https", settings["inferenceGatewayScheme"])
+	assert.Equal(t, "", settings["inferenceBaseUrl"])
+
+	// Saving composes the URL users are handed.
+	code, body = env.call(t, http.MethodPut, "/api/v1/admin/platform-settings", map[string]any{
+		"inferenceGatewayHostname": "API.Sudoinfotech.com",
+		"inferenceGatewayScheme":   "https",
+	}, nil)
+	require.Equal(t, http.StatusOK, code, "save must succeed: %v", body)
+	settings = body["settings"].(map[string]any)
+	assert.Equal(t, "api.sudoinfotech.com", settings["inferenceGatewayHostname"])
+	assert.Equal(t, "https://api.sudoinfotech.com/v1", settings["inferenceBaseUrl"])
+	assert.Equal(t, []string{"runtime.platform_settings_changed"}, env.audit.actions())
+
+	// The value is durable.
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/platform-settings", nil, nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "https://api.sudoinfotech.com/v1", body["settings"].(map[string]any)["inferenceBaseUrl"])
+
+	// A hostname carrying a scheme is rejected and changes nothing.
+	code, body = env.call(t, http.MethodPut, "/api/v1/admin/platform-settings", map[string]any{
+		"inferenceGatewayHostname": "https://api.example.com/v1",
+	}, nil)
+	assert.Equal(t, http.StatusInternalServerError, code)
+	assert.EqualValues(t, apierrors.CodeRuntimeSettingInvalid, body["code"])
+
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/platform-settings", nil, nil)
+	require.Equal(t, http.StatusOK, code)
+	assert.Equal(t, "https://api.sudoinfotech.com/v1", body["settings"].(map[string]any)["inferenceBaseUrl"],
+		"a rejected value must not be stored")
+}

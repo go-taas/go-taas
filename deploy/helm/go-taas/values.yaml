@@ -304,6 +304,39 @@ dependencies:
 
 # taas-server: the unified control-plane server (gRPC on 9090, the REST
 # gateway and admin console on 9091, metrics/health on 9092).
+# Data plane (inference gateway) exposure.
+#
+# The platform separates its two planes: this chart deploys the control
+# plane (management API + console) on `taasServer`, while inference traffic
+# is served by the AIBrix Envoy gateway. `dataPlane` publishes that gateway
+# under the hostname users call, through the platform Gateway, so the
+# control plane never proxies inference.
+dataPlane:
+  # -- Create the HTTPRoute (and the ReferenceGrant it needs) that serves
+  # `dataPlane.hostname` from the platform Gateway and forwards it to the
+  # inference gateway. Requires `dataPlane.hostname`.
+  enabled: false
+  # -- Public hostname users call for inference, for example
+  # `api.example.com`. It must be served by the parent Gateway's
+  # certificate. Set the same value in the console's platform settings so
+  # the quickstart page reports it.
+  hostname: ""
+  # -- Request timeout for a streaming inference call.
+  requestTimeout: 600s
+  # -- Gateway API Gateway that terminates TLS for the hostname.
+  parentRef:
+    name: envoy-gateway
+    namespace: yunzhi
+    sectionName: https
+  # -- Also attach the plaintext listener (only for a cluster that does not
+  # serve the hostname over TLS).
+  enablePlainHTTP: false
+  # -- Service fronting the inference gateway (the AIBrix Envoy proxy).
+  backend:
+    name: envoy-aibrix-system-aibrix-eg-903790dc
+    namespace: yunzhi-system
+    port: 80
+
 taasServer:
   # -- Deploy the control-plane server.
   enabled: true

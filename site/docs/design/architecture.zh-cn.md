@@ -3,9 +3,10 @@
 | 属性 | 内容 |
 | --- | --- |
 | 项目名称 | Go TaaS（Token as a Service） |
-| 整体定位 | 基于 Kubernetes 的一站式开源大模型推理服务与计费平台，面向智能体 / SDK 提供 OpenAI 兼容的推理接入与计量结算 |
-| 文档范围 | 定义系统拓扑、24 个微服务模块的职责边界、控制面/数据面划分、集群网络与协作流程；数据模型、存储参数、运行时配置等实现细节由各模块的详细设计文档另行承载 |
-| 核心架构原则 | 控制面与数据面网关分离；24 个微服务 gRPC server 合并部署并通过消息队列与 Controller 解耦；推理服务与控制面部署于同一 Kubernetes 集群；准入控制在网关与控制面创建路径上完成，而非独立配额服务 |
+| 整体定位 | 可私有化部署的开源 **Token 工厂**：把异构、碎片的加速卡算力变成可计量、可结算、带 SLA 的 Token。它不是又一个 MaaS，而是运营供给侧——部署、调度、计量、计费、路由与治理 |
+| 文档范围 | 定义系统拓扑、26 个微服务模块的职责边界、控制面/数据面划分、集群网络与协作流程；数据模型、存储参数、运行时配置等实现细节由各模块的详细设计文档另行承载 |
+| 判定它是 TaaS 的标准 | 按 Token 分类型计量（输入 / 输出 / 缓存 / 推理）；多租户在密钥、配额与数据边界上隔离；配额、余额、账单与结算构成闭环；SLA 与模型、卡型、上下文长度绑定；核心 KPI 是单位 Token 成本而不是调用量 |
+| 核心架构原则 | 控制面与数据面网关分离；26 个微服务 gRPC server 合并部署并通过消息队列与 Controller 解耦；推理服务与控制面部署于同一 Kubernetes 集群；准入控制在网关与控制面创建路径上完成，而非独立配额服务 |
 
 ---
 
@@ -25,7 +26,7 @@ end
 subgraph L2["LAYER 02 · 网关层"]
     direction LR
     G1["TaaS Gateway（控制面）<br/>TLS · 认证 · RBAC · 限流 · 审计 · 请求校验 · 路由到 TaaS Server"]:::cp
-    G2["Aibrix Gateway + TaaS Plugin（数据面）<br/>OpenAI API · 模型路由 · Token 感知负载均衡 · 同模型 failover · 计量 · Trace"]:::dp
+    G2["Inference Gateway + TaaS Plugin（数据面）<br/>OpenAI API · 模型路由 · Token 感知负载均衡 · 同模型 failover · 计量 · Trace"]:::dp
     G1 ~~~ G2
 end
 
@@ -84,9 +85,31 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 - **数据面（Data Plane）**：承载推理服务的 API——OpenAI 兼容的 `/v1/chat/completions`、`/v1/embeddings` 等端点。入口是**推理 Gateway**，基于 **Envoy** 实现，面向**智能体 / SDK** 等程序化调用方，鉴权、计量与路由均由 **Wasm 插件**在网关侧完成。
 - **独立部署**：两个网关各自作为独立工作负载部署。控制面 API 与推理 API 在扩缩容、升级节奏与故障域上完全隔离——推理 Gateway 过载或升级不会影响平台管理能力，反之亦然。
 
+#### 1.1.1 分离是如何落地的
+
+两个网关是独立的工作负载、独立的地址，Chart 会同时发布两者：
+
+| 平面 | 工作负载 | 入口 | 承载 |
+| --- | --- | --- | --- |
+| 控制面 | `taasServer`（Deployment） | 平台 Gateway 上控制台主机名的路由（如 `taas.example.com`） | `/api/v1/*`、`/api/v1/admin/*`、控制台 |
+| 数据面 | AIBrix Envoy 网关（`aibrix-eg` Gateway → Envoy 代理 Service） | 平台 Gateway 上推理主机名的路由（如 `api.example.com`） | `/v1/chat/completions`、`/v1/embeddings` 等 |
+
+打开 `dataPlane.enabled` 并设置 `dataPlane.hostname` 后，Chart 会创建一条 `HTTPRoute`，
+把推理主机名直接转发到推理网关的 Service，并创建跨命名空间后端所需的 `ReferenceGrant`。
+因此推理流量从不经过控制面进程，控制面滚动发布也不会打断正在进行的流式响应。
+
+推理主机名是部署事实而非编译期常量，所以它同时是一个运维设置项：管理端**平台设置**页
+（`/admin/settings`，`GET|PUT /api/v1/admin/platform-settings`）保存该值，
+`GetInferenceEndpoint` 把 `<scheme>://<hostname>/v1` 报告给快速开始页、API 文档以及所有
+查询该接口的客户端。优先级为：控制台设置 → `infer.endpointBaseURL` → 集群内自动发现的网关。
+
+存储值刻意分成两种形态：给用户的是**公网**地址，而平台自身的调用（控制台试用）优先使用
+**集群内**地址——公网主机名在 Pod 内不一定可解析，且把推理流量绕回公网入口会多一跳，
+正是这次拆分要避免的。集群内无法解析公网名称时，请设置 `inference_gateway_internal_url`。
+
 ### 1.2 服务形态与通信机制
 
-- **统一 gRPC 服务进程**：**全部 24 个微服务**（`auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`docs`）的 gRPC server 合并部署于同一个 Deployment，模块间在进程内直接调用，无需为每个模块单独部署进程；
+- **统一 gRPC 服务进程**：**全部 26 个微服务**（`auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`fault`、`vgpu`、`docs`）的 gRPC server 合并部署于同一个 Deployment，模块间在进程内直接调用，无需为每个模块单独部署进程；
 - **消息队列解耦 gRPC server 与 Controller**：消息队列（Kafka / RabbitMQ）承担**微服务 gRPC server 与 Controller 之间的消息传递**。gRPC server 只负责对外接口与期望状态写入并投递消息，Controller 消费消息后驱动 Kubernetes 资源，二者可独立扩缩容与重启；
 - **RESTful API 自动生成**：控制面 HTTP/JSON 接口与 OpenAPI 文档由 `grpc-gateway` 从 Protobuf 契约自动生成；
 - **数据面不经过业务进程**：推理请求由 Envoy 直接代理至推理实例，鉴权与计量在 Wasm 插件内完成，避免业务进程成为转发瓶颈，也避免流式响应的二次拷贝。
@@ -114,7 +137,7 @@ flowchart TD
         DGW["推理 Gateway<br/>Envoy + Wasm（鉴权 · 计量 · 路由）"]
     end
 
-    subgraph mods["微服务 —— 单个 Deployment（24 个模块）"]
+    subgraph mods["微服务 —— 单个 Deployment（26 个模块）"]
         direction TB
         subgraph m_acc["接入与租户"]
             direction LR
@@ -226,7 +249,7 @@ flowchart TD
 
 ### 微服务清单
 
-单个 Deployment 承载 24 个微服务模块，逐项列明职责边界与对应特性点（backlog 编号）：
+单个 Deployment 承载 26 个微服务模块，逐项列明职责边界与对应特性点（backlog 编号）：
 
 | # | 模块 | 核心职责 | 特性点 |
 | --- | --- | --- | --- |
@@ -253,7 +276,9 @@ flowchart TD
 | 21 | `optimization` | 成本优化建议：规则化、可量化、可忽略的节省建议（仅建议，不自动执行） | #50 |
 | 22 | `prompt` | 提示词库：创建、版本化、归类、搜索、每提示词用量统计、跳转 playground | #43 |
 | 23 | `evaluation` | 提示词评测套件：基于变量的用例、可评分运行、运行对比 | #44 |
-| 24 | `docs` | 面向租户面的 API 目录，供控制台内 API 文档浏览器使用 | #38 |
+| 24 | `fault` | 故障管理：故障策略、故障检测、根因分析与部署关联 | — |
+| 25 | `vgpu` | 基于 HAMi 的 vGPU 切分池与切分模板；部署链路消费其切分账目 | #52 |
+| 26 | `docs` | 面向租户面的 API 目录，供控制台内 API 文档浏览器使用 | #38 |
 
 
 ### 2.1 `auth` —— 认证、SSO 联邦与多租户管理
@@ -367,6 +392,38 @@ flowchart TD
 
 > 说明：由于鉴权与计量下沉到网关 Wasm 插件，平台不再需要独立的配额/限流服务。准入控制落在流量所在的位置：按 API Key 的请求限流与按组织的服务配额（最大并发请求数、推理服务数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制；校验顺序为 限流 → 配额 → 资金。
 
+#### 3.2.1 插件流水线的执行顺序
+
+每个推理请求在 Envoy 内走同一条有序流水线。顺序是有意义的：鉴权失败必须比配额检查
+更便宜，而计量绝不能拒绝请求。
+
+| # | 步骤 | 做什么 |
+| --- | --- | --- |
+| 01 | **Auth 鉴权** | 解析 `Authorization: Bearer sk-…`，调用 `auth` 模块校验 Key（本地缓存 → gRPC），解析出租户、Key ID、作用域与模型白名单 |
+| 02 | **Quota 配额** | 令牌桶限流 + 并发租约；Redis 原子扣减；默认 fail-closed，也可按策略降级 |
+| 03 | **Route 路由** | `RoutingGroup` → 健康部署 → 按加权 / 延迟 / 成本选实例；只允许**同模型**部署之间 failover |
+| 04 | **Meter 计量** | 以引擎返回的 `usage` 为准，网关计数兜底；按 `request_id` 生成事件并异步写入队列 |
+| 05 | **Trace 追踪** | 注入 `traceparent`；记录排队、Prefill、Decode 与总耗时；日志中脱敏提示词 |
+| 06 | **Guard 保护** | 请求体大小、`max_tokens`、超时与取消传播；异常上游快速摘除 |
+| 07 | **Cache 缓存** | 可选的幂等结果缓存；前缀缓存亲和。命中缓存不改变计费口径 |
+| 08 | **Degrade 降级** | Redis / 队列不可用时改用本地令牌桶与本地缓冲，恢复后补偿上报 |
+
+两个取舍是刻意的：
+
+- **计量失败不能阻断推理。** 计量组件故障就拒绝服务，会把故障半径从「账单不准」扩大到
+  「业务全停」。正确做法是先放行、事件进补偿队列、事后按 `request_id` 对账并归因差异。
+- **插件跑在 Envoy 进程内，而不是自己写 sidecar。** 它可以独立发布、灰度、回滚，不随
+  Server 发版，也不增加一次网络跳转。流式推理关注的 P99 上，一次跳转就是几十毫秒。
+
+> **硬约束。** 插件必须无状态、可热更新、可降级。任何计量失败都不能阻断推理，但必须进入
+> 补偿队列，并且在对账报表里可见。看不见的失败，比失败本身更危险。
+
+> **实现载体。** 上述插件契约是数据面必须满足的能力；本仓库当前的载体是 AIBrix 的 Go
+> `ext_proc` 网关插件，而不是 Wasm 模块。请求流水线、幂等规则与降级行为是一致的，但
+> Wasm 仍是目标形态——它可以独立于网关镜像发布、灰度与回滚。本文件中的「Wasm」指目标
+> 形态，「ext_proc」指当前实际交付的载体。
+
+
 ### 3.3 推理 Gateway 的 API Key 鉴权调用链
 
 推理数据面的每一次请求都需要校验 API Key，而鉴权的权威判断属于 `auth` 模块。因此 Wasm 插件不自己做业务判断，而是**通过 gRPC 调用 `auth` 模块**完成校验：
@@ -438,6 +495,20 @@ sequenceDiagram
 - **安全**：回调严格校验 `state` / `nonce` / 签名，避免请求伪造；外部身份仅作为绑定标识，平台始终以内部用户 ID 作为授权主体。
 
 ### 4.2 模型一键部署流程
+两条链路是不对称的，而这种不对称正是设计：部署链路异步、每一步都可能失败，所以需要状态机、
+重试与回滚；推理链路同步且必须快，因此计量之后的一切都是异步的，绝不阻塞响应。
+
+| # | 部署（控制面，异步） |
+| --- | --- |
+| 1 | Console 或 API 提交模型、引擎、卡型、副本与推理参数 |
+| 2 | 网关鉴权；Server 校验配额与参数 |
+| 3 | Server 写入部署记录（`PENDING`）与 Outbox 事件，返回部署 ID |
+| 4 | Outbox Publisher 把事件投递到队列 |
+| 5 | Controller 调谐：创建工作负载对象，渲染 Deployment、Service 与弹性策略 |
+| 6 | Kubernetes + HAMi + Volcano 分配设备；镜像预热；挂载模型缓存 |
+| 7 | 健康检查与 warmup 通过；状态置 `READY`，注册端点 |
+| 8 | 网关刷新路由；模型可调用；审计与通知完成 |
+
 
 ```mermaid
 sequenceDiagram
@@ -462,6 +533,17 @@ sequenceDiagram
 ```
 
 ### 4.3 推理请求与计费闭环
+| # | 推理（数据面，计量之后异步） |
+| --- | --- |
+| 1 | 客户端调用 `/v1/chat/completions`，携带 API Key 与 `stream=true` |
+| 2 | 插件校验 API Key、租户/用户状态与模型作用域 |
+| 3 | 配额：检查并发、速率与余额；Redis 原子扣减；失败返回 429/402 |
+| 4 | 路由：RoutingGroup 选健康部署，再按加权、延迟、成本与前缀亲和选实例 |
+| 5 | 转发到 vLLM / SGLang Pod，以 SSE 流式返回 |
+| 6 | 计量读取上游 `usage`，生成按 `request_id` 幂等的用量事件 |
+| 7 | 异步：事件 → 队列 → 消费者 → PostgreSQL 用量账本 |
+| 8 | 结算：日/小时聚合 → 账单、余额、配额；看板与告警更新 |
+
 
 ```mermaid
 sequenceDiagram
@@ -492,6 +574,32 @@ sequenceDiagram
 
 ---
 
+### 3.4 计量口径与账本规则
+
+计量准确率决定下游的一切：定价、配额、账单、毛利。客户可以接受贵，不能接受算不清。
+
+难点不在数 Token，而在**口径**。网关自己做 tokenizer 会受 chat template、工具调用格式、
+多模态输入的影响，与引擎实际计算的长度不完全一致。因此以引擎返回的 `usage` 为准，
+网关计数兜底，并按日对账。
+
+用量还要按四类 Token 拆分——**prompt、completion、cached、reasoning**——因为它们的成本
+结构不同，定价也应该不同。
+
+流式请求中途断开是最典型的边界情况：引擎可能已经算了 Token 而网关没收到完整响应，
+重试又可能重复计费。下面的规则是为了让这种情况从设计上不可能发生，而不是事后修补。
+
+| 规则 | 原因 |
+| --- | --- |
+| 以引擎 `usage` 为准，网关计数兜底 | 只有引擎知道它实际算了多少 |
+| 每个请求分配 `request_id`，计量事件按此幂等 | 断连与重试不得重复计费 |
+| 账本**只追加**，按日分区，不原地修改 | 可审计的账单需要不可变的历史 |
+| 余额由幂等的聚合任务算出，不在每次请求上更新 | 每请求更新余额扛不住推理峰值 |
+| 每租户按日生成哈希链 | 无需区块链即可防篡改、可追溯 |
+| 账单由账本聚合；日对账覆盖 ≥ 99.5%，差异 ≤ 0.1% | 对账是产品能力，不是财务杂务 |
+
+这些规则听起来像财务要求，其实是产品要求：客户必须能从账单按 `request_id` 下钻到每一次
+调用，出现差异必须 100% 归因。做不到这两点，SLA 就是一句空话。
+
 ## 5. 存储与网络
 
 ### 5.1 存储分层
@@ -511,8 +619,8 @@ sequenceDiagram
 
 | 平面 | 用途 | 设计 |
 | --- | --- | --- |
-| **Pod 网络（东西向）** | Pod 之间与 Pod 到 Service 的流量 | 由标准 CNI 插件提供扁平 Pod 网络与 IPAM；24 个微服务、Controller、两个 Gateway 与推理实例都运行在该网络之上 |
-| **服务发现** | 为 24 个微服务模块与 Controller 提供稳定寻址 | 按暴露单元（gRPC Server、两个 Gateway、消息队列、Redis、PostgreSQL）各建一个 ClusterIP Service，经 CoreDNS 解析；模块间为进程内调用，服务发现只用于工作负载之间 |
+| **Pod 网络（东西向）** | Pod 之间与 Pod 到 Service 的流量 | 由标准 CNI 插件提供扁平 Pod 网络与 IPAM；26 个微服务、Controller、两个 Gateway 与推理实例都运行在该网络之上 |
+| **服务发现** | 为 26 个微服务模块与 Controller 提供稳定寻址 | 按暴露单元（gRPC Server、两个 Gateway、消息队列、Redis、PostgreSQL）各建一个 ClusterIP Service，经 CoreDNS 解析；模块间为进程内调用，服务发现只用于工作负载之间 |
 | **南北向入口** | 集群外访问控制台与 API | 由 Envoy Gateway 终结 TLS，并把 `/`（普通用户控制台）、`/admin`（管理控制台）、`/v1/*`（推理 API）、`/api/v1/*` 路由到控制面 Gateway 或推理 Gateway |
 | **隔离与策略** | 控制面、数据面与租户之间的爆炸半径收敛 | 命名空间隔离 + NetworkPolicy 只放行拓扑图中的流量（控制台 → Gateway、Gateway → gRPC Server/数据面、gRPC Server ↔ 消息队列、Controller → Kubernetes API、推理服务 → 权重存储）；`provider` 到外部大模型端点、`webhook` 到客户端的出向流量显式放行 |
 | **传输分层** | 将高带宽推理流量与管理流量分离 | 控制面使用常规以太网；推理数据链路（请求/响应、KV Cache 传输、多卡通信）可选走 RDMA 网络（RoCE / InfiniBand） |
@@ -542,5 +650,81 @@ sequenceDiagram
 | 外部身份提供方（LDAP / OIDC / SAML / 微信） | auth | 第三方 SSO 联邦登录与用户属性来源 |
 | 客户 Webhook 端点（HTTPS） | webhook | 带 HMAC 签名与重试策略的出站事件投递 |
 | 模型仓库（ModelScope / HuggingFace） | model | 模型权重下载到共享 JuiceFS 卷 |
+| **AIBrix** | Controller · infer · runtime | 分布式推理运行时与推理网关：模型部署对象（`ModelClaim`、`PodAutoscaler`）、KV Cache 感知路由，以及数据面背后的 Envoy 代理。以独立 Helm release 安装；Chart 的 `dataPlane` 值负责把它的网关发布到推理主机名上 |
+| **HAMi** | Controller · vgpu | 异构加速卡虚拟化：设备插件、按 Pod 的切分调度，以及 Controller 为共享 GPU 服务设置的 placement-policy 注解 |
+| **Volcano**（建设中） | Controller · batch | 批处理与多 Pod 推理角色的 Gang 调度、队列与公平共享。可选组件：未安装时使用原生 Kubernetes 调度 |
+| **GPU / NPU Operator** | Controller · accelerator | 厂商驱动、设备插件、拓扑与健康状态；加速卡清单读取它们发布的节点标签 |
+| **可观测栈**（Prometheus · OpenTelemetry · Loki） | observability · tracing · 全部工作负载 | 指标、追踪与日志聚合；控制台的可观测页面读取平台已存储的聚合结果 |
+| **推理引擎**（vLLM · SGLang · TensorRT-LLM · MindIE · 自研） | Controller · infer | 以 OpenAI 兼容接口对外提供推理。以镜像方式注册，新增引擎是一条注册记录，而不是一次改代码 |
 
 > 鉴权调用链：推理 Gateway 的 Wasm 插件在放行前通过 **gRPC 调用 `auth` 模块**校验 API Key；未命中 Wasm 本地缓存时回源 `auth`，`auth` 再以 Redis 正缓存先承接，两级缓存保证高并发下的低时延，并在超时或不可用时按 fail-closed 拒绝。
+
+## 7. 容量、SLO 与平台级设计决策
+
+### 7.1 容量估算
+
+```
+副本数 = ceil(峰值 QPS × 平均 Token 数 ÷ (单副本 tokens/s × 目标利用率))
+```
+
+示例：`100 × 1200 ÷ (8000 × 0.7) ≈ 3` 副本。
+
+两个常见错误：单副本吞吐必须**实测**，不能用标称峰值——标称峰值与实测聚合吞吐之间，往往
+差着一整条批处理流水线；平均 Token 数要按业务分布算，长尾请求会显著拉高驻留时间。
+
+并发由吞吐推出，而不是反过来：一个 8 卡实例聚合输出 2,000 tokens/s、单请求约 50 tokens/s，
+对应约 40 个并发流，而不是 2,000 个。可以用 Little's Law 校验
+（`到达率 × 驻留时间 ≈ 并发数`）。
+
+### 7.2 SLO 目标
+
+| 指标 | 目标 | 说明 |
+| --- | --- | --- |
+| 网关可用性 | ≥ 99.95% | 数据面是所有流量的入口，目标刻意高于推理本身 |
+| 推理可用性 | ≥ 99.9% | 按模型、按卡型分别统计，不混算 |
+| TTFT P95 | < 1.5s | 基线为 7B 模型、1K prompt，需按实际部署校准 |
+| TPOT P95 | < 50ms | 每 Token 延迟，直接决定流式体验 |
+| 计量准确率 | ≥ 99.5% | 与引擎 `usage` 对账，差异需归因 |
+| 控制面 API P95 | < 300ms | 不包含异步部署耗时 |
+
+这些都是需要按真实基线校准的目标值，不是合同数字。SLA 必须绑定模型、卡型、上下文长度与
+并发，并对外给出「基线 + 降级策略」而不是单一数字：同样叫 99.9%，7B 模型 1K 上下文与
+70B 模型 128K 上下文完全是两件事，不写清条件的 SLA 签的时候容易，赔的时候一定吵架。
+
+### 7.3 平台级设计决策
+
+| 决策 | 理由 |
+| --- | --- |
+| **CRD 是期望状态的唯一来源。** Server 写 CR，Controller 调谐。 | 漂移检测与回滚需要一个集群自己拥有的对象，而不是一次性命令。见下方现状说明。 |
+| **Outbox + 幂等消费。** 业务事务与消息投递一起提交，投递与提交解耦。 | 按 `request_id` / `deployment_id` 幂等，才让 at-least-once 投递是安全的 |
+| **计量以引擎 `usage` 为准。** | 网关 tokenizer 在 chat template 下会与引擎漂移；引擎为准，网关计数兜底 |
+| **热路径不写数据库。** 网关只读写本地缓存与队列；PostgreSQL 只由 Server 与异步消费者写入。 | 推理峰值可能是管理流量的几万倍，一次促销不能把平台打死 |
+| **第一天就支持多集群。** P0 可以只部署一个集群，但数据模型里必须有 `cluster_id` 与 `placement_policy`。 | 到 P1 再补字段，就要同时改表、改 API、改权限，而且一定会漏 |
+| **单元化（Cell）架构。** 每个 Cell 约 100–500 卡，自带网关、Controller 与 Redis。 | 控制爆炸半径：一个 Cell 出问题不能把全国租户一起带走。代价是运维复杂度，收益是故障隔离与容量弹性 |
+| **API-first，SDK 生成。** OpenAPI 是契约，Console、SDK、CLI 共用同一套接口。 | 否则各接入形态之间必然行为漂移 |
+| **选择无聊的技术。** Go + PostgreSQL + Redis + RabbitMQ + Kubernetes。 | 创新留给推理优化与验证矩阵，而不是底座本身 |
+
+> **现状说明。** CRD 作为唯一真源是目标设计。仓库目前通过消息队列发布期望状态**变更事件**，
+> Controller 直接写 Deployment、Service、弹性策略与服务网关路由对象；其中 `ModelClaim`
+> 是以 AIBrix CR 形式写入的。把工作负载对象本身也收敛到 CRD，是这条决策尚未完成的一步，
+> 按「差距」记录，而不是当作已完成来描述。
+
+## 8. 仓库结构
+
+仓库按职责边界划分，而不是按技术层划分。
+
+| 路径 | 内容 | 说明 |
+| --- | --- | --- |
+| `services/` | 26 个业务服务目录 | 每个领域一个包：`auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`fault`、`vgpu`、`docs` |
+| `apps/` | 可执行入口 | `taas-server` 与 `taas-controller` 两个二进制 |
+| `internal/controller` | Kubernetes Operator | 调谐、工作负载编排、状态机与回滚 |
+| `pkg/` | 共享基础库 | `config`、`database`、`grpcmiddleware`、`k8s`、`mq`、`redisx`、`registry`、`modelhub`、`logger`、`errors`、`server` |
+| `proto/` | 接口契约 | Protobuf 定义；由 `buf` 生成 gRPC stub、HTTP 网关与 OpenAPI 文档 |
+| `web/` | 前端 SPA | React 18 + TypeScript + Vite；同一份构建同时服务用户控制台与管理员控制台 |
+| `deploy/` | 部署 | `helm/go-taas`（生产 chart）与 `compose`（本地开发） |
+| `site/` | 文档站 | 中英双语的架构与设计文档，每个功能点一份 |
+| `test/` | 测试 | `fvt`（进程内全栈验证）与 `e2e`（浏览器端到端） |
+
+26 个服务跑在**同一个 Deployment** 里，服务之间是进程内调用。这是早期阶段刻意避免
+分布式复杂度，而不是疏忽。真正有价值的异步边界只有一处：业务事务通过消息队列把期望状态
+交给 Controller，于是 API 响应时间与集群收敛时间解耦，部署失败也不会把请求线程一起拖住。

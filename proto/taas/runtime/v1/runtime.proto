@@ -52,6 +52,19 @@ service RuntimeService {
   rpc DeregisterRuntimeModel(DeregisterRuntimeModelRequest) returns (DeregisterRuntimeModelResponse) {
     option (google.api.http) = {delete: "/api/v1/admin/runtime/models/{model_name}"};
   }
+
+  // GetPlatformSettings returns the operator-editable platform settings,
+  // including the inference gateway (data-plane) hostname users are told
+  // to call.
+  rpc GetPlatformSettings(GetPlatformSettingsRequest) returns (GetPlatformSettingsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/platform-settings"};
+  }
+
+  // UpdatePlatformSettings saves the platform settings. A hostname that is
+  // not a plain DNS name (scheme, path or spaces) returns 12905.
+  rpc UpdatePlatformSettings(UpdatePlatformSettingsRequest) returns (UpdatePlatformSettingsResponse) {
+    option (google.api.http) = {put: "/api/v1/admin/platform-settings" body: "*"};
+  }
 }
 
 message GetRuntimeStatusRequest {}
@@ -165,4 +178,48 @@ message DeregisterRuntimeModelRequest {
 
 message DeregisterRuntimeModelResponse {
   taas.common.v1.Response response = 1;
+}
+
+// PlatformSettings are the operator-editable, platform-wide settings.
+// They are stored in one row because they describe the installation, not
+// a tenant.
+message PlatformSettings {
+  // inference_gateway_hostname is the data-plane (inference gateway)
+  // hostname users call, for example "api.example.com". Empty means the
+  // platform falls back to the configured value or to the gateway it
+  // discovers in the cluster.
+  string inference_gateway_hostname = 1;
+  // inference_gateway_scheme is "http" or "https" (default). It is part
+  // of the URL users are given, so it is stored next to the hostname.
+  string inference_gateway_scheme = 2;
+  // inference_gateway_internal_url is the in-cluster URL the platform
+  // itself uses to reach the gateway (empty means discover it). Set it
+  // when the public hostname is not resolvable from inside the cluster.
+  string inference_gateway_internal_url = 3;
+  // inference_base_url is the composed public base URL, for example
+  // "https://api.example.com/v1". Read-only: derived from the fields
+  // above, and empty when no hostname is configured.
+  string inference_base_url = 4;
+  // updated_by is the acting admin user's display label.
+  string updated_by = 5;
+  // updated_at is the last change time (unix seconds).
+  int64 updated_at = 6;
+}
+
+message GetPlatformSettingsRequest {}
+
+message GetPlatformSettingsResponse {
+  taas.common.v1.Response response = 1;
+  PlatformSettings settings = 2;
+}
+
+message UpdatePlatformSettingsRequest {
+  string inference_gateway_hostname = 1;
+  string inference_gateway_scheme = 2;
+  string inference_gateway_internal_url = 3;
+}
+
+message UpdatePlatformSettingsResponse {
+  taas.common.v1.Response response = 1;
+  PlatformSettings settings = 2;
 }

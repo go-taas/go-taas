@@ -111,7 +111,7 @@ func NewForFVT(db *gorm.DB, cache *ProjectionCache) *Service {
 // MigrateSchemaForFVT applies the runtime schema onto a caller-provided
 // database.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&RuntimeSetting{})
+	return db.AutoMigrate(&RuntimeSetting{}, &PlatformSetting{})
 }
 
 // SetAuditRecorder injects the best-effort audit recorder (AD7).
@@ -159,7 +159,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	return db.WithContext(ctx).AutoMigrate(&RuntimeSetting{})
+	return db.WithContext(ctx).AutoMigrate(&RuntimeSetting{}, &PlatformSetting{})
 }
 
 // gormDB resolves the *gorm.DB from the shared components.

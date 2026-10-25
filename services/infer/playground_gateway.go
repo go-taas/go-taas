@@ -13,7 +13,6 @@ import (
 
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 
-	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/model"
 )
@@ -27,22 +26,12 @@ const playgroundTimeout = 60 * time.Second
 // so a misbehaving gateway cannot exhaust the server's memory.
 const playgroundMaxBodyBytes = 4 << 20
 
-// servingGatewayBaseURL resolves the serving gateway's base URL (no
-// trailing slash, no "/v1"). It follows the same order as
-// GetInferenceEndpoint: the configured value first, then the discovered
-// gateway. Empty means nothing is reachable.
+// servingGatewayBaseURL resolves the origin the server calls the serving
+// gateway at (no trailing slash, no "/v1"). It prefers the in-cluster
+// address: the public hostname is what users call, and it may not be
+// resolvable from a pod. Empty means nothing is reachable.
 func (s *Service) servingGatewayBaseURL(ctx context.Context) string {
-	if cfg := config.GetConfig(); cfg != nil {
-		if v := strings.TrimSpace(cfg.Infer.EndpointBaseURL); v != "" {
-			return strings.TrimSuffix(v, "/")
-		}
-	}
-	if s.gatewayResolver != nil {
-		if v := strings.TrimSpace(s.gatewayResolver.InferenceGatewayURL(ctx)); v != "" {
-			return strings.TrimSuffix(v, "/")
-		}
-	}
-	return ""
+	return s.resolveGatewaySettings(ctx).internalBaseURL
 }
 
 // playgroundChatBody is the OpenAI-compatible request the playground sends

@@ -129,6 +129,10 @@ type Service struct {
 	// until wired: only infer.endpointBaseURL is consulted.
 	gatewayResolver GatewayResolver
 
+	// platformSettings supplies the operator-configured data-plane
+	// hostname. Nil until wired: the static configuration wins.
+	platformSettings PlatformSettingsResolver
+
 	// platformAdmin reports whether the caller is a platform
 	// administrator, whose operator surface is not organization-isolated.
 	// Nil until wired: the caller is treated as organization-scoped.
@@ -303,8 +307,22 @@ type GatewayResolver interface {
 	InferenceGatewayURL(ctx context.Context) string
 }
 
+// PlatformSettingsResolver supplies the operator-configured data-plane
+// endpoint. hostname is what users are told to call (no scheme, no path);
+// scheme is "http" or "https"; internalURL is the in-cluster origin the
+// platform itself calls, and is empty when it should be discovered.
+type PlatformSettingsResolver interface {
+	InferenceGateway(ctx context.Context) (hostname, scheme, internalURL string, err error)
+}
+
 // SetGatewayResolver injects the serving-gateway discovery seam.
 func (s *Service) SetGatewayResolver(r GatewayResolver) { s.gatewayResolver = r }
+
+// SetPlatformSettings resolves the operator-configured data-plane
+// endpoint (hostname, scheme and in-cluster URL). It is implemented by the
+// runtime module and injected at wiring time. Nil until wired: only the
+// static configuration and gateway discovery are consulted.
+func (s *Service) SetPlatformSettings(r PlatformSettingsResolver) { s.platformSettings = r }
 
 // PlatformAdminResolver reports whether the caller carries the
 // platform-admin role. It is implemented by the tenancy module and injected

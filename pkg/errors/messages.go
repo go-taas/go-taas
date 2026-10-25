@@ -204,6 +204,7 @@ var messages = map[Code]string{
 	CodeRuntimeEngineUnsupported: "unsupported inference engine",
 	CodeRuntimeReplicasInvalid:   "invalid replica count",
 	CodeRuntimeModelNameInvalid:  "invalid model name",
+	CodeRuntimeSettingInvalid:    "runtime setting invalid",
 
 	// provider (feature #48, AD9)
 	CodeProviderNotFound:             "provider not found",

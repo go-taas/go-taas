@@ -1,0 +1,74 @@
+{{- if and .Values.dataPlane.enabled .Values.dataPlane.hostname }}
+{{- $dp := .Values.dataPlane }}
+{{- $parent := $dp.parentRef }}
+{{- $backend := $dp.backend }}
+{{- /*
+The data plane is the inference gateway, not this server: the control plane
+handles management calls and the data plane handles inference. This route
+publishes the gateway under the hostname tenants call, so inference never
+passes through the control-plane process.
+
+The backend lives in the gateway's namespace, so the route needs a
+ReferenceGrant there permitting HTTPRoutes from this namespace to use its
+Services.
+*/}}
+{{- if ne $backend.namespace .Release.Namespace }}
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: {{ include "go-taas.fullname" . }}-data-plane
+  namespace: {{ $backend.namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: HTTPRoute
+      namespace: {{ .Release.Namespace }}
+  to:
+    - group: ""
+      kind: Service
+---
+{{- end }}
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: {{ include "go-taas.fullname" . }}-data-plane
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+spec:
+  hostnames:
+    - {{ $dp.hostname | quote }}
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $parent.name }}
+      namespace: {{ $parent.namespace }}
+      {{- with $parent.sectionName }}
+      sectionName: {{ . }}
+      {{- end }}
+    {{- if $dp.enablePlainHTTP }}
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: {{ $parent.name }}
+      namespace: {{ $parent.namespace }}
+      sectionName: http
+    {{- end }}
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - group: ""
+          kind: Service
+          name: {{ $backend.name }}
+          namespace: {{ $backend.namespace }}
+          port: {{ $backend.port }}
+          weight: 1
+      timeouts:
+        request: {{ $dp.requestTimeout }}
+{{- end }}
