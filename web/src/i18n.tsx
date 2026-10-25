@@ -72,7 +72,20 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   const tEnum = (namespace: string, value: string): string => {
     if (!value) return '';
-    return tOr(`${namespace}.${value}`, value);
+    const direct = dictionaries[lang][`${namespace}.${value}`] ?? dictionaries.en[`${namespace}.${value}`];
+    if (direct) return direct;
+    // Proto enum names arrive as CONSTANT_CASE (AUDIT_RESULT_SUCCESS,
+    // AUTOSCALING_STATE_SCALING_UP). Try progressively shorter suffixes so
+    // state.success and state.scaling-up resolve without per-page mapping.
+    if (/^[A-Z][A-Z0-9_]*$/.test(value) && value.includes('_')) {
+      const parts = value.toLowerCase().split('_');
+      for (let i = 0; i < parts.length; i += 1) {
+        const key = `${namespace}.${parts.slice(i).join('-')}`;
+        const hit = dictionaries[lang][key] ?? dictionaries.en[key];
+        if (hit) return hit;
+      }
+    }
+    return value;
   };
 
   return (
