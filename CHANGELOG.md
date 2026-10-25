@@ -1,3 +1,25 @@
+# [1.78.0](https://github.com/go-taas/go-taas/compare/v1.77.0...v1.78.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **cluster:** store only selector-worthy accelerator labels ([1e6b3ef](https://github.com/go-taas/go-taas/commit/1e6b3efb612b0092a937ad9a51f1ba00d84e72db))
+* **console:** localize the cluster filters and accelerator vendor banner ([2edf4b5](https://github.com/go-taas/go-taas/commit/2edf4b5fa6c60228da133e4420d521764a196549))
+* **console:** localize the remaining enum filter options ([ff1cb1f](https://github.com/go-taas/go-taas/commit/ff1cb1fb6be963309a2e1c6e75d47fc04a4cfe74))
+* **console:** localize the users state filter options ([1385ad9](https://github.com/go-taas/go-taas/commit/1385ad918d072111541246c1f24026f100ca0720))
+* **console:** say 词元 in the usage subtitle ([c480a6b](https://github.com/go-taas/go-taas/commit/c480a6be0fcbc6ff8f9236d394c4944ca15a7b16))
+* **console:** translate the usage card's in/out token sub-label ([eab9414](https://github.com/go-taas/go-taas/commit/eab9414a0abfe861d0b519254382e6fb44004553))
+* **controller:** bound the image-warmup wait and report the pull reason ([2b38cd1](https://github.com/go-taas/go-taas/commit/2b38cd158865d9ed68e6bd80fb16b2496cafbdaf))
+* **controller:** stop redelivering a warmup that already failed ([88a9cdd](https://github.com/go-taas/go-taas/commit/88a9cdd3c71e874eae567443bfec84e9843a5778))
+* **helm:** default the server RBAC toggle when old values lack it ([964a075](https://github.com/go-taas/go-taas/commit/964a075fe14f3d6c1accaf3a490a953eef1ec430))
+* **image:** fail warmup tasks a restart left active ([4257cb0](https://github.com/go-taas/go-taas/commit/4257cb0fa358287d8c6a5930d5ad9a83d8be8e81))
+
+
+### Features
+
+* **model:** show the grantor's display name in the grant list ([a00408e](https://github.com/go-taas/go-taas/commit/a00408e037ff3d1e0fd4cd477b2caea8b107728f))
+* people-not-UUID rosters, local cluster discovery, honest i18n ([65f6ae5](https://github.com/go-taas/go-taas/commit/65f6ae5258707af4b5f8079c376a05202851a9b4))
+
 # [1.77.0](https://github.com/go-taas/go-taas/compare/v1.76.0...v1.77.0) (2026-10-25)
 
 
