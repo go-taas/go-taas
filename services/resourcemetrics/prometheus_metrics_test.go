@@ -242,7 +242,7 @@ func TestEngineTelemetryReadsTheEngineAndVRAM(t *testing.T) {
 		},
 		map[string]string{
 			"FB_FREE":           "1359", // MiB: capacity is used + free
-			"kv_cache_usage":    "0.42",  // fraction
+			"kv_cache_usage":    "0.42", // fraction
 			"num_requests_run":  "3",
 			"num_requests_wait": "2",
 		},
@@ -331,4 +331,23 @@ func TestApplyEngineCardsKeepsZeroAndNotMeasuredApart(t *testing.T) {
 	card = &resourcemetricsv1.ResourceMetricsCard{}
 	applyEngineCards(card, engineRead{})
 	assert.False(t, card.EngineAvailable)
+}
+
+// TestDecodePromPointRejectsNonFinite covers the spelling Prometheus uses
+// for an undefined aggregation. strconv.ParseFloat accepts "NaN" without an
+// error, so without the explicit finiteness check a console viewing a live
+// service mid-idle rendered "NaN" in the TTFT card and plotted a corrupted
+// series.
+func TestDecodePromPointRejectsNonFinite(t *testing.T) {
+	for _, raw := range []string{"NaN", "+Inf", "-Inf", "Inf"} {
+		pair := []json.RawMessage{json.RawMessage("1700000000"), json.RawMessage(`"` + raw + `"`)}
+		_, _, err := decodePromPoint(pair)
+		assert.Error(t, err, "%s must not decode to a value", raw)
+	}
+
+	pair := []json.RawMessage{json.RawMessage("1700000000"), json.RawMessage(`"0.042"`)}
+	ts, val, err := decodePromPoint(pair)
+	require.NoError(t, err)
+	assert.EqualValues(t, 1700000000, ts)
+	assert.InDelta(t, 0.042, val, 1e-9)
 }

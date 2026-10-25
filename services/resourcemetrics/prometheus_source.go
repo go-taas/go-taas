@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -205,6 +206,12 @@ func (p *prometheusSource) do(ctx context.Context, path string, form url.Values)
 }
 
 // decodePromPoint decodes one [unixSeconds, "value"] pair.
+//
+// Prometheus reports an undefined aggregation as the literal "NaN" (for
+// example histogram_quantile over a window with no samples). ParseFloat
+// accepts that spelling, so the finiteness check is what turns it into the
+// error callers use to mean "no measurement"; without it the API would
+// serve NaN and the console would print "NaN" in a headline card.
 func decodePromPoint(pair []json.RawMessage) (int64, float64, error) {
 	if len(pair) != 2 {
 		return 0, 0, fmt.Errorf("resourcemetrics: malformed prometheus point")
@@ -220,6 +227,9 @@ func decodePromPoint(pair []json.RawMessage) (int64, float64, error) {
 	val, err := strconv.ParseFloat(raw, 64)
 	if err != nil {
 		return 0, 0, err
+	}
+	if math.IsNaN(val) || math.IsInf(val, 0) {
+		return 0, 0, fmt.Errorf("resourcemetrics: non-finite prometheus sample %q", raw)
 	}
 	return int64(ts), val, nil
 }
@@ -329,8 +339,6 @@ func (p *prometheusSource) queryScalarOK(ctx context.Context, query string) (flo
 		}
 		_, value, err := decodePromPoint(series.Value)
 		if err != nil {
-			// NaN is what histogram_quantile returns for an empty bucket
-			// set; treat it as "no measurement" rather than a value.
 			continue
 		}
 		return value, true, nil
