@@ -1,3 +1,16 @@
+# [1.86.0](https://github.com/go-taas/go-taas/compare/v1.85.0...v1.86.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **model:** accept the served model name in model authorization ([0cd132f](https://github.com/go-taas/go-taas/commit/0cd132f1befb75bdd3aa83c26eb0388642db94ce))
+* **mq:** give each consumer its own queue so no event is split away ([60fa135](https://github.com/go-taas/go-taas/commit/60fa1354e4913933cfe7bfe0cb7e7f2c2009bc89))
+
+
+### Features
+
+* **gateway:** ask the engine for usage on a streamed response ([39a8ab3](https://github.com/go-taas/go-taas/commit/39a8ab3f15df25b541d0fadc9722f4a7ef5dab54))
+
 # [1.85.0](https://github.com/go-taas/go-taas/compare/v1.84.1...v1.85.0) (2026-10-25)
 
 
