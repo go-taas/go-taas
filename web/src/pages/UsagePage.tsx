@@ -259,10 +259,10 @@ export default function UsagePage() {
           </div>
           <div className="sub">
             {cards
-              ? `${parseInt(cards.promptTokens || '0', 10).toLocaleString()} in / ${parseInt(
-                  cards.completionTokens || '0',
-                  10,
-                ).toLocaleString()} out`
+              ? t('usage.inOutTokens', {
+                  in: parseInt(cards.promptTokens || '0', 10).toLocaleString(),
+                  out: parseInt(cards.completionTokens || '0', 10).toLocaleString(),
+                })
               : ''}
           </div>
         </div>

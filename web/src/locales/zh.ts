@@ -1721,6 +1721,7 @@ export const zh: Record<string, string> = {
   'usage.groupAccelerator': '加速卡',
   'usage.exportCsv': '导出 CSV',
   'usage.totalCost': '总成本',
+  'usage.inOutTokens': '输入 {in} / 输出 {out}',
   'usage.tokens': '词元',
   'usage.requests': '请求数',
   'usage.avgCost': '平均成本 / 请求',

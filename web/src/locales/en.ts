@@ -1744,6 +1744,7 @@ export const en: Record<string, string> = {
   'usage.groupAccelerator': 'Accelerator',
   'usage.exportCsv': 'Export CSV',
   'usage.totalCost': 'Total cost',
+  'usage.inOutTokens': '{in} in / {out} out',
   'usage.tokens': 'Tokens',
   'usage.requests': 'Requests',
   'usage.avgCost': 'Avg cost / request',
