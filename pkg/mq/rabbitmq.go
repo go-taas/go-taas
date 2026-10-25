@@ -42,6 +42,7 @@ type amqpChannel interface {
 	QueueDeclare(name string, durable, autoDelete, exclusive, noWait bool, args amqp.Table) (amqp.Queue, error)
 	QueueBind(name, key, exchange string, noWait bool, args amqp.Table) error
 	Consume(queue, consumer string, autoAck, exclusive, noLocal, noWait bool, args amqp.Table) (<-chan amqp.Delivery, error)
+	Qos(prefetchCount, prefetchSize int, global bool) error
 	PublishWithContext(ctx context.Context, exchange, key string, mandatory, immediate bool, msg amqp.Publishing) error
 	Close() error
 }
@@ -221,6 +222,14 @@ func (c *rabbitMQClient) subscribeOnce(ctx context.Context, subject string, hand
 	}
 	if err := ch.QueueBind(q.Name, subject, c.exchange(), false, nil); err != nil {
 		return fmt.Errorf("mq: bind queue %s to %s: %w", q.Name, subject, err)
+	}
+
+	// Bound the unacked window: without a QoS limit the broker hands the
+	// whole backlog to this consumer, so one slow handler leaves every
+	// queued message unacked (and invisible to a queue purge) instead of
+	// leaving them available for another consumer.
+	if err := ch.Qos(1, 0, false); err != nil {
+		return fmt.Errorf("mq: set prefetch for %s: %w", subject, err)
 	}
 
 	deliveries, err := ch.Consume(

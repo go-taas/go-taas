@@ -17,6 +17,8 @@ import (
 // fakeChannel is an in-memory amqpChannel that records published messages
 // and delivers them to a registered consumer.
 type fakeChannel struct {
+	// prefetch is the last Qos request (0 = unlimited).
+	prefetch   int
 	mu         sync.Mutex
 	closed     bool
 	exchange   string
@@ -29,6 +31,12 @@ type fakeChannel struct {
 
 func newFakeChannel() *fakeChannel {
 	return &fakeChannel{deliveries: make(chan amqp.Delivery, 16)}
+}
+
+// Qos records the prefetch request; the fake has no in-flight limit.
+func (f *fakeChannel) Qos(prefetchCount, _ int, _ bool) error {
+	f.prefetch = prefetchCount
+	return nil
 }
 
 func (f *fakeChannel) ExchangeDeclare(name, kind string, _, _, _, _ bool, _ amqp.Table) error {
@@ -272,4 +280,27 @@ func TestRabbitMQCloseIdempotent(t *testing.T) {
 	require.NoError(t, c.Close())
 	require.NoError(t, c.Close())
 	assert.True(t, conn.IsClosed())
+}
+
+// TestSubscribeSetsPrefetch verifies the consumer bounds its unacked
+// window: without a QoS limit the broker hands the whole backlog over, so
+// one slow handler leaves every queued message unacked (a queue purge
+// cannot reclaim them and no other consumer can pick them up).
+func TestSubscribeSetsPrefetch(t *testing.T) {
+	conn := installFakeBroker(t)
+	c, err := newRabbitMQClient(&config.MQConfig{
+		Driver: "rabbitmq", URL: "amqp://127.0.0.1:5672/", Namespace: "taas-dev",
+	})
+	require.NoError(t, err)
+	defer func() { require.NoError(t, c.Close()) }()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		_ = c.Subscribe(ctx, "infer.services.changes", func(Message) error { return nil })
+	}()
+
+	require.Eventually(t, func() bool { return conn.channel.prefetch != 0 },
+		2*time.Second, 10*time.Millisecond)
+	assert.Equal(t, 1, conn.channel.prefetch)
 }
