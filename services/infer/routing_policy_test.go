@@ -43,7 +43,7 @@ func seedRoutingModel(t *testing.T, svc *Service, name, version string) string {
 	t.Helper()
 	modelRepo, err := svc.modelRepository()
 	require.NoError(t, err)
-	id, err := modelRepo.RegisterModelOrCreateVersion(context.Background(), name, "", version, name+"/"+version)
+	id, err := modelRepo.RegisterModelOrCreateVersion(context.Background(), name, "", "", version, name+"/"+version)
 	require.NoError(t, err)
 	_, err = modelRepo.ActivateVersion(context.Background(), id, version)
 	require.NoError(t, err)

@@ -16,6 +16,14 @@ type Model struct {
 	Name string `gorm:"size:128;not null;uniqueIndex"`
 	// Description is a free-text description, at most 1024 chars.
 	Description string `gorm:"size:1024;not null;default:''"`
+	// HubModelID is the model's id on the public model hub, in the
+	// "<vendor>/<model>" form hubs use (e.g.
+	// "MiniMax/MiniMax-M3.1-Flash"). It is globally unique so a hub model
+	// maps to exactly one catalog entry. Empty for a model that is not
+	// bound to a hub id. The unique index is partial: PostgreSQL treats
+	// '' as a value, so a plain unique index would allow only one unbound
+	// model.
+	HubModelID string `gorm:"size:255;not null;default:'';uniqueIndex:idx_models_hub_model_id,where:hub_model_id <> ''"`
 	// External marks a published external model (feature #48). An external
 	// model has no model_versions row and stays version-less.
 	External bool `gorm:"not null;default:false"`

@@ -63,7 +63,7 @@ func newInferTestService(t *testing.T) (*Service, *recordingClient, *gorm.DB) {
 func seedModel(t *testing.T, db *gorm.DB, name, version string) string {
 	t.Helper()
 	repo := model.NewRepository(db)
-	id, err := repo.RegisterModelOrCreateVersion(context.Background(), name, "", version, name+"/"+version)
+	id, err := repo.RegisterModelOrCreateVersion(context.Background(), name, "", "", version, name+"/"+version)
 	require.NoError(t, err)
 	return id
 }

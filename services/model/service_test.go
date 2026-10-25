@@ -400,3 +400,82 @@ func (failingDownloader) Download(context.Context, modelhub.Source, string, stri
 
 // Compile-time guard: the FVT helpers keep their signatures.
 var _ = func(db *gorm.DB) *Service { return NewForFVT(db) }
+
+func TestServiceRegisterModelHubModelID(t *testing.T) {
+	svc := newModelTestService(t)
+	svc.SetWeightsDir(t.TempDir())
+	svc.SetModelDownloader(&fakeDownloader{})
+	ctx := context.Background()
+
+	// The hub id defaults to the hub's model id when the weights come
+	// from a hub, and is projected in the catalog.
+	resp, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "minimax", Version: "v1", Source: "modelscope",
+		SourceModelId: "MiniMax/MiniMax-M3.1-Flash",
+	})
+	require.NoError(t, err)
+	got, err := svc.GetModel(ctx, &modelv1.GetModelRequest{ModelId: resp.GetModelId()})
+	require.NoError(t, err)
+	assert.Equal(t, "MiniMax/MiniMax-M3.1-Flash", got.GetModel().GetHubModelId())
+
+	// A hub id is globally unique: another model cannot claim it.
+	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "other-name", Version: "v1", HubModelId: "MiniMax/MiniMax-M3.1-Flash",
+		WeightPath: "other/v1",
+	})
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeModelExists, ae.Code)
+
+	// The owning model can append a version under the same hub id.
+	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "minimax", Version: "v2", HubModelId: "MiniMax/MiniMax-M3.1-Flash",
+		WeightPath: "minimax/v2",
+	})
+	require.NoError(t, err)
+}
+
+func TestServiceRegisterModelHubModelIDValidation(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+
+	// A hub id must be "<vendor>/<model>".
+	for _, bad := range []string{"qwen", "/qwen", "qwen/", "vendor na me/model", "vendor/model name"} {
+		_, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+			Name: "m-" + bad, Version: "v1", HubModelId: bad, WeightPath: "m/v1",
+		})
+		require.Error(t, err, bad)
+		ae, ok := apierrors.As(err)
+		require.True(t, ok)
+		assert.Equal(t, apierrors.CodeModelPathInvalid, ae.Code, bad)
+	}
+
+	// A model keeps its hub id: rebinding it to another id conflicts.
+	_, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", Version: "v1", HubModelId: "Qwen/Qwen3-3B", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", Version: "v2", HubModelId: "Qwen/Qwen3-8B", WeightPath: "qwen/v2",
+	})
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeModelExists, ae.Code)
+}
+
+func TestServiceListModelsProjectsHubModelID(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+
+	_, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", Version: "v1", HubModelId: "Qwen/Qwen3-3B", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+
+	list, err := svc.ListModels(ctx, &modelv1.ListModelsRequest{})
+	require.NoError(t, err)
+	require.Len(t, list.GetModels(), 1)
+	assert.Equal(t, "Qwen/Qwen3-3B", list.GetModels()[0].GetHubModelId())
+}

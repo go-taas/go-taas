@@ -79,7 +79,7 @@ func newVgpuFvtEnv(t *testing.T) *vgpuFvtEnv {
 	// Seed a model + version and the image registry so the deploy-time
 	// slice validation can be exercised end-to-end.
 	modelRepo := model.NewRepository(db)
-	modelID, err := modelRepo.RegisterModelOrCreateVersion(context.Background(), "qwen-3b", "", "v1", "qwen-3b/v1")
+	modelID, err := modelRepo.RegisterModelOrCreateVersion(context.Background(), "qwen-3b", "", "", "v1", "qwen-3b/v1")
 	require.NoError(t, err)
 	imageRepo := image.NewRepository(db)
 	require.NoError(t, imageRepo.CreateImage(context.Background(), &image.Image{

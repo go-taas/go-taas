@@ -89,7 +89,7 @@ func TestFVTPromptEvaluationTenantAndCaseValidation(t *testing.T) {
 	// The real completion seam: infer provider + system credential +
 	// running service with the chat target endpoint.
 	modelRepo := model.NewRepository(db)
-	modelID, err := modelRepo.RegisterModelOrCreateVersion(context.Background(), "qwen-eval", "", "v1", "qwen-eval/v1")
+	modelID, err := modelRepo.RegisterModelOrCreateVersion(context.Background(), "qwen-eval", "", "", "v1", "qwen-eval/v1")
 	require.NoError(t, err)
 	inferRepo := infer.NewInferenceServiceRepository(db)
 	require.NoError(t, inferRepo.Create(context.Background(), &infer.InferenceService{

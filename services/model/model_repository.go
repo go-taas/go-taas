@@ -262,24 +262,47 @@ func (r *Repository) DeleteModel(ctx context.Context, id string) error {
 	})
 }
 
+// FindByHubModelID returns the model bound to the given hub model id
+// (e.g. "MiniMax/MiniMax-M3.1-Flash"). A miss maps to CodeModelNotFound.
+func (r *Repository) FindByHubModelID(ctx context.Context, hubModelID string) (*Model, error) {
+	if hubModelID == "" {
+		return nil, apierrors.New(apierrors.CodeModelNotFound)
+	}
+	var row Model
+	err := r.DB(ctx).Where("hub_model_id = ?", hubModelID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apierrors.New(apierrors.CodeModelNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // RegisterModelOrCreateVersion is the transactional core of the
 // RegisterModel RPC: when the named model does not exist it creates the
 // model plus its first version; when it exists it appends the version
 // (touching models.updated_at). A duplicate (model, version) pair maps
 // to CodeModelExists. It returns the model id (stable across versions).
-func (r *Repository) RegisterModelOrCreateVersion(ctx context.Context, name, description, version, weightPath string) (string, error) {
+//
+// hubModelID is the model's globally unique hub id (empty for a model
+// that is not bound to a hub). Binding is enforced here: a hub id owned
+// by a different model name conflicts (CodeModelExists), and a model
+// that gains a hub id keeps it for every later version.
+func (r *Repository) RegisterModelOrCreateVersion(ctx context.Context, name, description, hubModelID, version, weightPath string) (string, error) {
 	var modelID string
 	err := r.db.WithinTx(ctx, func(ctx context.Context) error {
-		existing, err := r.FindByName(ctx, name)
+		existing, err := r.findRegistrationTarget(ctx, name, hubModelID)
 		if err != nil {
-			if ae, ok := apierrors.As(err); !ok || ae.Code != apierrors.CodeModelNotFound {
-				return err
-			}
+			return err
+		}
+		if existing == nil {
 			// Model does not exist: create it with the first version.
 			m := &Model{
 				ID:          uuid.NewString(),
 				Name:        name,
 				Description: description,
+				HubModelID:  hubModelID,
 				CreatedAt:   time.Now().UTC(),
 				UpdatedAt:   time.Now().UTC(),
 			}
@@ -316,9 +339,13 @@ func (r *Repository) RegisterModelOrCreateVersion(ctx context.Context, name, des
 		if err := r.CreateVersion(ctx, v); err != nil {
 			return err
 		}
-		if err := r.UpdateFields(ctx, existing.ID, map[string]any{
-			"updated_at": time.Now().UTC(),
-		}); err != nil {
+		fields := map[string]any{"updated_at": time.Now().UTC()}
+		// Bind the hub id on the first hub-based registration of an
+		// existing model which had none yet.
+		if hubModelID != "" && existing.HubModelID == "" {
+			fields["hub_model_id"] = hubModelID
+		}
+		if err := r.UpdateFields(ctx, existing.ID, fields); err != nil {
 			return err
 		}
 		modelID = existing.ID
@@ -328,6 +355,39 @@ func (r *Repository) RegisterModelOrCreateVersion(ctx context.Context, name, des
 		return "", err
 	}
 	return modelID, nil
+}
+
+// findRegistrationTarget resolves the model a registration applies to.
+// The hub id wins when present (it is the globally unique identity); a
+// hub id owned by another model name, or a model whose hub id differs,
+// is reported as CodeModelExists. A nil result means "create it".
+func (r *Repository) findRegistrationTarget(ctx context.Context, name, hubModelID string) (*Model, error) {
+	var byName *Model
+	byName, err := r.FindByName(ctx, name)
+	if err != nil {
+		if ae, ok := apierrors.As(err); !ok || ae.Code != apierrors.CodeModelNotFound {
+			return nil, err
+		}
+		byName = nil
+	}
+	if hubModelID != "" {
+		bound, err := r.FindByHubModelID(ctx, hubModelID)
+		switch {
+		case err == nil:
+			if bound.Name != name {
+				return nil, apierrors.Newf(apierrors.CodeModelExists,
+					"model: hub model id %q is already bound to model %q", hubModelID, bound.Name)
+			}
+			return bound, nil
+		case apierrors.CodeOf(err) != apierrors.CodeModelNotFound:
+			return nil, err
+		}
+		if byName != nil && byName.HubModelID != "" && byName.HubModelID != hubModelID {
+			return nil, apierrors.Newf(apierrors.CodeModelExists,
+				"model: model %q is already bound to hub model id %q", name, byName.HubModelID)
+		}
+	}
+	return byName, nil
 }
 
 // isUniqueViolation reports whether err is a unique-constraint violation

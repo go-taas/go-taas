@@ -476,7 +476,7 @@ func TestUpdateInferenceServiceVersion(t *testing.T) {
 	modelID := seedModel(t, db, "qwen-3b", "v1")
 	// Register a second version.
 	repo := model.NewRepository(db)
-	_, err := repo.RegisterModelOrCreateVersion(context.Background(), "qwen-3b", "", "v2", "qwen-3b/v2")
+	_, err := repo.RegisterModelOrCreateVersion(context.Background(), "qwen-3b", "", "", "v2", "qwen-3b/v2")
 	require.NoError(t, err)
 
 	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{

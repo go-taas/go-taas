@@ -7,6 +7,7 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
@@ -232,6 +233,11 @@ type Service struct {
 	// weightsDir is the local directory (a JuiceFS mount) where model
 	// weights are downloaded. Empty disables the download feature.
 	weightsDir string
+
+	// downloadSem bounds the concurrent background hub downloads;
+	// downloadSemOnce guards its lazy creation.
+	downloadSem     chan struct{}
+	downloadSemOnce sync.Once
 
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
@@ -489,7 +495,13 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err := migrateActiveVersionIndex(db); err != nil {
 		return err
 	}
-	return db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{})
+	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}); err != nil {
+		return err
+	}
+	// Downloads are in-process goroutines: a job left queued or running
+	// by a previous process can never finish, so fail it at startup
+	// instead of leaving it "downloading" forever.
+	return s.RecoverInterruptedDownloads(ctx)
 }
 
 // migrateActiveVersionIndex drops the stale global active-version unique
@@ -563,6 +575,7 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	description := strings.TrimSpace(req.GetDescription())
 	source := strings.TrimSpace(req.GetSource())
 	sourceModelID := strings.TrimSpace(req.GetSourceModelId())
+	hubModelID := strings.TrimSpace(req.GetHubModelId())
 
 	if name == "" || len(name) > 128 {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: name must be 1-128 characters")
@@ -572,6 +585,28 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	}
 	if len(description) > 1024 {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: description must be at most 1024 characters")
+	}
+
+	// The hub id defaults to the hub model id when the weights come from
+	// a hub: the hub is the identity system, so "<vendor>/<model>" is
+	// what makes the same model recognizable across registrations.
+	if hubModelID == "" && source != "" {
+		hubModelID = sourceModelID
+	}
+	if err := validateHubModelID(hubModelID); err != nil {
+		return nil, err
+	}
+	// Fail fast before a multi-gigabyte download: a hub id owned by
+	// another model can never be registered.
+	if hubModelID != "" {
+		bound, err := repo.FindByHubModelID(ctx, hubModelID)
+		if err != nil && apierrors.CodeOf(err) != apierrors.CodeModelNotFound {
+			return nil, err
+		}
+		if err == nil && bound.Name != name {
+			return nil, apierrors.Newf(apierrors.CodeModelExists,
+				"model: hub model id %q is already bound to model %q", hubModelID, bound.Name)
+		}
 	}
 
 	// Source-based registration downloads the weights from a model hub
@@ -586,7 +621,7 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 		return nil, err
 	}
 
-	modelID, err := repo.RegisterModelOrCreateVersion(ctx, name, description, version, weightPath)
+	modelID, err := repo.RegisterModelOrCreateVersion(ctx, name, description, hubModelID, version, weightPath)
 	if err != nil {
 		return nil, err
 	}
@@ -633,6 +668,38 @@ func (s *Service) downloadModel(ctx context.Context, source, sourceModelID strin
 	// The weight path is the model's directory relative to the weights
 	// root, so inference pods mount exactly the downloaded files.
 	return modelhub.CleanModelID(sourceModelID) + "/", nil
+}
+
+// validateHubModelID enforces the hub model id syntax: the
+// "<vendor>/<model>" form the public hubs use, e.g.
+// "MiniMax/MiniMax-M3.1-Flash" or "Qwen/Qwen2.5-0.5B-Instruct". An empty
+// id is allowed (the model is not bound to a hub).
+func validateHubModelID(id string) error {
+	if id == "" {
+		return nil
+	}
+	if len(id) > 255 {
+		return apierrors.Newf(apierrors.CodeModelPathInvalid, "model: hub model id must be at most 255 characters")
+	}
+	segments := strings.Split(id, "/")
+	if len(segments) < 2 {
+		return apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: hub model id must be in the \"<vendor>/<model>\" form, got %q", id)
+	}
+	for _, seg := range segments {
+		if seg == "" || seg == "." || seg == ".." {
+			return apierrors.Newf(apierrors.CodeModelPathInvalid, "model: hub model id has an empty path segment")
+		}
+		for _, r := range seg {
+			ok := r == '-' || r == '_' || r == '.' ||
+				(r >= '0' && r <= '9') || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z')
+			if !ok {
+				return apierrors.Newf(apierrors.CodeModelPathInvalid,
+					"model: hub model id may only contain letters, digits, '-', '_', '.' and '/'")
+			}
+		}
+	}
+	return nil
 }
 
 // validateWeightPath enforces the weight-path syntax rules (FR1.3):
@@ -692,6 +759,7 @@ func (s *Service) ListModels(ctx context.Context, req *modelv1.ListModelsRequest
 		summary := &modelv1.ModelSummary{
 			ModelId:    row.ID,
 			Name:       row.Name,
+			HubModelId: row.HubModelID,
 			CreatedAt:  row.CreatedAt.Unix(),
 			Restricted: restricted[row.ID],
 			// Feature #48: the external marker plus the admin-only provider
@@ -771,8 +839,9 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 	models := make([]*modelv1.AvailableModel, 0, len(rows))
 	for _, row := range rows {
 		summary := &modelv1.AvailableModel{
-			ModelId: row.ID,
-			Name:    row.Name,
+			ModelId:    row.ID,
+			Name:       row.Name,
+			HubModelId: row.HubModelID,
 			// Feature #48: the masked user projection carries only the
 			// external marker and the provider name (never provider_id,
 			// upstream_model_id, base URL or the key).
@@ -872,6 +941,7 @@ func (s *Service) GetAvailableModel(ctx context.Context, req *modelv1.GetAvailab
 	summary := &modelv1.AvailableModel{
 		ModelId:      found.ID,
 		Name:         found.Name,
+		HubModelId:   found.HubModelID,
 		External:     found.External,
 		ProviderName: s.providerName(ctx, found),
 	}
@@ -935,6 +1005,7 @@ func (s *Service) GetModel(ctx context.Context, req *modelv1.GetModelRequest) (*
 	summary := &modelv1.ModelSummary{
 		ModelId:         m.ID,
 		Name:            m.Name,
+		HubModelId:      m.HubModelID,
 		CreatedAt:       m.CreatedAt.Unix(),
 		Restricted:      restricted > 0,
 		External:        m.External,

@@ -84,6 +84,25 @@ service ModelService {
     option (google.api.http) = {get: "/api/v1/models/{model_id}"};
   }
 
+  // StartModelDownload queues a background download of a model from a
+  // public model hub (ModelScope / HuggingFace) and registers it in the
+  // catalog when the weights land. The job is asynchronous: the console
+  // polls ListModelDownloads for the state and the downloaded size.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc StartModelDownload(StartModelDownloadRequest) returns (StartModelDownloadResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/model-downloads"
+      body: "*"
+    };
+  }
+
+  // ListModelDownloads returns the download jobs, newest first, so the
+  // console can show progress and the outcome.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListModelDownloads(ListModelDownloadsRequest) returns (ListModelDownloadsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-downloads"};
+  }
+
   // ListModelVersions returns the full version history of a model,
   // newest first, with per-version metadata and deployment counts
   // (feature #32, AD4).
@@ -120,6 +139,13 @@ message RegisterModelRequest {
   // source_model_id is the model id on the hub (e.g.
   // "Qwen/Qwen2.5-0.5B-Instruct"). Required when source is set.
   string source_model_id = 6;
+  // hub_model_id is the model's id on the public model hub, in the
+  // "<vendor>/<model>" form the hubs use (e.g.
+  // "MiniMax/MiniMax-M3.1-Flash"). It is globally unique across the
+  // catalog: a hub id already bound to another model is rejected.
+  // Optional; it defaults to source_model_id when source is set, and may
+  // also be set for weights uploaded outside a hub.
+  string hub_model_id = 7;
 }
 
 message RegisterModelResponse {
@@ -163,6 +189,10 @@ message ModelSummary {
   // published is false for an unpublished external model (admin sees
   // unpublished external models with an "Unpublished" marker).
   bool published = 11;
+  // hub_model_id is the model's globally unique id on the public model
+  // hub (feature: model download), e.g. "MiniMax/MiniMax-M3.1-Flash".
+  // Empty when the model is not bound to a hub id.
+  string hub_model_id = 12;
 }
 
 message GetModelRequest {
@@ -244,6 +274,9 @@ message AvailableModel {
   // #49, AD12): model_id carries the group id, name the virtual name,
   // latest_version is empty, and no other projection field is set.
   bool virtual = 8;
+  // hub_model_id is the model's hub id ("<vendor>/<model>"), empty when
+  // the model is not bound to a hub.
+  string hub_model_id = 9;
 }
 message ListAvailableModelsResponse {
   taas.common.v1.Response response = 1;
@@ -314,4 +347,61 @@ message ActivateModelVersionRequest {
 message ActivateModelVersionResponse {
   taas.common.v1.Response response = 1;
   string active_version = 2;
+}
+
+// StartModelDownloadRequest queues a hub download. The downloaded weights
+// land in "<weightsDir>/<hub model id>" and the model is registered with
+// the requested name and version when the download succeeds.
+message StartModelDownloadRequest {
+  // source is the model hub: "modelscope" or "huggingface".
+  string source = 1;
+  // hub_model_id is the model's id on the hub in the
+  // "<vendor>/<model>" form, e.g. "MiniMax/MiniMax-M3.1-Flash".
+  string hub_model_id = 2;
+  // name is the catalog model name; it defaults to the hub model name.
+  string name = 3;
+  // version is the catalog version; it defaults to the hub model id's
+  // last segment.
+  string version = 4;
+  // description is the free-text model description.
+  string description = 5;
+}
+
+message StartModelDownloadResponse {
+  taas.common.v1.Response response = 1;
+  ModelDownload download = 2;
+}
+
+// ModelDownload is one hub download job.
+message ModelDownload {
+  string download_id = 1;
+  // source is the model hub ("modelscope" or "huggingface").
+  string source = 2;
+  // hub_model_id is the model id on the hub.
+  string hub_model_id = 3;
+  // name and version are the catalog identity the job registers.
+  string name = 4;
+  string version = 5;
+  // state is queued, downloading, succeeded, failed or cancelled.
+  string state = 6;
+  // message carries the failure reason (empty on success).
+  string message = 7;
+  // bytes is the number of weight bytes already on disk.
+  int64 bytes = 8;
+  // weight_path is the derived weight path once the download succeeded.
+  string weight_path = 9;
+  // model_id is the catalog model id created by the job.
+  string model_id = 10;
+  int64 created_at = 11;
+  int64 updated_at = 12;
+}
+
+message ListModelDownloadsRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListModelDownloadsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ModelDownload downloads = 2;
+  taas.common.v1.PageMeta page_meta = 3;
 }

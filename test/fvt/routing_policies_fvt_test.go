@@ -154,7 +154,7 @@ func (e *routingEnv) callRaw(t *testing.T, method, path string, body any) (int, 
 func (e *routingEnv) seedRoutingModel(t *testing.T, name, version string) string {
 	t.Helper()
 	repo := model.NewRepository(e.db)
-	id, err := repo.RegisterModelOrCreateVersion(context.Background(), name, "", version, name+"/"+version)
+	id, err := repo.RegisterModelOrCreateVersion(context.Background(), name, "", "", version, name+"/"+version)
 	require.NoError(t, err)
 	_, err = repo.ActivateVersion(context.Background(), id, version)
 	require.NoError(t, err)

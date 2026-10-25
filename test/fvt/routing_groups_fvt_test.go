@@ -161,7 +161,7 @@ func (e *routingGroupEnv) callRaw(t *testing.T, method, path string, body any) (
 func (e *routingGroupEnv) seedCatalogModel(t *testing.T, name string) string {
 	t.Helper()
 	repo := model.NewRepository(e.db)
-	id, err := repo.RegisterModelOrCreateVersion(context.Background(), name, "", "v1", name+"/v1")
+	id, err := repo.RegisterModelOrCreateVersion(context.Background(), name, "", "", "v1", name+"/v1")
 	require.NoError(t, err)
 	_, err = repo.ActivateVersion(context.Background(), id, "v1")
 	require.NoError(t, err)

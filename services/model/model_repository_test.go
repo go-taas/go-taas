@@ -310,12 +310,12 @@ func TestRepositoryRegisterModelOrCreateVersion(t *testing.T) {
 	ctx := context.Background()
 
 	// New model: creates model + first version.
-	id1, err := repo.RegisterModelOrCreateVersion(ctx, "qwen-3b", "v1", "qwen/v1", "Qwen 3B")
+	id1, err := repo.RegisterModelOrCreateVersion(ctx, "qwen-3b", "Qwen 3B", "", "v1", "qwen/v1")
 	require.NoError(t, err)
 	assert.NotEmpty(t, id1)
 
 	// Same model, new version: appends.
-	id2, err := repo.RegisterModelOrCreateVersion(ctx, "qwen-3b", "v2", "qwen/v2", "ignored description")
+	id2, err := repo.RegisterModelOrCreateVersion(ctx, "qwen-3b", "ignored description", "", "v2", "qwen/v2")
 	require.NoError(t, err)
 	assert.Equal(t, id1, id2)
 
@@ -324,9 +324,63 @@ func TestRepositoryRegisterModelOrCreateVersion(t *testing.T) {
 	assert.Len(t, versions, 2)
 
 	// Same model, same version: conflict 10102.
-	_, err = repo.RegisterModelOrCreateVersion(ctx, "qwen-3b", "v1", "qwen/v1", "")
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "qwen-3b", "", "", "v1", "qwen/v1")
 	require.Error(t, err)
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeModelExists, ae.Code)
+}
+
+func TestRepositoryFindByHubModelID(t *testing.T) {
+	repo := newModelTestRepo(t)
+	ctx := context.Background()
+
+	// Unbound lookup and an empty id both miss.
+	_, err := repo.FindByHubModelID(ctx, "MiniMax/MiniMax-M3.1-Flash")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeModelNotFound, apierrors.CodeOf(err))
+	_, err = repo.FindByHubModelID(ctx, "")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeModelNotFound, apierrors.CodeOf(err))
+
+	id, err := repo.RegisterModelOrCreateVersion(ctx, "minimax", "", "MiniMax/MiniMax-M3.1-Flash", "v1", "minimax/v1")
+	require.NoError(t, err)
+
+	found, err := repo.FindByHubModelID(ctx, "MiniMax/MiniMax-M3.1-Flash")
+	require.NoError(t, err)
+	assert.Equal(t, id, found.ID)
+	assert.Equal(t, "minimax", found.Name)
+
+	// Two models may exist without a hub id (the unique index is partial).
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "a", "", "", "v1", "a/v1")
+	require.NoError(t, err)
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "b", "", "", "v1", "b/v1")
+	require.NoError(t, err)
+}
+
+func TestRepositoryHubModelIDUniqueness(t *testing.T) {
+	repo := newModelTestRepo(t)
+	ctx := context.Background()
+
+	_, err := repo.RegisterModelOrCreateVersion(ctx, "minimax", "", "MiniMax/MiniMax-M3.1-Flash", "v1", "minimax/v1")
+	require.NoError(t, err)
+
+	// Another model cannot claim the same hub id.
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "other", "", "MiniMax/MiniMax-M3.1-Flash", "v1", "other/v1")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeModelExists, apierrors.CodeOf(err))
+
+	// Rebinding an existing model to a different hub id conflicts.
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "minimax", "", "MiniMax/MiniMax-M1", "v2", "minimax/v2")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeModelExists, apierrors.CodeOf(err))
+
+	// A model registered without a hub id can gain one later.
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "local", "", "", "v1", "local/v1")
+	require.NoError(t, err)
+	_, err = repo.RegisterModelOrCreateVersion(ctx, "local", "", "Acme/Local-7B", "v2", "local/v2")
+	require.NoError(t, err)
+	bound, err := repo.FindByHubModelID(ctx, "Acme/Local-7B")
+	require.NoError(t, err)
+	assert.Equal(t, "local", bound.Name)
 }
