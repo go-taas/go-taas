@@ -151,34 +151,40 @@ export function AdminShell({ children }: { children: ReactNode }) {
             the bottom, so a long navigation list cannot push it off screen
             or drag it up and down as categories change. */}
         <div className="sidebar-scroll">
-        <div className="sidebar-category-label">
-          {t(categoryForPath(navCategories, path).shortLabelKey)}
-        </div>
-        <nav>
-          {categoryForPath(navCategories, path).items.map((item) => {
-            const IconComp = item.icon;
-            return (
-              <a
-                key={item.path}
-                href={item.path}
-                className={isActive(item.path, path) ? 'nav-item active' : 'nav-item'}
-                data-testid={item.testid}
-                onClick={(e) => {
-                  e.preventDefault();
-                  navigate(item.path);
-                }}
-              >
-                <IconComp size={18} weight="duotone" aria-hidden="true" />
-                <span>{t(item.labelKey)}</span>
-              </a>
-            );
-          })}
-        </nav>
+          <div className="sidebar-category-label">
+            {t(categoryForPath(navCategories, path).shortLabelKey)}
+          </div>
+          <nav>
+            {categoryForPath(navCategories, path).items.map((item) => {
+              const IconComp = item.icon;
+              return (
+                <a
+                  key={item.path}
+                  href={item.path}
+                  className={isActive(item.path, path) ? 'nav-item active' : 'nav-item'}
+                  data-testid={item.testid}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    navigate(item.path);
+                  }}
+                >
+                  <IconComp size={18} weight="duotone" aria-hidden="true" />
+                  <span>{t(item.labelKey)}</span>
+                </a>
+              );
+            })}
+          </nav>
         </div>
         {getSessionToken(realm) && (
           <div className="account-card" data-testid="admin-account-block">
             {session && (
               <div className="account-identity">
+                <Avatar
+                  avatar={avatar}
+                  name={displayName || session.username}
+                  size={36}
+                  testId="admin-account-avatar"
+                />
                 <span className="account-meta">
                   <span className="account-username" title={`@${session.username}`}>
                     @{session.username}
@@ -192,12 +198,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
                     {roleLabel}
                   </span>
                 </span>
-                <Avatar
-                  avatar={avatar}
-                  name={displayName || session.username}
-                  size={36}
-                  testId="admin-account-avatar"
-                />
               </div>
             )}
             <div className="account-actions">

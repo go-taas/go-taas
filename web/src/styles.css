@@ -2190,19 +2190,14 @@ button.primary:hover {
   -webkit-backdrop-filter: blur(10px);
 }
 
-/* Two columns: the identity text (username, display name, role) on the
-   left and the avatar on the right. The avatar is deliberately last so a
-   long name truncates instead of squeezing it. */
+/* Two columns: the avatar on the left, the identity text (username,
+   display name, role) on the right. The text column carries the flexible
+   width so a long name truncates instead of squeezing the avatar. */
 .account-identity {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
   min-width: 0;
-}
-
-.account-identity .account-avatar {
-  order: 1;
 }
 
 .account-avatar {
