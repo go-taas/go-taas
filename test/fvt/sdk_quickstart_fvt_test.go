@@ -8,6 +8,7 @@ package fvt
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -95,17 +96,20 @@ func (e *quickstartEnv) call(t *testing.T, method, path string, org string) (int
 
 // TestFVTSDKQuickstart walks the acceptance criteria of the SDK /
 // Quickstart architecture doc: AC1 (GET /api/v1/inference-endpoint
-// returns the configured base_url; empty config → 500) and AC11 (the
-// read is user-realm and requires no organization context).
+// returns the configured base_url; an install with neither a configured
+// URL nor a discoverable gateway → 10304 with an actionable message) and
+// AC11 (the read is user-realm and requires no organization context).
 func TestFVTSDKQuickstart(t *testing.T) {
 	env := newQuickstartEnv(t)
 
-	// AC1: empty infer.endpointBaseURL → standard internal error (500).
+	// AC1: no configured URL and no discoverable gateway → 10304, with a
+	// message naming the setting to fix (the quickstart page shows it).
 	config.SetConfigForTest(&config.Configuration{})
 	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
 	code, body := env.call(t, http.MethodGet, "/api/v1/inference-endpoint", "org-fvt")
 	assert.Equal(t, http.StatusInternalServerError, code, "body: %v", body)
-	assert.EqualValues(t, 500, body["code"], "empty config → CodeInternal")
+	assert.EqualValues(t, 10304, body["code"], "no endpoint → INFER_ENDPOINT_NOT_FOUND")
+	assert.Contains(t, fmt.Sprint(body["message"]), "infer.endpointBaseURL")
 
 	// AC1: configured base URL → base_url = TrimSuffix(base, "/") + "/v1".
 	cfg := &config.Configuration{}

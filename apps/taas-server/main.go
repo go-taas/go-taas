@@ -309,6 +309,14 @@ func main() {
 			// The operator surface is platform-wide: a platform admin lists
 			// every organization's inference services.
 			inferSvc.SetPlatformAdminResolver(tenancySvc)
+			// The quickstart endpoint needs the serving gateway's base URL.
+			// An explicit infer.endpointBaseURL still wins; otherwise the
+			// gateway is discovered from the Kubernetes API so a fresh
+			// install works without hand-editing configuration.
+			if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
+				inferSvc.SetGatewayResolver(k8s.NewGatewayResolver(
+					k8sClient, cfg.Runtime.AIBrix.Gateway, cfg.Runtime.AIBrix.Namespace))
+			}
 			// Feature #25: the billing service resolves the session's
 			// active org and caller, and gates the admin billing-report
 			// RPCs by the caller's role (AD6).

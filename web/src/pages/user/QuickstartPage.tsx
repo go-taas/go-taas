@@ -118,6 +118,10 @@ export default function QuickstartPage() {
 
   // Step 3 — base URL.
   const [baseUrl, setBaseUrl] = useState('');
+  // endpointError carries the reason the base URL could not be determined
+  // (e.g. the platform has no gateway configured), shown in step 3 where
+  // the user needs it instead of only in the page-level banner.
+  const [endpointError, setEndpointError] = useState('');
   const [endpointLoaded, setEndpointLoaded] = useState(false);
 
   // Step 4 — code & test.
@@ -167,7 +171,8 @@ export default function QuickstartPage() {
         setBaseUrl(data.baseUrl || '');
       })
       .catch((e) => {
-        if (!cancelled) setError(e instanceof Error ? e.message : t('quickstart.baseUrlFailed'));
+        if (cancelled) return;
+        setEndpointError(e instanceof Error ? e.message : t('quickstart.baseUrlFailed'));
       })
       .finally(() => {
         if (!cancelled) setEndpointLoaded(true);
@@ -185,7 +190,7 @@ export default function QuickstartPage() {
 
   const selectedModel = models.find((m) => m.modelId === selectedModelId);
   const snippet = useMemo(
-    () => buildSnippet(lang, baseUrl, selectedModel?.modelId || '{model}', snippetKey),
+    () => buildSnippet(lang, baseUrl || '{base_url}', selectedModel?.modelId || '{model}', snippetKey),
     [lang, baseUrl, selectedModel, snippetKey],
   );
 
@@ -440,7 +445,9 @@ export default function QuickstartPage() {
             <CopyControl text={baseUrl} testId="quickstart-base-url-copy" label={t('common.copy')} />
           </div>
         ) : (
-          <div className="error">{t('quickstart.baseUrlFailed')}</div>
+          <div className="error" data-testid="quickstart-base-url-error">
+            {endpointError || t('quickstart.baseUrlFailed')}
+          </div>
         )}
       </section>
 

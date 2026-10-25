@@ -124,6 +124,11 @@ type Service struct {
 	// no role check (unit tests).
 	roleGuard RoleGuard
 
+	// gatewayResolver discovers the serving gateway's in-cluster base URL
+	// so the quickstart endpoint works without manual configuration. Nil
+	// until wired: only infer.endpointBaseURL is consulted.
+	gatewayResolver GatewayResolver
+
 	// platformAdmin reports whether the caller is a platform
 	// administrator, whose operator surface is not organization-isolated.
 	// Nil until wired: the caller is treated as organization-scoped.
@@ -289,6 +294,17 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 // SetRoleGuard injects the org role guard that gates the admin infer
 // RPCs by the caller's role (features #32/#33/#34/#35).
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// GatewayResolver discovers the in-cluster base URL of the serving
+// gateway (e.g. the AIBrix Envoy gateway), "http://host:port" or "" when
+// none is discoverable. It is implemented in the server wiring layer,
+// which owns the Kubernetes client.
+type GatewayResolver interface {
+	InferenceGatewayURL(ctx context.Context) string
+}
+
+// SetGatewayResolver injects the serving-gateway discovery seam.
+func (s *Service) SetGatewayResolver(r GatewayResolver) { s.gatewayResolver = r }
 
 // PlatformAdminResolver reports whether the caller carries the
 // platform-admin role. It is implemented by the tenancy module and injected
