@@ -1,3 +1,16 @@
+# [1.84.0](https://github.com/go-taas/go-taas/compare/v1.83.0...v1.84.0) (2026-10-25)
+
+
+### Bug Fixes
+
+* **console:** scale the metrics axis to the data and fix the replica GPU cell ([b494243](https://github.com/go-taas/go-taas/commit/b4942430e062617b6f898cc6cadab037218f2e20))
+* **helm:** default the inference PodMonitor values when they are absent ([cd94b93](https://github.com/go-taas/go-taas/commit/cd94b93158c2f554245eb0c9b1bf132ab369002e))
+
+
+### Features
+
+* **metrics:** add GPU memory and the engine's own latency telemetry ([962c4bb](https://github.com/go-taas/go-taas/commit/962c4bb76b48372f2732d10ebe565e2aa19a4409))
+
 # [1.83.0](https://github.com/go-taas/go-taas/compare/v1.82.0...v1.83.0) (2026-10-25)
 
 
