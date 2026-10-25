@@ -14,7 +14,7 @@ import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
 import { Avatar, ErrorBoundary } from '../components';
-import { useAvatar } from '../profile';
+import { useAvatar, useProfile } from '../profile';
 import { USER_NAV_CATEGORIES, categoryForPath } from './nav';
 
 // adminRoles is the set of session roles that make a user an
@@ -33,6 +33,7 @@ export function UserShell({ children }: { children: ReactNode }) {
   const [path, setPath] = useState(window.location.pathname);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const avatar = useAvatar(realm);
+  const { profile } = useProfile();
   const [switching, setSwitching] = useState(false);
   const [switchNotice, setSwitchNotice] = useState('');
 
@@ -74,6 +75,11 @@ export function UserShell({ children }: { children: ReactNode }) {
   // The switch-to-admin button is shown only to users whose session has
   // an admin role (feature-22 FR3.1).
   const isAdmin = (session?.roles || []).some((r) => adminRoles.includes(r));
+  // The display name is what people call the account; the badge names the
+  // session's own highest role so the console never claims more than the
+  // server granted.
+  const displayName = profile?.displayName || '';
+  const roleLabel = isAdmin ? (session?.roles || []).find((r) => adminRoles.includes(r)) || 'admin' : 'user';
 
   const switchToAdmin = async () => {
     setSwitching(true);
@@ -140,6 +146,10 @@ export function UserShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <aside className="sidebar" data-testid="sidebar">
+        {/* Only this region scrolls: the account block below is pinned to
+            the bottom, so a long navigation list cannot push it off screen
+            or drag it up and down as categories change. */}
+        <div className="sidebar-scroll">
         <div className="sidebar-category-label">
           {t(categoryForPath(USER_NAV_CATEGORIES, path).shortLabelKey)}
         </div>
@@ -165,24 +175,30 @@ export function UserShell({ children }: { children: ReactNode }) {
         </nav>
         <OrgSwitcher />
         <QuotaBar />
+        </div>
         {getSessionToken(realm) && (
           <div className="account-card" data-testid="user-account-block">
             {session && (
               <div className="account-identity">
-                <Avatar
-                  avatar={avatar}
-                  name={session.username}
-                  size={32}
-                  testId={`${'user'}-account-avatar`}
-                />
                 <span className="account-meta">
-                  <span className="account-username" title={session.username}>
-                    {session.username}
+                  <span className="account-username" title={`@${session.username}`}>
+                    @{session.username}
                   </span>
-                  <span className={isAdmin ? 'account-role' : 'account-role muted'}>
-                    {isAdmin ? 'admin' : 'user'}
+                  {displayName && displayName !== session.username && (
+                    <span className="account-display-name" title={displayName}>
+                      {displayName}
+                    </span>
+                  )}
+                  <span className={isAdmin ? 'account-role' : 'account-role muted'} title={roleLabel}>
+                    {roleLabel}
                   </span>
                 </span>
+                <Avatar
+                  avatar={avatar}
+                  name={displayName || session.username}
+                  size={36}
+                  testId="user-account-avatar"
+                />
               </div>
             )}
             <div className="account-actions">

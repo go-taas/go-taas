@@ -715,34 +715,51 @@ th.sortable:hover {
   display: flex;
   flex-direction: column;
   padding: 20px 16px;
-  gap: 16px;
+  gap: 12px;
   position: sticky;
   top: 60px;
   height: calc(100vh - 60px);
-  overflow-y: auto;
+  /* The inner scroll region scrolls; the account block below it does not,
+     so it sits at the bottom regardless of how many navigation entries the
+     active category has. */
+  overflow: hidden;
   border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-/* Slim, theme-matched scrollbar for the sidebar (WebKit/Blink). */
-.sidebar::-webkit-scrollbar {
+/* Scrollable middle region: category label, navigation and (on the user
+   console) the org switcher and quota bar. */
+.sidebar-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  /* Keep the scrollbar from overlapping the labels. */
+  margin-right: -6px;
+  padding-right: 6px;
+}
+
+/* Slim, theme-matched scrollbar for the sidebar's scroll region. */
+.sidebar-scroll::-webkit-scrollbar {
   width: 6px;
 }
 
-.sidebar::-webkit-scrollbar-track {
+.sidebar-scroll::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.sidebar::-webkit-scrollbar-thumb {
+.sidebar-scroll::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.14);
   border-radius: 999px;
 }
 
-.sidebar::-webkit-scrollbar-thumb:hover {
+.sidebar-scroll::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.24);
 }
 
 /* Firefox */
-.sidebar {
+.sidebar-scroll {
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.14) transparent;
 }
@@ -2173,11 +2190,19 @@ button.primary:hover {
   -webkit-backdrop-filter: blur(10px);
 }
 
+/* Two columns: the identity text (username, display name, role) on the
+   left and the avatar on the right. The avatar is deliberately last so a
+   long name truncates instead of squeezing it. */
 .account-identity {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 10px;
   min-width: 0;
+}
+
+.account-identity .account-avatar {
+  order: 1;
 }
 
 .account-avatar {
@@ -2200,12 +2225,21 @@ button.primary:hover {
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  flex: 1 1 auto;
 }
 
 .account-username {
   font-size: 13px;
   font-weight: 600;
   color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.account-display-name {
+  font-size: 12px;
+  color: var(--sidebar-muted);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2370,6 +2404,23 @@ button.primary:hover {
     flex-direction: row;
     flex-wrap: wrap;
     gap: 4px;
+  }
+
+  /* At this width the sidebar is a wrapping row, so the scroll region must
+     wrap too and the account block goes back into the flow. */
+  .sidebar {
+    overflow: visible;
+  }
+
+  .sidebar-scroll {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    overflow: visible;
+    gap: 4px;
+    width: 100%;
+    margin-right: 0;
+    padding-right: 0;
   }
 
   .org-switcher,

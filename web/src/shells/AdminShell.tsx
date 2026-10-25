@@ -12,7 +12,7 @@ import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import brandLogo from '../assets/brand/logo-dark.svg';
 import { Avatar, ErrorBoundary } from '../components';
-import { useAvatar } from '../profile';
+import { useAvatar, useProfile } from '../profile';
 import { ADMIN_NAV_CATEGORIES, categoryForPath } from './nav';
 
 // navForRoles restricts the admin navigation by the caller's role:
@@ -40,6 +40,12 @@ export function AdminShell({ children }: { children: ReactNode }) {
   const avatar = useAvatar(realm);
   const [switching, setSwitching] = useState(false);
   const [switchNotice, setSwitchNotice] = useState('');
+  const { profile } = useProfile();
+  // The display name is what people call the account; the role label is the
+  // highest role the session actually carries, so the badge never claims
+  // more than the server granted.
+  const displayName = profile?.displayName || '';
+  const roleLabel = highestRole(session?.roles);
   const navCategories = navForRoles(session?.roles || []);
 
   useEffect(() => {
@@ -141,6 +147,10 @@ export function AdminShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <aside className="sidebar" data-testid="sidebar">
+        {/* Only this region scrolls: the account block below is pinned to
+            the bottom, so a long navigation list cannot push it off screen
+            or drag it up and down as categories change. */}
+        <div className="sidebar-scroll">
         <div className="sidebar-category-label">
           {t(categoryForPath(navCategories, path).shortLabelKey)}
         </div>
@@ -164,22 +174,30 @@ export function AdminShell({ children }: { children: ReactNode }) {
             );
           })}
         </nav>
+        </div>
         {getSessionToken(realm) && (
           <div className="account-card" data-testid="admin-account-block">
             {session && (
               <div className="account-identity">
+                <span className="account-meta">
+                  <span className="account-username" title={`@${session.username}`}>
+                    @{session.username}
+                  </span>
+                  {displayName && displayName !== session.username && (
+                    <span className="account-display-name" title={displayName}>
+                      {displayName}
+                    </span>
+                  )}
+                  <span className="account-role" title={roleLabel}>
+                    {roleLabel}
+                  </span>
+                </span>
                 <Avatar
                   avatar={avatar}
-                  name={session.username}
-                  size={32}
-                  testId={`${'admin'}-account-avatar`}
+                  name={displayName || session.username}
+                  size={36}
+                  testId="admin-account-avatar"
                 />
-                <span className="account-meta">
-                  <span className="account-username" title={session.username}>
-                    {session.username}
-                  </span>
-                  <span className="account-role">admin</span>
-                </span>
               </div>
             )}
             <div className="account-actions">
@@ -212,4 +230,17 @@ export function AdminShell({ children }: { children: ReactNode }) {
       </main>
     </div>
   );
+}
+
+// adminRoleLabels orders the roles the admin console can show, most
+// privileged first, so the badge names the strongest one.
+const adminRoleLabels = ['platform-admin', 'org-admin', 'admin', 'owner'];
+
+// highestRole returns the badge label for a session's roles.
+function highestRole(roles: string[] | undefined): string {
+  if (!roles) return 'admin';
+  for (const role of adminRoleLabels) {
+    if (roles.includes(role)) return role;
+  }
+  return 'admin';
 }
