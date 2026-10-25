@@ -177,3 +177,53 @@ func TestGatewayErrorText(t *testing.T) {
 	}
 	assert.LessOrEqual(t, len(gatewayErrorText(long)), 520)
 }
+
+// TestPlaygroundModelEnforcesTheAccessPolicy proves the policy is not just
+// stored: the console's own inference path refuses a caller the policy does
+// not admit.
+func TestPlaygroundModelEnforcesTheAccessPolicy(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	row := &InferenceService{
+		ID: NewServiceID(), OrganizationID: "org-a", Name: "svc",
+		ModelID: modelID, ModelVersion: "v1", State: StateRunning,
+		Endpoints: []string{"http://e"}, UpdatedAt: time.Now(),
+	}
+	require.NoError(t, repo.Create(context.Background(), row))
+
+	resolver, _ := playgroundGateway(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write(openAIChatResponse("ok"))
+	})
+	svc.SetGatewayResolver(resolver)
+
+	// Open by default: the call goes through.
+	_, err = svc.PlaygroundModel(orgContext("org-b"), &inferv1.PlaygroundModelRequest{
+		ModelId: modelID, Prompt: "hello", ApiKey: "sk-test",
+	})
+	require.NoError(t, err)
+
+	// Restricted to org-a: org-b is refused, org-a still works.
+	svc.SetPlatformAdminResolver(fakePlatformAdmin{admin: true})
+	_, err = svc.SetInferenceServiceAccess(context.Background(), &inferv1.SetInferenceServiceAccessRequest{
+		ServiceId:  row.ID,
+		Restricted: true,
+		Subjects:   []*inferv1.InferenceServiceAccessSubject{{SubjectType: AccessSubjectOrg, SubjectId: "org-a"}},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.PlaygroundModel(orgContext("org-b"), &inferv1.PlaygroundModelRequest{
+		ModelId: modelID, Prompt: "hello", ApiKey: "sk-test",
+	})
+	require.Error(t, err)
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+	assert.Contains(t, err.Error(), "restricted")
+
+	resp, err := svc.PlaygroundModel(orgContext("org-a"), &inferv1.PlaygroundModelRequest{
+		ModelId: modelID, Prompt: "hello", ApiKey: "sk-test",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "ok", resp.GetCompletion())
+}

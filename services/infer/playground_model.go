@@ -84,6 +84,13 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	if svc.State != StateRunning {
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
 	}
+	// A service's access policy decides who may use it. The console is a
+	// platform-controlled entry point, so the policy is enforced here even
+	// while the gateway cannot verify callers yet.
+	userID, _, _ := s.resolveSessionActor(ctx)
+	if err := s.authorizeServiceUse(ctx, repo, svc.ID, orgID, userID); err != nil {
+		return nil, err
+	}
 	return s.playSelfHostedModel(ctx, req, m)
 }
 
@@ -193,6 +200,10 @@ func (s *Service) playCandidate(ctx context.Context, req *inferv1.PlaygroundMode
 	}
 	if svc == nil || svc.State != StateRunning {
 		return nil, apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	userID, _, _ := s.resolveSessionActor(ctx)
+	if err := s.authorizeServiceUse(ctx, repo, svc.ID, orgID, userID); err != nil {
+		return nil, err
 	}
 	return s.playSelfHostedModel(ctx, req, m)
 }

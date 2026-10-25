@@ -993,7 +993,7 @@ export const en: Record<string, string> = {
   'services.accessEveryone': 'All users',
   'services.accessRestricted': 'Restricted',
   'services.accessTitle': 'Access policy',
-  'services.accessBody': 'An inference service belongs to the platform. By default every user may use it; you can restrict it to specific organizations, projects or users.',
+  'services.accessBody': 'An inference service belongs to the platform. By default every user may use it; you can restrict it to specific organizations, projects or users. Calls made through the console are checked immediately; enforcement at the inference gateway itself is under construction and lands with data-plane authentication.',
   'services.accessModeLabel': 'Who may use it',
   'services.accessModeEveryone': 'Every platform user',
   'services.accessModeRestricted': 'Only the listed subjects',

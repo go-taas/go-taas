@@ -133,6 +133,10 @@ type Service struct {
 	// hostname. Nil until wired: the static configuration wins.
 	platformSettings PlatformSettingsResolver
 
+	// projectMembers lists a user's projects, so a project grant in an
+	// access policy can be matched. Nil until wired.
+	projectMembers ProjectMemberLister
+
 	// subjectLabeller resolves access-policy subject ids to display
 	// labels. Nil until wired: the raw id is reported.
 	subjectLabeller SubjectLabeller

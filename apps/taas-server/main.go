@@ -313,6 +313,7 @@ func main() {
 			// users, tenancy resolves organizations and projects.
 			subjectLabeller := tenancy.NewSubjectLabeller(gormDB)
 			inferSvc.SetSubjectLabeller(infer.NewSubjectLabeller(authSvc, subjectLabeller))
+			inferSvc.SetProjectMemberLister(subjectLabeller)
 			// The quickstart endpoint needs the serving gateway's base URL.
 			// An explicit infer.endpointBaseURL still wins; otherwise the
 			// gateway is discovered from the Kubernetes API so a fresh

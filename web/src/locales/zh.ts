@@ -993,7 +993,7 @@ export const zh: Record<string, string> = {
   'services.accessEveryone': '全平台可用',
   'services.accessRestricted': '已限制',
   'services.accessTitle': '访问策略',
-  'services.accessBody': '推理服务属于平台。默认全平台用户都可以使用，也可以只允许指定的组织、项目或用户。',
+  'services.accessBody': '推理服务属于平台。默认全平台用户都可以使用，也可以只允许指定的组织、项目或用户。控制台内的调用会立即按此策略校验；推理网关侧的强制校验（建设中）将随数据面鉴权一并生效。',
   'services.accessModeLabel': '访问范围',
   'services.accessModeEveryone': '全平台用户',
   'services.accessModeRestricted': '仅指定范围',

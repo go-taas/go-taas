@@ -198,3 +198,63 @@ func TestListReportsAccessRestriction(t *testing.T) {
 	assert.True(t, flags[row.ID])
 	assert.False(t, flags[other.ID])
 }
+
+// fakeProjectMembers lists a user's projects.
+type fakeProjectMembers map[string][]string
+
+func (f fakeProjectMembers) ProjectsForUser(_ context.Context, userID string) ([]string, error) {
+	return f[userID], nil
+}
+
+// needAccessTestService seeds a service and wires the caller as a member of
+// org-a with one project.
+func needAccessTestService(t *testing.T) (*Service, *InferenceServiceRepository, *InferenceService) {
+	t.Helper()
+	svc, repo, row := accessTestService(t)
+	svc.SetProjectMemberLister(fakeProjectMembers{"user-1": {"proj-1"}})
+	return svc, repo, row
+}
+
+// TestAuthorizeServiceUse covers the rule an operator expects: no policy
+// means everyone, and a restricted policy admits only a listed org, project
+// or user.
+func TestAuthorizeServiceUse(t *testing.T) {
+	svc, repo, row := needAccessTestService(t)
+	ctx := context.Background()
+
+	// No policy: anyone.
+	require.NoError(t, svc.authorizeServiceUse(ctx, repo, row.ID, "org-z", "user-z"))
+
+	// Restrict to one org.
+	_, err := svc.SetInferenceServiceAccess(ctx, &inferv1.SetInferenceServiceAccessRequest{
+		ServiceId:  row.ID,
+		Restricted: true,
+		Subjects:   []*inferv1.InferenceServiceAccessSubject{{SubjectType: AccessSubjectOrg, SubjectId: "org-1"}},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, svc.authorizeServiceUse(ctx, repo, row.ID, "org-1", "user-9"))
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(
+		svc.authorizeServiceUse(ctx, repo, row.ID, "org-2", "user-9")))
+
+	// A project grant admits the project's members only.
+	_, err = svc.SetInferenceServiceAccess(ctx, &inferv1.SetInferenceServiceAccessRequest{
+		ServiceId:  row.ID,
+		Restricted: true,
+		Subjects:   []*inferv1.InferenceServiceAccessSubject{{SubjectType: AccessSubjectProject, SubjectId: "proj-1"}},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, svc.authorizeServiceUse(ctx, repo, row.ID, "org-9", "user-1"))
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(
+		svc.authorizeServiceUse(ctx, repo, row.ID, "org-9", "user-2")))
+
+	// A user grant admits that account.
+	_, err = svc.SetInferenceServiceAccess(ctx, &inferv1.SetInferenceServiceAccessRequest{
+		ServiceId:  row.ID,
+		Restricted: true,
+		Subjects:   []*inferv1.InferenceServiceAccessSubject{{SubjectType: AccessSubjectUser, SubjectId: "user-7"}},
+	})
+	require.NoError(t, err)
+	assert.NoError(t, svc.authorizeServiceUse(ctx, repo, row.ID, "org-9", "user-7"))
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(
+		svc.authorizeServiceUse(ctx, repo, row.ID, "org-9", "user-8")))
+}
