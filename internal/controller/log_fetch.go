@@ -31,10 +31,14 @@ type logFetcher struct {
 // module (feature #33, AD2).
 func NewLogFetcher(client *k8s.Client, namespace string) infer.LogFetcher {
 	if namespace == "" {
-		namespace = "taas-infer"
+		namespace = defaultInferenceNamespace
 	}
 	return &logFetcher{clientset: client.Clientset(), namespace: namespace}
 }
+
+// defaultInferenceNamespace is where inference pods run when the
+// configuration does not name a namespace.
+const defaultInferenceNamespace = "taas-infer"
 
 // serviceLabelKey is the label the controller stamps on inference pods
 // (see resourceLabels in reconciler.go).

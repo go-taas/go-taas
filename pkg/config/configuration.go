@@ -443,7 +443,13 @@ func (c *Configuration) applyDefaults() {
 		c.ResourceMetrics.GPUUtilizationMetric = "DCGM_FI_DEV_GPU_UTIL"
 	}
 	if c.ResourceMetrics.InferenceNamespace == "" {
+		// controller.namespace is optional and often unset, so falling
+		// back to it alone would leave the PromQL namespace matcher empty
+		// and every query would match nothing.
 		c.ResourceMetrics.InferenceNamespace = c.Controller.Namespace
+		if c.ResourceMetrics.InferenceNamespace == "" {
+			c.ResourceMetrics.InferenceNamespace = "taas-infer"
+		}
 	}
 	if c.Runtime.DataPlane.RouteNamespace == "" {
 		c.Runtime.DataPlane.RouteNamespace = c.Controller.Namespace

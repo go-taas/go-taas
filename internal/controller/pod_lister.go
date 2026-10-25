@@ -21,8 +21,13 @@ type podLister struct {
 }
 
 // NewPodLister builds the metrics pod lister over the server's Kubernetes
-// client.
+// client. An empty namespace uses the shipped inference namespace, the
+// same default the log fetcher applies: an empty namespace would list pods
+// across the whole cluster and make the PromQL namespace matcher empty.
 func NewPodLister(client *k8s.Client, namespace string) resourcemetrics.PodLister {
+	if namespace == "" {
+		namespace = defaultInferenceNamespace
+	}
 	return &podLister{client: client, namespace: namespace}
 }
 

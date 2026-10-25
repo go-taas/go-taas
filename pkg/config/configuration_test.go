@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
 )
 
 func writeTempConfig(t *testing.T, content string) string {
@@ -1296,4 +1298,21 @@ optimization:
 	if !cfg2.Optimization.PeakWeekdaysOnly {
 		t.Fatal("absent optimization peakWeekdaysOnly should default to true")
 	}
+}
+
+// TestResourceMetricsInferenceNamespaceDefaults keeps the PromQL namespace
+// matcher populated: controller.namespace is optional, and an empty
+// namespace matches nothing, which showed up as an empty metrics page.
+func TestResourceMetricsInferenceNamespaceDefaults(t *testing.T) {
+	plain := &Configuration{}
+	plain.applyDefaults()
+	assert.Equal(t, "taas-infer", plain.ResourceMetrics.InferenceNamespace)
+
+	named := &Configuration{Controller: ControllerConfig{Namespace: "custom-ns"}}
+	named.applyDefaults()
+	assert.Equal(t, "custom-ns", named.ResourceMetrics.InferenceNamespace)
+
+	explicit := &Configuration{ResourceMetrics: ResourceMetricsConfig{InferenceNamespace: "explicit-ns"}}
+	explicit.applyDefaults()
+	assert.Equal(t, "explicit-ns", explicit.ResourceMetrics.InferenceNamespace)
 }
