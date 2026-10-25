@@ -1,11 +1,13 @@
-{{- if and .Values.taasServer.enabled .Values.taasServer.rbac.create }}
-{{- $name := default (include "go-taas.server.name" .) .Values.taasServer.rbac.name }}
+{{- $rbacCreate := dig "rbac" "create" true .Values.taasServer }}
+{{- if $rbacCreate }}
+{{- $existing := dig "rbac" "existingClusterRole" "" .Values.taasServer }}
+{{- $name := default (include "go-taas.server.name" .) (dig "rbac" "name" "" .Values.taasServer) }}
 {{/*
 The server reads the cluster it runs in (cluster discovery, the live node
 set used to validate image-warmup selectors) and container logs through
 the Kubernetes API. Read-only, and only the objects it needs.
 */}}
-{{- if not .Values.taasServer.rbac.existingClusterRole }}
+{{- if not $existing }}
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
@@ -34,7 +36,7 @@ metadata:
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ default $name .Values.taasServer.rbac.existingClusterRole }}
+  name: {{ default $name $existing }}
 subjects:
   - kind: ServiceAccount
     name: {{ include "go-taas.server.serviceAccountName" . }}
