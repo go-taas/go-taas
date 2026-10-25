@@ -2,6 +2,7 @@ package resourcemetrics
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"time"
 
@@ -248,6 +249,10 @@ func filterServicePods(pods []ServicePod, replica string) []ServicePod {
 
 // rateWindow picks the rate() window: long enough to smooth a scrape
 // gap, short enough to stay inside the step so points do not overlap.
+//
+// The result is expressed in seconds because Go's Duration.String() emits
+// compound units ("5m0s") that PromQL rejects — a malformed window makes
+// every range query return nothing, which looked like "no metrics".
 func rateWindow(step time.Duration) string {
 	window := step
 	if window < time.Minute {
@@ -256,5 +261,5 @@ func rateWindow(step time.Duration) string {
 	if window > 5*time.Minute {
 		window = 5 * time.Minute
 	}
-	return time.Duration(window).String()
+	return strconv.Itoa(int(window.Seconds())) + "s"
 }

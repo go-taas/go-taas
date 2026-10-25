@@ -191,9 +191,10 @@ func TestPrometheusSourceQuotesPodNames(t *testing.T) {
 // TestRateWindowBounds the rate() window: it must stay inside the step so
 // consecutive points do not overlap, and be long enough to smooth a gap.
 func TestRateWindowBounds(t *testing.T) {
-	assert.Equal(t, "1m0s", rateWindow(10*time.Second))
-	assert.Equal(t, "5m0s", rateWindow(30*time.Minute))
-	assert.Equal(t, "2m0s", rateWindow(2*time.Minute))
+	// PromQL only accepts a single unit, so the window is in seconds.
+	assert.Equal(t, "60s", rateWindow(10*time.Second))
+	assert.Equal(t, "300s", rateWindow(30*time.Minute))
+	assert.Equal(t, "120s", rateWindow(2*time.Minute))
 }
 
 // TestSumByTimestampMergesPods proves a multi-replica service becomes one
