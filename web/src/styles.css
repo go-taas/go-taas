@@ -981,6 +981,20 @@ th.sortable:hover {
   transition: background 0.15s ease, color 0.15s ease;
 }
 
+.lang-switch svg {
+  flex: 0 0 auto;
+}
+
+.lang-switch svg:first-child {
+  width: 20px;
+  height: 20px;
+}
+
+.lang-switch svg:last-child {
+  width: 12px;
+  height: 12px;
+}
+
 .lang-switch:hover {
   background: var(--surface-2);
   color: var(--text);
@@ -2617,6 +2631,12 @@ button.primary:hover {
   color: var(--muted);
   cursor: pointer;
   border-radius: var(--radius-sm);
+}
+
+.notification-bell svg {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
 }
 
 .notification-bell:hover {
