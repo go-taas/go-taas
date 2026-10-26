@@ -4,13 +4,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type OrgMember } from '../api';
 import { OrganizationPicker, useOrganizationPicker } from '../org';
+import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
 export default function MembersPage() {
-  const { orgId, orgs, choose } = useOrganizationPicker();
+  const { scope } = useAdminScope();
+  // In the organization console the roster is fixed to that organization.
+  const scopedOrg = scope?.scopeType === 'organization' ? scope.organizationId : '';
+  const { orgId: pickerOrg, orgs, choose } = useOrganizationPicker();
+  const orgId = scopedOrg || pickerOrg;
   const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -97,12 +102,14 @@ export default function MembersPage() {
           />
         </div>
         <div className="toolbar">
-          <OrganizationPicker
-            orgs={orgs}
-            value={orgId}
-            onChange={choose}
-            testId="members-org-picker"
-          />
+          {!scopedOrg && (
+            <OrganizationPicker
+              orgs={orgs}
+              value={orgId}
+              onChange={choose}
+              testId="members-org-picker"
+            />
+          )}
           <button data-testid="add-member-button" onClick={() => setAddOpen(true)}>
             {t('members.add')}
           </button>

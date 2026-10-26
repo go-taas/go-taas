@@ -5,13 +5,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type Invitation } from '../api';
 import { OrganizationPicker, useOrganizationPicker } from '../org';
+import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
 export default function InvitationsPage() {
-  const { orgId, orgs, choose } = useOrganizationPicker();
+  const { scope } = useAdminScope();
+  // In the organization console the pipeline is fixed to that organization.
+  const scopedOrg = scope?.scopeType === 'organization' ? scope.organizationId : '';
+  const { orgId: pickerOrg, orgs, choose } = useOrganizationPicker();
+  const orgId = scopedOrg || pickerOrg;
   const { t, tEnum } = useI18n();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,12 +109,14 @@ export default function InvitationsPage() {
           />
         </div>
         <div className="toolbar">
-          <OrganizationPicker
-            orgs={orgs}
-            value={orgId}
-            onChange={choose}
-            testId="invitations-org-picker"
-          />
+          {!scopedOrg && (
+            <OrganizationPicker
+              orgs={orgs}
+              value={orgId}
+              onChange={choose}
+              testId="invitations-org-picker"
+            />
+          )}
           <button data-testid="invite-button" onClick={() => setInviteOpen(true)}>
             {t('invitations.invite')}
           </button>
