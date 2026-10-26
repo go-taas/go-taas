@@ -316,6 +316,10 @@ message CreateInferenceServiceRequest {
   // card. 13403 if the pool/template is invalid or not granted.
   string pool_id = 9;
   string slice_template_id = 10;
+  // cluster_id is the cluster the service is placed on (feature #40,
+  // AD7). Empty means "the platform default cluster" (AD8): the first
+  // active cluster, or the configured default.
+  string cluster_id = 11;
 }
 
 message CreateInferenceServiceResponse {

@@ -85,6 +85,52 @@ func TestRegisterAndListClusters(t *testing.T) {
 	assert.Equal(t, "unknown", list.Clusters[0].Health)
 }
 
+func TestResolveCluster(t *testing.T) {
+	db := newTestDB(t)
+	svc := newService(t, db, true)
+
+	// Register an active and a disabled cluster.
+	active, err := svc.RegisterCluster(ctxWithOrg(context.Background(), "org-1"), &clusterv1.RegisterClusterRequest{
+		Name: "cluster-a", Region: "cn-north", KubeconfigRef: "kube/cluster-a",
+	})
+	require.NoError(t, err)
+	disabled, err := svc.RegisterCluster(ctxWithOrg(context.Background(), "org-1"), &clusterv1.RegisterClusterRequest{
+		Name: "cluster-b", Region: "cn-south", KubeconfigRef: "kube/cluster-b",
+	})
+	require.NoError(t, err)
+	_, err = svc.DisableCluster(ctxWithOrg(context.Background(), "org-1"), &clusterv1.DisableClusterRequest{
+		ClusterId: disabled.ClusterId,
+	})
+	require.NoError(t, err)
+
+	// Empty request resolves to the first active cluster (AD8).
+	id, err := svc.ResolveCluster(context.Background(), "")
+	require.NoError(t, err)
+	assert.Equal(t, active.ClusterId, id)
+
+	// An explicit active cluster id is returned.
+	id, err = svc.ResolveCluster(context.Background(), active.ClusterId)
+	require.NoError(t, err)
+	assert.Equal(t, active.ClusterId, id)
+
+	// A disabled cluster is rejected (12403).
+	_, err = svc.ResolveCluster(context.Background(), disabled.ClusterId)
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeClusterStateInvalid, apierrors.CodeOf(err))
+
+	// An unknown cluster is rejected (12401).
+	_, err = svc.ResolveCluster(context.Background(), "missing")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeClusterNotFound, apierrors.CodeOf(err))
+
+	// The configured default wins over the first active cluster.
+	svc.SetDefaultClusterID(disabled.ClusterId)
+	// The default is disabled, so it falls back to the first active.
+	id, err = svc.ResolveCluster(context.Background(), "")
+	require.NoError(t, err)
+	assert.Equal(t, active.ClusterId, id)
+}
+
 func TestGetClusterAndWorkloads(t *testing.T) {
 	db := newTestDB(t)
 	svc := newService(t, db, true)

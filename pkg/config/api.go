@@ -725,6 +725,12 @@ type ControllerClusterConfig struct {
 	// CollectInterval is the Controller's per-cluster health collection
 	// period (AD4). Default 30s.
 	CollectInterval time.Duration `mapstructure:"collectInterval"`
+	// KubeconfigDir is the base directory the controller resolves a
+	// registered cluster's kubeconfig_ref against (AD3). The local
+	// cluster ("in-cluster") always uses the controller's own client;
+	// remote references are joined onto this directory. Empty disables
+	// remote-cluster collection (the local cluster is still collected).
+	KubeconfigDir string `mapstructure:"kubeconfigDir"`
 }
 
 // AccountConfig holds account-module specific settings (feature #41,

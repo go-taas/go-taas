@@ -54,6 +54,9 @@ controller:
     sampleInterval: 30s
   # cluster (feature #40): the per-cluster health collection loop polls
   # each registered cluster's nodes on collectInterval (30s default,
-  # AD4).
+  # AD4). kubeconfigDir is the base directory remote kubeconfig
+  # references are resolved against; the local cluster always uses the
+  # controller's own client. Empty disables remote-cluster collection.
   cluster:
     collectInterval: 30s
+    kubeconfigDir: ""

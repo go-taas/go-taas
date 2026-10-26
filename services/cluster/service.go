@@ -268,6 +268,47 @@ func (s *Service) RegisterCluster(ctx context.Context, req *clusterv1.RegisterCl
 	}, nil
 }
 
+// ResolveCluster resolves the cluster a new inference service is placed
+// on (feature #40, AD7/AD8). A requested id must be an active cluster
+// (12401 unknown, 12403 disabled); an empty request resolves to the
+// platform default cluster (the configured default, else the first
+// active cluster). It returns "" when no active cluster exists, so a
+// single-cluster install with no registered cluster still deploys.
+func (s *Service) ResolveCluster(ctx context.Context, requested string) (string, error) {
+	repo, err := s.repository()
+	if err != nil {
+		return "", err
+	}
+	if requested != "" {
+		row, err := repo.FindClusterByID(ctx, requested)
+		if err != nil {
+			return "", err
+		}
+		if row.State != ClusterStateActive {
+			return "", apierrors.New(apierrors.CodeClusterStateInvalid)
+		}
+		return row.ID, nil
+	}
+	// Empty request: the configured default, else the first active
+	// cluster (AD8).
+	if s.defaultClusterID != "" {
+		row, err := repo.FindClusterByID(ctx, s.defaultClusterID)
+		if err == nil && row.State == ClusterStateActive {
+			return row.ID, nil
+		}
+	}
+	rows, err := repo.ListClusters(ctx)
+	if err != nil {
+		return "", err
+	}
+	for _, c := range rows {
+		if c.State == ClusterStateActive {
+			return c.ID, nil
+		}
+	}
+	return "", nil
+}
+
 // ListClusters returns the clusters with health and workload counts
 // (AC1).
 func (s *Service) ListClusters(ctx context.Context, _ *clusterv1.ListClustersRequest) (*clusterv1.ListClustersResponse, error) {

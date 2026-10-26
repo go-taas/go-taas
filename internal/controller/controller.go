@@ -52,6 +52,9 @@ type Controller struct {
 	// runtimeModelChange is the optional model-change consumer
 	// (feature #47).
 	runtimeModelChange *RuntimeModelChangeConsumer
+	// clusterCollector is the optional per-cluster health collection
+	// loop (feature #40). Nil when not configured.
+	clusterCollector *ClusterCollector
 }
 
 // New constructs a Controller consuming client and applying events with
@@ -88,6 +91,12 @@ func (c *Controller) SetRuntimeSchemeConsumer(consumer *RuntimeSchemeConsumer) {
 // consumer (feature #47). It must be called before Run.
 func (c *Controller) SetRuntimeModelChangeConsumer(consumer *RuntimeModelChangeConsumer) {
 	c.runtimeModelChange = consumer
+}
+
+// SetClusterCollector installs the per-cluster health collection loop
+// (feature #40). It must be called before Run.
+func (c *Controller) SetClusterCollector(collector *ClusterCollector) {
+	c.clusterCollector = collector
 }
 
 // Run subscribes to all consumed subjects and blocks until ctx is
@@ -135,6 +144,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	}
 	if c.runtimeCollector != nil {
 		go c.runtimeCollector.Run(ctx)
+	}
+	// Feature #40: the per-cluster health collection loop.
+	if c.clusterCollector != nil {
+		go c.clusterCollector.Run(ctx)
 	}
 
 	select {

@@ -203,6 +203,23 @@ type Service struct {
 	// module and injected at wiring time. Nil until wired: the status
 	// reports healthy.
 	incidentReader IncidentReader
+
+	// clusterResolver resolves the cluster a service is placed on at
+	// deploy time (feature #40, AD7/AD8). Nil until wired: the service
+	// is created without a cluster (single-cluster installs).
+	clusterResolver ClusterResolver
+}
+
+// ClusterResolver resolves the cluster a new inference service is placed
+// on (feature #40, AD7/AD8). It is implemented by the cluster module and
+// injected at wiring time.
+type ClusterResolver interface {
+	// ResolveCluster returns the cluster id to place a service on. A
+	// requested id is validated (must be an active cluster); an empty
+	// request resolves to the platform default cluster (the configured
+	// default, else the first active cluster). It returns 12401 when the
+	// requested cluster is unknown and 12403 when it is disabled.
+	ResolveCluster(ctx context.Context, requested string) (string, error)
 }
 
 // IncidentReader reads a service's active incident for the tenant
@@ -391,6 +408,12 @@ func (s *Service) SetExternalModelProxy(p ExternalModelProxy) { s.externalProxy 
 // #49, AD14). Production wires the routing module; unit tests may inject
 // a fake. Without it a virtual playground request fails closed.
 func (s *Service) SetRoutingResolver(r RoutingResolver) { s.routingResolver = r }
+
+// SetClusterResolver installs the cluster-placement resolver seam
+// (feature #40, AD7/AD8). Production wires the cluster module; unit
+// tests may inject a fake. Without it a service is created without a
+// cluster (single-cluster installs).
+func (s *Service) SetClusterResolver(r ClusterResolver) { s.clusterResolver = r }
 
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.
@@ -857,6 +880,18 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		autoscalingJSON = datatypes.JSON("{}")
 	}
 
+	// Feature #40 (AD7/AD8): resolve the cluster the service is placed
+	// on. A requested cluster_id is validated; an empty request resolves
+	// to the platform default cluster. Without a resolver (single-cluster
+	// installs) the service is created without a cluster.
+	clusterID := ""
+	if s.clusterResolver != nil {
+		clusterID, err = s.clusterResolver.ResolveCluster(ctx, strings.TrimSpace(req.GetClusterId()))
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	svc := &InferenceService{
 		ID:              NewServiceID(),
 		OrganizationID:  orgID,
@@ -875,6 +910,7 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		SliceGPUIndex:   -1,
 		SliceMemoryGiB:  sliceInfo.MemoryGiB,
 		SliceComputePct: sliceInfo.ComputePct,
+		ClusterID:       clusterID,
 	}
 	if err := repo.Create(ctx, svc); err != nil {
 		return nil, err
@@ -1812,4 +1848,47 @@ func normalizePagination(page *commonv1.PageRequest) (offset, limit int) {
 // okResponse is the shared success response envelope.
 func okResponse() *commonv1.Response {
 	return &commonv1.Response{Code: 0, Message: "ok"}
+}
+
+// ClusterPlacementBackfiller assigns a default cluster to services that
+// predate multi-cluster placement (feature #40, AD8). It is a one-time
+// startup migration so existing single-cluster deployments keep their
+// placement view.
+type ClusterPlacementBackfiller struct {
+	svc *Service
+}
+
+// NewClusterPlacementBackfiller builds a ClusterPlacementBackfiller.
+func NewClusterPlacementBackfiller(svc *Service) *ClusterPlacementBackfiller {
+	return &ClusterPlacementBackfiller{svc: svc}
+}
+
+// Run implements server.Runner: it resolves the default cluster and
+// backfills services with an empty cluster_id once, then returns.
+func (b *ClusterPlacementBackfiller) Run(ctx context.Context) error {
+	if b.svc == nil || b.svc.clusterResolver == nil {
+		return nil
+	}
+	clusterID, err := b.svc.clusterResolver.ResolveCluster(ctx, "")
+	if err != nil {
+		logger.S().Warnw("infer: cluster placement backfill skipped, resolve failed", "err", err)
+		return nil
+	}
+	if clusterID == "" {
+		return nil
+	}
+	repo, err := b.svc.repository()
+	if err != nil {
+		logger.S().Warnw("infer: cluster placement backfill skipped, repository unavailable", "err", err)
+		return nil
+	}
+	n, err := repo.BackfillClusterPlacement(ctx, clusterID)
+	if err != nil {
+		logger.S().Warnw("infer: cluster placement backfill failed", "err", err)
+		return nil
+	}
+	if n > 0 {
+		logger.S().Infow("infer: backfilled cluster placement", "cluster_id", clusterID, "services", n)
+	}
+	return nil
 }

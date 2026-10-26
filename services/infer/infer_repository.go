@@ -57,6 +57,21 @@ func (r *InferenceServiceRepository) CountActiveServicesByOrg(ctx context.Contex
 	return count, err
 }
 
+// BackfillClusterPlacement assigns cluster_id to services that predate
+// multi-cluster placement (feature #40, AD8): a service with an empty
+// cluster_id is placed on the given default cluster. It returns the
+// number of services updated. It is a one-time startup migration so
+// existing single-cluster deployments keep their placement view.
+func (r *InferenceServiceRepository) BackfillClusterPlacement(ctx context.Context, clusterID string) (int64, error) {
+	if clusterID == "" {
+		return 0, nil
+	}
+	res := r.db.DB(ctx).Model(&InferenceService{}).
+		Where("cluster_id = ?", "").
+		Update("cluster_id", clusterID)
+	return res.RowsAffected, res.Error
+}
+
 // AcceleratorTypesByServiceIDs returns the accelerator type of the
 // given inference service ids. Missing ids are simply absent from the
 // result (terminated services resolve to the "default" sentinel

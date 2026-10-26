@@ -143,6 +143,28 @@ func main() {
 		logger.S().Warnw("controller: resource sampling disabled, database unreachable", "err", dbErr)
 	}
 
+	// Feature #40: the per-cluster health collection loop reads the
+	// clusters table and publishes a full snapshot to cluster.health. It
+	// needs the database; the local cluster is collected with the
+	// controller's own client, remote clusters resolve their kubeconfig
+	// reference against controller.cluster.kubeconfigDir.
+	if db, dbErr := initDBWithRetry(&cfg.Databases.Master, controllerDBRetryWindow); dbErr == nil {
+		defer func() {
+			if sqlDB, err := db.DB(); err == nil {
+				_ = sqlDB.Close()
+			}
+		}()
+		ctrl.SetClusterCollector(controller.NewClusterCollector(
+			db,
+			k8sClient.Clientset(),
+			mqClient,
+			cfg.Controller.Cluster.CollectInterval,
+			cfg.Controller.Cluster.KubeconfigDir,
+		))
+	} else {
+		logger.S().Warnw("controller: cluster health collection disabled, database unreachable", "err", dbErr)
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

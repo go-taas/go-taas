@@ -85,6 +85,39 @@ func TestCreateInferenceServiceHappyPath(t *testing.T) {
 	assert.Equal(t, StatePending, stored.State)
 }
 
+// fakeClusterResolver resolves a fixed cluster id.
+type fakeClusterResolver struct {
+	id  string
+	err error
+}
+
+func (f fakeClusterResolver) ResolveCluster(context.Context, string) (string, error) {
+	return f.id, f.err
+}
+
+func TestCreateInferenceServiceRecordsCluster(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	svc.SetClusterResolver(fakeClusterResolver{id: "cluster-default"})
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	resp, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name:         "demo-svc",
+		ModelId:      modelID,
+		ModelVersion: "v1",
+		ImageId:      "img-vllm-nvidia",
+		Replicas:     1,
+		Accelerator:  "nvidia",
+	})
+	require.NoError(t, err)
+
+	row, err := svc.repository()
+	require.NoError(t, err)
+	stored, err := row.FindByIDAndOrganization(context.Background(), "org-1", resp.GetServiceId())
+	require.NoError(t, err)
+	assert.Equal(t, "cluster-default", stored.ClusterID)
+}
+
 // fakeSliceValidator validates slice requests.
 type fakeSliceValidator struct {
 	info SliceTemplateInfo

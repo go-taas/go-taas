@@ -101,6 +101,34 @@ func seedService(t *testing.T, repo *InferenceServiceRepository, org, name, stat
 	return svc
 }
 
+func TestRepositoryBackfillClusterPlacement(t *testing.T) {
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+
+	// Seed two services with empty cluster_id and one already placed.
+	svc1 := seedService(t, repo, "org-1", "svc-a", StateRunning, time.Now())
+	svc2 := seedService(t, repo, "org-1", "svc-b", StateRunning, time.Now())
+	svc3 := seedService(t, repo, "org-1", "svc-c", StateRunning, time.Now())
+	require.NoError(t, db.Model(&InferenceService{}).Where("id = ?", svc3.ID).
+		Update("cluster_id", "cluster-x").Error)
+
+	// Backfill onto the default cluster.
+	n, err := repo.BackfillClusterPlacement(context.Background(), "cluster-default")
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), n)
+
+	// The two empty services are placed; the already-placed one is not.
+	var placed []string
+	require.NoError(t, db.Model(&InferenceService{}).
+		Where("cluster_id = ?", "cluster-default").Pluck("id", &placed).Error)
+	assert.ElementsMatch(t, []string{svc1.ID, svc2.ID}, placed)
+
+	// An empty cluster id is a no-op.
+	n, err = repo.BackfillClusterPlacement(context.Background(), "")
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), n)
+}
+
 func TestRepositoryCreateAndFindScoped(t *testing.T) {
 	db := newInferTestDB(t)
 	repo := NewInferenceServiceRepository(db)

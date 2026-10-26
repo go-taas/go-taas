@@ -481,6 +481,13 @@ func main() {
 			clusterSvc.SetSessionUserResolver(authSvc)
 			clusterSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			clusterSvc.SetWorkloadProvider(infer.NewClusterWorkloadProvider(gormDB))
+			// The deploy form's cluster selector resolves the placement
+			// cluster through the cluster module (feature #40, AD7/AD8).
+			inferSvc.SetClusterResolver(clusterSvc)
+			// Backfill services that predate multi-cluster placement onto
+			// the default cluster so the cluster detail page shows them
+			// (feature #40, AD8).
+			srv.AddRunner(infer.NewClusterPlacementBackfiller(inferSvc))
 			// The cluster the platform runs in is discovered from the
 			// in-cluster Kubernetes environment, so a single-cluster
 			// install shows its own cluster without manual registration.
