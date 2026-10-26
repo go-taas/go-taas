@@ -150,7 +150,8 @@ function SurfaceRouter() {
     return <Redirect to={`/login/${path.slice('/admin/login/'.length)}`} />;
   }
   if (path === '/') return <Redirect to={realmHome('user')} />;
-  if (path === '/admin') return <Redirect to={realmHome('admin')} />;
+  // /admin is the admin scope chooser (rendered by AdminSurface); a
+  // single-scope user is routed onward from there.
   return isAdminPath(path) ? <AdminSurface /> : <UserSurface path={path} />;
 }
 
