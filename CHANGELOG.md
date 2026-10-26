@@ -1,3 +1,10 @@
+## [1.87.1](https://github.com/go-taas/go-taas/compare/v1.87.0...v1.87.1) (2026-10-26)
+
+
+### Bug Fixes
+
+* **accelerator:** report real allocation, real driver versions and real health ([1b81abe](https://github.com/go-taas/go-taas/commit/1b81abe3a98652a79a87563286e358fffb1d1e1f))
+
 # [1.87.0](https://github.com/go-taas/go-taas/compare/v1.86.0...v1.87.0) (2026-10-25)
 
 
