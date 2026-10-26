@@ -33,7 +33,7 @@ func TestComputeHealth(t *testing.T) {
 		expected string
 	}{
 		{
-			name:     "healthy when all three signals hold",
+			name:     "healthy when every signal holds",
 			node:     testNode("n1", "node-1", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535.104.05", nil),
 			expected: HealthHealthy,
 		},
@@ -43,9 +43,13 @@ func TestComputeHealth(t *testing.T) {
 			expected: HealthDegraded,
 		},
 		{
-			name:     "degraded when driver missing",
+			// The driver version is informational. A cluster whose nodes do
+			// not publish it is not unhealthy, and reporting "degraded" on a
+			// ready node with a healthy device plugin trains operators to
+			// ignore the column.
+			name:     "healthy when only the driver version is unknown",
 			node:     testNode("n1", "node-1", VendorNvidia, ReadinessReady, DevicePluginHealthy, "", nil),
-			expected: HealthDegraded,
+			expected: HealthHealthy,
 		},
 		{
 			name:     "degraded when node not ready",
@@ -124,20 +128,28 @@ func TestProjectionCacheListCardTypes(t *testing.T) {
 
 func TestProjectionCacheListFiltersAndPagination(t *testing.T) {
 	cache := NewProjectionCache()
+	cards := func(total int64) []AcceleratorResource {
+		return []AcceleratorResource{{CardType: "gpu", Allocatable: total}}
+	}
 	nodes := map[string]*AcceleratorNode{
-		"n1": testNode("n1", "node-a", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535", nil),
-		"n2": testNode("n2", "node-b", VendorNvidia, ReadinessReady, DevicePluginDegraded, "535", nil),
-		"n3": testNode("n3", "node-c", VendorIluvatar, ReadinessReady, DevicePluginHealthy, "1.0", nil),
-		"n4": testNode("n4", "node-d", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", nil),
+		"n1": testNode("n1", "node-a", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535", cards(2)),
+		"n2": testNode("n2", "node-b", VendorNvidia, ReadinessReady, DevicePluginDegraded, "535", cards(1)),
+		"n3": testNode("n3", "node-c", VendorIluvatar, ReadinessReady, DevicePluginHealthy, "1.0", cards(4)),
+		"n4": testNode("n4", "node-d", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", cards(0)),
+		// A node with no card at all: it must not become a table row that
+		// reads "0 / 0", and it is counted separately instead.
+		"n5": testNode("n5", "node-cpu", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", nil),
 	}
 	cache.Replace(nodes)
 
-	// No filters returns all, sorted by name.
+	// No filters returns every node with cards, sorted by name. n4 has the
+	// resource declared with zero allocatable, n5 declares none.
 	all, total, err := cache.List("", "", "", 0, 100)
 	require.NoError(t, err)
-	assert.EqualValues(t, 4, total)
-	assert.Len(t, all, 4)
+	assert.EqualValues(t, 3, total)
+	assert.Len(t, all, 3)
 	assert.Equal(t, "node-a", all[0].Name)
+	assert.EqualValues(t, 2, cache.CPUNodeCount(), "n4 and n5 carry no usable card")
 
 	// Vendor filter.
 	nvidia, total, err := cache.List(VendorNvidia, "", "", 0, 100)
@@ -145,13 +157,11 @@ func TestProjectionCacheListFiltersAndPagination(t *testing.T) {
 	assert.EqualValues(t, 2, total)
 	assert.Len(t, nvidia, 2)
 
-	// Health filter: node-a (healthy), node-c (healthy) and node-d
-	// (unspecified vendor, ready -> healthy) are healthy; node-b is
-	// degraded.
+	// Health filter: node-a and node-c are healthy; node-b is degraded.
 	healthy, total, err := cache.List("", HealthHealthy, "", 0, 100)
 	require.NoError(t, err)
-	assert.EqualValues(t, 3, total)
-	assert.Len(t, healthy, 3)
+	assert.EqualValues(t, 2, total)
+	assert.Len(t, healthy, 2)
 
 	// Search.
 	searched, total, err := cache.List("", "", "node-b", 0, 100)
@@ -162,7 +172,7 @@ func TestProjectionCacheListFiltersAndPagination(t *testing.T) {
 	// Pagination.
 	page, total, err := cache.List("", "", "", 0, 2)
 	require.NoError(t, err)
-	assert.EqualValues(t, 4, total)
+	assert.EqualValues(t, 3, total)
 	assert.Len(t, page, 2)
 	assert.Equal(t, "node-a", page[0].Name)
 	assert.Equal(t, "node-b", page[1].Name)
@@ -170,14 +180,14 @@ func TestProjectionCacheListFiltersAndPagination(t *testing.T) {
 	// Offset beyond the end returns empty.
 	empty, total, err := cache.List("", "", "", 100, 20)
 	require.NoError(t, err)
-	assert.EqualValues(t, 4, total)
+	assert.EqualValues(t, 3, total)
 	assert.Len(t, empty, 0)
 
 	// Invalid filter values are treated as empty.
 	all2, total, err := cache.List("bogus", "bogus", "", 0, 100)
 	require.NoError(t, err)
-	assert.EqualValues(t, 4, total)
-	assert.Len(t, all2, 4)
+	assert.EqualValues(t, 3, total)
+	assert.Len(t, all2, 3)
 }
 
 func TestProjectionCacheCardTypeSummary(t *testing.T) {
@@ -218,4 +228,29 @@ func TestProjectionCacheCardTypeSummary(t *testing.T) {
 	assert.EqualValues(t, 10, rows[1].Allocated)
 	assert.EqualValues(t, 6, rows[1].Free)
 	assert.EqualValues(t, 2, rows[1].NodeCount)
+}
+
+// TestCPUNodeCountIgnoresCardedNodes pins the fleet summary the page shows
+// next to the card table.
+func TestCPUNodeCountIgnoresCardedNodes(t *testing.T) {
+	cache := NewProjectionCache()
+	cache.Replace(map[string]*AcceleratorNode{
+		"n1": testNode("n1", "gpu-1", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535",
+			[]AcceleratorResource{{CardType: "A100", Allocatable: 8}}),
+		"n2": testNode("n2", "gpu-2", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535",
+			[]AcceleratorResource{{CardType: "A100", Allocatable: 8}}),
+		"c1": testNode("c1", "cpu-1", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", nil),
+		"c2": testNode("c2", "cpu-2", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", nil),
+		"c3": testNode("c3", "cpu-3", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", nil),
+	})
+
+	assert.EqualValues(t, 3, cache.CPUNodeCount())
+
+	list, total, err := cache.List("", "", "", 0, 100)
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, total, "only nodes with cards are listed")
+	assert.Len(t, list, 2)
+	for _, n := range list {
+		assert.Equal(t, VendorNvidia, n.Vendor, "a CPU node must not appear as a row")
+	}
 }

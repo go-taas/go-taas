@@ -81,6 +81,9 @@ func (s *Service) ListAcceleratorNodes(_ context.Context, req *acceleratorv1.Lis
 	return &acceleratorv1.ListAcceleratorNodesResponse{
 		Response: okResponse(),
 		Nodes:    summaries,
+		// Reported on every page, not just the first: it describes the fleet,
+		// not the page.
+		CpuNodeCount: s.cache.CPUNodeCount(),
 		//nolint:gosec // G115: limit is capped at 100 by normalizePage.
 		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: int32(limit)},
 	}, nil

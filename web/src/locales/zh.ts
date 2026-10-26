@@ -905,7 +905,9 @@ export const zh: Record<string, string> = {
   'accelerators.title': '加速卡',
   'accelerators.subtitle': '跨 NVIDIA、Iluvatar CoreX 和 MetaX 的 GPU 集群容量与健康状态。',
   'accelerators.stale': '显示的是过期数据——最近一次轮询失败。',
-  'accelerators.vendorNodes': '{v}：0 个节点',
+  // 集群里没有加速卡的节点数：卡片表格只列有卡的节点，这个数字
+  // 让运维能区分「2 个 GPU 节点」和「2 个 GPU 节点 + 40 个 CPU 节点」。
+  'accelerators.cpuNodes': '另有 {count} 个无加速卡的 CPU 节点（未列在上表中）',
   'accelerators.cardType': '卡型',
   'accelerators.freeTotal': '空闲 / 总计',
   'accelerators.utilization': '利用率',

@@ -174,10 +174,14 @@ func computeHealth(n *AcceleratorNode) string {
 	if n.Readiness == ReadinessUnknown || n.DevicePluginState == DevicePluginUnknown {
 		return HealthUnknown
 	}
-	// Healthy only when all three hold.
-	if n.Readiness == ReadinessReady &&
-		n.DevicePluginState == DevicePluginHealthy &&
-		n.DriverVersion != "" {
+	// Healthy when the node is ready and its device plugin is healthy.
+	//
+	// The driver version is deliberately not part of this: it is reported
+	// for the operator's benefit, and a cluster whose nodes do not publish it
+	// as a label is not unhealthy. Requiring it made every node on a real
+	// install read "degraded" — a status that means "something is wrong" and
+	// therefore must not fire on a healthy node.
+	if n.Readiness == ReadinessReady && n.DevicePluginState == DevicePluginHealthy {
 		return HealthHealthy
 	}
 	return HealthDegraded

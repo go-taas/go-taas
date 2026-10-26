@@ -1729,6 +1729,12 @@ func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *infe
 		MaxReplicas:        clampToInt32(max),
 		AutoscalingState:   autoscalingStateProto(row.AutoscalingState),
 		OrganizationId:     row.OrganizationID,
+		// The accelerator the service was created for. It is what the console
+		// shows as "accelerator", and it was missing from the summary
+		// entirely — the detail page read a field the API never sent, so the
+		// row rendered empty even though the column was populated.
+		Accelerator:     row.Accelerator,
+		AcceleratorType: row.AcceleratorType,
 	}
 }
 

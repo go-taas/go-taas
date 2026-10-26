@@ -25,7 +25,26 @@ const (
 	fallbackAcceleratorLabel = "gpu-vendor"
 	labelDriverVersion       = "go-taas.com/driver-version"
 	labelDevicePlugin        = "go-taas.com/device-plugin"
+
+	// driverVersionLabelKeys are the labels a node may carry its GPU driver
+	// version on, most specific first.
+	//
+	// `go-taas.com/driver-version` is the platform's own convention and wins
+	// when a cluster sets it. NVIDIA's GPU Feature Discovery publishes the
+	// version under `nvidia.com/cuda.driver-version.full` (595.91.07) plus
+	// major/minor/revision parts, and no cluster sets the platform's label —
+	// so reading only that left the version empty on every real install,
+	// which the health rule then reported as "degraded" on a perfectly
+	// healthy node.
 )
+
+// driverVersionLabelKeys are the node labels that may carry the GPU driver
+// version, most specific first.
+var driverVersionLabelKeys = []string{
+	labelDriverVersion,
+	"nvidia.com/cuda.driver-version.full",
+	"nvidia.com/gpu.driver-version",
+}
 
 // inventoryNode is one node's raw signals in the published snapshot
 // (feature #18, Section 4.1). The accelerator service computes the
@@ -137,20 +156,83 @@ func (c *InventoryCollector) listNodes(ctx context.Context) ([]inventoryNode, er
 	if err != nil {
 		return nil, err
 	}
+	// Allocation comes from the pods on each node. One cluster-wide list is
+	// cheaper than a query per node, and the pod count on a GPU fleet is
+	// small.
+	allocated, err := c.allocatedByNode(ctx)
+	if err != nil {
+		// Telemetry only: a failed pod list must not drop the whole
+		// snapshot, and reporting 0 allocated is visibly wrong rather than
+		// silently plausible.
+		logger.S().Warnw("controller: list pods for accelerator allocation failed", "err", err)
+		allocated = nil
+	}
 	nodes := make([]inventoryNode, 0, len(list.Items))
 	for i := range list.Items {
 		n := &list.Items[i]
-		nodes = append(nodes, nodeToInventory(n))
+		nodes = append(nodes, nodeToInventory(n, allocated[n.Name]))
 	}
 	return nodes, nil
 }
 
+// allocatedByNode sums each node's accelerator requests across the pods it
+// hosts, keyed by node name and then by resource name.
+//
+// Finished pods are skipped: a Succeeded/Failed pod has released its devices,
+// so counting it would report capacity as used forever.
+func (c *InventoryCollector) allocatedByNode(ctx context.Context) (map[string]map[corev1.ResourceName]int64, error) {
+	pods, err := c.clientset.CoreV1().Pods(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]map[corev1.ResourceName]int64, len(pods.Items))
+	for i := range pods.Items {
+		p := &pods.Items[i]
+		nodeName := p.Spec.NodeName
+		if nodeName == "" {
+			continue // unscheduled: nothing is reserved on a node yet
+		}
+		switch p.Status.Phase {
+		case corev1.PodSucceeded, corev1.PodFailed:
+			continue
+		}
+		for _, ctr := range p.Spec.Containers {
+			for name, qty := range requestedAccelerators(ctr.Resources) {
+				if out[nodeName] == nil {
+					out[nodeName] = map[corev1.ResourceName]int64{}
+				}
+				out[nodeName][name] += qty
+			}
+		}
+	}
+	return out, nil
+}
+
+// requestedAccelerators returns a container's accelerator requests, treating
+// an extended resource set only in limits as a request (the Kubernetes
+// convention: an extended resource with a limit and no request is requested
+// at the limit).
+func requestedAccelerators(res corev1.ResourceRequirements) map[corev1.ResourceName]int64 {
+	out := map[corev1.ResourceName]int64{}
+	for name, qty := range res.Limits {
+		if _, ok := cardTypeFromResource(name); ok {
+			out[name] = qty.Value()
+		}
+	}
+	for name, qty := range res.Requests {
+		if _, ok := cardTypeFromResource(name); ok {
+			out[name] = qty.Value()
+		}
+	}
+	return out
+}
+
 // nodeToInventory computes the raw signals for one node (Section 4.1).
-func nodeToInventory(n *corev1.Node) inventoryNode {
+func nodeToInventory(n *corev1.Node, allocated map[corev1.ResourceName]int64) inventoryNode {
 	labels := n.Labels
 	vendor := vendorFromNode(n)
 	readiness := readinessFromNode(n)
-	driverVersion := labels[labelDriverVersion]
+	driverVersion := driverVersionFromNode(labels)
 	devicePlugin := devicePluginFromNode(n, labels)
 
 	// The card type is the card model (nvidia.com/gpu.product =
@@ -171,13 +253,13 @@ func nodeToInventory(n *corev1.Node) inventoryNode {
 			cardType = model
 		}
 		allocatable := qty.Value()
-		allocated := allocatedForResource(n, name)
+		used := allocated[name]
 		cardTypes = append(cardTypes, cardType)
 		resources = append(resources, inventoryResource{
-			CardType: cardType, Allocatable: allocatable, Allocated: allocated,
+			CardType: cardType, Allocatable: allocatable, Allocated: used,
 		})
-		gpusAllocated += allocated
-		gpusFree += allocatable - allocated
+		gpusAllocated += used
+		gpusFree += allocatable - used
 	}
 
 	taints := make([]string, 0, len(n.Spec.Taints))
@@ -292,6 +374,26 @@ func devicePluginFromNode(n *corev1.Node, labels map[string]string) string {
 	return "unknown"
 }
 
+// driverVersionFromNode returns the node's GPU driver version, or "".
+func driverVersionFromNode(labels map[string]string) string {
+	for _, key := range driverVersionLabelKeys {
+		if v := strings.TrimSpace(labels[key]); v != "" {
+			return v
+		}
+	}
+	// Some drivers publish only the parts.
+	major := strings.TrimSpace(labels["nvidia.com/cuda.driver-version.major"])
+	minor := strings.TrimSpace(labels["nvidia.com/cuda.driver-version.minor"])
+	rev := strings.TrimSpace(labels["nvidia.com/cuda.driver-version.revision"])
+	if major == "" || minor == "" {
+		return ""
+	}
+	if rev != "" {
+		return major + "." + minor + "." + rev
+	}
+	return major + "." + minor
+}
+
 // cardModelLabelKeys returns the vendor label keys that carry the card
 // model, most specific first. Vendors publish the product name under
 // their own prefix; go-taas.com/accelerator-type and gpu-product are the
@@ -334,26 +436,12 @@ func cardTypeFromResource(name corev1.ResourceName) (string, bool) {
 	}
 }
 
-// allocatedForResource returns the allocated count for an extended
-// resource by summing the requests across pods on the node. When the
-// pod list is unavailable it falls back to 0 (best-effort telemetry).
-func allocatedForResource(n *corev1.Node, resourceName corev1.ResourceName) int64 {
-	// The controller does not hold a pod lister here; the device plugin
-	// reports allocatable and the allocated count is derived from the
-	// allocatable minus the free reported by the plugin. For a
-	// best-effort snapshot we report 0 allocated when the plugin does
-	// not expose a free count; the accelerator service treats
-	// allocatable - allocated as free.
-	_ = n
-	_ = resourceName
-	return 0
-}
-
 // acceleratorLabels returns the accelerator-relevant node labels.
 func acceleratorLabels(labels map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range labels {
-		if k == labelAcceleratorVendor || k == labelDriverVersion || k == labelDevicePlugin {
+		if k == labelAcceleratorVendor || k == labelDriverVersion || k == labelDevicePlugin ||
+			k == "nvidia.com/cuda.driver-version.full" || k == "nvidia.com/gpu.product" {
 			out[k] = v
 		}
 	}

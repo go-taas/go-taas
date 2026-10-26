@@ -250,6 +250,11 @@ export interface InferenceServiceSummary {
   // organizations, projects or users. False means every platform user may
   // use the service.
   accessRestricted?: boolean;
+  // accelerator is the hardware platform the service runs on (nvidia,
+  // iluvatar, metax). acceleratorType is the concrete card model, when one
+  // was named at creation.
+  accelerator?: string;
+  acceleratorType?: string;
 }
 
 // InferenceServiceAccessSubject is one grant in a service's access policy.
@@ -292,7 +297,7 @@ export interface GetAutoscalingPolicyResponse {
 
 export interface GetInferenceServiceResponse {
   response: { code: number; message: string };
-  service: InferenceServiceSummary & { accelerator?: string; acceleratorType?: string };
+  service: InferenceServiceSummary;
   endpoints: string[];
   autoscaling?: AutoscalingPolicy;
   autoscalingStatus?: AutoscalingStatus;

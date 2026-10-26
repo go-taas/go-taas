@@ -44,7 +44,7 @@ func TestNodeToInventory(t *testing.T) {
 		},
 	}
 
-	inv := nodeToInventory(node)
+	inv := nodeToInventory(node, nil)
 	assert.Equal(t, "uid-1", inv.NodeID)
 	assert.Equal(t, "gpu-node-1", inv.Name)
 	assert.Equal(t, "nvidia", inv.Vendor)
@@ -74,7 +74,7 @@ func TestNodeToInventoryUnspecifiedVendor(t *testing.T) {
 			},
 		},
 	}
-	inv := nodeToInventory(node)
+	inv := nodeToInventory(node, nil)
 	assert.Equal(t, "unspecified", inv.Vendor)
 	assert.Equal(t, "not_ready", inv.Readiness)
 	assert.Equal(t, "unknown", inv.DevicePluginState)
@@ -261,7 +261,7 @@ func TestNodeToInventoryInfersVendorFromDevicePlugin(t *testing.T) {
 				ObjectMeta: metav1.ObjectMeta{Name: "n", UID: "u", Labels: c.labels},
 				Status:     corev1.NodeStatus{Allocatable: c.alloc},
 			}
-			assert.Equal(t, c.want, nodeToInventory(node).Vendor)
+			assert.Equal(t, c.want, nodeToInventory(node, nil).Vendor)
 		})
 	}
 }
@@ -301,7 +301,7 @@ func TestNodeToInventoryCardModel(t *testing.T) {
 			},
 		},
 	}
-	inv := nodeToInventory(node)
+	inv := nodeToInventory(node, nil)
 	assert.Equal(t, "nvidia", inv.Vendor)
 	assert.Equal(t, []string{"NVIDIA-GeForce-RTX-4090"}, inv.CardTypes)
 	require.Len(t, inv.Resources, 1)
@@ -323,7 +323,141 @@ func TestNodeToInventoryCardTypeFallsBack(t *testing.T) {
 			Allocatable: corev1.ResourceList{"metax-tech.com/gpu": resource.MustParse("1")},
 		},
 	}
-	inv := nodeToInventory(node)
+	inv := nodeToInventory(node, nil)
 	assert.Equal(t, "metax", inv.Vendor)
 	assert.Equal(t, []string{"gpu"}, inv.CardTypes)
+}
+
+// TestDriverVersionFromNode covers the label conventions a real cluster
+// carries.
+//
+// Only `go-taas.com/driver-version` was read at first, and no cluster sets it;
+// NVIDIA's GPU Feature Discovery publishes the version under
+// `nvidia.com/cuda.driver-version.full` instead. The version therefore stayed
+// empty, and the health rule — which required it — reported "degraded" on
+// every healthy node.
+func TestDriverVersionFromNode(t *testing.T) {
+	cases := []struct {
+		name   string
+		labels map[string]string
+		want   string
+	}{
+		{
+			name:   "platform label wins",
+			labels: map[string]string{labelDriverVersion: "535.104.05", "nvidia.com/cuda.driver-version.full": "595.91.07"},
+			want:   "535.104.05",
+		},
+		{
+			name:   "gpu feature discovery full version",
+			labels: map[string]string{"nvidia.com/cuda.driver-version.full": "595.91.07"},
+			want:   "595.91.07",
+		},
+		{
+			name: "assembled from the parts",
+			labels: map[string]string{
+				"nvidia.com/cuda.driver-version.major":    "595",
+				"nvidia.com/cuda.driver-version.minor":    "91",
+				"nvidia.com/cuda.driver-version.revision": "07",
+			},
+			want: "595.91.07",
+		},
+		{
+			name: "assembled without a revision",
+			labels: map[string]string{
+				"nvidia.com/cuda.driver-version.major": "595",
+				"nvidia.com/cuda.driver-version.minor": "91",
+			},
+			want: "595.91",
+		},
+		{
+			name:   "nothing published",
+			labels: map[string]string{"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090"},
+			want:   "",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assert.Equal(t, tc.want, driverVersionFromNode(tc.labels))
+		})
+	}
+}
+
+// TestAllocatedByNodeSumming covers the allocation count that used to be a
+// hardcoded zero, which made a fleet with busy cards report every card idle.
+func TestAllocatedByNodeSumming(t *testing.T) {
+	pod := func(name, node string, phase corev1.PodPhase, gpus string) *corev1.Pod {
+		p := &corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{Name: name, Namespace: "default"},
+			Spec: corev1.PodSpec{
+				NodeName: node,
+				Containers: []corev1.Container{{
+					Name: "c",
+					Resources: corev1.ResourceRequirements{
+						Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse(gpus)},
+					},
+				}},
+			},
+			Status: corev1.PodStatus{Phase: phase},
+		}
+		return p
+	}
+	client := fake.NewSimpleClientset(
+		pod("running-1", "gpu-node-1", corev1.PodRunning, "1"),
+		pod("running-2", "gpu-node-1", corev1.PodRunning, "1"),
+		pod("done", "gpu-node-1", corev1.PodSucceeded, "1"),
+		pod("elsewhere", "gpu-node-2", corev1.PodRunning, "2"),
+		pod("unscheduled", "", corev1.PodPending, "1"),
+	)
+	collector := &InventoryCollector{clientset: client}
+
+	got, err := collector.allocatedByNode(context.Background())
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, got["gpu-node-1"]["nvidia.com/gpu"],
+		"finished pods release their devices; unscheduled pods reserve nothing")
+	assert.EqualValues(t, 2, got["gpu-node-2"]["nvidia.com/gpu"])
+	_, ok := got[""]
+	assert.False(t, ok, "an unscheduled pod must not be attributed to a node")
+}
+
+// TestNodeToInventoryReportsRealAllocation proves the numbers the console
+// shows: allocated from the pods, free as the remainder.
+func TestNodeToInventoryReportsRealAllocation(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:   "sd4090",
+			Labels: map[string]string{labelAcceleratorVendor: "nvidia", "nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090"},
+		},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{{Type: corev1.NodeReady, Status: corev1.ConditionTrue}},
+			Allocatable: corev1.ResourceList{
+				"nvidia.com/gpu": resource.MustParse("2"),
+			},
+		},
+	}
+
+	inv := nodeToInventory(node, map[corev1.ResourceName]int64{"nvidia.com/gpu": 1})
+	assert.EqualValues(t, 1, inv.GPUsAllocated)
+	assert.EqualValues(t, 1, inv.GPUsFree)
+	require.Len(t, inv.Resources, 1)
+	assert.Equal(t, "NVIDIA-GeForce-RTX-4090", inv.Resources[0].CardType)
+	assert.EqualValues(t, 1, inv.Resources[0].Allocated)
+}
+
+// TestAllocatedByNodeCountsARequestWithoutALimit covers the Kubernetes
+// convention for extended resources: a limit implies a request.
+func TestRequestedAcceleratorsReadsBothFields(t *testing.T) {
+	onlyRequest := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("3")},
+	}
+	assert.EqualValues(t, 3, requestedAccelerators(onlyRequest)["nvidia.com/gpu"])
+
+	onlyLimit := corev1.ResourceRequirements{
+		Limits: corev1.ResourceList{"nvidia.com/gpu": resource.MustParse("2")},
+	}
+	assert.EqualValues(t, 2, requestedAccelerators(onlyLimit)["nvidia.com/gpu"])
+
+	cpuOnly := corev1.ResourceRequirements{
+		Requests: corev1.ResourceList{"cpu": resource.MustParse("2")},
+	}
+	assert.Empty(t, requestedAccelerators(cpuOnly), "CPU is not an accelerator")
 }

@@ -26,8 +26,12 @@ func (f *fakeWarmupProvider) ListWarmupTasksForNode(_ context.Context, _ string,
 func TestServiceListAcceleratorNodes(t *testing.T) {
 	cache := NewProjectionCache()
 	cache.Replace(map[string]*AcceleratorNode{
-		"n1": testNode("n1", "node-a", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535", nil),
-		"n2": testNode("n2", "node-b", VendorNvidia, ReadinessReady, DevicePluginDegraded, "535", nil),
+		"n1": testNode("n1", "node-a", VendorNvidia, ReadinessReady, DevicePluginHealthy, "535",
+			[]AcceleratorResource{{CardType: "A100", Allocatable: 8}}),
+		"n2": testNode("n2", "node-b", VendorNvidia, ReadinessReady, DevicePluginDegraded, "535",
+			[]AcceleratorResource{{CardType: "A100", Allocatable: 4}}),
+		// No card: counted, not listed.
+		"n3": testNode("n3", "node-cpu", VendorUnspecified, ReadinessReady, DevicePluginUnknown, "", nil),
 	})
 	svc := NewWithCache(cache)
 
@@ -40,6 +44,8 @@ func TestServiceListAcceleratorNodes(t *testing.T) {
 	assert.Equal(t, VendorNvidia, resp.Nodes[0].Vendor)
 	assert.Equal(t, HealthHealthy, resp.Nodes[0].Health)
 	assert.EqualValues(t, 2, resp.PageMeta.Total)
+	assert.EqualValues(t, 1, resp.CpuNodeCount,
+		"a node with no card is reported as a count, not as a table row")
 
 	// Vendor filter.
 	resp, err = svc.ListAcceleratorNodes(context.Background(), &acceleratorv1.ListAcceleratorNodesRequest{

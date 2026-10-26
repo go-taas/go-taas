@@ -130,6 +130,12 @@ func (c *ProjectionCache) List(vendor, health, search string, offset, limit int)
 
 	var matched []*AcceleratorNode
 	for _, n := range c.nodes {
+		// The fleet view is about accelerators. A node with no cards is not
+		// a row an operator can act on here — it cannot run inference — so it
+		// is reported as a count instead of a table entry that reads "0 / 0".
+		if !n.hasCards() {
+			continue
+		}
 		if vendor != "" && n.Vendor != vendor {
 			continue
 		}
@@ -160,6 +166,32 @@ func (c *ProjectionCache) List(vendor, health, search string, offset, limit int)
 		end = len(matched)
 	}
 	return matched[offset:end], total, nil
+}
+
+// CPUNodeCount returns how many nodes in the fleet carry no accelerator.
+//
+// It is what the page shows next to the card table so an operator can tell a
+// fleet of two GPU nodes plus forty CPU nodes from a fleet of two nodes.
+func (c *ProjectionCache) CPUNodeCount() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	var count int64
+	for _, n := range c.nodes {
+		if !n.hasCards() {
+			count++
+		}
+	}
+	return count
+}
+
+// hasCards reports whether the node has at least one allocatable accelerator.
+func (n *AcceleratorNode) hasCards() bool {
+	for _, r := range n.Resources {
+		if r.Allocatable > 0 {
+			return true
+		}
+	}
+	return false
 }
 
 // CardTypeSummary derives the (vendor, card_type) capacity summary from

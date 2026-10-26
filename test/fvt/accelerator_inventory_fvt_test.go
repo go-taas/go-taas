@@ -180,12 +180,14 @@ func TestFVTAccleratorInventory(t *testing.T) {
 		},
 	})
 
-	// AC1: list returns every node with its signals; unlabeled node is
-	// unspecified.
+	// AC1: the list returns every node with an accelerator. node-c has none,
+	// so it is reported as a count instead of a row that would read "0 / 0".
 	code, body := env.call(t, http.MethodGet, "/api/v1/admin/accelerators/nodes", nil)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	nodes, _ := body["nodes"].([]any)
-	require.Len(t, nodes, 3)
+	require.Len(t, nodes, 2)
+	assert.Equal(t, "1", body["cpuNodeCount"],
+		"the node without cards is counted, not listed")
 
 	byName := map[string]map[string]any{}
 	for _, n := range nodes {
@@ -203,9 +205,7 @@ func TestFVTAccleratorInventory(t *testing.T) {
 	assert.Equal(t, "ready", byName["node-a"]["readiness"])
 	// node-b is degraded (device plugin degraded).
 	assert.Equal(t, "degraded", byName["node-b"]["health"])
-	// node-c is unspecified and ready -> healthy (AC1, FR4.2).
-	assert.Equal(t, "unspecified", byName["node-c"]["vendor"])
-	assert.Equal(t, "healthy", byName["node-c"]["health"])
+	assert.NotContains(t, byName, "node-c", "a node with no card is not a fleet row")
 
 	// AC1: vendor filter.
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/accelerators/nodes?vendor=nvidia", nil)
@@ -282,18 +282,26 @@ func TestFVTAccleratorHealthComposite(t *testing.T) {
 	env.publishSnapshot(t, []map[string]any{
 		{
 			"node_id": "h1", "name": "healthy-node", "vendor": "nvidia",
+			"resources": []map[string]any{{"card_type": "A100", "allocatable": 8}},
+
 			"driver_version": "535", "device_plugin_state": "healthy", "readiness": "ready",
 		},
 		{
 			"node_id": "h2", "name": "no-driver", "vendor": "nvidia",
+			"resources": []map[string]any{{"card_type": "A100", "allocatable": 8}},
+
 			"driver_version": "", "device_plugin_state": "healthy", "readiness": "ready",
 		},
 		{
 			"node_id": "h3", "name": "not-ready", "vendor": "nvidia",
+			"resources": []map[string]any{{"card_type": "A100", "allocatable": 8}},
+
 			"driver_version": "535", "device_plugin_state": "healthy", "readiness": "not_ready",
 		},
 		{
 			"node_id": "h4", "name": "unknown-dp", "vendor": "nvidia",
+			"resources": []map[string]any{{"card_type": "A100", "allocatable": 8}},
+
 			"driver_version": "535", "device_plugin_state": "unknown", "readiness": "ready",
 		},
 	})
@@ -307,7 +315,10 @@ func TestFVTAccleratorHealthComposite(t *testing.T) {
 		byName[nm["name"].(string)] = nm
 	}
 	assert.Equal(t, "healthy", byName["healthy-node"]["health"])
-	assert.Equal(t, "degraded", byName["no-driver"]["health"])
+	// A node that does not publish its driver version is not unhealthy: the
+	// version is informational, and requiring it marked every node on a real
+	// install "degraded".
+	assert.Equal(t, "healthy", byName["no-driver"]["health"])
 	assert.Equal(t, "degraded", byName["not-ready"]["health"])
 	assert.Equal(t, "unknown", byName["unknown-dp"]["health"])
 }

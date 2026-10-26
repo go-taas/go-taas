@@ -905,7 +905,10 @@ export const en: Record<string, string> = {
   'accelerators.title': 'Accelerators',
   'accelerators.subtitle': 'GPU fleet capacity and health across NVIDIA, Iluvatar CoreX, and MetaX.',
   'accelerators.stale': 'Showing stale data — the last poll failed.',
-  'accelerators.vendorNodes': '{v}: 0 nodes',
+  // Nodes with no accelerator: the card table lists only nodes that have
+  // cards, so this count tells "2 GPU nodes" apart from
+  // "2 GPU nodes plus 40 CPU nodes".
+  'accelerators.cpuNodes': '{count} node(s) without an accelerator are not listed above',
   'accelerators.cardType': 'Card type',
   'accelerators.freeTotal': 'Free / Total',
   'accelerators.utilization': 'Utilization',

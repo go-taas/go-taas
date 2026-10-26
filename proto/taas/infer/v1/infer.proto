@@ -373,6 +373,14 @@ message InferenceServiceSummary {
   // specific orgs, projects or users. False means every platform user may
   // use it, which is the default.
   bool access_restricted = 15;
+  // accelerator is the hardware platform the service runs on (nvidia,
+  // iluvatar, metax), as chosen at creation.
+  string accelerator = 16;
+  // accelerator_type is the concrete card model requested at creation, when
+  // one was named. Empty means the platform picked from the accelerator's
+  // inventory, so a reader shows the platform alone rather than inventing a
+  // card.
+  string accelerator_type = 17;
 }
 
 message GetInferenceServiceRequest {

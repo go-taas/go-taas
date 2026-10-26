@@ -38,6 +38,8 @@ interface NodesResponse {
   response: { code: number; message: string };
   nodes: AcceleratorNodeSummary[];
   pageMeta?: PageMeta;
+  // cpuNodeCount is how many nodes in the fleet carry no accelerator.
+  cpuNodeCount?: string;
 }
 
 interface CardTypesResponse {
@@ -47,7 +49,6 @@ interface CardTypesResponse {
 
 const PAGE_SIZE = 20;
 const POLL_MS = 30_000;
-const VENDORS = ['nvidia', 'iluvatar', 'metax', 'unspecified'];
 const HEALTHS = ['healthy', 'degraded', 'unknown'];
 
 // vendorBadgeClass maps a vendor to a stable badge style.
@@ -82,6 +83,7 @@ export default function AcceleratorsPage() {
   const { t, tEnum } = useI18n();
   const [nodes, setNodes] = useState<AcceleratorNodeSummary[]>([]);
   const [cardTypes, setCardTypes] = useState<CardTypeSummary[]>([]);
+  const [cpuNodeCount, setCpuNodeCount] = useState(0);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [vendor, setVendor] = useState('');
@@ -114,6 +116,7 @@ export default function AcceleratorsPage() {
           api.get<CardTypesResponse>('/api/v1/admin/accelerators/card-types', orgId),
         ]);
         setNodes(nodesData.nodes || []);
+        setCpuNodeCount(parseInt(nodesData.cpuNodeCount || '0', 10) || 0);
         setTotal(parseInt(nodesData.pageMeta?.total || '0', 10) || 0);
         setCardTypes(cardData.cardTypes || []);
         setLastUpdated(Math.floor(Date.now() / 1000));
@@ -139,9 +142,19 @@ export default function AcceleratorsPage() {
 
   const refresh = () => void load(false);
 
-  const zeroNodeVendors = VENDORS.filter(
-    (v) => !cardTypes.some((c) => c.vendor === v),
-  );
+  // The vendor filter offers what the fleet actually has.
+  //
+  // It used to be a hardcoded list with an "vendor X has no nodes" banner for
+  // every vendor it contained, so a single-vendor install opened on four
+  // notices about hardware it does not own.
+  const vendors = Array.from(
+    new Set([
+      ...cardTypes.map((c) => c.vendor),
+      ...nodes.map((n) => n.vendor),
+    ]),
+  )
+    .filter(Boolean)
+    .sort();
 
   return (
     <div data-testid="accelerators-page">
@@ -181,12 +194,12 @@ export default function AcceleratorsPage() {
         </div>
       )}
 
-      {zeroNodeVendors.map((v) => (
-        <div className="info-banner" data-testid={`accelerators-vendor-banner-${v}`}>
+      {cpuNodeCount > 0 && (
+        <div className="info-banner" data-testid="accelerators-cpu-nodes">
           <span className="info-banner-dot" aria-hidden="true" />
-          {t('accelerators.vendorNodes', { v: tEnum('state', v) })}
+          {t('accelerators.cpuNodes', { count: String(cpuNodeCount) })}
         </div>
-      ))}
+      )}
 
       <div className="dashboard-cards" data-testid="accelerators-summary-strip">
         {cardTypes.map((c) => {
@@ -249,7 +262,7 @@ export default function AcceleratorsPage() {
           }}
         >
           <option value="">{t('common.allVendors')}</option>
-          {VENDORS.map((v) => (
+          {vendors.map((v) => (
             <option key={v} value={v}>
               {tEnum('state', v)}
             </option>

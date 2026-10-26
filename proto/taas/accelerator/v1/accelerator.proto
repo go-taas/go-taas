@@ -42,8 +42,12 @@ message ListAcceleratorNodesRequest {
 
 message ListAcceleratorNodesResponse {
   taas.common.v1.Response response = 1;
+  // nodes are the fleet's accelerator nodes only: a node with no allocatable
+  // card cannot run inference and is reported as a count instead of a row.
   repeated AcceleratorNodeSummary nodes = 2;
   taas.common.v1.PageMeta page_meta = 3;
+  // cpu_node_count is how many nodes in the fleet carry no accelerator.
+  int64 cpu_node_count = 4;
 }
 
 message AcceleratorNodeSummary {
