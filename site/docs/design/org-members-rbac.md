@@ -326,3 +326,58 @@ Error codes (auth/tenancy block 10001–10099, `pkg/errors/codes.go`):
 | Role-based visibility of the data plane | Future (data plane stays key-authenticated) |
 | CLI member/invitation commands | When the CLI surface is next touched |
 | Invitation audit trail (who invited whom, when) | Future operations tooling |
+---
+
+## 9. Admin Scopes and Console Choice
+
+An account can hold several roles at once: the platform administrator (the
+`platform-admin` role on the dedicated platform organization), an
+organization administrator (`owner`/`admin` of a tenant organization), and a
+project administrator (`admin` of a project). The requirement is that each
+role enters **its own console**, with only its own functions.
+
+### 9.1 Scope model
+
+- **Platform**: organizations (create/edit, assign org admins, add users,
+  set org quotas, organization lifecycle), the user directory, SSO providers,
+  identity bindings, and the existing operator surface (models, usage,
+  billing, audit, …). **No project management.**
+- **Organization**: organization metadata, projects (create/edit, assign
+  project admins, add organization users), members and invitations, join
+  requests, and project quotas. **No inference or platform pages.**
+- **Project**: project members, join requests targeting the project, and the
+  project quota.
+
+### 9.2 API
+
+`GetMyAdminScopes` (`GET /api/v1/tenancy/my-admin-scopes`) returns one entry
+per scope the caller may enter (`scope_type`, `organization_id`,
+`project_id`, `display_name`, `role`). The console chooses the scope at
+`/admin`; a single scope is entered directly, and a multi-role user picks one
+and can switch at any time. The selection is persisted client-side but
+re-validated against the server on every load, so a revoked role cannot be
+resurrected from storage.
+
+### 9.3 Join pick-lists
+
+`ListJoinableOrganizations` (`GET /api/v1/tenancy/joinable-organizations`) and
+`ListJoinableProjects` (`GET /api/v1/tenancy/joinable-projects`) return the
+targets a user may apply to join, excluding the dedicated platform
+organization and any target with a pending request. The end-user "Join
+requests" page renders these as dropdowns, so a user selects from a list
+instead of typing an id.
+
+### 9.4 Membership rules
+
+- One organization: a user belongs to at most one tenant organization. The
+  dedicated platform organization is a system artifact and does not count.
+- One project: a user belongs to at most one project.
+Both rules are enforced on request creation and again on approval.
+
+### 9.5 Authorization
+
+Organization metadata edits require a platform administrator or the
+organization's admin/owner. Project create/update/disable/enable require the
+owning organization's admin/owner; a platform administrator has no project
+management. Member, invitation, join-request and quota operations keep the
+existing admin/owner (organization) and project-admin gates.
