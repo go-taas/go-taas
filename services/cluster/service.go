@@ -94,6 +94,16 @@ func New(components server.Components) *Service {
 	}
 }
 
+// NewWithCache constructs the cluster service sharing a caller-provided
+// projection cache. The snapshot consumer updates the same cache the RPCs
+// read, so the health projection stays consistent (feature #40, AD4).
+func NewWithCache(components server.Components, cache *ProjectionCache) *Service {
+	return &Service{
+		components: components,
+		cache:      cache,
+	}
+}
+
 // SetDefaultClusterID overrides the platform default cluster.
 func (s *Service) SetDefaultClusterID(v string) { s.defaultClusterID = v }
 

@@ -262,6 +262,27 @@ func TestProductionConstructor(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestNewWithCacheSharesCache verifies the service and the snapshot
+// consumer share the same projection cache (feature #40, AD4).
+func TestNewWithCacheSharesCache(t *testing.T) {
+	db := newTestDB(t)
+	cache := NewProjectionCache()
+	svc := NewWithCache(&fakeComponents{db: db}, cache)
+	require.NotNil(t, svc.cache)
+	assert.Equal(t, cache, svc.cache)
+
+	// A snapshot applied to the shared cache is visible to the service.
+	cache.Replace(map[string]*ClusterHealth{
+		"c1": {ClusterID: "c1", Health: "healthy", NodeCount: 2, Nodes: []ClusterNodeHealth{
+			{NodeID: "n1", Name: "node-1", Status: "ready"},
+		}},
+	})
+	health := svc.cache.Get("c1")
+	require.NotNil(t, health)
+	assert.Equal(t, int64(2), health.NodeCount)
+	require.Len(t, health.Nodes, 1)
+}
+
 // TestDisableClusterUnknown verifies disabling an unknown cluster
 // returns 12401.
 func TestDisableClusterUnknown(t *testing.T) {

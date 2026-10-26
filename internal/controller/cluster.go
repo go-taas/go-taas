@@ -161,6 +161,8 @@ func (c *ClusterCollector) collectCluster(ctx context.Context, cl registeredClus
 			Status: nodeStatus(n),
 		})
 	}
+	logger.S().Infow("controller: cluster health collected",
+		"cluster_id", cl.ID, "node_count", entry.NodeCount, "nodes", len(entry.Nodes))
 	return entry
 }
 

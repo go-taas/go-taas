@@ -205,7 +205,7 @@ func main() {
 	// Feature #40: the cluster service owns the cluster registry and the
 	// cluster-health projection (admin-only).
 	clusterCache := cluster.NewProjectionCache()
-	clusterSvc := cluster.New(srv.Components())
+	clusterSvc := cluster.NewWithCache(srv.Components(), clusterCache)
 	clusterSvc.SetDefaultClusterID(cfg.Cluster.DefaultClusterID)
 	srv.RegisterService(clusterSvc)
 	// Feature #47: the runtime service owns the platform serving scheme and
