@@ -41,7 +41,7 @@ AD1–AD10 把 UI/UX 设计的决策复述为实现级规则。**AD11 是架构�
 | # | 决策 | 理由 |
 | --- | --- | --- |
 | AD1 | **清单是 Kubernetes 节点 + 扩展资源状态的投影，由 Controller 采集、经管理网关提供；不是新的数据库表。** Controller 是唯一持有 Kubernetes 客户端的组件；它按间隔轮询节点并把**全量快照**发布到 MQ；accelerator 服务消费快照并维护**内存投影缓存**（按节点 id 的 map），三个 RPC 读取它 | 设计 D4。事实来源是集群（节点标签、`nvidia.com/gpu` 式扩展资源、设备插件状态）。投影避免出现与集群漂移的第二个事实来源。全量快照发布是自愈的：从集群移除的节点会在下一个快照中消失，服务重启后也会从下一个快照重新填充缓存。缓存是临时的、单副本的；对只读遥测视图可接受（权衡见 AD11） |
-| AD2 | **Controller 发布原始信号；accelerator 服务计算复合健康。** Controller 按节点上报：就绪度、设备插件状态、驱动版本是否存在、厂商、卡型、已分配/空闲数量。accelerator 服务在摄入时从三个原始信号推导复合 `health` | 设计 D3。健康语义位于提供 API 的服务中，因此 AC4 单元测试是服务级测试，Controller 保持为哑采集器。客户端只渲染徽章，从不计算健康 |
+| AD2 | **Controller 发布原始信号；accelerator 服务计算复合健康。** Controller 按节点上报：就绪度、设备插件状态、驱动版本、厂商、卡型、已分配/空闲数量。accelerator 服务在摄入时从就绪度与设备插件状态推导复合 `health`（驱动版本只展示，不参与判定） | 设计 D3。健康语义位于提供 API 的服务中，因此 AC4 单元测试是服务级测试，Controller 保持为哑采集器。客户端只渲染徽章，从不计算健康 |
 | AD3 | **厂商从节点标签推导；卡型从节点上加速器专属的扩展资源名或标签推导；无加速器标签的节点为 `unspecified`。** 厂商驱动徽章与卡型解析；未打标签的节点仍会列出，其健康仅基于节点就绪度 | 设计 D5、FR4.2。与架构的节点标签模型一致（第 2.3 节）。厂商集合是封闭的：`nvidia`、`iluvatar`、`metax`、`unspecified` |
 | AD4 | **已分配 vs 空闲由节点每种卡型的可分配 vs 已分配扩展资源计算。** 页面同时展示两个数字与利用率条 | 设计 D6。「空闲容量」是运维的规划问题；可分配/已分配是 Kubernetes 原生答案 |
 | AD5 | **页面仅限管理面。** 路由 `/admin/accelerators` 与 `/admin/accelerators/:nodeId`；API 前缀 `/api/v1/admin/accelerators/*`。租户永远看不到集群 | 设计 D7。加速器集群是运维内部的编排状态；租户消费的是模型，不是节点 |
@@ -132,7 +132,7 @@ Controller 是唯一持有 Kubernetes 客户端的组件。它运行一个新的
    - **就绪度**：来自节点的 `Ready` 条件（`ready` / `not_ready` / `unknown`）。
    - **厂商**：来自加速器标签。厂商集合封闭：`nvidia`、`iluvatar`、`metax`、`unspecified`。无加速器标签的节点为 `unspecified`（AD3）。
    - **卡型与已分配/空闲**：来自节点上加速器专属的扩展资源。对每种卡型，`allocatable` vs `allocated`（节点上各 Pod 请求之和，或设备插件上报的扩展资源 `allocatable` 减 `allocated`）。卡型从扩展资源名或加速器标签解析（如 `nvidia.com/gpu` → 卡型来自节点标签 `nvidia.com/gpu.product`；Iluvatar/MetaX 对应项）。
-   - **驱动版本**：来自 GPU Operator 写入的节点标签（如 `nvidia.com/driver.version`；Iluvatar/MetaX 对应项）。是否存在是健康的布尔信号；值显示在详情视图。
+   - **驱动版本**：按优先级读取 GPU Operator 写入的节点标签：`go-taas.com/driver-version`（平台自有约定，集群设置了才生效）、`nvidia.com/cuda.driver-version.full`（GPU Feature Discovery 实际发布的标签，如 `595.91.07`），以及 major/minor/revision 分段。它是展示信息，显示在列表与详情视图，**不参与健康判定**（见下）。
    - **设备插件状态**：来自节点的设备插件状态（设备插件上报的 `Healthy`/`Unhealthy` 条件，或扩展资源 allocatable 非零）。`healthy` / `degraded` / `unknown`。
    - **逐 GPU 明细**：索引、型号、已分配/空闲，以及任何逐 GPU 健康备注（来自设备插件的逐设备健康，若可用）。
 3. 组装**全量快照**（所有节点）并发布到 MQ subject `accelerator.inventory`（JSON 体，带 `reported_at` 时间戳）。
@@ -144,7 +144,9 @@ Controller 是唯一持有 Kubernetes 客户端的组件。它运行一个新的
 accelerator 服务运行一个 `server.Runner`，订阅 `accelerator.inventory`。对每个快照：
 
 1. 解析 JSON 体；畸形快照记录日志并跳过（绝不重试 —— 畸形快照永远不会变好）。
-2. 对每个节点从三个原始信号计算复合 `health`（AD2）：仅当就绪度为 `ready`、设备插件为 `healthy` 且存在驱动版本时才为 `healthy`；否则为 `degraded`；任一信号为 `unknown` 则为 `unknown`。
+2. 对每个节点从原始信号计算复合 `health`（AD2）：当就绪度为 `ready` 且设备插件为 `healthy` 时为 `healthy`；否则为 `degraded`；任一信号为 `unknown` 则为 `unknown`。**驱动版本不是输入** —— 它只是为运维展示的信息，把它当作必要条件会让真实环境里每个节点都显示 `degraded`，从而让运维学会忽略这一列。
+
+   列表中只包含至少有一张可分配加速卡的节点：没有卡的节点无法运行推理，列出来只会得到一行 "0 / 0"。这些节点改为在响应上以 `cpu_node_count` 汇总，因此运维仍能区分「2 个 GPU 节点」与「2 个 GPU 节点 + 40 个 CPU 节点」。
 3. 在写锁下整体替换内存投影缓存。
 
 缓存是 `sync.RWMutex` 保护的 `map[string]*AcceleratorNode`；三个 RPC 在读锁下读取它。
@@ -155,7 +157,7 @@ accelerator 服务运行一个 `server.Runner`，订阅 `accelerator.inventory`�
 | --- | --- | --- |
 | 就绪度 | 节点 `Ready` 条件 | `ready` / `not_ready` / `unknown` |
 | 设备插件状态 | 设备插件状态 / 扩展资源 allocatable | `healthy` / `degraded` / `unknown` |
-| 驱动存在 | 驱动版本节点标签 | 存在 / 不存在 |
+| 驱动版本 | 驱动版本节点标签 | 展示信息，不参与健康判定 |
 
 复合 `health`（在 accelerator 服务中计算，AD2）：
 
@@ -620,7 +622,7 @@ func (c *ProjectionCache) CardTypeSummary() []CardTypeSummary // 读锁，分组
 `snapshot_consumer.go`：
 
 - `SnapshotConsumer` 实现 `server.Runner`：`Run(ctx)` 订阅 `subjects.AcceleratorInventory` 并通过 `handle` 应用每个快照。
-- `handle(ctx, msg)`：反序列化快照；畸形 → 记录日志 + 跳过（绝不重试）。对每个节点从三个原始信号计算复合 `health`（第 4.3 节）；构建 `map[string]*AcceleratorNode`；`cache.Replace(...)`。
+- `handle(ctx, msg)`：反序列化快照；畸形 → 记录日志 + 跳过（绝不重试）。对每个节点从就绪度与设备插件状态计算复合 `health`（第 4.3 节）；构建 `map[string]*AcceleratorNode`；`cache.Replace(...)`。
 - 构造：`NewSnapshotConsumer(mqClient, cache, workers)`；`NewSnapshotConsumerRunner(components, cache)` 在禁用或组件不可用时返回 nil（`infer`/`image` 模式）。调用方传入服务所读取的同一个 `*ProjectionCache`，使消费者与服务共享一个缓存（BUG-ACCEL-001）。
 - 配置：`accelerator.snapshotConsumer.{enabled,workers}`（默认 true / 1）。
 
