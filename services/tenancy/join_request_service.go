@@ -34,23 +34,36 @@ func (s *Service) CreateJoinRequest(ctx context.Context, req *tenancyv1.CreateJo
 	switch targetType {
 	case JoinTargetOrganization:
 		// One-org rule: a user may belong to exactly one organization.
+		// The dedicated platform org is a system artifact and does not
+		// count as tenant membership.
 		orgs, err := repo.ListMemberOrgs(ctx, userID)
 		if err != nil {
 			return nil, err
 		}
-		if len(orgs) > 0 {
+		if len(realOrgMemberships(orgs)) > 0 {
 			return nil, apierrors.New(apierrors.CodeMemberExists)
 		}
 		orgRepo, err := s.repository()
 		if err != nil {
 			return nil, err
 		}
-		if _, err := orgRepo.FindOrganization(ctx, targetID); isRecordNotFound(err) {
+		if org, err := orgRepo.FindOrganization(ctx, targetID); isRecordNotFound(err) {
 			return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
 		} else if err != nil {
 			return nil, err
+		} else if org.ID == platformOrgID {
+			// The platform org is not joinable.
+			return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
 		}
 	case JoinTargetProject:
+		// One-project rule: a user may belong to exactly one project.
+		projects, err := repo.ListMemberProjects(ctx, userID)
+		if err != nil {
+			return nil, err
+		}
+		if len(projects) > 0 {
+			return nil, apierrors.New(apierrors.CodeMemberExists)
+		}
 		if err := s.requireOrgMembershipOfProject(ctx, targetID, userID); err != nil {
 			return nil, err
 		}
@@ -145,7 +158,7 @@ func (s *Service) ApproveJoinRequest(ctx context.Context, req *tenancyv1.Approve
 		if err != nil {
 			return nil, err
 		}
-		if len(orgs) > 0 {
+		if len(realOrgMemberships(orgs)) > 0 {
 			return nil, apierrors.New(apierrors.CodeMemberExists)
 		}
 		if err := repo.AddMember(ctx, &OrgMember{
@@ -157,6 +170,14 @@ func (s *Service) ApproveJoinRequest(ctx context.Context, req *tenancyv1.Approve
 			return nil, err
 		}
 	case JoinTargetProject:
+		// Re-check the one-project rule.
+		projects, err := repo.ListMemberProjects(ctx, j.UserID)
+		if err != nil {
+			return nil, err
+		}
+		if len(projects) > 0 {
+			return nil, apierrors.New(apierrors.CodeMemberExists)
+		}
 		if err := repo.AddProjectMember(ctx, &ProjectMember{
 			ProjectID: j.TargetID,
 			UserID:    j.UserID,

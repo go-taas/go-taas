@@ -258,6 +258,29 @@ service TenancyService {
     option (google.api.http) = {get: "/api/v1/tenancy/my-projects"};
   }
 
+  // GetMyAdminScopes returns the admin scopes the caller may enter:
+  // platform, one or more organizations, and one or more projects
+  // (user surface; the caller is resolved from the session). The console
+  // uses it to offer the platform / organization / project choice.
+  rpc GetMyAdminScopes(GetMyAdminScopesRequest) returns (GetMyAdminScopesResponse) {
+    option (google.api.http) = {get: "/api/v1/tenancy/my-admin-scopes"};
+  }
+
+  // ListJoinableOrganizations returns the active organizations the caller
+  // may apply to join (user surface). Empty when the caller already
+  // belongs to an organization, so one-org membership is offered as a
+  // pick-list rather than free text.
+  rpc ListJoinableOrganizations(ListJoinableOrganizationsRequest) returns (ListJoinableOrganizationsResponse) {
+    option (google.api.http) = {get: "/api/v1/tenancy/joinable-organizations"};
+  }
+
+  // ListJoinableProjects returns the active projects of the caller's
+  // organization they may apply to join (user surface). Empty when the
+  // caller already belongs to a project.
+  rpc ListJoinableProjects(ListJoinableProjectsRequest) returns (ListJoinableProjectsResponse) {
+    option (google.api.http) = {get: "/api/v1/tenancy/joinable-projects"};
+  }
+
   // CreateJoinRequest submits a request to join an organization or a
   // project (user surface).
   rpc CreateJoinRequest(CreateJoinRequestRequest) returns (CreateJoinRequestResponse) {
@@ -768,6 +791,60 @@ message GetMyProjectsRequest {}
 message GetMyProjectsResponse {
   taas.common.v1.Response response = 1;
   repeated MyProject projects = 2;
+}
+
+// ---- Admin scopes (platform / organization / project console choice) ----
+
+// AdminScope is one management scope the caller may enter.
+message AdminScope {
+  // scope_type is platform / organization / project.
+  string scope_type = 1;
+  // organization_id is set for organization and project scopes.
+  string organization_id = 2;
+  // project_id is set for project scopes only.
+  string project_id = 3;
+  // display_name is the organization or project display name.
+  string display_name = 4;
+  // role is the caller's role in the scope.
+  string role = 5;
+}
+
+message GetMyAdminScopesRequest {}
+
+message GetMyAdminScopesResponse {
+  taas.common.v1.Response response = 1;
+  repeated AdminScope scopes = 2;
+}
+
+// ---- Joinable targets (self-service membership pick-lists) ----
+
+message JoinableOrganization {
+  string organization_id = 1;
+  string display_name = 2;
+}
+
+message ListJoinableOrganizationsRequest {}
+
+message ListJoinableOrganizationsResponse {
+  taas.common.v1.Response response = 1;
+  repeated JoinableOrganization organizations = 2;
+}
+
+message JoinableProject {
+  string project_id = 1;
+  string organization_id = 2;
+  string display_name = 3;
+}
+
+message ListJoinableProjectsRequest {
+  // organization_id optionally narrows the list; empty resolves the
+  // caller's own organization from the session.
+  string organization_id = 1;
+}
+
+message ListJoinableProjectsResponse {
+  taas.common.v1.Response response = 1;
+  repeated JoinableProject projects = 2;
 }
 
 // ---- Join requests (self-service membership) ----
