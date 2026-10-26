@@ -141,7 +141,7 @@ export function AdminScopeProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError('');
     try {
-      const data = await api.get<GetMyAdminScopesResponse>('/api/v1/tenancy/my-admin-scopes', '');
+      const data = await api.get<GetMyAdminScopesResponse>('/api/v1/admin/tenancy/my-admin-scopes', '');
       const list = data.scopes || [];
       setScopes(list);
       // Restore the persisted selection only when the server still grants

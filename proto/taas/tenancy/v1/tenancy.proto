@@ -263,7 +263,10 @@ service TenancyService {
   // (user surface; the caller is resolved from the session). The console
   // uses it to offer the platform / organization / project choice.
   rpc GetMyAdminScopes(GetMyAdminScopesRequest) returns (GetMyAdminScopesResponse) {
-    option (google.api.http) = {get: "/api/v1/tenancy/my-admin-scopes"};
+    option (google.api.http) = {
+      get: "/api/v1/tenancy/my-admin-scopes"
+      additional_bindings { get: "/api/v1/admin/tenancy/my-admin-scopes" }
+    };
   }
 
   // ListJoinableOrganizations returns the active organizations the caller
@@ -271,14 +274,20 @@ service TenancyService {
   // belongs to an organization, so one-org membership is offered as a
   // pick-list rather than free text.
   rpc ListJoinableOrganizations(ListJoinableOrganizationsRequest) returns (ListJoinableOrganizationsResponse) {
-    option (google.api.http) = {get: "/api/v1/tenancy/joinable-organizations"};
+    option (google.api.http) = {
+      get: "/api/v1/tenancy/joinable-organizations"
+      additional_bindings { get: "/api/v1/admin/tenancy/joinable-organizations" }
+    };
   }
 
   // ListJoinableProjects returns the active projects of the caller's
   // organization they may apply to join (user surface). Empty when the
   // caller already belongs to a project.
   rpc ListJoinableProjects(ListJoinableProjectsRequest) returns (ListJoinableProjectsResponse) {
-    option (google.api.http) = {get: "/api/v1/tenancy/joinable-projects"};
+    option (google.api.http) = {
+      get: "/api/v1/tenancy/joinable-projects"
+      additional_bindings { get: "/api/v1/admin/tenancy/joinable-projects" }
+    };
   }
 
   // CreateJoinRequest submits a request to join an organization or a
