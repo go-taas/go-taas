@@ -15,6 +15,7 @@ import {
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
 import { useI18n } from '../i18n';
+import { useAdminScope } from '../admin-scope';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -32,9 +33,13 @@ const PAGE_SIZE = 20;
 export default function ProjectsPage() {
   const { orgId } = useOrg();
   const { t } = useI18n();
+  const { scope } = useAdminScope();
+  // In the organization console the project registry is fixed to that
+  // organization, so an org admin cannot browse or act on another's.
+  const scopedOrgId = scope?.scopeType === 'organization' ? scope.organizationId : '';
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [orgs, setOrgs] = useState<OrganizationSummary[]>([]);
-  const [orgFilter, setOrgFilter] = useState('all');
+  const [orgFilter, setOrgFilter] = useState(scopedOrgId || 'all');
   const [stateFilter, setStateFilter] = useState('all');
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -110,6 +115,7 @@ export default function ProjectsPage() {
         <select
           data-testid="project-org-filter"
           value={orgFilter}
+          disabled={Boolean(scopedOrgId)}
           onChange={(e) => {
             setOrgFilter(e.target.value);
             setOffset(0);
@@ -233,6 +239,7 @@ export default function ProjectsPage() {
         <CreateProjectDialog
           orgId={orgId}
           orgs={orgs}
+          defaultOrganizationId={scopedOrgId}
           onClose={() => setCreateOpen(false)}
           onDone={() => {
             setCreateOpen(false);
@@ -288,15 +295,17 @@ export default function ProjectsPage() {
 function CreateProjectDialog({
   orgId,
   orgs,
+  defaultOrganizationId = '',
   onClose,
   onDone,
 }: {
   orgId: string;
   orgs: OrganizationSummary[];
+  defaultOrganizationId?: string;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [organizationId, setOrganizationId] = useState('');
+  const [organizationId, setOrganizationId] = useState(defaultOrganizationId);
   const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');

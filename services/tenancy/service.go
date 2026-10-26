@@ -383,6 +383,9 @@ func (s *Service) UpdateOrganization(ctx context.Context, req *tenancyv1.UpdateO
 	if len(req.GetDescription()) > maxDescriptionLen {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
+	if err := s.requireOrgAdminOrPlatform(ctx, req.GetOrganizationId()); err != nil {
+		return nil, err
+	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -464,6 +467,9 @@ func (s *Service) CreateProject(ctx context.Context, req *tenancyv1.CreateProjec
 	orgID := strings.TrimSpace(req.GetOrganizationId())
 	if orgID == "" {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
+	}
+	if err := s.requireOrgAdminWrite(ctx, orgID); err != nil {
+		return nil, err
 	}
 	name := strings.TrimSpace(req.GetDisplayName())
 	if len(name) < 1 || len(name) > maxDisplayNameLen {
@@ -564,6 +570,16 @@ func (s *Service) UpdateProject(ctx context.Context, req *tenancyv1.UpdateProjec
 	if err != nil {
 		return nil, err
 	}
+	existing, err := repo.FindProject(ctx, req.GetProjectId())
+	if isRecordNotFound(err) {
+		return nil, apierrors.New(apierrors.CodeProjectNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireOrgAdminWrite(ctx, existing.OrganizationID); err != nil {
+		return nil, err
+	}
 	project, err := repo.UpdateProject(ctx, req.GetProjectId(), name, req.GetDescription())
 	if isRecordNotFound(err) {
 		return nil, apierrors.New(apierrors.CodeProjectNotFound)
@@ -579,6 +595,16 @@ func (s *Service) UpdateProject(ctx context.Context, req *tenancyv1.UpdateProjec
 func (s *Service) DisableProject(ctx context.Context, req *tenancyv1.DisableProjectRequest) (*tenancyv1.DisableProjectResponse, error) {
 	repo, err := s.repository()
 	if err != nil {
+		return nil, err
+	}
+	existing, err := repo.FindProject(ctx, req.GetProjectId())
+	if isRecordNotFound(err) {
+		return nil, apierrors.New(apierrors.CodeProjectNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireOrgAdminWrite(ctx, existing.OrganizationID); err != nil {
 		return nil, err
 	}
 	project, err := repo.SetProjectState(ctx, req.GetProjectId(), StateDisabled)
@@ -603,6 +629,9 @@ func (s *Service) EnableProject(ctx context.Context, req *tenancyv1.EnableProjec
 		return nil, apierrors.New(apierrors.CodeProjectNotFound)
 	}
 	if err != nil {
+		return nil, err
+	}
+	if err := s.requireOrgAdminWrite(ctx, project.OrganizationID); err != nil {
 		return nil, err
 	}
 	org, err := repo.FindOrganization(ctx, project.OrganizationID)

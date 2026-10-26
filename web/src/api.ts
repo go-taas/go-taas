@@ -881,6 +881,35 @@ export interface MyProject {
   role: string; // admin | member | viewer
 }
 
+// AdminScope is one management scope the caller may enter (platform /
+// organization / project). The console offers one entry per scope so a
+// multi-role user chooses which console to open.
+export interface AdminScope {
+  scopeType: string; // platform | organization | project
+  organizationId: string;
+  projectId: string;
+  displayName: string;
+  role: string;
+}
+
+export interface GetMyAdminScopesResponse {
+  response: { code: number; message: string };
+  scopes: AdminScope[];
+}
+
+// JoinableOrganization is an organization the caller may apply to join.
+export interface JoinableOrganization {
+  organizationId: string;
+  displayName: string;
+}
+
+// JoinableProject is a project the caller may apply to join.
+export interface JoinableProject {
+  projectId: string;
+  organizationId: string;
+  displayName: string;
+}
+
 export interface Invitation {
   invitationId: string;
   email: string;

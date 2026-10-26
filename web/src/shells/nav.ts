@@ -254,3 +254,81 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
     ],
   },
 ];
+// ---- Scope-aware admin navigation (feature #54) ------------------------
+// The admin console has three management scopes: platform, organization
+// and project. Each scope sees only its own functions. A multi-role user
+// chooses the scope at /admin; the shell renders the matching categories.
+
+/** Platform console navigation: the operator surface minus project
+ * management (a platform administrator manages organizations, not the
+ * projects inside them). */
+export function platformNavCategories(): NavCategory[] {
+  return ADMIN_NAV_CATEGORIES.map((c) => ({
+    ...c,
+    items: c.items.filter((i) => i.path !== '/admin/projects'),
+  })).filter((c) => c.items.length > 0);
+}
+
+/** Organization console navigation: metadata, projects, roster,
+ * invitations, join requests and project quotas. No inference/platform
+ * pages. */
+export function organizationNavCategories(): NavCategory[] {
+  return [
+    {
+      id: 'org',
+      labelKey: 'nav.cat.org',
+      shortLabelKey: 'nav.cat.orgShort',
+      icon: Buildings,
+      items: [
+        { path: '/admin/org-settings', labelKey: 'nav.orgSettings', testid: 'nav-org-settings', icon: Buildings },
+        { path: '/admin/projects', labelKey: 'nav.projects', testid: 'nav-projects', icon: Folder },
+        { path: '/admin/members', labelKey: 'nav.members', testid: 'nav-members', icon: Users },
+        { path: '/admin/invitations', labelKey: 'nav.invitations', testid: 'nav-invitations', icon: Envelope },
+        { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
+        { path: '/admin/project-quotas', labelKey: 'nav.projectQuotas', testid: 'nav-project-quotas', icon: SlidersHorizontal },
+      ],
+    },
+    {
+      id: 'orgbilling',
+      labelKey: 'nav.cat.billing',
+      shortLabelKey: 'nav.cat.billingShort',
+      icon: Coins,
+      items: [
+        { path: '/admin/usage', labelKey: 'nav.usage', testid: 'nav-usage', icon: ChartLine },
+        { path: '/admin/billing', labelKey: 'nav.bills', testid: 'nav-bills', icon: Receipt },
+      ],
+    },
+  ];
+}
+
+/** Project console navigation: project members, join requests and the
+ * project quota. */
+export function projectNavCategories(): NavCategory[] {
+  return [
+    {
+      id: 'project',
+      labelKey: 'nav.cat.project',
+      shortLabelKey: 'nav.cat.projectShort',
+      icon: Folder,
+      items: [
+        { path: '/admin/project-members', labelKey: 'nav.projectMembers', testid: 'nav-project-members', icon: Users },
+        { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
+        { path: '/admin/project-quotas', labelKey: 'nav.projectQuota', testid: 'nav-project-quota', icon: SlidersHorizontal },
+      ],
+    },
+  ];
+}
+
+/** navCategoriesForScope returns the categories of a scope type. */
+export function navCategoriesForScope(scopeType: string | undefined): NavCategory[] {
+  switch (scopeType) {
+    case 'organization':
+      return organizationNavCategories();
+    case 'project':
+      return projectNavCategories();
+    case 'platform':
+      return platformNavCategories();
+    default:
+      return platformNavCategories();
+  }
+}

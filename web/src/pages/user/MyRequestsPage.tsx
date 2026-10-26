@@ -6,6 +6,7 @@ import { ErrorBanner, StateBadge } from '../../components';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
+import type { JoinableOrganization, JoinableProject } from '../../api';
 
 interface JoinRequest {
   requestId: string;
@@ -24,6 +25,9 @@ export default function MyRequestsPage() {
   const [targetType, setTargetType] = useState('organization');
   const [targetId, setTargetId] = useState('');
   const [message, setMessage] = useState('');
+  const [joinableOrgs, setJoinableOrgs] = useState<JoinableOrganization[]>([]);
+  const [joinableProjects, setJoinableProjects] = useState<JoinableProject[]>([]);
+  const [targetsLoading, setTargetsLoading] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [info, setInfo] = useState('');
@@ -44,9 +48,41 @@ export default function MyRequestsPage() {
     }
   }, [api, orgId, t]);
 
+  // Load the pick-lists: the user selects an organization or project
+  // instead of typing an id (requirement 5).
+  const loadTargets = useCallback(async () => {
+    setTargetsLoading(true);
+    try {
+      const [orgs, projects] = await Promise.all([
+        api.get<{ organizations: JoinableOrganization[] }>('/api/v1/tenancy/joinable-organizations', orgId),
+        api.get<{ projects: JoinableProject[] }>('/api/v1/tenancy/joinable-projects', orgId),
+      ]);
+      setJoinableOrgs(orgs.organizations || []);
+      setJoinableProjects(projects.projects || []);
+    } catch {
+      setJoinableOrgs([]);
+      setJoinableProjects([]);
+    } finally {
+      setTargetsLoading(false);
+    }
+  }, [api, orgId]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadTargets();
+  }, [loadTargets]);
+
+  // Keep the selected target valid for the current target type.
+  useEffect(() => {
+    const options = targetType === 'organization' ? joinableOrgs : joinableProjects;
+    const first = targetType === 'organization'
+      ? options[0] && (options[0] as JoinableOrganization).organizationId
+      : options[0] && (options[0] as JoinableProject).projectId;
+    setTargetId(first || '');
+  }, [targetType, joinableOrgs, joinableProjects]);
 
   const apply = async () => {
     if (!targetId.trim()) return;
@@ -59,9 +95,8 @@ export default function MyRequestsPage() {
         message: message.trim(),
       });
       setInfo(t('myrequests.submitted'));
-      setTargetId('');
       setMessage('');
-      await load();
+      await Promise.all([load(), loadTargets()]);
     } catch (e) {
       const code = (e as { code?: number }).code;
       setError(code === 10029 ? t('myrequests.errorDuplicate') : t('myrequests.submitFailed'));
@@ -90,12 +125,36 @@ export default function MyRequestsPage() {
           </div>
           <div className="field">
             <label>{t('myrequests.targetId')}</label>
-            <input
+            <select
               data-testid="join-target-id"
               value={targetId}
+              disabled={targetsLoading || (targetType === 'organization' ? joinableOrgs.length === 0 : joinableProjects.length === 0)}
               onChange={(e) => setTargetId(e.target.value)}
-              placeholder={t('myrequests.targetIdPlaceholder')}
-            />
+            >
+              {targetType === 'organization' ? (
+                joinableOrgs.length === 0 ? (
+                  <option value="">{t('myrequests.noJoinableOrganization')}</option>
+                ) : (
+                  joinableOrgs.map((o) => (
+                    <option key={o.organizationId} value={o.organizationId}>
+                      {o.displayName && o.displayName !== o.organizationId
+                        ? `${o.displayName} (${o.organizationId})`
+                        : o.organizationId}
+                    </option>
+                  ))
+                )
+              ) : joinableProjects.length === 0 ? (
+                <option value="">{t('myrequests.noJoinableProject')}</option>
+              ) : (
+                joinableProjects.map((p) => (
+                  <option key={p.projectId} value={p.projectId}>
+                    {p.displayName && p.displayName !== p.projectId
+                      ? `${p.displayName} (${p.projectId})`
+                      : p.projectId}
+                  </option>
+                ))
+              )}
+            </select>
           </div>
           <div className="field">
             <label>{t('myrequests.message')}</label>

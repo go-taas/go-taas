@@ -14,19 +14,8 @@ import LanguageSwitcher from '../components/LanguageSwitcher';
 import brandLogo from '../assets/brand/logo-dark.svg';
 import { Avatar, ErrorBoundary } from '../components';
 import { useAvatar, useProfile } from '../profile';
-import { ADMIN_NAV_CATEGORIES, categoryForPath } from './nav';
-
-// navForRoles restricts the admin navigation by the caller's role:
-// only platform admins see the full operator surface. Organization and
-// project admins are limited to the access/membership pages.
-function navForRoles(roles: string[]) {
-  if (roles.includes('platform-admin')) return ADMIN_NAV_CATEGORIES;
-  const hidden = ['/admin/users', '/admin/sso', '/admin/identity-bindings'];
-  return ADMIN_NAV_CATEGORIES.filter((c) => c.id === 'access').map((c) => ({
-    ...c,
-    items: c.items.filter((i) => !hidden.includes(i.path)),
-  }));
-}
+import { categoryForPath, navCategoriesForScope } from './nav';
+import { scopeTypeLabelKey, useAdminScope } from '../admin-scope';
 
 function isActive(path: string, current: string): boolean {
   return current === path || current.startsWith(`${path}/`);
@@ -46,12 +35,24 @@ export function AdminShell({ children }: { children: ReactNode }) {
   // highest role the session actually carries, so the badge never claims
   // more than the server granted.
   const displayName = profile?.displayName || '';
-  const roleLabel = highestRole(session?.roles);
-  const navCategories = navForRoles(session?.roles || []);
+  const { scope, scopes, loading: scopeLoading } = useAdminScope();
+  const navCategories = navCategoriesForScope(scope?.scopeType);
+  // The role badge names the role in the active scope; before a scope is
+  // chosen it falls back to the strongest session role.
+  const roleLabel = scope?.role || highestRole(session?.roles);
 
   useEffect(() => {
     return Router.subscribe(() => setPath(window.location.pathname));
   }, []);
+
+  // A user with several scopes must choose one; a user with none has no
+  // admin console. Single-scope users are routed directly by the
+  // provider, so only the multi-scope case needs the chooser.
+  useEffect(() => {
+    if (!scopeLoading && !scope && scopes.length !== 1) {
+      navigate('/admin');
+    }
+  }, [scopeLoading, scope, scopes.length]);
 
   useEffect(() => {
     const token = getSessionToken(realm);
@@ -137,6 +138,16 @@ export function AdminShell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="topbar-actions">
+          {scope && scopes.length > 1 && (
+            <button
+              className="scope-switch"
+              data-testid="admin-scope-switch"
+              title={t('adminScope.switch')}
+              onClick={() => navigate('/admin')}
+            >
+              {t(scopeTypeLabelKey(scope.scopeType))}
+            </button>
+          )}
           <NotificationBell path="/api/v1/admin/notifications" testId="admin-bell-badge" />
           <LanguageSwitcher testId="admin-lang-switcher" />
         </div>

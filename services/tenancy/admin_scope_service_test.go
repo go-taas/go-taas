@@ -213,3 +213,42 @@ func TestServiceGetMyAdminScopesSkipsNonAdminProject(t *testing.T) {
 	require.Len(t, resp.Scopes, 1)
 	assert.Equal(t, ScopeOrganization, resp.Scopes[0].GetScopeType())
 }
+
+func TestRequireOrgAdminOrPlatform(t *testing.T) {
+	ctx := context.Background()
+	svc := newMembershipService(t)
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+
+	// Platform administrator bypasses the org-membership check.
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
+	require.NoError(t, svc.requireOrgAdminOrPlatform(ctx, "org-a"))
+	require.NoError(t, svc.requireOrgAdminOrPlatform(ctx, "org-unrelated"))
+
+	// An org owner is allowed.
+	svc.SetSessionRolesResolver(&fakeRolesResolver{})
+	require.NoError(t, svc.requireOrgAdminOrPlatform(ctx, "org-a"))
+
+	// A plain member is forbidden.
+	svc.SetSessionResolver(&fakeSessionResolver{userID: "u-member", email: "m@x.com"})
+	seedMember(t, svc, "org-a", "u-member", RoleMember)
+	err := svc.requireOrgAdminOrPlatform(ctx, "org-a")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}
+
+func TestRequireOrgAdminWrite(t *testing.T) {
+	ctx := context.Background()
+	svc := newMembershipService(t)
+	seedMember(t, svc, "org-a", "u-admin", RoleAdmin)
+	require.NoError(t, svc.requireOrgAdminWrite(ctx, "org-a"))
+
+	svc.SetSessionResolver(&fakeSessionResolver{userID: "u-member", email: "m@x.com"})
+	seedMember(t, svc, "org-a", "u-member", RoleMember)
+	err := svc.requireOrgAdminWrite(ctx, "org-a")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	// A nil role guard is permissive (unit-test convention).
+	svc.SetRoleGuard(nil)
+	require.NoError(t, svc.requireOrgAdminWrite(ctx, "org-a"))
+}

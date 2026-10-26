@@ -3081,3 +3081,81 @@ button.primary:hover {
     text-align: left;
   }
 }
+
+/* ============================================================
+   Admin scope chooser (feature #54)
+   ============================================================ */
+
+.scope-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.scope-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 20px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg, 14px);
+  background: var(--panel-solid);
+  color: var(--text);
+  cursor: pointer;
+  text-align: left;
+  font-family: var(--font-body);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.scope-card:hover {
+  border-color: var(--primary);
+  box-shadow: 0 8px 24px rgba(29, 92, 255, 0.12);
+  transform: translateY(-1px);
+}
+
+.scope-card.active {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-ring);
+}
+
+.scope-card svg {
+  color: var(--primary-strong);
+}
+
+.scope-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.scope-card-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.scope-card-role {
+  font-size: 12px;
+  color: var(--muted-strong);
+}
+
+/* Compact scope switcher in the admin topbar. */
+.scope-switch {
+  padding: 6px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-family: var(--font-body);
+  cursor: pointer;
+}
+
+.scope-switch:hover {
+  background: var(--surface-2);
+  color: var(--primary-strong);
+}

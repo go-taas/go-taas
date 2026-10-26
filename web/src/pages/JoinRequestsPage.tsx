@@ -8,6 +8,7 @@ import { ErrorBanner, StateBadge } from '../components';
 import { api } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { useAdminScope } from '../admin-scope';
 
 interface JoinRequest {
   requestId: string;
@@ -23,9 +24,16 @@ interface JoinRequest {
 export default function JoinRequestsPage() {
   const { orgId } = useOrg();
   const { t } = useI18n();
+  const { scope } = useAdminScope();
+  // When the console is scoped to an organization or project, the target
+  // is fixed to that scope so the admin cannot accidentally query another.
+  const scopedTargetType =
+    scope?.scopeType === 'project' ? 'project' : scope?.scopeType === 'organization' ? 'organization' : '';
+  const scopedTargetId =
+    scope?.scopeType === 'project' ? scope.projectId : scope?.scopeType === 'organization' ? scope.organizationId : '';
   const [requests, setRequests] = useState<JoinRequest[]>([]);
-  const [targetType, setTargetType] = useState('organization');
-  const [targetId, setTargetId] = useState('');
+  const [targetType, setTargetType] = useState(scopedTargetType || 'organization');
+  const [targetId, setTargetId] = useState(scopedTargetId);
   const [status, setStatus] = useState('pending');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -56,6 +64,13 @@ export default function JoinRequestsPage() {
   }, [api, orgId, targetId, targetType, status, t]);
 
   useEffect(() => {
+    if (scopedTargetType) {
+      setTargetType(scopedTargetType);
+      setTargetId(scopedTargetId);
+    }
+  }, [scopedTargetType, scopedTargetId]);
+
+  useEffect(() => {
     void load();
   }, [load]);
 
@@ -83,6 +98,7 @@ export default function JoinRequestsPage() {
         <select
           data-testid="joinreq-target-type"
           value={targetType}
+          disabled={Boolean(scopedTargetType)}
           onChange={(e) => setTargetType(e.target.value)}
         >
           <option value="organization">{t('joinreq.organization')}</option>
@@ -91,6 +107,7 @@ export default function JoinRequestsPage() {
         <input
           data-testid="joinreq-target-id"
           value={targetId}
+          disabled={Boolean(scopedTargetType)}
           onChange={(e) => setTargetId(e.target.value)}
           placeholder={t('joinreq.targetIdPlaceholder')}
         />

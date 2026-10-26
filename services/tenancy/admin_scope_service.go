@@ -255,3 +255,28 @@ func realOrgMemberships(members []*OrgMember) []*OrgMember {
 	}
 	return out
 }
+
+// requireOrgAdminOrPlatform gates organization metadata writes: a
+// platform administrator may always edit, otherwise the caller must be an
+// admin or owner of the organization (requirement 2/3). A nil role guard
+// (unit tests) is permissive, matching the package convention.
+func (s *Service) requireOrgAdminOrPlatform(ctx context.Context, orgID string) error {
+	if s.callerIsPlatformAdmin(ctx) {
+		return nil
+	}
+	if s.roleGuard == nil {
+		return nil
+	}
+	return s.requireAdminOrOwner(ctx, orgID)
+}
+
+// requireOrgAdminWrite gates a project write on the caller being an admin
+// or owner of the project's owning organization. A platform administrator
+// has no project management (requirement 2), so only org administration
+// grants it. A nil role guard (unit tests) is permissive.
+func (s *Service) requireOrgAdminWrite(ctx context.Context, orgID string) error {
+	if s.roleGuard == nil {
+		return nil
+	}
+	return s.requireAdminOrOwner(ctx, orgID)
+}

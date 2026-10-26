@@ -129,3 +129,57 @@ func TestFVTPlatformOrgNotJoinable(t *testing.T) {
 	})
 	assert.Equal(t, float64(10005), body["code"], "body: %v", body)
 }
+
+// TestFVTOrgMetadataAuthz verifies a plain org member cannot edit the
+// organization metadata (requirement 3). The allowed path is covered by
+// the unit tests, because the success response summarizes live resource
+// counts that this tenancy-only fixture does not provision.
+func TestFVTOrgMetadataAuthz(t *testing.T) {
+	env := newRBACEnv(t)
+	// Non-nil roles resolver without platform-admin so the platform
+	// bypass is not taken.
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{})
+	env.seedRBACOrg(t, "org-a", "Acme")
+	env.seedRBACMember(t, "org-a", "u-member", tenancy.RoleMember)
+	env.tenancySvc.SetSessionResolver(&fakeRBACSession{userID: "u-member", email: "m@x.com"})
+
+	_, body := env.call(t, http.MethodPatch,
+		"/api/v1/admin/tenancy/organizations/org-a",
+		map[string]any{"displayName": "Hijacked"})
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+}
+
+// TestFVTProjectWriteAuthz verifies project writes require organization
+// administration: platform admins have no project management
+// (requirement 2), and a plain member is forbidden (requirement 3).
+func TestFVTProjectWriteAuthz(t *testing.T) {
+	env := newRBACEnv(t)
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{})
+	env.seedRBACOrg(t, "org-a", "Acme")
+	env.seedRBACMember(t, "org-a", "u-admin", tenancy.RoleOwner)
+	env.seedRBACMember(t, "org-a", "u-member", tenancy.RoleMember)
+
+	// Owner creates a project.
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects", map[string]any{
+		"projectId": "proj-new", "organizationId": "org-a", "displayName": "New",
+	})
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+
+	// A plain member cannot create one.
+	env.tenancySvc.SetSessionResolver(&fakeRBACSession{userID: "u-member", email: "m@x.com"})
+	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects", map[string]any{
+		"projectId": "proj-bad", "organizationId": "org-a", "displayName": "Bad",
+	})
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+
+	// A plain member cannot disable one either.
+	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects/proj-new:disable", nil)
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+
+	// A platform administrator (no org membership) cannot manage the
+	// project.
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{roles: []string{tenancy.RolePlatformAdmin}})
+	env.tenancySvc.SetSessionResolver(&fakeRBACSession{userID: "u-platform", email: "p@x.com"})
+	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects/proj-new:disable", nil)
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+}

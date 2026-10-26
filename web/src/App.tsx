@@ -7,6 +7,8 @@ import { Router, Routes, Route, replace, useRoute } from './router';
 import { ProfileProvider } from './profile';
 import { OrgProvider } from './org';
 import { SurfaceProvider } from './surface';
+import { AdminScopeProvider } from './admin-scope';
+import AdminScopePage from './pages/AdminScopePage';
 import { I18nProvider } from './i18n';
 import { isAdminPath, MOVED_ADMIN_ROUTES, realmHome } from './surface-routes';
 import { UserShell } from './shells/UserShell';
@@ -90,6 +92,9 @@ import CostAnalyticsPage from './pages/CostAnalyticsPage';
 import CostDetailPage from './pages/CostDetailPage';
 import ForecastPage from './pages/ForecastPage';
 import QuotasPage from './pages/QuotasPage';
+import OrgSettingsPage from './pages/OrgSettingsPage';
+import ProjectMembersPage from './pages/ProjectMembersPage';
+import ProjectQuotasPage from './pages/ProjectQuotasPage';
 import OptimizationPage from './pages/OptimizationPage';
 import VGPUPoolsPage from './pages/VGPUPoolsPage';
 import VGPUPoolDetailPage from './pages/VGPUPoolDetailPage';
@@ -221,10 +226,17 @@ function UserSurface({ path }: { path: string }) {
 }
 
 function AdminSurface() {
+  const path = useRoute();
   return (
     <SurfaceProvider realm="admin">
       <OrgProvider>
         <ProfileProvider>
+          <AdminScopeProvider>
+          {path === '/admin' ? (
+            <div className="main" style={{ padding: '48px 40px' }}>
+              <AdminScopePage />
+            </div>
+          ) : (
           <AdminShell>
             <Routes>
               <Route path="/admin/organizations" element={<OrganizationsPage />} />
@@ -284,6 +296,9 @@ function AdminSurface() {
               <Route path="/admin/cost/:dimension/:value" element={<CostDetailPage />} />
               <Route path="/admin/forecast" element={<ForecastPage />} />
               <Route path="/admin/quotas" element={<QuotasPage />} />
+              <Route path="/admin/org-settings" element={<OrgSettingsPage />} />
+              <Route path="/admin/project-members" element={<ProjectMembersPage />} />
+              <Route path="/admin/project-quotas" element={<ProjectQuotasPage />} />
               <Route path="/admin/optimization" element={<OptimizationPage />} />
               <Route path="/admin/vgpu-pools" element={<VGPUPoolsPage />} />
               <Route path="/admin/vgpu-pools/:poolId" element={<VGPUPoolDetailPage />} />
@@ -299,6 +314,8 @@ function AdminSurface() {
               <Route path="*" element={<NotFoundPage homePath="/admin/models" homeLabel="Models" />} />
             </Routes>
           </AdminShell>
+          )}
+          </AdminScopeProvider>
         </ProfileProvider>
       </OrgProvider>
     </SurfaceProvider>
