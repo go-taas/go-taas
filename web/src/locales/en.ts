@@ -1,9 +1,6 @@
 // English translations for the console.
 
 export const en: Record<string, string> = {
-  // ---- Language switch ----
-  'lang.switch': '中文',
-
   // ---- Common ----
   'common.cancel': 'Cancel',
   'common.save': 'Save',
@@ -736,6 +733,7 @@ export const en: Record<string, string> = {
   'pricing.fieldInput': 'Input price / 1M tokens',
   'pricing.fieldOutput': 'Output price / 1M tokens',
   'pricing.fieldCached': 'Cached price / 1M tokens',
+  'pricing.fieldCurrency': 'Currency',
   'pricing.placeholderModel': 'qwen-2.5-7b',
   'pricing.placeholderCard': 'A800 or default',
   'pricing.tiersSection': 'Volume tiers (optional)',

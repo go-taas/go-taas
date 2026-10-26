@@ -28,6 +28,10 @@ interface SetPriceResponse {
 
 const PAGE_SIZE = 20;
 
+// SUPPORTED_CURRENCIES is the set of currencies the set-price dialog
+// offers. It mirrors the backend billing.supportedCurrencies config.
+const SUPPORTED_CURRENCIES = ['USD', 'CNY'];
+
 // tierLabel renders one tier's bound compactly (1.2M style).
 function tierBound(tokens: number): string {
   if (tokens >= 1_000_000) {
@@ -203,6 +207,7 @@ function SetPriceDialog({
   const [inputRate, setInputRate] = useState('');
   const [outputRate, setOutputRate] = useState('');
   const [cachedRate, setCachedRate] = useState('0');
+  const [currency, setCurrency] = useState('USD');
   const [tiers, setTiers] = useState<PriceTier[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -224,6 +229,7 @@ function SetPriceDialog({
         inputPricePerMillion: Number(inputRate) || 0,
         outputPricePerMillion: Number(outputRate) || 0,
         cachedPricePerMillion: Number(cachedRate) || 0,
+        currency,
       };
       if (tiers.length > 0) {
         body.tiers = tiers.map((t) => ({
@@ -295,6 +301,20 @@ function SetPriceDialog({
             value={cachedRate}
             onChange={(e) => setCachedRate(e.target.value)}
           />
+        </label>
+        <label>
+          {t('pricing.fieldCurrency')}
+          <select
+            data-testid="set-price-currency"
+            value={currency}
+            onChange={(e) => setCurrency(e.target.value)}
+          >
+            {SUPPORTED_CURRENCIES.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

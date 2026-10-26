@@ -22,6 +22,39 @@ func withOrg(orgID string) context.Context {
 		metadata.Pairs(organizationMetadataKey, orgID))
 }
 
+// TestSetPriceMultiCurrency verifies SetPrice accepts any supported
+// currency (CNY and USD) and stores it on the entry.
+func TestSetPriceMultiCurrency(t *testing.T) {
+	svc := newBillingTestService(t)
+	db := svc.repo.db.DB(context.Background())
+
+	for _, currency := range []string{"USD", "CNY"} {
+		req := &billingv1.SetPriceRequest{
+			ModelId: "model-a", AcceleratorType: "A800",
+			InputPricePerMillion: 1, OutputPricePerMillion: 2,
+			Currency: currency,
+		}
+		resp, err := svc.SetPrice(context.Background(), req)
+		require.NoError(t, err)
+		require.NotEmpty(t, resp.PriceId)
+
+		var row PriceEntry
+		require.NoError(t, db.Where("id = ?", resp.PriceId).First(&row).Error)
+		assert.Equal(t, currency, row.Currency)
+	}
+
+	// An unsupported currency is still rejected.
+	_, err := svc.SetPrice(context.Background(), &billingv1.SetPriceRequest{
+		ModelId: "model-a", AcceleratorType: "A800",
+		InputPricePerMillion: 1, OutputPricePerMillion: 2,
+		Currency: "EUR",
+	})
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodePriceInvalid, ae.Code)
+}
+
 // AC2: the SetPrice validation matrix — every failure returns 10507
 // and nothing is written.
 func TestSetPriceValidationMatrix(t *testing.T) {

@@ -239,9 +239,14 @@ type MeteringEventConsumerConfig struct {
 type BillingConfig struct {
 	// SettlementInterval is the period between settlement runs.
 	SettlementInterval time.Duration `mapstructure:"settlementInterval"`
-	// Currency is the single platform billing currency (D4); price
-	// entries, charge records and bills carry it.
+	// Currency is the platform's default billing currency (D4); price
+	// entries, charge records and bills carry it. SetPrice accepts an
+	// empty currency (inherits this) or any SupportedCurrencies value.
 	Currency string `mapstructure:"currency"`
+	// SupportedCurrencies is the set of currencies SetPrice accepts.
+	// Empty defaults to the platform Currency. At least CNY and USD are
+	// supported so operators can price in either.
+	SupportedCurrencies []string `mapstructure:"supportedCurrencies"`
 	// EventConsumer configures the billing metering.events consumer
 	// (usage-line ingestion).
 	EventConsumer BillingConsumerConfig `mapstructure:"eventConsumer"`

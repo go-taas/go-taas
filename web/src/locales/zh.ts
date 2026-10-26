@@ -1,9 +1,6 @@
 // Chinese translations for the console.
 
 export const zh: Record<string, string> = {
-  // ---- Language switch ----
-  'lang.switch': 'English',
-
   // ---- Common ----
   'common.cancel': '取消',
   'common.save': '保存',
@@ -736,6 +733,7 @@ export const zh: Record<string, string> = {
   'pricing.fieldInput': '输入价格 / 1M 词元',
   'pricing.fieldOutput': '输出价格 / 1M 词元',
   'pricing.fieldCached': '缓存价格 / 1M 词元',
+  'pricing.fieldCurrency': '货币',
   'pricing.placeholderModel': 'qwen-2.5-7b',
   'pricing.placeholderCard': 'A800 或 default',
   'pricing.tiersSection': '阶梯档位（可选）',

@@ -235,6 +235,9 @@ func (c *Configuration) applyDefaults() {
 	if c.Billing.Currency == "" {
 		c.Billing.Currency = "USD"
 	}
+	if len(c.Billing.SupportedCurrencies) == 0 {
+		c.Billing.SupportedCurrencies = []string{"USD", "CNY"}
+	}
 	if c.Billing.EventConsumer.Workers == 0 {
 		c.Billing.EventConsumer.Workers = 2
 	}

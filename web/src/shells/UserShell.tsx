@@ -12,6 +12,7 @@ import { OrgSwitcher } from '../org';
 import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
+import LanguageSwitcher from '../components/LanguageSwitcher';
 import brandLogo from '../assets/brand/logo-dark.svg';
 import { Avatar, ErrorBoundary } from '../components';
 import { useAvatar, useProfile } from '../profile';
@@ -29,7 +30,7 @@ function isActive(path: string, current: string): boolean {
 export function UserShell({ children }: { children: ReactNode }) {
   const realm = useRealm();
   const api = useApi();
-  const { t, lang, setLang } = useI18n();
+  const { t } = useI18n();
   const [path, setPath] = useState(window.location.pathname);
   const [session, setSession] = useState<SessionInfo | null>(null);
   const avatar = useAvatar(realm);
@@ -136,13 +137,7 @@ export function UserShell({ children }: { children: ReactNode }) {
         </nav>
         <div className="topbar-actions">
           <NotificationBell path="/api/v1/notifications" testId="user-bell-badge" />
-          <button
-            className="lang-switch"
-            data-testid="lang-switch"
-            onClick={() => setLang(lang === 'en' ? 'zh' : 'en')}
-          >
-            {t('lang.switch')}
-          </button>
+          <LanguageSwitcher testId="user-lang-switcher" />
         </div>
       </header>
       <aside className="sidebar" data-testid="sidebar">

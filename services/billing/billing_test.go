@@ -34,6 +34,7 @@ func newBillingTestService(t *testing.T) *Service {
 	// config; install a minimal one for the test.
 	cfg := &config.Configuration{}
 	cfg.Billing.Currency = "USD"
+	cfg.Billing.SupportedCurrencies = []string{"USD", "CNY"}
 	config.SetConfigForTest(cfg)
 	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
 	return NewForFVT(newBillingTestDB(t), nil)

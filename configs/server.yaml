@@ -94,9 +94,13 @@ metering:
     workers: 2
 
 billing:
-  # currency is the single platform billing currency (D4); price
-  # entries, charge records and bills carry it.
+  # currency is the platform's default billing currency (D4); price
+  # entries, charge records and bills carry it. SetPrice accepts an
+  # empty currency (inherits this) or any supportedCurrencies value.
   currency: "USD"
+  # supportedCurrencies is the set of currencies SetPrice accepts.
+  # At least CNY and USD are supported so operators can price in either.
+  supportedCurrencies: ["USD", "CNY"]
   # eventConsumer consumes metering.events and writes billing usage
   # lines (feature #5).
   eventConsumer:

@@ -516,7 +516,10 @@ func validatePrice(req *billingv1.SetPriceRequest) error {
 	if currency != "" && len(currency) > maxCurrencyLen {
 		return invalid
 	}
-	if currency != "" && currency != config.GetConfig().Billing.Currency {
+	// Multi-currency pricing: an explicit currency must be one of the
+	// supported set (the platform default plus any configured
+	// alternatives, e.g. CNY and USD). Empty inherits the default.
+	if currency != "" && !supportedCurrency(currency) {
 		return invalid
 	}
 	if req.GetEffectiveFrom() < 0 {
@@ -543,6 +546,23 @@ func validatePrice(req *billingv1.SetPriceRequest) error {
 		}
 	}
 	return nil
+}
+
+// supportedCurrency reports whether a currency is accepted by SetPrice:
+// the platform default or any configured supported currency. The default
+// is always accepted so an empty config still prices in the platform
+// currency.
+func supportedCurrency(currency string) bool {
+	cfg := config.GetConfig().Billing
+	if currency == cfg.Currency {
+		return true
+	}
+	for _, c := range cfg.SupportedCurrencies {
+		if c == currency {
+			return true
+		}
+	}
+	return false
 }
 
 // ListPrices returns the price matrix — the current view by default,

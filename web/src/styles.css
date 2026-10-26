@@ -959,23 +959,79 @@ th.sortable:hover {
   padding: 6px 8px;
 }
 
-/* ---- language switch button (sidebar) ---- */
+/* ---- language switch (topbar icon + dropdown) ---- */
+.lang-switcher {
+  position: relative;
+  display: inline-flex;
+}
+
 .lang-switch {
-  background: rgba(15, 23, 42, 0.04);
-  color: var(--muted-strong);
-  border: 1px solid var(--border-strong);
-  border-radius: 8px;
-  padding: 7px 12px;
-  font-size: 12.5px;
-  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 36px;
+  height: 36px;
+  background: transparent;
+  color: var(--muted);
+  border: none;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   font-family: var(--font-body);
   transition: background 0.15s ease, color 0.15s ease;
 }
 
 .lang-switch:hover {
-  background: var(--primary-soft);
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.lang-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 150px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  z-index: 50;
+}
+
+.lang-menu-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  text-align: left;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.lang-menu-item:hover {
+  background: var(--surface-2);
+}
+
+.lang-menu-item.active {
   color: var(--primary-strong);
+  font-weight: 600;
+}
+
+.lang-menu-check {
+  color: var(--primary-strong);
+  font-weight: 700;
 }
 
 /* ============================================================
