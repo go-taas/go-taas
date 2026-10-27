@@ -10,7 +10,7 @@ import { useI18n } from '../i18n';
 
 export type ErrorMetric = 'errorCount' | 'errorRate';
 
-const PALETTE = ['#D96C6C', '#007F86', '#C9A227', '#4E9CA0'];
+const PALETTE = ['#D96C6C', '#007F86', '#8A6D0B', '#4E9CA0'];
 
 // metricValue extracts the metric's numeric value from a series point.
 function metricValue(p: ErrorSeriesPoint, metric: ErrorMetric): number {

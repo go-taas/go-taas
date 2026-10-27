@@ -9,7 +9,7 @@ import { useI18n } from '../i18n';
 
 export type ChartMetric = 'cost' | 'tokens' | 'requests';
 
-const PALETTE = ['#007F86', '#4E9CA0', '#8BC3C6', '#C9A227', '#7A5C9E', '#D96C6C'];
+const PALETTE = ['#007F86', '#4E9CA0', '#2F7F86', '#8A6D0B', '#7A5C9E', '#D96C6C'];
 
 // metricValue extracts the metric's numeric value from a group.
 function metricValue(g: DashboardGroup, metric: ChartMetric): number {

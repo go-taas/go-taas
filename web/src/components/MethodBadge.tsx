@@ -1,10 +1,12 @@
 // MethodBadge renders the color-coded HTTP method badge for an API
 // endpoint (feature #38, AD5).
 
+// Every fill keeps at least 4.5:1 against the white label text. PUT
+// used to be #E65100, which fell to 3.8:1.
 const METHOD_COLORS: Record<string, string> = {
   GET: '#2E7D32',
   POST: '#1565C0',
-  PUT: '#E65100',
+  PUT: '#B33C00',
   DELETE: '#C62828',
   PATCH: '#6A1B9A',
 };

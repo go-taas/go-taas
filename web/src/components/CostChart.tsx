@@ -10,7 +10,7 @@ import { useI18n } from '../i18n';
 
 export type CostMetric = 'cost' | 'tokens' | 'costPerToken';
 
-const PALETTE = ['#007F86', '#4E9CA0', '#C9A227', '#D96C6C'];
+const PALETTE = ['#007F86', '#4E9CA0', '#8A6D0B', '#D96C6C'];
 
 // metricValue extracts the metric's numeric value from a series point.
 function metricValue(p: CostSeriesPoint, metric: CostMetric): number {

@@ -11,7 +11,7 @@ import { useI18n } from '../i18n';
 
 export type ObservabilityMetric = 'latency' | 'throughput' | 'errorRate' | 'tokens';
 
-const PALETTE = ['#007F86', '#4E9CA0', '#C9A227', '#D96C6C'];
+const PALETTE = ['#007F86', '#4E9CA0', '#8A6D0B', '#D96C6C'];
 
 // metricValue extracts the metric's numeric value from a series point.
 function metricValue(p: ObservabilitySeriesPoint, metric: ObservabilityMetric): number {
