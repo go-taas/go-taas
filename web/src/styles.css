@@ -2993,6 +2993,13 @@ button.primary:hover {
   box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
 }
 
+.avatar {
+  /* A user-supplied avatar can be light-on-light; a hairline ring keeps
+     its edge visible against the panel. */
+  border: 1px solid var(--border-strong);
+  background: var(--panel-solid);
+}
+
 .avatar-initial {
   display: inline-flex;
   align-items: center;

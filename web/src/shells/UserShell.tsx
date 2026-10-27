@@ -13,7 +13,7 @@ import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import LanguageSwitcher from '../components/LanguageSwitcher';
-import brandLogo from '../assets/brand/logo-dark.svg';
+import brandLogo from '../assets/brand/logo.svg';
 import { Avatar, ErrorBoundary } from '../components';
 import { useAvatar, useProfile } from '../profile';
 import { USER_NAV_CATEGORIES, categoryForPath } from './nav';
