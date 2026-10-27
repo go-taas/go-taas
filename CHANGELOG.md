@@ -1,3 +1,10 @@
+# [1.90.0](https://github.com/go-taas/go-taas/compare/v1.89.0...v1.90.0) (2026-10-27)
+
+
+### Features
+
+* **console:** create organization projects without choosing an organization ([b665724](https://github.com/go-taas/go-taas/commit/b6657246a76cbb4e097be3c9c370acbd636cb15d))
+
 # [1.89.0](https://github.com/go-taas/go-taas/compare/v1.88.0...v1.89.0) (2026-10-27)
 
 
