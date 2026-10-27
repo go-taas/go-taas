@@ -112,26 +112,27 @@ export default function ProjectsPage() {
       {error && <ErrorBanner message={error} />}
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
-        <select
-          data-testid="project-org-filter"
-          value={orgFilter}
-          disabled={Boolean(scopedOrgId)}
-          onChange={(e) => {
-            setOrgFilter(e.target.value);
-            setOffset(0);
-          }}
-        >
-          <option value="all">{t('common.allOrganizations')}</option>
-          {orgs.map((org) => (
-            <option
-              key={org.organizationId}
-              value={org.organizationId}
-              data-testid={`project-org-option-${org.organizationId}`}
-            >
-              {org.organizationId}
-            </option>
-          ))}
-        </select>
+        {!scopedOrgId && (
+          <select
+            data-testid="project-org-filter"
+            value={orgFilter}
+            onChange={(e) => {
+              setOrgFilter(e.target.value);
+              setOffset(0);
+            }}
+          >
+            <option value="all">{t('common.allOrganizations')}</option>
+            {orgs.map((org) => (
+              <option
+                key={org.organizationId}
+                value={org.organizationId}
+                data-testid={`project-org-option-${org.organizationId}`}
+              >
+                {org.displayName || org.organizationId}
+              </option>
+            ))}
+          </select>
+        )}
         <select
           data-testid="project-state-filter"
           value={stateFilter}
@@ -239,7 +240,7 @@ export default function ProjectsPage() {
         <CreateProjectDialog
           orgId={orgId}
           orgs={orgs}
-          defaultOrganizationId={scopedOrgId}
+          fixedOrganizationId={scopedOrgId}
           onClose={() => setCreateOpen(false)}
           onDone={() => {
             setCreateOpen(false);
@@ -295,17 +296,19 @@ export default function ProjectsPage() {
 function CreateProjectDialog({
   orgId,
   orgs,
-  defaultOrganizationId = '',
+  fixedOrganizationId = '',
   onClose,
   onDone,
 }: {
   orgId: string;
   orgs: OrganizationSummary[];
-  defaultOrganizationId?: string;
+  /** Set in the organization console: the new project belongs to that
+   * organization, so the dialog neither asks for one nor offers another. */
+  fixedOrganizationId?: string;
   onClose: () => void;
   onDone: () => void;
 }) {
-  const [organizationId, setOrganizationId] = useState(defaultOrganizationId);
+  const [organizationId, setOrganizationId] = useState(fixedOrganizationId);
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -313,6 +316,10 @@ function CreateProjectDialog({
   const { t } = useI18n();
 
   const activeOrgs = orgs.filter((o) => o.state === 'active');
+  const fixedOrg = orgs.find((o) => o.organizationId === fixedOrganizationId);
+  const fixedOrgLabel = fixedOrg?.displayName
+    ? `${fixedOrg.displayName} (${fixedOrganizationId})`
+    : fixedOrganizationId;
 
   const submit = async () => {
     if (!organizationId) {
@@ -345,24 +352,32 @@ function CreateProjectDialog({
       <div className="form-grid">
         <div className="form-field">
           <label htmlFor="project-org">{t('projects.fieldOrganization')}</label>
-          <select
-            id="project-org"
-            data-testid="project-org-select"
-            value={organizationId}
-            onChange={(e) => setOrganizationId(e.target.value)}
-          >
-            <option value="">{t('projects.placeholderSelectOrg')}</option>
-            {activeOrgs.map((org) => (
-              <option
-                key={org.organizationId}
-                value={org.organizationId}
-                data-testid={`project-org-select-option-${org.organizationId}`}
+          {fixedOrganizationId ? (
+            <div className="muted" data-testid="project-org-fixed">
+              {fixedOrgLabel}
+            </div>
+          ) : (
+            <>
+              <select
+                id="project-org"
+                data-testid="project-org-select"
+                value={organizationId}
+                onChange={(e) => setOrganizationId(e.target.value)}
               >
-                {org.organizationId}
-              </option>
-            ))}
-          </select>
-          <div className="muted">{t('projects.mutedInactiveOrg')}</div>
+                <option value="">{t('projects.placeholderSelectOrg')}</option>
+                {activeOrgs.map((org) => (
+                  <option
+                    key={org.organizationId}
+                    value={org.organizationId}
+                    data-testid={`project-org-select-option-${org.organizationId}`}
+                  >
+                    {org.displayName || org.organizationId}
+                  </option>
+                ))}
+              </select>
+              <div className="muted">{t('projects.mutedInactiveOrg')}</div>
+            </>
+          )}
         </div>
         <div className="form-field">
           <label htmlFor="project-name">{t('projects.fieldDisplayName')}</label>

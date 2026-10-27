@@ -165,6 +165,15 @@ func TestFVTProjectWriteAuthz(t *testing.T) {
 	})
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 
+	// The organization administrator is confined to their own
+	// organization: a project created in another one is refused, so the
+	// console never needs to offer an organization choice.
+	env.seedRBACOrg(t, "org-b", "Beta")
+	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects", map[string]any{
+		"projectId": "proj-foreign", "organizationId": "org-b", "displayName": "Foreign",
+	})
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+
 	// A plain member cannot create one.
 	env.tenancySvc.SetSessionResolver(&fakeRBACSession{userID: "u-member", email: "m@x.com"})
 	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects", map[string]any{

@@ -451,3 +451,15 @@ existing admin/owner (organization) and project-admin gates.
   render as `-` when the account has joined neither. The dedicated platform
   organization is never reported as an affiliation, and an account belongs to
   at most one organization and one project, so a single pair is enough.
+
+### 9.9 Projects in the organization console
+
+An organization administrator creates projects that belong to their own
+organization, so the create dialog in the organization console shows the
+organization as fixed text instead of a select, and the project list hides the
+organization filter it can no longer change. The platform console keeps both
+controls because a platform administrator has no owning organization.
+
+The server already confines project writes to the organization the caller
+administers (`requireOrgAdminWrite`), so a project aimed at another
+organization is refused with 10036 regardless of what the client sends.
