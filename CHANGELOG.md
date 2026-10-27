@@ -1,3 +1,10 @@
+# [1.91.0](https://github.com/go-taas/go-taas/compare/v1.90.0...v1.91.0) (2026-10-27)
+
+
+### Features
+
+* **auth,model,console:** platform identity without a default organization ([ba5b0e1](https://github.com/go-taas/go-taas/commit/ba5b0e1f5b1e10286bee46a12fa1bb1324653b4e))
+
 # [1.90.0](https://github.com/go-taas/go-taas/compare/v1.89.0...v1.90.0) (2026-10-27)
 
 
