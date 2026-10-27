@@ -1,3 +1,10 @@
+## [1.91.1](https://github.com/go-taas/go-taas/compare/v1.91.0...v1.91.1) (2026-10-27)
+
+
+### Bug Fixes
+
+* **model:** keep weights another model still references when deleting ([400fb35](https://github.com/go-taas/go-taas/commit/400fb358e763defc422bbe467027b21fdbd689cf))
+
 # [1.91.0](https://github.com/go-taas/go-taas/compare/v1.90.0...v1.91.0) (2026-10-27)
 
 
