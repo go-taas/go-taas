@@ -59,6 +59,14 @@ type RoleGuard interface {
 	RequireRole(ctx context.Context, orgID, userID, minRole string) error
 }
 
+// PlatformAdminGuard answers whether the caller is a platform
+// administrator. The runtime is a platform-owned asset, so the admin runtime
+// RPCs answer to the platform, never to an organization administrator.
+// It is implemented by tenancy.Service.
+type PlatformAdminGuard interface {
+	RequirePlatformAdmin(ctx context.Context) error
+}
+
 // AuditRecorder records runtime mutations best-effort.
 type AuditRecorder interface {
 	Record(ctx context.Context, ev *audit.AuditEvent)
@@ -83,6 +91,9 @@ type Service struct {
 	sessionOrgResolver  SessionOrgResolver
 	sessionUserResolver SessionUserResolver
 	roleGuard           RoleGuard
+	// platformAdminGuard gates the runtime RPCs on the platform
+	// administrator role: the serving runtime belongs to the platform.
+	platformAdminGuard PlatformAdminGuard
 	auditRecorder       AuditRecorder
 
 	// userLabelResolver resolves the acting admin's user id to a display
@@ -143,6 +154,12 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 
 // SetRoleGuard injects the org role guard.
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// SetPlatformAdminGuard injects the platform-administrator gate. When it
+// is wired (production and FVT) the admin RPCs answer to the platform
+// alone; a unit test that leaves it nil keeps the org-role fallback below
+// so the org guard can be exercised on its own.
+func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
 
 // DataPlaneRouter owns the data-plane HTTPRoute: it makes the route serve a
 // hostname and reports what the route currently serves. It is implemented
@@ -246,6 +263,9 @@ func (s *Service) resolveSessionActor(ctx context.Context) (string, bool, error)
 // carries no active org there is nothing to resolve a role in, so the
 // check is skipped (the admin realm guard is the access boundary).
 func (s *Service) requireAdminRole(ctx context.Context) error {
+	if s.platformAdminGuard != nil {
+		return s.platformAdminGuard.RequirePlatformAdmin(ctx)
+	}
 	if s.roleGuard == nil {
 		return nil
 	}

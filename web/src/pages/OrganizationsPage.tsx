@@ -107,9 +107,8 @@ export default function OrganizationsPage() {
               <tr>
                 <th>{t('orgs.colOrganization')}</th>
                 <th>{t('orgs.colState')}</th>
-                <th>{t('orgs.colApiKeys')}</th>
-                <th>{t('orgs.colServices')}</th>
                 <th>{t('orgs.colProjects')}</th>
+                <th>{t('orgs.colMembers')}</th>
                 <th>{t('orgs.colCreated')}</th>
                 <th>{t('common.actions')}</th>
               </tr>
@@ -124,9 +123,8 @@ export default function OrganizationsPage() {
                   <td>
                     <StateBadge state={org.state} />
                   </td>
-                  <td>{org.apiKeyCount}</td>
-                  <td>{org.inferenceServiceCount}</td>
                   <td>{org.projectCount}</td>
+                  <td>{org.memberCount}</td>
                   <td>{formatTime(org.createdAt)}</td>
                   <td>
                     <button
@@ -479,11 +477,6 @@ function DeleteOrgDialog({
   const [error, setError] = useState('');
   const [force, setForce] = useState(false);
 
-  // hasAssets drives both the warning and the force prompt: a plain delete
-  // is refused while the organization still owns API keys or services.
-  const hasAssets =
-    parseInt(org.apiKeyCount || '0', 10) > 0 || parseInt(org.inferenceServiceCount || '0', 10) > 0;
-
   const submit = async () => {
     setSubmitting(true);
     setError('');
@@ -505,25 +498,21 @@ function DeleteOrgDialog({
       testId="org-delete-dialog"
     >
       <p>{t('orgs.deleteBody')}</p>
-      {hasAssets && (
-        <div className="warning-banner" data-testid="org-delete-assets-warning">
-          <p>
-            {t('orgs.deleteAssets', {
-              keys: org.apiKeyCount,
-              services: org.inferenceServiceCount,
-            })}
-          </p>
-          <label className="checkbox-row">
-            <input
-              type="checkbox"
-              data-testid="org-delete-force"
-              checked={force}
-              onChange={(e) => setForce(e.target.checked)}
-            />
-            <span>{t('orgs.deleteForce')}</span>
-          </label>
-        </div>
-      )}
+      {/* The directory no longer carries resource counts, so the force
+          option is always offered: a plain delete is refused while the
+          organization still owns platform-owned resources. */}
+      <div className="warning-banner" data-testid="org-delete-assets-warning">
+        <p>{t('orgs.deleteAssets')}</p>
+        <label className="checkbox-row">
+          <input
+            type="checkbox"
+            data-testid="org-delete-force"
+            checked={force}
+            onChange={(e) => setForce(e.target.checked)}
+          />
+          <span>{t('orgs.deleteForce')}</span>
+        </label>
+      </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" data-testid="org-delete-cancel" onClick={onClose}>
@@ -532,7 +521,7 @@ function DeleteOrgDialog({
         <button
           className="danger"
           data-testid="org-delete-confirm"
-          disabled={submitting || (hasAssets && !force)}
+          disabled={submitting}
           onClick={() => void submit()}
         >
           {submitting ? t('common.working') : t('common.delete')}

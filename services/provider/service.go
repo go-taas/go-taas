@@ -80,6 +80,14 @@ type RoleGuard interface {
 	RequireRole(ctx context.Context, orgID, userID, minRole string) error
 }
 
+// PlatformAdminGuard answers whether the caller is a platform
+// administrator. The model provider is a platform-owned asset, so the admin provider
+// RPCs answer to the platform, never to an organization administrator.
+// It is implemented by tenancy.Service.
+type PlatformAdminGuard interface {
+	RequirePlatformAdmin(ctx context.Context) error
+}
+
 // AuditRecorder records provider mutations best-effort.
 type AuditRecorder interface {
 	Record(ctx context.Context, ev *audit.AuditEvent)
@@ -109,6 +117,9 @@ type Service struct {
 	sessionOrgResolver  SessionOrgResolver
 	sessionUserResolver SessionUserResolver
 	roleGuard           RoleGuard
+	// platformAdminGuard gates the provider RPCs on the platform
+	// administrator role: providers belong to the platform.
+	platformAdminGuard PlatformAdminGuard
 	auditRecorder       AuditRecorder
 }
 
@@ -167,6 +178,12 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 
 // SetRoleGuard injects the org role guard.
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// SetPlatformAdminGuard injects the platform-administrator gate. When it
+// is wired (production and FVT) the admin RPCs answer to the platform
+// alone; a unit test that leaves it nil keeps the org-role fallback below
+// so the org guard can be exercised on its own.
+func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
 
 // SetAuditRecorder injects the best-effort audit recorder.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
@@ -260,6 +277,9 @@ func (s *Service) resolveSessionActor(ctx context.Context) (string, bool, error)
 // active org there is nothing to resolve a role in and the check is
 // skipped (the admin realm guard is the access boundary).
 func (s *Service) requireAdminRole(ctx context.Context) error {
+	if s.platformAdminGuard != nil {
+		return s.platformAdminGuard.RequirePlatformAdmin(ctx)
+	}
 	if s.roleGuard == nil {
 		return nil
 	}

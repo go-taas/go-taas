@@ -816,9 +816,8 @@ export interface OrganizationSummary {
   displayName: string;
   description: string;
   state: string;
-  apiKeyCount: string;
-  inferenceServiceCount: string;
   projectCount: string;
+  memberCount: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -843,7 +842,10 @@ export interface UserSummary {
   displayName?: string;
   email: string;
   state: string; // active | disabled
-  organizationCount: string;
+  organizationId: string;
+  organizationName: string;
+  projectId: string;
+  projectName: string;
   createdAt: string;
   updatedAt: string;
 }

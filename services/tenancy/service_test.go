@@ -350,3 +350,40 @@ func TestServiceMigrate(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 }
+
+// TestServiceOrganizationSummaryCounts verifies the organization row
+// carries the counts the directory shows - projects and people - and not
+// the platform-owned assets (API keys, inference services).
+func TestServiceOrganizationSummaryCounts(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.repo.CreateOrganization(ctx, &Organization{ID: "org-c", DisplayName: "C", State: StateActive}))
+	require.NoError(t, svc.repo.CreateProject(ctx, &Project{ID: "proj-c1", OrganizationID: "org-c", DisplayName: "P1", State: StateActive}))
+	require.NoError(t, svc.repo.CreateProject(ctx, &Project{ID: "proj-c2", OrganizationID: "org-c", DisplayName: "P2", State: StateActive}))
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	require.NoError(t, repo.AddMember(ctx, &OrgMember{OrganizationID: "org-c", UserID: "user-a", Role: RoleMember}))
+	require.NoError(t, repo.AddMember(ctx, &OrgMember{OrganizationID: "org-c", UserID: "user-b", Role: RoleAdmin}))
+
+	got, err := svc.GetOrganization(ctx, &tenancyv1.GetOrganizationRequest{OrganizationId: "org-c"})
+	require.NoError(t, err)
+	assert.EqualValues(t, 2, got.GetOrganization().GetProjectCount())
+	assert.EqualValues(t, 2, got.GetOrganization().GetMemberCount())
+}
+
+// TestRequirePlatformAdmin verifies the gate for platform-owned assets:
+// it admits only a session carrying the platform-administrator role, and
+// stays closed when no roles resolver is wired.
+func TestRequirePlatformAdmin(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	// No resolver wired: not an operator.
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(svc.RequirePlatformAdmin(ctx)))
+
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RoleAdmin}})
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(svc.RequirePlatformAdmin(ctx)))
+
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
+	require.NoError(t, svc.RequirePlatformAdmin(ctx))
+}

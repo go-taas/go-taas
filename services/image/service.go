@@ -52,6 +52,14 @@ type SessionOrgResolver interface {
 	SessionActiveOrg(ctx context.Context) (string, error)
 }
 
+// PlatformAdminGuard answers whether the caller is a platform
+// administrator. The image catalog is a platform-owned asset, so its
+// mutations answer to the platform, never to an organization
+// administrator. It is implemented by tenancy.Service.
+type PlatformAdminGuard interface {
+	RequirePlatformAdmin(ctx context.Context) error
+}
+
 // organizationMetadataKey is the gRPC metadata key carrying the
 // transitional caller organization (set by the gateway from the
 // X-Organization-Id header).
@@ -126,6 +134,10 @@ type Service struct {
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
+	// platformAdminGuard gates the image catalog mutations on the platform
+	// administrator role: the catalog belongs to the platform. Nil until
+	// wired, which leaves the mutations ungated for unit tests.
+	platformAdminGuard PlatformAdminGuard
 }
 
 // NodeMatcher validates an image-warmup node selector against the live
@@ -187,6 +199,11 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 func NewWithRepositories(repo *Repository, tasks *WarmupTaskRepository) *Service {
 	return &Service{repo: repo, tasks: tasks}
 }
+
+// SetPlatformAdminGuard injects the platform-administrator gate. When
+// it is wired (production and FVT) the catalog mutations answer to the
+// platform alone.
+func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
 
 // SetDeleteGuard installs the delete-image reference guard (D7). It
 // must be called before the service starts serving.
@@ -486,10 +503,23 @@ var tagPattern = regexp.MustCompile(`^[^\s]+$`)
 // digestPattern accepts sha256 followed by a colon and 64 hex chars.
 var digestPattern = regexp.MustCompile(`^sha256:[a-fA-F0-9]{64}$`)
 
+// requirePlatformAdmin enforces the platform-administrator gate on the
+// catalog mutations. Nil until wired: a unit test that exercises the
+// catalog directly is not an operator.
+func (s *Service) requirePlatformAdmin(ctx context.Context) error {
+	if s.platformAdminGuard == nil {
+		return nil
+	}
+	return s.platformAdminGuard.RequirePlatformAdmin(ctx)
+}
+
 // RegisterImage registers an inference engine image (architecture
 // Section 4.3 validation matrix; the first failure returns immediately
 // and nothing is written).
 func (s *Service) RegisterImage(ctx context.Context, req *imagev1.RegisterImageRequest) (*imagev1.RegisterImageResponse, error) {
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	name := strings.TrimSpace(req.GetName())
 	tag := strings.TrimSpace(req.GetTag())
 	digest := strings.TrimSpace(req.GetDigest())
@@ -555,6 +585,9 @@ func (s *Service) RegisterImage(ctx context.Context, req *imagev1.RegisterImageR
 // Harbor project (default "taas"). The import fails closed when the
 // Harbor registry or the importer is not configured.
 func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageRequest) (*imagev1.ImportImageResponse, error) {
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	sourceRef := strings.TrimSpace(req.GetSourceReference())
 	accelerator := strings.ToLower(strings.TrimSpace(req.GetAccelerator()))
 	engine := strings.TrimSpace(req.GetEngine())
@@ -735,6 +768,9 @@ func (s *Service) GetImage(ctx context.Context, req *imagev1.GetImageRequest) (*
 // UpdateImage edits the description only (D6): the request carries no
 // identity or compatibility fields, making immutability structural.
 func (s *Service) UpdateImage(ctx context.Context, req *imagev1.UpdateImageRequest) (*imagev1.UpdateImageResponse, error) {
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	description := strings.TrimSpace(req.GetDescription())
 	if len(description) > maxDescriptionLen {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: description must be at most %d characters", maxDescriptionLen)
@@ -756,6 +792,9 @@ func (s *Service) UpdateImage(ctx context.Context, req *imagev1.UpdateImageReque
 // inference services reference the image (D7): the guard returns 10206
 // naming the blocking services.
 func (s *Service) DeleteImage(ctx context.Context, req *imagev1.DeleteImageRequest) (*imagev1.DeleteImageResponse, error) {
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err

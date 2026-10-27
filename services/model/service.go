@@ -77,6 +77,14 @@ type RoleGuard interface {
 	RequireRole(ctx context.Context, orgID, userID, minRole string) error
 }
 
+// PlatformAdminGuard answers whether the caller is a platform
+// administrator. Models are a platform-owned fleet asset, so the admin
+// model RPCs answer to the platform, never to an organization
+// administrator. It is implemented by tenancy.Service.
+type PlatformAdminGuard interface {
+	RequirePlatformAdmin(ctx context.Context) error
+}
+
 // roleAdmin is the minimum org role for the admin model RPCs: the
 // fleet/operator view is admin-scoped.
 const roleAdmin = "admin"
@@ -198,6 +206,9 @@ type Service struct {
 	// resolved org context (feature #32, §3.3). Nil until wired: no role
 	// check (unit tests).
 	roleGuard RoleGuard
+	// platformAdminGuard gates the admin model RPCs on the platform
+	// administrator role: models belong to the platform, not to a tenant.
+	platformAdminGuard PlatformAdminGuard
 
 	// autoscalingProvider resolves the read-only autoscaling projection
 	// for the user-realm catalog (feature #16, AD13). Nil until wired:
@@ -314,6 +325,12 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 // RPCs by the caller's role (feature #32, §3.3).
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
 
+// SetPlatformAdminGuard injects the platform-administrator gate. When it
+// is wired (production and FVT) the admin model RPCs answer to the
+// platform alone; a unit test that leaves it nil keeps the org-role
+// fallback below so the guard can be exercised on its own.
+func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
+
 // SetAutoscalingProvider injects the read-only autoscaling projection
 // provider (feature #16, AD13). Production wires the infer module; unit
 // tests may inject a fake.
@@ -376,6 +393,9 @@ func (s *Service) checkOrg(ctx context.Context, orgID string) error {
 // check, so the check is skipped and the org header itself is the access
 // boundary (feature-17 AD6).
 func (s *Service) requireAdminRole(ctx context.Context, orgID string) error {
+	if s.platformAdminGuard != nil {
+		return s.platformAdminGuard.RequirePlatformAdmin(ctx)
+	}
 	if s.roleGuard == nil || orgID == "" {
 		return nil
 	}

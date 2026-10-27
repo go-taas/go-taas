@@ -147,6 +147,22 @@ func (s *Service) IsPlatformAdmin(ctx context.Context) (bool, error) {
 	return false, nil
 }
 
+// RequirePlatformAdmin returns CodeForbidden unless the caller's session
+// carries the platform-admin role. It is the gate for platform-owned
+// assets - models, images and inference services, and the clusters,
+// providers and runtime settings behind them - which an organization
+// administrator must never administer.
+func (s *Service) RequirePlatformAdmin(ctx context.Context) error {
+	ok, err := s.IsPlatformAdmin(ctx)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
 // callerIsPlatformAdmin reports whether the caller's session carries the
 // platform-admin role, permissively: with no resolver wired (unit tests) the
 // caller is treated as a platform administrator, matching the other
@@ -731,30 +747,28 @@ func (s *Service) EnableProject(ctx context.Context, req *tenancyv1.EnableProjec
 }
 
 // summarizeOrganization maps a row to the proto summary, filling the
-// read-time resource counts (D11).
+// read-time counts the directory shows (D11). API keys and inference
+// services are platform-owned assets, so they are not organization
+// metrics; the row reports the projects and people the organization
+// carries.
 func (s *Service) summarizeOrganization(ctx context.Context, repo *Repository, org *Organization) (*tenancyv1.OrganizationSummary, error) {
-	keyCount, err := repo.APIKeyCountByOrganization(ctx, org.ID)
-	if err != nil {
-		return nil, err
-	}
-	svcCount, err := repo.InferenceServiceCountByOrganization(ctx, org.ID)
-	if err != nil {
-		return nil, err
-	}
 	projectCount, err := repo.ProjectCountByOrganization(ctx, org.ID)
 	if err != nil {
 		return nil, err
 	}
+	memberCount, err := repo.MemberCountByOrganization(ctx, org.ID)
+	if err != nil {
+		return nil, err
+	}
 	return &tenancyv1.OrganizationSummary{
-		OrganizationId:        org.ID,
-		DisplayName:           org.DisplayName,
-		Description:           org.Description,
-		State:                 org.State,
-		ApiKeyCount:           keyCount,
-		InferenceServiceCount: svcCount,
-		ProjectCount:          projectCount,
-		CreatedAt:             org.CreatedAt.Unix(),
-		UpdatedAt:             org.UpdatedAt.Unix(),
+		OrganizationId: org.ID,
+		DisplayName:    org.DisplayName,
+		Description:    org.Description,
+		State:          org.State,
+		ProjectCount:   projectCount,
+		MemberCount:    memberCount,
+		CreatedAt:      org.CreatedAt.Unix(),
+		UpdatedAt:      org.UpdatedAt.Unix(),
 	}, nil
 }
 

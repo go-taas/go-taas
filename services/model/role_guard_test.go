@@ -119,3 +119,49 @@ func TestModelVersionRoleGuardNoop(t *testing.T) {
 	_, err = svc.ListModelVersions(adminCtx(), &modelv1.ListModelVersionsRequest{ModelId: reg.GetModelId()})
 	require.NoError(t, err)
 }
+
+// fakePlatformGuard answers the platform-administrator gate.
+type fakePlatformGuard struct {
+	platform bool
+}
+
+func (f fakePlatformGuard) RequirePlatformAdmin(context.Context) error {
+	if !f.platform {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
+// TestModelVersionPlatformAdminOnly verifies models are a platform-owned
+// asset: when the platform gate is wired an organization administrator
+// cannot read or activate versions, and a platform administrator can.
+func TestModelVersionPlatformAdminOnly(t *testing.T) {
+	svc := newModelTestService(t)
+	reg, err := svc.RegisterModel(context.Background(), &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "user-1"})
+	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: "org-a"})
+	// The org administrator would pass the org role guard; the platform
+	// gate must still refuse them.
+	svc.SetRoleGuard(fakeRoleGuard{allowed: true})
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+	_, err = svc.ListModelVersions(adminCtx(), &modelv1.ListModelVersionsRequest{ModelId: reg.GetModelId()})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+	_, err = svc.ActivateModelVersion(adminCtx(), &modelv1.ActivateModelVersionRequest{
+		ModelId: reg.GetModelId(), Version: "v1",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: true})
+	resp, err := svc.ActivateModelVersion(adminCtx(), &modelv1.ActivateModelVersionRequest{
+		ModelId: reg.GetModelId(), Version: "v1",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "v1", resp.GetActiveVersion())
+}

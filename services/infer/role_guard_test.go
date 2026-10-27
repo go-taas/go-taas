@@ -204,3 +204,42 @@ func TestRoleGuardNoop(t *testing.T) {
 	_, err = svc.ListDeploymentEvents(adminCtx(), &inferv1.ListDeploymentEventsRequest{ServiceId: svcRow.ID})
 	require.NoError(t, err)
 }
+// fakePlatformGuard answers the platform-administrator gate.
+type fakePlatformGuard struct {
+	platform bool
+}
+
+func (f fakePlatformGuard) RequirePlatformAdmin(context.Context) error {
+	if !f.platform {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
+// TestAdminRPCsPlatformAdminOnly verifies the inference fleet is a
+// platform-owned asset: when the platform gate is wired an organization
+// administrator cannot reach the admin RPCs at all, and a platform
+// administrator proceeds past the gate.
+func TestAdminRPCsPlatformAdminOnly(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, _ := newInferTestService(t)
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	svcRow := seedService(t, repo, "org-a", "svc-a", StateRunning, time.Now())
+
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "user-1"})
+	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: "org-a"})
+	// The org administrator would pass the org role guard; the platform
+	// gate must still refuse them.
+	svc.SetRoleGuard(fakeRoleGuard{allowed: true})
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+	_, err = svc.ListServiceLogPods(adminCtx(), &inferv1.ListServiceLogPodsRequest{ServiceId: svcRow.ID})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: true})
+	_, err = svc.ListServiceLogPods(adminCtx(), &inferv1.ListServiceLogPodsRequest{ServiceId: svcRow.ID})
+	require.Error(t, err)
+	assert.NotEqual(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}

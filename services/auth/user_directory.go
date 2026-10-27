@@ -19,6 +19,7 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/audit"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ---- User directory (admin surface) ----
@@ -130,21 +131,28 @@ func (s *Service) DeleteUser(ctx context.Context, req *authv1.DeleteUserRequest)
 // summarizeUser maps a user row to the directory summary, computing the
 // organization count from the membership resolver when wired.
 func (s *Service) summarizeUser(ctx context.Context, row *User) *authv1.UserSummary {
-	orgCount := int64(0)
+	// The directory shows where an account belongs, not how many places it
+	// has joined: an account belongs to at most one organization and one
+	// project. A resolution failure leaves the fields empty, which the
+	// console renders as "-".
+	var affiliation tenancy.Affiliation
 	if s.membershipResolver != nil {
-		if memberships, err := s.membershipResolver.AccessibleOrgsAndRoles(ctx, row.ID); err == nil {
-			orgCount = int64(len(memberships))
+		if found, err := s.membershipResolver.UserAffiliation(ctx, row.ID); err == nil {
+			affiliation = found
 		}
 	}
 	return &authv1.UserSummary{
-		UserId:            row.ID,
-		Username:          row.Username,
-		DisplayName:       row.DisplayName,
-		Email:             row.Email,
-		State:             row.State,
-		OrganizationCount: orgCount,
-		CreatedAt:         row.CreatedAt.Unix(),
-		UpdatedAt:         row.UpdatedAt.Unix(),
+		UserId:           row.ID,
+		Username:         row.Username,
+		DisplayName:      row.DisplayName,
+		Email:            row.Email,
+		State:            row.State,
+		OrganizationId:   affiliation.OrganizationID,
+		OrganizationName: affiliation.OrganizationName,
+		ProjectId:        affiliation.ProjectID,
+		ProjectName:      affiliation.ProjectName,
+		CreatedAt:        row.CreatedAt.Unix(),
+		UpdatedAt:        row.UpdatedAt.Unix(),
 	}
 }
 

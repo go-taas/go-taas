@@ -505,14 +505,17 @@ message OrganizationSummary {
   string description = 3;
   // state is "active" or "disabled".
   string state = 4;
-  // api_key_count is the number of non-revoked API keys.
-  int64 api_key_count = 5;
-  // inference_service_count is the number of non-terminated inference
-  // services.
-  int64 inference_service_count = 6;
+  // The resource counts a platform administrator reads from the directory:
+  // how many projects and people the organization carries. API keys and
+  // inference services are platform-owned assets, so they are not part of
+  // the organization row.
+  reserved 5, 6;
+  reserved "api_key_count", "inference_service_count";
   int64 project_count = 7;
   int64 created_at = 8;
   int64 updated_at = 9;
+  // member_count is the number of accounts on the organization roster.
+  int64 member_count = 10;
 }
 
 // ProjectSummary describes one project row of the directory. All int64

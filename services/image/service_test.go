@@ -567,3 +567,59 @@ func TestRecoverInterruptedWarmupTasks(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeInternal, ae.Code)
 }
+
+// fakePlatformGuard answers the platform-administrator gate.
+type fakePlatformGuard struct {
+	platform bool
+}
+
+func (f fakePlatformGuard) RequirePlatformAdmin(context.Context) error {
+	if !f.platform {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
+// TestServiceImageMutationsPlatformAdminOnly verifies the image catalog
+// is a platform-owned asset: with the platform gate wired an
+// organization administrator cannot register, edit or delete images, and
+// a platform administrator can.
+func TestServiceImageMutationsPlatformAdminOnly(t *testing.T) {
+	svc, img := newServiceForTest(t)
+	ctx := context.Background()
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+	_, err := svc.RegisterImage(ctx, &imagev1.RegisterImageRequest{
+		Name: "ghcr.io/go-taas/sglang", Tag: "v0.1.4", Accelerator: "nvidia", Engine: "sglang",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+	_, err = svc.UpdateImage(ctx, &imagev1.UpdateImageRequest{ImageId: img.ID, Description: "x"})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+	_, err = svc.DeleteImage(ctx, &imagev1.DeleteImageRequest{ImageId: img.ID})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: true})
+	_, err = svc.UpdateImage(ctx, &imagev1.UpdateImageRequest{ImageId: img.ID, Description: "edited"})
+	require.NoError(t, err)
+	found, err := svc.repo.FindByID(ctx, img.ID)
+	require.NoError(t, err)
+	assert.Equal(t, "edited", found.Description)
+}
+
+// TestServiceCompatibilityMatrixPlatformAdminOnly verifies the matrix is
+// part of the platform-owned image catalog: an organization
+// administrator cannot edit a cell.
+func TestServiceCompatibilityMatrixPlatformAdminOnly(t *testing.T) {
+	svc, _ := newServiceForTest(t)
+	ctx := context.Background()
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+	_, err := svc.SetCompatibilityStatus(ctx, &imagev1.SetCompatibilityStatusRequest{
+		ModelId: "m1", Engine: "vllm", CardType: "nvidia", Status: "supported",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}

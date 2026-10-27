@@ -363,3 +363,33 @@ func TestUnknownProvider(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeProviderNotFound, apierrors.CodeOf(err))
 }
+
+type fakePlatformGuard struct{ platform bool }
+
+func (f fakePlatformGuard) RequirePlatformAdmin(context.Context) error {
+	if !f.platform {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
+// TestProviderRPCsPlatformAdminOnly verifies the provider registry is a
+// platform-owned asset: an organization administrator cannot create a
+// provider, and a platform administrator can.
+func TestProviderRPCsPlatformAdminOnly(t *testing.T) {
+	svc, _ := newProviderSvc(t)
+	ctx := context.Background()
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+	_, err := svc.CreateProvider(ctx, &providerv1.CreateProviderRequest{
+		Name: "acme", Type: TypeOpenAI, BaseUrl: "https://api.example.com", ApiKey: "sk-abcdef123456",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: true})
+	_, err = svc.CreateProvider(ctx, &providerv1.CreateProviderRequest{
+		Name: "acme", Type: TypeOpenAI, BaseUrl: "https://api.example.com", ApiKey: "sk-abcdef123456",
+	})
+	require.NoError(t, err)
+}

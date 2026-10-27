@@ -769,10 +769,18 @@ message UserSummary {
   string display_name = 8;
   // state is "active" or "disabled".
   string state = 4;
-  // organization_count is the number of organizations the user belongs to.
-  int64 organization_count = 5;
+  reserved 5;
+  reserved "organization_count";
   int64 created_at = 6;
   int64 updated_at = 7;
+  // organization_id, organization_name and project_id, project_name are
+  // the affiliation the directory row shows: an account belongs to at most
+  // one organization and one project, and both are empty when the account
+  // has not joined one.
+  string organization_id = 9;
+  string organization_name = 10;
+  string project_id = 11;
+  string project_name = 12;
 }
 
 message ListUsersRequest {

@@ -135,7 +135,11 @@ func TestFVTTenancyEndToEnd(t *testing.T) {
 	assert.Equal(t, "org-acme", org["organizationId"])
 	assert.Equal(t, "ACME Inc.", org["displayName"])
 	assert.Equal(t, "active", org["state"])
-	assert.EqualValues(t, "0", fmt.Sprint(org["apiKeyCount"]))
+	// The organization row carries the counts the directory shows -
+	// projects and members - not the platform-owned API-key and inference
+	// service counters.
+	assert.EqualValues(t, "0", fmt.Sprint(org["projectCount"]))
+	assert.EqualValues(t, "0", fmt.Sprint(org["memberCount"]))
 
 	// An empty id asks the server for a UUID, so the console never has to
 	// ask a person for one.
@@ -314,11 +318,10 @@ func TestFVTTenancyEndToEnd(t *testing.T) {
 	keys, _ := body["apiKeys"].([]any)
 	assert.Empty(t, keys)
 
-	// The organization list reflects the api-key count.
+	// The organization row reflects the project count.
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/tenancy/organizations/org-acme", nil, "")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	org, _ = body["organization"].(map[string]any)
-	assert.EqualValues(t, "1", fmt.Sprint(org["apiKeyCount"]))
 	assert.EqualValues(t, "1", fmt.Sprint(org["projectCount"]))
 
 	// ---- AC5/AC11: update project + unknown project ----

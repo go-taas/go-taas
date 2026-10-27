@@ -39,6 +39,14 @@ type RoleGuard interface {
 	RequireRole(ctx context.Context, orgID, userID, minRole string) error
 }
 
+// PlatformAdminGuard answers whether the caller is a platform
+// administrator. The cluster fleet is a platform-owned asset, so the admin cluster
+// RPCs answer to the platform, never to an organization administrator.
+// It is implemented by tenancy.Service.
+type PlatformAdminGuard interface {
+	RequirePlatformAdmin(ctx context.Context) error
+}
+
 const roleAdmin = "admin"
 
 // WorkloadProvider lists the inference services placed on a cluster
@@ -80,6 +88,9 @@ type Service struct {
 	sessionUserResolver SessionUserResolver
 	// roleGuard gates the admin cluster RPCs.
 	roleGuard RoleGuard
+	// platformAdminGuard gates the admin cluster RPCs on the platform
+	// administrator role: clusters belong to the platform.
+	platformAdminGuard PlatformAdminGuard
 	// workloadProvider lists services placed on a cluster.
 	workloadProvider WorkloadProvider
 	// selfCluster reads the running cluster's identity from Kubernetes.
@@ -115,6 +126,12 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 
 // SetRoleGuard injects the org role guard.
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
+
+// SetPlatformAdminGuard injects the platform-administrator gate. When it
+// is wired (production and FVT) the admin RPCs answer to the platform
+// alone; a unit test that leaves it nil keeps the org-role fallback below
+// so the org guard can be exercised on its own.
+func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
 
 // SetWorkloadProvider injects the workload provider.
 func (s *Service) SetWorkloadProvider(p WorkloadProvider) { s.workloadProvider = p }
@@ -225,6 +242,9 @@ func (s *Service) resolveSessionActor(ctx context.Context) (string, bool, error)
 }
 
 func (s *Service) requireAdminRole(ctx context.Context, orgID string) error {
+	if s.platformAdminGuard != nil {
+		return s.platformAdminGuard.RequirePlatformAdmin(ctx)
+	}
 	if s.roleGuard == nil || orgID == "" {
 		return nil
 	}

@@ -303,3 +303,33 @@ func TestRegisterClusterEmptyName(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeClusterStateInvalid, apierrors.CodeOf(err))
 }
+type fakePlatformGuard struct{ platform bool }
+
+func (f fakePlatformGuard) RequirePlatformAdmin(context.Context) error {
+	if !f.platform {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
+// TestClusterRPCsPlatformAdminOnly verifies clusters are a platform-owned
+// asset: an organization administrator cannot register or list one even
+// though they administer their organization, and a platform administrator
+// can.
+func TestClusterRPCsPlatformAdminOnly(t *testing.T) {
+	db := newTestDB(t)
+	svc := newService(t, db, true)
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+
+	_, err := svc.RegisterCluster(ctxWithOrg(context.Background(), "org-1"), &clusterv1.RegisterClusterRequest{
+		Name: "cluster-a", Region: "cn-north", KubeconfigRef: "kube/cluster-a",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: true})
+	_, err = svc.RegisterCluster(ctxWithOrg(context.Background(), "org-1"), &clusterv1.RegisterClusterRequest{
+		Name: "cluster-a", Region: "cn-north", KubeconfigRef: "kube/cluster-a",
+	})
+	require.NoError(t, err)
+}

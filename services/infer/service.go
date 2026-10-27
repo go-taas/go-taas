@@ -71,6 +71,14 @@ type RoleGuard interface {
 	RequireRole(ctx context.Context, orgID, userID, minRole string) error
 }
 
+// PlatformAdminGuard answers whether the caller is a platform
+// administrator. The inference fleet is a platform-owned asset, so the admin infer
+// RPCs answer to the platform, never to an organization administrator.
+// It is implemented by tenancy.Service.
+type PlatformAdminGuard interface {
+	RequirePlatformAdmin(ctx context.Context) error
+}
+
 // roleAdmin is the minimum org role for the admin infer RPCs: the
 // fleet/operator view is admin-scoped.
 const roleAdmin = "admin"
@@ -123,6 +131,9 @@ type Service struct {
 	// resolved org context (features #32/#33/#34/#35). Nil until wired:
 	// no role check (unit tests).
 	roleGuard RoleGuard
+	// platformAdminGuard gates the admin infer RPCs on the platform
+	// administrator role: the inference fleet belongs to the platform.
+	platformAdminGuard PlatformAdminGuard
 
 	// gatewayResolver discovers the serving gateway's in-cluster base URL
 	// so the quickstart endpoint works without manual configuration. Nil
@@ -324,6 +335,12 @@ func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserR
 // RPCs by the caller's role (features #32/#33/#34/#35).
 func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
 
+// SetPlatformAdminGuard injects the platform-administrator gate. When it
+// is wired (production and FVT) the admin RPCs answer to the platform
+// alone; a unit test that leaves it nil keeps the org-role fallback below
+// so the org guard can be exercised on its own.
+func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
+
 // GatewayResolver discovers the in-cluster base URL of the serving
 // gateway (e.g. the AIBrix Envoy gateway), "http://host:port" or "" when
 // none is discoverable. It is implemented in the server wiring layer,
@@ -506,6 +523,9 @@ func (s *Service) checkServiceQuota(ctx context.Context, orgID string) error {
 // user to check, so the check is skipped and the org header itself is
 // the access boundary (feature-17 AD6).
 func (s *Service) requireAdminRole(ctx context.Context, orgID string) error {
+	if s.platformAdminGuard != nil {
+		return s.platformAdminGuard.RequirePlatformAdmin(ctx)
+	}
 	if s.roleGuard == nil || orgID == "" {
 		return nil
 	}

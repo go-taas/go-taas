@@ -428,3 +428,26 @@ existing admin/owner (organization) and project-admin gates.
   promotes a member to `admin` or demotes them again. The invitation, join
   request and member lists otherwise stay out of the platform navigation, so
   roster work is intentional rather than ambient.
+
+### 9.8 Platform-owned assets and the directory columns
+
+- **Platform-owned assets.** Models, image catalog entries and inference
+  services - and the clusters, model providers and serving runtime behind
+  them - belong to the platform, not to a tenant. Their admin RPCs are gated
+  by `RequirePlatformAdmin` (the strict session-role check), so an
+  organization administrator cannot register a model, import an image or
+  deploy a service even in their own organization. Each service receives the
+  gate through a `PlatformAdminGuard` seam; when the seam is not wired the
+  service falls back to its organization-role guard so a unit test can
+  exercise that guard alone.
+- **Organization directory columns.** An organization row shows the projects
+  and the people it carries (`projectCount`, `memberCount`). API-key and
+  inference-service counters were removed: they measured platform assets, not
+  tenant capacity. The delete dialog therefore always offers the force
+  option - a plain delete is still refused while the organization owns
+  resources (10041 `ORGANIZATION_IN_USE`).
+- **User directory columns.** A row shows the organization and project the
+  account belongs to, by display name, instead of a membership count; both
+  render as `-` when the account has joined neither. The dedicated platform
+  organization is never reported as an affiliation, and an account belongs to
+  at most one organization and one project, so a single pair is enough.

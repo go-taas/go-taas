@@ -198,14 +198,21 @@ const api = {
    *
    * `realm` is 'user' or 'admin'; the token is stored under
    * `go-taas.<realm>.session-token`.
+   *
+   * An admin session carries the platform-administrator role by default:
+   * models, images, inference services and the rest of the serving fleet
+   * are platform-owned assets, so only the platform administrator
+   * administers them. A suite that needs a plain organization
+   * administrator passes `roles` explicitly.
    */
   seedSession(browser, realm, org, roles, user, opts) {
+    const sessionRoles = roles || (realm === 'admin' ? 'admin,platform-admin' : '');
     const path = require('path');
     const { execSync } = require('child_process');
     const repoRoot = path.resolve(__dirname, '..', '..', '..');
     const dockerNetwork = process.env.E2E_DOCKER_NETWORK || 'go-taas_default';
     const cachePrefix = process.env.E2E_SEED_CACHE_PREFIX || 'go-taas';
-    const rolesArg = roles ? ` -roles '${roles}'` : '';
+    const rolesArg = sessionRoles ? ` -roles '${sessionRoles}'` : '';
     const userArg = user ? ` -user '${user}'` : '';
     const noMemberArg = opts && opts.noMember ? ' -no-member' : '';
     const cmd = [

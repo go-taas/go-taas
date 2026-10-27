@@ -256,6 +256,16 @@ func (r *Repository) InferenceServiceCountByOrganization(ctx context.Context, or
 	return count, err
 }
 
+// MemberCountByOrganization counts the organization's roster.
+func (r *Repository) MemberCountByOrganization(ctx context.Context, orgID string) (int64, error) {
+	var count int64
+	err := r.db.DB(ctx).
+		Model(&OrgMember{}).
+		Where("organization_id = ?", orgID).
+		Count(&count).Error
+	return count, err
+}
+
 // ProjectCountByOrganization counts the organization's projects of any
 // state (D11).
 func (r *Repository) ProjectCountByOrganization(ctx context.Context, orgID string) (int64, error) {

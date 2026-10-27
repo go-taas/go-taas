@@ -270,6 +270,10 @@ func main() {
 			// RPCs by the caller's role (AD).
 			modelSvc.SetSessionUserResolver(authSvc)
 			modelSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// Models are a platform-owned fleet asset: the admin model RPCs
+			// answer to the platform administrator, never to an organization
+			// administrator.
+			modelSvc.SetPlatformAdminGuard(tenancySvc)
 			// The grant list shows grantors by display name, not UUID.
 			modelSvc.SetUserLabelResolver(authSvc)
 			// Per-tenant model authorization (feature #13): the model
@@ -317,6 +321,8 @@ func main() {
 			// compare RPCs by the caller's role (AD).
 			inferSvc.SetSessionUserResolver(authSvc)
 			inferSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// The inference fleet belongs to the platform.
+			inferSvc.SetPlatformAdminGuard(tenancySvc)
 			// The operator surface is platform-wide: a platform admin lists
 			// every organization's inference services.
 			inferSvc.SetPlatformAdminResolver(tenancySvc)
@@ -481,6 +487,8 @@ func main() {
 			clusterSvc.SetSessionOrgResolver(authSvc)
 			clusterSvc.SetSessionUserResolver(authSvc)
 			clusterSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// Clusters belong to the platform.
+			clusterSvc.SetPlatformAdminGuard(tenancySvc)
 			clusterSvc.SetWorkloadProvider(infer.NewClusterWorkloadProvider(gormDB))
 			// The deploy form's cluster selector resolves the placement
 			// cluster through the cluster module (feature #40, AD7/AD8).
@@ -568,6 +576,8 @@ func main() {
 			inferSvc.SetAuditRecorder(auditRecorder)
 			billingSvc.SetAuditRecorder(auditRecorder)
 			imageSvc.SetAuditRecorder(auditRecorder)
+			// The image catalog belongs to the platform.
+			imageSvc.SetPlatformAdminGuard(tenancySvc)
 			tenancySvc.SetAuditRecorder(auditRecorder)
 			vgpuSvc.SetAuditRecorder(auditRecorder)
 			faultSvc.SetAuditRecorder(auditRecorder)
@@ -588,6 +598,8 @@ func main() {
 			providerSvc.SetSessionOrgResolver(authSvc)
 			providerSvc.SetSessionUserResolver(authSvc)
 			providerSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// Model providers belong to the platform.
+			providerSvc.SetPlatformAdminGuard(tenancySvc)
 			providerSvc.SetModelCatalog(modelSvc)
 			modelSvc.SetProviderNameResolver(providerSvc)
 			inferSvc.SetExternalModelProxy(providerSvc)
@@ -629,6 +641,8 @@ func main() {
 			runtimeSvc.SetSessionOrgResolver(authSvc)
 			runtimeSvc.SetSessionUserResolver(authSvc)
 			runtimeSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			// The serving runtime belongs to the platform.
+			runtimeSvc.SetPlatformAdminGuard(tenancySvc)
 			// The settings page shows who last changed the data-plane
 			// endpoint; resolve the id to a display name.
 			runtimeSvc.SetUserLabelResolver(authSvc)

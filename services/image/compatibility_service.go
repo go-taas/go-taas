@@ -240,6 +240,11 @@ func (s *Service) GetCompatibilityCell(ctx context.Context, req *imagev1.GetComp
 
 // SetCompatibilityStatus sets a cell's status and optional note (AC4).
 func (s *Service) SetCompatibilityStatus(ctx context.Context, req *imagev1.SetCompatibilityStatusRequest) (*imagev1.SetCompatibilityStatusResponse, error) {
+	// The compatibility matrix describes the platform's image catalog, so
+	// only the platform administrator edits it.
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	repo, err := s.compatibilityRepository()
 	if err != nil {
 		return nil, err
@@ -261,6 +266,11 @@ func (s *Service) SetCompatibilityStatus(ctx context.Context, req *imagev1.SetCo
 // BulkSetCompatibilityStatus updates a list of cells atomically and
 // returns the count (AC5).
 func (s *Service) BulkSetCompatibilityStatus(ctx context.Context, req *imagev1.BulkSetCompatibilityStatusRequest) (*imagev1.BulkSetCompatibilityStatusResponse, error) {
+	// The compatibility matrix describes the platform's image catalog, so
+	// only the platform administrator edits it.
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
 	repo, err := s.compatibilityRepository()
 	if err != nil {
 		return nil, err

@@ -367,3 +367,33 @@ func TestEnsureDataPlaneIsSkippedWhenDisabled(t *testing.T) {
 	require.NoError(t, svc.EnsureDataPlane(context.Background()))
 	assert.Empty(t, router.applied)
 }
+
+type fakePlatformGuard struct{ platform bool }
+
+func (f fakePlatformGuard) RequirePlatformAdmin(context.Context) error {
+	if !f.platform {
+		return apierrors.New(apierrors.CodeForbidden)
+	}
+	return nil
+}
+
+// TestPlatformSettingsPlatformAdminOnly verifies the serving runtime is a
+// platform-owned asset: an organization administrator cannot read or
+// change the platform settings, and a platform administrator can.
+func TestPlatformSettingsPlatformAdminOnly(t *testing.T) {
+	db := newTestDB(t)
+	svc := NewForFVT(db, nil)
+	// The org administrator passes the org role guard; the platform gate
+	// must still refuse them.
+	svc.SetRoleGuard(fakeRoleGuard{allowed: true})
+	svc.SetSessionOrgResolver(fakeSessionOrg{org: "org-a"})
+	svc.SetSessionUserResolver(fakeSessionUser{user: "user-1"})
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: false})
+
+	_, err := svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
+	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+
+	svc.SetPlatformAdminGuard(fakePlatformGuard{platform: true})
+	_, err = svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+}

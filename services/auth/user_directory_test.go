@@ -84,27 +84,53 @@ func TestServiceDisableEnableUser(t *testing.T) {
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
 
-func TestServiceUserOrganizationCount(t *testing.T) {
+func TestServiceUserAffiliation(t *testing.T) {
 	svc, db := newSSOService(t)
 	ctx := context.Background()
 
 	require.NoError(t, db.Create(&User{ID: "user-1", Username: "alice", Email: "a@x.com"}).Error)
-	require.NoError(t, db.Create(&tenancy.Organization{ID: "org-a", DisplayName: "A", State: tenancy.StateActive}).Error)
-	require.NoError(t, db.Create(&tenancy.Organization{ID: "org-b", DisplayName: "B", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "org-a", DisplayName: "Acme", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "org-b", DisplayName: "Beta", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.Project{ID: "proj-a", OrganizationID: "org-a", DisplayName: "Alpha", State: tenancy.StateActive}).Error)
 
-	// Without a membership resolver the count reads 0.
+	// Without a membership resolver the affiliation stays empty; the
+	// console renders that as "-".
 	resp, err := svc.GetUser(ctx, &authv1.GetUserRequest{UserId: "user-1"})
 	require.NoError(t, err)
-	assert.EqualValues(t, 0, resp.User.OrganizationCount)
+	assert.Empty(t, resp.User.OrganizationName)
+	assert.Empty(t, resp.User.ProjectName)
 
-	// Wire the membership resolver and add memberships.
+	// Wire the membership resolver: the directory shows the organization
+	// and project display names, not a membership count.
 	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
 	require.NoError(t, db.Create(&tenancy.OrgMember{OrganizationID: "org-a", UserID: "user-1", Role: "member"}).Error)
-	require.NoError(t, db.Create(&tenancy.OrgMember{OrganizationID: "org-b", UserID: "user-1", Role: "viewer"}).Error)
+	require.NoError(t, db.Create(&tenancy.ProjectMember{ProjectID: "proj-a", UserID: "user-1", Role: "member"}).Error)
 
 	resp, err = svc.GetUser(ctx, &authv1.GetUserRequest{UserId: "user-1"})
 	require.NoError(t, err)
-	assert.EqualValues(t, 2, resp.User.OrganizationCount)
+	assert.Equal(t, "org-a", resp.User.OrganizationId)
+	assert.Equal(t, "Acme", resp.User.OrganizationName)
+	assert.Equal(t, "proj-a", resp.User.ProjectId)
+	assert.Equal(t, "Alpha", resp.User.ProjectName)
+}
+
+// The dedicated platform organization is the tenancy anchor of the
+// platform itself, not a tenant a person joins, so it is never reported
+// as a user's affiliation.
+func TestServiceUserAffiliationSkipsPlatformOrg(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	require.NoError(t, db.Create(&User{ID: "user-2", Username: "bob", Email: "b@x.com"}).Error)
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "platform", DisplayName: "Platform", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "org-a", DisplayName: "Acme", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{OrganizationID: "platform", UserID: "user-2", Role: "platform-admin"}).Error)
+
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+	resp, err := svc.GetUser(ctx, &authv1.GetUserRequest{UserId: "user-2"})
+	require.NoError(t, err)
+	assert.Empty(t, resp.User.OrganizationName)
+	assert.Empty(t, resp.User.OrganizationId)
 }
 
 func TestServiceResolveUserID(t *testing.T) {

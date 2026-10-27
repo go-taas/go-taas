@@ -795,15 +795,14 @@ export const en: Record<string, string> = {
 
   // ---- Organizations ----
   'orgs.title': 'Organizations',
-  'orgs.subtitle': 'The platform organization registry. Every API key, inference service and usage record belongs to exactly one organization.',
+  'orgs.subtitle': 'The platform organization registry. Each organization carries its own projects, members and quotas.',
   'orgs.members': 'Members',
   'orgs.create': 'Create Organization',
   'orgs.empty': 'No organizations match your filters.',
   'orgs.colOrganization': 'Organization',
   'orgs.colState': 'State',
-  'orgs.colApiKeys': 'API keys',
-  'orgs.colServices': 'Inference services',
   'orgs.colProjects': 'Projects',
+  'orgs.colMembers': 'Users',
   'orgs.colCreated': 'Created',
   'orgs.createTitle': 'Create Organization',
   'orgs.fieldOrgId': 'Organization ID',
@@ -824,7 +823,7 @@ export const en: Record<string, string> = {
   'orgs.deleteTitle': 'Delete {name}?',
   'orgs.platformProtected': 'The platform organization cannot be deleted.',
   'orgs.deleteAssets':
-    'This organization still owns {keys} API key(s) and {services} inference service(s).',
+    'This organization still owns resources that the plain delete refuses to orphan.',
   'orgs.deleteForce':
     'Force delete: also remove its API keys, inference services and the rest of its data.',
   'orgs.deleteBody':
@@ -839,7 +838,8 @@ export const en: Record<string, string> = {
   'users.colUser': 'User',
   'users.colEmail': 'Email',
   'users.colState': 'State',
-  'users.colOrgs': 'Orgs',
+  'users.colOrganization': 'Organization',
+  'users.colProject': 'Project',
   'users.colCreated': 'Created',
   'users.stateTitle': 'Confirm action',
   'users.stateBody': 'Are you sure you want to {action} user {username}?',
