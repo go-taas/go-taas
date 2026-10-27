@@ -67,3 +67,21 @@ func TestFVTEmailCodeRegisterAndLogin(t *testing.T) {
 }
 
 var _ = auth.UserStateActive
+// TestFVTEmailCodeChangeEmailOnAdminSurface verifies the admin console can
+// request a change_email code (the profile page is shared by both
+// surfaces, so the endpoint must answer on the admin prefix too).
+func TestFVTEmailCodeChangeEmailOnAdminSurface(t *testing.T) {
+	env := newSSOEnv(t)
+	enableEmailVerificationFVT(t)
+
+	code, body := env.call(t, http.MethodPost, "/api/v1/admin/auth/email-code", map[string]any{
+		"email": "new@x.com", "purpose": "change_email",
+	}, nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+
+	client := env.svc.SessionStoreClient()
+	require.NotNil(t, client)
+	stored, err := client.Get(t.Context(), "auth:email-code:new@x.com:change_email").Result()
+	require.NoError(t, err)
+	assert.Len(t, stored, 6)
+}

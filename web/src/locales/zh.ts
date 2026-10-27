@@ -2508,7 +2508,7 @@ export const zh: Record<string, string> = {
   'profile.emailCode': '验证码',
   'profile.emailCodePlaceholder': '6 位验证码',
   'profile.emailCodeHint': '先向新邮箱发送验证码，然后在此填写。',
-  'profile.email': '邮箱（不可修改）',
+  'profile.email': '邮箱',
   'profile.displayName': '显示名',
   'profile.avatar': '头像',
   'profile.avatarPlaceholder': 'https://example.com/avatar.png',
@@ -2522,7 +2522,7 @@ export const zh: Record<string, string> = {
   'profile.changeAvatar': '更换头像',
   'profile.editTitle': '编辑资料',
   'profile.displayNamePlaceholder': '输入显示名',
-  'profile.immutableHint': '用户名和邮箱全系统唯一，不可修改。',
+  'profile.immutableHint': '用户名全系统唯一，不可修改。',
   'profile.noEmail': '未设置邮箱',
   // ---- Join requests ----
   'joinreq.title': '加入申请',

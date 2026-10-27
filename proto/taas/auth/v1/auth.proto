@@ -32,6 +32,12 @@ service AuthService {
     option (google.api.http) = {
       post: "/api/v1/auth/email-code"
       body: "*"
+      // The admin console's profile page changes the same account email,
+      // so the endpoint is served on both surfaces.
+      additional_bindings: {
+        post: "/api/v1/admin/auth/email-code"
+        body: "*"
+      }
     };
   }
 

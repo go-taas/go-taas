@@ -2534,7 +2534,7 @@ export const en: Record<string, string> = {
   'profile.emailCode': 'Verification code',
   'profile.emailCodePlaceholder': '6-digit code',
   'profile.emailCodeHint': 'Send a code to the new address, then enter it here.',
-  'profile.email': 'Email (immutable)',
+  'profile.email': 'Email',
   'profile.displayName': 'Display name',
   'profile.avatar': 'Avatar',
   'profile.avatarPlaceholder': 'https://example.com/avatar.png',
@@ -2548,7 +2548,7 @@ export const en: Record<string, string> = {
   'profile.changeAvatar': 'Change avatar',
   'profile.editTitle': 'Edit profile',
   'profile.displayNamePlaceholder': 'Enter a display name',
-  'profile.immutableHint': 'The username and email are globally unique and cannot be changed.',
+  'profile.immutableHint': 'The username is globally unique and cannot be changed.',
   'profile.noEmail': 'No email set',
   // ---- Join requests ----
   'joinreq.title': 'Join Requests',

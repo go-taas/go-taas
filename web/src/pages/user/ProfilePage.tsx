@@ -98,6 +98,11 @@ export default function ProfilePage() {
     }
   };
 
+  // The verification-code endpoint is served on both surfaces; the admin
+  // console must call its own prefix (the realm guard rejects the other).
+  const emailCodePath =
+    realm === 'admin' ? '/api/v1/admin/auth/email-code' : '/api/v1/auth/email-code';
+
   // sendEmailCode asks the platform to mail a code to the new address.
   const sendEmailCode = async () => {
     if (!email.trim()) return;
@@ -105,7 +110,7 @@ export default function ProfilePage() {
     setError('');
     setSaved(false);
     try {
-      await api.post('/api/v1/auth/email-code', orgId, {
+      await api.post(emailCodePath, orgId, {
         email: email.trim(),
         purpose: 'change_email',
       });
