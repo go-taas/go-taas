@@ -3,7 +3,8 @@
 // verification used to authenticate inference traffic.
 //
 // User profile (user surface): the caller's own profile with mutable
-// display name and avatar. Username and email are globally unique and
+// display name and avatar. The email is mutable too, but only after the
+// new address proves ownership with a verification code. The username is
 // immutable.
 package auth
 
@@ -18,6 +19,9 @@ import (
 
 // maxDisplayNameLen bounds a profile display name.
 const maxDisplayNameLen = 128
+
+// maxEmailLen bounds a profile email address.
+const maxEmailLen = 256
 
 // maxAvatarLen bounds a profile avatar: a base64 data URL of up to
 // ~512 KiB decoded image (base64 expands by ~4/3).
@@ -47,7 +51,8 @@ func (s *Service) GetUserProfile(ctx context.Context, _ *authv1.GetUserProfileRe
 }
 
 // UpdateUserProfile updates the caller's mutable profile fields
-// (display name, avatar). Username and email are immutable.
+// (display name, avatar, and email after verification). Username is
+// immutable.
 func (s *Service) UpdateUserProfile(ctx context.Context, req *authv1.UpdateUserProfileRequest) (*authv1.UpdateUserProfileResponse, error) {
 	userID, err := s.SessionUserID(ctx)
 	if err != nil {
@@ -66,9 +71,21 @@ func (s *Service) UpdateUserProfile(ctx context.Context, req *authv1.UpdateUserP
 	if avatar != "" && !strings.HasPrefix(avatar, "data:image/") {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
+	// Email change: the new address must be proven with a code sent to
+	// it (purpose "change_email") when email verification is enabled, and
+	// must not already belong to another account.
+	email := strings.TrimSpace(req.GetEmail())
+	if email != "" && len(email) > maxEmailLen {
+		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
+	}
 	repo, err := s.ssoRepository()
 	if err != nil {
 		return nil, err
+	}
+	if email != "" {
+		if err := s.applyEmailChange(ctx, repo, userID, email, req.GetEmailCode()); err != nil {
+			return nil, err
+		}
 	}
 	user, err := repo.UpdateUserProfile(ctx, userID, displayName, avatar)
 	if isRecordNotFound(err) {
@@ -81,6 +98,36 @@ func (s *Service) UpdateUserProfile(ctx context.Context, req *authv1.UpdateUserP
 		Response: okResponse(),
 		Profile:  summarizeProfile(user),
 	}, nil
+}
+
+// applyEmailChange replaces the caller's email after the new address
+// proves ownership. Verification (when enabled) uses the "change_email"
+// code sent to the NEW address; the address must not belong to another
+// account. Re-submitting the current address is a no-op.
+func (s *Service) applyEmailChange(ctx context.Context, repo *SSORepository, userID, email, code string) error {
+	current, err := repo.FindUser(ctx, userID)
+	if isRecordNotFound(err) {
+		return apierrors.New(apierrors.CodeUserNotFound)
+	}
+	if err != nil {
+		return err
+	}
+	if strings.EqualFold(current.Email, email) {
+		return nil
+	}
+	if err := s.verifyEmailCode(ctx, email, emailCodePurposeChangeEmail, strings.TrimSpace(code)); err != nil {
+		return err
+	}
+	// The email column is unique, so the constraint is the authoritative
+	// duplicate guard (no read-then-write race). A collision maps to
+	// USER_EXISTS for a stable client contract.
+	if err := repo.UpdateUserEmail(ctx, userID, email); err != nil {
+		if isUniqueViolation(err) {
+			return apierrors.New(apierrors.CodeUserExists)
+		}
+		return err
+	}
+	return nil
 }
 
 // summarizeProfile maps a user row to the profile message.

@@ -281,3 +281,60 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(msg, "23505") ||
 		strings.Contains(msg, "UNIQUE constraint failed")
 }
+
+// orgScopedDelete is one table/condition pair removed when an
+// organization is deleted. Keeping them as data (not a chain of ifs)
+// makes the cascade easy to extend and to read.
+type orgScopedDelete struct {
+	model any
+	where string
+	args  []any
+}
+
+// DeleteOrganization removes an organization and every tenancy-side row
+// that belongs to it: its projects and their rosters, its member roster,
+// its invitations and its join requests. Platform assets (API keys,
+// inference services) are keyed by the organization id and are not
+// touched here; the service refuses a delete while any exist. The work
+// runs in one transaction so a partial delete cannot leave orphans.
+func (r *Repository) DeleteOrganization(ctx context.Context, id string) error {
+	return r.db.DB(ctx).Transaction(func(tx *gorm.DB) error {
+		var projectIDs []string
+		if err := tx.Model(&Project{}).Where("organization_id = ?", id).
+			Pluck("id", &projectIDs).Error; err != nil {
+			return err
+		}
+
+		// Project-scoped rows first (only when there are projects), then
+		// the projects themselves, then the organization-scoped rows.
+		steps := make([]orgScopedDelete, 0, 6)
+		if len(projectIDs) > 0 {
+			steps = append(steps,
+				orgScopedDelete{&ProjectMember{}, "project_id IN ?", []any{projectIDs}},
+				orgScopedDelete{&JoinRequest{}, "target_type = ? AND target_id IN ?",
+					[]any{JoinTargetProject, projectIDs}},
+			)
+		}
+		steps = append(steps,
+			orgScopedDelete{&Project{}, "organization_id = ?", []any{id}},
+			orgScopedDelete{&OrgMember{}, "organization_id = ?", []any{id}},
+			orgScopedDelete{&Invitation{}, "organization_id = ?", []any{id}},
+			orgScopedDelete{&JoinRequest{}, "target_type = ? AND target_id = ?",
+				[]any{JoinTargetOrganization, id}},
+		)
+		for _, step := range steps {
+			if err := tx.Where(step.where, step.args...).Delete(step.model).Error; err != nil {
+				return err
+			}
+		}
+
+		res := tx.Where("id = ?", id).Delete(&Organization{})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return gorm.ErrRecordNotFound
+		}
+		return nil
+	})
+}

@@ -6,6 +6,7 @@ import (
 	"math"
 	"strings"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc"
 	"gorm.io/gorm"
 
@@ -277,6 +278,11 @@ func (s *Service) CreateOrganization(ctx context.Context, req *tenancyv1.CreateO
 		return nil, apierrors.New(apierrors.CodeForbidden)
 	}
 	id := strings.TrimSpace(req.GetOrganizationId())
+	if id == "" {
+		// The console never asks a person to type an id; the server owns
+		// it so every tenant is a stable UUID.
+		id = uuid.NewString()
+	}
 	if !config.TenancyIDRegex().MatchString(id) {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
@@ -435,6 +441,55 @@ func (s *Service) DisableOrganization(ctx context.Context, req *tenancyv1.Disabl
 	return &tenancyv1.DisableOrganizationResponse{Response: okResponse(), Organization: summary}, nil
 }
 
+// DeleteOrganization permanently removes an organization and its
+// tenancy-side rows. It is restricted to platform administrators, refuses
+// the dedicated platform organization, and refuses while platform assets
+// (API keys or inference services) still reference the organization so
+// no billing or serving records are orphaned.
+func (s *Service) DeleteOrganization(ctx context.Context, req *tenancyv1.DeleteOrganizationRequest) (*tenancyv1.DeleteOrganizationResponse, error) {
+	if !s.callerIsPlatformAdmin(ctx) {
+		return nil, apierrors.New(apierrors.CodeForbidden)
+	}
+	orgID := strings.TrimSpace(req.GetOrganizationId())
+	if orgID == "" {
+		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
+	}
+	if orgID == platformOrgID {
+		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	if _, err := repo.FindOrganization(ctx, orgID); isRecordNotFound(err) {
+		return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+	} else if err != nil {
+		return nil, err
+	}
+	// Refuse while platform assets still reference the organization: their
+	// rows are keyed by this id and would become unreachable.
+	apiKeys, err := repo.APIKeyCountByOrganization(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	services, err := repo.InferenceServiceCountByOrganization(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if apiKeys > 0 || services > 0 {
+		return nil, apierrors.Newf(apierrors.CodeOrganizationInUse,
+			"tenancy: organization %s still has %d API key(s) and %d inference service(s)",
+			orgID, apiKeys, services)
+	}
+	if err := repo.DeleteOrganization(ctx, orgID); err != nil {
+		if isRecordNotFound(err) {
+			return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+		}
+		return nil, err
+	}
+	return &tenancyv1.DeleteOrganizationResponse{Response: okResponse()}, nil
+}
+
 // EnableOrganization moves a disabled organization back to active. It
 // is idempotent (AC4).
 func (s *Service) EnableOrganization(ctx context.Context, req *tenancyv1.EnableOrganizationRequest) (*tenancyv1.EnableOrganizationResponse, error) {
@@ -461,6 +516,11 @@ func (s *Service) EnableOrganization(ctx context.Context, req *tenancyv1.EnableO
 // architecture Section 4.3, AC5).
 func (s *Service) CreateProject(ctx context.Context, req *tenancyv1.CreateProjectRequest) (*tenancyv1.CreateProjectResponse, error) {
 	id := strings.TrimSpace(req.GetProjectId())
+	if id == "" {
+		// The console never asks a person to type an id; the server owns
+		// it so every project is a stable UUID.
+		id = uuid.NewString()
+	}
 	if !config.TenancyIDRegex().MatchString(id) {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}

@@ -389,7 +389,7 @@ message LoginResponse {
 
 message SendEmailCodeRequest {
   string email = 1;
-  // purpose is "register" or "login".
+  // purpose is "register", "login" or "change_email".
   string purpose = 2;
 }
 
@@ -423,6 +423,11 @@ message UpdateUserProfileRequest {
   // avatar replaces the stored avatar (a base64 image data URL);
   // empty clears it.
   string avatar = 2;
+  // email replaces the stored email when non-empty. When email
+  // verification is enabled, email_code is required and must be the code
+  // sent to the NEW address with purpose "change_email".
+  string email = 3;
+  string email_code = 4;
 }
 
 message UpdateUserProfileResponse {

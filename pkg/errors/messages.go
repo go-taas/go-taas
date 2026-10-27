@@ -51,6 +51,7 @@ var messages = map[Code]string{
 	CodeRateLimitExceeded:     "rate limit exceeded",
 	CodeRealmMismatch:         "session belongs to the other console",
 	CodeAPIKeyModelNotAllowed: "model not allowed for this api key",
+	CodeOrganizationInUse:     "organization still has api keys or inference services",
 
 	// model
 	CodeModelNotFound:        "model not found",

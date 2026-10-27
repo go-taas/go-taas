@@ -183,3 +183,36 @@ func TestFVTProjectWriteAuthz(t *testing.T) {
 	_, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/projects/proj-new:disable", nil)
 	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
 }
+
+// TestFVTDeleteOrganization verifies the platform can delete an
+// organization with its projects and rosters, the platform organization
+// is protected, and a non-platform admin is refused.
+func TestFVTDeleteOrganization(t *testing.T) {
+	env := newRBACEnv(t)
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{roles: []string{tenancy.RolePlatformAdmin}})
+	env.seedRBACOrg(t, "org-del", "Deletable")
+	env.seedRBACOrg(t, "platform", "Platform")
+	env.seedRBACProject(t, "proj-del", "org-del")
+
+	code, body := env.call(t, http.MethodDelete,
+		"/api/v1/admin/tenancy/organizations/org-del", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+
+	// Listing no longer contains it.
+	_, body = env.call(t, http.MethodGet, "/api/v1/admin/tenancy/organizations", nil)
+	for _, raw := range body["organizations"].([]any) {
+		assert.NotEqual(t, "org-del", raw.(map[string]any)["organizationId"])
+	}
+
+	// The platform organization cannot be deleted.
+	_, body = env.call(t, http.MethodDelete,
+		"/api/v1/admin/tenancy/organizations/platform", nil)
+	assert.Equal(t, float64(10019), body["code"], "body: %v", body)
+
+	// A plain org admin cannot delete organizations.
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{roles: []string{tenancy.RoleAdmin}})
+	env.seedRBACOrg(t, "org-keep", "Keep")
+	_, body = env.call(t, http.MethodDelete,
+		"/api/v1/admin/tenancy/organizations/org-keep", nil)
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+}

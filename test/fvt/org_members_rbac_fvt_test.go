@@ -64,6 +64,13 @@ func newRBACEnv(t *testing.T) *rbacEnv {
 	db, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, tenancy.MigrateSchemaForFVT(db))
+	// The organization summary counts platform assets owned by other
+	// modules; the tenancy-only fixture provides minimal stand-ins so the
+	// list/delete paths run against the real service.
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS api_keys (
+		id TEXT PRIMARY KEY, organization_id TEXT, revoked BOOLEAN DEFAULT 0)`).Error)
+	require.NoError(t, db.Exec(`CREATE TABLE IF NOT EXISTS inference_services (
+		id TEXT PRIMARY KEY, organization_id TEXT, state TEXT)`).Error)
 	sqlDB, err := db.DB()
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = sqlDB.Close() })

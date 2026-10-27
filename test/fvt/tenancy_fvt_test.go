@@ -137,8 +137,18 @@ func TestFVTTenancyEndToEnd(t *testing.T) {
 	assert.Equal(t, "active", org["state"])
 	assert.EqualValues(t, "0", fmt.Sprint(org["apiKeyCount"]))
 
-	// Invalid ids are rejected with 10019.
-	for _, badID := range []string{"", "ab", "-abc", "UPPER", "a", "x-"} {
+	// An empty id asks the server for a UUID, so the console never has to
+	// ask a person for one.
+	code, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/organizations", map[string]any{
+		"displayName": "Generated",
+	}, "")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	generated, _ := body["organization"].(map[string]any)
+	assert.Regexp(t, `^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
+		generated["organizationId"], "the server must generate a UUID")
+
+	// Malformed caller-supplied ids are still rejected with 10019.
+	for _, badID := range []string{"ab", "-abc", "UPPER", "a", "x-"} {
 		code, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/organizations", map[string]any{
 			"organizationId": badID,
 			"displayName":    "Bad",
@@ -146,6 +156,11 @@ func TestFVTTenancyEndToEnd(t *testing.T) {
 		assert.NotEqual(t, http.StatusOK, code, "id %q should be rejected", badID)
 		assert.EqualValues(t, float64(10019), body["code"], "id %q", badID)
 	}
+
+	// Clean up the generated organization so later counts stay stable.
+	code, _ = env.call(t, http.MethodDelete,
+		"/api/v1/admin/tenancy/organizations/"+generated["organizationId"].(string), nil, "")
+	require.Equal(t, http.StatusOK, code)
 
 	// Duplicate id is rejected with 10015.
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/tenancy/organizations", map[string]any{

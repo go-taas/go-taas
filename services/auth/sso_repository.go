@@ -387,6 +387,13 @@ func (r *SSORepository) UpdateUserProfile(ctx context.Context, id, displayName, 
 	return &row, nil
 }
 
+// UpdateUserEmail replaces a user's email address. The email column is
+// unique, so a collision maps to the caller's duplicate handling.
+func (r *SSORepository) UpdateUserEmail(ctx context.Context, id, email string) error {
+	return r.db.DB(ctx).Model(&User{}).Where("id = ?", id).
+		Updates(map[string]any{"email": email}).Error
+}
+
 // isUniqueViolation reports whether err is a unique-constraint
 // violation across the supported dialects (PostgreSQL 23505, SQLite
 // generic message).

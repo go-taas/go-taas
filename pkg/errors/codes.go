@@ -76,6 +76,10 @@ const (
 	// callers can distinguish a key-scope denial from an org denial.
 	CodeAPIKeyModelNotAllowed Code = 10039 // API_KEY_MODEL_NOT_ALLOWED
 	CodeUserDisabled          Code = 10040 // USER_DISABLED
+	// CodeOrganizationInUse blocks deleting an organization while its
+	// platform assets (API keys or inference services) still reference
+	// it, so no billing or serving rows are orphaned.
+	CodeOrganizationInUse Code = 10041 // ORGANIZATION_IN_USE
 )
 
 // model module error codes.

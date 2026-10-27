@@ -52,6 +52,9 @@ const emailCodeLen = 6
 const (
 	emailCodePurposeRegister = "register"
 	emailCodePurposeLogin    = "login"
+	// emailCodePurposeChangeEmail verifies ownership of a NEW address
+	// before the profile's email is replaced.
+	emailCodePurposeChangeEmail = "change_email"
 )
 
 // emailVerificationEnabled reports whether email verification is
@@ -95,7 +98,8 @@ func (s *Service) SendEmailCode(ctx context.Context, req *authv1.SendEmailCodeRe
 	}
 	email := strings.TrimSpace(req.GetEmail())
 	purpose := strings.TrimSpace(req.GetPurpose())
-	if email == "" || (purpose != emailCodePurposeRegister && purpose != emailCodePurposeLogin) {
+	if email == "" || (purpose != emailCodePurposeRegister &&
+		purpose != emailCodePurposeLogin && purpose != emailCodePurposeChangeEmail) {
 		return nil, apierrors.New(apierrors.CodeUserNotFound)
 	}
 	client, err := s.redisClientFor()

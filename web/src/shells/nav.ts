@@ -259,13 +259,23 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
 // and project. Each scope sees only its own functions. A multi-role user
 // chooses the scope at /admin; the shell renders the matching categories.
 
+// platformHiddenItems are the pages a platform administrator does not
+// use: project management (projects belong to organizations), the user
+// directory and the organization member/invitation rosters (organization
+// administrators own those).
+const platformHiddenItems = new Set([
+  '/admin/projects',
+  '/admin/users',
+  '/admin/members',
+  '/admin/invitations',
+]);
+
 /** Platform console navigation: the operator surface minus project
- * management (a platform administrator manages organizations, not the
- * projects inside them). */
+ * management, the user directory and the organization rosters. */
 export function platformNavCategories(): NavCategory[] {
   return ADMIN_NAV_CATEGORIES.map((c) => ({
     ...c,
-    items: c.items.filter((i) => i.path !== '/admin/projects'),
+    items: c.items.filter((i) => !platformHiddenItems.has(i.path)),
   })).filter((c) => c.items.length > 0);
 }
 

@@ -3136,15 +3136,29 @@ button.primary:hover {
   transition: border-color 0.15s ease, box-shadow 0.15s ease, transform 0.15s ease;
 }
 
-.scope-card:hover {
+/* A scope card is a <button>, so the generic button:hover rule would
+   paint it with --primary-strong and leave the dark label unreadable.
+   Pin the surface explicitly for every state and keep the label dark. */
+.scope-card:hover,
+.scope-card:focus-visible {
+  background: var(--primary-soft);
   border-color: var(--primary);
+  color: var(--text);
   box-shadow: 0 8px 24px rgba(29, 92, 255, 0.12);
   transform: translateY(-1px);
 }
 
 .scope-card.active {
+  background: var(--primary-soft);
   border-color: var(--primary);
+  color: var(--text);
   box-shadow: 0 0 0 2px var(--primary-ring);
+}
+
+.scope-card:hover svg,
+.scope-card:focus-visible svg,
+.scope-card.active svg {
+  color: var(--primary-strong);
 }
 
 .scope-card svg {

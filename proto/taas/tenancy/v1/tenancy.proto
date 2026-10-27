@@ -58,6 +58,15 @@ service TenancyService {
     };
   }
 
+  // DeleteOrganization permanently removes an organization together with
+  // its projects, roster, invitations and join requests. The dedicated
+  // platform organization cannot be deleted.
+  rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/admin/tenancy/organizations/{organization_id}"
+    };
+  }
+
   // CreateProject creates a project under an organization. The
   // organization must exist and be active.
   rpc CreateProject(CreateProjectRequest) returns (CreateProjectResponse) {
@@ -340,6 +349,9 @@ service TenancyService {
 }
 
 message CreateOrganizationRequest {
+  // organization_id is optional. Empty asks the server to generate a
+  // UUID; a caller-supplied id is still accepted for scripts. The
+  // console never asks a person to type one.
   string organization_id = 1;
   string display_name = 2;
   string description = 3;
@@ -361,6 +373,14 @@ message ListOrganizationsResponse {
   taas.common.v1.Response response = 1;
   repeated OrganizationSummary organizations = 2;
   taas.common.v1.PageMeta page_meta = 3;
+}
+
+message DeleteOrganizationRequest {
+  string organization_id = 1;
+}
+
+message DeleteOrganizationResponse {
+  taas.common.v1.Response response = 1;
 }
 
 message GetOrganizationRequest {
@@ -404,6 +424,8 @@ message EnableOrganizationResponse {
 }
 
 message CreateProjectRequest {
+  // project_id is optional. Empty asks the server to generate a UUID; a
+  // caller-supplied id is still accepted for scripts.
   string project_id = 1;
   string organization_id = 2;
   string display_name = 3;
