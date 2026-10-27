@@ -306,7 +306,9 @@ var forceCascadeSQL = []string{
 	`DELETE FROM deployment_events WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
 	`DELETE FROM inference_service_access WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
 	`DELETE FROM load_tests WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
-	`DELETE FROM service_resource_metrics WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
+	// service_resource_metrics stores the service id as text, so cast the
+	// uuid id when matching.
+	`DELETE FROM service_resource_metrics WHERE service_id IN (SELECT CAST(id AS TEXT) FROM inference_services WHERE organization_id = ?)`,
 	// Rows keyed by an organization-owned evaluation run.
 	`DELETE FROM evaluation_run_cases WHERE run_id IN (SELECT id FROM evaluation_runs WHERE organization_id = ?)`,
 	// Parent rows the organization owns directly.
