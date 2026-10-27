@@ -282,7 +282,11 @@ function AddToOrgDialog({
       )
       .then((data) => {
         if (cancelled) return;
-        const list = data.organizations || [];
+        // The system platform organization is not a place to put people:
+        // it is the tenancy anchor for the platform itself.
+        const list = (data.organizations || []).filter(
+          (o) => o.organizationId !== 'platform',
+        );
         setOrgs(list);
         setSelected((prev) => prev || list[0]?.organizationId || '');
       })

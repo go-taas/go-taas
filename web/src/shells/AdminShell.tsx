@@ -15,7 +15,7 @@ import brandLogo from '../assets/brand/logo.svg';
 import { Avatar, ErrorBoundary } from '../components';
 import { useAvatar, useProfile } from '../profile';
 import { categoryForPath, navCategoriesForScope } from './nav';
-import { scopeTypeLabelKey, useAdminScope } from '../admin-scope';
+import { PLATFORM_ORG_ID, scopeTypeLabelKey, useAdminScope } from '../admin-scope';
 
 function isActive(path: string, current: string): boolean {
   return current === path || current.startsWith(`${path}/`);
@@ -148,7 +148,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
               {t(scopeTypeLabelKey(scope.scopeType))}
             </button>
           )}
-          <NotificationBell path="/api/v1/admin/notifications" testId="admin-bell-badge" />
+          <NotificationBell
+            path="/api/v1/admin/notifications"
+            testId="admin-bell-badge"
+            orgOverride={scope?.organizationId || PLATFORM_ORG_ID}
+          />
           <LanguageSwitcher testId="admin-lang-switcher" />
         </div>
       </header>
