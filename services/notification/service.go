@@ -20,6 +20,7 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/audit"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ServiceName is the unique name of this service.
@@ -87,6 +88,10 @@ type Service struct {
 	// resolves it lazily from the shared components.
 	repo *Repository
 
+	// sessionRolesResolver resolves the caller's session roles; a platform
+	// administrator reaches the notification surface of every organization
+	// (feature #54).
+	sessionRolesResolver SessionRolesResolver
 	// sessionOrgResolver resolves the session's active organization for
 	// the admin-realm reads (feature-17 AD6). Nil until wired: the
 	// transitional X-Organization-Id header is used.
@@ -111,6 +116,16 @@ type Service struct {
 func New(components server.Components) *Service {
 	return &Service{components: components}
 }
+
+// SessionRolesResolver resolves the authenticated caller's session roles.
+// The notification service needs only the platform-administrator flag.
+type SessionRolesResolver interface {
+	SessionRoles(ctx context.Context) ([]string, error)
+}
+
+// SetSessionRolesResolver injects the session-roles resolver used to
+// recognise a platform administrator.
+func (s *Service) SetSessionRolesResolver(r SessionRolesResolver) { s.sessionRolesResolver = r }
 
 // SetSessionOrgResolver injects the session-organization resolver used
 // by the admin-realm reads (feature-17 AD6).
@@ -258,7 +273,33 @@ func (s *Service) requireAdminRole(ctx context.Context, orgID string) error {
 	if !hasSession {
 		return nil
 	}
+	// A platform administrator administers every organization, so the
+	// organization's roster cannot be the gate for their own notifications
+	// either: the console session may carry an organization they are not a
+	// member of.
+	if s.isPlatformAdmin(ctx) {
+		return nil
+	}
 	return s.roleGuard.RequireRole(ctx, orgID, userID, roleMember)
+}
+
+// isPlatformAdmin reports whether the caller's session carries the
+// platform-administrator role. Without a roles resolver it is false, so a
+// unit test is never accidentally treated as an operator.
+func (s *Service) isPlatformAdmin(ctx context.Context) bool {
+	if s.sessionRolesResolver == nil {
+		return false
+	}
+	roles, err := s.sessionRolesResolver.SessionRoles(ctx)
+	if err != nil {
+		return false
+	}
+	for _, r := range roles {
+		if r == tenancy.RolePlatformAdmin {
+			return true
+		}
+	}
+	return false
 }
 
 // surfaceFromContext derives the notification surface from the request
@@ -542,24 +583,43 @@ func (s *Service) DeleteNotification(ctx context.Context, req *notificationv1.De
 // (AC1).
 func (s *Service) GetUnreadCount(ctx context.Context, _ *notificationv1.GetUnreadCountRequest) (*notificationv1.GetUnreadCountResponse, error) {
 	orgID, err := s.resolveOrg(ctx)
-	if err != nil {
+	var unscoped bool
+	// The badge is a shell element, so it must not fail the page for an
+	// account that has not joined an organization yet: the count then covers
+	// the caller's own notifications across organizations. A caller with no
+	// session and no organization header still has no identity to count for.
+	switch apierrors.CodeOf(err) {
+	case apierrors.CodeUnauthorized, apierrors.CodeOrganizationNotFound:
+		unscoped = true
+	case apierrors.Code(0):
+	default:
 		return nil, err
 	}
-	if err := s.requireAdminRole(ctx, orgID); err != nil {
-		return nil, err
+	if !unscoped {
+		if err := s.requireAdminRole(ctx, orgID); err != nil {
+			return nil, err
+		}
 	}
 	userID, _, err := s.resolveSessionActor(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if userID == "" {
+		if unscoped {
+			return nil, apierrors.New(apierrors.CodeUnauthorized)
+		}
 		userID = orgID
 	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
 	}
-	count, err := repo.CountUnread(ctx, orgID, userID)
+	var count int64
+	if unscoped {
+		count, err = repo.CountUnreadForUser(ctx, userID)
+	} else {
+		count, err = repo.CountUnread(ctx, orgID, userID)
+	}
 	if err != nil {
 		return nil, err
 	}

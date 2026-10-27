@@ -18,11 +18,6 @@ import { useOrg } from './org';
 
 export type ScopeType = 'platform' | 'organization' | 'project';
 
-// PLATFORM_ORG_ID is the tenancy anchor the platform itself belongs to. The
-// platform scope has no organization of its own, so calls that require one
-// (the notification bell, for example) use this organization.
-export const PLATFORM_ORG_ID = 'platform';
-
 const STORAGE_KEY = 'go-taas.admin.scope';
 
 // PersistedScope is the selection kept across reloads. Only the identity

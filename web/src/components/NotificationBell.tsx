@@ -18,18 +18,13 @@ interface UnreadResponse {
 export default function NotificationBell({
   path,
   testId,
-  orgOverride,
 }: {
   path: string;
   testId: string;
-  /** Organization to scope the count to, when the session has no active
-   * organization (the admin console resolves it from the admin scope). */
-  orgOverride?: string;
 }) {  const { t } = useI18n();
 
   const api = useApi();
-  const { orgId: activeOrgId } = useOrg();
-  const orgId = orgOverride || activeOrgId;
+  const { orgId } = useOrg();
   const [unread, setUnread] = useState(0);
 
   useEffect(() => {

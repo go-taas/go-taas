@@ -414,6 +414,7 @@ func main() {
 			// notification mutations into the audit trail (AD12).
 			notificationSvc.SetSessionOrgResolver(authSvc)
 			notificationSvc.SetSessionUserResolver(authSvc)
+			notificationSvc.SetSessionRolesResolver(authSvc)
 			notificationSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
 			// Feature #27: the tracing service resolves the session's
 			// active org and caller, gates the admin tracing RPCs by the

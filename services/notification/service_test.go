@@ -420,3 +420,80 @@ func TestServiceUnreadCountEmpty(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), uc.GetUnreadCount())
 }
+
+// A caller with no active organization - a platform administrator in the
+// admin console - still gets an unread count: the badge counts the
+// account's notifications across organizations instead of failing.
+func TestServiceUnreadCountWithoutActiveOrg(t *testing.T) {
+	svc := newServiceTestEnv(t)
+	svc.SetSessionOrgResolver(&fakeOrgResolver{})
+
+	// Two unread rows in two organizations for the same account.
+	seedNotification(withUserPath(withOrg(context.Background(), "org-1")), t, svc, "billing.balance_low")
+	seedNotification(withUserPath(withOrg(context.Background(), "org-2")), t, svc, "billing.invoice_created")
+
+	// No organization in the session and none in the metadata.
+	uc, err := svc.GetUnreadCount(withAdminPath(context.Background()), &notificationv1.GetUnreadCountRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(2), uc.GetUnreadCount())
+}
+
+// The fallback must not invent a caller: with no session and no
+// organization there is nobody to count for.
+func TestServiceUnreadCountWithoutOrgOrSession(t *testing.T) {
+	svc := newServiceTestEnv(t)
+	svc.SetSessionOrgResolver(&fakeOrgResolver{})
+	svc.SetSessionUserResolver(&fakeUserResolver{})
+
+	_, err := svc.GetUnreadCount(withAdminPath(context.Background()), &notificationv1.GetUnreadCountRequest{})
+	assertCode(t, err, apierrors.CodeUnauthorized)
+}
+
+// A session without an active organization (an account that has not joined
+// one yet) also gets a count instead of an error.
+func TestServiceUnreadCountSessionWithoutActiveOrg(t *testing.T) {
+	svc := newServiceTestEnv(t)
+	svc.SetSessionOrgResolver(&fakeOrgResolver{orgID: ""})
+
+	seedNotification(withUserPath(withOrg(context.Background(), "org-1")), t, svc, "billing.balance_low")
+
+	uc, err := svc.GetUnreadCount(withAdminPath(context.Background()), &notificationv1.GetUnreadCountRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(1), uc.GetUnreadCount())
+}
+
+// A platform administrator administers every organization, so the
+// notification gate cannot rely on the console session's organization
+// roster: the caller is not a member of it.
+func TestServiceUnreadCountPlatformAdmin(t *testing.T) {
+	svc := newServiceTestEnv(t)
+	svc.SetSessionOrgResolver(&fakeOrgResolver{orgID: "org-admin"})
+	svc.SetRoleGuard(forbiddenRoleGuard{})
+	svc.SetSessionRolesResolver(fakeRolesResolver{roles: []string{"platform-admin"}})
+
+	uc, err := svc.GetUnreadCount(withAdminPath(context.Background()), &notificationv1.GetUnreadCountRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, int64(0), uc.GetUnreadCount())
+}
+
+// A caller who is not a platform administrator is still gated by the
+// organization's roster.
+func TestServiceUnreadCountNonAdminForbidden(t *testing.T) {
+	svc := newServiceTestEnv(t)
+	svc.SetSessionOrgResolver(&fakeOrgResolver{orgID: "org-admin"})
+	svc.SetRoleGuard(forbiddenRoleGuard{})
+	svc.SetSessionRolesResolver(fakeRolesResolver{roles: []string{"user"}})
+
+	_, err := svc.GetUnreadCount(withAdminPath(context.Background()), &notificationv1.GetUnreadCountRequest{})
+	assertCode(t, err, apierrors.CodeForbidden)
+}
+
+type forbiddenRoleGuard struct{}
+
+func (forbiddenRoleGuard) RequireRole(context.Context, string, string, string) error {
+	return apierrors.New(apierrors.CodeForbidden)
+}
+
+type fakeRolesResolver struct{ roles []string }
+
+func (f fakeRolesResolver) SessionRoles(context.Context) ([]string, error) { return f.roles, nil }

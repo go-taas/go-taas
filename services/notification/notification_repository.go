@@ -145,6 +145,19 @@ func (r *Repository) CountUnread(ctx context.Context, orgID, userID string) (int
 	return count, err
 }
 
+// CountUnreadForUser returns the caller's unread count across the
+// organizations they belong to. It is the fallback for a caller with no
+// active organization - a platform administrator in the admin console, or
+// an account that has not joined an organization yet - so the badge still
+// reports something instead of failing the request.
+func (r *Repository) CountUnreadForUser(ctx context.Context, userID string) (int64, error) {
+	var count int64
+	err := r.DB(ctx).Model(&Notification{}).
+		Where("user_id = ? AND read = ?", userID, false).
+		Count(&count).Error
+	return count, err
+}
+
 // GetPreferences returns the caller's preference row, or nil when absent
 // (default all enabled, AC4).
 func (r *Repository) GetPreferences(ctx context.Context, orgID, userID string) (*NotificationPreference, error) {
