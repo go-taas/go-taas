@@ -441,11 +441,15 @@ func (s *Service) DisableOrganization(ctx context.Context, req *tenancyv1.Disabl
 	return &tenancyv1.DisableOrganizationResponse{Response: okResponse(), Organization: summary}, nil
 }
 
-// DeleteOrganization permanently removes an organization and its
-// tenancy-side rows. It is restricted to platform administrators, refuses
-// the dedicated platform organization, and refuses while platform assets
-// (API keys or inference services) still reference the organization so
-// no billing or serving records are orphaned.
+// DeleteOrganization permanently removes an organization and everything
+// it owns. It is restricted to platform administrators and never deletes
+// the dedicated platform organization (it carries the platform-admin
+// membership, so removing it would lock the operator out).
+//
+// Without force it refuses while the organization still has API keys or
+// inference services (10041). With force it removes those resources and
+// the rest of the organization's data in one transaction - the operator
+// escape hatch for a tenant that cannot be emptied incrementally.
 func (s *Service) DeleteOrganization(ctx context.Context, req *tenancyv1.DeleteOrganizationRequest) (*tenancyv1.DeleteOrganizationResponse, error) {
 	if !s.callerIsPlatformAdmin(ctx) {
 		return nil, apierrors.New(apierrors.CodeForbidden)
@@ -454,8 +458,11 @@ func (s *Service) DeleteOrganization(ctx context.Context, req *tenancyv1.DeleteO
 	if orgID == "" {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
+	// The platform organization is a system artifact. Report a dedicated
+	// error rather than the generic validation code so the console can
+	// explain why it is unavailable.
 	if orgID == platformOrgID {
-		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
+		return nil, apierrors.New(apierrors.CodeOrganizationProtected)
 	}
 	repo, err := s.repository()
 	if err != nil {
@@ -466,26 +473,38 @@ func (s *Service) DeleteOrganization(ctx context.Context, req *tenancyv1.DeleteO
 	} else if err != nil {
 		return nil, err
 	}
-	// Refuse while platform assets still reference the organization: their
-	// rows are keyed by this id and would become unreachable.
-	apiKeys, err := repo.APIKeyCountByOrganization(ctx, orgID)
-	if err != nil {
-		return nil, err
+
+	if !req.GetForce() {
+		// Refuse while platform assets still reference the organization:
+		// their rows are keyed by this id and would become unreachable.
+		apiKeys, err := repo.APIKeyCountByOrganization(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		services, err := repo.InferenceServiceCountByOrganization(ctx, orgID)
+		if err != nil {
+			return nil, err
+		}
+		if apiKeys > 0 || services > 0 {
+			return nil, apierrors.Newf(apierrors.CodeOrganizationInUse,
+				"tenancy: organization %s still has %d API key(s) and %d inference service(s)",
+				orgID, apiKeys, services)
+		}
 	}
-	services, err := repo.InferenceServiceCountByOrganization(ctx, orgID)
-	if err != nil {
-		return nil, err
+
+	// A force delete cleans up every resource the organization owns;
+	// otherwise the plain cascade removes only the tenancy-side rows.
+	var delErr error
+	if req.GetForce() {
+		delErr = repo.ForceDeleteOrganization(ctx, orgID)
+	} else {
+		delErr = repo.DeleteOrganization(ctx, orgID)
 	}
-	if apiKeys > 0 || services > 0 {
-		return nil, apierrors.Newf(apierrors.CodeOrganizationInUse,
-			"tenancy: organization %s still has %d API key(s) and %d inference service(s)",
-			orgID, apiKeys, services)
-	}
-	if err := repo.DeleteOrganization(ctx, orgID); err != nil {
-		if isRecordNotFound(err) {
+	if delErr != nil {
+		if isRecordNotFound(delErr) {
 			return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
 		}
-		return nil, err
+		return nil, delErr
 	}
 	return &tenancyv1.DeleteOrganizationResponse{Response: okResponse()}, nil
 }

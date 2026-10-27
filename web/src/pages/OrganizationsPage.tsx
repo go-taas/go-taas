@@ -16,6 +16,11 @@ interface ListResponse {
 
 const PAGE_SIZE = 20;
 
+// PLATFORM_ORG_ID is the dedicated organization that carries the
+// platform-admin membership. The server never deletes it, so the console
+// does not offer the action.
+const PLATFORM_ORG_ID = 'platform';
+
 export default function OrganizationsPage() {
   const { orgId } = useOrg();
   const { t } = useI18n();
@@ -154,6 +159,12 @@ export default function OrganizationsPage() {
                     <button
                       className="link danger"
                       data-testid={`org-delete-${org.organizationId}`}
+                      disabled={org.organizationId === PLATFORM_ORG_ID}
+                      title={
+                        org.organizationId === PLATFORM_ORG_ID
+                          ? t('orgs.platformProtected')
+                          : undefined
+                      }
                       onClick={() => setDeleteTarget(org)}
                     >
                       {t('common.delete')}
@@ -458,12 +469,19 @@ function DeleteOrgDialog({
   const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [force, setForce] = useState(false);
+
+  // hasAssets drives both the warning and the force prompt: a plain delete
+  // is refused while the organization still owns API keys or services.
+  const hasAssets =
+    parseInt(org.apiKeyCount || '0', 10) > 0 || parseInt(org.inferenceServiceCount || '0', 10) > 0;
 
   const submit = async () => {
     setSubmitting(true);
     setError('');
     try {
-      await api.del(`/api/v1/admin/tenancy/organizations/${org.organizationId}`, orgId);
+      const path = `/api/v1/admin/tenancy/organizations/${org.organizationId}`;
+      await api.del(force ? `${path}?force=true` : path, orgId);
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('orgs.deleteFailed'));
@@ -479,6 +497,25 @@ function DeleteOrgDialog({
       testId="org-delete-dialog"
     >
       <p>{t('orgs.deleteBody')}</p>
+      {hasAssets && (
+        <div className="warning-banner" data-testid="org-delete-assets-warning">
+          <p>
+            {t('orgs.deleteAssets', {
+              keys: org.apiKeyCount,
+              services: org.inferenceServiceCount,
+            })}
+          </p>
+          <label className="checkbox-row">
+            <input
+              type="checkbox"
+              data-testid="org-delete-force"
+              checked={force}
+              onChange={(e) => setForce(e.target.checked)}
+            />
+            <span>{t('orgs.deleteForce')}</span>
+          </label>
+        </div>
+      )}
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" data-testid="org-delete-cancel" onClick={onClose}>
@@ -487,7 +524,7 @@ function DeleteOrgDialog({
         <button
           className="danger"
           data-testid="org-delete-confirm"
-          disabled={submitting}
+          disabled={submitting || (hasAssets && !force)}
           onClick={() => void submit()}
         >
           {submitting ? t('common.working') : t('common.delete')}

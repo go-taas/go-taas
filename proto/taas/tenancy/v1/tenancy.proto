@@ -59,8 +59,10 @@ service TenancyService {
   }
 
   // DeleteOrganization permanently removes an organization together with
-  // its projects, roster, invitations and join requests. The dedicated
-  // platform organization cannot be deleted.
+  // everything it owns. Without force it refuses an organization that
+  // still has API keys or inference services; with force those resources
+  // (and the rest of the organization's data) are removed too. The
+  // dedicated platform organization is never deletable (10042).
   rpc DeleteOrganization(DeleteOrganizationRequest) returns (DeleteOrganizationResponse) {
     option (google.api.http) = {
       delete: "/api/v1/admin/tenancy/organizations/{organization_id}"
@@ -377,6 +379,9 @@ message ListOrganizationsResponse {
 
 message DeleteOrganizationRequest {
   string organization_id = 1;
+  // force removes the organization's API keys, inference services and
+  // the rest of its data instead of refusing while they exist.
+  bool force = 2;
 }
 
 message DeleteOrganizationResponse {

@@ -52,6 +52,7 @@ var messages = map[Code]string{
 	CodeRealmMismatch:         "session belongs to the other console",
 	CodeAPIKeyModelNotAllowed: "model not allowed for this api key",
 	CodeOrganizationInUse:     "organization still has api keys or inference services",
+	CodeOrganizationProtected: "the platform organization cannot be deleted",
 
 	// model
 	CodeModelNotFound:        "model not found",

@@ -80,6 +80,10 @@ const (
 	// platform assets (API keys or inference services) still reference
 	// it, so no billing or serving rows are orphaned.
 	CodeOrganizationInUse Code = 10041 // ORGANIZATION_IN_USE
+	// CodeOrganizationProtected refuses deleting the dedicated platform
+	// organization: it carries the platform-admin membership and is a
+	// system artifact, not a tenant.
+	CodeOrganizationProtected Code = 10042 // ORGANIZATION_PROTECTED
 )
 
 // model module error codes.

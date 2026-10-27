@@ -261,17 +261,19 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
 
 // platformHiddenItems are the pages a platform administrator does not
 // use: project management (projects belong to organizations), the user
-// directory and the organization member/invitation rosters (organization
-// administrators own those).
+// directory, and the organization member/invitation/join-request
+// pipelines (organization administrators own those).
 const platformHiddenItems = new Set([
   '/admin/projects',
   '/admin/users',
   '/admin/members',
   '/admin/invitations',
+  '/admin/join-requests',
 ]);
 
 /** Platform console navigation: the operator surface minus project
- * management, the user directory and the organization rosters. */
+ * management, the user directory and the organization membership
+ * pipelines. */
 export function platformNavCategories(): NavCategory[] {
   return ADMIN_NAV_CATEGORIES.map((c) => ({
     ...c,

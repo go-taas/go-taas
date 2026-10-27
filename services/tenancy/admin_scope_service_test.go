@@ -340,11 +340,17 @@ func TestDeleteOrganization(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(err))
 
-	// The dedicated platform organization is protected.
+	// The dedicated platform organization is protected, even with force,
+	// and reports a dedicated error rather than a generic validation one.
 	seedOrg(t, svc, "platform")
 	_, err = svc.DeleteOrganization(ctx, &tenancyv1.DeleteOrganizationRequest{OrganizationId: "platform"})
 	require.Error(t, err)
-	assert.Equal(t, apierrors.CodeTenancyInvalid, apierrors.CodeOf(err))
+	assert.Equal(t, apierrors.CodeOrganizationProtected, apierrors.CodeOf(err))
+	_, err = svc.DeleteOrganization(ctx, &tenancyv1.DeleteOrganizationRequest{
+		OrganizationId: "platform", Force: true,
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeOrganizationProtected, apierrors.CodeOf(err))
 }
 
 // TestDeleteOrganizationForbidden verifies only a platform administrator
@@ -420,4 +426,56 @@ func TestRepositoryDeleteOrganizationMissing(t *testing.T) {
 	err := repo.DeleteOrganization(context.Background(), "00000000-0000-0000-0000-000000000000")
 	require.Error(t, err)
 	assert.ErrorIs(t, err, gorm.ErrRecordNotFound)
+}
+
+// TestForceDeleteOrganization verifies a force delete wipes the
+// organization's platform assets and tenancy rows, where a plain delete
+// refuses while assets exist.
+func TestForceDeleteOrganization(t *testing.T) {
+	svc := newMembershipService(t)
+	ensureCountTables(t, svc)
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
+	ctx := context.Background()
+	seedOrg(t, svc, "org-a")
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedProject(t, svc, "proj-a", "org-a")
+	db := svc.repo.db.DB(ctx)
+	require.NoError(t, db.Exec(
+		`INSERT INTO api_keys (id, organization_id, revoked) VALUES ('k1','org-a',0)`).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO inference_services (id, organization_id, state) VALUES ('s1','org-a','running')`).Error)
+
+	// Without force the organization is refused.
+	_, err := svc.DeleteOrganization(ctx, &tenancyv1.DeleteOrganizationRequest{OrganizationId: "org-a"})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeOrganizationInUse, apierrors.CodeOf(err))
+
+	// With force it is removed together with its assets.
+	_, err = svc.DeleteOrganization(ctx, &tenancyv1.DeleteOrganizationRequest{
+		OrganizationId: "org-a", Force: true,
+	})
+	require.NoError(t, err)
+
+	repo := NewRepository(db)
+	if _, err := repo.FindOrganization(ctx, "org-a"); err == nil {
+		t.Fatal("organization should be gone")
+	}
+	var keys, svcs int64
+	require.NoError(t, db.Table("api_keys").Where("organization_id = ?", "org-a").Count(&keys).Error)
+	require.NoError(t, db.Table("inference_services").Where("organization_id = ?", "org-a").Count(&svcs).Error)
+	assert.Zero(t, keys, "api keys must be removed by a force delete")
+	assert.Zero(t, svcs, "inference services must be removed by a force delete")
+}
+
+// TestForceDeleteOrganizationMissing verifies a force delete of an absent
+// organization reports not-found.
+func TestForceDeleteOrganizationMissing(t *testing.T) {
+	svc := newMembershipService(t)
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
+
+	_, err := svc.DeleteOrganization(context.Background(), &tenancyv1.DeleteOrganizationRequest{
+		OrganizationId: "00000000-0000-0000-0000-000000000000", Force: true,
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(err))
 }

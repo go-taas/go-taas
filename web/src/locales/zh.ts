@@ -820,6 +820,9 @@ export const zh: Record<string, string> = {
   'orgs.enableBody': '启用将恢复该组织的完整写权限。',
   'orgs.actionFailed': '{action}组织失败',
   'orgs.deleteTitle': '删除 {name}？',
+  'orgs.platformProtected': '平台组织不可删除。',
+  'orgs.deleteAssets': '该组织仍持有 {keys} 个 API 密钥和 {services} 个推理服务。',
+  'orgs.deleteForce': '强制删除：同时清理其 API 密钥、推理服务及其他数据。',
   'orgs.deleteBody':
     '将永久删除该组织及其项目、成员、邀请和加入申请。若组织仍有 API 密钥或推理服务则会被拒绝。',
   'orgs.deleteFailed': '删除组织失败。',

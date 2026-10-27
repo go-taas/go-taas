@@ -291,6 +291,60 @@ type orgScopedDelete struct {
 	args  []any
 }
 
+// forceCascadeSQL is the ordered SQL run by ForceDeleteOrganization. Each
+// statement either targets a table keyed by organization_id or removes a
+// row that depends on a project, service, evaluation or API key the
+// organization owns. Child rows are removed before their parents.
+//
+// audit_events is deliberately absent: it is the immutable record of what
+// happened on the platform, not an organization-owned resource, and it is
+// retained after the tenant is gone.
+var forceCascadeSQL = []string{
+	// Rows keyed by an organization-owned project.
+	`DELETE FROM project_members WHERE project_id IN (SELECT id FROM projects WHERE organization_id = ?)`,
+	// Rows keyed by an organization-owned inference service or API key.
+	`DELETE FROM deployment_events WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
+	`DELETE FROM inference_service_access WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
+	`DELETE FROM load_tests WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
+	`DELETE FROM service_resource_metrics WHERE service_id IN (SELECT id FROM inference_services WHERE organization_id = ?)`,
+	// Rows keyed by an organization-owned evaluation run.
+	`DELETE FROM evaluation_run_cases WHERE run_id IN (SELECT id FROM evaluation_runs WHERE organization_id = ?)`,
+	// Parent rows the organization owns directly.
+	`DELETE FROM projects WHERE organization_id = ?`,
+	`DELETE FROM inference_services WHERE organization_id = ?`,
+	`DELETE FROM api_keys WHERE organization_id = ?`,
+	`DELETE FROM evaluations WHERE organization_id = ?`,
+	`DELETE FROM evaluation_runs WHERE organization_id = ?`,
+	`DELETE FROM evaluation_cases WHERE organization_id = ?`,
+	`DELETE FROM prompts WHERE organization_id = ?`,
+	`DELETE FROM prompt_folders WHERE organization_id = ?`,
+	`DELETE FROM batch_jobs WHERE organization_id = ?`,
+	`DELETE FROM webhook_deliveries WHERE organization_id = ?`,
+	`DELETE FROM webhooks WHERE organization_id = ?`,
+	`DELETE FROM notifications WHERE organization_id = ?`,
+	`DELETE FROM notification_preferences WHERE organization_id = ?`,
+	`DELETE FROM notification_thresholds WHERE organization_id = ?`,
+	`DELETE FROM optimization_recommendations WHERE organization_id = ?`,
+	`DELETE FROM model_authorizations WHERE organization_id = ?`,
+	`DELETE FROM routing_decisions WHERE organization_id = ?`,
+	`DELETE FROM routing_group_grants WHERE organization_id = ?`,
+	`DELETE FROM request_logs WHERE organization_id = ?`,
+	`DELETE FROM traces WHERE organization_id = ?`,
+	`DELETE FROM data_exports WHERE organization_id = ?`,
+	`DELETE FROM billing_reports WHERE organization_id = ?`,
+	`DELETE FROM billing_report_schedules WHERE organization_id = ?`,
+	`DELETE FROM invoices WHERE organization_id = ?`,
+	`DELETE FROM vouchers WHERE organization_id = ?`,
+	`DELETE FROM charge_records WHERE organization_id = ?`,
+	`DELETE FROM usage_lines WHERE organization_id = ?`,
+	`DELETE FROM usage_records WHERE organization_id = ?`,
+	`DELETE FROM accounts WHERE organization_id = ?`,
+	// Tenancy rows last.
+	`DELETE FROM invitations WHERE organization_id = ?`,
+	`DELETE FROM org_members WHERE organization_id = ?`,
+	`DELETE FROM join_requests WHERE target_type = 'organization' AND target_id = ?`,
+}
+
 // DeleteOrganization removes an organization and every tenancy-side row
 // that belongs to it: its projects and their rosters, its member roster,
 // its invitations and its join requests. Platform assets (API keys,
@@ -327,14 +381,52 @@ func (r *Repository) DeleteOrganization(ctx context.Context, id string) error {
 				return err
 			}
 		}
-
-		res := tx.Where("id = ?", id).Delete(&Organization{})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return gorm.ErrRecordNotFound
-		}
-		return nil
+		return deleteOrganizationRow(tx, id)
 	})
+}
+
+// ForceDeleteOrganization removes an organization and every row it owns,
+// including API keys, inference services and their dependent records. It
+// is the operator escape hatch for a tenant that cannot be emptied
+// incrementally. One transaction keeps a failure from leaving a partial
+// delete behind. Tenancy tables that do not exist yet (an install that
+// never enabled that module) are skipped rather than failing the delete.
+func (r *Repository) ForceDeleteOrganization(ctx context.Context, id string) error {
+	return r.db.DB(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, stmt := range forceCascadeSQL {
+			if err := tx.Exec(stmt, id).Error; err != nil {
+				if isUndefinedTable(err) {
+					continue
+				}
+				return err
+			}
+		}
+		return deleteOrganizationRow(tx, id)
+	})
+}
+
+// deleteOrganizationRow removes the organization itself and maps a miss
+// to gorm.ErrRecordNotFound so the service can report 10005.
+func deleteOrganizationRow(tx *gorm.DB, id string) error {
+	res := tx.Where("id = ?", id).Delete(&Organization{})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+	return nil
+}
+
+// isUndefinedTable reports whether err is the "relation does not exist"
+// error, so a cascade over tables owned by modules that are not deployed
+// can skip them.
+func isUndefinedTable(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "does not exist") ||
+		strings.Contains(msg, "no such table") ||
+		strings.Contains(msg, "UndefinedTable")
 }

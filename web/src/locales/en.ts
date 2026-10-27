@@ -821,6 +821,11 @@ export const en: Record<string, string> = {
   'orgs.enableBody': 'Enabling restores full write access for this organization.',
   'orgs.actionFailed': 'failed to {action} organization',
   'orgs.deleteTitle': 'Delete {name}?',
+  'orgs.platformProtected': 'The platform organization cannot be deleted.',
+  'orgs.deleteAssets':
+    'This organization still owns {keys} API key(s) and {services} inference service(s).',
+  'orgs.deleteForce':
+    'Force delete: also remove its API keys, inference services and the rest of its data.',
   'orgs.deleteBody':
     'This permanently removes the organization, its projects, members, invitations and join requests. It is refused while the organization still has API keys or inference services.',
   'orgs.deleteFailed': 'Failed to delete the organization.',

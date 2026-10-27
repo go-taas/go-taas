@@ -378,9 +378,13 @@ flowchart TD
   校验）。组织与项目列表以显示名为主，下面显示 UUID，与用户目录风格一致。
 - **删除组织。** `DeleteOrganization`
   （`DELETE /api/v1/admin/tenancy/organizations/{organization_id}`）仅限平台
-  管理员。它在一个事务中层叠删除租户侧数据（项目及其成员、组织成员、邀请、
-  加入申请）。专用平台组织不可删除；若组织仍持有 API 密钥或推理服务则拒绝
-  （10041 `ORGANIZATION_IN_USE`），避免产生孤儿计费或服务记录。
+  管理员。不带 `force` 时在一个事务中层叠删除租户侧数据（项目及其成员、组织
+  成员、邀请、加入申请），若组织仍持有 API 密钥或推理服务则拒绝（10041
+  `ORGANIZATION_IN_USE`）。带 `?force=true` 时会同时清理这些资源及该组织的
+  其余数据（推理服务、密钥、项目、评测、提示词、批处理任务、Webhook、通知、
+  用量/计费/账单、账户等）；`audit_events` 作为平台不可变审计记录保留。专用
+  平台组织即使强制也不可删除，返回 10042 `ORGANIZATION_PROTECTED`；控制台
+  对该行禁用删除操作。
 - **修改账号邮箱。** `UpdateUserProfile` 接受 `email` 与 `email_code`。启用邮箱
   验证时，新邮箱需用 `change_email` 用途的验证码证明归属；`users.email` 的
   唯一约束是重复校验（冲突返回 10004 `USER_EXISTS`）。重新提交当前邮箱无需

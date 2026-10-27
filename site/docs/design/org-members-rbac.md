@@ -391,11 +391,17 @@ existing admin/owner (organization) and project-admin gates.
   prominently with the UUID underneath, matching the user directory.
 - **Deleting an organization.** `DeleteOrganization`
   (`DELETE /api/v1/admin/tenancy/organizations/{organization_id}`) is
-  platform-administrator only. It cascades the tenancy-side rows (projects and
-  their rosters, the member roster, invitations, join requests) in one
-  transaction. It refuses the dedicated platform organization and any
-  organization that still owns API keys or inference services (10041
-  `ORGANIZATION_IN_USE`) so no billing or serving rows are orphaned.
+  platform-administrator only. Without `force` it cascades the tenancy-side
+  rows (projects and their rosters, the member roster, invitations, join
+  requests) and refuses while the organization still owns API keys or
+  inference services (10041 `ORGANIZATION_IN_USE`). With `?force=true` it
+  additionally removes those resources and the rest of the organization's
+  data (services, keys, projects, evaluations, prompts, batch jobs, webhooks,
+  notifications, usage/charge/billing rows, accounts) in one transaction;
+  `audit_events` is retained as the platform's immutable record. The
+  dedicated platform organization is never deletable, even with force, and
+  reports 10042 `ORGANIZATION_PROTECTED`; the console disables the action for
+  it.
 - **Changing the account email.** `UpdateUserProfile` accepts `email` plus
   `email_code`. When email verification is enabled the new address must prove
   ownership with a code sent to it using the `change_email` purpose; the
