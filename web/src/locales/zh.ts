@@ -821,7 +821,7 @@ export const zh: Record<string, string> = {
   'orgs.actionFailed': '{action}组织失败',
   'orgs.deleteTitle': '删除 {name}？',
   'orgs.platformProtected': '平台组织不可删除。',
-  'orgs.deleteAssets': '该组织仍持有资源，普通删除不会遗留它们。',
+  'orgs.deleteAssets': '组织仍持有平台资源时，普通删除会被拒绝。',
   'orgs.deleteForce': '强制删除：同时清理其 API 密钥、推理服务及其他数据。',
   'orgs.deleteBody':
     '将永久删除该组织及其项目、成员、邀请和加入申请。若组织仍有 API 密钥或推理服务则会被拒绝。',

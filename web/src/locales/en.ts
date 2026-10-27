@@ -823,7 +823,7 @@ export const en: Record<string, string> = {
   'orgs.deleteTitle': 'Delete {name}?',
   'orgs.platformProtected': 'The platform organization cannot be deleted.',
   'orgs.deleteAssets':
-    'This organization still owns resources that the plain delete refuses to orphan.',
+    'The plain delete is refused while this organization still owns platform resources.',
   'orgs.deleteForce':
     'Force delete: also remove its API keys, inference services and the rest of its data.',
   'orgs.deleteBody':
