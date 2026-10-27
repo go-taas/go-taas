@@ -105,6 +105,11 @@ func main() {
 	srv.RegisterService(tenancySvc)
 	authSvc := auth.New(srv.Components())
 	srv.RegisterService(authSvc)
+	// One role guard serves every service. It recognises the
+	// platform-administrator session role, which lives on the account
+	// rather than in an organization roster, so the platform console works
+	// with no organization of its own. gormDB is resolved lazily below.
+	var roleGuard *tenancy.RoleGuard
 	modelSvc := model.New(srv.Components())
 	srv.RegisterService(modelSvc)
 	// Feature: model download from a model hub (ModelScope/HuggingFace).
@@ -258,6 +263,7 @@ func main() {
 			// The tenancy OrgGuard validates the transitional organization
 			// context of the org-scoped APIs (feature #6, FR3).
 			orgGuard := tenancy.NewOrgGuard(gormDB)
+			roleGuard = tenancy.NewRoleGuardWithSessions(gormDB, authSvc)
 			authSvc.SetOrgGuard(orgGuard)
 			inferSvc.SetOrgGuard(orgGuard)
 			meteringSvc.SetOrgGuard(orgGuard)
@@ -269,7 +275,7 @@ func main() {
 			// active org and caller, and gates the admin model-version
 			// RPCs by the caller's role (AD).
 			modelSvc.SetSessionUserResolver(authSvc)
-			modelSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			modelSvc.SetRoleGuard(roleGuard)
 			// Models are a platform-owned fleet asset: the admin model RPCs
 			// answer to the platform administrator, never to an organization
 			// administrator.
@@ -303,7 +309,7 @@ func main() {
 			// service's SliceValidator seam.
 			vgpuSvc.SetSessionOrgResolver(authSvc)
 			vgpuSvc.SetSessionResolver(authSvc)
-			vgpuSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			vgpuSvc.SetRoleGuard(roleGuard)
 			inferSvc.SetSliceValidator(vgpuSvc)
 			// Feature #53 (AD10/AD15/AD16): the fault-diagnosis seams.
 			// The fault service resolves the session's active org and
@@ -312,7 +318,7 @@ func main() {
 			// infer module.
 			faultSvc.SetSessionOrgResolver(authSvc)
 			faultSvc.SetSessionResolver(authSvc)
-			faultSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			faultSvc.SetRoleGuard(roleGuard)
 			faultSvc.SetDeploymentTrail(inferSvc)
 			inferSvc.SetIncidentReader(faultSvc)
 			// Features #32/#33/#34/#35: the infer service resolves the
@@ -320,7 +326,7 @@ func main() {
 			// model-version/service-log/deployment and the user-realm
 			// compare RPCs by the caller's role (AD).
 			inferSvc.SetSessionUserResolver(authSvc)
-			inferSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			inferSvc.SetRoleGuard(roleGuard)
 			// The inference fleet belongs to the platform.
 			inferSvc.SetPlatformAdminGuard(tenancySvc)
 			// The operator surface is platform-wide: a platform admin lists
@@ -356,7 +362,7 @@ func main() {
 			// active org and caller, and gates the admin billing-report
 			// RPCs by the caller's role (AD6).
 			billingSvc.SetSessionUserResolver(authSvc)
-			billingSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			billingSvc.SetRoleGuard(roleGuard)
 			// The per-request cost attributor reads billing's
 			// price_entries over the shared database (feature #9, AD3).
 			meteringSvc.SetCostAttributor(metering.NewCostAttributor(gormDB))
@@ -375,7 +381,7 @@ func main() {
 			// The membership RoleGuard gates member/invitation management
 			// (feature #10, AD7); the SessionResolver lets the tenancy
 			// service resolve the authenticated caller (feature #10).
-			tenancySvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			tenancySvc.SetRoleGuard(roleGuard)
 			tenancySvc.SetSessionResolver(authSvc)
 			// The user resolver lets member management accept a username
 			// or id (feature #10); auth owns the users table.
@@ -400,20 +406,20 @@ func main() {
 			auditSvc.SetActorLabelResolver(authSvc)
 			// A platform administrator's audit log spans every organization.
 			auditSvc.SetPlatformAdminResolver(tenancySvc)
-			auditSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			auditSvc.SetRoleGuard(roleGuard)
 			// Feature #23: the webhook service resolves the session's
 			// active org and caller, gates the admin webhook RPCs by the
 			// caller's role, and records webhook mutations into the audit
 			// trail (AD12).
 			webhookSvc.SetSessionOrgResolver(authSvc)
 			webhookSvc.SetSessionUserResolver(authSvc)
-			webhookSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			webhookSvc.SetRoleGuard(roleGuard)
 			// Feature #24: the observability service resolves the
 			// session's active org and caller, and gates the admin
 			// observability RPCs by the caller's role (AD4).
 			observabilitySvc.SetSessionOrgResolver(authSvc)
 			observabilitySvc.SetSessionUserResolver(authSvc)
-			observabilitySvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			observabilitySvc.SetRoleGuard(roleGuard)
 			// Feature #26: the notification service resolves the
 			// session's active org and caller, gates the admin
 			// notification RPCs by the caller's role, and records
@@ -421,14 +427,14 @@ func main() {
 			notificationSvc.SetSessionOrgResolver(authSvc)
 			notificationSvc.SetSessionUserResolver(authSvc)
 			notificationSvc.SetSessionRolesResolver(authSvc)
-			notificationSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			notificationSvc.SetRoleGuard(roleGuard)
 			// Feature #27: the tracing service resolves the session's
 			// active org and caller, gates the admin tracing RPCs by the
 			// caller's role (AD9), and the metering service captures the
 			// trace best-effort alongside the request log (AD3).
 			tracingSvc.SetSessionOrgResolver(authSvc)
 			tracingSvc.SetSessionUserResolver(authSvc)
-			tracingSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			tracingSvc.SetRoleGuard(roleGuard)
 			meteringSvc.SetTraceCapturer(tracingSvc)
 			// Feature #37: the resourcemetrics service resolves the
 			// session's active org and caller, gates the admin
@@ -437,7 +443,7 @@ func main() {
 			// contract (10301).
 			resourceMetricsSvc.SetSessionOrgResolver(authSvc)
 			resourceMetricsSvc.SetSessionUserResolver(authSvc)
-			resourceMetricsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			resourceMetricsSvc.SetRoleGuard(roleGuard)
 			resourceMetricsSvc.SetServiceExists(infer.NewServiceExistsProvider(gormDB))
 			// The metrics page reads Prometheus, which already scrapes
 			// cAdvisor and the GPU exporter, instead of collecting and
@@ -479,14 +485,14 @@ func main() {
 			// caller's role (AD1).
 			docsSvc.SetSessionOrgResolver(authSvc)
 			docsSvc.SetSessionUserResolver(authSvc)
-			docsSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			docsSvc.SetRoleGuard(roleGuard)
 			// Feature #40: the cluster service resolves the session's
 			// active org and caller, gates the admin cluster RPCs by the
 			// caller's role (AD1), and lists workload placement via the
 			// infer module (AD7).
 			clusterSvc.SetSessionOrgResolver(authSvc)
 			clusterSvc.SetSessionUserResolver(authSvc)
-			clusterSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			clusterSvc.SetRoleGuard(roleGuard)
 			// Clusters belong to the platform.
 			clusterSvc.SetPlatformAdminGuard(tenancySvc)
 			clusterSvc.SetWorkloadProvider(infer.NewClusterWorkloadProvider(gormDB))
@@ -517,24 +523,24 @@ func main() {
 			// the caller's role (AD1).
 			accountSvc.SetSessionOrgResolver(authSvc)
 			accountSvc.SetSessionUserResolver(authSvc)
-			accountSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			accountSvc.SetRoleGuard(roleGuard)
 			// Feature #42: the batch service resolves the session's
 			// active org and caller, gates the admin batch RPCs by the
 			// caller's role, and records batch actions into the audit
 			// trail (AD9).
 			batchSvc.SetSessionOrgResolver(authSvc)
 			batchSvc.SetSessionUserResolver(authSvc)
-			batchSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			batchSvc.SetRoleGuard(roleGuard)
 			// Feature #43: the prompt service resolves the session's
 			// active org and caller, gates the admin prompt RPCs by the
 			// caller's role, and records prompt actions into the audit
 			// trail (AD9).
 			promptSvc.SetSessionOrgResolver(authSvc)
 			promptSvc.SetSessionUserResolver(authSvc)
-			promptSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			promptSvc.SetRoleGuard(roleGuard)
 			evaluationSvc.SetSessionOrgResolver(authSvc)
 			evaluationSvc.SetSessionUserResolver(authSvc)
-			evaluationSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			evaluationSvc.SetRoleGuard(roleGuard)
 			evaluationSvc.SetPromptResolver(promptSvc)
 			evaluationSvc.SetAPIKeyValidator(authSvc)
 			// Feature #44 (AD5): the evaluation runner executes every
@@ -564,7 +570,7 @@ func main() {
 			// active org and caller, and gates the admin usage-keys and
 			// error-analysis RPCs by the caller's role (AD9).
 			meteringSvc.SetSessionUserResolver(authSvc)
-			meteringSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			meteringSvc.SetRoleGuard(roleGuard)
 			// The auth service records key revokes and logins into the
 			// audit trail best-effort (feature #15, AC1/AC3).
 			auditRecorder := audit.NewRecorder(audit.NewRepository(gormDB))
@@ -597,7 +603,7 @@ func main() {
 			// provider name back through the same module.
 			providerSvc.SetSessionOrgResolver(authSvc)
 			providerSvc.SetSessionUserResolver(authSvc)
-			providerSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			providerSvc.SetRoleGuard(roleGuard)
 			// Model providers belong to the platform.
 			providerSvc.SetPlatformAdminGuard(tenancySvc)
 			providerSvc.SetModelCatalog(modelSvc)
@@ -613,7 +619,7 @@ func main() {
 			// auth module's key-scope validation accepts group ids.
 			routingSvc.SetSessionOrgResolver(authSvc)
 			routingSvc.SetSessionUserResolver(authSvc)
-			routingSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			routingSvc.SetRoleGuard(roleGuard)
 			routingSvc.SetAuditRecorder(auditRecorder)
 			routingSvc.SetModelCatalog(modelSvc)
 			routingSvc.SetKeyScopeLister(authSvc)
@@ -629,7 +635,7 @@ func main() {
 			// the idle-service rule (AD10/AD14).
 			optimizationSvc.SetSessionOrgResolver(authSvc)
 			optimizationSvc.SetSessionUserResolver(authSvc)
-			optimizationSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			optimizationSvc.SetRoleGuard(roleGuard)
 			optimizationSvc.SetAuditRecorder(auditRecorder)
 			optimizationSvc.SetCardTypeLister(accelerator.NewCardTypeListerAdapter(acceleratorCache))
 
@@ -640,7 +646,7 @@ func main() {
 			// restarted controller reconverges (AD6).
 			runtimeSvc.SetSessionOrgResolver(authSvc)
 			runtimeSvc.SetSessionUserResolver(authSvc)
-			runtimeSvc.SetRoleGuard(tenancy.NewRoleGuard(gormDB))
+			runtimeSvc.SetRoleGuard(roleGuard)
 			// The serving runtime belongs to the platform.
 			runtimeSvc.SetPlatformAdminGuard(tenancySvc)
 			// The settings page shows who last changed the data-plane

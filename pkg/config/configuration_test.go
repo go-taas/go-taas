@@ -216,7 +216,7 @@ func TestSeedSsoDefaults(t *testing.T) {
 	if s.RedirectURI != "http://localhost:9091/api/v1/auth/sso/*" {
 		t.Fatalf("seedSso.redirectUri default = %q", s.RedirectURI)
 	}
-	if s.AdminUsername != "admin" || s.AdminPassword != "admin" || s.AdminOrgID != "org-admin" {
+	if s.AdminUsername != "admin" || s.AdminPassword != "admin" {
 		t.Fatalf("seedSso admin defaults = %+v", s)
 	}
 	// An explicit issuer/redirectUri is preserved.

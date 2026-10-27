@@ -85,7 +85,6 @@ auth:
     # password (Argon2id-hashed at first boot). Change it on a real
     # deployment.
     adminLocalPassword: Pass4admin
-    adminOrgId: org-admin
 
 metering:
   # bufferSize/flushInterval are reserved for the future Redis metering

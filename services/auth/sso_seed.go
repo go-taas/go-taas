@@ -12,7 +12,6 @@ package auth
 
 import (
 	"context"
-	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
@@ -54,12 +53,6 @@ const seedAdminPassword = "admin"
 // initial password (overridable via auth.seedSso.adminLocalPassword).
 const seedAdminLocalPassword = "Pass4admin"
 
-// seedAdminOrgID is the seeded organization the admin user belongs to.
-// The admin user needs an org_members row with an admin role so the
-// session realm derives as admin when the membership resolver is wired
-// (feature-22 AD8).
-const seedAdminOrgID = "org-admin"
-
 // seedKeycloakAttributeMapping maps the Keycloak admin role claim to the
 // TaaS admin role (feature-22 §5.4). The role claim is the nested
 // realm_access.roles array, flattened by decodeIDTokenClaims.
@@ -81,7 +74,6 @@ func seedSsoConfig() config.SeedSsoConfig {
 		AdminUsername:      seedAdminUsername,
 		AdminPassword:      seedAdminPassword,
 		AdminLocalPassword: seedAdminLocalPassword,
-		AdminOrgID:         seedAdminOrgID,
 	}
 	if c := config.GetConfig(); c != nil {
 		s := c.Auth.SeedSso
@@ -115,9 +107,6 @@ func seedSsoConfig() config.SeedSsoConfig {
 		if s.AdminLocalPassword != "" {
 			cfg.AdminLocalPassword = s.AdminLocalPassword
 		}
-		if s.AdminOrgID != "" {
-			cfg.AdminOrgID = s.AdminOrgID
-		}
 	}
 	return cfg
 }
@@ -128,10 +117,12 @@ func seedSsoConfig() config.SeedSsoConfig {
 // startup does not duplicate the provider, the user, or the binding
 // (FR4.4).
 //
-// The seeded local admin account (and its memberships) is always created:
-// the platform's own account system is the default sign-in path and must
-// work without an external IdP. The Keycloak provider row and the admin's
-// identity binding are seeded only when auth.seedSso.enabled is true.
+// The seeded local admin account is always created: the platform's own
+// account system is the default sign-in path and must work without an
+// external IdP. The account is flagged as the platform administrator, so it
+// needs no organization to carry that role. The Keycloak provider row and
+// the admin's identity binding are seeded only when auth.seedSso.enabled is
+// true.
 func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 	seed := seedSsoConfig()
 	repo, err := s.ssoRepository()
@@ -204,56 +195,21 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 		}
 	}
 
-	// 2b. The admin user's org membership with the admin role. When the
-	// membership resolver is wired (feature #10, AD2/AD11), the session
-	// roles come from org_members (authoritative), so the admin user
-	// must have an org_members row with an admin role for the realm to
-	// derive as admin (feature-22 AD8). The owning organization is
-	// created first (idempotent). Idempotent: skip if the membership
-	// already exists. The step is skipped when the tenancy tables are
-	// absent (e.g. a unit test that migrates only the auth schema).
-	db, err := s.gormDB()
-	if err != nil {
-		return err
+	// 2b. The admin user is the platform administrator. The role is a
+	// property of the account (users.platform_admin), not of a
+	// membership row: the platform owns no tenant, so the seed creates no
+	// organization and no roster entry. Idempotent.
+	if !adminUser.PlatformAdmin {
+		if err := repo.SetUserPlatformAdmin(ctx, adminUser.ID, true); err != nil {
+			return err
+		}
+		adminUser.PlatformAdmin = true
 	}
-	if db.Migrator().HasTable(&tenancy.Organization{}) {
-		var orgCount int64
-		if err := db.WithContext(ctx).Model(&tenancy.Organization{}).
-			Where("id = ?", seed.AdminOrgID).Count(&orgCount).Error; err != nil {
-			return err
-		}
-		if orgCount == 0 {
-			org := &tenancy.Organization{
-				ID:          seed.AdminOrgID,
-				DisplayName: "Platform Administrators",
-				State:       tenancy.StateActive,
-			}
-			if err := db.WithContext(ctx).Create(org).Error; err != nil {
-				return err
-			}
-		}
-		var memberCount int64
-		if err := db.WithContext(ctx).Model(&tenancy.OrgMember{}).
-			Where("user_id = ?", adminUser.ID).Count(&memberCount).Error; err != nil {
-			return err
-		}
-		if memberCount == 0 {
-			member := &tenancy.OrgMember{
-				OrganizationID: seed.AdminOrgID,
-				UserID:         adminUser.ID,
-				Role:           tenancy.RoleAdmin,
-				JoinedAt:       time.Now().UTC(),
-			}
-			if err := db.WithContext(ctx).Create(member).Error; err != nil {
-				return err
-			}
-		}
-		// Grant the seeded admin the platform-admin role on a dedicated
-		// platform organization so the session carries it (organizations
-		// are created only by platform admins). Idempotent.
-		if err := seedPlatformAdminMembership(ctx, db, adminUser.ID); err != nil {
-			return err
-		}
+	// 2c. Retire the organizations earlier versions seeded purely to give
+	// the admin a role. They are empty system artifacts now, so removing
+	// them leaves the platform with no default organization.
+	if err := retireLegacySeedOrganizations(ctx, s); err != nil {
+		return err
 	}
 
 	if prov == nil {
@@ -334,37 +290,71 @@ func (s *Service) EnsureComposeSeed(ctx context.Context) error {
 	return s.seedComposeProviderAndAdmin(ctx)
 }
 
-// seedPlatformAdminMembership ensures the seeded admin holds the
-// platform-admin role on the dedicated "platform" organization, so a
-// session derived from org_members carries the platform-admin role.
-func seedPlatformAdminMembership(ctx context.Context, db *gorm.DB, userID string) error {
-	const platformOrgID = "platform"
-	var orgCount int64
-	if err := db.WithContext(ctx).Model(&tenancy.Organization{}).
-		Where("id = ?", platformOrgID).Count(&orgCount).Error; err != nil {
+// legacySeedOrganizations are the organizations earlier versions created
+// so the seeded admin carried an administrative role: "org-admin" held an
+// admin membership and "platform" held the platform-admin membership.
+// Neither is a tenant a person joins.
+var legacySeedOrganizations = []string{"org-admin", "platform"}
+
+// retireLegacySeedOrganizations deletes the empty system organizations an
+// earlier version seeded. An organization that carries projects, API keys,
+// inference services or members is left untouched: it may have become a
+// real tenant, and deleting it is the operator's decision.
+func retireLegacySeedOrganizations(ctx context.Context, s *Service) error {
+	db, err := s.gormDB()
+	if err != nil {
 		return err
 	}
-	if orgCount == 0 {
-		org := &tenancy.Organization{
-			ID: platformOrgID, DisplayName: "Platform", State: tenancy.StateActive,
-		}
-		if err := db.WithContext(ctx).Create(org).Error; err != nil {
+	if !db.Migrator().HasTable(&tenancy.Organization{}) {
+		return nil
+	}
+	for _, orgID := range legacySeedOrganizations {
+		if err := retireSeedOrganization(ctx, db, orgID); err != nil {
 			return err
 		}
 	}
-	var memberCount int64
-	if err := db.WithContext(ctx).Model(&tenancy.OrgMember{}).
-		Where("organization_id = ? AND user_id = ?", platformOrgID, userID).
-		Count(&memberCount).Error; err != nil {
+	return nil
+}
+
+// retireSeedOrganization removes one seeded organization when nothing
+// depends on it.
+func retireSeedOrganization(ctx context.Context, db *gorm.DB, orgID string) error {
+	var orgCount int64
+	if err := db.WithContext(ctx).Model(&tenancy.Organization{}).
+		Where("id = ?", orgID).Count(&orgCount).Error; err != nil {
 		return err
 	}
-	if memberCount > 0 {
+	if orgCount == 0 {
 		return nil
 	}
-	return db.WithContext(ctx).Create(&tenancy.OrgMember{
-		OrganizationID: platformOrgID,
-		UserID:         userID,
-		Role:           tenancy.RolePlatformAdmin,
-		JoinedAt:       time.Now().UTC(),
-	}).Error
+	for _, table := range []string{"projects", "api_keys", "inference_services"} {
+		if !db.Migrator().HasTable(table) {
+			continue
+		}
+		var used int64
+		if err := db.WithContext(ctx).Table(table).
+			Where("organization_id = ?", orgID).Count(&used).Error; err != nil {
+			return err
+		}
+		if used > 0 {
+			return nil
+		}
+	}
+	// Only the seeded admin may be on the roster: a seeded organization
+	// that acquired real members is a tenant now and is left alone.
+	var foreignMembers int64
+	if err := db.WithContext(ctx).Model(&tenancy.OrgMember{}).
+		Where("organization_id = ? AND role <> ?", orgID, tenancy.RolePlatformAdmin).
+		Count(&foreignMembers).Error; err != nil {
+		return err
+	}
+	if foreignMembers > 0 {
+		return nil
+	}
+	if err := db.WithContext(ctx).Where("organization_id = ?", orgID).
+		Delete(&tenancy.OrgMember{}).Error; err != nil {
+		return err
+	}
+	return db.WithContext(ctx).Where("id = ?", orgID).
+		Delete(&tenancy.Organization{}).Error
 }

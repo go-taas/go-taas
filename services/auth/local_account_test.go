@@ -2,6 +2,8 @@ package auth
 
 import (
 	"context"
+
+	"google.golang.org/grpc/metadata"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -157,4 +159,55 @@ func TestServiceLoginReturnsRealm(t *testing.T) {
 	resp, err = svc.Login(ctx, &authv1.LoginRequest{Username: "plain", Password: "Pass4admin"})
 	require.NoError(t, err)
 	assert.Equal(t, RealmAdmin, resp.Realm, "a platform admin signs in to the admin realm")
+}
+
+// TestServiceLoginPlatformAdminWithoutOrganization verifies the platform
+// administrator identity is a property of the account: it derives the
+// admin realm and the platform role with no organization and no
+// membership row, so the platform needs no default organization.
+func TestServiceLoginPlatformAdminWithoutOrganization(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	created, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
+		Username: "rootadmin", Password: "Pass4admin",
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", created.UserId).
+		Update("platform_admin", true).Error)
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "rootadmin", Password: "Pass4admin"})
+	require.NoError(t, err)
+	assert.Equal(t, RealmAdmin, resp.GetRealm())
+
+	sess, err := svc.sessionStore.Get(ctx, resp.SessionToken)
+	require.NoError(t, err)
+	assert.Contains(t, sess.Roles, tenancy.RolePlatformAdmin)
+	assert.Empty(t, sess.AccessibleOrgs)
+	assert.Empty(t, sess.ActiveOrg)
+
+	// The session roles feed the platform gate with no organization.
+	roles, err := svc.SessionRoles(metadata.NewIncomingContext(context.Background(),
+		metadata.Pairs("authorization", "Bearer "+resp.SessionToken)))
+	require.NoError(t, err)
+	assert.Contains(t, roles, tenancy.RolePlatformAdmin)
+}
+
+// A platform administrator is also exempt from login email verification by
+// account flag, without any organization.
+func TestServiceLoginPlatformAdminFlagSkipsEmailCode(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	created, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
+		Username: "root2", Password: "Pass4admin", Email: "root2@x.com",
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&User{}).Where("id = ?", created.UserId).
+		Update("platform_admin", true).Error)
+
+	enableEmailVerification(t)
+	_, err = svc.Login(ctx, &authv1.LoginRequest{Username: "root2", Password: "Pass4admin"})
+	require.NoError(t, err)
 }

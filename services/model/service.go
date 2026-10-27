@@ -6,6 +6,8 @@ package model
 import (
 	"context"
 	"math"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -17,6 +19,7 @@ import (
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/modelhub"
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/audit"
@@ -1073,9 +1076,17 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 			return nil, err
 		}
 	}
+	versions, err := repo.ListVersionsByModel(ctx, req.GetModelId())
+	if err != nil {
+		return nil, err
+	}
 	if err := repo.DeleteModel(ctx, req.GetModelId()); err != nil {
 		return nil, err
 	}
+	// The registration is gone, so the weights it pointed at are orphaned.
+	// Removing them is best-effort: a filesystem error must not resurrect a
+	// catalog entry the operator deleted, and the log names what was left.
+	s.removeModelWeights(versions)
 	// Feature #15: record the successful deletion best-effort.
 	s.recordAudit(ctx, &audit.AuditEvent{
 		ActorUserID:  s.grantedBy(ctx),
@@ -1086,6 +1097,41 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 		Result:       "success",
 	})
 	return &modelv1.DeleteModelResponse{Response: okResponse()}, nil
+}
+
+// removeModelWeights deletes the on-disk weight directories a model's
+// versions point at, so deleting a model also frees the storage it
+// occupied. Every path is resolved under the weights root and refused
+// when it escapes it, so a stale row cannot delete an unrelated
+// directory. Removing an already-absent directory is not an error.
+func (s *Service) removeModelWeights(versions []*Version) {
+	if s.weightsDir == "" {
+		return
+	}
+	root := filepath.Clean(s.weightsDir)
+	removed := make(map[string]struct{}, len(versions))
+	for _, v := range versions {
+		rel := strings.TrimSpace(v.WeightPath)
+		if rel == "" {
+			continue
+		}
+		dir := filepath.Clean(filepath.Join(root, filepath.FromSlash(rel)))
+		if dir == root || !strings.HasPrefix(dir, root+string(os.PathSeparator)) {
+			logger.S().Warnw("model: refusing to delete weights outside the weights root",
+				"model_id", v.ModelID, "weight_path", v.WeightPath)
+			continue
+		}
+		if _, seen := removed[dir]; seen {
+			continue
+		}
+		removed[dir] = struct{}{}
+		if err := os.RemoveAll(dir); err != nil {
+			logger.S().Warnw("model: delete model weights failed",
+				"model_id", v.ModelID, "dir", dir, "err", err)
+			continue
+		}
+		logger.S().Infow("model: deleted model weights", "model_id", v.ModelID, "dir", dir)
+	}
 }
 
 // GrantModelAccess adds an organization to the model's grant list,

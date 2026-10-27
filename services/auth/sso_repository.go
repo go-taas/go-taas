@@ -370,6 +370,13 @@ func (r *SSORepository) SetUserPassword(ctx context.Context, id, hash string) er
 		Update("password_hash", hash).Error
 }
 
+// SetUserPlatformAdmin marks (or clears) the account's platform
+// administrator flag.
+func (r *SSORepository) SetUserPlatformAdmin(ctx context.Context, id string, platformAdmin bool) error {
+	return r.db.DB(ctx).Model(&User{}).Where("id = ?", id).
+		Update("platform_admin", platformAdmin).Error
+}
+
 // UpdateUserProfile updates the mutable profile fields (display name,
 // avatar) and re-selects the row. Username and email are immutable.
 // gorm.ErrRecordNotFound passes through; the caller maps it to

@@ -170,9 +170,6 @@ func (c *Configuration) applyDefaults() {
 	if c.Auth.SeedSso.AdminPassword == "" {
 		c.Auth.SeedSso.AdminPassword = "admin"
 	}
-	if c.Auth.SeedSso.AdminOrgID == "" {
-		c.Auth.SeedSso.AdminOrgID = "org-admin"
-	}
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2
 	}

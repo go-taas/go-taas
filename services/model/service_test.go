@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -478,4 +479,64 @@ func TestServiceListModelsProjectsHubModelID(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, list.GetModels(), 1)
 	assert.Equal(t, "Qwen/Qwen3-3B", list.GetModels()[0].GetHubModelId())
+}
+
+// TestServiceDeleteModelRemovesWeights verifies deleting a model also
+// frees the storage its weights occupied, and never deletes anything
+// outside the weights root.
+func TestServiceDeleteModelRemovesWeights(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	svc.SetWeightsDir(root)
+
+	// Two versions share the model's weight directory; a sibling directory
+	// belongs to another model and must survive.
+	dir := filepath.Join(root, "Qwen", "Qwen2.5-0.5B-Instruct")
+	require.NoError(t, os.MkdirAll(dir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "model.safetensors"), []byte("w"), 0o600))
+	other := filepath.Join(root, "Qwen", "Other")
+	require.NoError(t, os.MkdirAll(other, 0o750))
+
+	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", Version: "v1", WeightPath: "Qwen/Qwen2.5-0.5B-Instruct/",
+	})
+	require.NoError(t, err)
+	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", Version: "v2", WeightPath: "Qwen/Qwen2.5-0.5B-Instruct/",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.DeleteModel(ctx, &modelv1.DeleteModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(dir)
+	assert.True(t, os.IsNotExist(statErr), "the model's weight directory is gone")
+	_, statErr = os.Stat(other)
+	assert.NoError(t, statErr, "an unrelated weights directory survives")
+}
+
+// TestServiceDeleteModelRefusesEscape verifies a weight path outside the
+// weights root is never followed, even when the row carries one.
+func TestServiceDeleteModelRefusesEscape(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	svc.SetWeightsDir(root)
+	outside := t.TempDir()
+	require.NoError(t, os.WriteFile(filepath.Join(outside, "keep.txt"), []byte("x"), 0o600))
+
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	mdl := &Model{ID: uuid.NewString(), Name: "escape"}
+	require.NoError(t, repo.DB(ctx).Create(mdl).Error)
+	require.NoError(t, repo.versions.DB(ctx).Create(&Version{
+		ID: uuid.NewString(), ModelID: mdl.ID, Version: "v1",
+		WeightPath: "../" + filepath.Base(outside) + "/",
+	}).Error)
+
+	_, err = svc.DeleteModel(ctx, &modelv1.DeleteModelRequest{ModelId: mdl.ID})
+	require.NoError(t, err)
+	_, statErr := os.Stat(filepath.Join(outside, "keep.txt"))
+	assert.NoError(t, statErr, "a path outside the weights root is never touched")
 }

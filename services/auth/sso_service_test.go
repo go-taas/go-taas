@@ -586,14 +586,17 @@ func TestServiceSessionActiveOrg(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "org-a", org)
 
-	// A session without an active org answers 10005.
+	// A session without an active org is a normal state - an account that
+	// has joined no organization, and the platform administrator, who owns
+	// no tenant - so it resolves to the empty id rather than an error.
 	require.NoError(t, svc.sessionStore.Create(ctx, &Session{
 		SessionID: "sess-noorg", UserID: "u1", Realm: RealmUser,
 		ExpiresAt: time.Now().Add(time.Hour).Unix(),
 	}, "tok"))
-	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("authorization", "Bearer sess-noorg"))
-	_, err = svc.SessionActiveOrg(ctx)
-	assert.EqualValues(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(err))
+	ctx = metadata.NewIncomingContext(ctx, metadata.Pairs("authorization", "******"))
+	org, err = svc.SessionActiveOrg(ctx)
+	require.NoError(t, err)
+	assert.Equal(t, "", org)
 }
 
 func TestServiceListPublicSSOProviders(t *testing.T) {

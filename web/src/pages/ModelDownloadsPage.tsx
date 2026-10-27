@@ -246,13 +246,11 @@ export default function ModelDownloadsPage() {
                       </button>
                     )}
                   </td>
-                  <td style={{ minWidth: 160 }}>
-                    <div className="muted small">{formatBytes(d.bytes)}</div>
-                    {d.state === 'downloading' && (
-                      <div className="progress-track">
-                        <div className="progress-bar indeterminate" />
-                      </div>
-                    )}
+                  <td style={{ minWidth: 180 }}>
+                    <div className="muted small" data-testid={`download-bytes-${d.downloadId}`}>
+                      {progressLabel(d)}
+                    </div>
+                    {d.state === 'downloading' && <DownloadProgress download={d} />}
                   </td>
                   <td>{formatTime(d.createdAt)}</td>
                 </tr>
@@ -270,6 +268,61 @@ export default function ModelDownloadsPage() {
           />
         )}
       </div>
+    </div>
+  );
+}
+
+// asNumber normalizes an int64 proto field, which arrives as a JSON
+// string.
+function asNumber(input: string | number | undefined): number {
+  if (typeof input === 'number') return input;
+  return parseInt(input || '0', 10) || 0;
+}
+
+// progressLabel renders "12.3 MB / 940.1 MB (1%)" while the total is
+// known, and the bare byte count otherwise.
+function progressLabel(d: ModelDownload): string {
+  const done = formatBytes(d.bytes);
+  const total = asNumber(d.totalBytes);
+  if (total <= 0) return done;
+  return `${done} / ${formatBytes(total)} (${downloadPercent(d)}%)`;
+}
+
+// downloadPercent converts the sampled byte count into a whole percent,
+// clamped to 100 because a partially written file can overshoot the hub's
+// advertised size.
+function downloadPercent(d: ModelDownload): number {
+  const total = asNumber(d.totalBytes);
+  if (total <= 0) return 0;
+  const done = asNumber(d.bytes);
+  const pct = Math.round((done / total) * 100);
+  return pct < 0 ? 0 : pct > 100 ? 100 : pct;
+}
+
+// DownloadProgress draws a determinate bar once the hub reported a size.
+// Without a size there is nothing meaningful to measure, so it keeps the
+// indeterminate animation rather than showing a bar stuck at zero.
+function DownloadProgress({ download }: { download: ModelDownload }) {
+  const total = asNumber(download.totalBytes);
+  if (total <= 0) {
+    return (
+      <div className="progress-track">
+        <div className="progress-bar indeterminate" data-testid="download-progress-indeterminate" />
+      </div>
+    );
+  }
+  const pct = downloadPercent(download);
+  return (
+    <div
+      className="progress-track"
+      role="progressbar"
+      aria-valuenow={pct}
+      aria-valuemin={0}
+      aria-valuemax={100}
+      data-testid={`download-progress-${download.downloadId}`}
+      data-percent={pct}
+    >
+      <div className="progress-bar" style={{ width: `${pct}%` }} />
     </div>
   );
 }

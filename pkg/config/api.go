@@ -158,8 +158,6 @@ type SeedSsoConfig struct {
 	// password (hashed with Argon2id at first boot). It defaults to
 	// Pass4admin when unset.
 	AdminLocalPassword string `mapstructure:"adminLocalPassword"`
-	// AdminOrgID is the seeded admin user's organization id.
-	AdminOrgID string `mapstructure:"adminOrgId"`
 }
 
 // SMTPConfig configures the outbound mail transport for verification

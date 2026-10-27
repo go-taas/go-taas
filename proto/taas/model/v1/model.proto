@@ -397,6 +397,10 @@ message ModelDownload {
   string model_id = 10;
   int64 created_at = 11;
   int64 updated_at = 12;
+  // total_bytes is the size of the model on the hub, so the console can
+  // show a real percentage instead of an indeterminate bar. Zero when the
+  // hub did not report sizes.
+  int64 total_bytes = 13;
 }
 
 message ListModelDownloadsRequest {

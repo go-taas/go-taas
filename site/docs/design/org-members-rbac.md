@@ -463,3 +463,29 @@ controls because a platform administrator has no owning organization.
 The server already confines project writes to the organization the caller
 administers (`requireOrgAdminWrite`), so a project aimed at another
 organization is refused with 10036 regardless of what the client sends.
+
+### 9.10 No default organization; platform identity on the account
+
+- **The platform administrator is an account, not a tenant.** The role lives
+  in `users.platform_admin`, so the session derives the admin realm and the
+  `platform-admin` role with no organization and no roster row. The
+  first-boot seed flags the `admin` account and creates **no** organization:
+  an account that belongs to nothing simply has an empty organization and
+  project, which is exactly what the directory renders as `-`.
+- **Legacy seeds are retired.** Earlier versions created `org-admin` (an
+  admin membership for the seeded admin) and `platform` (the platform-admin
+  membership). Neither is a tenant. Startup deletes them when they hold no
+  projects, API keys, inference services or other members, so an upgrade
+  converges to zero default organizations without touching real data.
+- **Role resolution.** `RoleGuard` (constructed once with the session-role
+  seam) resolves a platform administrator as `platform-admin` in every
+  organization, so organization-scoped consoles and APIs work for them
+  without a membership row. Project management is the deliberate exception:
+  `RequireMemberRole` reads `org_members` alone, so a platform administrator
+  still cannot create, disable or roster a project they do not administer.
+- **Choosing an operating organization.** Because the platform owns no
+  tenant, the platform console renders an organization selector listing the
+  whole registry; picking one makes it the session's active organization
+  (`UpdateSessionOrg` accepts any existing organization for a platform
+  administrator). Pages that are inherently organization-scoped therefore
+  have a context instead of inheriting one from a seeded membership row.

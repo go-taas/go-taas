@@ -10,6 +10,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/modelhub"
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 )
 
@@ -161,4 +162,47 @@ func TestDirSizeCountsFiles(t *testing.T) {
 	require.NoError(t, os.WriteFile(dir+"/sub/b.bin", make([]byte, 200), 0o644))
 	assert.EqualValues(t, 300, dirSize(dir))
 	assert.EqualValues(t, 0, dirSize(dir+"/missing"))
+}
+
+// sizedDownloader reports a hub size so the job can show a real
+// percentage.
+type sizedDownloader struct {
+	fakeDownloader
+	total int64
+}
+
+func (d *sizedDownloader) TotalBytes(context.Context, modelhub.Source, string) (int64, error) {
+	return d.total, nil
+}
+
+// TestStartModelDownloadRecordsTotalBytes verifies the job records the
+// model's hub size, which is what turns the console's progress bar from an
+// indeterminate animation into a real percentage.
+func TestStartModelDownloadRecordsTotalBytes(t *testing.T) {
+	svc := newDownloadTestService(t)
+	svc.SetModelDownloader(&sizedDownloader{total: 940_000_000})
+
+	resp, err := svc.StartModelDownload(context.Background(), &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "Qwen/Qwen2.5-0.5B-Instruct",
+	})
+	require.NoError(t, err)
+
+	done := waitForState(t, svc, resp.GetDownload().GetDownloadId(), DownloadStateSucceeded)
+	assert.EqualValues(t, 940_000_000, done.GetTotalBytes())
+	assert.Greater(t, done.GetBytes(), int64(0), "the downloaded byte count is reported")
+}
+
+// TestStartModelDownloadWithoutSizeStaysIndeterminate verifies a
+// downloader that cannot report sizes leaves the total at zero, so the
+// console keeps the indeterminate bar instead of a bar stuck at 0%.
+func TestStartModelDownloadWithoutSizeStaysIndeterminate(t *testing.T) {
+	svc := newDownloadTestService(t)
+
+	resp, err := svc.StartModelDownload(context.Background(), &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "Qwen/Qwen2.5-0.5B-Instruct",
+	})
+	require.NoError(t, err)
+
+	done := waitForState(t, svc, resp.GetDownload().GetDownloadId(), DownloadStateSucceeded)
+	assert.EqualValues(t, 0, done.GetTotalBytes())
 }

@@ -457,8 +457,6 @@ bundled Keycloak (internal) or the configured external IdP. */}}
   value: "admin"
 - name: CONFIG_AUTH_SEEDSSO_ADMINPASSWORD
   value: "admin"
-- name: CONFIG_AUTH_SEEDSSO_ADMINORGID
-  value: "org-admin"
 {{- $adminLocal := "Pass4admin" }}
 {{- with (.Values.auth).seedSso }}
 {{- if .adminLocalPassword }}{{ $adminLocal = .adminLocalPassword }}{{ end }}

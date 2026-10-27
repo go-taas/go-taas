@@ -16,6 +16,7 @@ import { Avatar, ErrorBoundary } from '../components';
 import { useAvatar, useProfile } from '../profile';
 import { categoryForPath, navCategoriesForScope } from './nav';
 import { scopeTypeLabelKey, useAdminScope } from '../admin-scope';
+import { OrgSwitcher } from '../org';
 
 function isActive(path: string, current: string): boolean {
   return current === path || current.startsWith(`${path}/`);
@@ -157,6 +158,11 @@ export function AdminShell({ children }: { children: ReactNode }) {
             the bottom, so a long navigation list cannot push it off screen
             or drag it up and down as categories change. */}
         <div className="sidebar-scroll">
+          {/* The platform administrator owns no tenant, so several
+              pages (usage, billing, quotas, audit) need an organization
+              context chosen explicitly instead of inherited from a
+              membership row. */}
+          {(scope?.scopeType === 'platform' || !scope) && <OrgSwitcher />}
           <div className="sidebar-category-label">
             {t(categoryForPath(navCategories, path).shortLabelKey)}
           </div>

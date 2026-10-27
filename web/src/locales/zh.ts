@@ -297,6 +297,7 @@ export const zh: Record<string, string> = {
   'account.switchIncomplete': '切换未完成，请重试。',
 
   // ---- Org switcher ----
+  'org.none': '未加入组织',
   'org.organization': '组织',
 
   // ---- Login ----
@@ -1729,6 +1730,10 @@ export const zh: Record<string, string> = {
   'models.colCreated': '创建时间',
   'models.restricted': '受限',
   'models.restrictedTooltip': '只有在其详情页授权的组织才能部署或调用此模型。',
+  'models.deleteTitle': '删除 {name}？',
+  'models.deleteBody':
+    '将删除该目录条目，并从共享存储中删除模型权重。若仍有推理服务使用该模型，删除会被拒绝。',
+  'models.deleteFailed': '删除模型失败。',
   'models.deploy': '部署',
   'models.registerTitle': '注册模型',
   'models.fieldName': '名称',

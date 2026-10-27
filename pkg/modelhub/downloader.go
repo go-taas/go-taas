@@ -47,6 +47,36 @@ type Downloader interface {
 	Download(ctx context.Context, source Source, modelID, destDir string) error
 }
 
+// SizeReporter is implemented by a Downloader that can report how many
+// bytes a model will occupy before the transfer starts, so progress can be
+// a real percentage instead of an indeterminate animation.
+type SizeReporter interface {
+	// TotalBytes returns the summed size of the model's files on the hub.
+	// A hub that reports no sizes yields 0.
+	TotalBytes(ctx context.Context, source Source, modelID string) (int64, error)
+}
+
+// FileInfo is one downloadable file of a hub model.
+type FileInfo struct {
+	// Path is the file's path relative to the model root.
+	Path string
+	// Size is the file's size in bytes (0 when the hub omits it).
+	Size int64
+}
+
+// TotalBytes implements SizeReporter.
+func (d *HTTPDownloader) TotalBytes(ctx context.Context, source Source, modelID string) (int64, error) {
+	files, err := d.listFiles(ctx, source, modelID)
+	if err != nil {
+		return 0, err
+	}
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	return total, nil
+}
+
 // Options configures an HTTPDownloader.
 type Options struct {
 	// BaseURL overrides the hub base URL (used by tests). Empty uses
@@ -120,7 +150,7 @@ func (d *HTTPDownloader) Download(ctx context.Context, source Source, modelID, d
 			if err := d.downloadFile(ctx, source, modelID, file, destDir); err != nil {
 				errCh <- err
 			}
-		}(f)
+		}(f.Path)
 	}
 	wg.Wait()
 	close(errCh)
@@ -133,7 +163,7 @@ func (d *HTTPDownloader) Download(ctx context.Context, source Source, modelID, d
 }
 
 // listFiles returns the relative file paths of a model on the hub.
-func (d *HTTPDownloader) listFiles(ctx context.Context, source Source, modelID string) ([]string, error) {
+func (d *HTTPDownloader) listFiles(ctx context.Context, source Source, modelID string) ([]FileInfo, error) {
 	base := d.hubBaseURL(source)
 	if base == "" {
 		return nil, fmt.Errorf("modelhub: unsupported source %q", source)
@@ -175,45 +205,57 @@ type modelscopeListResponse struct {
 	Data struct {
 		Files []struct {
 			Path string `json:"Path"`
+			Size int64  `json:"Size"`
 		} `json:"Files"`
 	} `json:"Data"`
 }
 
-// parseModelScopeFiles extracts the relative file paths from a
-// ModelScope repo-files response.
-func parseModelScopeFiles(body []byte) ([]string, error) {
+// parseModelScopeFiles extracts the files from a ModelScope repo-files
+// response.
+func parseModelScopeFiles(body []byte) ([]FileInfo, error) {
 	var resp modelscopeListResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("modelhub: decode modelscope list: %w", err)
 	}
-	out := make([]string, 0, len(resp.Data.Files))
+	out := make([]FileInfo, 0, len(resp.Data.Files))
 	for _, f := range resp.Data.Files {
 		if strings.TrimSpace(f.Path) != "" {
-			out = append(out, f.Path)
+			out = append(out, FileInfo{Path: f.Path, Size: f.Size})
 		}
 	}
 	return out, nil
 }
 
 // huggingFaceListResponse is the HuggingFace model-info API response.
+// blobId, lfs.size and size are the three places HuggingFace reports a
+// file's byte count.
 type huggingFaceListResponse struct {
 	Siblings []struct {
 		Rfilename string `json:"rfilename"`
+		Size      int64  `json:"size"`
+		LFS       *struct {
+			Size int64 `json:"size"`
+		} `json:"lfs"`
 	} `json:"siblings"`
 }
 
-// parseHuggingFaceFiles extracts the relative file paths from a
-// HuggingFace model-info response.
-func parseHuggingFaceFiles(body []byte) ([]string, error) {
+// parseHuggingFaceFiles extracts the files from a HuggingFace model-info
+// response.
+func parseHuggingFaceFiles(body []byte) ([]FileInfo, error) {
 	var resp huggingFaceListResponse
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return nil, fmt.Errorf("modelhub: decode huggingface list: %w", err)
 	}
-	out := make([]string, 0, len(resp.Siblings))
+	out := make([]FileInfo, 0, len(resp.Siblings))
 	for _, s := range resp.Siblings {
-		if strings.TrimSpace(s.Rfilename) != "" {
-			out = append(out, s.Rfilename)
+		if strings.TrimSpace(s.Rfilename) == "" {
+			continue
 		}
+		size := s.Size
+		if s.LFS != nil && s.LFS.Size > 0 {
+			size = s.LFS.Size
+		}
+		out = append(out, FileInfo{Path: s.Rfilename, Size: size})
 	}
 	return out, nil
 }

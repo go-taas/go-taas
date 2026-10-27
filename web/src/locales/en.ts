@@ -298,6 +298,7 @@ export const en: Record<string, string> = {
   'account.switchIncomplete': 'Switch did not complete. Try again.',
 
   // ---- Org switcher ----
+  'org.none': 'No organization',
   'org.organization': 'Organization',
 
   // ---- Login ----
@@ -1756,6 +1757,10 @@ export const en: Record<string, string> = {
   'models.colCreated': 'Created',
   'models.restricted': 'Restricted',
   'models.restrictedTooltip': 'Only the organizations authorized on its detail page may deploy or call this model.',
+  'models.deleteTitle': 'Delete {name}?',
+  'models.deleteBody':
+    'This removes the catalog entry and deletes its weights from the shared storage. It is refused while an inference service still uses the model.',
+  'models.deleteFailed': 'Failed to delete the model.',
   'models.deploy': 'Deploy',
   'models.registerTitle': 'Register Model',
   'models.fieldName': 'Name',

@@ -39,8 +39,10 @@ func (s *Service) requireProjectAdmin(ctx context.Context, projectID string) err
 	if s.roleGuard == nil {
 		return nil
 	}
-	// An org admin/owner may always administer the org's projects.
-	if err := s.roleGuard.RequireAdminOrOwner(ctx, project.OrganizationID, userID); err == nil {
+	// An org admin/owner may always administer the org's projects. Project
+	// management answers to the organization, never to the platform
+	// administrator role, so the membership row alone decides.
+	if err := s.roleGuard.RequireMemberRole(ctx, project.OrganizationID, userID, RoleAdmin); err == nil {
 		return nil
 	}
 	// Otherwise the caller must be a project admin.

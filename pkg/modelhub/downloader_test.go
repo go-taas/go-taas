@@ -7,6 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // newTestServer builds an httptest server that serves a fake hub: a
@@ -194,4 +197,47 @@ func TestCleanModelID(t *testing.T) {
 	if got := JoinPath("/data/weights", "Qwen/Qwen2.5-0.5B"); got != "/data/weights/Qwen__Qwen2.5-0.5B" {
 		t.Fatalf("JoinPath = %q", got)
 	}
+}
+
+// TestParseModelScopeFileSizes verifies the ModelScope parser keeps the
+// per-file size, which is what lets a download report a real percentage.
+func TestParseModelScopeFileSizes(t *testing.T) {
+	body := []byte(`{"Data":{"Files":[
+		{"Path":"config.json","Size":100},
+		{"Path":"model.safetensors","Size":940000000}
+	]}}`)
+	files, err := parseModelScopeFiles(body)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	assert.Equal(t, "config.json", files[0].Path)
+	assert.EqualValues(t, 100, files[0].Size)
+	assert.EqualValues(t, 940000000, files[1].Size)
+}
+
+// TestParseHuggingFaceFileSizes verifies the HuggingFace parser prefers the
+// LFS size (the real weight size) and falls back to the plain size.
+func TestParseHuggingFaceFileSizes(t *testing.T) {
+	body := []byte(`{"siblings":[
+		{"rfilename":"config.json","size":100},
+		{"rfilename":"model.safetensors","size":10,"lfs":{"size":940000000}}
+	]}`)
+	files, err := parseHuggingFaceFiles(body)
+	require.NoError(t, err)
+	require.Len(t, files, 2)
+	assert.EqualValues(t, 100, files[0].Size)
+	assert.EqualValues(t, 940000000, files[1].Size)
+}
+
+// TestHTTPDownloaderTotalBytes verifies TotalBytes sums the file sizes the
+// hub reports.
+func TestHTTPDownloaderTotalBytes(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"Data":{"Files":[{"Path":"a","Size":5},{"Path":"b","Size":7}]}}`))
+	}))
+	defer srv.Close()
+
+	d := NewHTTPDownloader(Options{BaseURL: srv.URL})
+	total, err := d.TotalBytes(context.Background(), SourceModelScope, "Qwen/Qwen2.5-0.5B")
+	require.NoError(t, err)
+	assert.EqualValues(t, 12, total)
 }

@@ -42,6 +42,10 @@ type DownloadJob struct {
 	// Bytes is the number of weight bytes already on disk, sampled while
 	// the download runs so the console can show progress.
 	Bytes int64 `gorm:"not null;default:0"`
+	// TotalBytes is the model's size on the hub, sampled before the
+	// transfer starts so progress is a percentage rather than an unknown.
+	// Zero when the hub reports no sizes.
+	TotalBytes int64 `gorm:"not null;default:0"`
 	// WeightPath is the derived weight path (only when succeeded).
 	WeightPath string `gorm:"size:512;not null;default:''"`
 	// ModelID is the catalog model the job registered (only when

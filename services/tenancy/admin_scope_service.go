@@ -272,11 +272,16 @@ func (s *Service) requireOrgAdminOrPlatform(ctx context.Context, orgID string) e
 
 // requireOrgAdminWrite gates a project write on the caller being an admin
 // or owner of the project's owning organization. A platform administrator
-// has no project management (requirement 2), so only org administration
-// grants it. A nil role guard (unit tests) is permissive.
+// has no project management (requirement 2), so it resolves the membership
+// row alone and never the platform-administrator session role. A nil role
+// guard (unit tests) is permissive.
 func (s *Service) requireOrgAdminWrite(ctx context.Context, orgID string) error {
 	if s.roleGuard == nil {
 		return nil
 	}
-	return s.requireAdminOrOwner(ctx, orgID)
+	userID, err := s.sessionUserID(ctx)
+	if err != nil {
+		return err
+	}
+	return s.roleGuard.RequireMemberRole(ctx, orgID, userID, RoleAdmin)
 }

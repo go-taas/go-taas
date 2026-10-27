@@ -119,8 +119,8 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		}
 	}
 
-	// Derive roles and orgs from org_members (authoritative for local
-	// accounts; there are no IdP claims).
+	// Derive roles and orgs from the account and its org_members rows
+	// (authoritative for local accounts; there are no IdP claims).
 	roles, accessibleOrgs, activeOrg, err := s.localMembership(ctx, user)
 	if err != nil {
 		return nil, err
@@ -168,10 +168,16 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 	}, nil
 }
 
-// isPlatformAdminUser reports whether the user carries the
-// platform-admin role in any organization. Bootstrap platform admins are
-// exempt from login email verification.
+// isPlatformAdminUser reports whether the user is a platform
+// administrator - by account flag or by a platform-admin membership row.
+// Bootstrap platform admins are exempt from login email verification.
 func (s *Service) isPlatformAdminUser(ctx context.Context, userID string) bool {
+	repo, err := s.ssoRepository()
+	if err == nil {
+		if row, findErr := repo.FindUser(ctx, userID); findErr == nil && row.PlatformAdmin {
+			return true
+		}
+	}
 	if s.membershipResolver == nil {
 		return false
 	}
@@ -200,6 +206,12 @@ func (s *Service) localMembership(ctx context.Context, user *User) ([]string, []
 	}
 	roles := []string{}
 	accessibleOrgs := []string{}
+	// A platform administrator carries the role by account, not by
+	// organization: the platform owns no tenant, so the role must not
+	// depend on a membership row.
+	if user.PlatformAdmin {
+		roles = append(roles, tenancy.RolePlatformAdmin)
+	}
 	for _, m := range memberships {
 		accessibleOrgs = append(accessibleOrgs, m.OrganizationID)
 		if !containsString(roles, m.Role) {

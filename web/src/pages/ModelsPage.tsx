@@ -33,6 +33,27 @@ export default function ModelsPage() {
     name: string;
     version: string;
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ModelSummary | null>(null);
+  const [deleteError, setDeleteError] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  const confirmDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await api.del(`/api/v1/admin/models/${deleteTarget.modelId}`, orgId);
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      // 10101 with a service name means the model is still deployed.
+      setDeleteError(
+        e instanceof ApiError ? `${e.message} (code ${e.code})` : t('models.deleteFailed'),
+      );
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -150,6 +171,16 @@ export default function ModelsPage() {
                     >
                       {t('models.deploy')}
                     </button>
+                    <button
+                      className="link danger"
+                      data-testid={`delete-model-${m.name}`}
+                      onClick={() => {
+                        setDeleteError('');
+                        setDeleteTarget(m);
+                      }}
+                    >
+                      {t('common.delete')}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -175,6 +206,34 @@ export default function ModelsPage() {
             void load();
           }}
         />
+      )}
+
+      {deleteTarget && (
+        <Dialog
+          title={t('models.deleteTitle', { name: deleteTarget.name })}
+          onClose={() => setDeleteTarget(null)}
+          testId="delete-model-dialog"
+        >
+          <p>{t('models.deleteBody')}</p>
+          {deleteError && <ErrorBanner message={deleteError} />}
+          <div className="dialog-actions">
+            <button
+              className="secondary"
+              data-testid="delete-model-cancel"
+              onClick={() => setDeleteTarget(null)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              className="danger"
+              data-testid="delete-model-confirm"
+              disabled={deleting}
+              onClick={() => void confirmDelete()}
+            >
+              {deleting ? t('common.working') : t('common.delete')}
+            </button>
+          </div>
+        </Dialog>
       )}
 
       {deployTarget && (

@@ -88,6 +88,11 @@ type User struct {
 	Avatar       string `gorm:"type:text;not null;default:''"`
 	PasswordHash string `gorm:"size:256"`
 	State        string `gorm:"size:16;not null;default:'active'"`
+	// PlatformAdmin marks a platform administrator. The role is a property
+	// of the account, not of an organization the account belongs to: the
+	// platform has no tenant of its own, so a platform administrator needs
+	// no membership row to carry it.
+	PlatformAdmin bool `gorm:"not null;default:false"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }

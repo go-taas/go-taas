@@ -203,6 +203,9 @@ export interface ModelDownload {
   // bytes is the number of weight bytes already on disk (JSON string for
   // the int64 proto field).
   bytes: string | number;
+  // totalBytes is the model's size on the hub; 0 when the hub reported no
+  // sizes, in which case progress stays indeterminate.
+  totalBytes?: string | number;
   weightPath?: string;
   modelId?: string;
   createdAt: string;

@@ -40,24 +40,27 @@ func TestSeedComposeProviderAndAdmin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "admin@example.com", adminUser.Email)
 
-	// The admin user has an org_members row with the admin role so the
-	// session realm derives as admin when the membership resolver is
-	// wired (feature-22 AD8).
-	var memberCount int64
-	require.NoError(t, db.Model(&tenancy.OrgMember{}).
-		Where("user_id = ? AND role = ?", adminUser.ID, tenancy.RoleAdmin).
-		Count(&memberCount).Error)
-	assert.EqualValues(t, 1, memberCount, "admin user has an admin org membership")
+	// The admin user is the platform administrator by account flag, so the
+	// session realm derives as admin without any organization.
+	assert.True(t, adminUser.PlatformAdmin, "admin user is the platform administrator")
+
+	// The platform seeds no organization and no roster: the platform owns
+	// no tenant, so an unaffiliated account simply has no organization.
+	var orgCount, memberCount int64
+	require.NoError(t, db.Model(&tenancy.Organization{}).Count(&orgCount).Error)
+	require.NoError(t, db.Model(&tenancy.OrgMember{}).Count(&memberCount).Error)
+	assert.EqualValues(t, 0, orgCount, "the seed creates no organization")
+	assert.EqualValues(t, 0, memberCount, "the seed creates no membership")
 
 	// The seed is idempotent: re-running does not duplicate rows.
 	require.NoError(t, svc.EnsureComposeSeed(ctx))
-	var providerCount, userCount, memberCount2 int64
+	var providerCount, userCount int64
 	require.NoError(t, db.Model(&SSOProvider{}).Count(&providerCount).Error)
 	require.NoError(t, db.Model(&User{}).Count(&userCount).Error)
-	require.NoError(t, db.Model(&tenancy.OrgMember{}).Count(&memberCount2).Error)
 	assert.EqualValues(t, 1, providerCount, "no duplicate provider on re-seed")
 	assert.EqualValues(t, 1, userCount, "no duplicate admin user on re-seed")
-	assert.EqualValues(t, 2, memberCount2, "no duplicate membership on re-seed (admin org + platform)")
+	require.NoError(t, db.Model(&tenancy.Organization{}).Count(&orgCount).Error)
+	assert.EqualValues(t, 0, orgCount, "the re-seed creates no organization")
 }
 
 // fakeAdminOIDCServer is an in-process OIDC IdP that answers the
@@ -236,4 +239,32 @@ func TestSeedDisabledStillSeedsLocalAdmin(t *testing.T) {
 	resp, err := svc.Login(ctx, &authv1.LoginRequest{Username: "admin", Password: "Pass4admin"})
 	require.NoError(t, err)
 	assert.Equal(t, RealmAdmin, resp.Realm)
+}
+
+// TestRetireSeedOrganizations verifies the empty system organizations an
+// earlier version seeded are removed, while an organization that became a
+// real tenant is left untouched.
+func TestRetireSeedOrganizations(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	for _, orgID := range []string{"org-admin", "platform", "acme"} {
+		require.NoError(t, db.Create(&tenancy.Organization{
+			ID: orgID, DisplayName: orgID, State: tenancy.StateActive,
+		}).Error)
+	}
+	// The platform org holds only the platform-admin membership; "acme"
+	// has a real member and must survive.
+	require.NoError(t, db.Create(&tenancy.OrgMember{
+		OrganizationID: "platform", UserID: "u-admin", Role: tenancy.RolePlatformAdmin,
+	}).Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{
+		OrganizationID: "acme", UserID: "u-member", Role: tenancy.RoleMember,
+	}).Error)
+
+	require.NoError(t, retireLegacySeedOrganizations(ctx, svc))
+
+	var remaining []string
+	require.NoError(t, db.Model(&tenancy.Organization{}).Pluck("id", &remaining).Error)
+	assert.ElementsMatch(t, []string{"acme"}, remaining)
 }

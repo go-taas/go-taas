@@ -22,6 +22,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/audit"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 // ssoProviderIDRegex matches the provider id syntax.
@@ -435,8 +436,18 @@ func (s *Service) UpdateSessionOrg(ctx context.Context, req *authv1.UpdateSessio
 		return nil, err
 	}
 	orgID := strings.TrimSpace(req.GetOrganizationId())
+	// A platform administrator administers every organization, so any
+	// existing one is switchable; everybody else is confined to the
+	// organizations they belong to.
 	if !containsString(sess.AccessibleOrgs, orgID) {
-		return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+		if orgID == "" || !containsString(sess.Roles, tenancy.RolePlatformAdmin) {
+			return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+		}
+		if s.orgGuard != nil {
+			if err := s.orgGuard.RequireExists(ctx, orgID); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if err := s.sessionStore.UpdateOrg(ctx, sess.SessionID, orgID); err != nil {
 		return nil, err
@@ -772,7 +783,7 @@ func (s *Service) mapAttributes(ctx context.Context, prov *SSOProvider, identity
 	if err != nil {
 		return nil, nil, "", err
 	}
-	roles := []string{}
+	roles := s.platformRoles(user)
 	if mapping.Role != "" {
 		if vals := identity.Claims[mapping.Role]; len(vals) > 0 {
 			roles = append(roles, vals...)
@@ -816,7 +827,7 @@ func (s *Service) mapMembership(ctx context.Context, prov *SSOProvider, user *Us
 	if err != nil {
 		return nil, nil, "", err
 	}
-	roles := []string{}
+	roles := s.platformRoles(user)
 	accessibleOrgs := []string{}
 	for _, m := range memberships {
 		accessibleOrgs = append(accessibleOrgs, m.OrganizationID)
@@ -835,6 +846,17 @@ func (s *Service) mapMembership(ctx context.Context, prov *SSOProvider, user *Us
 		}
 	}
 	return roles, accessibleOrgs, activeOrg, nil
+}
+
+// platformRoles returns the roles an account carries by itself. A
+// platform administrator's role belongs to the account, not to an
+// organization: the platform owns no tenant, so no membership row can
+// supply it.
+func (s *Service) platformRoles(user *User) []string {
+	if user != nil && user.PlatformAdmin {
+		return []string{tenancy.RolePlatformAdmin}
+	}
+	return []string{}
 }
 
 // sessionFromContext resolves the session from the Authorization: Bearer
@@ -937,9 +959,10 @@ func (s *Service) SessionActiveOrg(ctx context.Context) (string, error) {
 		// No session (or a session the store cannot read): transitional.
 		return "", nil
 	}
-	if sess.ActiveOrg == "" {
-		return "", apierrors.New(apierrors.CodeOrganizationNotFound)
-	}
+	// An empty active organization is a normal state: an account that has
+	// not joined an organization yet, and a platform administrator, who
+	// owns no tenant. Callers that need an organization treat "" as "no
+	// organization context" and fall back to the transitional header.
 	return sess.ActiveOrg, nil
 }
 

@@ -152,6 +152,16 @@ func (s *Service) runDownloadJob(job *DownloadJob) {
 		"updated_at": time.Now().UTC(),
 	})
 
+	// Learn the model's size first so the console can show a percentage.
+	// A hub that reports no sizes leaves the total at zero and the console
+	// falls back to an indeterminate bar.
+	if total := s.measureDownloadTotal(ctx, job); total > 0 {
+		s.updateDownload(ctx, job.ID, map[string]any{
+			"total_bytes": total,
+			"updated_at":  time.Now().UTC(),
+		})
+	}
+
 	stop := make(chan struct{})
 	trackerDone := make(chan struct{})
 	go func() {
@@ -210,6 +220,25 @@ func (s *Service) runDownloadJob(job *DownloadJob) {
 		ResourceID:   modelID,
 		Result:       "success",
 	})
+}
+
+// measureDownloadTotal asks the downloader for the model's total size. It
+// is best-effort: a hub that cannot be queried, or a downloader that
+// cannot report sizes, leaves the total unknown.
+func (s *Service) measureDownloadTotal(ctx context.Context, job *DownloadJob) int64 {
+	reporter, ok := s.downloader.(modelhub.SizeReporter)
+	if !ok {
+		return 0
+	}
+	source, err := modelhub.ParseSource(job.Source)
+	if err != nil {
+		return 0
+	}
+	total, err := reporter.TotalBytes(ctx, source, job.HubModelID)
+	if err != nil || total < 0 {
+		return 0
+	}
+	return total
 }
 
 // trackDownloadProgress samples the download directory size until stop
@@ -313,6 +342,7 @@ func downloadProjection(job *DownloadJob) *modelv1.ModelDownload {
 		State:      job.State,
 		Message:    job.Message,
 		Bytes:      job.Bytes,
+		TotalBytes: job.TotalBytes,
 		WeightPath: job.WeightPath,
 		ModelId:    job.ModelID,
 		CreatedAt:  job.CreatedAt.Unix(),
