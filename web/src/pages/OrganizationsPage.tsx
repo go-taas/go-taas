@@ -31,6 +31,7 @@ export default function OrganizationsPage() {
     org: OrganizationSummary;
     action: 'disable' | 'enable';
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<OrganizationSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -111,8 +112,8 @@ export default function OrganizationsPage() {
               {orgs.map((org) => (
                 <tr key={org.organizationId} data-testid={`org-row-${org.organizationId}`}>
                   <td>
-                    <strong className="mono">{org.organizationId}</strong>
-                    <div className="muted">{org.displayName}</div>
+                    <strong>{org.displayName || org.organizationId}</strong>
+                    <div className="muted small mono">{org.organizationId}</div>
                   </td>
                   <td>
                     <StateBadge state={org.state} />
@@ -150,6 +151,13 @@ export default function OrganizationsPage() {
                         {t('common.enable')}
                       </button>
                     )}
+                    <button
+                      className="link danger"
+                      data-testid={`org-delete-${org.organizationId}`}
+                      onClick={() => setDeleteTarget(org)}
+                    >
+                      {t('common.delete')}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -189,6 +197,18 @@ export default function OrganizationsPage() {
         />
       )}
 
+      {deleteTarget && (
+        <DeleteOrgDialog
+          orgId={orgId}
+          org={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDone={() => {
+            setDeleteTarget(null);
+            void load();
+          }}
+        />
+      )}
+
       {confirmTarget && (
         <ConfirmStateDialog
           orgId={orgId}
@@ -215,17 +235,12 @@ function CreateOrgDialog({
   onDone: () => void;
 }) {
   const { t } = useI18n();
-  const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
   const submit = async () => {
-    if (!/^[a-z0-9][a-z0-9-]{2,63}$/.test(id.trim())) {
-      setError(t('orgs.validationId'));
-      return;
-    }
     if (!name.trim()) {
       setError(t('orgs.validationDisplayName'));
       return;
@@ -234,7 +249,6 @@ function CreateOrgDialog({
     setError('');
     try {
       await api.post('/api/v1/admin/tenancy/organizations', orgId, {
-        organizationId: id.trim(),
         displayName: name.trim(),
         description: description.trim(),
       });
@@ -250,17 +264,6 @@ function CreateOrgDialog({
   return (
     <Dialog title={t('orgs.createTitle')} onClose={onClose} testId="create-org-dialog">
       <div className="form-grid">
-        <div className="form-field">
-          <label htmlFor="org-id">{t('orgs.fieldOrgId')}</label>
-          <input
-            id="org-id"
-            data-testid="org-id-input"
-            value={id}
-            maxLength={64}
-            onChange={(e) => setId(e.target.value)}
-            placeholder={t('orgs.placeholderOrgId')}
-          />
-        </div>
         <div className="form-field">
           <label htmlFor="org-name">{t('orgs.fieldDisplayName')}</label>
           <input
@@ -432,6 +435,62 @@ function ConfirmStateDialog({
           onClick={() => void submit()}
         >
           {submitting ? t('common.working') : t(action === 'disable' ? 'common.disable' : 'common.enable')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// DeleteOrgDialog permanently deletes an organization. The server refuses
+// the platform organization and any organization that still owns API keys
+// or inference services; the error is shown inline.
+function DeleteOrgDialog({
+  orgId,
+  org,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  org: OrganizationSummary;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useI18n();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.del(`/api/v1/admin/tenancy/organizations/${org.organizationId}`, orgId);
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('orgs.deleteFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={t('orgs.deleteTitle', { name: org.displayName || org.organizationId })}
+      onClose={onClose}
+      testId="org-delete-dialog"
+    >
+      <p>{t('orgs.deleteBody')}</p>
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions">
+        <button className="secondary" data-testid="org-delete-cancel" onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button
+          className="danger"
+          data-testid="org-delete-confirm"
+          disabled={submitting}
+          onClick={() => void submit()}
+        >
+          {submitting ? t('common.working') : t('common.delete')}
         </button>
       </div>
     </Dialog>

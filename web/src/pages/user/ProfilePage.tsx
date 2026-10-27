@@ -22,6 +22,11 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [displayName, setDisplayName] = useState('');
   const [avatar, setAvatar] = useState('');
+  // Email change: the new address must be verified with a code sent to it.
+  const [email, setEmail] = useState('');
+  const [emailCode, setEmailCode] = useState('');
+  const [codeSending, setCodeSending] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -36,6 +41,7 @@ export default function ProfilePage() {
       setProfile(data.profile);
       setDisplayName(data.profile.displayName || '');
       setAvatar(data.profile.avatar || '');
+      setEmail(data.profile.email || '');
       applyProfile(data.profile);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('profile.loadFailed'));
@@ -75,9 +81,14 @@ export default function ProfilePage() {
       const data = await api.patch<{ profile: UserProfile }>(path, orgId, {
         displayName: displayName.trim(),
         avatar,
+        email: email.trim(),
+        emailCode: emailCode.trim(),
       });
       setProfile(data.profile);
       setAvatar(data.profile.avatar || '');
+      setEmail(data.profile.email || '');
+      setEmailCode('');
+      setCodeSent(false);
       applyProfile(data.profile);
       setSaved(true);
     } catch (e) {
@@ -86,6 +97,28 @@ export default function ProfilePage() {
       setSaving(false);
     }
   };
+
+  // sendEmailCode asks the platform to mail a code to the new address.
+  const sendEmailCode = async () => {
+    if (!email.trim()) return;
+    setCodeSending(true);
+    setError('');
+    setSaved(false);
+    try {
+      await api.post('/api/v1/auth/email-code', orgId, {
+        email: email.trim(),
+        purpose: 'change_email',
+      });
+      setCodeSent(true);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('profile.codeFailed'));
+    } finally {
+      setCodeSending(false);
+    }
+  };
+
+  // emailDirty is true when the field differs from the stored address.
+  const emailDirty = email.trim() !== (profile?.email || '') && email.trim() !== '';
 
   if (loading) {
     return (
@@ -169,9 +202,45 @@ export default function ProfilePage() {
           </div>
           <div className="form-field full">
             <label htmlFor="profile-email">{t('profile.email')}</label>
-            <input id="profile-email" value={profile?.email || ''} disabled data-testid="profile-email" />
-            <div className="field-hint">{t('profile.immutableHint')}</div>
+            <div className="toolbar">
+              <input
+                id="profile-email"
+                type="email"
+                value={email}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  setCodeSent(false);
+                }}
+                data-testid="profile-email"
+                style={{ flex: 1 }}
+              />
+              <button
+                type="button"
+                className="secondary"
+                data-testid="profile-email-send-code"
+                disabled={codeSending || !emailDirty}
+                onClick={() => void sendEmailCode()}
+              >
+                {codeSending ? t('common.working') : t('profile.sendCode')}
+              </button>
+            </div>
+            <div className="field-hint">{t('profile.emailHint')}</div>
           </div>
+          {emailDirty && (
+            <div className="form-field full">
+              <label htmlFor="profile-email-code">{t('profile.emailCode')}</label>
+              <input
+                id="profile-email-code"
+                value={emailCode}
+                onChange={(e) => setEmailCode(e.target.value)}
+                placeholder={t('profile.emailCodePlaceholder')}
+                data-testid="profile-email-code"
+              />
+              <div className="field-hint">
+                {codeSent ? t('profile.codeSent') : t('profile.emailCodeHint')}
+              </div>
+            </div>
+          )}
           <div className="form-field full">
             <label htmlFor="profile-display-name">{t('profile.displayName')}</label>
             <input

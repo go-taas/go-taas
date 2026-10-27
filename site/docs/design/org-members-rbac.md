@@ -381,3 +381,23 @@ organization's admin/owner. Project create/update/disable/enable require the
 owning organization's admin/owner; a platform administrator has no project
 management. Member, invitation, join-request and quota operations keep the
 existing admin/owner (organization) and project-admin gates.
+
+### 9.6 Identifier ownership, deletion and email change
+
+- **Server-owned identifiers.** `CreateOrganization` and `CreateProject`
+  generate a UUID when the request omits the id, so the console never asks a
+  person to type one. A caller-supplied id is still validated and accepted for
+  scripts. The organization and project tables show the display name
+  prominently with the UUID underneath, matching the user directory.
+- **Deleting an organization.** `DeleteOrganization`
+  (`DELETE /api/v1/admin/tenancy/organizations/{organization_id}`) is
+  platform-administrator only. It cascades the tenancy-side rows (projects and
+  their rosters, the member roster, invitations, join requests) in one
+  transaction. It refuses the dedicated platform organization and any
+  organization that still owns API keys or inference services (10041
+  `ORGANIZATION_IN_USE`) so no billing or serving rows are orphaned.
+- **Changing the account email.** `UpdateUserProfile` accepts `email` plus
+  `email_code`. When email verification is enabled the new address must prove
+  ownership with a code sent to it using the `change_email` purpose; the
+  unique `users.email` column is the duplicate guard (a collision returns
+  10004 `USER_EXISTS`). Re-submitting the current address needs no code.

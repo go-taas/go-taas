@@ -370,3 +370,18 @@ flowchart TD
 组织元数据编辑需要平台管理员或该组织的 admin/owner。项目的创建/更新/禁用/
 启用需要所属组织的 admin/owner；平台管理员没有项目管理权限。成员、邀请、
 加入申请与配额操作沿用既有的组织 admin/owner 与项目管理员校验。
+
+### 9.6 标识符归属、删除与邮箱修改
+
+- **标识符由服务端生成。** `CreateOrganization` 与 `CreateProject` 在请求未提供
+  id 时生成 UUID，因此控制台不再要求用户输入 id；脚本仍可传入自定义 id（会被
+  校验）。组织与项目列表以显示名为主，下面显示 UUID，与用户目录风格一致。
+- **删除组织。** `DeleteOrganization`
+  （`DELETE /api/v1/admin/tenancy/organizations/{organization_id}`）仅限平台
+  管理员。它在一个事务中层叠删除租户侧数据（项目及其成员、组织成员、邀请、
+  加入申请）。专用平台组织不可删除；若组织仍持有 API 密钥或推理服务则拒绝
+  （10041 `ORGANIZATION_IN_USE`），避免产生孤儿计费或服务记录。
+- **修改账号邮箱。** `UpdateUserProfile` 接受 `email` 与 `email_code`。启用邮箱
+  验证时，新邮箱需用 `change_email` 用途的验证码证明归属；`users.email` 的
+  唯一约束是重复校验（冲突返回 10004 `USER_EXISTS`）。重新提交当前邮箱无需
+  验证码。

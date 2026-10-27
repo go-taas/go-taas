@@ -820,6 +820,10 @@ export const en: Record<string, string> = {
   'orgs.disableBody': 'Disabling blocks new API keys and new inference service deployments for this organization. Existing resources stay readable and revocable.',
   'orgs.enableBody': 'Enabling restores full write access for this organization.',
   'orgs.actionFailed': 'failed to {action} organization',
+  'orgs.deleteTitle': 'Delete {name}?',
+  'orgs.deleteBody':
+    'This permanently removes the organization, its projects, members, invitations and join requests. It is refused while the organization still has API keys or inference services.',
+  'orgs.deleteFailed': 'Failed to delete the organization.',
   'orgs.loadFailed': 'failed to load organizations',
 
   // ---- User directory ----
@@ -2522,6 +2526,14 @@ export const en: Record<string, string> = {
   // ---- User: Profile ----
   'profile.title': 'My Profile',
   'profile.username': 'Username (immutable)',
+  'profile.sendCode': 'Send code',
+  'profile.codeSent': 'A verification code was sent to the new address. It expires in 5 minutes.',
+  'profile.codeFailed': 'Failed to send the verification code.',
+  'profile.emailHint':
+    'Changing the address requires a verification code sent to the new address.',
+  'profile.emailCode': 'Verification code',
+  'profile.emailCodePlaceholder': '6-digit code',
+  'profile.emailCodeHint': 'Send a code to the new address, then enter it here.',
   'profile.email': 'Email (immutable)',
   'profile.displayName': 'Display name',
   'profile.avatar': 'Avatar',

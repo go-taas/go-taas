@@ -819,6 +819,10 @@ export const zh: Record<string, string> = {
   'orgs.disableBody': '禁用会阻止该组织创建新的 API 密钥和新的推理服务部署。现有资源保持可读且可撤销。',
   'orgs.enableBody': '启用将恢复该组织的完整写权限。',
   'orgs.actionFailed': '{action}组织失败',
+  'orgs.deleteTitle': '删除 {name}？',
+  'orgs.deleteBody':
+    '将永久删除该组织及其项目、成员、邀请和加入申请。若组织仍有 API 密钥或推理服务则会被拒绝。',
+  'orgs.deleteFailed': '删除组织失败。',
   'orgs.loadFailed': '加载组织失败',
 
   // ---- User directory ----
@@ -2497,6 +2501,13 @@ export const zh: Record<string, string> = {
   // ---- User: Profile ----
   'profile.title': '个人资料',
   'profile.username': '用户名（不可修改）',
+  'profile.sendCode': '发送验证码',
+  'profile.codeSent': '验证码已发送到新邮箱，5 分钟内有效。',
+  'profile.codeFailed': '发送验证码失败。',
+  'profile.emailHint': '修改邮箱需要先向新邮箱发送验证码。',
+  'profile.emailCode': '验证码',
+  'profile.emailCodePlaceholder': '6 位验证码',
+  'profile.emailCodeHint': '先向新邮箱发送验证码，然后在此填写。',
   'profile.email': '邮箱（不可修改）',
   'profile.displayName': '显示名',
   'profile.avatar': '头像',

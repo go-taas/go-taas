@@ -168,8 +168,8 @@ export default function ProjectsPage() {
               {projects.map((project) => (
                 <tr key={project.projectId} data-testid={`project-row-${project.projectId}`}>
                   <td>
-                    <strong className="mono">{project.projectId}</strong>
-                    <div className="muted">{project.displayName}</div>
+                    <strong>{project.displayName || project.projectId}</strong>
+                    <div className="muted small mono">{project.projectId}</div>
                   </td>
                   <td className="mono">{project.organizationId}</td>
                   <td>
@@ -306,7 +306,6 @@ function CreateProjectDialog({
   onDone: () => void;
 }) {
   const [organizationId, setOrganizationId] = useState(defaultOrganizationId);
-  const [id, setId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -320,10 +319,6 @@ function CreateProjectDialog({
       setError(t('projects.validationOrg'));
       return;
     }
-    if (!/^[a-z0-9][a-z0-9-]{2,63}$/.test(id.trim())) {
-      setError(t('projects.validationId'));
-      return;
-    }
     if (!name.trim()) {
       setError(t('projects.validationDisplayName'));
       return;
@@ -333,7 +328,6 @@ function CreateProjectDialog({
     try {
       await api.post('/api/v1/admin/tenancy/projects', orgId, {
         organizationId,
-        projectId: id.trim(),
         displayName: name.trim(),
         description: description.trim(),
       });
@@ -369,17 +363,6 @@ function CreateProjectDialog({
             ))}
           </select>
           <div className="muted">{t('projects.mutedInactiveOrg')}</div>
-        </div>
-        <div className="form-field">
-          <label htmlFor="project-id">{t('projects.fieldProjectId')}</label>
-          <input
-            id="project-id"
-            data-testid="project-id-input"
-            value={id}
-            maxLength={64}
-            onChange={(e) => setId(e.target.value)}
-            placeholder={t('projects.placeholderProjectId')}
-          />
         </div>
         <div className="form-field">
           <label htmlFor="project-name">{t('projects.fieldDisplayName')}</label>
