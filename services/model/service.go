@@ -1086,7 +1086,7 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 	// The registration is gone, so the weights it pointed at are orphaned.
 	// Removing them is best-effort: a filesystem error must not resurrect a
 	// catalog entry the operator deleted, and the log names what was left.
-	s.removeModelWeights(versions)
+	s.removeModelWeights(ctx, repo, req.GetModelId(), versions)
 	// Feature #15: record the successful deletion best-effort.
 	s.recordAudit(ctx, &audit.AuditEvent{
 		ActorUserID:  s.grantedBy(ctx),
@@ -1104,7 +1104,7 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 // occupied. Every path is resolved under the weights root and refused
 // when it escapes it, so a stale row cannot delete an unrelated
 // directory. Removing an already-absent directory is not an error.
-func (s *Service) removeModelWeights(versions []*Version) {
+func (s *Service) removeModelWeights(ctx context.Context, repo *Repository, modelID string, versions []*Version) {
 	if s.weightsDir == "" {
 		return
 	}
@@ -1122,6 +1122,17 @@ func (s *Service) removeModelWeights(versions []*Version) {
 			continue
 		}
 		if _, seen := removed[dir]; seen {
+			continue
+		}
+		// Another model may point at the same directory (a re-registered
+		// name, a shared download); its weights are not ours to delete.
+		shared, err := repo.CountOtherVersionsWithWeightPath(ctx, v.WeightPath, modelID)
+		if err != nil {
+			logger.S().Warnw("model: check shared weight path failed",
+				"model_id", v.ModelID, "weight_path", v.WeightPath, "err", err)
+			continue
+		}
+		if shared > 0 {
 			continue
 		}
 		removed[dir] = struct{}{}

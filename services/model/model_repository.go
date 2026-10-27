@@ -262,6 +262,17 @@ func (r *Repository) DeleteModel(ctx context.Context, id string) error {
 	})
 }
 
+// CountOtherVersionsWithWeightPath counts the versions of a *different*
+// model that point at the same weight path. A path shared with another
+// model must not be deleted along with one of them.
+func (r *Repository) CountOtherVersionsWithWeightPath(ctx context.Context, weightPath, modelID string) (int64, error) {
+	var count int64
+	err := r.versions.DB(ctx).Model(&Version{}).
+		Where("weight_path = ? AND model_id <> ?", weightPath, modelID).
+		Count(&count).Error
+	return count, err
+}
+
 // FindByHubModelID returns the model bound to the given hub model id
 // (e.g. "MiniMax/MiniMax-M3.1-Flash"). A miss maps to CodeModelNotFound.
 func (r *Repository) FindByHubModelID(ctx context.Context, hubModelID string) (*Model, error) {

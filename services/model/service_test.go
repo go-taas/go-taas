@@ -540,3 +540,30 @@ func TestServiceDeleteModelRefusesEscape(t *testing.T) {
 	_, statErr := os.Stat(filepath.Join(outside, "keep.txt"))
 	assert.NoError(t, statErr, "a path outside the weights root is never touched")
 }
+
+// TestServiceDeleteModelKeepsSharedWeights verifies a weight directory
+// another model still references survives the delete.
+func TestServiceDeleteModelKeepsSharedWeights(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	svc.SetWeightsDir(root)
+	shared := "Qwen__Qwen2.5-0.5B-Instruct/"
+	dir := filepath.Join(root, "Qwen__Qwen2.5-0.5B-Instruct")
+	require.NoError(t, os.MkdirAll(dir, 0o750))
+
+	first, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-a", Version: "v1", WeightPath: shared,
+	})
+	require.NoError(t, err)
+	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-b", Version: "v1", WeightPath: shared,
+	})
+	require.NoError(t, err)
+
+	_, err = svc.DeleteModel(ctx, &modelv1.DeleteModelRequest{ModelId: first.GetModelId()})
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(dir)
+	assert.NoError(t, statErr, "a directory another model references is kept")
+}
