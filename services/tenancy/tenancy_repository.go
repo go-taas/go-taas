@@ -310,7 +310,8 @@ var forceCascadeSQL = []string{
 	// uuid id when matching.
 	`DELETE FROM service_resource_metrics WHERE service_id IN (SELECT CAST(id AS TEXT) FROM inference_services WHERE organization_id = ?)`,
 	// Rows keyed by an organization-owned evaluation run.
-	`DELETE FROM evaluation_run_cases WHERE run_id IN (SELECT id FROM evaluation_runs WHERE organization_id = ?)`,
+	// evaluation_runs is keyed by run_id, not id.
+	`DELETE FROM evaluation_run_cases WHERE run_id IN (SELECT run_id FROM evaluation_runs WHERE organization_id = ?)`,
 	// Parent rows the organization owns directly.
 	`DELETE FROM projects WHERE organization_id = ?`,
 	`DELETE FROM inference_services WHERE organization_id = ?`,
