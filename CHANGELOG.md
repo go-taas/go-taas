@@ -1,3 +1,33 @@
+# [1.88.0](https://github.com/go-taas/go-taas/compare/v1.87.1...v1.88.0) (2026-10-27)
+
+
+### Bug Fixes
+
+* **cluster:** populate cluster detail nodes and workloads ([4ae9f17](https://github.com/go-taas/go-taas/commit/4ae9f178c5a97f1e1dd13b2fd0feb1955fb965b6)), closes [#40](https://github.com/go-taas/go-taas/issues/40)
+* **cluster:** share the projection cache between service and consumer ([25bb91b](https://github.com/go-taas/go-taas/commit/25bb91b8954ea151393aa3db77761b7f817e67b4))
+* **console:** hide the org picker in the org-scoped console ([eefebbb](https://github.com/go-taas/go-taas/commit/eefebbb4045605c29b312a3285db6ecb574cba47))
+* **console:** raise text and icon contrast across hover states ([85e60b8](https://github.com/go-taas/go-taas/commit/85e60b8a8c41266e589d1a8644ab82cd465a0ca5))
+* **console:** render the admin scope chooser at /admin ([763d50a](https://github.com/go-taas/go-taas/commit/763d50a92128246c5815dc88ce9e8a41306b3885))
+* **console:** scope the admin notification bell to the admin scope organization ([7a45f71](https://github.com/go-taas/go-taas/commit/7a45f71770246e8d8edcd41509b8d328c84a2e84))
+* **console:** size the topbar bell and language icons explicitly ([7e502c2](https://github.com/go-taas/go-taas/commit/7e502c2e465cbaee91da2cf11c044ed0726d21e7))
+* **console:** use the light-background logo on the white topbar ([58fb467](https://github.com/go-taas/go-taas/commit/58fb4679dece4b09c66c90f195aa831782c1c350)), closes [#42CDD0](https://github.com/go-taas/go-taas/issues/42CDD0) [#FF896](https://github.com/go-taas/go-taas/issues/FF896)
+* **profile:** serve the email-code endpoint on the admin surface ([3de6126](https://github.com/go-taas/go-taas/commit/3de612625af0d886e0f5360d9e264ed72e4d2c68))
+* **tenancy:** cast the uuid service id when clearing resource metrics ([d4d94bc](https://github.com/go-taas/go-taas/commit/d4d94bc572db96df471b796b55618455885dbfa3))
+* **tenancy:** key the evaluation-run cascade on run_id ([3d911e9](https://github.com/go-taas/go-taas/commit/3d911e9bac58d0947afda5e40f3afcc95fed67f8))
+
+
+### Features
+
+* **billing:** support multi-currency pricing and icon language switcher ([358605f](https://github.com/go-taas/go-taas/commit/358605f53f485dd391cefe745ec5eb3de1a84e05))
+* **console:** set the page title to Go TaaS and add the logo favicon ([af6c3cc](https://github.com/go-taas/go-taas/commit/af6c3cc58b03cf643d82a88e84f007093feedbbc))
+* **console:** uuid-first org/project pages, org delete and verified email edit ([32f8d66](https://github.com/go-taas/go-taas/commit/32f8d662fe622d7b4590f69880c686d64ce8958f))
+* **tenancy,console:** force delete an organization and protect the platform org ([ee23fc8](https://github.com/go-taas/go-taas/commit/ee23fc81115fd6fe60b8c180ebae77a74077473c))
+* **tenancy,console:** let a platform administrator manage any organization roster ([7802b16](https://github.com/go-taas/go-taas/commit/7802b161bb9b4d5414942614d44c6d7c54b040dd))
+* **tenancy,console:** uuid ids, org deletion and verified email change ([8e2024f](https://github.com/go-taas/go-taas/commit/8e2024feb7c4b1cc3b2396809d9031fe64e76e4a))
+* **tenancy:** add admin scopes and joinable-target lists ([ca237c2](https://github.com/go-taas/go-taas/commit/ca237c22a490ba96aea5a52818a66da0fc268236))
+* **tenancy:** add admin-surface bindings for scope and joinable lists ([5f4f34c](https://github.com/go-taas/go-taas/commit/5f4f34c8dc0f35ba030dce412910e51933124465))
+* **tenancy:** gate organization and project writes by role ([e3ff0eb](https://github.com/go-taas/go-taas/commit/e3ff0ebd442566db96c5a7d7f31f608a20d58529))
+
 ## [1.87.1](https://github.com/go-taas/go-taas/compare/v1.87.0...v1.87.1) (2026-10-26)
 
 
