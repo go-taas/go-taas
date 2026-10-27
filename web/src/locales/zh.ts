@@ -795,6 +795,7 @@ export const zh: Record<string, string> = {
   // ---- Organizations ----
   'orgs.title': '组织',
   'orgs.subtitle': '平台组织注册表。每个 API 密钥、推理服务和用量记录都只属于一个组织。',
+  'orgs.members': '成员',
   'orgs.create': '创建组织',
   'orgs.empty': '没有符合筛选条件的组织。',
   'orgs.colOrganization': '组织',
@@ -840,6 +841,15 @@ export const zh: Record<string, string> = {
   'users.stateTitle': '确认操作',
   'users.stateBody': '确定要{action}用户 {username} 吗？',
   'users.stateFailed': '更新用户状态失败',
+  'users.manageOrg': '组织',
+  'users.addOrgTitle': '将 {username} 加入组织',
+  'users.addOrgHint':
+    '选择组织与角色。选择“管理员”即把该用户设为该组织的管理员。一个用户同一时间只属于一个组织。',
+  'users.org': '组织',
+  'users.role': '角色',
+  'users.noOrgs': '没有启用的组织',
+  'users.addToOrg': '加入组织',
+  'users.addOrgFailed': '将用户加入组织失败。',
   'users.deleteBody': '确定要永久删除用户 {username} 吗？此操作不可撤销，将同时删除其身份绑定。',
   'users.loadFailed': '加载用户失败',
 

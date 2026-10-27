@@ -796,6 +796,7 @@ export const en: Record<string, string> = {
   // ---- Organizations ----
   'orgs.title': 'Organizations',
   'orgs.subtitle': 'The platform organization registry. Every API key, inference service and usage record belongs to exactly one organization.',
+  'orgs.members': 'Members',
   'orgs.create': 'Create Organization',
   'orgs.empty': 'No organizations match your filters.',
   'orgs.colOrganization': 'Organization',
@@ -843,6 +844,15 @@ export const en: Record<string, string> = {
   'users.stateTitle': 'Confirm action',
   'users.stateBody': 'Are you sure you want to {action} user {username}?',
   'users.stateFailed': 'failed to update user state',
+  'users.manageOrg': 'Organization',
+  'users.addOrgTitle': 'Add {username} to an organization',
+  'users.addOrgHint':
+    'Choose the organization and the role. Granting "admin" makes this user an administrator of that organization. A user belongs to one organization at a time.',
+  'users.org': 'Organization',
+  'users.role': 'Role',
+  'users.noOrgs': 'No active organization',
+  'users.addToOrg': 'Add to organization',
+  'users.addOrgFailed': 'Failed to add the user to the organization.',
   'users.deleteBody': 'Permanently delete user {username}? This cannot be undone and also removes its identity bindings.',
   'users.loadFailed': 'failed to load users',
 

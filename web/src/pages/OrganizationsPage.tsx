@@ -7,6 +7,7 @@ import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta } fr
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { navigate } from '../router';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -128,6 +129,13 @@ export default function OrganizationsPage() {
                   <td>{org.projectCount}</td>
                   <td>{formatTime(org.createdAt)}</td>
                   <td>
+                    <button
+                      className="link"
+                      data-testid={`org-members-${org.organizationId}`}
+                      onClick={() => navigate(`/admin/members?org=${encodeURIComponent(org.organizationId)}`)}
+                    >
+                      {t('orgs.members')}
+                    </button>
                     <button
                       className="link"
                       data-testid={`org-edit-${org.organizationId}`}

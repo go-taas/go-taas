@@ -407,3 +407,24 @@ existing admin/owner (organization) and project-admin gates.
   ownership with a code sent to it using the `change_email` purpose; the
   unique `users.email` column is the duplicate guard (a collision returns
   10004 `USER_EXISTS`). Re-submitting the current address needs no code.
+
+### 9.7 Platform-wide user and roster administration
+
+- **User directory.** The platform console keeps the user directory
+  (`/admin/users`). A platform administrator can create, edit, disable and
+  delete accounts there, and every row offers an **Organization** action that
+  adds the user to any organization in one step.
+- **Cross-organization rosters.** `requireRosterAdmin` short-circuits for a
+  platform administrator, so `AddOrgMember`, `SetOrgMemberRole`,
+  `RemoveOrgMember`, `ListOrgMembers` and the invitation endpoints accept a
+  platform caller for *any* organization. The check uses the strict
+  `IsPlatformAdmin` predicate, so a plain caller without a roles resolver is
+  still rejected. Project writes keep using `requireAdminOrOwner`, so the
+  roster gate never widens into project management.
+- **Assigning administrators.** Because the platform administrator may set a
+  member's role in every organization, they can appoint an organization
+  administrator anywhere. The organization list links each row to that
+  organization's roster (`/admin/members?org=<id>`), where the role selector
+  promotes a member to `admin` or demotes them again. The invitation, join
+  request and member lists otherwise stay out of the platform navigation, so
+  roster work is intentional rather than ambient.

@@ -479,3 +479,66 @@ func TestForceDeleteOrganizationMissing(t *testing.T) {
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(err))
 }
+
+// TestPlatformAdminManagesAnyOrgRoster verifies a platform administrator
+// can list and add members of an organization they do not belong to, and
+// assign that organization's admin (requirements: manage users, add them
+// to a chosen organization, set every organization's administrator).
+func TestPlatformAdminManagesAnyOrgRoster(t *testing.T) {
+	svc := newMembershipService(t)
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
+	ctx := context.Background()
+	seedOrg(t, svc, "org-x")
+	// The caller (u-admin) has no membership in org-x.
+
+	added, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-x", UserId: "u-new", Role: RoleAdmin,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, RoleAdmin, added.GetMember().GetRole())
+
+	list, err := svc.ListOrgMembers(ctx, &tenancyv1.ListOrgMembersRequest{OrganizationId: "org-x"})
+	require.NoError(t, err)
+	require.Len(t, list.Members, 1)
+	assert.Equal(t, "u-new", list.Members[0].GetUserId())
+
+	// Promoting an existing member to admin also works.
+	_, err = svc.SetOrgMemberRole(ctx, &tenancyv1.SetOrgMemberRoleRequest{
+		OrganizationId: "org-x", UserId: "u-new", Role: RoleAdmin,
+	})
+	require.NoError(t, err)
+}
+
+// TestNonPlatformCallerCannotManageForeignOrgRoster verifies the platform
+// bypass does not widen a plain caller's reach: a member of org-a still
+// cannot touch org-x.
+func TestNonPlatformCallerCannotManageForeignOrgRoster(t *testing.T) {
+	svc := newMembershipService(t)
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RoleAdmin}})
+	ctx := context.Background()
+	seedOrg(t, svc, "org-a")
+	seedOrg(t, svc, "org-x")
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+
+	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-x", UserId: "u-new", Role: RoleMember,
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}
+
+// TestPlatformAdminCannotManageProjects verifies the roster bypass does not
+// leak into project management: a platform administrator still has no
+// authority over an organization's projects.
+func TestPlatformAdminCannotManageProjects(t *testing.T) {
+	svc := newMembershipService(t)
+	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
+	ctx := context.Background()
+	seedOrg(t, svc, "org-p")
+
+	_, err := svc.CreateProject(ctx, &tenancyv1.CreateProjectRequest{
+		ProjectId: "proj-p", OrganizationId: "org-p", DisplayName: "P",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}

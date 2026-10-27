@@ -14,7 +14,13 @@ export default function MembersPage() {
   const { scope } = useAdminScope();
   // In the organization console the roster is fixed to that organization.
   const scopedOrg = scope?.scopeType === 'organization' ? scope.organizationId : '';
-  const { orgId: pickerOrg, orgs, choose } = useOrganizationPicker();
+  // The organization may be preselected with ?org=<id> (the platform
+  // console links here from an organization row).
+  const requestedOrg =
+    typeof window !== 'undefined'
+      ? new URLSearchParams(window.location.search).get('org') || ''
+      : '';
+  const { orgId: pickerOrg, orgs, choose } = useOrganizationPicker(requestedOrg);
   const orgId = scopedOrg || pickerOrg;
   const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>([]);

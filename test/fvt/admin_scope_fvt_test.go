@@ -252,3 +252,50 @@ func TestFVTForceDeleteOrganization(t *testing.T) {
 	assert.Zero(t, svcs)
 	assert.Zero(t, projects)
 }
+
+// TestFVTPlatformAdminManagesAnyOrgRoster verifies a platform
+// administrator can add a user to a chosen organization and set that
+// organization's administrator without being a member there.
+func TestFVTPlatformAdminManagesAnyOrgRoster(t *testing.T) {
+	env := newRBACEnv(t)
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{roles: []string{tenancy.RolePlatformAdmin}})
+	// The session user (u-admin) has no membership in org-x.
+	env.seedRBACOrg(t, "org-x", "Foreign Org")
+
+	code, body := env.call(t, http.MethodPost,
+		"/api/v1/admin/tenancy/organizations/org-x/members",
+		map[string]any{"userId": "u-new", "role": "admin"})
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Equal(t, "admin", body["member"].(map[string]any)["role"])
+
+	code, body = env.call(t, http.MethodGet,
+		"/api/v1/admin/tenancy/organizations/org-x/members", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	members := body["members"].([]any)
+	require.Len(t, members, 1)
+	assert.Equal(t, "u-new", members[0].(map[string]any)["userId"])
+
+	// Demote then remove, both as the platform administrator.
+	code, _ = env.call(t, http.MethodPatch,
+		"/api/v1/admin/tenancy/organizations/org-x/members/u-new",
+		map[string]any{"role": "member"})
+	require.Equal(t, http.StatusOK, code)
+	code, _ = env.call(t, http.MethodDelete,
+		"/api/v1/admin/tenancy/organizations/org-x/members/u-new", nil)
+	require.Equal(t, http.StatusOK, code)
+}
+
+// TestFVTOrgAdminCannotManageForeignOrgRoster verifies the platform
+// bypass does not widen a plain organization administrator's reach.
+func TestFVTOrgAdminCannotManageForeignOrgRoster(t *testing.T) {
+	env := newRBACEnv(t)
+	env.tenancySvc.SetSessionRolesResolver(fakeRBACRoles{roles: []string{tenancy.RoleAdmin}})
+	env.seedRBACOrg(t, "org-a", "Mine")
+	env.seedRBACOrg(t, "org-x", "Other")
+	env.seedRBACMember(t, "org-a", "u-admin", tenancy.RoleOwner)
+
+	_, body := env.call(t, http.MethodPost,
+		"/api/v1/admin/tenancy/organizations/org-x/members",
+		map[string]any{"userId": "u-new", "role": "member"})
+	assert.Equal(t, float64(10036), body["code"], "body: %v", body)
+}

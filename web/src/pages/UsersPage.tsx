@@ -4,7 +4,7 @@
 // directory plus lifecycle control.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, formatTime, type PageMeta, type UserSummary } from '../api';
+import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta, type UserSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
@@ -30,6 +30,8 @@ export default function UsersPage() {
     user: UserSummary;
     action: 'disable' | 'enable' | 'delete';
   } | null>(null);
+  // orgTarget is the user whose organization placement is being edited.
+  const [orgTarget, setOrgTarget] = useState<UserSummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -159,6 +161,13 @@ export default function UsersPage() {
                       </button>
                     )}
                     <button
+                      className="link"
+                      data-testid={`user-org-${user.userId}`}
+                      onClick={() => setOrgTarget(user)}
+                    >
+                      {t('users.manageOrg')}
+                    </button>
+                    <button
                       className="link danger"
                       data-testid={`user-delete-${user.userId}`}
                       onClick={() => setConfirmTarget({ user, action: 'delete' })}
@@ -180,6 +189,18 @@ export default function UsersPage() {
           />
         )}
       </div>
+
+      {orgTarget && (
+        <AddToOrgDialog
+          orgId={orgId}
+          user={orgTarget}
+          onClose={() => setOrgTarget(null)}
+          onDone={() => {
+            setOrgTarget(null);
+            void load();
+          }}
+        />
+      )}
 
       {confirmTarget && (
         <Dialog
@@ -222,5 +243,129 @@ export default function UsersPage() {
         </Dialog>
       )}
     </div>
+  );
+}
+// ASSIGNABLE_ROLES are the organization roles a platform administrator can
+// grant. "owner" is protected: an organization has exactly one owner and
+// ownership is not handed over from this dialog.
+const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
+
+// AddToOrgDialog places a platform user into an organization with a role,
+// which is how a platform administrator assigns an organization's
+// administrator. The server accepts a platform administrator for any
+// organization, and enforces the single-organization rule.
+function AddToOrgDialog({
+  orgId,
+  user,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  user: UserSummary;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t, tEnum } = useI18n();
+  const [orgs, setOrgs] = useState<OrganizationSummary[]>([]);
+  const [selected, setSelected] = useState('');
+  const [role, setRole] = useState('member');
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .get<{ organizations: OrganizationSummary[] }>(
+        '/api/v1/admin/tenancy/organizations?page.limit=100&state=active',
+        orgId,
+      )
+      .then((data) => {
+        if (cancelled) return;
+        const list = data.organizations || [];
+        setOrgs(list);
+        setSelected((prev) => prev || list[0]?.organizationId || '');
+      })
+      .catch(() => setOrgs([]))
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [orgId]);
+
+  const submit = async () => {
+    if (!selected) return;
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post(`/api/v1/admin/tenancy/organizations/${selected}/members`, orgId, {
+        userId: user.userId,
+        role,
+      });
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('users.addOrgFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={t('users.addOrgTitle', { username: user.username || user.userId })}
+      onClose={onClose}
+      testId="user-add-org-dialog"
+    >
+      <p className="muted">{t('users.addOrgHint')}</p>
+      {error && <ErrorBanner message={error} />}
+      <div className="form-grid">
+        <label>
+          {t('users.org')}
+          <select
+            data-testid="user-add-org-select"
+            value={selected}
+            disabled={loading || orgs.length === 0}
+            onChange={(e) => setSelected(e.target.value)}
+          >
+            {orgs.length === 0 && <option value="">{t('users.noOrgs')}</option>}
+            {orgs.map((o) => (
+              <option key={o.organizationId} value={o.organizationId}>
+                {o.displayName && o.displayName !== o.organizationId
+                  ? `${o.displayName} (${o.organizationId})`
+                  : o.organizationId}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          {t('users.role')}
+          <select
+            data-testid="user-add-org-role"
+            value={role}
+            onChange={(e) => setRole(e.target.value)}
+          >
+            {ASSIGNABLE_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {tEnum('state', r)}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <div className="dialog-actions">
+        <button className="secondary" data-testid="user-add-org-cancel" onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button
+          data-testid="user-add-org-confirm"
+          disabled={submitting || loading || !selected}
+          onClick={() => void submit()}
+        >
+          {submitting ? t('common.working') : t('users.addToOrg')}
+        </button>
+      </div>
+    </Dialog>
   );
 }

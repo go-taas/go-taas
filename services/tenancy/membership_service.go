@@ -64,7 +64,7 @@ func (s *Service) membershipRepo() (*MembershipRepository, error) {
 // ListOrgMembers returns the org's roster (FR1.1).
 func (s *Service) ListOrgMembers(ctx context.Context, req *tenancyv1.ListOrgMembersRequest) (*tenancyv1.ListOrgMembersResponse, error) {
 	orgID := req.GetOrganizationId()
-	if err := s.requireAdminOrOwner(ctx, orgID); err != nil {
+	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	repo, err := s.membershipRepo()
@@ -91,7 +91,7 @@ func (s *Service) ListOrgMembers(ctx context.Context, req *tenancyv1.ListOrgMemb
 // AddOrgMember adds a member with a role (FR1.2).
 func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberRequest) (*tenancyv1.AddOrgMemberResponse, error) {
 	orgID := req.GetOrganizationId()
-	if err := s.requireAdminOrOwner(ctx, orgID); err != nil {
+	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	userID := strings.TrimSpace(req.GetUserId())
@@ -140,7 +140,7 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 // SetOrgMemberRole changes a member's role (FR1.3).
 func (s *Service) SetOrgMemberRole(ctx context.Context, req *tenancyv1.SetOrgMemberRoleRequest) (*tenancyv1.SetOrgMemberRoleResponse, error) {
 	orgID := req.GetOrganizationId()
-	if err := s.requireAdminOrOwner(ctx, orgID); err != nil {
+	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	userID := req.GetUserId()
@@ -185,7 +185,7 @@ func (s *Service) SetOrgMemberRole(ctx context.Context, req *tenancyv1.SetOrgMem
 // RemoveOrgMember removes a member (FR1.4).
 func (s *Service) RemoveOrgMember(ctx context.Context, req *tenancyv1.RemoveOrgMemberRequest) (*tenancyv1.RemoveOrgMemberResponse, error) {
 	orgID := req.GetOrganizationId()
-	if err := s.requireAdminOrOwner(ctx, orgID); err != nil {
+	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	userID := req.GetUserId()
@@ -222,7 +222,7 @@ func (s *Service) RemoveOrgMember(ctx context.Context, req *tenancyv1.RemoveOrgM
 // CreateInvitation invites a person by email with a role (FR2.1).
 func (s *Service) CreateInvitation(ctx context.Context, req *tenancyv1.CreateInvitationRequest) (*tenancyv1.CreateInvitationResponse, error) {
 	orgID := req.GetOrganizationId()
-	if err := s.requireAdminOrOwner(ctx, orgID); err != nil {
+	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	email := strings.TrimSpace(req.GetEmail())
@@ -284,7 +284,7 @@ func (s *Service) CreateInvitation(ctx context.Context, req *tenancyv1.CreateInv
 // ListInvitations returns the org's invitation pipeline (FR2.2).
 func (s *Service) ListInvitations(ctx context.Context, req *tenancyv1.ListInvitationsRequest) (*tenancyv1.ListInvitationsResponse, error) {
 	orgID := req.GetOrganizationId()
-	if err := s.requireAdminOrOwner(ctx, orgID); err != nil {
+	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
 		return nil, err
 	}
 	repo, err := s.membershipRepo()
@@ -320,7 +320,7 @@ func (s *Service) RevokeInvitation(ctx context.Context, req *tenancyv1.RevokeInv
 	if inv == nil || inv.Status != InvitationPending {
 		return nil, apierrors.New(apierrors.CodeInvitationNotFound)
 	}
-	if err := s.requireAdminOrOwner(ctx, inv.OrganizationID); err != nil {
+	if err := s.requireRosterAdmin(ctx, inv.OrganizationID); err != nil {
 		return nil, err
 	}
 	if err := repo.SetInvitationStatus(ctx, inv.ID, InvitationRevoked); err != nil {
@@ -346,7 +346,7 @@ func (s *Service) ResendInvitation(ctx context.Context, req *tenancyv1.ResendInv
 	if inv == nil || inv.Status != InvitationPending {
 		return nil, apierrors.New(apierrors.CodeInvitationNotFound)
 	}
-	if err := s.requireAdminOrOwner(ctx, inv.OrganizationID); err != nil {
+	if err := s.requireRosterAdmin(ctx, inv.OrganizationID); err != nil {
 		return nil, err
 	}
 	raw, err := generateInvitationToken()
@@ -470,6 +470,28 @@ func (s *Service) requireAdminOrOwner(ctx context.Context, orgID string) error {
 		return nil
 	}
 	return s.roleGuard.RequireAdminOrOwner(ctx, orgID, userID)
+}
+
+// requireRosterAdmin gates roster and invitation management. A platform
+// administrator administers the roster of every organization - listing its
+// members, adding its users, assigning its admins, and running its
+// invitation pipeline - so the platform role satisfies the gate without a
+// membership row there. Project writes keep the stricter
+// requireAdminOrOwner, because a platform administrator does not manage
+// projects.
+//
+// The platform check is strict (IsPlatformAdmin): with no roles resolver
+// wired the caller is treated as plain, not as an operator.
+func (s *Service) requireRosterAdmin(ctx context.Context, orgID string) error {
+	if s.roleGuard == nil {
+		return nil
+	}
+	if ok, err := s.IsPlatformAdmin(ctx); err != nil {
+		return err
+	} else if ok {
+		return nil
+	}
+	return s.requireAdminOrOwner(ctx, orgID)
 }
 
 // sessionUserID resolves the authenticated caller's user id.
