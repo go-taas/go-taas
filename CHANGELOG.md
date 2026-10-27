@@ -1,3 +1,16 @@
+# [1.89.0](https://github.com/go-taas/go-taas/compare/v1.88.0...v1.89.0) (2026-10-27)
+
+
+### Bug Fixes
+
+* **console:** word the organization delete warning for platform resources ([a5d9b9b](https://github.com/go-taas/go-taas/commit/a5d9b9b7e3dff8a73bab11f9a230967bf7fc6475))
+* **notifications:** let a platform administrator read their notifications ([f15703b](https://github.com/go-taas/go-taas/commit/f15703bb64b2beb1d594a8790543c4359907b0b9))
+
+
+### Features
+
+* **tenancy,auth,console:** make the serving fleet platform-owned and show real affiliations ([e5a4db8](https://github.com/go-taas/go-taas/commit/e5a4db82e02ccbd244648954adf7abe0883eaa90))
+
 # [1.88.0](https://github.com/go-taas/go-taas/compare/v1.87.1...v1.88.0) (2026-10-27)
 
 
