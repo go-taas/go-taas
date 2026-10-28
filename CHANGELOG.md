@@ -1,3 +1,15 @@
+# [1.96.0](https://github.com/go-taas/go-taas/compare/v1.95.0...v1.96.0) (2026-10-28)
+
+
+### Bug Fixes
+
+* **image:** never select an archive member by the form reference ([c40ac46](https://github.com/go-taas/go-taas/commit/c40ac4673eba4fd846026ee5d4722a6051497cc7))
+
+
+### Features
+
+* **tenancy,image,console:** roster pick-lists, image upload and console polish ([2f086be](https://github.com/go-taas/go-taas/commit/2f086be7105248aaa589eda2b8fdf597f764957f))
+
 # [1.95.0](https://github.com/go-taas/go-taas/compare/v1.94.0...v1.95.0) (2026-10-28)
 
 
