@@ -1,3 +1,15 @@
+# [1.97.0](https://github.com/go-taas/go-taas/compare/v1.96.1...v1.97.0) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console:** drop the organization and project columns from the platform user list ([0ce53ed](https://github.com/go-taas/go-taas/commit/0ce53ed19d40e4c7220872beadee772d4efbe1d0))
+
+
+### Features
+
+* **runtime,infer,console:** display preferences, multi-machine serving and catalog polish ([2c3e0ee](https://github.com/go-taas/go-taas/commit/2c3e0eee32cb767469177dd417a91e68d596cc64))
+
 ## [1.96.1](https://github.com/go-taas/go-taas/compare/v1.96.0...v1.96.1) (2026-10-28)
 
 
