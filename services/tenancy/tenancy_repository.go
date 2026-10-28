@@ -358,6 +358,28 @@ var forceCascadeSQL = []string{
 	`DELETE FROM join_requests WHERE target_type = 'organization' AND target_id = ?`,
 }
 
+// DeleteProject removes a project and the rows that hang off it: its
+// roster (with the members' quotas, which live on that row), the join
+// requests targeting it, and the project row itself. Inference services and
+// API keys belong to the organization, not the project, so they are not
+// touched. The work runs in one transaction so a partial delete cannot
+// leave a roster pointing at a missing project.
+func (r *Repository) DeleteProject(ctx context.Context, id string) error {
+	return r.db.DB(ctx).Transaction(func(tx *gorm.DB) error {
+		steps := []orgScopedDelete{
+			{&ProjectMember{}, "project_id = ?", []any{id}},
+			{&JoinRequest{}, "target_type = ? AND target_id = ?", []any{JoinTargetProject, id}},
+			{&Project{}, "id = ?", []any{id}},
+		}
+		for _, step := range steps {
+			if err := tx.Where(step.where, step.args...).Delete(step.model).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // DeleteOrganization removes an organization and every tenancy-side row
 // that belongs to it: its projects and their rosters, its member roster,
 // its invitations and its join requests. Platform assets (API keys,

@@ -500,6 +500,10 @@ func TestRuntimeCollectorDiscoversSuffixedGateway(t *testing.T) {
 	assert.Equal(t, "ready", gateway.Status)
 }
 
+// TestRuntimeCollectorPlainFallback verifies the collector reports the
+// plain scheme when the cache was explicitly set back to it (an operator
+// opting out of AIBrix on an external control plane). The default is
+// AIBrix, so the cache is set here on purpose.
 func TestRuntimeCollectorPlainFallback(t *testing.T) {
 	client := mq.NewFake()
 	var published []runtimeSnapshot
@@ -510,9 +514,11 @@ func TestRuntimeCollectorPlainFallback(t *testing.T) {
 		return nil
 	}))
 
+	cache := NewSchemeCache()
+	cache.SetScheme(schemePlain)
 	collector := NewRuntimeCollector(fake.NewSimpleClientset(), newFakeDynamic(), client, RuntimeCollectorConfig{
 		Interval: time.Minute, Namespace: reconcileNamespace,
-	}, NewSchemeCache())
+	}, cache)
 
 	collector.collectAndPublish(context.Background())
 

@@ -116,6 +116,15 @@ service TenancyService {
     };
   }
 
+  // DeleteProject removes a project and the rows that hang off it: its
+  // roster, its member quotas and its pending join requests. The project's
+  // inference services and API keys are platform-owned and are not
+  // touched, so an organization that still uses the project keeps it; the
+  // organization console deletes an unused project.
+  rpc DeleteProject(DeleteProjectRequest) returns (DeleteProjectResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/tenancy/projects/{project_id}"};
+  }
+
   // ListOrgMembers returns the organization's roster with roles.
   // Requires admin/owner in the org context (feature #10).
   rpc ListOrgMembers(ListOrgMembersRequest) returns (ListOrgMembersResponse) {
@@ -345,6 +354,22 @@ service TenancyService {
   rpc UpdateProjectQuota(UpdateProjectQuotaRequest) returns (UpdateProjectQuotaResponse) {
     option (google.api.http) = {
       patch: "/api/v1/admin/tenancy/projects/{project_id}/quota"
+      body: "*"
+    };
+  }
+
+  // ListProjectMemberQuotas returns every member of a project with the
+  // quota assigned to that member. It is the project administrator's
+  // console: quotas are per person, not for the project as a whole.
+  rpc ListProjectMemberQuotas(ListProjectMemberQuotasRequest) returns (ListProjectMemberQuotasResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}/member-quotas"};
+  }
+
+  // UpdateProjectMemberQuota sets one member's quota in a project. A nil
+  // field is left unchanged; 0 means unlimited.
+  rpc UpdateProjectMemberQuota(UpdateProjectMemberQuotaRequest) returns (UpdateProjectMemberQuotaResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/tenancy/projects/{project_id}/member-quotas/{user_id}"
       body: "*"
     };
   }
@@ -991,4 +1016,55 @@ message UpdateProjectQuotaRequest {
 message UpdateProjectQuotaResponse {
   taas.common.v1.Response response = 1;
   ProjectQuota quota = 2;
+}
+
+message DeleteProjectRequest {
+  string project_id = 1;
+}
+
+message DeleteProjectResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// ---- Per-member project quotas ----
+
+// ProjectMemberQuota is one project member with the quota that member
+// holds inside the project. A 0 limit is unlimited.
+message ProjectMemberQuota {
+  string project_id = 1;
+  string organization_id = 2;
+  string user_id = 3;
+  // display_name is the member's display name (else username).
+  string display_name = 4;
+  string role = 5;
+  int64 max_concurrent_requests = 6;
+  int64 max_inference_services = 7;
+  int64 max_batch_jobs_per_day = 8;
+  int64 max_output_tokens_per_request = 9;
+  int64 updated_at = 10;
+  string updated_by = 11;
+  string updated_by_display_name = 12;
+}
+
+message ListProjectMemberQuotasRequest {
+  string project_id = 1;
+}
+
+message ListProjectMemberQuotasResponse {
+  taas.common.v1.Response response = 1;
+  repeated ProjectMemberQuota quotas = 2;
+}
+
+message UpdateProjectMemberQuotaRequest {
+  string project_id = 1;
+  string user_id = 2;
+  optional int64 max_concurrent_requests = 3;
+  optional int64 max_inference_services = 4;
+  optional int64 max_batch_jobs_per_day = 5;
+  optional int64 max_output_tokens_per_request = 6;
+}
+
+message UpdateProjectMemberQuotaResponse {
+  taas.common.v1.Response response = 1;
+  ProjectMemberQuota quota = 2;
 }

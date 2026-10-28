@@ -8,6 +8,7 @@ import { api, ApiError, formatTime, type ImageSummary, type PageMeta } from '../
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
 import { useI18n } from '../i18n';
+import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -16,19 +17,23 @@ interface ListResponse {
 }
 
 const PAGE_SIZE = 20;
-const ACCELERATORS = ['all', 'nvidia', 'iluvatar', 'metax'];
+// The vendor list is whatever the cluster reports (plus the CPU marker),
+// never a constant: an operator must not be able to register an image for
+// hardware the fleet does not have.
 
 export default function ImagesPage() {
   const { orgId } = useOrg();
-  const { t, tEnum } = useI18n();
+  const { t } = useI18n();
   const [images, setImages] = useState<ImageSummary[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [accelerator, setAccelerator] = useState('all');
+  const fleet = useFleetAccelerators(orgId);
   const [engine, setEngine] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ImageSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageSummary | null>(null);
   const [warmupTarget, setWarmupTarget] = useState<ImageSummary | null>(null);
@@ -67,9 +72,18 @@ export default function ImagesPage() {
           <h1>{t('images.title')}</h1>
           <div className="subtitle">{t('images.subtitle')}</div>
         </div>
-        <button data-testid="register-image" onClick={() => setRegisterOpen(true)}>
-          {t('images.register')}
-        </button>
+        <div className="toolbar">
+          <button
+            className="secondary"
+            data-testid="import-image"
+            onClick={() => setImportOpen(true)}
+          >
+            {t('images.import')}
+          </button>
+          <button data-testid="register-image" onClick={() => setRegisterOpen(true)}>
+            {t('images.register')}
+          </button>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} />}
@@ -83,9 +97,10 @@ export default function ImagesPage() {
             setOffset(0);
           }}
         >
-          {ACCELERATORS.map((a) => (
+          <option value="all">{t('images.filterAccelerator')}</option>
+          {[...fleet.vendors, CPU_ACCELERATOR].map((a) => (
             <option key={a} value={a}>
-              {a === 'all' ? t('images.filterAccelerator') : tEnum('state', a)}
+              {a === CPU_ACCELERATOR ? t('images.acceleratorCpu') : a}
             </option>
           ))}
         </select>
@@ -193,6 +208,17 @@ export default function ImagesPage() {
         />
       )}
 
+      {importOpen && (
+        <ImportImageDialog
+          orgId={orgId}
+          onClose={() => setImportOpen(false)}
+          onDone={() => {
+            setImportOpen(false);
+            void load();
+          }}
+        />
+      )}
+
       {editTarget && (
         <EditImageDialog
           orgId={orgId}
@@ -244,12 +270,19 @@ function RegisterImageDialog({
   const [name, setName] = useState('');
   const [tag, setTag] = useState('');
   const [digest, setDigest] = useState('');
-  const [accelerator, setAccelerator] = useState('nvidia');
+  const [accelerator, setAccelerator] = useState('');
   const [engine, setEngine] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { t } = useI18n();
+  const fleet = useFleetAccelerators(orgId);
+
+  useEffect(() => {
+    // Default to the first vendor the cluster reports, or the CPU marker
+    // when it reports none.
+    if (!accelerator) setAccelerator(fleet.vendors[0] || CPU_ACCELERATOR);
+  }, [accelerator, fleet.vendors]);
 
   const submit = async () => {
     if (!name.trim()) {
@@ -330,9 +363,9 @@ function RegisterImageDialog({
             value={accelerator}
             onChange={(e) => setAccelerator(e.target.value)}
           >
-            {ACCELERATORS.filter((a) => a !== 'all').map((a) => (
+            {[...fleet.vendors, CPU_ACCELERATOR].map((a) => (
               <option key={a} value={a}>
-                {a}
+                {a === CPU_ACCELERATOR ? t('images.acceleratorCpu') : a}
               </option>
             ))}
           </select>
@@ -371,6 +404,169 @@ function RegisterImageDialog({
           onClick={() => void submit()}
         >
           {submitting ? t('images.registering') : t('images.register')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// ImportImageDialog pulls an external image into the cluster's own Harbor
+// project and registers the local reference. The destination is decided by
+// the server from the chart's `image.harbor` settings, so the form shows
+// where the image will land instead of asking for a registry.
+function ImportImageDialog({
+  orgId,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useI18n();
+  const fleet = useFleetAccelerators(orgId);
+  const [sourceReference, setSourceReference] = useState('');
+  const [accelerator, setAccelerator] = useState('');
+  const [engine, setEngine] = useState('');
+  const [description, setDescription] = useState('');
+  const [sourceUsername, setSourceUsername] = useState('');
+  const [sourcePassword, setSourcePassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (!accelerator) setAccelerator(fleet.vendors[0] || CPU_ACCELERATOR);
+  }, [accelerator, fleet.vendors]);
+
+  // The local name the server will derive: the image's last path segment,
+  // in the Harbor project. Shown so the operator sees the result before the
+  // transfer starts.
+  const localName = (() => {
+    const ref = sourceReference.trim();
+    if (!ref) return '';
+    const withoutTag = ref.includes(':') ? ref.slice(0, ref.lastIndexOf(':')) : ref;
+    const leaf = withoutTag.split('/').filter(Boolean).pop() || '';
+    return leaf;
+  })();
+
+  const submit = async () => {
+    const ref = sourceReference.trim();
+    if (!ref) {
+      setError(t('images.validationSource'));
+      return;
+    }
+    if (!engine.trim()) {
+      setError(t('images.validationEngine'));
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      const res = await api.post<{ reference?: string }>('/api/v1/admin/images:import', orgId, {
+        sourceReference: ref,
+        accelerator,
+        engine: engine.trim(),
+        description: description.trim(),
+        sourceUsername: sourceUsername.trim() || undefined,
+        sourcePassword: sourceUsername.trim() ? sourcePassword : undefined,
+      });
+      void res;
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('images.importFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog title={t('images.importTitle')} onClose={onClose} testId="import-image-dialog">
+      <p className="muted">{t('images.importHint')}</p>
+      <div className="form-grid">
+        <div className="form-field full">
+          <label htmlFor="import-source">{t('images.sourceReference')}</label>
+          <input
+            id="import-source"
+            className="mono"
+            data-testid="import-source-input"
+            value={sourceReference}
+            onChange={(e) => setSourceReference(e.target.value)}
+            placeholder="docker.io/library/a/b/hello:1.0.0"
+          />
+          <div className="field-hint">
+            {localName
+              ? t('images.importTarget', { name: localName })
+              : t('images.importTargetHint')}
+          </div>
+        </div>
+        <div className="form-field">
+          <label htmlFor="import-accelerator">{t('images.fieldAccelerator')}</label>
+          <select
+            id="import-accelerator"
+            data-testid="import-accelerator-select"
+            value={accelerator}
+            onChange={(e) => setAccelerator(e.target.value)}
+          >
+            {[...fleet.vendors, CPU_ACCELERATOR].map((a) => (
+              <option key={a} value={a}>
+                {a === CPU_ACCELERATOR ? t('images.acceleratorCpu') : a}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div className="form-field">
+          <label htmlFor="import-engine">{t('images.fieldEngine')}</label>
+          <input
+            id="import-engine"
+            data-testid="import-engine-input"
+            value={engine}
+            maxLength={64}
+            onChange={(e) => setEngine(e.target.value)}
+            placeholder={t('images.placeholderEngine')}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="import-src-user">{t('images.sourceUsername')}</label>
+          <input
+            id="import-src-user"
+            data-testid="import-source-username"
+            value={sourceUsername}
+            onChange={(e) => setSourceUsername(e.target.value)}
+            placeholder={t('images.sourceAuthOptional')}
+            autoComplete="off"
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="import-src-pass">{t('images.sourcePassword')}</label>
+          <input
+            id="import-src-pass"
+            type="password"
+            data-testid="import-source-password"
+            value={sourcePassword}
+            onChange={(e) => setSourcePassword(e.target.value)}
+            disabled={!sourceUsername.trim()}
+            autoComplete="off"
+          />
+        </div>
+        <div className="form-field full">
+          <label htmlFor="import-desc">{t('common.descriptionOptional')}</label>
+          <textarea
+            id="import-desc"
+            data-testid="import-description"
+            rows={2}
+            maxLength={1024}
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+      </div>
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button data-testid="submit-import" disabled={submitting} onClick={() => void submit()}>
+          {submitting ? t('images.importing') : t('images.import')}
         </button>
       </div>
     </Dialog>

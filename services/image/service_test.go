@@ -3,6 +3,7 @@ package image
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -43,7 +44,7 @@ func TestServiceRegisterImageValidation(t *testing.T) {
 		{"empty tag", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "", Accelerator: "nvidia", Engine: "vllm"}, apierrors.CodeImageReferenceInvalid},
 		{"tag with whitespace", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "v0.6 3", Accelerator: "nvidia", Engine: "vllm"}, apierrors.CodeImageReferenceInvalid},
 		{"bad digest", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "v1", Digest: "sha256:short", Accelerator: "nvidia", Engine: "vllm"}, apierrors.CodeImageDigestInvalid},
-		{"unsupported accelerator", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "v1", Accelerator: "tpu", Engine: "vllm"}, apierrors.CodeImageIncompatible},
+		{"accelerator with bad syntax", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "v1", Accelerator: "TPU/../x", Engine: "vllm"}, apierrors.CodeImageIncompatible},
 		{"empty engine", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "v1", Accelerator: "nvidia", Engine: ""}, apierrors.CodeImageReferenceInvalid},
 		{"long description", &imagev1.RegisterImageRequest{Name: "ghcr.io/go-taas/vllm", Tag: "v1", Accelerator: "nvidia", Engine: "vllm", Description: string(make([]byte, 1025))}, apierrors.CodeImageReferenceInvalid},
 	}
@@ -391,14 +392,14 @@ func TestServiceImportImageHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.GetImageId())
 	// The destination reference lands in the internal Harbor project.
-	assert.Equal(t, "hub.example.com/taas/library/vllm:v0.6.3", resp.GetReference())
+	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", resp.GetReference())
 	assert.Equal(t, "docker.1ms.run/library/vllm:v0.6.3", imp.srcRef)
-	assert.Equal(t, "hub.example.com/taas/library/vllm:v0.6.3", imp.dstRef)
+	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", imp.dstRef)
 
 	// The catalog row carries the Harbor reference as its name.
 	found, err := svc.repo.FindByID(ctx, resp.GetImageId())
 	require.NoError(t, err)
-	assert.Equal(t, "hub.example.com/taas/library/vllm", found.Name)
+	assert.Equal(t, "hub.example.com/taas/vllm", found.Name)
 	assert.Equal(t, "v0.6.3", found.Tag)
 	assert.Equal(t, "nvidia", found.Accelerator)
 }
@@ -416,8 +417,9 @@ func TestServiceImportImageValidation(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeImageReferenceInvalid, ae.Code)
 
-	// Unsupported accelerator.
-	_, err = svc.ImportImage(ctx, &imagev1.ImportImageRequest{SourceReference: "vllm:latest", Accelerator: "tpu", Engine: "vllm"})
+	// Accelerator with invalid syntax (the usable set is the live fleet's
+	// vendors plus the CPU marker, validated syntactically).
+	_, err = svc.ImportImage(ctx, &imagev1.ImportImageRequest{SourceReference: "vllm:latest", Accelerator: "TPU/../x", Engine: "vllm"})
 	require.Error(t, err)
 	ae, ok = apierrors.As(err)
 	require.True(t, ok)
@@ -622,4 +624,70 @@ func TestServiceCompatibilityMatrixPlatformAdminOnly(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}
+
+// TestServiceRegisterImageCPU verifies a CPU-only image registers: an image
+// that needs no accelerator is a first-class entry, not an error.
+func TestServiceRegisterImageCPU(t *testing.T) {
+	svc, _ := newServiceForTest(t)
+	ctx := context.Background()
+
+	resp, err := svc.RegisterImage(ctx, &imagev1.RegisterImageRequest{
+		Name: "ghcr.io/go-taas/embedding", Tag: "v1", Accelerator: "cpu", Engine: "tei",
+	})
+	require.NoError(t, err)
+	stored, err := svc.repo.FindByID(ctx, resp.GetImageId())
+	require.NoError(t, err)
+	assert.Equal(t, AcceleratorCPU, stored.Accelerator)
+
+	// Omitting the accelerator means the same thing.
+	empty, err := svc.RegisterImage(ctx, &imagev1.RegisterImageRequest{
+		Name: "ghcr.io/go-taas/tokenizer", Tag: "v1", Engine: "tokenizer",
+	})
+	require.NoError(t, err)
+	stored, err = svc.repo.FindByID(ctx, empty.GetImageId())
+	require.NoError(t, err)
+	assert.Equal(t, AcceleratorCPU, stored.Accelerator)
+}
+
+// TestIsValidImageAccelerator verifies the acceptance rule: the CPU marker,
+// an empty value, and any syntactically valid vendor name (so a fleet that
+// reports a new vendor needs no code change), while anything that would
+// break an image reference is refused.
+func TestIsValidImageAccelerator(t *testing.T) {
+	// A vendor is normalized to lowercase, so an uppercase spelling is
+	// accepted and stored lowercased by the caller.
+	for _, ok := range []string{"", "cpu", "nvidia", "TPU", "cambricon", "a-new-vendor"} {
+		assert.True(t, IsValidImageAccelerator(ok), "%q must be accepted", ok)
+	}
+	// Anything that would break the reference or exceed the column is out.
+	for _, bad := range []string{"gp u", "x/y", "x:y", "x;y", strings.Repeat("a", 33)} {
+		assert.False(t, IsValidImageAccelerator(bad), "%q must be refused", bad)
+	}
+}
+
+// TestServiceImportImageFlattensPath verifies the import keeps only the
+// image's last path segment: docker.io/library/a/b/hello:1.0.0 becomes
+// <harbor>/<project>/hello:1.0.0, so no source namespace tree is mirrored.
+func TestServiceImportImageFlattensPath(t *testing.T) {
+	svc, _ := newServiceForTest(t)
+	ctx := context.Background()
+	setTestHarbor("hub.example.com", "admin", "secret", "taas")
+	imp := &fakeImporter{}
+	svc.SetImporter(imp)
+
+	resp, err := svc.ImportImage(ctx, &imagev1.ImportImageRequest{
+		SourceReference: "docker.io/library/a/b/hello:1.0.0",
+		Accelerator:     "cpu",
+		Engine:          "custom",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "hub.example.com/taas/hello:1.0.0", resp.GetReference())
+	assert.Equal(t, "docker.io/library/a/b/hello:1.0.0", imp.srcRef)
+	assert.Equal(t, "hub.example.com/taas/hello:1.0.0", imp.dstRef)
+
+	stored, err := svc.repo.FindByID(ctx, resp.GetImageId())
+	require.NoError(t, err)
+	assert.Equal(t, "hub.example.com/taas/hello", stored.Name)
+	assert.Equal(t, AcceleratorCPU, stored.Accelerator)
 }

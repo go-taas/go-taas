@@ -68,6 +68,16 @@ type ProjectMember struct {
 	JoinedAt  time.Time `gorm:"not null"`
 	CreatedAt time.Time
 	UpdatedAt time.Time
+
+	// Per-member quotas inside the project. A project administrator sets
+	// them per person, so the limits follow the human rather than the
+	// project as a whole. 0 means unlimited.
+	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
+	MaxInferenceServices      int64     `gorm:"not null;default:0"`
+	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
+	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
+	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`
+	QuotaUpdatedAt            time.Time `gorm:"default:null"`
 }
 
 // TableName returns the project_members table name.

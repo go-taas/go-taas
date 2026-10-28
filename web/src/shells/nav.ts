@@ -107,7 +107,6 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
       { path: '/admin/model-downloads', labelKey: 'nav.modelDownloads', testid: 'nav-model-downloads', icon: DownloadSimple },
       { path: '/admin/inference-services', labelKey: 'nav.inferenceServices', testid: 'nav-inference-services', icon: Rocket },
       { path: '/admin/clusters', labelKey: 'nav.clusters', testid: 'nav-clusters', icon: Globe },
-      { path: '/admin/runtime', labelKey: 'nav.runtime', testid: 'nav-runtime', icon: Pulse },
       { path: '/admin/providers', labelKey: 'nav.providers', testid: 'nav-providers', icon: Cube },
       { path: '/admin/deployments', labelKey: 'nav.deployments', testid: 'nav-deployments', icon: Scroll },
       { path: '/admin/images', labelKey: 'nav.images', testid: 'nav-images', icon: Image },
@@ -297,7 +296,7 @@ export function organizationNavCategories(): NavCategory[] {
         { path: '/admin/members', labelKey: 'nav.members', testid: 'nav-members', icon: Users },
         { path: '/admin/invitations', labelKey: 'nav.invitations', testid: 'nav-invitations', icon: Envelope },
         { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
-        { path: '/admin/project-quotas', labelKey: 'nav.projectQuotas', testid: 'nav-project-quotas', icon: SlidersHorizontal },
+        { path: '/admin/project-quotas', labelKey: 'nav.memberQuotas', testid: 'nav-member-quotas', icon: SlidersHorizontal },
       ],
     },
     {
@@ -325,7 +324,7 @@ export function projectNavCategories(): NavCategory[] {
       items: [
         { path: '/admin/project-members', labelKey: 'nav.projectMembers', testid: 'nav-project-members', icon: Users },
         { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
-        { path: '/admin/project-quotas', labelKey: 'nav.projectQuota', testid: 'nav-project-quota', icon: SlidersHorizontal },
+        { path: '/admin/project-quotas', labelKey: 'nav.memberQuotasShort', testid: 'nav-member-quotas', icon: SlidersHorizontal },
       ],
     },
   ];

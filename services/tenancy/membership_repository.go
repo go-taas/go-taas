@@ -3,6 +3,7 @@ package tenancy
 import (
 	"context"
 	"errors"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -120,6 +121,39 @@ func (r *MembershipRepository) ListProjectMembers(ctx context.Context, projectID
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+// ListAllProjectMembers returns every member of the project, newest
+// first. It backs the per-member quota list, which shows the whole roster
+// rather than one page.
+func (r *MembershipRepository) ListAllProjectMembers(ctx context.Context, projectID string) ([]*ProjectMember, error) {
+	var rows []*ProjectMember
+	err := r.db.DB(ctx).Where("project_id = ?", projectID).
+		Order("joined_at DESC").Find(&rows).Error
+	return rows, err
+}
+
+// UpdateProjectMemberQuota writes one member's quota fields and the
+// editor/time stamp.
+func (r *MembershipRepository) UpdateProjectMemberQuota(ctx context.Context, projectID, userID string, quota *ProjectMember) error {
+	res := r.db.DB(ctx).Model(&ProjectMember{}).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		Updates(map[string]any{
+			"max_concurrent_requests":       quota.MaxConcurrentRequests,
+			"max_inference_services":        quota.MaxInferenceServices,
+			"max_batch_jobs_per_day":        quota.MaxBatchJobsPerDay,
+			"max_output_tokens_per_request": quota.MaxOutputTokensPerRequest,
+			"quota_updated_by":              quota.QuotaUpdatedBy,
+			"quota_updated_at":              quota.QuotaUpdatedAt,
+			"updated_at":                    time.Now().UTC(),
+		})
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected == 0 {
+		return apierrors.New(apierrors.CodeUserNotFound)
+	}
+	return nil
 }
 
 // AddProjectMember inserts a project member row. A duplicate

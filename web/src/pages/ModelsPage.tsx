@@ -153,6 +153,15 @@ export default function ModelsPage() {
                   <td className="mono muted">{m.external ? `${m.providerName} · ${m.upstreamModelId}` : m.weightPath}</td>
                   <td>{formatTime(m.createdAt)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
+                    {/* An external model is served by its provider's API:
+                        there is nothing to deploy on this platform and no
+                        weights to delete, so the row offers neither. */}
+                    {m.external ? (
+                      <span className="muted small" data-testid={`external-model-${m.name}`}>
+                        {t('models.externalManaged')}
+                      </span>
+                    ) : (
+                      <>
                     <button
                       className="link"
                       data-testid={`deploy-${m.name}`}
@@ -175,6 +184,8 @@ export default function ModelsPage() {
                     >
                       {t('common.delete')}
                     </button>
+                      </>
+                    )}
                   </td>
                 </tr>
               ))}

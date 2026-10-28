@@ -112,3 +112,32 @@ func IsValidAccelerator(accelerator string) bool {
 		return false
 	}
 }
+
+// AcceleratorCPU marks an image that needs no accelerator at all: a
+// CPU-only engine (an embedding server, a small classifier, a tokenizer
+// sidecar) runs on any node. It is a first-class choice rather than an
+// absent value, so the catalog can say so explicitly.
+const AcceleratorCPU = "cpu"
+
+// IsValidImageAccelerator accepts an accelerator vendor the platform knows
+// or the CPU marker. The catalog and the deploy form read the live vendor
+// list from the accelerator inventory, so a cluster that grows a new vendor
+// registers its images without a code change; the value is normalized to
+// lowercase and validated for syntax only.
+func IsValidImageAccelerator(accelerator string) bool {
+	a := strings.ToLower(strings.TrimSpace(accelerator))
+	if a == "" || a == AcceleratorCPU {
+		return true
+	}
+	if len(a) > 32 {
+		return false
+	}
+	for _, r := range a {
+		ok := r == '-' || r == '_' ||
+			(r >= '0' && r <= '9') || (r >= 'a' && r <= 'z')
+		if !ok {
+			return false
+		}
+	}
+	return true
+}

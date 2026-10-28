@@ -43,7 +43,6 @@ import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import ClustersPage from './pages/ClustersPage';
 import ClusterDetailPage from './pages/ClusterDetailPage';
-import RuntimePage from './pages/RuntimePage';
 import GatewaySettingsPage from './pages/GatewaySettingsPage';
 import ProvidersPage from './pages/ProvidersPage';
 import ProviderDetailPage from './pages/ProviderDetailPage';
@@ -94,7 +93,7 @@ import ForecastPage from './pages/ForecastPage';
 import QuotasPage from './pages/QuotasPage';
 import OrgSettingsPage from './pages/OrgSettingsPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
-import ProjectQuotasPage from './pages/ProjectQuotasPage';
+import ProjectMemberQuotasPage from './pages/ProjectMemberQuotasPage';
 import OptimizationPage from './pages/OptimizationPage';
 import VGPUPoolsPage from './pages/VGPUPoolsPage';
 import VGPUPoolDetailPage from './pages/VGPUPoolDetailPage';
@@ -258,7 +257,6 @@ function AdminSurface() {
               <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
               <Route path="/admin/clusters" element={<ClustersPage />} />
               <Route path="/admin/clusters/:clusterId" element={<ClusterDetailPage />} />
-              <Route path="/admin/runtime" element={<RuntimePage />} />
               <Route path="/admin/settings" element={<GatewaySettingsPage />} />
               <Route path="/admin/providers" element={<ProvidersPage />} />
               <Route path="/admin/providers/:providerId" element={<ProviderDetailPage />} />
@@ -299,7 +297,7 @@ function AdminSurface() {
               <Route path="/admin/quotas" element={<QuotasPage />} />
               <Route path="/admin/org-settings" element={<OrgSettingsPage />} />
               <Route path="/admin/project-members" element={<ProjectMembersPage />} />
-              <Route path="/admin/project-quotas" element={<ProjectQuotasPage />} />
+              <Route path="/admin/project-quotas" element={<ProjectMemberQuotasPage />} />
               <Route path="/admin/optimization" element={<OptimizationPage />} />
               <Route path="/admin/vgpu-pools" element={<VGPUPoolsPage />} />
               <Route path="/admin/vgpu-pools/:poolId" element={<VGPUPoolDetailPage />} />

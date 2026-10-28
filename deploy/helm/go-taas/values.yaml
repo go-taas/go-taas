@@ -528,6 +528,26 @@ taasServer:
     timeoutSeconds: 3
     # -- Consecutive readiness failures before the pod leaves the Service endpoints.
     failureThreshold: 3
+  # The cluster's own container registry (Harbor), used by the image import
+  # flow: an operator points at the local Harbor and the console can pull an
+  # external image into it and register the local reference. Import is
+  # disabled while `hostname` is empty, and the console then says so instead
+  # of failing halfway through a transfer.
+  harbor:
+    # -- Harbor hostname, e.g. `hub.example.com`. Empty disables image import.
+    hostname: ""
+    # -- Harbor project imported images are pushed to.
+    project: taas
+    # -- Harbor account used to push imported images.
+    username: ""
+    # -- Harbor password. Prefer `existingSecret`; an inline value lands in
+    # the rendered manifest.
+    password: ""
+    # -- Name of an existing Secret holding the Harbor password.
+    existingSecret: ""
+    # -- Key inside `existingSecret` that holds the password.
+    existingSecretKey: harbor-password
+
   # Config overrides for `configs/*.yaml`, rendered as `CONFIG_*` env vars.
   # Keys mirror the config-file paths, e.g.:
   #   config:

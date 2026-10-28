@@ -545,8 +545,12 @@ func (s *Service) RegisterImage(ctx context.Context, req *imagev1.RegisterImageR
 	if digest != "" && !digestPattern.MatchString(digest) {
 		return nil, errors.New(errors.CodeImageDigestInvalid)
 	}
-	if !IsValidAccelerator(accelerator) {
+	if !IsValidImageAccelerator(accelerator) {
 		return nil, errors.New(errors.CodeImageIncompatible)
+	}
+	if accelerator == "" {
+		// An image that names no vendor is a CPU-only image.
+		accelerator = AcceleratorCPU
 	}
 	if len(engine) < 1 || len(engine) > maxEngineLen {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: engine must be 1-%d characters", maxEngineLen)
@@ -607,8 +611,11 @@ func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageReque
 	if sourceRef == "" {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: source_reference is required")
 	}
-	if !IsValidAccelerator(accelerator) {
+	if !IsValidImageAccelerator(accelerator) {
 		return nil, errors.New(errors.CodeImageIncompatible)
+	}
+	if accelerator == "" {
+		accelerator = AcceleratorCPU
 	}
 	if len(engine) < 1 || len(engine) > maxEngineLen {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: engine must be 1-%d characters", maxEngineLen)
@@ -625,18 +632,25 @@ func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageReque
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: image import is not configured")
 	}
 
-	// Derive the destination reference: the source repository name and
-	// tag are preserved, but the registry host is replaced by the
-	// internal Harbor and the image lands in the configured project.
+	// Derive the destination reference: only the image name and tag are
+	// preserved. The source registry host and its namespace tree are
+	// dropped, so "docker.io/library/a/b/hello:1.0.0" becomes
+	// "<harbor>/<project>/hello:1.0.0" - one flat project, no mirrored
+	// namespaces to keep in sync.
 	_, repo, tag, err := registry.ParseReference(sourceRef)
 	if err != nil {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: %v", err)
 	}
-	destRef := registry.JoinReference(cfg.Image.Harbor.URL, cfg.Image.Harbor.Project+"/"+repo, tag)
+	leaf := registry.LastRepoName(repo)
+	if leaf == "" {
+		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: %q has no image name", sourceRef)
+	}
+	localRepo := cfg.Image.Harbor.Project + "/" + leaf
+	destRef := registry.JoinReference(cfg.Image.Harbor.URL, localRepo, tag)
 
-	// The catalog name is the Harbor reference (host/project/repo) so
-	// the deployed pods pull from the internal registry.
-	name := cfg.Image.Harbor.URL + "/" + cfg.Image.Harbor.Project + "/" + repo
+	// The catalog name is the Harbor reference (host/project/name) so the
+	// deployed pods pull from the internal registry.
+	name := cfg.Image.Harbor.URL + "/" + localRepo
 
 	repoHandle, err := s.repository()
 	if err != nil {

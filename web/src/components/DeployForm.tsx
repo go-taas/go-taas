@@ -23,6 +23,7 @@ import {
 import { ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
 import { engineParams, type EngineParam } from './engineParams';
+import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
 interface ImageEntry {
   imageId: string;
@@ -47,7 +48,9 @@ interface CreateResponse {
   serviceId: string;
 }
 
-const ACCELERATORS = ['nvidia', 'iluvatar', 'metax'];
+// The accelerator vendors and card types come from the live fleet (the
+// accelerator inventory), never from a constant: offering hardware the
+// cluster does not have only produces an unschedulable pod.
 
 export default function DeployForm({
   orgId,
@@ -63,7 +66,7 @@ export default function DeployForm({
   initialVersion: string;
   onCancel: () => void;
   onDeployed: (serviceId: string) => void;
-}) {  const { t, tEnum } = useI18n();
+}) {  const { t } = useI18n();
 
   const [authorizedModels, setAuthorizedModels] = useState<ModelSummary[]>([]);
   const [selectedModelId, setSelectedModelId] = useState(modelId);
@@ -73,10 +76,6 @@ export default function DeployForm({
   const [imageId, setImageId] = useState('');
   const [name, setName] = useState('');
   const [acceleratorType, setAcceleratorType] = useState('');
-  // Card types the accelerator inventory actually reports. The matrix is
-  // keyed by these values, so the field offers them instead of accepting
-  // any free text (a card *product* name fails the lookup with 10211).
-  const [cardTypes, setCardTypes] = useState<string[]>([]);
   const [replicas, setReplicas] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -124,24 +123,11 @@ export default function DeployForm({
       .catch(() => setPools([]));
   }, [orgId]);
 
-  useEffect(() => {
-    api
-      .get<{ cardTypes?: { cardType: string; inFleet?: boolean }[] }>(
-        '/api/v1/admin/compatibility/dimensions',
-        orgId,
-      )
-      .then((data) =>
-        setCardTypes(
-          (data.cardTypes || [])
-            // Only suggest cards the fleet actually reports: a historical
-            // card type (a card that left the fleet) cannot be scheduled.
-            .filter((c) => c.inFleet !== false)
-            .map((c) => c.cardType)
-            .filter((c): c is string => Boolean(c)),
-        ),
-      )
-      .catch(() => setCardTypes([]));
-  }, [orgId]);
+  // The vendors and card types the cluster actually carries, plus the CPU
+  // marker for an image that needs no accelerator.
+  const fleet = useFleetAccelerators(orgId);
+  const vendorOptions = [...fleet.vendors, CPU_ACCELERATOR];
+  const cardTypeOptions = fleet.cardTypesFor(accelerator);
 
   const selectedPool = pools.find((p) => p.poolId === poolId);
 
@@ -317,11 +303,16 @@ export default function DeployForm({
             id="deploy-accelerator"
             data-testid="deploy-accelerator-select"
             value={accelerator}
-            onChange={(e) => setAccelerator(e.target.value)}
+            onChange={(e) => {
+              setAccelerator(e.target.value);
+              // A card type belongs to one vendor, so the previous choice
+              // cannot survive a vendor change.
+              setAcceleratorType('');
+            }}
           >
-            {ACCELERATORS.map((a) => (
+            {vendorOptions.map((a) => (
               <option key={a} value={a}>
-                {tEnum('state', a)}
+                {a === CPU_ACCELERATOR ? t('deploy.acceleratorCpu') : a}
               </option>
             ))}
           </select>
@@ -355,24 +346,26 @@ export default function DeployForm({
         </div>
         <div className="form-field">
           <label htmlFor="deploy-card-type">{t('deploy.cardType')}</label>
-          <input
+          <select
             id="deploy-card-type"
-            data-testid="deploy-card-type-input"
-            list="deploy-card-types"
+            data-testid="deploy-card-type-select"
             value={acceleratorType}
-            maxLength={64}
+            disabled={accelerator === CPU_ACCELERATOR}
             onChange={(e) => setAcceleratorType(e.target.value)}
-            placeholder={t('deploy.placeholderCardType')}
-          />
-          <datalist id="deploy-card-types">
-            {cardTypes.map((c) => (
-              <option key={c} value={c} />
+          >
+            <option value="">{t('deploy.cardTypeAny')}</option>
+            {cardTypeOptions.map((c) => (
+              <option key={c.cardType} value={c.cardType}>
+                {c.cardType} ({t('deploy.cardTypeFree', { free: String(c.free), total: String(c.total) })})
+              </option>
             ))}
-          </datalist>
+          </select>
           <div className="field-hint">
-            {cardTypes.length > 0
-              ? t('deploy.cardTypeHintKnown', { types: cardTypes.join(', ') })
-              : t('deploy.cardTypeHint')}
+            {accelerator === CPU_ACCELERATOR
+              ? t('deploy.cardTypeCpu')
+              : cardTypeOptions.length > 0
+                ? t('deploy.cardTypeHintFleet')
+                : t('deploy.cardTypeHintEmpty')}
           </div>
         </div>
         <div className="form-field">

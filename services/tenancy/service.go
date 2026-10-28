@@ -685,6 +685,47 @@ func (s *Service) UpdateProject(ctx context.Context, req *tenancyv1.UpdateProjec
 	return &tenancyv1.UpdateProjectResponse{Response: okResponse(), Project: summarizeProject(project)}, nil
 }
 
+// DeleteProject removes a project and the tenancy rows that hang off it
+// (its roster with the members' quotas, and join requests targeting it).
+// Only an organization administrator - or the platform administrator -
+// deletes a project; the organization console offers it on the project
+// list. Inference services are organization-owned and stay, so a project
+// still in use does not lose its history.
+func (s *Service) DeleteProject(ctx context.Context, req *tenancyv1.DeleteProjectRequest) (*tenancyv1.DeleteProjectResponse, error) {
+	projectID := strings.TrimSpace(req.GetProjectId())
+	if projectID == "" {
+		return nil, apierrors.New(apierrors.CodeProjectNotFound)
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	project, err := repo.FindProject(ctx, projectID)
+	if isRecordNotFound(err) {
+		return nil, apierrors.New(apierrors.CodeProjectNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if err := s.requireOrgAdminOrPlatform(ctx, project.OrganizationID); err != nil {
+		return nil, err
+	}
+	if err := repo.DeleteProject(ctx, projectID); err != nil {
+		return nil, err
+	}
+	actor, _ := s.sessionUserID(ctx)
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: project.OrganizationID,
+		ActorUserID:    actor,
+		ActorType:      "user",
+		Action:         "project.delete",
+		ResourceType:   "project",
+		ResourceID:     projectID,
+		Result:         "success",
+	})
+	return &tenancyv1.DeleteProjectResponse{Response: okResponse()}, nil
+}
+
 // DisableProject moves an active project to disabled. It is
 // idempotent.
 func (s *Service) DisableProject(ctx context.Context, req *tenancyv1.DisableProjectRequest) (*tenancyv1.DisableProjectResponse, error) {

@@ -26,16 +26,18 @@ const (
 )
 
 // SchemeCache holds the latest serving scheme the controller has received
-// from the runtime service (AD6). It defaults to plain so a restarted
-// controller keeps today's behavior until a broadcast arrives.
+// from the runtime service (AD6). It defaults to AIBrix: every inference
+// service is served through AIBrix (routing, model claims, autoscaling
+// policy), so a restarted controller must not silently fall back to a plain
+// Service path that skips them.
 type SchemeCache struct {
 	mu     sync.RWMutex
 	scheme string
 }
 
-// NewSchemeCache constructs a scheme cache defaulting to plain.
+// NewSchemeCache constructs a scheme cache defaulting to AIBrix.
 func NewSchemeCache() *SchemeCache {
-	return &SchemeCache{scheme: schemePlain}
+	return &SchemeCache{scheme: schemeAIBrix}
 }
 
 // Scheme returns the cached scheme.
@@ -43,7 +45,7 @@ func (c *SchemeCache) Scheme() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.scheme == "" {
-		return schemePlain
+		return schemeAIBrix
 	}
 	return c.scheme
 }

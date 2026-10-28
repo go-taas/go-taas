@@ -800,8 +800,14 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if replicas < minReplicas || replicas > maxReplicas {
 		return nil, apierrors.New(apierrors.CodeInferReplicasInvalid)
 	}
+	// The accelerator is a deployment property, not a fixed list: any
+	// vendor the fleet reports is valid, and the CPU marker (or nothing)
+	// means the image needs no card at all.
 	accelerator := strings.ToLower(strings.TrimSpace(req.GetAccelerator()))
-	if !image.IsValidAccelerator(accelerator) {
+	if accelerator == "" {
+		accelerator = image.AcceleratorCPU
+	}
+	if !image.IsValidImageAccelerator(accelerator) {
 		return nil, apierrors.New(apierrors.CodeInferEngineUnsupported)
 	}
 

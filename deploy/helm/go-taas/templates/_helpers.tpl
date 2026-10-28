@@ -252,6 +252,48 @@ Render a nested config map as plain `CONFIG_*` environment variables, e.g.
 are supported: the platform reads lists and maps from files, so they belong in
 configOverrides.
 */}}
+{{/*
+Harbor env: the cluster's own registry, used by the image import flow.
+An operator sets two obvious values (hostname and project) instead of
+editing the generic config map:
+
+  harbor:
+    hostname: hub.example.com
+    project: taas
+    username: admin
+    existingSecret: ""      # a Secret holding the password under `harbor-password`
+    password: ""            # inline, discouraged; prefer existingSecret
+
+Import is disabled when hostname is empty, and the console then explains
+that instead of failing halfway through a transfer.
+*/}}
+{{- define "go-taas.harbor.env" -}}
+{{- with .Values.harbor }}
+{{- if .hostname }}
+- name: CONFIG_IMAGE_HARBOR_URL
+  value: {{ .hostname | quote }}
+{{- if .project }}
+- name: CONFIG_IMAGE_HARBOR_PROJECT
+  value: {{ .project | quote }}
+{{- end }}
+{{- if .username }}
+- name: CONFIG_IMAGE_HARBOR_USERNAME
+  value: {{ .username | quote }}
+{{- end }}
+{{- if .existingSecret }}
+- name: CONFIG_IMAGE_HARBOR_PASSWORD
+  valueFrom:
+    secretKeyRef:
+      name: {{ .existingSecret | quote }}
+      key: {{ default "harbor-password" .existingSecretKey | quote }}
+{{- else if .password }}
+- name: CONFIG_IMAGE_HARBOR_PASSWORD
+  value: {{ .password | quote }}
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end -}}
+
 {{- define "go-taas.configEnv" -}}
 {{- $prefix := .prefix -}}
 {{- $indent := .indent -}}

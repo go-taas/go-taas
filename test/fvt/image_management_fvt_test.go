@@ -306,7 +306,7 @@ func TestFVTImageManagement(t *testing.T) {
 		{"name with colon", map[string]any{"name": "ghcr.io/x:v1", "tag": "t", "accelerator": "nvidia", "engine": "vllm"}, 10207},
 		{"empty tag", map[string]any{"name": "ghcr.io/x", "tag": "", "accelerator": "nvidia", "engine": "vllm"}, 10207},
 		{"bad digest", map[string]any{"name": "ghcr.io/x", "tag": "t", "digest": "sha256:zz", "accelerator": "nvidia", "engine": "vllm"}, 10203},
-		{"bad accelerator", map[string]any{"name": "ghcr.io/x", "tag": "t", "accelerator": "tpu", "engine": "vllm"}, 10204},
+		{"bad accelerator", map[string]any{"name": "ghcr.io/x", "tag": "t", "accelerator": "TPU/../x", "engine": "vllm"}, 10204},
 		{"empty engine", map[string]any{"name": "ghcr.io/x", "tag": "t", "accelerator": "nvidia", "engine": ""}, 10207},
 	}
 	for _, tc := range invalid {
@@ -358,14 +358,14 @@ func TestImageImport(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, "import must succeed: %v", body)
 	imageID, ok := body["imageId"].(string)
 	require.True(t, ok, "imageId missing: %v", body)
-	assert.Equal(t, "hub.example.com/taas/library/vllm:v0.6.3", body["reference"])
+	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", body["reference"])
 
 	// The catalog row carries the Harbor reference.
 	code, got := env.call(t, http.MethodGet, "/api/v1/admin/images/"+imageID, nil)
 	require.Equal(t, http.StatusOK, code)
 	img, ok := got["image"].(map[string]any)
 	require.True(t, ok)
-	assert.Equal(t, "hub.example.com/taas/library/vllm", img["name"])
+	assert.Equal(t, "hub.example.com/taas/vllm", img["name"])
 	assert.Equal(t, "v0.6.3", img["tag"])
 
 	// Importing the same source again is a duplicate.
@@ -391,10 +391,11 @@ func TestImageImportValidation(t *testing.T) {
 	assert.NotEqual(t, http.StatusOK, code)
 	assert.Equal(t, float64(10207), body["code"])
 
-	// Unsupported accelerator.
+	// An accelerator with invalid syntax: the usable set is any vendor the
+	// fleet reports plus the CPU marker, validated syntactically.
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/images:import", map[string]any{
 		"source_reference": "vllm:latest",
-		"accelerator":      "tpu",
+		"accelerator":      "TPU/../x",
 		"engine":           "vllm",
 	})
 	assert.NotEqual(t, http.StatusOK, code)

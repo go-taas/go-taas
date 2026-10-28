@@ -93,6 +93,19 @@ func ParseReference(ref string) (host, repo, tag string, err error) {
 	return "", ref, tag, nil
 }
 
+// LastRepoName returns the final path segment of a repository: the image
+// name without its registry host and namespaces. Importing
+// "docker.io/library/a/b/hello:1.0.0" keeps "hello", so the local catalog
+// reads "<harbor>/<project>/hello:1.0.0" instead of reproducing the source
+// registry's namespace tree.
+func LastRepoName(repo string) string {
+	trimmed := strings.Trim(repo, "/")
+	if i := strings.LastIndex(trimmed, "/"); i >= 0 {
+		return trimmed[i+1:]
+	}
+	return trimmed
+}
+
 // JoinReference composes a full image reference from a host, repository
 // and tag.
 func JoinReference(host, repo, tag string) string {

@@ -305,8 +305,10 @@ func TestCreateInferenceServiceValidationMatrix(t *testing.T) {
 			apierrors.CodeInferReplicasInvalid,
 		},
 		{
-			"unsupported accelerator",
-			&inferv1.CreateInferenceServiceRequest{Name: "demo", ModelId: modelID, ModelVersion: "v1", ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "tpu"},
+			// A vendor the fleet could report is accepted (the image is
+			// what pins it down); malformed syntax is refused.
+			"accelerator with bad syntax",
+			&inferv1.CreateInferenceServiceRequest{Name: "demo", ModelId: modelID, ModelVersion: "v1", ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "TPU/../x"},
 			apierrors.CodeInferEngineUnsupported,
 		},
 		{

@@ -53,6 +53,7 @@ export default function ProjectsPage() {
     project: ProjectSummary;
     action: 'disable' | 'enable';
   } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ProjectSummary | null>(null);
 
   const loadOrgs = useCallback(async () => {
     try {
@@ -220,6 +221,13 @@ export default function ProjectsPage() {
                         {t('common.enable')}
                       </button>
                     )}
+                    <button
+                      className="link danger"
+                      data-testid={`project-delete-${project.projectId}`}
+                      onClick={() => setDeleteTarget(project)}
+                    >
+                      {t('common.delete')}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -274,6 +282,18 @@ export default function ProjectsPage() {
           orgId={orgId}
           project={membersTarget}
           onClose={() => setMembersTarget(null)}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteProjectDialog
+          orgId={orgId}
+          project={deleteTarget}
+          onClose={() => setDeleteTarget(null)}
+          onDone={() => {
+            setDeleteTarget(null);
+            void load();
+          }}
         />
       )}
 
@@ -834,6 +854,62 @@ function ProjectQuotaDialog({
         <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
         <button data-testid="quota-save" disabled={saving || loading} onClick={() => void save()}>
           {saving ? t('common.working') : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// DeleteProjectDialog removes a project after an explicit confirmation. It
+// mirrors the organization delete: the action is destructive, so it names
+// the project and states what goes with it.
+function DeleteProjectDialog({
+  orgId,
+  project,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  project: ProjectSummary;
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { t } = useI18n();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.del(`/api/v1/admin/tenancy/projects/${project.projectId}`, orgId);
+      onDone();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('projects.deleteFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={t('projects.deleteTitle', { name: project.displayName || project.projectId })}
+      onClose={onClose}
+      testId="delete-project-dialog"
+    >
+      <p>{t('projects.deleteBody')}</p>
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions">
+        <button className="secondary" data-testid="delete-project-cancel" onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button
+          className="danger"
+          data-testid="delete-project-confirm"
+          disabled={submitting}
+          onClick={() => void submit()}
+        >
+          {submitting ? t('common.working') : t('common.delete')}
         </button>
       </div>
     </Dialog>

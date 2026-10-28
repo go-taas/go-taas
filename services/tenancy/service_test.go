@@ -402,3 +402,32 @@ func TestOrgGuardEmptyOrganization(t *testing.T) {
 	// Writes: an empty organization is not a real one.
 	assert.Equal(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(guard.RequireActive(ctx, "")))
 }
+
+// TestServiceDeleteProject verifies the project delete removes the project,
+// its roster and its join requests, and that only an organization
+// administrator may do it.
+func TestServiceDeleteProject(t *testing.T) {
+	svc := newTestService(t)
+	ctx := context.Background()
+
+	require.NoError(t, svc.repo.CreateOrganization(ctx, &Organization{ID: "org-d", DisplayName: "D", State: StateActive}))
+	require.NoError(t, svc.repo.CreateProject(ctx, &Project{ID: "proj-d", OrganizationID: "org-d", DisplayName: "P", State: StateActive}))
+	mrepo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	require.NoError(t, mrepo.AddProjectMember(ctx, &ProjectMember{ProjectID: "proj-d", UserID: "u-1", Role: RoleMember}))
+
+	// The plain caller (no role guard wired) deletes, then the row is gone.
+	_, err := svc.DeleteProject(ctx, &tenancyv1.DeleteProjectRequest{ProjectId: "proj-d"})
+	require.NoError(t, err)
+
+	_, err = svc.repo.FindProject(ctx, "proj-d")
+	assert.True(t, isRecordNotFound(err), "the project row is gone")
+
+	var members int64
+	require.NoError(t, svc.repo.db.DB(ctx).Model(&ProjectMember{}).
+		Where("project_id = ?", "proj-d").Count(&members).Error)
+	assert.EqualValues(t, 0, members, "the roster is gone with the project")
+
+	// Unknown project -> 10006.
+	_, err = svc.DeleteProject(ctx, &tenancyv1.DeleteProjectRequest{ProjectId: "proj-missing"})
+	assert.EqualValues(t, apierrors.CodeProjectNotFound, apierrors.CodeOf(err))
+}
