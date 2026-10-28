@@ -1,3 +1,10 @@
+## [1.91.3](https://github.com/go-taas/go-taas/compare/v1.91.2...v1.91.3) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console:** let the session decide the organization context ([b424b95](https://github.com/go-taas/go-taas/commit/b424b95160ec6708683cde3ea1c7b417fc4b472c))
+
 ## [1.91.2](https://github.com/go-taas/go-taas/compare/v1.91.1...v1.91.2) (2026-10-28)
 
 
