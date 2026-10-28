@@ -7,8 +7,20 @@ import (
 )
 
 // Inference service lifecycle states (closed set, contract constraint 2).
+//
+//	pending    created, the controller has not picked the change up yet
+//	queued     the controller accepted the change; nothing is scheduled
+//	starting   a pod is placed on a node and the engine is loading weights
+//	running    the engine itself answers its health endpoint
+//	failed     scheduling, pulling, starting or health-checking failed
+//	terminated the service was deleted
+//
+// deploying is the legacy name for the phase between queued and starting;
+// it stays reportable so an older controller keeps working.
 const (
 	StatePending    = "pending"
+	StateQueued     = "queued"
+	StateStarting   = "starting"
 	StateDeploying  = "deploying"
 	StateRunning    = "running"
 	StateFailed     = "failed"

@@ -183,11 +183,16 @@ func (c *StatusConsumer) handle(ctx context.Context, msg mq.Message) error {
 }
 
 // isValidReportedState reports whether the controller-reported state is
-// in the reportable set. pending is never reported (initial DB state);
+// in the reportable set. pending is never reported (the initial DB state);
 // terminated is set by the delete RPC, not by the controller.
+//
+// queued and starting are the controller's own observations of the
+// scheduling and engine-start phases: queued means the change was accepted
+// and nothing is scheduled yet, starting means the scheduler placed a pod
+// and the engine is loading its weights.
 func isValidReportedState(state string) bool {
 	switch state {
-	case StateDeploying, StateRunning, StateFailed:
+	case StateQueued, StateStarting, StateDeploying, StateRunning, StateFailed:
 		return true
 	default:
 		return false
