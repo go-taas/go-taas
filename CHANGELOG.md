@@ -1,3 +1,16 @@
+# [1.92.0](https://github.com/go-taas/go-taas/compare/v1.91.3...v1.92.0) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console,tenancy:** repair the model back link, the download bar and the user directories ([76f0e09](https://github.com/go-taas/go-taas/commit/76f0e092c9dff1b72bc454ebab435be9d644288f))
+* **console:** restart the resend countdown when the address changes ([c5acd34](https://github.com/go-taas/go-taas/commit/c5acd34ab800a0f7f446da9f050e1de6813f9f52))
+
+
+### Features
+
+* **console,auth:** name organizations in member copy, count down code resends ([dbbbd90](https://github.com/go-taas/go-taas/commit/dbbbd90314b6c553d980278c675c70400ee922e6))
+
 ## [1.91.3](https://github.com/go-taas/go-taas/compare/v1.91.2...v1.91.3) (2026-10-28)
 
 
