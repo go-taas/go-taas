@@ -1,10 +1,11 @@
 // Service Logs page (admin): container logs of an inference service with
 // pod/replica selector, level/time filters, tail window, follow toggle,
-// client-side search, and load-more pagination.
+// client-side search, and load-more pagination. Lines read chronologically
+// (oldest first) and new ones append at the bottom, like a terminal.
 // Implements docs/design/service-logs-viewer.md FR1-FR5 and
 // docs/architecture/service-logs-viewer.md §6.5.
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -49,7 +50,8 @@ export default function ServiceLogsPage() {
   const [replica, setReplica] = useState('');
   const [level, setLevel] = useState('');
   const [preset, setPreset] = useState('24h');
-  const [follow, setFollow] = useState(false);
+  // Following is the default: the viewer tracks new lines as they land.
+  const [follow, setFollow] = useState(true);
   const [search, setSearch] = useState('');
   const [lines, setLines] = useState<LogLine[]>([]);
   const [nextOffset, setNextOffset] = useState('');
@@ -135,16 +137,22 @@ export default function ServiceLogsPage() {
   // Follow polls on a 2s interval while active.
   usePolling(() => void loadLogs(), 2000, follow && !!replica);
 
-  // Auto-scroll to bottom when following.
+  // The pane reads like a terminal: oldest at the top, newest at the
+  // bottom. The server pages newest-first (that is what "tail" means), so
+  // the view reverses it.
+  const ordered = useMemo(() => [...lines].reverse(), [lines]);
+
+  // Keep the newest line in view. Following is implicit: a log viewer that
+  // leaves the reader at the top while lines land below is useless.
   useEffect(() => {
-    if (follow && paneRef.current) {
+    if (paneRef.current) {
       paneRef.current.scrollTop = paneRef.current.scrollHeight;
     }
-  }, [lines, follow]);
+  }, [ordered]);
 
   const filtered = search
-    ? lines.filter((l) => l.message.toLowerCase().includes(search.toLowerCase()))
-    : lines;
+    ? ordered.filter((l) => l.message.toLowerCase().includes(search.toLowerCase()))
+    : ordered;
 
   const hasRunningPods = pods.some((p) => p.state === 'Running');
 

@@ -500,7 +500,10 @@ module.exports = {
         browser.url(browser.globals.baseUrl + '/admin/models');
         browser.waitForElementPresent(`[data-testid="deploy-${modelName}"]`, 15000, 'AC5: deploy button');
         browser.click(`[data-testid="deploy-${modelName}"]`);
-        browser.waitForElementPresent('[data-testid="deploy-dialog"]', 15000, 'AC5: deploy dialog opens');
+        // The deploy button opens the inference-services page with the
+        // inline create panel expanded and the model preselected.
+        browser.waitForElementPresent('[data-testid="deploy-panel"]', 15000, 'AC5: deploy panel opens');
+        browser.waitForElementPresent('[data-testid="deploy-model-select"]', 10000, 'AC5: model select present');
         browser.waitForElementPresent('[data-testid="deploy-shared-gpu-toggle"]', 15000, 'AC5: shared-GPU toggle present');
         // The toggle is enabled because a usable pool exists.
         browser.getAttribute('[data-testid="deploy-shared-gpu-toggle"]', 'disabled', (res3) => {

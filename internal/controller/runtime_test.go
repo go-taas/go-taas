@@ -309,9 +309,12 @@ func newAIBrixFakeReconciler(dyn *dynamicfake.FakeDynamicClient) (Reconciler, *f
 		}
 		return true, dep, nil
 	})
+	stubScheduledPod(clientset)
 	cache := NewSchemeCache()
 	cache.SetScheme(schemeAIBrix)
-	return newReconcilerWithClientset(clientset, dyn, mq.NewFake(), "https://infer.example.com/", "", WeightsConfig{}, cache), clientset, cache
+	rec := newReconcilerWithClientset(clientset, dyn, mq.NewFake(), "https://infer.example.com/", "", WeightsConfig{}, cache)
+	stubEngineReady(rec)
+	return rec, clientset, cache
 }
 
 func TestApplyUpsertWritesModelClaimUnderAIBrix(t *testing.T) {

@@ -1120,6 +1120,20 @@ th.sortable:hover {
   -webkit-backdrop-filter: blur(var(--blur));
 }
 
+/* Header row of an inline panel (a create form that is not a dialog). */
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.panel-header h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
 /* Iridescent top edge on panels (subtle Aurora signature). */
 .panel::before {
   content: '';
@@ -1228,6 +1242,16 @@ table.table tbody tr:hover {
   color: var(--warn);
 }
 .badge.deploying {
+  background: var(--badge-primary-bg);
+  color: var(--primary-strong);
+}
+/* Queued: waiting for the scheduler (neutral, not a warning yet). */
+.badge.queued {
+  background: var(--badge-neutral-bg);
+  color: var(--muted-strong);
+}
+/* Starting: placed on a node, engine loading (informational). */
+.badge.starting {
   background: var(--badge-primary-bg);
   color: var(--primary-strong);
 }

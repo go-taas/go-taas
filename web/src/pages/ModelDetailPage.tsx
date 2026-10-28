@@ -10,7 +10,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { usePolling } from '../components';
 import { BackLink, ErrorBanner } from '../components';
-import DeployDialog from '../components/DeployDialog';
+
 
 interface ModelResponse {
   response: { code: number; message: string };
@@ -25,7 +25,6 @@ export default function ModelDetailPage() {
   const [model, setModel] = useState<ModelResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [deployVersion, setDeployVersion] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -145,7 +144,12 @@ export default function ModelDetailPage() {
                     <button
                       className="link"
                       data-testid={`deploy-version-${v}`}
-                      onClick={() => setDeployVersion(v)}
+                      onClick={() =>
+                        navigate(
+                          `/admin/inference-services?create=1&modelId=${encodeURIComponent(model.model.modelId)}` +
+                            `&version=${encodeURIComponent(v)}`,
+                        )
+                      }
                     >
                       {t('modeldetail.deployVersion')}
                     </button>
@@ -157,19 +161,6 @@ export default function ModelDetailPage() {
         )}
       </div>
 
-      {deployVersion && (
-        <DeployDialog
-          orgId={orgId}
-          modelId={model.model.modelId}
-          modelName={model.model.name}
-          initialVersion={deployVersion}
-          onClose={() => setDeployVersion(null)}
-          onDeployed={(serviceId) => {
-            setDeployVersion(null);
-            navigate(`/admin/inference-services/${serviceId}`);
-          }}
-        />
-      )}
     </div>
   );
 }

@@ -235,7 +235,7 @@ func (p *recordingPublisher) Publish(_ context.Context, subject string, body []b
 
 // newFakeReconciler builds a reconciler over the fake clientset. A
 // get-reactor reports every Deployment's desired replicas as ready, so
-// awaitReadiness returns without waiting on the 2s poll ticker — for
+// awaitEngineReady returns without waiting on the poll ticker — for
 // both the create and the patch (idempotent re-apply) paths. A second
 // get-reactor reports every warmup helper pod as Running, so
 // awaitPodTerminal returns immediately.
@@ -275,20 +275,48 @@ func newFakeReconciler(publisher mq.Client) (Reconciler, *fake.Clientset) {
 		pod.Status.Phase = corev1.PodRunning
 		return true, pod, nil
 	})
-	return newReconcilerWithClientset(clientset, nil, publisher, "https://infer.example.com/", "", WeightsConfig{}, nil), clientset
+	rec := newReconcilerWithClientset(clientset, nil, publisher, "https://infer.example.com/", "", WeightsConfig{}, nil)
+	stubScheduledPod(clientset)
+	stubEngineReady(rec)
+	return rec, clientset
 }
 
-// markReady sets the Deployment's ready replicas so awaitReadiness
-// returns.
-func markReady(t *testing.T, clientset *fake.Clientset, name string, ready int32) {
-	t.Helper()
-	dep, err := clientset.AppsV1().Deployments(reconcileNamespace).Get(
-		context.Background(), name, metav1.GetOptions{})
-	require.NoError(t, err)
-	dep.Status.ReadyReplicas = ready
-	_, err = clientset.AppsV1().Deployments(reconcileNamespace).UpdateStatus(
-		context.Background(), dep, metav1.UpdateOptions{})
-	require.NoError(t, err)
+// stubScheduledPod makes the fake cluster look like a deploy that reached
+// the engine start: a pod exists, the scheduler placed it on a node and it
+// has an address. Pods the test itself created (a warmup helper, for
+// example) win, so a test that tracks its own pod still sees it.
+func stubScheduledPod(clientset *fake.Clientset) {
+	clientset.PrependReactor("list", "pods", func(action k8stesting.Action) (bool, runtime.Object, error) {
+		listAction, ok := action.(k8stesting.ListAction)
+		if !ok {
+			return false, nil, nil
+		}
+		if tracked, err := clientset.Tracker().List(
+			listAction.GetResource(), corev1.SchemeGroupVersion.WithKind("Pod"),
+			listAction.GetNamespace(),
+		); err == nil && len(tracked.(*corev1.PodList).Items) > 0 {
+			return false, nil, nil
+		}
+		return true, &corev1.PodList{
+			ListMeta: metav1.ListMeta{ResourceVersion: "1"},
+			Items: []corev1.Pod{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name:      "scheduled-pod",
+					Namespace: listAction.GetNamespace(),
+					// The reconciler selects on the service id, so the
+					// stub carries the id the tests use.
+					Labels: map[string]string{serviceLabelKey: "svc-1"},
+				},
+				Spec:   corev1.PodSpec{NodeName: "node-1"},
+				Status: corev1.PodStatus{Phase: corev1.PodRunning, PodIP: "10.0.0.7"},
+			}},
+		}, nil
+	})
+}
+
+// stubEngineReady makes the readiness wait return immediately.
+func stubEngineReady(r Reconciler) {
+	r.(*k8sReconciler).engineProber = func(context.Context, string, int) bool { return true }
 }
 
 // changeMessage marshals a change event into an mq.Message.
@@ -316,11 +344,13 @@ func TestApplyUpsertHappyPath(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "demo", svc.Spec.Selector["app"])
 
-	// Status reports: deploying then running with the endpoint.
-	require.Len(t, publisher.reports, 2)
-	assert.Equal(t, "deploying", publisher.reports[0].State)
-	assert.Equal(t, "running", publisher.reports[1].State)
-	assert.Equal(t, []string{"https://infer.example.com/demo/v1"}, publisher.reports[1].Endpoints)
+	// Status reports: queued when the change is accepted, starting when the
+	// pod is scheduled, then running with the endpoint.
+	require.Len(t, publisher.reports, 3)
+	assert.Equal(t, "queued", publisher.reports[0].State)
+	assert.Equal(t, "starting", publisher.reports[1].State)
+	assert.Equal(t, "running", publisher.reports[2].State)
+	assert.Equal(t, []string{"https://infer.example.com/demo/v1"}, publisher.reports[2].Endpoints)
 }
 
 func TestApplyUpdateVersionReusesUpsert(t *testing.T) {
@@ -351,10 +381,11 @@ func TestApplyUpdateVersionReusesUpsert(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "demo", svc.Spec.Selector["app"])
 
-	// Status reports: deploying then running.
-	require.Len(t, publisher.reports, 2)
-	assert.Equal(t, "deploying", publisher.reports[0].State)
-	assert.Equal(t, "running", publisher.reports[1].State)
+	// Status reports: queued, starting, then running.
+	require.Len(t, publisher.reports, 3)
+	assert.Equal(t, "queued", publisher.reports[0].State)
+	assert.Equal(t, "starting", publisher.reports[1].State)
+	assert.Equal(t, "running", publisher.reports[2].State)
 }
 
 func TestApplyUpsertIdempotent(t *testing.T) {
@@ -379,7 +410,7 @@ func TestApplyUpsertFailureReportsFailed(t *testing.T) {
 	// Plain clientset: the Deployment never becomes ready.
 	reconciler := newReconcilerWithClientset(fake.NewSimpleClientset(), nil, publisher, "", "", WeightsConfig{}, nil)
 
-	// Cancel the context so awaitReadiness fails after the first poll.
+	// Cancel the context so the readiness wait fails after the first poll.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -475,27 +506,36 @@ func TestApplyImageWarmupMalformed(t *testing.T) {
 	assert.True(t, mq.IsPermanent(err))
 }
 
-func TestAwaitReadinessPolls(t *testing.T) {
+// TestApplyUpsertReportsQueuedThenStartingThenRunning verifies the state
+// follows the cluster: queued when the controller accepts the change,
+// starting once the scheduler placed a pod, and running only when the
+// engine itself answers.
+func TestApplyUpsertReportsQueuedThenStartingThenRunning(t *testing.T) {
 	publisher := &recordingPublisher{Client: mq.NewFake()}
-	// Plain clientset: readiness only appears once markReady runs.
 	clientset := fake.NewSimpleClientset()
-	reconciler := newReconcilerWithClientset(clientset, nil, publisher, "", "", WeightsConfig{}, nil)
+	rec := newReconcilerWithClientset(clientset, nil, publisher, "", "", WeightsConfig{}, nil)
+	r := rec.(*k8sReconciler)
+	probes := 0
+	r.engineProber = func(context.Context, string, int) bool {
+		probes++
+		// The engine needs a second probe to answer, so the loop reports
+		// starting before it reports running.
+		return probes > 1
+	}
+	stubScheduledPod(clientset)
 
-	evt := testChangeEvent("upsert", "demo")
-	dep := testReconciler().buildDeployment(context.Background(), evt)
-	_, err := clientset.AppsV1().Deployments(reconcileNamespace).Create(
-		context.Background(), dep, metav1.CreateOptions{})
-	require.NoError(t, err)
-
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
 	defer cancel()
-	go func() {
-		time.Sleep(100 * time.Millisecond)
-		markReady(t, clientset, "demo", 2)
-	}()
+	require.NoError(t, r.applyUpsert(ctx, testChangeEvent("upsert", "demo")))
 
-	r := reconciler.(*k8sReconciler)
-	require.NoError(t, r.awaitReadiness(ctx, evt))
+	states := make([]string, 0, len(publisher.reports))
+	for _, report := range publisher.reports {
+		states = append(states, report.State)
+	}
+	require.NotEmpty(t, states)
+	assert.Equal(t, "queued", states[0], "the first report is queued")
+	assert.Contains(t, states, "starting", "a scheduled pod reports starting")
+	assert.Equal(t, "running", states[len(states)-1], "running comes last")
 }
 
 func TestApplyUpsertWithNilPublisher(t *testing.T) {
@@ -561,18 +601,24 @@ func TestEngineCommand(t *testing.T) {
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
 		"--served-model-name", "qwen2.5-0.5b",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1", "qwen2.5-0.5b"))
+	}, engineCommand("vllm", "/data/weights", "qwen/v1", "qwen2.5-0.5b", nil, nil))
 
 	// An empty name leaves the weights path as the served name, which is
 	// what the engine defaults to.
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1", ""))
+	}, engineCommand("vllm", "/data/weights", "qwen/v1", "", nil, nil))
+
+	// SGLang serves on its own module and takes --model-path.
+	assert.Equal(t, []string{
+		"python3", "-m", "sglang.launch_server",
+		"--model-path", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
+		"--served-model-name", "m",
+	}, engineCommand("sglang", "/data/weights", "qwen/v1", "m", nil, nil))
 
 	// Unknown engines get no command (the image's default entrypoint runs).
-	assert.Nil(t, engineCommand("sglang", "/data/weights", "qwen/v1", "m"))
-	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1", "m"))
+	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1", "m", nil, nil))
 }
 
 func TestModelDir(t *testing.T) {
@@ -886,15 +932,11 @@ func TestAwaitPodTerminalReportsPullFailure(t *testing.T) {
 	assert.Contains(t, err.Error(), "image pull did not complete")
 }
 
-// TestAwaitReadinessTimesOutWithPodReason verifies a Deployment that can
-// never become ready does not block the reconcile forever: the wait is
-// bounded, and the failure names the pod's own reason (an unbound weights
-// PVC shows up as the scheduler's message).
-func TestAwaitReadinessTimesOutWithPodReason(t *testing.T) {
-	dep := &appsv1.Deployment{
-		ObjectMeta: metav1.ObjectMeta{Name: deploymentName("demo"), Namespace: "taas-infer"},
-		Status:     appsv1.DeploymentStatus{ReadyReplicas: 0},
-	}
+// TestEngineReadyTimesOutWithPodReason verifies a deploy whose pods never
+// become ready does not block the reconcile forever: the wait is bounded,
+// and the failure names the pod's own reason (an unbound weights PVC shows
+// up as the scheduler's message).
+func TestEngineReadyTimesOutWithPodReason(t *testing.T) {
 	pod := &corev1.Pod{
 		ObjectMeta: metav1.ObjectMeta{
 			Name: "demo-0", Namespace: "taas-infer", Labels: map[string]string{"app": "demo"},
@@ -909,7 +951,7 @@ func TestAwaitReadinessTimesOutWithPodReason(t *testing.T) {
 		},
 	}
 	reconciler := &k8sReconciler{
-		clientset: fake.NewSimpleClientset(dep, pod),
+		clientset: fake.NewSimpleClientset(pod),
 		namespace: "taas-infer",
 	}
 	ctx, cancel := context.WithCancel(context.Background())
@@ -917,11 +959,46 @@ func TestAwaitReadinessTimesOutWithPodReason(t *testing.T) {
 		time.Sleep(50 * time.Millisecond)
 		cancel()
 	}()
-	err := reconciler.awaitReadiness(ctx, changeEvent{Name: "demo", Replicas: 1})
+	err := reconciler.awaitEngineReady(ctx, changeEvent{Name: "demo", Replicas: 1})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "not ready within")
 	assert.Contains(t, err.Error(), "unbound immediate PersistentVolumeClaims",
 		"the failure explains why the pods are stuck")
+}
+
+// TestEngineReadyFailsFastOnUnschedulablePod verifies an unschedulable pod
+// is reported immediately with the scheduler's own reason instead of
+// waiting for the readiness timeout.
+func TestEngineReadyFailsFastOnUnschedulablePod(t *testing.T) {
+	clientset := fake.NewSimpleClientset()
+	clientset.PrependReactor("list", "pods", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, &corev1.PodList{
+			ListMeta: metav1.ListMeta{ResourceVersion: "1"},
+			Items: []corev1.Pod{{
+				ObjectMeta: metav1.ObjectMeta{
+					Name: "demo-0", Namespace: reconcileNamespace,
+					Labels: map[string]string{serviceLabelKey: "svc-1"},
+				},
+				Status: corev1.PodStatus{
+					Phase: corev1.PodPending,
+					Conditions: []corev1.PodCondition{{
+						Type:    corev1.PodScheduled,
+						Status:  corev1.ConditionFalse,
+						Reason:  corev1.PodReasonUnschedulable,
+						Message: "0/1 nodes are available: no accelerator",
+					}},
+				},
+			}},
+		}, nil
+	})
+	reconciler := &k8sReconciler{clientset: clientset, namespace: reconcileNamespace}
+
+	start := time.Now()
+	err := reconciler.awaitEngineReady(context.Background(), testChangeEvent("upsert", "demo"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Unschedulable")
+	assert.Contains(t, err.Error(), "no accelerator")
+	assert.Less(t, time.Since(start), 5*time.Second, "an unschedulable pod fails fast")
 }
 
 // TestAcceleratorLabelKeyFallsBack verifies the node-selector label key

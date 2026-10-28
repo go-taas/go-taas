@@ -1,4 +1,6 @@
-// Deploy dialog: the one-click deployment form.
+// Deploy form: the inline create-service panel (no dialog: the inference
+// services page expands it in place, and the model list links here with the
+// model preselected).
 // Implements docs/design/model-catalog-deployment.md FR3 (accelerator →
 // image filtering, name, card type, replicas) and navigates to the
 // service detail page on success (FR3.3).
@@ -18,8 +20,9 @@ import {
   type TenantVGPUPool,
   type VGPUPool,
 } from '../api';
-import { Dialog, ErrorBanner } from '../components';
+import { ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
+import { engineParams, type EngineParam } from './engineParams';
 
 interface ImageEntry {
   imageId: string;
@@ -46,19 +49,19 @@ interface CreateResponse {
 
 const ACCELERATORS = ['nvidia', 'iluvatar', 'metax'];
 
-export default function DeployDialog({
+export default function DeployForm({
   orgId,
   modelId,
   modelName,
   initialVersion,
-  onClose,
+  onCancel,
   onDeployed,
 }: {
   orgId: string;
   modelId: string;
   modelName: string;
   initialVersion: string;
-  onClose: () => void;
+  onCancel: () => void;
   onDeployed: (serviceId: string) => void;
 }) {  const { t, tEnum } = useI18n();
 
@@ -95,6 +98,10 @@ export default function DeployDialog({
   const [poolId, setPoolId] = useState('');
   const [sliceTemplateId, setSliceTemplateId] = useState('');
   const [sliceError, setSliceError] = useState('');
+  // Engine parameters: the catalog's values plus the free-form rows. The
+  // engine is a property of the chosen image, so the catalog follows it.
+  const [engineArgs, setEngineArgs] = useState<Record<string, string>>({});
+  const [extraArgs, setExtraArgs] = useState<string[]>([]);
 
   useEffect(() => {
     // Feature #52 (AD2): the pool list for the deploy form. The deploy
@@ -188,10 +195,13 @@ export default function DeployDialog({
     () => authorizedModels.find((m) => m.modelId === selectedModelId),
     [authorizedModels, selectedModelId],
   );
-  const title = selected?.name ?? modelName;
+  const title = selected?.name ?? modelName ?? '';
 
   // FR3.2: image dropdown filtered by the chosen accelerator.
   const compatible = images.filter((i) => i.accelerator === accelerator);
+  const selectedImage = images.find((i) => i.imageId === imageId);
+  const engine = selectedImage?.engine || '';
+  const params = engineParams(engine);
 
   useEffect(() => {
     if (compatible.length > 0 && !compatible.some((i) => i.imageId === imageId)) {
@@ -242,6 +252,10 @@ export default function DeployDialog({
         acceleratorType: acceleratorType.trim(),
         replicas: String(r),
         autoscaling,
+        engineArgs: Object.fromEntries(
+          Object.entries(engineArgs).filter(([, v]) => v !== undefined && v !== ''),
+        ),
+        extraArgs: extraArgs.map((a) => a.trim()).filter(Boolean),
         ...(sharedGpu ? { poolId, sliceTemplateId } : {}),
       });
       onDeployed(res.serviceId);
@@ -258,7 +272,13 @@ export default function DeployDialog({
   };
 
   return (
-    <Dialog title={t('deploy.title', { name: title })} onClose={onClose} testId="deploy-dialog">
+    <div className="panel" data-testid="deploy-panel">
+      <div className="panel-header">
+        <h2>{t('deploy.title', { name: title })}</h2>
+        <button className="link" data-testid="deploy-panel-close" onClick={onCancel}>
+          {t('common.cancel')}
+        </button>
+      </div>
       <div className="form-grid">
         <div className="form-field full">
           <label htmlFor="deploy-model">{t('deploy.modelAny')}</label>
@@ -273,7 +293,7 @@ export default function DeployDialog({
             }}
           >
             {authorizedModels.length === 0 && (
-              <option value={modelId}>{modelName}</option>
+              <option value={modelId}>{modelName || modelId || '—'}</option>
             )}
             {authorizedModels.map((m) => (
               <option key={m.modelId} value={m.modelId}>
@@ -368,6 +388,15 @@ export default function DeployDialog({
           />
         </div>
       </div>
+
+      <EngineArgsSection
+        engine={engine}
+        params={params}
+        values={engineArgs}
+        extraArgs={extraArgs}
+        onChange={(name, value) => setEngineArgs((prev) => ({ ...prev, [name]: value }))}
+        onExtraChange={setExtraArgs}
+      />
 
       <h4 style={{ marginBottom: 8 }}>{t('deploy.sharedGpu')}</h4>
       <div className="form-grid">
@@ -523,7 +552,7 @@ export default function DeployDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
-        <button className="secondary" onClick={onClose}>
+        <button className="secondary" onClick={onCancel}>
           {t('common.cancel')}
         </button>
         <button
@@ -534,7 +563,122 @@ export default function DeployDialog({
           {submitting ? t('deploy.deploying') : t('models.deploy')}
         </button>
       </div>
-    </Dialog>
+    </div>
+  );
+}
+
+// EngineArgsSection renders the chosen engine's common parameters as typed
+// fields plus the free-form rows for everything the catalog does not know.
+// A switch sends "flag:true"; an empty field is simply not sent, so the
+// engine keeps its own default.
+function EngineArgsSection({
+  engine,
+  params,
+  values,
+  extraArgs,
+  onChange,
+  onExtraChange,
+}: {
+  engine: string;
+  params: EngineParam[];
+  values: Record<string, string>;
+  extraArgs: string[];
+  onChange: (name: string, value: string) => void;
+  onExtraChange: (next: string[]) => void;
+}) {
+  const { t } = useI18n();
+  if (!engine) return null;
+  return (
+    <div data-testid="deploy-engine-args">
+      <h4 style={{ marginBottom: 8 }}>
+        {t('deploy.engineParams', { engine })}
+      </h4>
+      {params.length === 0 && (
+        <div className="muted" data-testid="deploy-engine-args-none">
+          {t('deploy.engineParamsNone', { engine })}
+        </div>
+      )}
+      <div className="form-grid">
+        {params.map((p) => {
+          const value = values[p.name] ?? '';
+          const inputId = `engine-arg-${p.name}`;
+          return (
+            <div className="form-field" key={p.name}>
+              <label htmlFor={inputId}>{t(p.labelKey)}</label>
+              {p.kind === 'switch' ? (
+                <input
+                  id={inputId}
+                  data-testid={`engine-arg-${p.name}`}
+                  type="checkbox"
+                  checked={value === 'flag:true'}
+                  onChange={(e) => onChange(p.name, e.target.checked ? 'flag:true' : '')}
+                />
+              ) : p.kind === 'select' ? (
+                <select
+                  id={inputId}
+                  data-testid={`engine-arg-${p.name}`}
+                  value={value}
+                  onChange={(e) => onChange(p.name, e.target.value)}
+                >
+                  <option value="">{t('deploy.engineArgDefault')}</option>
+                  {(p.options || []).map((o) => (
+                    <option key={o} value={o}>
+                      {o}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  id={inputId}
+                  data-testid={`engine-arg-${p.name}`}
+                  type={p.kind === 'number' ? 'number' : 'text'}
+                  value={value}
+                  placeholder={p.defaultValue ? `(${p.defaultValue})` : ''}
+                  onChange={(e) => onChange(p.name, e.target.value)}
+                />
+              )}
+              <div className="field-hint">{t(p.hintKey)}</div>
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="form-field full">
+        <label>{t('deploy.extraArgs')}</label>
+        <div className="field-hint">{t('deploy.extraArgsHint')}</div>
+        {extraArgs.map((arg, i) => (
+          <div className="toolbar" key={i} style={{ marginTop: 6 }}>
+            <input
+              className="mono"
+              data-testid={`deploy-extra-arg-${i}`}
+              value={arg}
+              placeholder="--enable-chunked-prefill"
+              onChange={(e) => {
+                const next = [...extraArgs];
+                next[i] = e.target.value;
+                onExtraChange(next);
+              }}
+            />
+            <button
+              type="button"
+              className="secondary"
+              data-testid={`deploy-extra-arg-remove-${i}`}
+              onClick={() => onExtraChange(extraArgs.filter((_, j) => j !== i))}
+            >
+              {t('common.delete')}
+            </button>
+          </div>
+        ))}
+        <button
+          type="button"
+          className="secondary"
+          data-testid="deploy-extra-arg-add"
+          onClick={() => onExtraChange([...extraArgs, ''])}
+        >
+          {t('deploy.addExtraArg')}
+        </button>
+      </div>
+    </div>
   );
 }
 

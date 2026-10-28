@@ -867,6 +867,17 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, err
 	}
 
+	// Engine parameters: validate the flag names and values before any
+	// write, so a malformed flag cannot reach the container command line.
+	engineArgs, err := normalizeEngineArgs(req.GetEngineArgs())
+	if err != nil {
+		return nil, err
+	}
+	extraArgs, err := normalizeExtraArgs(req.GetExtraArgs())
+	if err != nil {
+		return nil, err
+	}
+
 	// Feature #52 (AD13): the vGPU slice request is validated before any
 	// write or publish. Both pool_id and slice_template_id must be
 	// present together; absent = whole card. A slice request with a nil
@@ -932,6 +943,8 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		Accelerator:     accelerator,
 		AcceleratorType: strings.TrimSpace(req.GetAcceleratorType()),
 		State:           StatePending,
+		EngineArgs:      engineArgs,
+		ExtraArgs:       extraArgs,
 		Endpoints:       []string{},
 		Autoscaling:     autoscalingJSON,
 		PoolID:          poolID,

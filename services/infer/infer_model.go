@@ -47,6 +47,13 @@ type InferenceService struct {
 	State string `gorm:"size:16;not null;default:'pending'"`
 	// FailureReason is the human-readable reason when state=failed.
 	FailureReason *string `gorm:"size:512"`
+	// EngineArgs are the serving-engine parameters, as a JSON object of
+	// flag name (no leading dashes) to value. A value of "flag:true" is a
+	// valueless switch. Passed to the engine by the controller.
+	EngineArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	// ExtraArgs are free-form engine arguments appended after EngineArgs,
+	// so a parameter the console does not know about is still usable.
+	ExtraArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
 	// Endpoints holds the OpenAI-compatible base URLs as a JSON array,
 	// set by the controller through the status subject. The jsonb type
 	// applies on PostgreSQL; SQLite (tests) stores the same JSON text.

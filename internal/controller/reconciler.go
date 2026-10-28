@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -64,6 +65,12 @@ type changeEvent struct {
 	// SliceComputePct is the resolved slice compute percentage (feature
 	// #52, AD13). Set only for shared-GPU services.
 	SliceComputePct int64 `json:"slice_compute_pct,omitempty"`
+	// EngineArgs are the serving-engine parameters, keyed by flag name
+	// without the leading dashes. A value of "flag:true" is a valueless
+	// switch.
+	EngineArgs map[string]string `json:"engine_args,omitempty"`
+	// ExtraArgs are free-form engine arguments appended after EngineArgs.
+	ExtraArgs []string `json:"extra_args,omitempty"`
 }
 
 // autoscalingPolicy is the effective autoscaling policy carried in a
@@ -143,6 +150,10 @@ type k8sReconciler struct {
 	// gatewayName is the AIBrix Gateway object model routes attach to.
 	// Empty uses defaultAIBrixGateway.
 	gatewayName string
+	// engineProber answers "does the engine at this address serve
+	// traffic?". Nil uses the HTTP health probe. Tests inject a stub so
+	// they never reach the network.
+	engineProber func(ctx context.Context, host string, port int) bool
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -594,8 +605,11 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 // running with endpoints. Any reconcile failure reports failed with the
 // reason (AC7).
 func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error {
-	if err := r.publishStatus(ctx, evt.ServiceID, "deploying", nil, nil); err != nil {
-		logger.S().Warnw("controller: publish deploying status failed",
+	// The service is queued the moment the controller picks the change up:
+	// nothing has been scheduled yet, so the console shows "queued" until a
+	// pod actually lands on a node.
+	if err := r.publishStatus(ctx, evt.ServiceID, "queued", nil, nil); err != nil {
+		logger.S().Warnw("controller: publish queued status failed",
 			"service_id", evt.ServiceID, "err", err)
 	}
 
@@ -683,9 +697,11 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		}
 	}
 
-	// Watch pod readiness: poll the Deployment's ready replicas with a
-	// bounded interval. When ready, report running with endpoints.
-	if err := r.awaitReadiness(ctx, evt); err != nil {
+	// Follow the pods: "starting" once the scheduler placed them on a node,
+	// "running" only when the engine itself answers. A pod that is merely
+	// Running has not loaded its weights yet, so its readiness says nothing
+	// about whether the service can serve traffic.
+	if err := r.awaitEngineReady(ctx, evt); err != nil {
 		return r.reportFailure(ctx, evt, err)
 	}
 
@@ -796,47 +812,6 @@ func (r *k8sReconciler) reportFailure(ctx context.Context, evt changeEvent, caus
 	logger.S().Warnw("controller: inference service failed",
 		"service_id", evt.ServiceID, "name", evt.Name, "reason", reason)
 	return mq.Permanent(fmt.Errorf("controller: reconcile %s failed: %w", evt.Name, cause))
-}
-
-// deployReadinessTimeout bounds how long one deploy waits for its pods to
-// become ready. A pod that can never start (unbound weights PVC, a bad
-// image, no schedulable accelerator) would otherwise block this consumer
-// forever, and with a single prefetch every later deploy queues behind it.
-const deployReadinessTimeout = 10 * time.Minute
-
-// awaitReadiness polls the Deployment until its ready replicas match the
-// desired count, the context is cancelled, or deployReadinessTimeout
-// elapses. A timeout reports the pods' own explanation (unschedulable,
-// image pull error, crash loop) so the console says why the deploy failed.
-func (r *k8sReconciler) awaitReadiness(ctx context.Context, evt changeEvent) error {
-	ctx, cancel := context.WithTimeout(ctx, deployReadinessTimeout)
-	defer cancel()
-	ticker := time.NewTicker(2 * time.Second)
-	defer ticker.Stop()
-	for {
-		dep, err := r.clientset.AppsV1().Deployments(r.namespace).
-			Get(ctx, deploymentName(evt.Name), metav1.GetOptions{})
-		if err != nil {
-			if ctx.Err() != nil {
-				return fmt.Errorf("controller: deployment %s not ready within %s", evt.Name, deployReadinessTimeout)
-			}
-			return fmt.Errorf("controller: get deployment %s: %w", evt.Name, err)
-		}
-		if dep.Status.ReadyReplicas >= clampReplicas(evt.Replicas) {
-			return nil
-		}
-		select {
-		case <-ctx.Done():
-			detail := r.deployBlockedReason(context.WithoutCancel(ctx), evt.Name)
-			if detail == "" {
-				detail = "pods did not become ready"
-			}
-			return fmt.Errorf("controller: deployment %s not ready within %s: %s",
-				evt.Name, deployReadinessTimeout, detail)
-		case <-ticker.C:
-			// keep polling
-		}
-	}
 }
 
 // deployBlockedReason explains why a Deployment's pods are not ready: the
@@ -1017,7 +992,7 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 						// directory (the whole JuiceFS filesystem is mounted
 						// at the weights mount path; the model lives in a
 						// subdirectory named by its weight path).
-						Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath, modelName),
+						Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath, modelName, evt.EngineArgs, evt.ExtraArgs),
 						VolumeMounts: []corev1.VolumeMount{{
 							Name:      "weights",
 							MountPath: r.weights.MountPath,
@@ -1145,7 +1120,7 @@ func mergeSelectors(base, extra map[string]string) map[string]string {
 // weightPath (e.g. "Qwen__Qwen2.5-0.5B-Instruct/"). The command is
 // engine-specific; unknown engines get no command (the image's default
 // entrypoint runs).
-func engineCommand(engine, mountPath, weightPath, servedName string) []string {
+func engineCommand(engine, mountPath, weightPath, servedName string, engineArgs map[string]string, extraArgs []string) []string {
 	switch engine {
 	case "vllm":
 		args := []string{
@@ -1159,10 +1134,68 @@ func engineCommand(engine, mountPath, weightPath, servedName string) []string {
 		if servedName != "" {
 			args = append(args, "--served-model-name", servedName)
 		}
-		return args
+		return appendEngineArgs(args, engineArgs, extraArgs)
+	case "sglang":
+		args := []string{
+			"python3", "-m", "sglang.launch_server",
+			"--model-path", modelDir(mountPath, weightPath),
+			"--port", strconv.Itoa(enginePort),
+			"--host", "0.0.0.0",
+		}
+		if servedName != "" {
+			args = append(args, "--served-model-name", servedName)
+		}
+		return appendEngineArgs(args, engineArgs, extraArgs)
 	default:
 		return nil
 	}
+}
+
+// enginePortExplicit reports whether the operator pinned the port through
+// engine arguments, in which case the readiness probe must use that port
+// instead of the default the command sets.
+func enginePortFrom(engineArgs map[string]string) int {
+	for _, name := range []string{"port", "api-port"} {
+		if raw, ok := engineArgs[name]; ok {
+			if port, err := strconv.Atoi(strings.TrimSpace(raw)); err == nil && port > 0 && port < 65536 {
+				return port
+			}
+		}
+	}
+	return 0
+}
+
+// appendEngineArgs appends the operator's engine parameters, sorted so the
+// command line is stable, then the free-form arguments verbatim. A value
+// prefixed with "flag:" is a valueless switch ("flag:true" → "--flag").
+func appendEngineArgs(args []string, engineArgs map[string]string, extraArgs []string) []string {
+	names := make([]string, 0, len(engineArgs))
+	for name := range engineArgs {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		value := strings.TrimSpace(engineArgs[name])
+		if value == "" {
+			continue
+		}
+		if rest, ok := strings.CutPrefix(value, "flag:"); ok {
+			// A switch: "flag:true" emits the bare flag, "flag:false"
+			// emits nothing so the default applies.
+			if rest == "true" || rest == "1" || rest == "" {
+				args = append(args, "--"+name)
+			}
+			continue
+		}
+		args = append(args, "--"+name, value)
+	}
+	for _, raw := range extraArgs {
+		arg := strings.TrimSpace(raw)
+		if arg != "" {
+			args = append(args, arg)
+		}
+	}
+	return args
 }
 
 // modelDir joins the weights mount path and a model's weight path into

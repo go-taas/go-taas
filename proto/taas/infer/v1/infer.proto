@@ -320,6 +320,16 @@ message CreateInferenceServiceRequest {
   // AD7). Empty means "the platform default cluster" (AD8): the first
   // active cluster, or the configured default.
   string cluster_id = 11;
+  // engine_args are the serving-engine parameters the console offers for
+  // the chosen engine (feature: engine parameters). Keys are the engine's
+  // own flag names without the leading dashes ("max-model-len",
+  // "tensor-parallel-size"); the value is passed through verbatim. A value
+  // starting with "flag:" means a valueless switch ("flag:true").
+  map<string, string> engine_args = 12;
+  // extra_args are free-form arguments appended after the engine args,
+  // for the parameters the form does not know about. Each entry is one
+  // argument exactly as it should appear on the command line.
+  repeated string extra_args = 13;
 }
 
 message CreateInferenceServiceResponse {

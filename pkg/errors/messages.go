@@ -92,6 +92,7 @@ var messages = map[Code]string{
 	CodePlaygroundKeyMissing:     "playground request needs the API key",
 	CodePlaygroundRequestFailed:  "playground request failed",
 	CodeInferLogsUnavailable:     "service logs unavailable",
+	CodeInferEngineArgsInvalid:   "invalid engine argument",
 	CodeInferAccessInvalid:       "inference service access policy invalid",
 
 	// metering

@@ -21,6 +21,7 @@ import {
 } from '../components';
 import { useI18n } from '../i18n';
 import ServiceStatusBanner from '../components/ServiceStatusBanner';
+import DeployForm from '../components/DeployForm';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -41,6 +42,25 @@ export default function InferenceServicesPage() {
   const [scaleTarget, setScaleTarget] = useState<InferenceServiceSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InferenceServiceSummary | null>(null);
   const [autoscalingTarget, setAutoscalingTarget] = useState<InferenceServiceSummary | null>(null);
+  // The create form is an inline panel, not a dialog: it expands above the
+  // list and collapses again once the service exists.
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createModel, setCreateModel] = useState({ id: '', version: '', name: '' });
+
+  // A link from the model catalog asks for the form to be open with a model
+  // preselected, so deploying starts where the operator clicked.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('create') !== '1') return;
+    setCreateModel({
+      id: params.get('modelId') || '',
+      version: params.get('version') || '',
+      name: '',
+    });
+    setCreateOpen(true);
+    // The query is consumed: a reload should not reopen the form.
+    window.history.replaceState({}, '', window.location.pathname);
+  }, []);
 
   const load = useCallback(async () => {
     setError('');
@@ -75,9 +95,34 @@ export default function InferenceServicesPage() {
             {t('services.subtitle')}
           </div>
         </div>
+        <button
+          data-testid="create-service"
+          onClick={() => {
+            setCreateModel({ id: '', version: '', name: '' });
+            setCreateOpen(true);
+          }}
+        >
+          {t('services.create')}
+        </button>
       </div>
 
       {error && <ErrorBanner message={error} />}
+
+      {createOpen && (
+        <DeployForm
+          orgId={orgId}
+          modelId={createModel.id}
+          modelName={createModel.name}
+          initialVersion={createModel.version}
+          onCancel={() => setCreateOpen(false)}
+          onDeployed={() => {
+            // Collapse the form: the list is the page once the service
+            // exists.
+            setCreateOpen(false);
+            void load();
+          }}
+        />
+      )}
 
       <div className="panel">
         {loading ? (

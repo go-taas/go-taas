@@ -8,7 +8,7 @@ import { api, ApiError, formatTime, type ModelSummary, type PageMeta } from '../
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination } from '../components';
-import DeployDialog from '../components/DeployDialog';
+
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -28,11 +28,6 @@ export default function ModelsPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
-  const [deployTarget, setDeployTarget] = useState<{
-    modelId: string;
-    name: string;
-    version: string;
-  } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ModelSummary | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -162,11 +157,10 @@ export default function ModelsPage() {
                       className="link"
                       data-testid={`deploy-${m.name}`}
                       onClick={() =>
-                        setDeployTarget({
-                          modelId: m.modelId,
-                          name: m.name,
-                          version: m.latestVersion,
-                        })
+                        navigate(
+                          `/admin/inference-services?create=1&modelId=${encodeURIComponent(m.modelId)}` +
+                            `&version=${encodeURIComponent(m.latestVersion)}`,
+                        )
                       }
                     >
                       {t('models.deploy')}
@@ -236,19 +230,6 @@ export default function ModelsPage() {
         </Dialog>
       )}
 
-      {deployTarget && (
-        <DeployDialog
-          orgId={orgId}
-          modelId={deployTarget.modelId}
-          modelName={deployTarget.name}
-          initialVersion={deployTarget.version}
-          onClose={() => setDeployTarget(null)}
-          onDeployed={(serviceId) => {
-            setDeployTarget(null);
-            navigate(`/admin/inference-services/${serviceId}`);
-          }}
-        />
-      )}
     </div>
   );
 }
