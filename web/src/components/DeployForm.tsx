@@ -66,19 +66,19 @@ function topologySummary(
   decode: number,
 ): string {
   if (topology === 'pd') {
-    const perReplica = prefill * tp * pp + decode * tp * pp;
+    const podsPerReplica = prefill + decode;
     return t('deploy.topologySummaryPd', {
       replicas: String(replicas),
       prefill: String(prefill),
       decode: String(decode),
-      pods: String(perReplica * replicas),
-      group: String(tp * pp),
+      pods: String(podsPerReplica * replicas),
+      cards: String(tp * pp),
     });
   }
   return t('deploy.topologySummaryDistributed', {
     replicas: String(replicas),
-    group: String(tp * pp),
-    pods: String(replicas * tp * pp),
+    pods: String(replicas),
+    cards: String(tp * pp),
   });
 }
 
@@ -476,7 +476,7 @@ export default function DeployForm({
                 value={tensorParallel}
                 onChange={(e) => setTensorParallel(e.target.value)}
               />
-              <div className="field-hint">{t('deploy.tensorParallelHint')}</div>
+              <div className="field-hint">{t('engine.tensorParallelHint')}</div>
             </div>
             <div className="form-field">
               <label htmlFor="deploy-pp">{t('deploy.pipelineParallel')}</label>
@@ -489,7 +489,7 @@ export default function DeployForm({
                 value={pipelineParallel}
                 onChange={(e) => setPipelineParallel(e.target.value)}
               />
-              <div className="field-hint">{t('deploy.pipelineParallelHint')}</div>
+              <div className="field-hint">{t('engine.pipelineParallelHint')}</div>
             </div>
           </>
         )}
