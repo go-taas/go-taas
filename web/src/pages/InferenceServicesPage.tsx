@@ -9,6 +9,7 @@ import {
   formatTime,
   type AutoscalingPolicy,
   type InferenceServiceSummary,
+  normalizeTopology,
   type PageMeta,
 } from '../api';
 import { useOrg } from '../org';
@@ -260,10 +261,10 @@ export default function InferenceServicesPage() {
 // that shapes each replica (a PD service also shows its role counts).
 function TopologyCell({ service }: { service: InferenceServiceSummary }) {
   const { t } = useI18n();
-  const mode = service.topology || 'single';
+  const mode = normalizeTopology(service.topology);
   const label =
-    mode === 'distributed'
-      ? t('deploy.topologyDistributed')
+    mode === 'multinode'
+      ? t('deploy.topologyMultiNode')
       : mode === 'pd'
         ? t('deploy.topologyPd')
         : t('deploy.topologySingle');

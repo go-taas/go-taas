@@ -7,11 +7,11 @@ import { useEffect, useState } from 'react';
 import { api, type BalanceResponse } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 
-// formatCents renders integer minor units as a currency string.
+// formatCents renders integer minor units in the platform's display currency.
 function formatCents(cents: string): string {
-  const n = parseInt(cents || '0', 10);
-  return (n / 100).toFixed(2);
+  return formatMoney(cents);
 }
 
 export default function BalanceWidget() {

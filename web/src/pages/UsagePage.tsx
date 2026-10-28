@@ -15,6 +15,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 import { Dialog, ErrorBanner, Pagination, StateBadge, usePolling } from '../components';
 import UsageChart, { type ChartMetric } from '../components/UsageChart';
 import BalanceWidget from '../components/BalanceWidget';
@@ -38,10 +39,9 @@ const RANGE_PRESETS = [
   { id: 'custom', labelKey: 'usage.customRange', hours: 0 },
 ];
 
-// formatCents renders integer minor units as a currency string.
+// formatCents renders integer minor units in the platform's display currency.
 function formatCents(cents: string): string {
-  const n = parseInt(cents || '0', 10);
-  return (n / 100).toFixed(2);
+  return formatMoney(cents);
 }
 
 // rangeFor resolves the since/until unix seconds for the selected preset.

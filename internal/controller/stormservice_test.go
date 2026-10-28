@@ -110,21 +110,35 @@ func TestBuildStormServiceDistributed(t *testing.T) {
 	replicas, _, _ := unstructured.NestedInt64(storm.Object, "spec", "replicas")
 	assert.Equal(t, int64(3), replicas, "storm replicas are replica groups")
 
+	// A multi-pod role needs the headless Service a stateful storm gets, so
+	// the workers can resolve each other by name.
+	stateful, _, _ := unstructured.NestedBool(storm.Object, "spec", "stateful")
+	assert.True(t, stateful, "a multi-machine storm must be stateful for stable pod DNS")
+
 	roles := stormRolesOf(t, storm)
 	require.Len(t, roles, 1)
 	assert.Equal(t, stormRoleWorker, roles[0]["name"])
-	assert.Equal(t, int64(1), roles[0]["podGroupSize"],
-		"parallelism shards the model inside one pod, so the group is one pod")
-	assert.Equal(t, "8", roleGPURequest(t, roles[0]),
-		"the pod asks for one device per shard, so vLLM's world size fits")
+	assert.Equal(t, int64(8), roles[0]["podGroupSize"],
+		"multi-machine serving runs one pod per worker (TP x PP), each on its own machine")
+	assert.Equal(t, "1", roleGPURequest(t, roles[0]),
+		"each worker pod owns exactly one device")
 
-	command := roleCommand(t, roles[0])
-	assert.Contains(t, command, "--tensor-parallel-size")
-	assert.Contains(t, command, "4")
-	assert.Contains(t, command, "--pipeline-parallel-size")
-	assert.Contains(t, command, "2")
+	// The workers rendezvous through the storm's headless Service: the rank
+	// is the pod ordinal and the master is the pod whose ordinal is 0.
+	cmd := roleCommand(t, roles[0])
+	require.Equal(t, "sh", cmd[0])
+	joined := strings.Join(cmd, " ")
+	assert.Contains(t, joined, "--nnodes 8")
+	assert.Contains(t, joined, `--node-rank "$rank"`)
+	assert.Contains(t, joined, `--master-addr "$master"`)
+	assert.Contains(t, joined, "-0.demo")
+	// The engine arguments themselves stay positional, so their quoting is
+	// never re-parsed.
+	assert.Contains(t, joined, "vllm.entrypoints.openai.api_server")
+	assert.Contains(t, joined, "--tensor-parallel-size 4")
+	assert.Contains(t, joined, "--pipeline-parallel-size 2")
 	// The worker role is not a PD role, so no KV transfer config.
-	assert.NotContains(t, command, "--kv-transfer-config")
+	assert.NotContains(t, joined, "--kv-transfer-config")
 }
 
 func TestBuildStormServicePD(t *testing.T) {
@@ -144,15 +158,15 @@ func TestBuildStormServicePD(t *testing.T) {
 	prefill, decode := roles[0], roles[1]
 	assert.Equal(t, stormRolePrefill, prefill["name"])
 	assert.Equal(t, int64(2), prefill["replicas"])
-	assert.Equal(t, int64(1), prefill["podGroupSize"])
+	assert.Equal(t, int64(2), prefill["podGroupSize"], "one pod per worker")
 	assert.Equal(t, stormRolePrefill, roleLabelOf(t, prefill, roleLabel))
-	assert.Equal(t, "2", roleGPURequest(t, prefill), "each prefill worker shards across both devices")
+	assert.Equal(t, "1", roleGPURequest(t, prefill), "each worker owns one device")
 
 	assert.Equal(t, stormRoleDecode, decode["name"])
 	assert.Equal(t, int64(3), decode["replicas"])
-	assert.Equal(t, int64(1), decode["podGroupSize"])
+	assert.Equal(t, int64(2), decode["podGroupSize"])
 	assert.Equal(t, stormRoleDecode, roleLabelOf(t, decode, roleLabel))
-	assert.Equal(t, "2", roleGPURequest(t, decode))
+	assert.Equal(t, "1", roleGPURequest(t, decode))
 
 	// vLLM needs the KV transfer role: prefill produces, decode consumes.
 	prefillCmd := strings.Join(roleCommand(t, prefill), " ")
@@ -364,7 +378,7 @@ func TestParallelReplicaGetsSharedMemory(t *testing.T) {
 	evt.Topology = topologyDistributed
 	evt.TensorParallelSize = 2
 
-	spec, _ := testReconciler().buildPodTemplate(context.Background(), evt, "")
+	spec, _ := testReconciler().buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
 	var shm *corev1.Volume
 	for i := range spec.Volumes {
 		if spec.Volumes[i].Name == "shm" {
@@ -383,8 +397,47 @@ func TestParallelReplicaGetsSharedMemory(t *testing.T) {
 	assert.True(t, mounted, "/dev/shm is backed by the shared-memory volume")
 
 	// A single-device replica keeps the default shm.
-	single, _ := testReconciler().buildPodTemplate(context.Background(), testChangeEvent("upsert", "demo"), "")
+	single, _ := testReconciler().buildPodTemplate(context.Background(), testChangeEvent("upsert", "demo"), stormRole{Name: stormRoleWorker, PodGroupSize: 1})
 	for _, volume := range single.Volumes {
 		assert.NotEqual(t, "shm", volume.Name)
 	}
+}
+
+// TestRoleEngineArgsOverrideShared verifies the per-role tuning: a role keeps
+// the shared flags it does not override and wins on the ones it does.
+func TestRoleEngineArgsOverrideShared(t *testing.T) {
+	evt := testChangeEvent("upsert", "demo")
+	evt.Topology = topologyPD
+	evt.EngineArgs = map[string]string{
+		"max-model-len":          "8192",
+		"gpu-memory-utilization": "0.9",
+	}
+	evt.RoleEngineArgs = []roleEngineArgs{
+		{Role: "prefill", EngineArgs: map[string]string{"gpu-memory-utilization": "0.5"}},
+		{Role: "decode", EngineArgs: map[string]string{"gpu-memory-utilization": "0.8"}, ExtraArgs: []string{"--enable-chunked-prefill"}},
+	}
+
+	storm, err := testReconciler().buildStormService(context.Background(), evt)
+	require.NoError(t, err)
+	roles := stormRolesOf(t, storm)
+	require.Len(t, roles, 2)
+
+	prefill := strings.Join(roleCommand(t, roles[0]), " ")
+	assert.Contains(t, prefill, "--gpu-memory-utilization 0.5", "the role's own value wins")
+	assert.Contains(t, prefill, "--max-model-len 8192", "a flag the role does not set is inherited")
+	assert.NotContains(t, prefill, "--enable-chunked-prefill", "another role's extra args do not leak")
+
+	decode := strings.Join(roleCommand(t, roles[1]), " ")
+	assert.Contains(t, decode, "--gpu-memory-utilization 0.8")
+	assert.Contains(t, decode, "--max-model-len 8192")
+	assert.Contains(t, decode, "--enable-chunked-prefill")
+}
+
+// TestSingleNodeStormIsNotStateful verifies a plain deploy does not pay for the
+// headless Service and per-pod DNS only a multi-pod role needs.
+func TestSingleNodeStormIsNotStateful(t *testing.T) {
+	storm, err := testReconciler().buildStormService(context.Background(), testChangeEvent("upsert", "demo"))
+	require.NoError(t, err)
+	stateful, _, _ := unstructured.NestedBool(storm.Object, "spec", "stateful")
+	assert.False(t, stateful)
 }

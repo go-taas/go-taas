@@ -70,7 +70,11 @@ type changeEvent struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
-	// Topology is the serving layout: single, distributed or pd. It decides
+	// RoleEngineArgs overrides EngineArgs per role, so the prefill and decode
+	// roles of a PD service (or the worker role of a multi-machine service)
+	// can each be tuned.
+	RoleEngineArgs []roleEngineArgs `json:"role_engine_args,omitempty"`
+	// Topology is the serving layout: single, multinode or pd. It decides
 	// the roles of the StormService the controller writes.
 	Topology string `json:"topology,omitempty"`
 	// TensorParallelSize / PipelineParallelSize shape one replica's pod
@@ -951,7 +955,7 @@ func (r *k8sReconciler) ensureWeightsPVC(ctx context.Context) error {
 // image, replicas, weight-volume mount and accelerator node selector.
 func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *appsv1.Deployment {
 	labels := resourceLabels(evt)
-	spec, annotations := r.buildPodTemplate(ctx, evt, "")
+	spec, annotations := r.buildPodTemplate(ctx, evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
 	// The serving gateway discovers which model a workload serves from the
 	// workload's own metadata, so both the Deployment (which the gateway
 	// derives the model route from) and its pods (which receive the
@@ -989,7 +993,7 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 // PD-disaggregated role; it decides the role-specific engine flags. The
 // returned annotations are the pod-level ones the container needs (the HAMI
 // placement policy for a shared-GPU service).
-func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, engineRole string) (corev1.PodSpec, map[string]string) {
+func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, role stormRole) (corev1.PodSpec, map[string]string) {
 	// Feature #52 (AD13): a shared-GPU service requests a HAMI slice
 	// instead of a whole card. The engine container requests the HAMI
 	// extended resources, the pod carries the placement-policy
@@ -1003,10 +1007,9 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, e
 			nodeSelector[key] = evt.AcceleratorType
 		}
 	}
-	// A tensor/pipeline-parallel replica shards the model across devices
-	// inside one pod, so it requests one device per shard. A single-node
-	// replica requests exactly one.
-	resources := engineResourcesFor(evt.Accelerator, evt.parallelCards())
+	// Every pod is one worker and owns exactly one device: parallelism spans
+	// pods (one machine per shard), never several cards inside one container.
+	resources := engineResourcesFor(evt.Accelerator, 1)
 	if slice {
 		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
 		annotations[r.policyAnnotation] = r.placementPolicy
@@ -1026,7 +1029,7 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, e
 			// directory (the whole JuiceFS filesystem is mounted
 			// at the weights mount path; the model lives in a
 			// subdirectory named by its weight path).
-			Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), evt.EngineArgs, evt.ExtraArgs, engineRole, evt),
+			Command: engineCommand(evt, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), role),
 			VolumeMounts: []corev1.VolumeMount{{
 				Name:      "weights",
 				MountPath: r.weights.MountPath,
@@ -1043,12 +1046,11 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, e
 		}},
 		NodeSelector: nodeSelector,
 	}
-	// A multi-device replica runs the engine as several processes inside the
-	// pod (vLLM's tensor/pipeline parallel workers), and they exchange
-	// tensors through shared memory. Kubernetes defaults /dev/shm to 64 MiB,
-	// which makes the engine die with "Insufficient space in /dev/shm", so a
-	// parallel replica gets a memory-backed volume of its own.
-	if cards := evt.parallelCards(); cards > 1 {
+	// A distributed engine (multi-machine or PD) runs collectives inside the
+	// pod and exchanges tensors through shared memory. Kubernetes defaults
+	// /dev/shm to 64 MiB, which makes the engine die with "Insufficient space
+	// in /dev/shm", so such a pod gets a memory-backed volume of its own.
+	if evt.distributedServing() {
 		size := resource.MustParse("2Gi")
 		spec.Volumes = append(spec.Volumes, corev1.Volume{
 			Name: "shm",
@@ -1180,64 +1182,97 @@ func mergeSelectors(base, extra map[string]string) map[string]string {
 	return out
 }
 
-// engineCommand builds the engine container command that serves the
-// model at the weights mount path. The whole JuiceFS filesystem is
-// mounted at mountPath; the model lives in the subdirectory named by
-// weightPath (e.g. "Qwen__Qwen2.5-0.5B-Instruct/"). The command is
-// engine-specific; unknown engines get no command (the image's default
-// entrypoint runs).
+// rendezvousPort is the port the workers of a multi-pod role use to meet.
+// It is vLLM's default master port and is passed to SGLang as the
+// distributed-init port.
+const rendezvousPort = 29501
+
+// engineCommand builds the engine container command that serves the model at
+// the weights mount path. The whole JuiceFS filesystem is mounted at
+// mountPath; the model lives in the subdirectory named by weightPath (e.g.
+// "Qwen__Qwen2.5-0.5B-Instruct/"). The command is engine-specific; unknown
+// engines get no command (the image's default entrypoint runs).
 //
-// engineRole is "" for a plain worker pod and "prefill"/"decode" for a
-// PD-disaggregated role. The topology flags (tensor/pipeline parallelism and
-// the PD role) are derived from evt and injected only when the operator did
-// not already set them, so an explicit engine argument always wins.
-func engineCommand(engine, mountPath, weightPath, servedName string, engineArgs map[string]string, extraArgs []string, engineRole string, evt changeEvent) []string {
-	args := topologyEngineArgs(engine, engineRole, evt)
-	switch engine {
+// role decides three things: which engine arguments apply (the shared set
+// overridden by the role's own), the PD role marker, and whether the pod has
+// to rendezvous with sibling pods (a multi-machine or PD role spans several
+// pods, one per machine).
+func engineCommand(evt changeEvent, mountPath, weightPath, servedName string, role stormRole) []string {
+	engineArgs, extraArgs := evt.argsForRole(role.Name)
+	multiPod := role.PodGroupSize > 1
+
+	var base []string
+	switch evt.Image.Engine {
 	case "vllm":
-		base := []string{
+		base = []string{
 			"python3", "-m", "vllm.entrypoints.openai.api_server",
 			"--model", modelDir(mountPath, weightPath),
 			"--port", strconv.Itoa(enginePort),
 			"--host", "0.0.0.0",
 		}
-		// The engine must accept the name clients send as `model`, which
-		// is the catalog name rather than the weights directory.
-		if servedName != "" {
-			base = append(base, "--served-model-name", servedName)
-		}
-		base = append(base, args...)
-		return appendEngineArgs(base, engineArgs, extraArgs)
 	case "sglang":
-		base := []string{
+		base = []string{
 			"python3", "-m", "sglang.launch_server",
 			"--model-path", modelDir(mountPath, weightPath),
 			"--port", strconv.Itoa(enginePort),
 			"--host", "0.0.0.0",
 		}
-		if servedName != "" {
-			base = append(base, "--served-model-name", servedName)
-		}
-		base = append(base, args...)
-		return appendEngineArgs(base, engineArgs, extraArgs)
 	default:
 		return nil
 	}
+	// The engine must accept the name clients send as `model`, which is the
+	// catalog name rather than the weights directory.
+	if servedName != "" {
+		base = append(base, "--served-model-name", servedName)
+	}
+	base = append(base, topologyEngineArgs(evt.Image.Engine, role, engineArgs, evt)...)
+	base = appendEngineArgs(base, engineArgs, extraArgs)
+	if !multiPod {
+		return base
+	}
+	return rendezvousCommand(evt, base, role)
 }
 
-// topologyEngineArgs returns the flags a serving topology needs, in the
-// order they are appended to the engine command. Only the parameters the
-// operator cannot express in the generic form are derived here:
+// rendezvousCommand wraps the engine arguments so each pod of a multi-pod role
+// knows its own rank and the address of rank 0.
 //
-//	distributed  --tensor-parallel-size / --pipeline-parallel-size
+// A stateful storm gives every pod a stable hostname and a headless Service
+// named after the storm, so the rank is the pod's ordinal (the last dash
+// segment of its hostname) and the master is the pod whose ordinal is 0 in the
+// same role set. Both are resolved at container start, which is why the
+// command runs through `sh -c`: the flags cannot be baked into the template,
+// because every pod of the role shares it.
+//
+// The engine arguments are passed as positional parameters (sh -c script name
+// arg...) so their quoting - JSON values such as a kv-transfer-config - is
+// never re-parsed.
+func rendezvousCommand(evt changeEvent, base []string, role stormRole) []string {
+	nnodes := strconv.Itoa(int(role.PodGroupSize))
+	master := fmt.Sprintf(`"${HOSTNAME%%-*}-0.%s"`, evt.Name)
+	script := `rank="${HOSTNAME##*-}"; master=` + master + `; exec "$0" "$@" ` +
+		`--nnodes ` + nnodes + ` --node-rank "$rank"`
+	switch evt.Image.Engine {
+	case "vllm":
+		script += ` --master-addr "$master" --master-port ` + strconv.Itoa(rendezvousPort)
+	case "sglang":
+		script += ` --dist-init-addr "$master:` + strconv.Itoa(rendezvousPort) + `"`
+	}
+	return append([]string{"sh", "-c", script}, base...)
+}
+
+// topologyEngineArgs returns the flags a serving topology needs, in the order
+// they are appended to the engine command. Only the parameters the operator
+// cannot express in the generic form are derived here:
+//
+//	multinode    the parallelism of the whole role (tensor/pipeline size)
 //	pd           the same, plus the role marker: vLLM's kv-transfer-config
 //	             (kv_role producer/consumer) or SGLang's
 //	             --disaggregation-mode prefill/decode
 //
-// Every one of them is skipped when the operator already supplied the flag,
-// so the explicit engine arguments stay authoritative.
-func topologyEngineArgs(engine, engineRole string, evt changeEvent) []string {
-	if evt.Topology != topologyDistributed && evt.Topology != topologyPD {
+// Every one of them is skipped when the role's engine arguments already set
+// the flag, so the explicit arguments stay authoritative.
+func topologyEngineArgs(engine string, role stormRole, engineArgs map[string]string, evt changeEvent) []string {
+	if !isMultiNode(evt.Topology) && evt.Topology != topologyPD {
 		return nil
 	}
 	args := make([]string, 0, 6)
@@ -1249,22 +1284,28 @@ func topologyEngineArgs(engine, engineRole string, evt changeEvent) []string {
 	if pp < 1 {
 		pp = 1
 	}
-	if _, set := evt.EngineArgs["tensor-parallel-size"]; !set && tp > 1 {
-		args = append(args, "--tensor-parallel-size", strconv.Itoa(tp))
+	// vLLM shards with --tensor-parallel-size / --pipeline-parallel-size;
+	// SGLang spells the tensor axis --tp-size.
+	tpFlag, ppFlag := "tensor-parallel-size", "pipeline-parallel-size"
+	if engine == "sglang" {
+		tpFlag, ppFlag = "tp-size", "pp-size"
 	}
-	if _, set := evt.EngineArgs["pipeline-parallel-size"]; !set && pp > 1 {
-		args = append(args, "--pipeline-parallel-size", strconv.Itoa(pp))
+	if _, set := engineArgs[tpFlag]; !set && tp > 1 {
+		args = append(args, "--"+tpFlag, strconv.Itoa(tp))
 	}
-	if engineRole == "" {
+	if _, set := engineArgs[ppFlag]; !set && pp > 1 {
+		args = append(args, "--"+ppFlag, strconv.Itoa(pp))
+	}
+	if role.EngineRole == "" {
 		return args
 	}
 	switch engine {
 	case "vllm":
-		if _, set := evt.EngineArgs["kv-transfer-config"]; set {
+		if _, set := engineArgs["kv-transfer-config"]; set {
 			return args
 		}
 		kvRole := "kv_producer"
-		if engineRole == stormRoleDecode {
+		if role.EngineRole == stormRoleDecode {
 			kvRole = "kv_consumer"
 		}
 		config, err := json.Marshal(map[string]any{
@@ -1279,10 +1320,10 @@ func topologyEngineArgs(engine, engineRole string, evt changeEvent) []string {
 		}
 		args = append(args, "--kv-transfer-config", string(config))
 	case "sglang":
-		if _, set := evt.EngineArgs["disaggregation-mode"]; set {
+		if _, set := engineArgs["disaggregation-mode"]; set {
 			return args
 		}
-		args = append(args, "--disaggregation-mode", engineRole)
+		args = append(args, "--disaggregation-mode", role.EngineRole)
 	}
 	return args
 }
@@ -1384,19 +1425,40 @@ func autoscalerName(name string) string { return "hpa-" + name }
 // parallelCards is how many devices one replica needs: the product of the
 // tensor and pipeline parallelism, and 1 for a single-node replica or a
 // shared-GPU slice.
-func (e changeEvent) parallelCards() int {
-	if e.Topology != topologyDistributed && e.Topology != topologyPD {
-		return 1
+func (e changeEvent) distributedServing() bool {
+	return isMultiNode(e.Topology) || e.Topology == topologyPD
+}
+
+// roleEngineArgs is one role's engine-argument override, mirroring the infer
+// module's RoleEngineArgs.
+type roleEngineArgs struct {
+	Role       string            `json:"role"`
+	EngineArgs map[string]string `json:"engine_args,omitempty"`
+	ExtraArgs  []string          `json:"extra_args,omitempty"`
+}
+
+// argsForRole merges one role's override over the shared engine arguments:
+// a flag the role sets wins, the rest is inherited, and the role's free-form
+// arguments are appended after the shared ones.
+func (e changeEvent) argsForRole(role string) (map[string]string, []string) {
+	engineArgs := make(map[string]string, len(e.EngineArgs))
+	for name, value := range e.EngineArgs {
+		engineArgs[name] = value
 	}
-	tp := e.TensorParallelSize
-	if tp < 1 {
-		tp = 1
+	extra := append([]string{}, e.ExtraArgs...)
+	for _, override := range e.RoleEngineArgs {
+		if override.Role != role {
+			continue
+		}
+		for name, value := range override.EngineArgs {
+			engineArgs[name] = value
+		}
+		extra = append(extra, override.ExtraArgs...)
 	}
-	pp := e.PipelineParallelSize
-	if pp < 1 {
-		pp = 1
+	if len(engineArgs) == 0 {
+		engineArgs = nil
 	}
-	return tp * pp
+	return engineArgs, extra
 }
 
 // resourceLabels returns the label set shared by the Deployment and

@@ -22,38 +22,38 @@ func TestNormalizeTopologySingleIgnoresParallelism(t *testing.T) {
 	assert.Equal(t, 1, spec.PodGroupSize())
 }
 
-func TestNormalizeTopologyDistributed(t *testing.T) {
-	spec, err := NormalizeTopology(TopologyDistributed, 4, 2, 0, 0, "vllm")
+func TestNormalizeTopologyMultiNode(t *testing.T) {
+	spec, err := NormalizeTopology(TopologyMultiNode, 4, 2, 0, 0, "vllm")
 	require.NoError(t, err)
-	assert.Equal(t, TopologyDistributed, spec.Topology)
+	assert.Equal(t, TopologyMultiNode, spec.Topology)
 	assert.Equal(t, 4, spec.TensorParallelSize)
 	assert.Equal(t, 2, spec.PipelineParallelSize)
 	assert.Equal(t, 8, spec.PodGroupSize(), "one pod per shard")
 }
 
-func TestNormalizeTopologyDistributedNeedsMoreThanOnePod(t *testing.T) {
+func TestNormalizeTopologyMultiNodeNeedsMoreThanOnePod(t *testing.T) {
 	// "Distributed" with a single pod is a single-node deploy: surface the
 	// mistake instead of silently collapsing the layout.
-	_, err := NormalizeTopology(TopologyDistributed, 1, 1, 0, 0, "vllm")
+	_, err := NormalizeTopology(TopologyMultiNode, 1, 1, 0, 0, "vllm")
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeInferTopologyInvalid, apierrors.CodeOf(err))
 
 	// Zero values default to 1/1, which is still one pod.
-	_, err = NormalizeTopology(TopologyDistributed, 0, 0, 0, 0, "vllm")
+	_, err = NormalizeTopology(TopologyMultiNode, 0, 0, 0, 0, "vllm")
 	require.Error(t, err)
 }
 
 func TestNormalizeTopologyParallelismBounds(t *testing.T) {
-	_, err := NormalizeTopology(TopologyDistributed, maxParallelSize+1, 1, 0, 0, "vllm")
+	_, err := NormalizeTopology(TopologyMultiNode, maxParallelSize+1, 1, 0, 0, "vllm")
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeInferTopologyInvalid, apierrors.CodeOf(err))
 
-	_, err = NormalizeTopology(TopologyDistributed, 0, -1, 0, 0, "vllm")
+	_, err = NormalizeTopology(TopologyMultiNode, 0, -1, 0, 0, "vllm")
 	require.Error(t, err)
 
 	// The pod group ceiling keeps one replica from asking for an unbounded
 	// number of pods.
-	_, err = NormalizeTopology(TopologyDistributed, maxParallelSize, maxParallelSize, 0, 0, "vllm")
+	_, err = NormalizeTopology(TopologyMultiNode, maxParallelSize, maxParallelSize, 0, 0, "vllm")
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeInferTopologyInvalid, apierrors.CodeOf(err))
 }
@@ -99,12 +99,12 @@ func TestStoredTopologyNameNormalizes(t *testing.T) {
 	// A legacy or unknown stored value reads as single node.
 	assert.Equal(t, TopologySingle, storedTopologyName(""))
 	assert.Equal(t, TopologySingle, storedTopologyName("weird"))
-	assert.Equal(t, TopologyDistributed, storedTopologyName("Distributed"))
+	assert.Equal(t, TopologyMultiNode, storedTopologyName("Distributed"))
 	assert.Equal(t, TopologyPD, storedTopologyName(" PD "))
 }
 
 func TestNormalizeTopologyAcceptsNames(t *testing.T) {
-	for _, name := range []string{TopologySingle, TopologyDistributed, TopologyPD} {
+	for _, name := range []string{TopologySingle, TopologyMultiNode, TopologyPD} {
 		tp := 1
 		if name != TopologySingle {
 			tp = 2

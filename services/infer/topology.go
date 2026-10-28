@@ -6,8 +6,9 @@
 // expressed in this module:
 //
 //	single       one pod per replica
-//	distributed  one pod group per replica: tensor/pipeline parallelism
-//	             shards the model across several pods of the same role
+//	multinode    one pod group per replica: every worker is its own pod on
+//	             its own machine, and the workers rendezvous so tensor and
+//	             pipeline parallelism span nodes
 //	pd           separate prefill and decode roles, each with its own
 //	             replica count
 //
@@ -24,9 +25,15 @@ import (
 
 // Topology names as stored in inference_services.topology.
 const (
-	TopologySingle      = "single"
-	TopologyDistributed = "distributed"
-	TopologyPD          = "pd"
+	TopologySingle = "single"
+	// TopologyMultiNode spreads one replica across several pods, one per
+	// machine. It replaced the single-pod "distributed" layout, whose name
+	// stays accepted on input so an older client keeps working.
+	TopologyMultiNode = "multinode"
+	TopologyPD        = "pd"
+
+	// legacyTopologyDistributed is the pre-rename name of TopologyMultiNode.
+	legacyTopologyDistributed = "distributed"
 )
 
 // Bounds for the parallelism a topology may request.
@@ -44,7 +51,7 @@ const (
 
 // TopologySpec is a normalized serving layout.
 type TopologySpec struct {
-	// Topology is one of TopologySingle, TopologyDistributed, TopologyPD.
+	// Topology is one of TopologySingle, TopologyMultiNode, TopologyPD.
 	Topology string
 	// TensorParallelSize is the TP degree of one replica.
 	TensorParallelSize int
@@ -56,9 +63,9 @@ type TopologySpec struct {
 	DecodeReplicas  int
 }
 
-// PodGroupSize is how many pods one replica of the role runs with. A
-// distributed or PD replica is one pod group: the pods that share the model
-// shards must be scheduled together.
+// PodGroupSize is how many pods one replica of the role runs with: one pod
+// per worker (tensor/pipeline shard), each on its own machine. A single-node
+// replica is one pod.
 func (t TopologySpec) PodGroupSize() int {
 	size := t.TensorParallelSize * t.PipelineParallelSize
 	if size < 1 {
@@ -82,11 +89,17 @@ func NormalizeTopology(topology string, tensorParallel, pipelineParallel, prefil
 	if name == "" {
 		name = TopologySingle
 	}
+	if name == legacyTopologyDistributed {
+		// The layout was renamed when it became genuinely multi-pod; the old
+		// name keeps working so a console or script written before the
+		// rename is not broken by it.
+		name = TopologyMultiNode
+	}
 	switch name {
-	case TopologySingle, TopologyDistributed, TopologyPD:
+	case TopologySingle, TopologyMultiNode, TopologyPD:
 	default:
 		return TopologySpec{}, apierrors.Newf(apierrors.CodeInferTopologyInvalid,
-			"infer: unknown topology %q; use single, distributed or pd", topology)
+			"infer: unknown topology %q; use single, multinode or pd", topology)
 	}
 	spec := TopologySpec{Topology: name}
 	switch spec.Topology {
@@ -97,7 +110,7 @@ func NormalizeTopology(topology string, tensorParallel, pipelineParallel, prefil
 		spec.TensorParallelSize = 1
 		spec.PipelineParallelSize = 1
 		return spec, nil
-	case TopologyDistributed, TopologyPD:
+	case TopologyMultiNode, TopologyPD:
 	default:
 		return TopologySpec{}, apierrors.New(apierrors.CodeInferTopologyInvalid)
 	}
@@ -121,12 +134,13 @@ func NormalizeTopology(topology string, tensorParallel, pipelineParallel, prefil
 	spec.TensorParallelSize = tp
 	spec.PipelineParallelSize = pp
 
-	if spec.Topology == TopologyDistributed {
+	if spec.Topology == TopologyMultiNode {
 		if tp*pp < 2 {
-			// "Distributed" with one pod is a single-node deploy; asking for
-			// it is a mistake worth surfacing instead of silently collapsing.
+			// Multi-machine serving with one pod is a single-node deploy;
+			// asking for it is a mistake worth surfacing instead of
+			// silently collapsing.
 			return TopologySpec{}, apierrors.Newf(apierrors.CodeInferTopologyInvalid,
-				"infer: distributed serving needs tensor_parallel_size * pipeline_parallel_size > 1; use the single-node topology for one pod")
+				"infer: multi-machine serving needs tensor_parallel_size * pipeline_parallel_size > 1 (one pod per worker); use the single-node topology for one pod")
 		}
 		return spec, nil
 	}
@@ -189,8 +203,8 @@ func TopologyOf(svc *InferenceService) TopologySpec {
 // storedTopologyName normalizes a stored topology name.
 func storedTopologyName(name string) string {
 	switch strings.ToLower(strings.TrimSpace(name)) {
-	case TopologyDistributed:
-		return TopologyDistributed
+	case TopologyMultiNode, legacyTopologyDistributed:
+		return TopologyMultiNode
 	case TopologyPD:
 		return TopologyPD
 	default:

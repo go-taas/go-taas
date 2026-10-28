@@ -598,28 +598,34 @@ func TestEngineResources(t *testing.T) {
 }
 
 func TestEngineCommand(t *testing.T) {
+	single := stormRole{Name: stormRoleWorker, PodGroupSize: 1}
+	evtWith := func(engine string) changeEvent {
+		evt := changeEvent{}
+		evt.Image.Engine = engine
+		return evt
+	}
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
 		"--served-model-name", "qwen2.5-0.5b",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1", "qwen2.5-0.5b", nil, nil, "", changeEvent{}))
+	}, engineCommand(evtWith("vllm"), "/data/weights", "qwen/v1", "qwen2.5-0.5b", single))
 
 	// An empty name leaves the weights path as the served name, which is
 	// what the engine defaults to.
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1", "", nil, nil, "", changeEvent{}))
+	}, engineCommand(evtWith("vllm"), "/data/weights", "qwen/v1", "", single))
 
 	// SGLang serves on its own module and takes --model-path.
 	assert.Equal(t, []string{
 		"python3", "-m", "sglang.launch_server",
 		"--model-path", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
 		"--served-model-name", "m",
-	}, engineCommand("sglang", "/data/weights", "qwen/v1", "m", nil, nil, "", changeEvent{}))
+	}, engineCommand(evtWith("sglang"), "/data/weights", "qwen/v1", "m", single))
 
 	// Unknown engines get no command (the image's default entrypoint runs).
-	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1", "m", nil, nil, "", changeEvent{}))
+	assert.Nil(t, engineCommand(evtWith(""), "/data/weights", "qwen/v1", "m", single))
 }
 
 func TestModelDir(t *testing.T) {

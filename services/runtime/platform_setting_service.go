@@ -6,6 +6,7 @@ import (
 	"net"
 	"regexp"
 	"strings"
+	"time"
 
 	runtimev1 "github.com/go-taas/go-taas/proto/taas/runtime/v1"
 
@@ -85,7 +86,113 @@ func platformSettingsToProto(row *PlatformSetting) *runtimev1.PlatformSettings {
 		InferenceBaseUrl:            row.InferenceBaseURL(),
 		UpdatedBy:                   row.UpdatedBy,
 		UpdatedAt:                   row.UpdatedAt.Unix(),
+		Timezone:                    row.Timezone,
+		DefaultLanguage:             displayLanguage(row.DefaultLanguage),
+		Currency:                    displayCurrency(row.Currency),
 	}
+}
+
+// Display preferences. The console renders timestamps in one zone, offers one
+// default language and shows amounts in one currency, so an operator picks
+// three values for the whole installation.
+
+// supportedLanguages are the console languages the setting may name.
+var supportedLanguages = map[string]bool{"en": true, "zh": true}
+
+// supportedCurrencies are the display currencies the setting may name. They
+// are the ISO-4217 codes the billing module can price in.
+var supportedCurrencies = map[string]bool{
+	"USD": true,
+	"CNY": true,
+	"EUR": true,
+	"HKD": true,
+	"JPY": true,
+}
+
+// normaliseTimezone validates an IANA zone name. Empty means "use the
+// viewer's own zone", which is a valid choice.
+func normaliseTimezone(raw string) (string, error) {
+	zone := strings.TrimSpace(raw)
+	if zone == "" {
+		return "", nil
+	}
+	if strings.ContainsAny(zone, " 	") {
+		return "", apierrors.Newf(apierrors.CodeRuntimeSettingInvalid,
+			"runtime: time zone %q must be an IANA name such as Asia/Shanghai", raw)
+	}
+	if _, err := time.LoadLocation(zone); err != nil {
+		return "", apierrors.Newf(apierrors.CodeRuntimeSettingInvalid,
+			"runtime: unknown time zone %q; use an IANA name such as Asia/Shanghai", raw)
+	}
+	return zone, nil
+}
+
+// normaliseLanguage validates the default console language.
+func normaliseLanguage(raw string) (string, error) {
+	lang := strings.ToLower(strings.TrimSpace(raw))
+	if lang == "" {
+		return defaultDisplayLanguage, nil
+	}
+	if !supportedLanguages[lang] {
+		return "", apierrors.Newf(apierrors.CodeRuntimeSettingInvalid,
+			"runtime: default language must be en or zh, got %q", raw)
+	}
+	return lang, nil
+}
+
+// normaliseCurrency validates the display currency.
+func normaliseCurrency(raw string) (string, error) {
+	code := strings.ToUpper(strings.TrimSpace(raw))
+	if code == "" {
+		return defaultDisplayCurrency, nil
+	}
+	if !supportedCurrencies[code] {
+		return "", apierrors.Newf(apierrors.CodeRuntimeSettingInvalid,
+			"runtime: unsupported currency %q; use one of USD, CNY, EUR, HKD, JPY", raw)
+	}
+	return code, nil
+}
+
+// Defaults applied when the operator never chose a display preference.
+const (
+	defaultDisplayLanguage = "zh"
+	defaultDisplayCurrency = "CNY"
+)
+
+// displayLanguage normalizes a stored language, defaulting to zh.
+func displayLanguage(stored string) string {
+	if supportedLanguages[stored] {
+		return stored
+	}
+	return defaultDisplayLanguage
+}
+
+// displayCurrency normalizes a stored currency, defaulting to CNY.
+func displayCurrency(stored string) string {
+	if supportedCurrencies[stored] {
+		return stored
+	}
+	return defaultDisplayCurrency
+}
+
+// GetPlatformDisplaySettings returns the installation's display preferences.
+// It is served on both consoles: whatever surface renders an amount or a
+// timestamp must use the same units.
+func (s *Service) GetPlatformDisplaySettings(ctx context.Context, _ *runtimev1.GetPlatformDisplaySettingsRequest) (*runtimev1.GetPlatformDisplaySettingsResponse, error) {
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	row, err := repo.GetPlatformSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return &runtimev1.GetPlatformDisplaySettingsResponse{
+		Response:        okResponse(),
+		Timezone:        row.Timezone,
+		DefaultLanguage: displayLanguage(row.DefaultLanguage),
+		Currency:        displayCurrency(row.Currency),
+	}, nil
 }
 
 // InferenceGateway returns the operator-configured data-plane endpoint.
@@ -160,6 +267,18 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 	if err != nil {
 		return nil, err
 	}
+	timezone, err := normaliseTimezone(req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	language, err := normaliseLanguage(req.GetDefaultLanguage())
+	if err != nil {
+		return nil, err
+	}
+	currency, err := normaliseCurrency(req.GetCurrency())
+	if err != nil {
+		return nil, err
+	}
 	// A host without a port must be reachable as a name; reject the
 	// obvious mistake of pasting an IP with a scheme-less port range.
 	if host, _, splitErr := net.SplitHostPort(hostname); splitErr == nil && host == "" {
@@ -188,6 +307,9 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 		InferenceGatewayHostname:    hostname,
 		InferenceGatewayScheme:      scheme,
 		InferenceGatewayInternalURL: internalURL,
+		Timezone:                    timezone,
+		DefaultLanguage:             language,
+		Currency:                    currency,
 		UpdatedBy:                   actor,
 	})
 	if err != nil {
@@ -195,14 +317,20 @@ func (s *Service) UpdatePlatformSettings(ctx context.Context, req *runtimev1.Upd
 	}
 	if s.auditRecorder != nil {
 		beforeJSON, _ := json.Marshal(map[string]string{
-			"hostname":    before.InferenceGatewayHostname,
-			"scheme":      before.GatewayScheme(),
-			"internalUrl": before.InferenceGatewayInternalURL,
+			"hostname":        before.InferenceGatewayHostname,
+			"scheme":          before.GatewayScheme(),
+			"internalUrl":     before.InferenceGatewayInternalURL,
+			"timezone":        before.Timezone,
+			"defaultLanguage": before.DefaultLanguage,
+			"currency":        before.Currency,
 		})
 		afterJSON, _ := json.Marshal(map[string]string{
-			"hostname":    updated.InferenceGatewayHostname,
-			"scheme":      updated.GatewayScheme(),
-			"internalUrl": updated.InferenceGatewayInternalURL,
+			"hostname":        updated.InferenceGatewayHostname,
+			"scheme":          updated.GatewayScheme(),
+			"internalUrl":     updated.InferenceGatewayInternalURL,
+			"timezone":        updated.Timezone,
+			"defaultLanguage": updated.DefaultLanguage,
+			"currency":        updated.Currency,
 		})
 		s.auditRecorder.Record(ctx, &audit.AuditEvent{
 			ActorUserID:  actor,

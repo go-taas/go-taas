@@ -8,6 +8,7 @@ import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { ErrorBanner } from '../components';
+import { formatMoney } from '../display';
 import ForecastChart, { type ForecastMetric } from '../components/ForecastChart';
 
 interface ForecastBucket {
@@ -192,7 +193,7 @@ export default function ForecastPage() {
             <div className="card">
               <div className="card-label">{t('forecast.forecastCost')}</div>
               <div className="card-value" data-testid="forecast-cost">
-                {summary ? `${(parseInt(summary.totalCostCents || '0', 10) / 100).toFixed(2)}` : '0'}
+                {summary ? formatMoney(summary.totalCostCents) : formatMoney(0)}
               </div>
             </div>
             <div className="card">

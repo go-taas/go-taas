@@ -8,6 +8,7 @@ import { api, ApiError, formatTime, type ModelSummary, type PageMeta } from '../
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination } from '../components';
+import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 
 
 interface ListResponse {
@@ -28,6 +29,9 @@ export default function ModelsPage() {
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
+  // Model downloads live on this page: importing a model and browsing the
+  // catalog are the same job, so there is no separate navigation entry.
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ModelSummary | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -89,9 +93,9 @@ export default function ModelsPage() {
           <button
             className="secondary"
             data-testid="open-model-downloads"
-            onClick={() => navigate('/admin/model-downloads')}
+            onClick={() => setDownloadsOpen((open) => !open)}
           >
-            {t('models.downloads.open')}
+            {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
           </button>
           <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
             {t('models.register')}
@@ -100,6 +104,8 @@ export default function ModelsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+
+      {downloadsOpen && <ModelDownloadsPanel defaultOpen />}
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <input
@@ -365,6 +371,7 @@ function RegisterDialog({
         </div>
       </div>
       {error && <ErrorBanner message={error} />}
+
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}

@@ -11,6 +11,7 @@ import {
   type AutoscalingPolicy,
   type AutoscalingStatus,
   type InferenceServiceSummary,
+  normalizeTopology,
   type ServingTopology,
 } from '../api';
 import { useOrg } from '../org';
@@ -318,9 +319,9 @@ export default function ServiceDetailPage() {
 
 // topologyLabelKey maps the wire topology to its message key.
 function topologyLabelKey(topology?: string): string {
-  switch (topology) {
-    case 'distributed':
-      return 'deploy.topologyDistributed';
+  switch (normalizeTopology(topology)) {
+    case 'multinode':
+      return 'deploy.topologyMultiNode';
     case 'pd':
       return 'deploy.topologyPd';
     default:
@@ -344,7 +345,7 @@ function TopologyDialog({
   onSaved: () => void;
 }) {
   const { t } = useI18n();
-  const [topology, setTopology] = useState<ServingTopology>(service.topology || 'single');
+  const [topology, setTopology] = useState<ServingTopology>(normalizeTopology(service.topology));
   const [tp, setTp] = useState(String(service.tensorParallelSize || 1));
   const [pp, setPp] = useState(String(service.pipelineParallelSize || 1));
   const [prefill, setPrefill] = useState(String(service.prefillReplicas || 1));
@@ -356,8 +357,8 @@ function TopologyDialog({
   const submit = async () => {
     const tpv = parseInt(tp, 10) || 1;
     const ppv = parseInt(pp, 10) || 1;
-    if (topology === 'distributed' && tpv * ppv < 2) {
-      setError(t('deploy.errorDistributedParallel'));
+    if (topology === 'multinode' && tpv * ppv < 2) {
+      setError(t('deploy.errorMultiNodeParallel'));
       return;
     }
     setSubmitting(true);
@@ -398,7 +399,7 @@ function TopologyDialog({
             onChange={(e) => setTopology(e.target.value as ServingTopology)}
           >
             <option value="single">{t('deploy.topologySingle')}</option>
-            <option value="distributed">{t('deploy.topologyDistributed')}</option>
+            <option value="multinode">{t('deploy.topologyMultiNode')}</option>
             <option value="pd">{t('deploy.topologyPd')}</option>
           </select>
         </div>

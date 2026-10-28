@@ -33,6 +33,14 @@ type PlatformSetting struct {
 	// UpdatedBy is the acting admin user's label (empty in the
 	// transitional session-less path).
 	UpdatedBy string `gorm:"size:255;not null;default:''"`
+	// Timezone is the IANA zone every console renders timestamps in. Empty
+	// means the viewer's own zone.
+	Timezone string `gorm:"size:64;not null;default:''"`
+	// DefaultLanguage is the console language a first-time visitor gets
+	// ("en" or "zh").
+	DefaultLanguage string `gorm:"size:8;not null;default:'zh'"`
+	// Currency is the ISO-4217 code every console shows amounts in.
+	Currency string `gorm:"size:8;not null;default:'CNY'"`
 	// UpdatedAt is the last change time.
 	UpdatedAt time.Time
 	// CreatedAt is the row creation time.

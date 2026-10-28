@@ -23,6 +23,22 @@ export function setStoredLang(lang: Lang): void {
   localStorage.setItem(STORAGE_KEY, lang);
 }
 
+// applyDefaultLang is registered by the provider so a platform default can be
+// applied without going through React context (the preference is fetched after
+// the first render).
+let applyDefaultLang: ((lang: Lang) => void) | null = null;
+
+/**
+ * setLangIfUnset applies the installation's default language when the visitor
+ * has not chosen one. An explicit choice is never overridden: it is stored and
+ * survives the next boot.
+ */
+export function setLangIfUnset(lang: string): void {
+  if (localStorage.getItem(STORAGE_KEY)) return;
+  if (lang !== 'zh' && lang !== 'en') return;
+  applyDefaultLang?.(lang);
+}
+
 interface I18nContextValue {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -48,6 +64,12 @@ export function I18nProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = lang;
+    // The platform default may arrive after the first render; registering the
+    // setter here lets it switch without storing a preference.
+    applyDefaultLang = setLangState;
+    return () => {
+      applyDefaultLang = null;
+    };
   }, [lang]);
 
   const setLang = (next: Lang) => {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/datatypes"
 	"gorm.io/gorm"
 
 	"github.com/go-taas/go-taas/pkg/database"
@@ -194,7 +195,7 @@ func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, 
 // service_id and endpoints are untouched; replicas is only written when
 // non-zero. A miss maps to CodeInferServiceNotFound.
 func (r *InferenceServiceRepository) UpdateTopology(
-	ctx context.Context, orgID, serviceID string, spec TopologySpec, replicas int,
+	ctx context.Context, orgID, serviceID string, spec TopologySpec, replicas int, roleArgs datatypes.JSON,
 ) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
 		updates := map[string]any{
@@ -207,6 +208,11 @@ func (r *InferenceServiceRepository) UpdateTopology(
 		}
 		if replicas > 0 {
 			updates["replicas"] = replicas
+		}
+		// An empty override list keeps the stored per-role arguments: a
+		// layout change alone must not silently discard them.
+		if len(roleArgs) > 0 {
+			updates["role_engine_args"] = roleArgs
 		}
 		res := r.DB(ctx).
 			Model(&InferenceService{}).

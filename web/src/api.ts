@@ -9,6 +9,8 @@
 // whose prefix does not belong to its realm (a runtime mirror of the
 // gateway realm guard).
 
+import { getDisplayTimezone } from './display';
+
 export type Realm = 'user' | 'admin';
 
 export interface ResponseEnvelope {
@@ -277,7 +279,23 @@ export interface InferenceServiceSummary {
   decodeReplicas?: number;
 }
 
-export type ServingTopology = 'single' | 'distributed' | 'pd';
+// ServingTopology is the serving layout. "multinode" spreads one replica
+// across one pod per worker (each on its own machine); "distributed" is its
+// pre-rename spelling and is normalized on read.
+export type ServingTopology = 'single' | 'multinode' | 'pd';
+
+/** normalizeTopology maps a stored or legacy layout name to the current set. */
+export function normalizeTopology(topology?: string): ServingTopology {
+  switch ((topology || '').toLowerCase()) {
+    case 'multinode':
+    case 'distributed':
+      return 'multinode';
+    case 'pd':
+      return 'pd';
+    default:
+      return 'single';
+  }
+}
 
 // ImageRegistryConfig is the internal Harbor registry the image import flow
 // pushes to. configured=false means no registry is set and the console
@@ -1133,7 +1151,12 @@ export function formatTime(unixSeconds: string | number | undefined): string {
   if (unixSeconds === undefined || unixSeconds === null || unixSeconds === '0') return '—';
   const n = typeof unixSeconds === 'string' ? parseInt(unixSeconds, 10) : unixSeconds;
   if (!isFinite(n) || n <= 0) return '—';
-  return new Date(n * 1000).toLocaleString();
+  // The installation's time zone, when the platform administrator set one.
+  // Without one the viewer's own zone applies, which is the browser default.
+  const zone = getDisplayTimezone();
+  return zone
+    ? new Date(n * 1000).toLocaleString(undefined, { timeZone: zone })
+    : new Date(n * 1000).toLocaleString();
 }
 
 // ---- inference load testing (feature #20) ----

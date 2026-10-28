@@ -397,3 +397,69 @@ func TestPlatformSettingsPlatformAdminOnly(t *testing.T) {
 	_, err = svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
 	require.NoError(t, err)
 }
+
+// newPlatformSettingService builds a service over a fresh test database.
+func newPlatformSettingService(t *testing.T) *Service {
+	t.Helper()
+	return NewForFVT(newTestDB(t), nil)
+}
+
+// TestPlatformDisplaySettingsDefaults verifies an installation that never chose
+// display preferences still reports usable ones.
+func TestPlatformDisplaySettingsDefaults(t *testing.T) {
+	svc := newPlatformSettingService(t)
+	resp, err := svc.GetPlatformDisplaySettings(context.Background(), &runtimev1.GetPlatformDisplaySettingsRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, resp.GetTimezone(), "empty means the viewer's own zone")
+	assert.Equal(t, "zh", resp.GetDefaultLanguage())
+	assert.Equal(t, "CNY", resp.GetCurrency())
+}
+
+// TestUpdatePlatformDisplaySettings verifies the three preferences round-trip.
+func TestUpdatePlatformDisplaySettings(t *testing.T) {
+	svc := newPlatformSettingService(t)
+	ctx := context.Background()
+
+	_, err := svc.UpdatePlatformSettings(ctx, &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname: "api.example.com",
+		InferenceGatewayScheme:   "https",
+		Timezone:                 "Asia/Shanghai",
+		DefaultLanguage:          "en",
+		Currency:                 "USD",
+	})
+	require.NoError(t, err)
+
+	resp, err := svc.GetPlatformDisplaySettings(ctx, &runtimev1.GetPlatformDisplaySettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Shanghai", resp.GetTimezone())
+	assert.Equal(t, "en", resp.GetDefaultLanguage())
+	assert.Equal(t, "USD", resp.GetCurrency())
+
+	// The admin settings projection carries them too, so one page edits and
+	// shows the same values.
+	full, err := svc.GetPlatformSettings(ctx, &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "USD", full.GetSettings().GetCurrency())
+	assert.Equal(t, "Asia/Shanghai", full.GetSettings().GetTimezone())
+}
+
+// TestUpdatePlatformDisplaySettingsRejectsBadValues verifies the closed sets.
+func TestUpdatePlatformDisplaySettingsRejectsBadValues(t *testing.T) {
+	svc := newPlatformSettingService(t)
+	ctx := context.Background()
+
+	cases := map[string]*runtimev1.UpdatePlatformSettingsRequest{
+		"unknown zone":     {Timezone: "Mars/Olympus"},
+		"zone with space":  {Timezone: "Asia/Shang hai"},
+		"unknown language": {DefaultLanguage: "fr"},
+		"unknown currency": {Currency: "XBT"},
+	}
+	for name, req := range cases {
+		t.Run(name, func(t *testing.T) {
+			req.InferenceGatewayScheme = "https"
+			_, err := svc.UpdatePlatformSettings(ctx, req)
+			require.Error(t, err)
+			assert.Equal(t, apierrors.CodeRuntimeSettingInvalid, apierrors.CodeOf(err))
+		})
+	}
+}

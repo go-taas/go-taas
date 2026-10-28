@@ -4,10 +4,11 @@
 
 import type { CostBreakdownRow } from '../api';
 import { useI18n } from '../i18n';
+import { formatAmount, formatMoney } from '../display';
 
-// costDollars formats integer cents as dollars.
+// costDollars formats integer cents in the platform's display currency.
 function costDollars(cents: string): string {
-  return `$${(parseInt(cents || '0', 10) / 100).toFixed(2)}`;
+  return formatMoney(cents);
 }
 
 // costPerToken derives cost-per-token as cents per 1000 tokens.
@@ -15,7 +16,8 @@ function costPerToken(row: CostBreakdownRow): string {
   const tokens = parseInt(row.totalTokens || '0', 10);
   if (tokens === 0) return '—';
   const cents = parseInt(row.totalCostCents || '0', 10);
-  return `$${((cents / tokens) * 1000 / 100).toFixed(4)}/1k`;
+  // A per-1k price needs more precision than an amount does.
+  return `${formatAmount((cents / tokens) * 1000, 4)}/1k`;
 }
 
 export default function CostBreakdownTable({

@@ -13,6 +13,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { usePlatformDisplay } from '../platform';
 import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
 
 interface PricesResponse {
@@ -207,7 +208,10 @@ function SetPriceDialog({
   const [inputRate, setInputRate] = useState('');
   const [outputRate, setOutputRate] = useState('');
   const [cachedRate, setCachedRate] = useState('0');
-  const [currency, setCurrency] = useState('USD');
+  // A new price is authored in the platform's display currency by default;
+  // the operator can still price a model in another currency.
+  const platform = usePlatformDisplay();
+  const [currency, setCurrency] = useState(platform.currency);
   const [tiers, setTiers] = useState<PriceTier[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');

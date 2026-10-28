@@ -36,7 +36,6 @@ import InvitationsPage from './pages/InvitationsPage';
 import SSOProvidersPage from './pages/SSOProvidersPage';
 import IdentityBindingsPage from './pages/IdentityBindingsPage';
 import ModelsPage from './pages/ModelsPage';
-import ModelDownloadsPage from './pages/ModelDownloadsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
 import ModelVersionsPage from './pages/ModelVersionsPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
@@ -125,15 +124,20 @@ import UserOptimizationPage from './pages/user/UserOptimizationPage';
 import DataExportPage from './pages/DataExportPage';
 import NotFoundPage from './pages/NotFoundPage';
 import { ErrorBoundary } from './components';
+import { PlatformDisplayProvider } from './platform';
 
 export default function App() {
   return (
     <I18nProvider>
-      <Router>
-        <ErrorBoundary>
-          <SurfaceRouter />
-        </ErrorBoundary>
-      </Router>
+      {/* The installation's display preferences are read once per boot, so
+          every surface renders the same time zone and currency. */}
+      <PlatformDisplayProvider>
+        <Router>
+          <ErrorBoundary>
+            <SurfaceRouter />
+          </ErrorBoundary>
+        </Router>
+      </PlatformDisplayProvider>
     </I18nProvider>
   );
 }
@@ -249,7 +253,6 @@ function AdminSurface() {
               <Route path="/admin/sso" element={<SSOProvidersPage />} />
               <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
               <Route path="/admin/models" element={<ModelsPage />} />
-              <Route path="/admin/model-downloads" element={<ModelDownloadsPage />} />
               <Route path="/admin/models/:id" element={<ModelDetailPage />} />
               <Route path="/admin/models/:id/versions" element={<ModelVersionsPage />} />
               <Route path="/admin/images" element={<ImagesPage />} />

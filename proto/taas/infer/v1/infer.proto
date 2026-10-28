@@ -343,10 +343,10 @@ message CreateInferenceServiceRequest {
   // argument exactly as it should appear on the command line.
   repeated string extra_args = 13;
   // topology selects how the service is laid out on the fleet, as one of
-  // "single" (one pod per replica), "distributed" (one pod group per
-  // replica: tensor/pipeline parallelism) or "pd" (separate prefill and
-  // decode roles). Empty reads as "single". Every layout is realized by an
-  // AIBrix StormService.
+  // "single" (one pod per replica), "multinode" (one pod per worker, spread
+  // across machines) or "pd" (separate prefill and decode roles). Empty
+  // reads as "single". "distributed" is accepted as the pre-rename name of
+  // "multinode". Every layout is realized by an AIBrix StormService.
   string topology = 14;
   // tensor_parallel_size is the number of GPUs one replica shards the
   // model across (distributed and PD topologies).
@@ -360,6 +360,25 @@ message CreateInferenceServiceRequest {
   // decode_replicas is the number of decode workers in a PD
   // disaggregated service. Ignored for the other topologies.
   int32 decode_replicas = 18;
+  // role_engine_args overrides the engine arguments per role, so the
+  // prefill and decode roles of a PD service (or the worker role of a
+  // multi-machine service) can each be tuned: different memory fractions,
+  // sequence limits and so on. An entry overrides the shared engine_args
+  // for that role only; roles without an entry use engine_args as-is.
+  repeated RoleEngineArgs role_engine_args = 19;
+}
+
+// RoleEngineArgs carries the engine arguments of one storm role.
+message RoleEngineArgs {
+  // role is "worker" (single-node and multi-machine), "prefill" or
+  // "decode".
+  string role = 1;
+  // engine_args are the role's engine parameters, keyed by flag name
+  // without the leading dashes; they override the shared set.
+  map<string, string> engine_args = 2;
+  // extra_args are the role's free-form arguments, appended after the
+  // shared ones.
+  repeated string extra_args = 3;
 }
 
 message CreateInferenceServiceResponse {
@@ -541,6 +560,10 @@ message UpdateInferenceServiceTopologyRequest {
   int32 decode_replicas = 6;
   // replicas is the number of replica groups. 0 keeps the current count.
   int32 replicas = 7;
+  // role_engine_args replaces the per-role engine arguments. An empty list
+  // keeps the stored ones; a role present here overrides the shared
+  // engine_args for that role only.
+  repeated RoleEngineArgs role_engine_args = 8;
 }
 
 message UpdateInferenceServiceTopologyResponse {

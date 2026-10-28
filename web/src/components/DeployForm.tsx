@@ -53,6 +53,43 @@ interface CreateResponse {
 // accelerator inventory), never from a constant: offering hardware the
 // cluster does not have only produces an unschedulable pod.
 
+// RoleArgState is one role's own engine parameters.
+interface RoleArgState {
+  args: Record<string, string>;
+  extra: string[];
+}
+
+// rolesForTopology returns the roles the chosen layout runs. A single-node
+// deploy has the worker role only, so it needs no per-role section.
+function rolesForTopology(topology: ServingTopology): string[] {
+  switch (topology) {
+    case 'pd':
+      return ['prefill', 'decode'];
+    case 'multinode':
+      return ['worker'];
+    default:
+      return [];
+  }
+}
+
+// roleArgPayload turns the per-role state into the wire list, dropping roles
+// the operator left empty so the request carries only real overrides.
+function roleArgPayload(state: Record<string, RoleArgState>): Array<{
+  role: string;
+  engineArgs: Record<string, string>;
+  extraArgs: string[];
+}> {
+  return Object.entries(state)
+    .map(([role, value]) => ({
+      role,
+      engineArgs: Object.fromEntries(
+        Object.entries(value.args).filter(([, v]) => v !== undefined && v !== ''),
+      ),
+      extraArgs: value.extra.map((a) => a.trim()).filter(Boolean),
+    }))
+    .filter((entry) => Object.keys(entry.engineArgs).length > 0 || entry.extraArgs.length > 0);
+}
+
 // topologySummary renders how many pods the layout will create, so an
 // operator sees the footprint before deploying: a PD storm runs prefill and
 // decode pods per replica, a distributed one runs one pod group per replica.
@@ -66,7 +103,9 @@ function topologySummary(
   decode: number,
 ): string {
   if (topology === 'pd') {
-    const podsPerReplica = prefill + decode;
+    // Each role runs one pod per worker, so the pod count is the role counts
+    // times the shard count.
+    const podsPerReplica = (prefill + decode) * tp * pp;
     return t('deploy.topologySummaryPd', {
       replicas: String(replicas),
       prefill: String(prefill),
@@ -75,9 +114,9 @@ function topologySummary(
       cards: String(tp * pp),
     });
   }
-  return t('deploy.topologySummaryDistributed', {
+  return t('deploy.topologySummaryMultiNode', {
     replicas: String(replicas),
-    pods: String(replicas),
+    pods: String(replicas * tp * pp),
     cards: String(tp * pp),
   });
 }
@@ -138,6 +177,10 @@ export default function DeployForm({
   // engine is a property of the chosen image, so the catalog follows it.
   const [engineArgs, setEngineArgs] = useState<Record<string, string>>({});
   const [extraArgs, setExtraArgs] = useState<string[]>([]);
+  // Per-role engine parameters: a multi-machine or PD layout runs several
+  // roles, and each may need its own tuning (memory fraction, sequence
+  // limits). The shared section above acts as the default they inherit.
+  const [roleArgs, setRoleArgs] = useState<Record<string, RoleArgState>>({});
 
   useEffect(() => {
     // Feature #52 (AD2): the pool list for the deploy form. The deploy
@@ -200,7 +243,12 @@ export default function DeployForm({
     // registered model rather than one organization's subset.
     api
       .get<ListModelsResponse>('/api/v1/admin/models?page.limit=200', orgId)
-      .then((data) => setAuthorizedModels(data.models || []))
+      .then((data) =>
+        // An external model is served by its provider over that provider's
+        // API: there are no weights to place on this platform, so it cannot
+        // be deployed here and must not be offered.
+        setAuthorizedModels((data.models || []).filter((m) => !m.external)),
+      )
       .catch(() => setAuthorizedModels([]));
   }, [orgId]);
 
@@ -247,8 +295,8 @@ export default function DeployForm({
     // Topology: a distributed deploy needs more than one pod per replica,
     // and PD needs an engine that speaks the prefill/decode split (the
     // server enforces the same rules).
-    if (topology === 'distributed' && tp * pp < 2) {
-      setError(t('deploy.errorDistributedParallel'));
+    if (topology === 'multinode' && tp * pp < 2) {
+      setError(t('deploy.errorMultiNodeParallel'));
       return;
     }
     if (topology === 'pd') {
@@ -301,6 +349,7 @@ export default function DeployForm({
         topology,
         tensorParallelSize: String(tp),
         pipelineParallelSize: String(pp),
+        roleEngineArgs: roleArgPayload(roleArgs),
         prefillReplicas: String(parseInt(prefillReplicas, 10) || 1),
         decodeReplicas: String(parseInt(decodeReplicas, 10) || 1),
         ...(sharedGpu ? { poolId, sliceTemplateId } : {}),
@@ -458,7 +507,7 @@ export default function DeployForm({
             onChange={(e) => setTopology(e.target.value as ServingTopology)}
           >
             <option value="single">{t('deploy.topologySingle')}</option>
-            <option value="distributed">{t('deploy.topologyDistributed')}</option>
+            <option value="multinode">{t('deploy.topologyMultiNode')}</option>
             <option value="pd">{t('deploy.topologyPd')}</option>
           </select>
           <div className="field-hint">{t('deploy.topologyHint')}</div>
@@ -527,7 +576,7 @@ export default function DeployForm({
             </div>
           </>
         )}
-        {topology === 'distributed' && (
+        {topology === 'multinode' && (
           <div className="form-field full">
             <div className="muted" data-testid="deploy-topology-summary">
               {topologySummary(t, topology, parseInt(replicas, 10) || 1, tp, pp, 1, 1)}
@@ -541,9 +590,39 @@ export default function DeployForm({
         params={params}
         values={engineArgs}
         extraArgs={extraArgs}
+        title={t('deploy.engineParamsShared', { engine })}
         onChange={(name, value) => setEngineArgs((prev) => ({ ...prev, [name]: value }))}
         onExtraChange={setExtraArgs}
       />
+
+      {/* Each role of a multi-machine or PD layout can be tuned on its own;
+          a flag left empty here inherits the shared value above. */}
+      {rolesForTopology(topology).map((role) => (
+        <EngineArgsSection
+          key={role}
+          engine={engine}
+          params={params}
+          values={roleArgs[role]?.args ?? {}}
+          extraArgs={roleArgs[role]?.extra ?? []}
+          title={t('deploy.engineParamsRole', { engine, role: t(`deploy.role.${role}`) })}
+          testId={`deploy-engine-args-${role}`}
+          onChange={(name, value) =>
+            setRoleArgs((prev) => ({
+              ...prev,
+              [role]: {
+                args: { ...(prev[role]?.args ?? {}), [name]: value },
+                extra: prev[role]?.extra ?? [],
+              },
+            }))
+          }
+          onExtraChange={(next) =>
+            setRoleArgs((prev) => ({
+              ...prev,
+              [role]: { args: prev[role]?.args ?? {}, extra: next },
+            }))
+          }
+        />
+      ))}
 
       <h4 style={{ marginBottom: 8 }}>{t('deploy.sharedGpu')}</h4>
       <div className="form-grid">
@@ -723,6 +802,8 @@ function EngineArgsSection({
   params,
   values,
   extraArgs,
+  title,
+  testId = 'deploy-engine-args',
   onChange,
   onExtraChange,
 }: {
@@ -730,16 +811,16 @@ function EngineArgsSection({
   params: EngineParam[];
   values: Record<string, string>;
   extraArgs: string[];
+  title?: string;
+  testId?: string;
   onChange: (name: string, value: string) => void;
   onExtraChange: (next: string[]) => void;
 }) {
   const { t } = useI18n();
   if (!engine) return null;
   return (
-    <div data-testid="deploy-engine-args">
-      <h4 style={{ marginBottom: 8 }}>
-        {t('deploy.engineParams', { engine })}
-      </h4>
+    <div data-testid={testId}>
+      <h4 style={{ marginBottom: 8 }}>{title ?? t('deploy.engineParams', { engine })}</h4>
       {params.length === 0 && (
         <div className="muted" data-testid="deploy-engine-args-none">
           {t('deploy.engineParamsNone', { engine })}

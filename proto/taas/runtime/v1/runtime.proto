@@ -65,6 +65,34 @@ service RuntimeService {
   rpc UpdatePlatformSettings(UpdatePlatformSettingsRequest) returns (UpdatePlatformSettingsResponse) {
     option (google.api.http) = {put: "/api/v1/admin/platform-settings" body: "*"};
   }
+
+  // GetPlatformDisplaySettings returns the installation's display
+  // preferences: the time zone timestamps are rendered in, the console's
+  // default language and the currency amounts are shown in. Served on both
+  // surfaces because every console must render the same units.
+  // Admin-surface API: served under /api/v1/admin as well.
+  rpc GetPlatformDisplaySettings(GetPlatformDisplaySettingsRequest) returns (GetPlatformDisplaySettingsResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/platform-display-settings"
+      additional_bindings {
+        get: "/api/v1/admin/platform-display-settings"
+      }
+    };
+  }
+}
+
+message GetPlatformDisplaySettingsRequest {}
+
+message GetPlatformDisplaySettingsResponse {
+  taas.common.v1.Response response = 1;
+  // timezone is an IANA zone name ("Asia/Shanghai"). Empty means the
+  // browser's own zone.
+  string timezone = 2;
+  // default_language is the console language a first-time visitor gets:
+  // "en" or "zh".
+  string default_language = 3;
+  // currency is the platform's display currency (ISO 4217, e.g. "CNY").
+  string currency = 4;
 }
 
 message GetRuntimeStatusRequest {}
@@ -209,6 +237,14 @@ message PlatformSettings {
   // inference_gateway_hostname the setting is not in effect (for example
   // the chart's route was never created), which the console surfaces.
   repeated string served_hostnames = 7;
+  // timezone is the IANA zone every console renders timestamps in. Empty
+  // means the browser's own zone.
+  string timezone = 8;
+  // default_language is the language a first-time visitor gets ("en" or
+  // "zh").
+  string default_language = 9;
+  // currency is the ISO-4217 code every console shows amounts in.
+  string currency = 10;
 }
 
 message GetPlatformSettingsRequest {}
@@ -222,6 +258,12 @@ message UpdatePlatformSettingsRequest {
   string inference_gateway_hostname = 1;
   string inference_gateway_scheme = 2;
   string inference_gateway_internal_url = 3;
+  // timezone / default_language / currency are the display preferences.
+  // An unknown zone, a language other than en/zh and an unsupported
+  // currency return 12905.
+  string timezone = 4;
+  string default_language = 5;
+  string currency = 6;
 }
 
 message UpdatePlatformSettingsResponse {

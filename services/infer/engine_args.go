@@ -8,6 +8,7 @@ import (
 	"gorm.io/datatypes"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 )
 
 // Serving-engine parameter handling (feature: engine parameters). The
@@ -117,6 +118,87 @@ func ExtraArgsList(stored datatypes.JSON) []string {
 		return nil
 	}
 	var out []string
+	if err := json.Unmarshal(stored, &out); err != nil || len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// RoleEngineArgs is one role's engine parameters. A role entry overrides the
+// shared engine_args for that role only, so a PD service can tune prefill and
+// decode independently (different memory fractions, sequence limits, ...).
+type RoleEngineArgs struct {
+	// Role is "worker" (single node and multi-machine), "prefill" or
+	// "decode".
+	Role string `json:"role"`
+	// EngineArgs are the role's flags, keyed by flag name without dashes.
+	EngineArgs map[string]string `json:"engine_args,omitempty"`
+	// ExtraArgs are the role's free-form arguments.
+	ExtraArgs []string `json:"extra_args,omitempty"`
+}
+
+// roleNames is the closed set of roles a per-role override may name: the
+// storm's roles. An unknown name is a client bug, not a request to ignore.
+var roleNames = map[string]bool{"worker": true, "prefill": true, "decode": true}
+
+// normalizeRoleEngineArgs validates the per-role overrides and returns them as
+// the JSON the service stores. An empty list stores [].
+func normalizeRoleEngineArgs(roles []*inferv1.RoleEngineArgs) (datatypes.JSON, error) {
+	if len(roles) == 0 {
+		return datatypes.JSON("[]"), nil
+	}
+	out := make([]RoleEngineArgs, 0, len(roles))
+	seen := make(map[string]bool, len(roles))
+	for _, raw := range roles {
+		if raw == nil {
+			continue
+		}
+		role := strings.ToLower(strings.TrimSpace(raw.GetRole()))
+		if !roleNames[role] {
+			return nil, apierrors.Newf(apierrors.CodeInferEngineArgsInvalid,
+				"infer: unknown role %q; use worker, prefill or decode", raw.GetRole())
+		}
+		if seen[role] {
+			return nil, apierrors.Newf(apierrors.CodeInferEngineArgsInvalid,
+				"infer: role %q is given twice", role)
+		}
+		seen[role] = true
+		engineArgs, err := normalizeEngineArgs(raw.GetEngineArgs())
+		if err != nil {
+			return nil, err
+		}
+		extraArgs, err := normalizeExtraArgs(raw.GetExtraArgs())
+		if err != nil {
+			return nil, err
+		}
+		entry := RoleEngineArgs{
+			Role:       role,
+			EngineArgs: EngineArgsMap(engineArgs),
+			ExtraArgs:  ExtraArgsList(extraArgs),
+		}
+		// An override with nothing in it is the same as no override.
+		if len(entry.EngineArgs) == 0 && len(entry.ExtraArgs) == 0 {
+			continue
+		}
+		out = append(out, entry)
+	}
+	if len(out) == 0 {
+		return datatypes.JSON("[]"), nil
+	}
+	encoded, err := json.Marshal(out)
+	if err != nil {
+		return nil, apierrors.New(apierrors.CodeInferEngineArgsInvalid)
+	}
+	return datatypes.JSON(encoded), nil
+}
+
+// RoleEngineArgsList decodes the stored per-role overrides. A malformed or
+// absent column yields nil.
+func RoleEngineArgsList(stored datatypes.JSON) []RoleEngineArgs {
+	if len(stored) == 0 {
+		return nil
+	}
+	var out []RoleEngineArgs
 	if err := json.Unmarshal(stored, &out); err != nil || len(out) == 0 {
 		return nil
 	}

@@ -822,6 +822,14 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
+	// An external model is served by its provider over that provider's own
+	// API: the platform has no weights for it, so it cannot be deployed as an
+	// inference service here (10107 MODEL_EXTERNAL).
+	if modelRow.External {
+		return nil, apierrors.Newf(apierrors.CodeModelExternal,
+			"model %s is an external model served by its provider; it cannot be deployed as an inference service",
+			modelRow.Name)
+	}
 	modelVersion, err := modelRepo.FindVersion(ctx, req.GetModelId(), req.GetModelVersion())
 	if err != nil {
 		return nil, err
@@ -880,6 +888,12 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, err
 	}
 	extraArgs, err := normalizeExtraArgs(req.GetExtraArgs())
+	if err != nil {
+		return nil, err
+	}
+	// Per-role overrides: validated here, before any write, so a malformed
+	// role flag never reaches a container command line.
+	roleArgs, err := normalizeRoleEngineArgs(req.GetRoleEngineArgs())
 	if err != nil {
 		return nil, err
 	}
@@ -966,6 +980,7 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		State:           StatePending,
 		EngineArgs:      engineArgs,
 		ExtraArgs:       extraArgs,
+		RoleEngineArgs:  roleArgs,
 		Endpoints:       []string{},
 		Autoscaling:     autoscalingJSON,
 		PoolID:          poolID,
@@ -1472,7 +1487,17 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 		return nil, apierrors.New(apierrors.CodeInferReplicasInvalid)
 	}
 
-	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas); err != nil {
+	// The per-role engine arguments travel with the layout: changing the
+	// roles usually means changing how each role is tuned. A request that
+	// omits them keeps the stored ones.
+	var roleArgs datatypes.JSON
+	if len(req.GetRoleEngineArgs()) > 0 {
+		roleArgs, err = normalizeRoleEngineArgs(req.GetRoleEngineArgs())
+		if err != nil {
+			return nil, err
+		}
+	}
+	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas, roleArgs); err != nil {
 		return nil, err
 	}
 
@@ -1483,6 +1508,9 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 	updated.PipelineParallelSize = topology.PipelineParallelSize
 	updated.PrefillReplicas = topology.PrefillReplicas
 	updated.DecodeReplicas = topology.DecodeReplicas
+	if len(roleArgs) > 0 {
+		updated.RoleEngineArgs = roleArgs
+	}
 	if replicas > 0 {
 		updated.Replicas = replicas
 	}

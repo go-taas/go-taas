@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 import { navigate } from '../router';
 import { ErrorBanner, Pagination } from '../components';
 import UsageKeysChart, { type UsageKeysMetric } from '../components/UsageKeysChart';
@@ -46,9 +47,9 @@ function errorRatePercent(row: UsageKeyRow): string {
   return `${((parseInt(row.errorCount || '0', 10) / req) * 100).toFixed(1)}%`;
 }
 
-// costDollars formats integer cents as dollars.
+// costDollars renders integer cents in the platform's display currency.
 function costDollars(cents: string): string {
-  return `$${(parseInt(cents || '0', 10) / 100).toFixed(2)}`;
+  return formatMoney(cents);
 }
 
 export default function UsageKeysPage() {

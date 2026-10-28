@@ -61,6 +61,7 @@ var messages = map[Code]string{
 	CodeModelPathInvalid:     "model weight path invalid",
 	// CodeModelUnauthorized is returned by both enforcement points of
 	// per-tenant model authorization (deploy and call).
+	CodeModelExternal:     "external model cannot be deployed",
 	CodeModelUnauthorized: "model not authorized",
 
 	// image

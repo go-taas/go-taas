@@ -76,6 +76,9 @@ type changeEvent struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// RoleEngineArgs overrides EngineArgs per role, so a PD service can tune
+	// prefill and decode independently.
+	RoleEngineArgs []RoleEngineArgs `json:"role_engine_args,omitempty"`
 	// Topology is the serving layout: single, distributed or pd. The
 	// controller turns it into the AIBrix StormService roles.
 	Topology string `json:"topology,omitempty"`
@@ -123,6 +126,7 @@ func buildChangeEvent(eventType string, svc *InferenceService, modelName, weight
 		SliceComputePct: svc.SliceComputePct,
 		EngineArgs:      EngineArgsMap(svc.EngineArgs),
 		ExtraArgs:       ExtraArgsList(svc.ExtraArgs),
+		RoleEngineArgs:  RoleEngineArgsList(svc.RoleEngineArgs),
 		Topology:        storedTopologyName(svc.Topology),
 		TensorParallelSize:   maxInt(svc.TensorParallelSize, 1),
 		PipelineParallelSize: maxInt(svc.PipelineParallelSize, 1),

@@ -31,13 +31,13 @@ func TestFVTCreateServiceWithTopologies(t *testing.T) {
 			tp:       1, pp: 1,
 		},
 		{
-			name: "topology-distributed-svc",
+			name: "topology-multinode-svc",
 			payload: map[string]any{
-				"topology":             "distributed",
+				"topology":             "multinode",
 				"tensorParallelSize":   "4",
 				"pipelineParallelSize": "2",
 			},
-			topology: "distributed",
+			topology: "multinode",
 			tp:       4, pp: 2,
 		},
 		{
@@ -92,7 +92,7 @@ func TestFVTTopologyRejected(t *testing.T) {
 	env := newModelInferEnv(t)
 	modelID := registerFVTCreateModel(t, env, "bad-topology-model")
 
-	// Distributed with one pod is a single-node deploy.
+	// Multi-machine with one pod is a single-node deploy.
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name":               "bad-topology-svc",
 		"modelId":            modelID,
@@ -100,7 +100,7 @@ func TestFVTTopologyRejected(t *testing.T) {
 		"imageId":            "img-vllm-nvidia",
 		"replicas":           "1",
 		"accelerator":        "nvidia",
-		"topology":           "distributed",
+		"topology":           "multinode",
 		"tensorParallelSize": "1",
 	}, "org-fvt")
 	require.Equal(t, http.StatusInternalServerError, code, "body: %v", body)

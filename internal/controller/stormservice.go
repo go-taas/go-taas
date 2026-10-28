@@ -31,7 +31,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-
 )
 
 // stormServiceGVR is the AIBrix StormService resource. There is no vendored
@@ -56,10 +55,18 @@ const roleLabel = "go-taas.com/role"
 // services/infer (the control plane decides the value; the controller only
 // interprets it).
 const (
-	topologySingle      = "single"
+	// topologyMultiNode spreads one replica across several pods, one per
+	// machine. topologyDistributed is its pre-rename name and keeps working
+	// for an older control plane.
+	topologyMultiNode   = "multinode"
 	topologyDistributed = "distributed"
 	topologyPD          = "pd"
 )
+
+// isMultiNode reports whether the event asks for the multi-machine layout.
+func isMultiNode(topology string) bool {
+	return topology == topologyMultiNode || topology == topologyDistributed
+}
 
 // pdKVConnector is the vLLM KV-transfer connector used when the operator did
 // not supply a `kv-transfer-config` of their own. AIBrix's PD examples run
@@ -73,26 +80,42 @@ type stormRole struct {
 	Name string
 	// Replicas is how many pod groups of this role one storm replica runs.
 	Replicas int32
-	// PodGroupSize is how many pods one pod group has. It is 1: parallelism
-	// shards the model inside the pod (see stormRoles).
+	// PodGroupSize is how many pods one pod group has: one pod per worker.
+	// A single-node replica is one pod; a multi-machine replica is one pod
+	// per tensor/pipeline shard, each on its own machine.
 	PodGroupSize int32
 	// EngineRole is the prefill/decode role passed to the engine; empty for
 	// the worker role.
 	EngineRole string
 }
 
+// workerPods is the number of pods (and therefore machines) one replica spans.
+// A single-node replica is one pod; a multi-machine replica is one pod per
+// tensor/pipeline shard.
+func workerPods(evt changeEvent, topology string) int32 {
+	if !isMultiNode(topology) && topology != topologyPD {
+		return 1
+	}
+	tp := evt.TensorParallelSize
+	if tp < 1 {
+		tp = 1
+	}
+	pp := evt.PipelineParallelSize
+	if pp < 1 {
+		pp = 1
+	}
+	return clampReplicas(tp * pp)
+}
+
 // stormRoles turns the requested topology into the storm's role set.
 //
-// Every role runs one pod per worker: parallelism shards the model inside
-// that pod (the pod requests one device per shard), because a multi-pod
-// tensor-parallel group needs a per-rank rendezvous (world size, node rank,
-// master address) that the storm controller does not inject. A "pod group" is
-// therefore always one pod, and the topology is expressed by the roles and by
-// the devices each pod asks for.
+// Every worker is its own pod, so a multi-machine or PD replica spans
+// podGroupSize pods and the pods rendezvous through the headless Service a
+// stateful storm gets (see buildStormService/engineCommand).
 func stormRoles(evt changeEvent) []stormRole {
 	switch evt.Topology {
-	case topologyDistributed:
-		return []stormRole{{Name: stormRoleWorker, Replicas: 1, PodGroupSize: 1}}
+	case topologyMultiNode, topologyDistributed:
+		return []stormRole{{Name: stormRoleWorker, Replicas: 1, PodGroupSize: workerPods(evt, evt.Topology)}}
 	case topologyPD:
 		prefill := clampReplicas(evt.PrefillReplicas)
 		if prefill < 1 {
@@ -102,9 +125,10 @@ func stormRoles(evt changeEvent) []stormRole {
 		if decode < 1 {
 			decode = 1
 		}
+		podGroup := workerPods(evt, topologyPD)
 		return []stormRole{
-			{Name: stormRolePrefill, Replicas: prefill, PodGroupSize: 1, EngineRole: stormRolePrefill},
-			{Name: stormRoleDecode, Replicas: decode, PodGroupSize: 1, EngineRole: stormRoleDecode},
+			{Name: stormRolePrefill, Replicas: prefill, PodGroupSize: podGroup, EngineRole: stormRolePrefill},
+			{Name: stormRoleDecode, Replicas: decode, PodGroupSize: podGroup, EngineRole: stormRoleDecode},
 		}
 	default:
 		return []stormRole{{Name: stormRoleWorker, Replicas: 1, PodGroupSize: 1}}
@@ -126,8 +150,18 @@ func (r *k8sReconciler) buildStormService(ctx context.Context, evt changeEvent) 
 	podAnnotations := routingAnnotations(modelName, serviceName(evt.Name))
 
 	roles := make([]any, 0, len(stormRoles(evt)))
+	// A storm whose role spans more than one pod must be stateful: the
+	// controller then creates a headless Service named after the storm and
+	// gives every pod a stable hostname, which is what the workers use to
+	// rendezvous (see engineCommand).
+	stateful := false
 	for _, role := range stormRoles(evt) {
-		spec, roleAnnotations := r.buildPodTemplate(ctx, evt, role.EngineRole)
+		if role.PodGroupSize > 1 {
+			stateful = true
+		}
+	}
+	for _, role := range stormRoles(evt) {
+		spec, roleAnnotations := r.buildPodTemplate(ctx, evt, role)
 		specMap, err := podSpecToMap(spec)
 		if err != nil {
 			return nil, err
@@ -138,6 +172,7 @@ func (r *k8sReconciler) buildStormService(ctx context.Context, evt changeEvent) 
 			"name":         role.Name,
 			"replicas":     int64(role.Replicas),
 			"podGroupSize": int64(role.PodGroupSize),
+			"stateful":     stateful,
 			"template": map[string]any{
 				"metadata": map[string]any{
 					"labels":      stringMapToAny(roleLabels),
@@ -159,7 +194,7 @@ func (r *k8sReconciler) buildStormService(ctx context.Context, evt changeEvent) 
 		},
 		"spec": map[string]any{
 			"replicas": int64(clampReplicas(evt.Replicas)),
-			"stateful": false,
+			"stateful": stateful,
 			"selector": map[string]any{"matchLabels": stringMapToAny(labels)},
 			// One storm replica is replaced at a time: a PD pair needs both
 			// roles up to serve, so a rolling update never takes more than

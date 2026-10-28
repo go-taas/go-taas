@@ -66,7 +66,12 @@ type InferenceService struct {
 	// ExtraArgs are free-form engine arguments appended after EngineArgs,
 	// so a parameter the console does not know about is still usable.
 	ExtraArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
-	// Topology is the serving layout: single, distributed or pd. Empty on a
+	// RoleEngineArgs are the per-role engine-argument overrides, as a JSON
+	// array of {role, engine_args, extra_args}. A role present here
+	// overrides EngineArgs for that role only (PD roles, the multi-machine
+	// worker).
+	RoleEngineArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	// Topology is the serving layout: single, multinode or pd. Empty on a
 	// row written before topologies existed, which reads as single.
 	Topology string `gorm:"size:16;not null;default:'single'"`
 	// TensorParallelSize is the TP degree of one replica (1 for single).

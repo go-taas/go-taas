@@ -93,6 +93,9 @@ const (
 	CodeModelVersionNotFound Code = 10103 // MODEL_VERSION_NOT_FOUND
 	CodeModelPathInvalid     Code = 10104 // MODEL_PATH_INVALID
 	CodeModelUnauthorized    Code = 10105 // MODEL_NOT_AUTHORIZED
+	// CodeModelExternal marks an external model, which a provider serves over
+	// its own API and the platform therefore cannot deploy.
+	CodeModelExternal Code = 10106 // MODEL_EXTERNAL
 )
 
 // image module error codes.

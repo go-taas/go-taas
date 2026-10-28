@@ -16,6 +16,9 @@ export const MOVED_ADMIN_ROUTES: Record<string, string> = {
   '/admin/api-keys': '/api-keys',
   '/admin/request-logs': '/request-logs',
   '/admin/playground': '/playground',
+  // Model downloads became a panel on the model catalog, so a bookmark to
+  // the old page lands where the work happens.
+  '/admin/model-downloads': '/admin/models',
 };
 
 // realmHome returns the landing route of a realm.

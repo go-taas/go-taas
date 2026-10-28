@@ -1,7 +1,11 @@
-// Model downloads page: import a model from a public model hub
+// Model downloads panel: import a model from a public model hub
 // (ModelScope / HuggingFace) into the shared weights filesystem. The
-// download runs as a background job on the server, so the page starts it
+// download runs as a background job on the server, so the panel starts it
 // and polls the job list for progress and the outcome.
+//
+// It is a panel rather than a page: the model catalog is the one place an
+// operator works with models, so importing one belongs there instead of a
+// separate navigation entry.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { navigate } from '../router';
@@ -28,7 +32,7 @@ const HUBS = [
   { value: 'huggingface', label: 'HuggingFace', hint: 'models.downloads.hubHuggingFaceHint' },
 ];
 
-export default function ModelDownloadsPage() {
+export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [downloads, setDownloads] = useState<ModelDownload[]>([]);
@@ -36,6 +40,9 @@ export default function ModelDownloadsPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // The import form is collapsed until asked for: the job list is what an
+  // operator returns to, and the form is a five-field detour.
+  const [formOpen, setFormOpen] = useState(defaultOpen);
 
   const [source, setSource] = useState('modelscope');
   const [hubModelId, setHubModelId] = useState('');
@@ -117,17 +124,25 @@ export default function ModelDownloadsPage() {
   };
 
   return (
-    <div>
-      <div className="page-header">
+    <section data-testid="model-downloads-panel">
+      <div className="section-header">
         <div>
-          <h1>{t('models.downloads.title')}</h1>
+          <h2 style={{ margin: 0 }}>{t('models.downloads.title')}</h2>
           <div className="subtitle">{t('models.downloads.subtitle')}</div>
         </div>
+        <button
+          className={formOpen ? 'secondary' : undefined}
+          data-testid="toggle-download-form"
+          onClick={() => setFormOpen((open) => !open)}
+        >
+          {formOpen ? t('common.cancel') : t('models.downloads.start')}
+        </button>
       </div>
 
       {error && <ErrorBanner message={error} />}
 
-      <div className="panel" style={{ marginBottom: 16 }}>
+      {formOpen && (
+      <div className="panel" style={{ marginBottom: 16 }} data-testid="download-form">
         <h2>{t('models.downloads.formTitle')}</h2>
         <div className="form-grid">
           <div className="form-field">
@@ -200,6 +215,7 @@ export default function ModelDownloadsPage() {
           </button>
         </div>
       </div>
+      )}
 
       <div className="panel">
         <h2>{t('models.downloads.jobsTitle')}</h2>
@@ -268,7 +284,7 @@ export default function ModelDownloadsPage() {
           />
         )}
       </div>
-    </div>
+    </section>
   );
 }
 
