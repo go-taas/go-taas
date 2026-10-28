@@ -1,3 +1,15 @@
+# [1.98.0](https://github.com/go-taas/go-taas/compare/v1.97.0...v1.98.0) (2026-10-28)
+
+
+### Bug Fixes
+
+* **infer:** store a template's model id as text, not uuid ([3862631](https://github.com/go-taas/go-taas/commit/3862631fad0a15f045a66983c6f662a556c111ae))
+
+
+### Features
+
+* **infer,auth,metering,console:** parameter templates, playground key checks and usage fallback ([554e277](https://github.com/go-taas/go-taas/commit/554e277b8a6315cea2cb02e22d3483951a88e9b9))
+
 # [1.97.0](https://github.com/go-taas/go-taas/compare/v1.96.1...v1.97.0) (2026-10-28)
 
 
