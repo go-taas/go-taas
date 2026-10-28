@@ -483,9 +483,17 @@ organization is refused with 10036 regardless of what the client sends.
   without a membership row. Project management is the deliberate exception:
   `RequireMemberRole` reads `org_members` alone, so a platform administrator
   still cannot create, disable or roster a project they do not administer.
-- **Choosing an operating organization.** Because the platform owns no
-  tenant, the platform console renders an organization selector listing the
-  whole registry; picking one makes it the session's active organization
-  (`UpdateSessionOrg` accepts any existing organization for a platform
-  administrator). Pages that are inherently organization-scoped therefore
-  have a context instead of inheriting one from a seeded membership row.
+- **No organization selector in the platform console.** The operator
+  console is platform-wide and never frames itself around one organization:
+  the shell renders no switcher (the end-user console keeps its own, listing
+  the organizations the account joined). A page that needs an organization
+  context - a member roster, an invitation pipeline, a project - chooses it
+  on the page itself.
+- **"No organization" is a valid platform context.** The caller's session
+  roles ride on the request context (`pkg/authctx`, filled by a gRPC
+  interceptor and resolved lazily), so a service can recognise a platform
+  administrator without a resolver of its own. For that caller an
+  unresolvable organization is not an error: reads span every organization -
+  fleet-wide where the surface already supports it (usage, cost, forecast,
+  audit, inference services), empty otherwise - while a write still needs a
+  real, active organization, so an empty id can never create tenant data.
