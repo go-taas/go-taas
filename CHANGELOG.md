@@ -1,3 +1,17 @@
+# [1.95.0](https://github.com/go-taas/go-taas/compare/v1.94.0...v1.95.0) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console:** correct topology hints and the pod/device summary ([aa0f0fc](https://github.com/go-taas/go-taas/commit/aa0f0fc10b246cded2e9fa03ea8e012a89ed8581))
+* **controller,console:** shard parallelism inside one pod and grant the storm RBAC ([7d03c12](https://github.com/go-taas/go-taas/commit/7d03c12e6448965d9b0afb1fe2670c8a65a49205))
+* **controller:** give a parallel replica its own shared memory ([96a5d5b](https://github.com/go-taas/go-taas/commit/96a5d5b919f2fedcb0c31528c54b2a1824887266))
+
+
+### Features
+
+* **infer,controller,console:** stormservice topologies, aibrix autoscaler and registry visibility ([d159525](https://github.com/go-taas/go-taas/commit/d159525354c364c7065230ffc9002d34b8bd6eb5))
+
 # [1.94.0](https://github.com/go-taas/go-taas/compare/v1.93.1...v1.94.0) (2026-10-28)
 
 
