@@ -1,3 +1,10 @@
+# [1.99.0](https://github.com/go-taas/go-taas/compare/v1.98.0...v1.99.0) (2026-10-28)
+
+
+### Features
+
+* **model,infer,controller,console:** local model upload, per-pod resources, Volcano gangs ([47490a4](https://github.com/go-taas/go-taas/commit/47490a40d93e46e504d689bb0be1f5c4a99442cf))
+
 # [1.98.0](https://github.com/go-taas/go-taas/compare/v1.97.0...v1.98.0) (2026-10-28)
 
 
