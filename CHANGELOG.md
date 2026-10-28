@@ -1,3 +1,10 @@
+## [1.91.2](https://github.com/go-taas/go-taas/compare/v1.91.1...v1.91.2) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console,server:** keep the platform console free of an organization selector ([4074b55](https://github.com/go-taas/go-taas/commit/4074b55799e3fcbe321b29143785a1889274ee34))
+
 ## [1.91.1](https://github.com/go-taas/go-taas/compare/v1.91.0...v1.91.1) (2026-10-27)
 
 
