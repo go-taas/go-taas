@@ -1,3 +1,10 @@
+# [1.93.0](https://github.com/go-taas/go-taas/compare/v1.92.1...v1.93.0) (2026-10-28)
+
+
+### Features
+
+* **infer,console:** truthful service states, engine parameters and an inline create form ([d4b2d94](https://github.com/go-taas/go-taas/commit/d4b2d94f86fabf59ef2e3823ab5f064814ced380))
+
 ## [1.92.1](https://github.com/go-taas/go-taas/compare/v1.92.0...v1.92.1) (2026-10-28)
 
 
