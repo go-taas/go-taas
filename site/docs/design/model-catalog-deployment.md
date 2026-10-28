@@ -326,3 +326,16 @@ the engine without a server change. The console renders a per-engine catalog
 catalog does not know. Flag names are validated (lowercase, digits, hyphens,
 underscores) and bounded, so a parameter cannot inject another command; a bad
 name answers 10318 `INFER_ENGINE_ARGS_INVALID`.
+
+## Fleet-driven catalogs and the Harbor import
+
+### Accelerator vendors and card types come from the cluster
+
+The register, import and deploy forms read the accelerator inventory
+(`ListCardTypeSummary`) instead of a constant: the vendor list is whatever the
+nodes report, and the card type is a select of the cards that vendor actually
+carries, with free/total counts. Offering hardware the fleet does not have only
+produces an unschedulable pod; a fleet that grows a vendor needs no console
+change. `cpu` is always offered: a CPU-only image (an embedding server, a small
+classifier, a tokenizer sidecar) runs on any node, and the reconciler then
+requests no accelerator resource at all.
