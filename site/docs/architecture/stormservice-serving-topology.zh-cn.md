@@ -28,6 +28,8 @@ AIBrix 恰好提供了缺失的这套原语：**`StormService`**（`orchestratio
 
 **AD1 —— 每个服务一个承载对象。** storm 的 `spec.replicas` 就是服务的 `replicas`；PD 的一个 storm 副本等于一对 prefill + decode。
 
+**AD1b —— 并行副本拥有独立的共享内存。** 引擎的并行 worker 通过 `/dev/shm` 交换张量；Kubernetes 默认只给 64 MiB，引擎会以 “Insufficient space in /dev/shm” 退出（已在真实集群复现）。因此 `TP × PP > 1` 的副本会挂载一个 2 GiB 的内存型 `emptyDir` 到 `/dev/shm`。
+
 **AD1a —— 并行发生在 Pod 内部，而不是跨 Pod。** 张量/流水并行的副本以**一个** Pod 运行，并按分片数申请设备（`TP × PP` 张卡），`podGroupSize` 保持 1。跨 Pod 的分片组需要每个 rank 的会合信息（world size、node rank、master address），StormService 控制器不会注入这些信息；而 vLLM 在 world size 大于 Pod 可见设备数时会拒绝启动——这在真实集群上已复现（按 Pod 分片时报错 “World size (2) is larger than the number of available GPUs (1)”）。因此多节点推理需要用户自行提供 rank 配置，不在本次范围内。`Service`（`<name>-svc`）、`ModelClaim` 的 Pod 选择器与状态跟随器仍然按共享资源标签（`go-taas.com/service-id`、`app`、`app.kubernetes.io/managed-by`）选中 Pod，角色模板会带上这些标签，因此 Pod 下游的链路完全不变。
 
 **AD2 —— 拓扑是数据，不是代码。** `inference_services.topology` 存 `single` / `distributed` / `pd`，同时存 `tensor_parallel_size`、`pipeline_parallel_size`、`prefill_replicas`、`decode_replicas`。读取时空值归一化为 `single`（即历史数据行的语义）。接口契约使用同一套小写名称，控制台与后端使用同一词汇。

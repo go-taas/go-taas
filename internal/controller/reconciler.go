@@ -1043,6 +1043,27 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, e
 		}},
 		NodeSelector: nodeSelector,
 	}
+	// A multi-device replica runs the engine as several processes inside the
+	// pod (vLLM's tensor/pipeline parallel workers), and they exchange
+	// tensors through shared memory. Kubernetes defaults /dev/shm to 64 MiB,
+	// which makes the engine die with "Insufficient space in /dev/shm", so a
+	// parallel replica gets a memory-backed volume of its own.
+	if cards := evt.parallelCards(); cards > 1 {
+		size := resource.MustParse("2Gi")
+		spec.Volumes = append(spec.Volumes, corev1.Volume{
+			Name: "shm",
+			VolumeSource: corev1.VolumeSource{
+				EmptyDir: &corev1.EmptyDirVolumeSource{
+					Medium:    corev1.StorageMediumMemory,
+					SizeLimit: &size,
+				},
+			},
+		})
+		spec.Containers[0].VolumeMounts = append(spec.Containers[0].VolumeMounts, corev1.VolumeMount{
+			Name:      "shm",
+			MountPath: "/dev/shm",
+		})
+	}
 	return spec, annotations
 }
 
@@ -1364,14 +1385,18 @@ func autoscalerName(name string) string { return "hpa-" + name }
 // tensor and pipeline parallelism, and 1 for a single-node replica or a
 // shared-GPU slice.
 func (e changeEvent) parallelCards() int {
-	cards := e.TensorParallelSize * e.PipelineParallelSize
-	if cards < 1 {
-		cards = 1
-	}
 	if e.Topology != topologyDistributed && e.Topology != topologyPD {
 		return 1
 	}
-	return cards
+	tp := e.TensorParallelSize
+	if tp < 1 {
+		tp = 1
+	}
+	pp := e.PipelineParallelSize
+	if pp < 1 {
+		pp = 1
+	}
+	return tp * pp
 }
 
 // resourceLabels returns the label set shared by the Deployment and

@@ -354,3 +354,37 @@ func TestTerminalPodFailureInFailsTheGroup(t *testing.T) {
 	}}
 	assert.Contains(t, terminalPodFailureIn(pods), "ImagePullBackOff")
 }
+
+// TestParallelReplicaGetsSharedMemory verifies a tensor/pipeline-parallel
+// replica mounts a memory-backed /dev/shm: the engine's parallel workers
+// exchange tensors through it, and the Kubernetes default (64 MiB) makes the
+// engine die with "Insufficient space in /dev/shm".
+func TestParallelReplicaGetsSharedMemory(t *testing.T) {
+	evt := testChangeEvent("upsert", "demo")
+	evt.Topology = topologyDistributed
+	evt.TensorParallelSize = 2
+
+	spec, _ := testReconciler().buildPodTemplate(context.Background(), evt, "")
+	var shm *corev1.Volume
+	for i := range spec.Volumes {
+		if spec.Volumes[i].Name == "shm" {
+			shm = &spec.Volumes[i]
+		}
+	}
+	require.NotNil(t, shm, "a parallel replica needs a shared-memory volume")
+	require.NotNil(t, shm.EmptyDir)
+	assert.Equal(t, corev1.StorageMediumMemory, shm.EmptyDir.Medium)
+	mounted := false
+	for _, mount := range spec.Containers[0].VolumeMounts {
+		if mount.MountPath == "/dev/shm" {
+			mounted = true
+		}
+	}
+	assert.True(t, mounted, "/dev/shm is backed by the shared-memory volume")
+
+	// A single-device replica keeps the default shm.
+	single, _ := testReconciler().buildPodTemplate(context.Background(), testChangeEvent("upsert", "demo"), "")
+	for _, volume := range single.Volumes {
+		assert.NotEqual(t, "shm", volume.Name)
+	}
+}
