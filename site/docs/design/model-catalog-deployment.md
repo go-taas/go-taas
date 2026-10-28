@@ -292,3 +292,37 @@ Constraints on the contract:
 | Tenant-level model authorization (which tenants may deploy which models) | Feature #6 multi-tenancy |
 | Autoscaling policies, canary upgrades, and blue-green deployment | Future feature point |
 | Fine-tuning flows and custom model onboarding beyond weight-path registration | Future feature point |
+
+## Service states and engine parameters
+
+### State machine
+
+A service reports the phase the cluster is actually in, not a timer:
+
+| state | meaning | who sets it |
+| --- | --- | --- |
+| `pending` | created, the change is still queued in the broker | the create RPC |
+| `queued` | the controller accepted the change; nothing is scheduled yet | controller |
+| `starting` | the scheduler placed a pod on a node; the engine is loading weights | controller |
+| `running` | the engine itself answers its health endpoint (`/health`, SGLang also `/health_generate`) | controller |
+| `failed` | scheduling, image pull, container start or health check failed | controller |
+| `terminated` | deleted | the delete RPC |
+
+A pod that is merely `Running` does not mean the service serves traffic: the
+engine process is up before it has loaded the weights. `starting` exists so
+the console shows that gap. Unschedulable pods, `ImagePullBackOff`,
+`CreateContainerError` and `OOMKilled` fail immediately with the cluster's
+own reason instead of waiting for the 20-minute timeout. `deploying` remains
+reportable for compatibility with an older controller.
+
+### Engine parameters
+
+`CreateInferenceService` accepts `engine_args` (flag name without the leading
+dashes → value; a value prefixed `flag:` is a valueless switch, `flag:false`
+emits nothing) and `extra_args` (free-form arguments appended verbatim). The
+controller turns them into the container command line, so operators can tune
+the engine without a server change. The console renders a per-engine catalog
+(vLLM, SGLang) as typed fields and offers extra rows for everything the
+catalog does not know. Flag names are validated (lowercase, digits, hyphens,
+underscores) and bounded, so a parameter cannot inject another command; a bad
+name answers 10318 `INFER_ENGINE_ARGS_INVALID`.

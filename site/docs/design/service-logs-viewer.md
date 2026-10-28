@@ -275,3 +275,11 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 | A log-aggregation store or LogQL-style query language | Deliberately absent (D2) — logs are read from the Kubernetes API |
 | Log retention / archival | Future refinement — the Kubernetes API's log lifecycle stands |
 | A user-realm logs surface | Deliberately absent (D1) — tenants get request traces, not raw engine stdout |
+
+## Log ordering
+
+The viewer renders lines chronologically: the oldest at the top and the
+newest at the bottom, so new lines append downward like a terminal and the
+pane stays pinned to the newest line. The server still pages newest-first
+(`tail` semantics); the view reverses each page, and "load more" prepends the
+older lines above the current view.
