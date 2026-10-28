@@ -20,7 +20,38 @@ const OrgContext = createContext<{
 
 export function OrgProvider({ children }: { children: ReactNode }) {
   const realm = useRealm();
+  const api = useApi();
   const [orgId, setOrgIdState] = useState(() => getOrgId(realm) || NO_ORG);
+
+  // The session is authoritative for the organization context. A stored id
+  // can outlive the membership that justified it (a roster removal, a
+  // console whose seeded organization was retired), so the first load
+  // reconciles the two: a session with no active organization clears the
+  // stored one instead of framing the console around an organization the
+  // account no longer belongs to.
+  useEffect(() => {
+    if (!getSessionToken(realm)) return undefined;
+    let cancelled = false;
+    api
+      .get<SessionInfo>(`/api/v1${realm === 'admin' ? '/admin' : ''}/auth/session`, '')
+      .then((sess) => {
+        if (cancelled) return;
+        const active = sess.activeOrg || NO_ORG;
+        if (active !== getOrgId(realm)) {
+          setOrgId(realm, active);
+          setOrgIdState(active);
+        }
+      })
+      .catch(() => {
+        // A missing session leaves the stored value alone; the login flow
+        // sets it again.
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Reconcile once per console mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   useEffect(() => {
     document.documentElement.dataset.org = orgId;
@@ -42,9 +73,8 @@ export function useOrg() {
 
 // useOrganizationPicker is the per-page organization selector for the
 // pages that are inherently scoped to one organization (its member roster,
-// its invitation pipeline). The platform console renders a global
-// switcher for the platform administrator, who owns no tenant of their own
-// but reads organization-scoped pages (usage, billing, quotas, audit).
+// its invitation pipeline). The platform console renders no switcher: a
+// platform administrator owns no tenant, so its pages read fleet-wide.
 //
 // The selected organization defaults to the session's active organization
 // (so it matches what the server resolves) and falls back to the first
