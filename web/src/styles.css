@@ -1574,6 +1574,51 @@ button.primary:hover {
   background: linear-gradient(135deg, var(--primary-strong), var(--accent-strong));
 }
 
+/* Tab strip for parameter sets (the shared engine arguments and one tab per
+   role of the chosen layout). Underlined tabs read as a switcher rather than
+   as buttons, and the dot marks a tab that carries values even when it is not
+   the active one. */
+.tab-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 18px 0 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 9px 14px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  border-radius: 8px 8px 0 0;
+  background: transparent;
+  color: var(--muted-strong);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--primary);
+  background: var(--surface-2);
+}
+
+.tab-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

@@ -236,7 +236,7 @@ export default function UsagePage() {
         <div className="dashboard-card">
           <div className="label">{t('usage.totalCost')}</div>
           <div className="value">
-            {cards ? `${formatCents(cards.totalCostCents)} ${cards.currency || 'USD'}` : '—'}
+            {cards ? formatMoney(cards.totalCostCents) : '—'}
           </div>
           {unpriced && (
             <div className="sub">

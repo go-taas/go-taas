@@ -5,12 +5,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   api,
-  formatCents,
   formatTime,
   type BillingAccount,
   type BillingTransaction,
   type PageMeta,
 } from '../api';
+import { displayCurrencyLabel, formatMoney } from '../display';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
@@ -106,16 +106,15 @@ export default function AccountsPage() {
                   <td>{modeBadge(a.mode)}</td>
                   <td>
                     {a.mode === 'prepaid' ? (
-                      <span>
-                        {formatCents(a.balanceCents)} {a.currency}
+                      <span data-testid={`account-balance-${a.accountId}`}>
+                        {formatMoney(a.balanceCents)}
                       </span>
                     ) : (
                       <span>
-                        {formatCents(a.usedThisCycleCents)} /{' '}
+                        {formatMoney(a.usedThisCycleCents)} /{' '}
                         {Number(a.monthlyQuotaCents) > 0
-                          ? formatCents(a.monthlyQuotaCents)
-                          : t('common.unlimited')}{' '}
-                        {a.currency}
+                          ? formatMoney(a.monthlyQuotaCents)
+                          : t('common.unlimited')}
                         {Number(a.monthlyQuotaCents) > 0 && (
                           <progress
                             value={a.quotaUsagePercent}
@@ -129,8 +128,8 @@ export default function AccountsPage() {
                   <td data-testid={`spend-limit-cell-${a.accountId}`}>
                     {Number(a.monthlySpendLimitCents || '0') > 0 ? (
                       <span>
-                        {formatCents(a.spentThisCycleCents || '0')} /{' '}
-                        {formatCents(a.monthlySpendLimitCents || '0')} {a.currency}
+                        {formatMoney(a.spentThisCycleCents || '0')} /{' '}
+                        {formatMoney(a.monthlySpendLimitCents || '0')}
                         <progress
                           value={a.spendLimitUsagePercent || 0}
                           max={100}
@@ -390,10 +389,10 @@ function RechargeDialog({
     >
       {error && <ErrorBanner message={error} />}
       <div className="muted">
-        {t('accounts.rechargeBalance', { balance: formatCents(account.balanceCents), currency: account.currency })}
+        {t('accounts.rechargeBalance', { balance: formatMoney(account.balanceCents), currency: displayCurrencyLabel() })}
       </div>
       <label>
-        {t('accounts.fieldAmount', { currency: account.currency })}
+        {t('accounts.fieldAmount', { currency: displayCurrencyLabel() })}
         <input
           type="number"
           min="0.01"
@@ -485,7 +484,7 @@ function QuotaDialog({
         </select>
       </label>
       <label>
-        {t('accounts.fieldMonthlyQuota2', { currency: account.currency })}
+        {t('accounts.fieldMonthlyQuota2', { currency: displayCurrencyLabel() })}
         <input
           type="number"
           min="0"
@@ -591,27 +590,27 @@ function AccountDetailDialog({
         <div>
           <div className="muted">{t('accounts.balance')}</div>
           <div data-testid="detail-balance">
-            {formatCents(account.balanceCents)} {account.currency}
+            {formatMoney(account.balanceCents)}
           </div>
         </div>
         <div>
           <div className="muted">{t('accounts.monthlyQuota')}</div>
           <div data-testid="detail-quota">
             {Number(account.monthlyQuotaCents) > 0
-              ? `${formatCents(account.monthlyQuotaCents)} ${account.currency}`
+              ? formatMoney(account.monthlyQuotaCents)
               : t('common.unlimited')}
           </div>
         </div>
         <div>
           <div className="muted">{t('accounts.usedThisCycle')}</div>
           <div data-testid="detail-used">
-            {formatCents(account.usedThisCycleCents)} {account.currency}
+            {formatMoney(account.usedThisCycleCents)}
           </div>
         </div>
         <div>
           <div className="muted">{t('accounts.remaining')}</div>
           <div data-testid="detail-remaining">
-            {formatCents(account.remainingCents)} {account.currency}
+            {formatMoney(account.remainingCents)}
           </div>
         </div>
         <div>
@@ -661,8 +660,8 @@ function AccountDetailDialog({
                 <td>
                   <span className={`badge ${tx.type}`}>{tx.type}</span>
                 </td>
-                <td>{formatCents(tx.amountCents)}</td>
-                <td>{formatCents(tx.balanceAfterCents)}</td>
+                <td>{formatMoney(tx.amountCents)}</td>
+                <td>{formatMoney(tx.balanceAfterCents)}</td>
                 <td className="mono">{tx.reference || tx.idempotencyKey}</td>
               </tr>
             ))}

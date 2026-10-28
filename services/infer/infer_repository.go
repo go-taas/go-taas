@@ -195,7 +195,8 @@ func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, 
 // service_id and endpoints are untouched; replicas is only written when
 // non-zero. A miss maps to CodeInferServiceNotFound.
 func (r *InferenceServiceRepository) UpdateTopology(
-	ctx context.Context, orgID, serviceID string, spec TopologySpec, replicas int, roleArgs datatypes.JSON,
+	ctx context.Context, orgID, serviceID string, spec TopologySpec, replicas int,
+	roleArgs datatypes.JSON, scheduling *PodScheduling,
 ) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
 		updates := map[string]any{
@@ -213,6 +214,14 @@ func (r *InferenceServiceRepository) UpdateTopology(
 		// layout change alone must not silently discard them.
 		if len(roleArgs) > 0 {
 			updates["role_engine_args"] = roleArgs
+		}
+		// A nil shape keeps the stored one: a layout change that says
+		// nothing about resources must not resize the pods.
+		if scheduling != nil {
+			updates["gpu_per_pod"] = scheduling.GPUPerPod
+			updates["cpu_milli"] = scheduling.CPUMilli
+			updates["memory_mib"] = scheduling.MemoryMiB
+			updates["priority"] = scheduling.Priority
 		}
 		res := r.DB(ctx).
 			Model(&InferenceService{}).

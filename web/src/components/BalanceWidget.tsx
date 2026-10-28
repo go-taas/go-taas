@@ -9,11 +9,6 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { formatMoney } from '../display';
 
-// formatCents renders integer minor units in the platform's display currency.
-function formatCents(cents: string): string {
-  return formatMoney(cents);
-}
-
 export default function BalanceWidget() {
   const { t } = useI18n();
   const { orgId } = useOrg();
@@ -57,7 +52,6 @@ export default function BalanceWidget() {
     );
   }
 
-  const currency = balance.currency || 'USD';
   if (balance.mode === 'postpaid') {
     const quota = parseInt(balance.monthlyQuotaCents || '0', 10);
     const used = parseInt(balance.usedThisCycleCents || '0', 10);
@@ -66,12 +60,12 @@ export default function BalanceWidget() {
       <div className="balance-widget" data-testid="usage-balance-widget">
         <span className="balance-widget-label">{t('balance.spendThisMonth')}</span>
         <strong>
-          {formatCents(String(used))} {currency}
+          {formatMoney(String(used))}
         </strong>
         {quota > 0 && (
           <span className="muted">
             {' '}
-            / {formatCents(String(quota))} {currency} ({pct}%)
+            / {formatMoney(String(quota))} ({pct}%)
           </span>
         )}
       </div>
@@ -81,7 +75,7 @@ export default function BalanceWidget() {
     <div className="balance-widget" data-testid="usage-balance-widget">
       <span className="balance-widget-label">{t('balance.balance')}</span>
       <strong>
-        {formatCents(balance.balanceCents)} {currency}
+        {formatMoney(balance.balanceCents)}
       </strong>
     </div>
   );

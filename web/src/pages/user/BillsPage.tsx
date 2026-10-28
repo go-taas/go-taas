@@ -6,6 +6,7 @@ import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { formatTime, type BillSummary } from '../../api';
+import { formatMajor } from '../../display';
 
 export default function BillsPage() {
   const api = useApi();
@@ -40,7 +41,7 @@ export default function BillsPage() {
             {bills.map((b) => (
               <tr key={b.billId}>
                 <td>{formatTime(b.periodStart)} – {formatTime(b.periodEnd)}</td>
-                <td>{b.amount} {b.currency}</td>
+                <td>{formatMajor(b.amount)}</td>
                 <td>{b.chargeCount}</td>
               </tr>
             ))}

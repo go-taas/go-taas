@@ -310,6 +310,19 @@ export interface InferenceServiceSummary {
   pipelineParallelSize?: number;
   prefillReplicas?: number;
   decodeReplicas?: number;
+  // Per-pod resource shape and scheduling priority. Every topology accepts
+  // them; the platform schedules the pods through Volcano.
+  scheduling?: PodScheduling;
+}
+
+// PodScheduling is how much of a node one pod asks for, plus the priority it
+// competes with. gpuPerPod 0 reads as 1; cpuCores and memoryMib 0 mean "no
+// request".
+export interface PodScheduling {
+  gpuPerPod?: number;
+  cpuCores?: number;
+  memoryMib?: number;
+  priority?: string;
 }
 
 // ServingTopology is the serving layout. "multinode" spreads one replica

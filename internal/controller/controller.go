@@ -31,6 +31,12 @@ type Reconciler interface {
 	// SetGatewayRouting names the AIBrix Gateway that model HTTPRoutes
 	// attach to. It must be called before serving.
 	SetGatewayRouting(namespace, gateway string)
+
+	// SetScheduling installs the pod-scheduling configuration: the
+	// scheduler inference pods ask for, the PriorityClass names a service
+	// priority maps onto, and the Volcano queue its PodGroup joins. It must
+	// be called before serving.
+	SetScheduling(schedulerName, highClass, normalClass, lowClass, queue string)
 }
 
 // Controller wires the message queue subscriptions to a Reconciler.

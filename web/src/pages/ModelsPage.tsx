@@ -9,6 +9,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
+import UploadModelDialog from '../components/UploadModelDialog';
 
 
 interface ListResponse {
@@ -32,6 +33,9 @@ export default function ModelsPage() {
   // Model downloads live on this page: importing a model and browsing the
   // catalog are the same job, so there is no separate navigation entry.
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  // A local archive upload: the same catalog, filled from the operator's
+  // own disk instead of a public hub.
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<ModelSummary | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -97,6 +101,9 @@ export default function ModelsPage() {
           >
             {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
           </button>
+          <button className="secondary" data-testid="open-model-upload" onClick={() => setUploadOpen(true)}>
+            {t('models.upload.open')}
+          </button>
           <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
             {t('models.register')}
           </button>
@@ -106,6 +113,16 @@ export default function ModelsPage() {
       {error && <ErrorBanner message={error} />}
 
       {downloadsOpen && <ModelDownloadsPanel defaultOpen />}
+
+      {uploadOpen && (
+        <UploadModelDialog
+          onClose={() => setUploadOpen(false)}
+          onDone={() => {
+            setUploadOpen(false);
+            void load();
+          }}
+        />
+      )}
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <input

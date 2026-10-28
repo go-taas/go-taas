@@ -965,6 +965,17 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, err
 	}
 
+	// Per-pod resources and priority: validated before any write, and
+	// checked against the topology (a replica's devices must divide into
+	// pods of the requested size).
+	scheduling, err := NormalizePodScheduling(req.GetScheduling())
+	if err != nil {
+		return nil, err
+	}
+	if err := validatePodsForTopology(topology, scheduling); err != nil {
+		return nil, err
+	}
+
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -999,32 +1010,36 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	}
 
 	svc := &InferenceService{
-		ID:              NewServiceID(),
-		OrganizationID:  orgID,
-		Name:            name,
-		ModelID:         req.GetModelId(),
-		ModelVersion:    modelVersion.Version,
-		ImageID:         req.GetImageId(),
-		Replicas:        replicas,
-		Accelerator:     accelerator,
-		AcceleratorType: strings.TrimSpace(req.GetAcceleratorType()),
-		State:           StatePending,
-		EngineArgs:      engineArgs,
-		ExtraArgs:       extraArgs,
-		RoleEngineArgs:  roleArgs,
-		Endpoints:       []string{},
-		Autoscaling:     autoscalingJSON,
-		PoolID:          poolID,
-		SliceTemplateID: sliceTemplateID,
-		SliceGPUIndex:   -1,
-		SliceMemoryGiB:  sliceInfo.MemoryGiB,
-		SliceComputePct: sliceInfo.ComputePct,
-		ClusterID:       clusterID,
-		Topology:            topology.Topology,
-		TensorParallelSize:  topology.TensorParallelSize,
+		ID:                   NewServiceID(),
+		OrganizationID:       orgID,
+		Name:                 name,
+		ModelID:              req.GetModelId(),
+		ModelVersion:         modelVersion.Version,
+		ImageID:              req.GetImageId(),
+		Replicas:             replicas,
+		Accelerator:          accelerator,
+		AcceleratorType:      strings.TrimSpace(req.GetAcceleratorType()),
+		State:                StatePending,
+		EngineArgs:           engineArgs,
+		ExtraArgs:            extraArgs,
+		RoleEngineArgs:       roleArgs,
+		Endpoints:            []string{},
+		Autoscaling:          autoscalingJSON,
+		PoolID:               poolID,
+		SliceTemplateID:      sliceTemplateID,
+		SliceGPUIndex:        -1,
+		SliceMemoryGiB:       sliceInfo.MemoryGiB,
+		SliceComputePct:      sliceInfo.ComputePct,
+		GPUPerPod:            scheduling.GPUPerPod,
+		CPUMilli:             scheduling.CPUMilli,
+		MemoryMiB:            scheduling.MemoryMiB,
+		Priority:             scheduling.Priority,
+		ClusterID:            clusterID,
+		Topology:             topology.Topology,
+		TensorParallelSize:   topology.TensorParallelSize,
 		PipelineParallelSize: topology.PipelineParallelSize,
-		PrefillReplicas:     topology.PrefillReplicas,
-		DecodeReplicas:      topology.DecodeReplicas,
+		PrefillReplicas:      topology.PrefillReplicas,
+		DecodeReplicas:       topology.DecodeReplicas,
 	}
 	if err := repo.Create(ctx, svc); err != nil {
 		return nil, err
@@ -1528,7 +1543,23 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 			return nil, err
 		}
 	}
-	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas, roleArgs); err != nil {
+
+	// The per-pod shape rides with the layout too, and an omitted shape
+	// keeps the stored one. A change is validated against the new layout:
+	// shrinking the parallelism below the pod size would leave a pod with
+	// devices the engine does not shard across.
+	var scheduling *PodScheduling
+	if req.GetScheduling() != nil {
+		normalized, err := NormalizePodScheduling(req.GetScheduling())
+		if err != nil {
+			return nil, err
+		}
+		if err := validatePodsForTopology(topology, normalized); err != nil {
+			return nil, err
+		}
+		scheduling = &normalized
+	}
+	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas, roleArgs, scheduling); err != nil {
 		return nil, err
 	}
 
@@ -1544,6 +1575,12 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 	}
 	if replicas > 0 {
 		updated.Replicas = replicas
+	}
+	if scheduling != nil {
+		updated.GPUPerPod = scheduling.GPUPerPod
+		updated.CPUMilli = scheduling.CPUMilli
+		updated.MemoryMiB = scheduling.MemoryMiB
+		updated.Priority = scheduling.Priority
 	}
 
 	modelRepo, err := s.modelRepository()
@@ -2009,13 +2046,14 @@ func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *infe
 		// shows as "accelerator", and it was missing from the summary
 		// entirely — the detail page read a field the API never sent, so the
 		// row rendered empty even though the column was populated.
-		Accelerator:     row.Accelerator,
-		AcceleratorType: row.AcceleratorType,
-		Topology:            storedTopologyName(row.Topology),
-		TensorParallelSize:  clampToInt32(maxInt(row.TensorParallelSize, 1)),
+		Accelerator:          row.Accelerator,
+		AcceleratorType:      row.AcceleratorType,
+		Topology:             storedTopologyName(row.Topology),
+		TensorParallelSize:   clampToInt32(maxInt(row.TensorParallelSize, 1)),
 		PipelineParallelSize: clampToInt32(maxInt(row.PipelineParallelSize, 1)),
-		PrefillReplicas:     clampToInt32(row.PrefillReplicas),
-		DecodeReplicas:      clampToInt32(row.DecodeReplicas),
+		PrefillReplicas:      clampToInt32(row.PrefillReplicas),
+		DecodeReplicas:       clampToInt32(row.DecodeReplicas),
+		Scheduling:           schedulingToProto(row),
 	}
 }
 

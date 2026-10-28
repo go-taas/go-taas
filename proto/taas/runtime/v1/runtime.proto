@@ -79,6 +79,36 @@ service RuntimeService {
       }
     };
   }
+
+  // UpdatePlatformDisplaySettings saves only the display preferences. The
+  // gateway settings are a separate page and a separate call: a display
+  // save must never blank a hostname it never showed the operator.
+  rpc UpdatePlatformDisplaySettings(UpdatePlatformDisplaySettingsRequest) returns (UpdatePlatformDisplaySettingsResponse) {
+    option (google.api.http) = {put: "/api/v1/admin/platform-display-settings" body: "*"};
+  }
+}
+
+message UpdatePlatformDisplaySettingsRequest {
+  // timezone is an IANA zone name; empty means the viewer's own zone.
+  string timezone = 1;
+  // default_language is "en" or "zh".
+  string default_language = 2;
+  // currency is the display currency (ISO 4217).
+  string currency = 3;
+}
+
+message UpdatePlatformDisplaySettingsResponse {
+  taas.common.v1.Response response = 1;
+  // timezone / default_language / currency are the saved preferences,
+  // normalized (an unsupported value returns 12905 rather than a silent
+  // default).
+  string timezone = 2;
+  string default_language = 3;
+  string currency = 4;
+  // billing_currency is the platform's settlement currency from the server
+  // configuration. The console prints amounts in the display currency, so
+  // the two are shown side by side: they are meant to be the same.
+  string billing_currency = 5;
 }
 
 message GetPlatformDisplaySettingsRequest {}
@@ -93,6 +123,10 @@ message GetPlatformDisplaySettingsResponse {
   string default_language = 3;
   // currency is the platform's display currency (ISO 4217, e.g. "CNY").
   string currency = 4;
+  // billing_currency is the platform's settlement currency from the server
+  // configuration; amounts are stored in it and printed in the display
+  // currency. Both are returned so the console can warn when they differ.
+  string billing_currency = 5;
 }
 
 message GetRuntimeStatusRequest {}

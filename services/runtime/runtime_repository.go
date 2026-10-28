@@ -105,6 +105,60 @@ func (r *RuntimeRepository) GetPlatformSettings(ctx context.Context) (*PlatformS
 	return &row, nil
 }
 
+// UpdatePlatformDisplaySettings writes only the display preferences of the
+// singleton row, leaving the gateway hostname untouched. It exists so the
+// display-settings page cannot blank a gateway field it never showed: a
+// full-row update from a second page is a data-loss trap.
+func (r *RuntimeRepository) UpdatePlatformDisplaySettings(ctx context.Context, timezone, language, currency, actor string) (*PlatformSetting, error) {
+	now := time.Now().UTC()
+	var out *PlatformSetting
+	err := r.db.WithinTx(ctx, func(ctx context.Context) error {
+		var existing PlatformSetting
+		err := r.db.DB(ctx).Where("id = ?", platformSettingID).First(&existing).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			row := &PlatformSetting{
+				ID:                     platformSettingID,
+				Timezone:               timezone,
+				DefaultLanguage:        language,
+				Currency:               currency,
+				UpdatedBy:              actor,
+				UpdatedAt:              now,
+				CreatedAt:              now,
+				InferenceGatewayScheme: GatewaySchemeHTTPS,
+			}
+			if err := r.db.DB(ctx).Create(row).Error; err != nil {
+				return err
+			}
+			out = row
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		if err := r.db.DB(ctx).Model(&PlatformSetting{}).
+			Where("id = ?", platformSettingID).
+			Updates(map[string]any{
+				"timezone":         timezone,
+				"default_language": language,
+				"currency":         currency,
+				"updated_by":       actor,
+				"updated_at":       now,
+			}).Error; err != nil {
+			return err
+		}
+		stored, err := r.GetPlatformSettings(ctx)
+		if err != nil {
+			return err
+		}
+		out = stored
+		return nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // UpdatePlatformSettings upserts the singleton row and returns it.
 func (r *RuntimeRepository) UpdatePlatformSettings(ctx context.Context, setting *PlatformSetting) (*PlatformSetting, error) {
 	now := time.Now().UTC()

@@ -104,7 +104,19 @@ func workerPods(evt changeEvent, topology string) int32 {
 	if pp < 1 {
 		pp = 1
 	}
-	return clampReplicas(tp * pp)
+	devices := tp * pp
+	// Each pod owns gpu_per_pod devices, so a replica of `devices` devices
+	// spans devices/gpu_per_pod pods. The control plane rejects an uneven
+	// split, so the division is exact; the guard covers a malformed event.
+	perPod := evt.GPUPerPod
+	if perPod < 1 {
+		perPod = 1
+	}
+	pods := devices / perPod
+	if pods < 1 {
+		pods = 1
+	}
+	return clampReplicas(pods)
 }
 
 // stormRoles turns the requested topology into the storm's role set.
@@ -168,6 +180,13 @@ func (r *k8sReconciler) buildStormService(ctx context.Context, evt changeEvent) 
 		}
 		roleLabels := mergeLabels(podLabels, map[string]string{roleLabel: role.Name})
 		roleAnnotationSet := mergeLabels(podAnnotations, roleAnnotations)
+		// A gang-scheduled pod joins its PodGroup through this annotation;
+		// without it Volcano schedules it on its own and the gang guarantee
+		// the group exists for is lost.
+		if r.gangScheduling() {
+			roleAnnotationSet = mergeLabels(roleAnnotationSet,
+				map[string]string{podGroupAnnotation: podGroupName(evt)})
+		}
 		roles = append(roles, map[string]any{
 			"name":         role.Name,
 			"replicas":     int64(role.Replicas),

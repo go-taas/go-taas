@@ -10,8 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 	"gorm.io/gorm"
+	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
 
 	"github.com/go-taas/go-taas/internal/controller"
 	"github.com/go-taas/go-taas/pkg/config"
@@ -72,6 +72,13 @@ func main() {
 	// own namespace, so the controller writes model routes next to the
 	// Gateway the AIBrix install declares.
 	reconciler.SetGatewayRouting(cfg.Runtime.AIBrix.Namespace, cfg.Runtime.AIBrix.GatewayName)
+	reconciler.SetScheduling(
+		cfg.Controller.Scheduling.SchedulerName,
+		cfg.Controller.Scheduling.PriorityClassHigh,
+		cfg.Controller.Scheduling.PriorityClassNormal,
+		cfg.Controller.Scheduling.PriorityClassLow,
+		cfg.Controller.Scheduling.Queue,
+	)
 	reconciler.SetVGPUConfig(
 		cfg.VGPU.HAMI.PolicyAnnotation,
 		"binpack",

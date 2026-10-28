@@ -43,6 +43,7 @@ import ServiceDetailPage from './pages/ServiceDetailPage';
 import ClustersPage from './pages/ClustersPage';
 import ClusterDetailPage from './pages/ClusterDetailPage';
 import GatewaySettingsPage from './pages/GatewaySettingsPage';
+import DisplaySettingsPage from './pages/DisplaySettingsPage';
 import ProvidersPage from './pages/ProvidersPage';
 import ProviderDetailPage from './pages/ProviderDetailPage';
 import ServiceLogsPage from './pages/ServiceLogsPage';
@@ -263,6 +264,7 @@ function AdminSurface() {
               <Route path="/admin/clusters" element={<ClustersPage />} />
               <Route path="/admin/clusters/:clusterId" element={<ClusterDetailPage />} />
               <Route path="/admin/settings" element={<GatewaySettingsPage />} />
+              <Route path="/admin/display-settings" element={<DisplaySettingsPage />} />
               <Route path="/admin/providers" element={<ProvidersPage />} />
               <Route path="/admin/providers/:providerId" element={<ProviderDetailPage />} />
               <Route path="/admin/inference-services/:id" element={<ServiceDetailPage />} />

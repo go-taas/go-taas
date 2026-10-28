@@ -123,6 +123,28 @@ func main() {
 	if cfg.Model.WeightsDir != "" {
 		modelSvc.SetWeightsDir(cfg.Model.WeightsDir)
 		modelSvc.SetModelDownloader(modelhub.NewHTTPDownloader(modelhub.Options{}))
+		// The local upload endpoint extracts an archive into the same
+		// weights filesystem and registers the model, so an uploaded model
+		// is indistinguishable from a downloaded one.
+		srv.SetModelUpload(func(ctx context.Context, req server.ModelUploadRequest) (*server.ModelUploadResult, error) {
+			res, err := modelSvc.UploadModel(ctx, model.UploadModelRequest{
+				ArchivePath:  req.ArchivePath,
+				OriginalName: req.OriginalName,
+				Name:         req.Name,
+				Version:      req.Version,
+				Description:  req.Description,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &server.ModelUploadResult{
+				ModelID:    res.ModelID,
+				Version:    res.Version,
+				WeightPath: res.WeightPath,
+				Bytes:      res.Bytes,
+				Files:      res.Files,
+			}, nil
+		})
 	}
 	// Feature #48: the provider service owns the external-provider
 	// registry, the encrypted write-only keys, upstream-model curation, the

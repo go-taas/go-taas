@@ -12,6 +12,7 @@ import { useI18n } from '../../i18n';
 import { navigate } from '../../router';
 import { formatTime, type PageMeta } from '../../api';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../../components';
+import { formatMoney } from '../../display';
 
 export interface BatchJob {
   batchId: string;
@@ -183,7 +184,7 @@ export default function UserBatchPage() {
                     {job.succeededRequests} / {job.failedRequests}
                   </td>
                   <td>
-                    {job.cost} {job.currency}
+                    {formatMoney(job.cost)}
                   </td>
                   <td>{formatTime(job.createdAt)}</td>
                   <td>

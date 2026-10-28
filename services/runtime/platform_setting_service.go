@@ -192,7 +192,77 @@ func (s *Service) GetPlatformDisplaySettings(ctx context.Context, _ *runtimev1.G
 		Timezone:        row.Timezone,
 		DefaultLanguage: displayLanguage(row.DefaultLanguage),
 		Currency:        displayCurrency(row.Currency),
+		BillingCurrency: billingCurrency(),
 	}, nil
+}
+
+// billingCurrency is the platform's settlement currency from the server
+// configuration. Amounts are stored in it; the console prints them in the
+// display currency. They are meant to be the same value, so the page shows
+// both.
+func billingCurrency() string {
+	cfg := config.GetConfig()
+	if cfg == nil {
+		return ""
+	}
+	return strings.ToUpper(strings.TrimSpace(cfg.Billing.Currency))
+}
+
+// UpdatePlatformDisplaySettings saves the three display preferences and
+// nothing else. The gateway settings live on their own page: a save here must
+// never blank a hostname the operator did not see.
+func (s *Service) UpdatePlatformDisplaySettings(ctx context.Context, req *runtimev1.UpdatePlatformDisplaySettingsRequest) (*runtimev1.UpdatePlatformDisplaySettingsResponse, error) {
+	if err := s.requireAdminRole(ctx); err != nil {
+		return nil, err
+	}
+	timezone, err := normaliseTimezone(req.GetTimezone())
+	if err != nil {
+		return nil, err
+	}
+	language, err := normaliseLanguage(req.GetDefaultLanguage())
+	if err != nil {
+		return nil, err
+	}
+	currency, err := normaliseCurrency(req.GetCurrency())
+	if err != nil {
+		return nil, err
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	row, err := repo.UpdatePlatformDisplaySettings(ctx, timezone, language, currency, s.actor(ctx))
+	if err != nil {
+		return nil, err
+	}
+	if s.auditRecorder != nil {
+		afterJSON, _ := json.Marshal(map[string]string{
+			"timezone":        row.Timezone,
+			"defaultLanguage": row.DefaultLanguage,
+			"currency":        row.Currency,
+		})
+		s.auditRecorder.Record(ctx, &audit.AuditEvent{
+			ActorUserID:  s.actor(ctx),
+			ActorType:    "user",
+			Action:       "platform.display_settings_changed",
+			ResourceType: "runtime",
+			ResourceID:   platformSettingID,
+			Result:       "success",
+			Metadata:     string(mustJSON(map[string]string{"after": string(afterJSON)})),
+		})
+	}
+	return &runtimev1.UpdatePlatformDisplaySettingsResponse{
+		Response:        okResponse(),
+		Timezone:        displayTimezone(row.Timezone),
+		DefaultLanguage: displayLanguage(row.DefaultLanguage),
+		Currency:        displayCurrency(row.Currency),
+		BillingCurrency: billingCurrency(),
+	}, nil
+}
+
+// displayTimezone normalises a stored zone, which is stored as typed.
+func displayTimezone(stored string) string {
+	return strings.TrimSpace(stored)
 }
 
 // InferenceGateway returns the operator-configured data-plane endpoint.

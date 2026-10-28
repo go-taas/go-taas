@@ -12,6 +12,7 @@ import {
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, StateBadge, usePolling } from '../components';
+import { formatMajor } from '../display';
 
 interface BillsResponse {
   response: { code: number; message: string };
@@ -108,7 +109,7 @@ export default function BillsPage() {
                   </td>
                   <td>{monthLabel(b.periodStart)}</td>
                   <td>
-                    {b.amount.toFixed(2)} {b.currency}
+                    {formatMajor(b.amount)}
                   </td>
                   <td>{b.chargeCount}</td>
                   <td>
@@ -224,7 +225,7 @@ function ChargesDialog({
                   <td>{c.requestCount}</td>
                   <td>
                     {c.priced ? (
-                      `${c.amount.toFixed(2)} ${c.currency}`
+                      formatMajor(c.amount)
                     ) : (
                       <StateBadge state="unpriced" />
                     )}

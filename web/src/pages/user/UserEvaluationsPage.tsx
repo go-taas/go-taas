@@ -4,6 +4,7 @@ import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { navigate, useParams } from '../../router';
 import { Dialog, ErrorBanner } from '../../components';
+import { formatMoney } from '../../display';
 
 interface Prompt { promptId: string; name: string; version: string; }
 interface Model { modelId: string; name: string; }
@@ -19,10 +20,12 @@ interface Comparison { left: Run; right: Run; passRateDeltaMilli: number; costDe
 
 const RUN_POLL_MS = 2000;
 
-function formatMinor(minor: number, currency: string): string {
-  const units: Record<string, number> = { USD: 100, CNY: 100, EUR: 100 };
-  const factor = units[currency] || 100;
-  return `${(minor / factor).toFixed(4)} ${currency || 'USD'}`;
+// formatMinor renders a minor-unit cost in the platform's display currency.
+// The record's own currency is deliberately ignored: the installation shows
+// one currency, and printing a stored code here is what made this page keep
+// saying USD after the platform switched to CNY.
+function formatMinor(minor: number): string {
+  return formatMoney(String(minor));
 }
 
 export default function UserEvaluationsPage() {
@@ -83,13 +86,13 @@ export function UserEvaluationRunPage() {
     {error && <ErrorBanner message={error} />}
     {run && <section className="section" data-testid="evaluation-run-summary"><div className="stats-grid">
       <div className="stat"><span className="stat-label">{t('evaluations.passRate')}</span><span className="stat-value" data-testid="evaluation-run-pass-rate">{passRate}</span></div>
-      <div className="stat"><span className="stat-label">{t('evaluations.totalCost')}</span><span className="stat-value" data-testid="evaluation-run-total-cost">{formatMinor(run.totalCostMinor, run.currency)}</span></div>
+      <div className="stat"><span className="stat-label">{t('evaluations.totalCost')}</span><span className="stat-value" data-testid="evaluation-run-total-cost">{formatMinor(run.totalCostMinor)}</span></div>
       <div className="stat"><span className="stat-label">{t('evaluations.medianLatency')}</span><span className="stat-value" data-testid="evaluation-run-median-latency">{run.medianLatencyMs ? `${run.medianLatencyMs} ms` : '—'}</span></div>
       <div className="stat"><span className="stat-label">{t('evaluations.passed')}</span><span className="stat-value">{run.passedCount}</span></div>
       <div className="stat"><span className="stat-label">{t('evaluations.failed')}</span><span className="stat-value">{run.failedCount}</span></div>
       <div className="stat"><span className="stat-label">{t('evaluations.errorMessage')}</span><span className="stat-value">{run.errorCount}</span></div>
     </div></section>}
-    {run && <section className="section"><div className="section-header"><h2>{t('evaluations.testCases')}</h2></div>{!run.cases?.length ? <div className="empty" data-testid="evaluation-run-results-empty">{t('evaluations.noCases')}</div> : <table className="table" data-testid="evaluation-run-results"><thead><tr><th>{t('common.name')}</th><th>{t('common.status')}</th><th>{t('evaluations.output')}</th><th>{t('evaluations.checkResults')}</th><th>{t('evaluations.inputTokens')}</th><th>{t('evaluations.outputTokens')}</th><th>{t('evaluations.latency')}</th><th>{t('evaluations.cost')}</th></tr></thead><tbody>{run.cases.map((item) => <tr key={item.resultId || item.caseId} data-testid={`evaluation-run-case-${item.caseId}`}><td>{item.caseName}</td><td data-testid={`evaluation-run-case-status-${item.caseId}`}>{item.status}</td><td className="mono">{item.completion || (item.errorMessage ? <span className="danger" title={item.errorMessage}>{item.errorMessage}</span> : '—')}</td><td>{(item.checkResults || []).map((c, i) => <span key={i} className={c.passed ? 'ok' : 'danger'}>{c.type}: {c.passed ? t('evaluations.passed') : t('evaluations.failed')}</span>)}</td><td>{item.inputTokens}</td><td>{item.outputTokens}</td><td>{item.latencyMs ? `${item.latencyMs} ms` : '—'}</td><td>{item.costMinor ? formatMinor(item.costMinor, item.currency) : '—'}</td></tr>)}</tbody></table>}</section>}
+    {run && <section className="section"><div className="section-header"><h2>{t('evaluations.testCases')}</h2></div>{!run.cases?.length ? <div className="empty" data-testid="evaluation-run-results-empty">{t('evaluations.noCases')}</div> : <table className="table" data-testid="evaluation-run-results"><thead><tr><th>{t('common.name')}</th><th>{t('common.status')}</th><th>{t('evaluations.output')}</th><th>{t('evaluations.checkResults')}</th><th>{t('evaluations.inputTokens')}</th><th>{t('evaluations.outputTokens')}</th><th>{t('evaluations.latency')}</th><th>{t('evaluations.cost')}</th></tr></thead><tbody>{run.cases.map((item) => <tr key={item.resultId || item.caseId} data-testid={`evaluation-run-case-${item.caseId}`}><td>{item.caseName}</td><td data-testid={`evaluation-run-case-status-${item.caseId}`}>{item.status}</td><td className="mono">{item.completion || (item.errorMessage ? <span className="danger" title={item.errorMessage}>{item.errorMessage}</span> : '—')}</td><td>{(item.checkResults || []).map((c, i) => <span key={i} className={c.passed ? 'ok' : 'danger'}>{c.type}: {c.passed ? t('evaluations.passed') : t('evaluations.failed')}</span>)}</td><td>{item.inputTokens}</td><td>{item.outputTokens}</td><td>{item.latencyMs ? `${item.latencyMs} ms` : '—'}</td><td>{item.costMinor ? formatMinor(item.costMinor) : '—'}</td></tr>)}</tbody></table>}</section>}
   </div>;
 }
 
@@ -109,7 +112,7 @@ export function UserEvaluationComparePage() {
     </div><div className="dialog-actions"><button data-testid="compare-runs" disabled={!left || !right || left === right} onClick={() => void compare()}>{t('evaluations.compared')}</button></div></section>
     {comparison && <><section className="section" data-testid="evaluation-compare-summary"><div className="stats-grid">
       <div className="stat"><span className="stat-label">{t('evaluations.passRateDelta')}</span><span className="stat-value" data-testid="compare-pass-rate-delta">{(comparison.passRateDeltaMilli / 10).toFixed(1)}%</span></div>
-      <div className="stat"><span className="stat-label">{t('evaluations.costDelta')}</span><span className="stat-value" data-testid="compare-cost-delta">{formatMinor(comparison.costDeltaMinor, comparison.right?.currency || comparison.left?.currency || 'USD')}</span></div>
+      <div className="stat"><span className="stat-label">{t('evaluations.costDelta')}</span><span className="stat-value" data-testid="compare-cost-delta">{formatMinor(comparison.costDeltaMinor)}</span></div>
       <div className="stat"><span className="stat-label">{t('evaluations.latencyDelta')}</span><span className="stat-value" data-testid="compare-latency-delta">{comparison.medianLatencyDeltaMs} ms</span></div>
     </div></section>
     <section className="section"><div className="section-header"><h2>{t('evaluations.testCases')}</h2></div><table className="table" data-testid="evaluation-compare-cases"><thead><tr><th>{t('common.name')}</th><th>{t('evaluations.leftRun')}</th><th>{t('evaluations.rightRun')}</th></tr></thead><tbody>{comparison.cases.map((item) => <tr key={item.caseId} data-testid={`compare-case-${item.caseId}`}><td>{item.caseName}{item.onlyInLeft && <span className="muted"> · {t('evaluations.onlyInLeft')}</span>}{item.onlyInRight && <span className="muted"> · {t('evaluations.onlyInRight')}</span>}</td><td className="mono">{item.left ? `${item.left.status} · ${item.left.completion || item.left.errorMessage || '—'}` : '—'}</td><td className="mono">{item.right ? `${item.right.status} · ${item.right.completion || item.right.errorMessage || '—'}` : '—'}</td></tr>)}</tbody></table></section></>}

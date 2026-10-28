@@ -28,11 +28,6 @@ interface PlatformSettings {
   // Hostnames the data-plane route actually serves right now. When the
   // saved hostname is missing here, the setting is not in effect.
   servedHostnames?: string[];
-  // Installation-wide display preferences: every console renders timestamps
-  // in this zone and amounts in this currency.
-  timezone?: string;
-  defaultLanguage?: string;
-  currency?: string;
 }
 
 interface SettingsResponse {
@@ -48,29 +43,7 @@ const EMPTY: PlatformSettings = {
   updatedBy: '',
   updatedAt: '',
   servedHostnames: [],
-  timezone: '',
-  defaultLanguage: 'zh',
-  currency: 'CNY',
 };
-
-// TIMEZONES are the zones the operator can pick. A curated list beats a free
-// text field: an invalid IANA name is rejected by the server, and typing one
-// from memory is a common mistake. "Empty" keeps each viewer's own zone.
-const TIMEZONES = [
-  '',
-  'Asia/Shanghai',
-  'Asia/Hong_Kong',
-  'Asia/Tokyo',
-  'Asia/Singapore',
-  'UTC',
-  'Europe/London',
-  'Europe/Berlin',
-  'America/New_York',
-  'America/Los_Angeles',
-];
-
-// CURRENCIES are the display currencies the platform can price in.
-const CURRENCIES = ['CNY', 'USD', 'EUR', 'HKD', 'JPY'];
 
 export default function GatewaySettingsPage() {
   const api = useApi();
@@ -86,9 +59,6 @@ export default function GatewaySettingsPage() {
   const [hostname, setHostname] = useState('');
   const [scheme, setScheme] = useState('https');
   const [internalUrl, setInternalUrl] = useState('');
-  const [timezone, setTimezone] = useState('');
-  const [language, setLanguage] = useState('zh');
-  const [currency, setCurrency] = useState('CNY');
   const [meta, setMeta] = useState<PlatformSettings>(EMPTY);
 
   const load = useCallback(async () => {
@@ -100,9 +70,6 @@ export default function GatewaySettingsPage() {
       setHostname(s.inferenceGatewayHostname || '');
       setScheme(s.inferenceGatewayScheme || 'https');
       setInternalUrl(s.inferenceGatewayInternalUrl || '');
-      setTimezone(s.timezone || '');
-      setLanguage(s.defaultLanguage || 'zh');
-      setCurrency(s.currency || 'CNY');
       setMeta(s);
       setPermissionDenied(false);
     } catch (e) {
@@ -134,17 +101,11 @@ export default function GatewaySettingsPage() {
         inferenceGatewayHostname: hostname.trim(),
         inferenceGatewayScheme: scheme,
         inferenceGatewayInternalUrl: internalUrl.trim(),
-        timezone,
-        defaultLanguage: language,
-        currency,
       });
       const s = data.settings || EMPTY;
       setHostname(s.inferenceGatewayHostname || '');
       setScheme(s.inferenceGatewayScheme || 'https');
       setInternalUrl(s.inferenceGatewayInternalUrl || '');
-      setTimezone(s.timezone || '');
-      setLanguage(s.defaultLanguage || 'zh');
-      setCurrency(s.currency || 'CNY');
       setMeta(s);
       setSaved(t('settings.saved'));
     } catch (e) {
@@ -284,61 +245,6 @@ export default function GatewaySettingsPage() {
             </button>
           </>
         )}
-      </section>
-
-      <section className="panel" data-testid="settings-display">
-        <h2>{t('settings.displayTitle')}</h2>
-        <p className="hint" style={{ marginTop: 0 }}>
-          {t('settings.displayBody')}
-        </p>
-        <div className="form-row">
-          <label htmlFor="settings-timezone">{t('settings.timezoneLabel')}</label>
-          <select
-            id="settings-timezone"
-            data-testid="settings-timezone"
-            value={timezone}
-            onChange={(e) => setTimezone(e.target.value)}
-          >
-            {TIMEZONES.map((zone) => (
-              <option key={zone || 'browser'} value={zone}>
-                {zone || t('settings.timezoneBrowser')}
-              </option>
-            ))}
-          </select>
-          <div className="hint">{t('settings.timezoneHint')}</div>
-        </div>
-        <div className="form-row">
-          <label htmlFor="settings-language">{t('settings.languageLabel')}</label>
-          <select
-            id="settings-language"
-            data-testid="settings-language"
-            value={language}
-            onChange={(e) => setLanguage(e.target.value)}
-          >
-            <option value="zh">{t('settings.languageZh')}</option>
-            <option value="en">{t('settings.languageEn')}</option>
-          </select>
-          <div className="hint">{t('settings.languageHint')}</div>
-        </div>
-        <div className="form-row">
-          <label htmlFor="settings-currency">{t('settings.currencyLabel')}</label>
-          <select
-            id="settings-currency"
-            data-testid="settings-currency"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-          >
-            {CURRENCIES.map((code) => (
-              <option key={code} value={code}>
-                {code}
-              </option>
-            ))}
-          </select>
-          <div className="hint">{t('settings.currencyHint')}</div>
-        </div>
-        <button data-testid="settings-display-save" disabled={saving} onClick={() => void save()}>
-          {saving ? t('common.saving') : t('common.save')}
-        </button>
       </section>
 
       <section className="panel">

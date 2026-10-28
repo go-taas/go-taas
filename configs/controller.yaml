@@ -47,6 +47,25 @@ controller:
     # mountPath is the path the weights volume is mounted at inside
     # inference pods. Defaults to "/data/weights".
     mountPath: "/data/weights"
+  # scheduling configures how inference pods are placed. Volcano is the gang
+  # scheduler: with schedulerName "volcano" the pods of one replica are placed
+  # together or not at all, and a service's priority may preempt a lower one.
+  # Empty schedulerName keeps the cluster default scheduler and turns gang
+  # scheduling off.
+  scheduling:
+    # schedulerName is the scheduler inference pods ask for. "volcano" enables
+    # gang scheduling and priority preemption (CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME).
+    schedulerName: ""
+    # priorityClass* map a service priority (high/normal/low) onto the
+    # PriorityClass its pods carry. Empty leaves the pod with the cluster
+    # default class; a name that does not exist keeps the pod from being
+    # admitted, so set them to classes the cluster actually has.
+    priorityClassHigh: ""
+    priorityClassNormal: ""
+    priorityClassLow: ""
+    # queue is the Volcano queue the service's PodGroup joins. Empty uses
+    # Volcano's default queue.
+    queue: ""
   # resourceMetrics (feature #37): the per-service CPU/memory/GPU
   # sampling loop reads from the Kubernetes metrics-server and the
   # accelerator signals on sampleInterval (30s default, AD2).

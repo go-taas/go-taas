@@ -6,6 +6,7 @@
 import { useI18n } from '../../i18n';
 import { formatTime } from '../../api';
 import type { OptimizationRecommendation } from '../../api';
+import { formatMajor } from '../../display';
 
 export default function RecommendationCard({
   rec,
@@ -37,7 +38,7 @@ export default function RecommendationCard({
       <div className="card-note">{rec.suggestion}</div>
       <div className="card-row-inner">
         <span className="card-value" data-testid={`optimization-card-saving-${rec.recommendationId}`}>
-          ≈ {rec.currency} {rec.estimatedMonthlySaving} / {t('optimization.month')}
+          ≈ {formatMajor(rec.estimatedMonthlySaving)} / {t('optimization.month')}
         </span>
         <span className="muted">
           {t('optimization.firstSeen')} {formatTime(rec.firstSeenAt)}

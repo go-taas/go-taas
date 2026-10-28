@@ -463,3 +463,56 @@ func TestUpdatePlatformDisplaySettingsRejectsBadValues(t *testing.T) {
 		})
 	}
 }
+
+// TestUpdatePlatformDisplaySettingsKeepsGateway proves the display page saves
+// only its three values: the gateway hostname it never showed must survive.
+func TestUpdatePlatformDisplaySettingsKeepsGateway(t *testing.T) {
+	svc := newPlatformSettingService(t)
+	ctx := context.Background()
+
+	_, err := svc.UpdatePlatformSettings(ctx, &runtimev1.UpdatePlatformSettingsRequest{
+		InferenceGatewayHostname:    "api.example.com",
+		InferenceGatewayScheme:      "https",
+		InferenceGatewayInternalUrl: "http://10.43.253.124",
+		Timezone:                    "UTC",
+		DefaultLanguage:             "en",
+		Currency:                    "USD",
+	})
+	require.NoError(t, err)
+
+	saved, err := svc.UpdatePlatformDisplaySettings(ctx, &runtimev1.UpdatePlatformDisplaySettingsRequest{
+		Timezone:        "Asia/Shanghai",
+		DefaultLanguage: "zh",
+		Currency:        "CNY",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Shanghai", saved.GetTimezone())
+	assert.Equal(t, "zh", saved.GetDefaultLanguage())
+	assert.Equal(t, "CNY", saved.GetCurrency())
+
+	full, err := svc.GetPlatformSettings(ctx, &runtimev1.GetPlatformSettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "api.example.com", full.GetSettings().GetInferenceGatewayHostname(),
+		"a display save must not blank the gateway hostname")
+	assert.Equal(t, "http://10.43.253.124", full.GetSettings().GetInferenceGatewayInternalUrl())
+}
+
+// TestUpdatePlatformDisplaySettingsCreatesTheRow verifies a fresh install has
+// its preferences written without needing a gateway save first.
+func TestUpdatePlatformDisplaySettingsCreatesTheRow(t *testing.T) {
+	svc := newPlatformSettingService(t)
+	ctx := context.Background()
+
+	_, err := svc.UpdatePlatformDisplaySettings(ctx, &runtimev1.UpdatePlatformDisplaySettingsRequest{
+		Timezone:        "Asia/Tokyo",
+		DefaultLanguage: "en",
+		Currency:        "JPY",
+	})
+	require.NoError(t, err)
+
+	resp, err := svc.GetPlatformDisplaySettings(ctx, &runtimev1.GetPlatformDisplaySettingsRequest{})
+	require.NoError(t, err)
+	assert.Equal(t, "Asia/Tokyo", resp.GetTimezone())
+	assert.Equal(t, "JPY", resp.GetCurrency())
+	assert.Equal(t, int32(0), resp.GetResponse().GetCode())
+}

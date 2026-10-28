@@ -157,6 +157,11 @@ const (
 	CodeEngineTemplateNotFound Code = 10320 // ENGINE_TEMPLATE_NOT_FOUND
 	CodeEngineTemplateExists   Code = 10321 // ENGINE_TEMPLATE_EXISTS
 	CodeEngineTemplateInvalid  Code = 10322 // ENGINE_TEMPLATE_INVALID
+
+	// CodeInferSchedulingInvalid is returned when a per-pod resource shape
+	// or priority is outside the supported set (gpu_per_pod, cpu_cores,
+	// memory_mib, priority).
+	CodeInferSchedulingInvalid Code = 10323 // INFER_SCHEDULING_INVALID
 )
 
 // metering module error codes.

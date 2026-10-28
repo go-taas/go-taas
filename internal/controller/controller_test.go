@@ -31,6 +31,8 @@ func (f *fakeReconciler) SetVGPUConfig(string, string, map[string]string) {}
 
 func (f *fakeReconciler) SetGatewayRouting(string, string) {}
 
+func (f *fakeReconciler) SetScheduling(_, _, _, _, _ string) {}
+
 func TestControllerDispatchesSubjects(t *testing.T) {
 	client := mq.NewFake()
 	rec := &fakeReconciler{}

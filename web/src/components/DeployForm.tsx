@@ -182,6 +182,17 @@ export default function DeployForm({
   // roles, and each may need its own tuning (memory fraction, sequence
   // limits). The shared section above acts as the default they inherit.
   const [roleArgs, setRoleArgs] = useState<Record<string, RoleArgState>>({});
+  // Which role's parameters the tab strip shows. Tabs rather than a stack of
+  // sections: a PD service has three parameter sets (shared, prefill,
+  // decode), and three open forms at once push the submit button off screen.
+  const [paramsTab, setParamsTab] = useState('shared');
+  // Per-pod resource shape and scheduling priority. They apply to every role
+  // of the service; Volcano schedules one replica's pods as a gang and
+  // preempts a lower priority gang with a higher one.
+  const [gpuPerPod, setGpuPerPod] = useState('1');
+  const [cpuCores, setCpuCores] = useState('4');
+  const [memoryGiB, setMemoryGiB] = useState('16');
+  const [priority, setPriority] = useState('normal');
   // Parameter templates that fit the current engine/model/topology/card. The
   // operator loads one instead of retyping a dozen flags.
   const [templates, setTemplates] = useState<EngineParamTemplate[]>([]);
@@ -373,6 +384,14 @@ export default function DeployForm({
       setError(t('deploy.errorImage'));
       return;
     }
+    // One pod owns gpu_per_pod devices, so a multi-pod replica's total
+    // (tensor x pipeline) must divide evenly by it: an uneven split gives the
+    // engine a world size its pods cannot see (the server rejects it too).
+    const perPod = parseInt(gpuPerPod, 10) || 1;
+    if (topology !== 'single' && (tp * pp) % perPod !== 0) {
+      setError(t('deploy.errorGpuPerPod', { devices: tp * pp, perPod }));
+      return;
+    }
     // Feature #52 (AD2): validate the Shared GPU selection.
     if (sharedGpu) {
       if (!poolId || !sliceTemplateId) {
@@ -410,6 +429,12 @@ export default function DeployForm({
         roleEngineArgs: roleArgPayload(roleArgs),
         prefillReplicas: String(parseInt(prefillReplicas, 10) || 1),
         decodeReplicas: String(parseInt(decodeReplicas, 10) || 1),
+        scheduling: {
+          gpuPerPod: parseInt(gpuPerPod, 10) || 1,
+          cpuCores: Number(cpuCores) || 0,
+          memoryMib: Math.round((Number(memoryGiB) || 0) * 1024),
+          priority,
+        },
         ...(sharedGpu ? { poolId, sliceTemplateId } : {}),
       });
       onDeployed(res.serviceId);
@@ -423,6 +448,25 @@ export default function DeployForm({
   // The parallelism as the form currently shows it, for the summary line.
   const tp = parseInt(tensorParallel, 10) || 1;
   const pp = parseInt(pipelineParallel, 10) || 1;
+
+  // The parameter tabs: "shared" plus one per role of the current layout. A
+  // role that no longer exists (a PD service switched back to single) drops
+  // its tab, and the strip falls back to the shared tab instead of showing a
+  // section nothing will be submitted with.
+  const roleNames = rolesForTopology(topology);
+  const paramTabs = ['shared', ...roleNames].map((id) => ({
+    id,
+    label:
+      id === 'shared'
+        ? t('deploy.paramsTabShared')
+        : t('deploy.paramsTabRole', { role: t(`deploy.role.${id}`) }),
+    changed:
+      id === 'shared'
+        ? Object.values(engineArgs).some((v) => v !== undefined && v !== '') ||
+          extraArgs.some((a) => a.trim() !== '')
+        : roleArgPayload(roleArgs).some((entry) => entry.role === id),
+  }));
+  const activeTab = paramTabs.some((tab) => tab.id === paramsTab) ? paramsTab : 'shared';
 
   const setAS = (patch: Partial<AutoscalingPolicy>) => {
     setAutoscaling((p) => ({ ...p, ...patch }));
@@ -643,6 +687,63 @@ export default function DeployForm({
         )}
       </div>
 
+      <h4 style={{ marginBottom: 8 }}>{t('deploy.podShape')}</h4>
+      <div className="form-grid" data-testid="deploy-pod-shape">
+        <div className="form-field">
+          <label htmlFor="deploy-gpu-per-pod">{t('deploy.gpuPerPod')}</label>
+          <input
+            id="deploy-gpu-per-pod"
+            data-testid="deploy-gpu-per-pod"
+            type="number"
+            min={1}
+            max={8}
+            value={gpuPerPod}
+            onChange={(e) => setGpuPerPod(e.target.value)}
+          />
+          <div className="field-hint">{t('deploy.gpuPerPodHint')}</div>
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-cpu">{t('deploy.cpuCores')}</label>
+          <input
+            id="deploy-cpu"
+            data-testid="deploy-cpu-cores"
+            type="number"
+            min={0}
+            step="0.5"
+            value={cpuCores}
+            onChange={(e) => setCpuCores(e.target.value)}
+          />
+          <div className="field-hint">{t('deploy.cpuCoresHint')}</div>
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-memory">{t('deploy.memoryGiB')}</label>
+          <input
+            id="deploy-memory"
+            data-testid="deploy-memory-gib"
+            type="number"
+            min={0}
+            step="1"
+            value={memoryGiB}
+            onChange={(e) => setMemoryGiB(e.target.value)}
+          />
+          <div className="field-hint">{t('deploy.memoryGiBHint')}</div>
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-priority">{t('deploy.priority')}</label>
+          <select
+            id="deploy-priority"
+            data-testid="deploy-priority-select"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+          >
+            <option value="high">{t('deploy.priorityHigh')}</option>
+            <option value="normal">{t('deploy.priorityNormal')}</option>
+            <option value="low">{t('deploy.priorityLow')}</option>
+          </select>
+          <div className="field-hint">{t('deploy.priorityHint')}</div>
+        </div>
+      </div>
+
       {templates.length > 0 && (
         <div className="form-grid" style={{ marginBottom: 12 }} data-testid="deploy-template-picker">
           <div className="form-field full">
@@ -670,44 +771,53 @@ export default function DeployForm({
         </div>
       )}
 
-      <EngineArgsSection
-        engine={engine}
-        params={params}
-        values={engineArgs}
-        extraArgs={extraArgs}
-        title={t('deploy.engineParamsShared', { engine })}
-        onChange={(name, value) => setEngineArgs((prev) => ({ ...prev, [name]: value }))}
-        onExtraChange={setExtraArgs}
+      {/* One tab per parameter set: the shared defaults plus one per role of
+          the chosen layout. A role left empty inherits the shared value, and
+          a tab whose role overrides something says so, so an operator does
+          not have to open all of them to find out. */}
+      <EngineParamTabs
+        tabs={paramTabs}
+        active={activeTab}
+        onSelect={setParamsTab}
       />
-
-      {/* Each role of a multi-machine or PD layout can be tuned on its own;
-          a flag left empty here inherits the shared value above. */}
-      {rolesForTopology(topology).map((role) => (
+      {activeTab === 'shared' ? (
         <EngineArgsSection
-          key={role}
           engine={engine}
           params={params}
-          values={roleArgs[role]?.args ?? {}}
-          extraArgs={roleArgs[role]?.extra ?? []}
-          title={t('deploy.engineParamsRole', { engine, role: t(`deploy.role.${role}`) })}
-          testId={`deploy-engine-args-${role}`}
+          values={engineArgs}
+          extraArgs={extraArgs}
+          title={t('deploy.engineParamsShared', { engine })}
+          onChange={(name, value) => setEngineArgs((prev) => ({ ...prev, [name]: value }))}
+          onExtraChange={setExtraArgs}
+        />
+      ) : (
+        <EngineArgsSection
+          engine={engine}
+          params={params}
+          values={roleArgs[activeTab]?.args ?? {}}
+          extraArgs={roleArgs[activeTab]?.extra ?? []}
+          title={t('deploy.engineParamsRole', {
+            engine,
+            role: t(`deploy.role.${activeTab}`),
+          })}
+          testId={`deploy-engine-args-${activeTab}`}
           onChange={(name, value) =>
             setRoleArgs((prev) => ({
               ...prev,
-              [role]: {
-                args: { ...(prev[role]?.args ?? {}), [name]: value },
-                extra: prev[role]?.extra ?? [],
+              [activeTab]: {
+                args: { ...(prev[activeTab]?.args ?? {}), [name]: value },
+                extra: prev[activeTab]?.extra ?? [],
               },
             }))
           }
           onExtraChange={(next) =>
             setRoleArgs((prev) => ({
               ...prev,
-              [role]: { args: prev[role]?.args ?? {}, extra: next },
+              [activeTab]: { args: prev[activeTab]?.args ?? {}, extra: next },
             }))
           }
         />
-      ))}
+      )}
 
       <h4 style={{ marginBottom: 8 }}>{t('deploy.sharedGpu')}</h4>
       <div className="form-grid">
@@ -874,6 +984,42 @@ export default function DeployForm({
           {submitting ? t('deploy.deploying') : t('models.deploy')}
         </button>
       </div>
+    </div>
+  );
+}
+
+// EngineParamTabs is the strip that switches between the shared parameter set
+// and each role's overrides. It replaces a stack of always-open sections: a PD
+// service has three of them, and stacking three full parameter forms makes the
+// page scroll to a submit button the operator cannot see while editing.
+//
+// A dot marks a tab that carries values, so an override hidden behind an
+// inactive tab is still visible as "something was set here".
+function EngineParamTabs({
+  tabs,
+  active,
+  onSelect,
+}: {
+  tabs: Array<{ id: string; label: string; changed: boolean }>;
+  active: string;
+  onSelect: (id: string) => void;
+}) {
+  return (
+    <div className="tab-strip" role="tablist" data-testid="deploy-params-tabs">
+      {tabs.map((tab) => (
+        <button
+          key={tab.id}
+          type="button"
+          role="tab"
+          aria-selected={tab.id === active}
+          className={`tab${tab.id === active ? ' active' : ''}`}
+          data-testid={`deploy-params-tab-${tab.id}`}
+          onClick={() => onSelect(tab.id)}
+        >
+          {tab.label}
+          {tab.changed && <span className="tab-dot" aria-hidden="true" />}
+        </button>
+      ))}
     </div>
   );
 }

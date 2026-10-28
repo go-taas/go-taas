@@ -12,7 +12,7 @@
 
 ## 1. Display preferences
 
-The platform administrator sets three installation-wide values on `/admin/settings`:
+The platform administrator sets three installation-wide values on `/admin/display-settings` (a page of its own, directly below the gateway settings):
 
 | Setting | Values | Effect |
 | --- | --- | --- |
@@ -20,7 +20,9 @@ The platform administrator sets three installation-wide values on `/admin/settin
 | Default language | `zh` / `en` | a first-time visitor's language; an explicit choice in the language switcher always wins |
 | Currency unit | `CNY` / `USD` / `EUR` / `HKD` / `JPY` | amounts, prices and cost figures are shown in this currency |
 
-**AD1 — Stored with the settings row.** `platform_settings` gains `timezone`, `default_language` and `currency` (AutoMigrate). They are installation properties like the gateway hostname, so they live in the same singleton row and are saved by the same `UpdatePlatformSettings` call.
+**AD1 — Stored with the settings row.** `platform_settings` gains `timezone`, `default_language` and `currency` (AutoMigrate). They are installation properties like the gateway hostname, so they live in the same singleton row.
+
+**AD1b — Saved by their own call.** `UpdatePlatformDisplaySettings` (`PUT /api/v1/admin/platform-display-settings`) writes only the three display fields. Display preferences used to be saved by the gateway page's `UpdatePlatformSettings`, which is a full-row replace: the moment the two concerns moved onto two pages, a display save from a page that never showed the hostname would have blanked it. The repository writes the three columns (and creates the row on a fresh install), leaving the gateway fields alone.
 
 **AD2 — Validated against closed sets.** `normaliseTimezone` requires a name `time.LoadLocation` accepts (empty is valid), `normaliseLanguage` accepts `en`/`zh`, `normaliseCurrency` accepts the five codes. A bad value returns **12905 RUNTIME_SETTING_INVALID** and nothing is saved.
 
@@ -28,7 +30,9 @@ The platform administrator sets three installation-wide values on `/admin/settin
 
 **AD4 — One place applies it.** `web/src/display.ts` holds the current time zone and currency in a dependency-free module; `formatTime` (api.ts) and `formatMoney`/`formatAmount` read it. `PlatformDisplayProvider` (mounted above both surfaces) fetches the values once per boot and pushes them in, then applies the default language through `setLangIfUnset` (which never overrides a stored choice). The provider issues its own request because it sits above the surface context; the path follows the token's realm, since a session is only valid on its own prefix.
 
-**AD5 — Amounts keep their own currency when they have one.** A billing invoice or a price row carries an explicit currency, and those keep showing it (`formatMoney(amount, record.currency)`). Everything aggregate — balances, cost cards, forecasts, per-1k prices — uses the platform currency. The set-price dialog defaults to it.
+**AD5 — Every amount is printed in the platform's display currency.** The console has one currency; a page that appends the *stored* code (`{amount} {record.currency}`) is what kept saying USD on an installation configured for CNY. Every money renderer therefore goes through `formatMoney` (minor units), `formatMajor` (major units, e.g. a bill total) or `formatAmount` (an explicit precision), and none of them appends a stored code. A price row still shows its own currency in the *pricing* table, because there a currency is part of the data being edited, not a unit of presentation.
+
+**AD6 — The settlement currency is shown next to the display currency.** Amounts are stored in `billing.currency` from the server configuration and printed in the display currency; without conversion those two must be the same value. The page therefore shows the configured settlement currency and warns when it differs, and an installation that prices in CNY sets `billing.currency: CNY` (the chart's `configOverrides`). A silent mismatch would put a ¥ sign on a dollar figure, which is worse than the bug it replaced.
 
 ## 2. Model downloads on the catalog
 
@@ -58,10 +62,11 @@ The autoscaling wording now reads **自动扩缩容** ("autoscaling") and **扩�
 
 ## 7. Acceptance criteria
 
-- **AC1** `/admin/settings` edits the time zone, default language and currency; a bad value is refused with 12905 and nothing changes.
+- **AC1** `/admin/display-settings` edits the time zone, default language and currency; a bad value is refused with 12905 and nothing changes.
+- **AC1b** Saving the display preferences leaves the gateway hostname and in-cluster URL untouched.
 - **AC2** Saved values are visible on both consoles through `platform-display-settings`, and the admin settings projection carries them too.
 - **AC3** Timestamps render in the configured zone; an empty zone keeps each viewer's own.
-- **AC4** Amounts across the console use the configured currency symbol; a record that carries its own currency keeps it.
+- **AC4** Every amount on the console — usage, bills, accounts, invoices, batch costs, forecasts, optimization savings, balances — carries the configured currency symbol and no stored currency code.
 - **AC5** A first-time visitor gets the default language; an explicit choice is never overridden.
 - **AC6** The model catalog hosts the download panel; the navigation has no download entry; the old URL redirects.
 - **AC7** The deploy picker lists no external model, and the API refuses one with 10106.

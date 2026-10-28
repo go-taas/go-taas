@@ -8,6 +8,7 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
+import { formatMoney } from '../../display';
 import { BackLink, ErrorBanner } from '../../components';
 import { type AvailableModel, type ApiKeySummary } from '../../api';
 
@@ -201,7 +202,7 @@ export default function PlaygroundComparePage() {
                     <td>{r.error ? '—' : `${r.latencyMs} ms`}</td>
                     <td>{r.error ? '—' : r.inputTokens}</td>
                     <td>{r.error ? '—' : r.outputTokens}</td>
-                    <td>{r.error ? '—' : `${r.cost}¢`}</td>
+                    <td>{r.error ? '—' : formatMoney(r.cost)}</td>
                   </tr>
                 ))}
               </tbody>

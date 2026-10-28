@@ -85,6 +85,16 @@ type changeEvent struct {
 	// other topologies).
 	PrefillReplicas int `json:"prefill_replicas,omitempty"`
 	DecodeReplicas  int `json:"decode_replicas,omitempty"`
+	// GPUPerPod / CPUMilli / MemoryMiB are the per-pod resource requests of
+	// every role. GPUPerPod 0 reads as 1 (the historical shape, one device
+	// per pod); the CPU and memory requests are left off the pod when zero.
+	GPUPerPod int   `json:"gpu_per_pod,omitempty"`
+	CPUMilli  int64 `json:"cpu_milli,omitempty"`
+	MemoryMiB int64 `json:"memory_mib,omitempty"`
+	// Priority is the scheduling priority ("high", "normal", "low"). It
+	// selects the pod's PriorityClass and the PodGroup's priority, which is
+	// what Volcano preempts on.
+	Priority string `json:"priority,omitempty"`
 }
 
 // autoscalingPolicy is the effective autoscaling policy carried in a
@@ -148,6 +158,17 @@ type k8sReconciler struct {
 	policyAnnotation string
 	placementPolicy  string
 	poolSelector     map[string]string
+	// schedulerName is the pod scheduler inference pods ask for. Empty uses
+	// the cluster default; "volcano" turns on gang scheduling and preemption
+	// (see podgroup.go).
+	schedulerName string
+	// priorityClasses maps a service priority (high/normal/low) onto the
+	// PriorityClass name its pods carry. A missing entry leaves the pod with
+	// the cluster default class.
+	priorityClasses map[string]string
+	// queueName is the Volcano queue the service's PodGroup joins. Empty
+	// uses Volcano's default queue.
+	queueName string
 	// acceleratorLabelKey is the configured node label key carrying the
 	// accelerator vendor. Empty uses labelAcceleratorVendor.
 	acceleratorLabelKey string
@@ -235,6 +256,28 @@ func (r *k8sReconciler) SetVGPUConfig(policyAnnotation, placementPolicy string, 
 	r.policyAnnotation = policyAnnotation
 	r.placementPolicy = placementPolicy
 	r.poolSelector = poolSelector
+}
+
+// SetScheduling installs the pod scheduling configuration: the scheduler
+// inference pods ask for, the PriorityClass names a service priority maps
+// onto, and the Volcano queue its PodGroup joins. An empty scheduler keeps
+// the cluster default and turns gang scheduling off.
+func (r *k8sReconciler) SetScheduling(schedulerName, highClass, normalClass, lowClass, queue string) {
+	r.schedulerName = strings.TrimSpace(schedulerName)
+	classes := map[string]string{}
+	for priority, class := range map[string]string{
+		"high":   highClass,
+		"normal": normalClass,
+		"low":    lowClass,
+	} {
+		if trimmed := strings.TrimSpace(class); trimmed != "" {
+			classes[priority] = trimmed
+		}
+	}
+	if len(classes) > 0 {
+		r.priorityClasses = classes
+	}
+	r.queueName = strings.TrimSpace(queue)
 }
 
 // SetGatewayRouting names the AIBrix Gateway that model HTTPRoutes attach
@@ -614,6 +657,9 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 		logger.S().Warnw("controller: delete aibrix model route failed", "name", evt.Name, "err", err)
 	}
 	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
+	// The PodGroup outlives the storm otherwise: Volcano keeps the queued
+	// gang in its accounting and the object lingers in the namespace.
+	deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt))
 	logger.S().Infow("controller: tore down inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
 	return nil
@@ -665,6 +711,14 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		}
 		if err := applyStormService(ctx, r.dynamic, storm); err != nil {
 			return r.reportFailure(ctx, evt, err)
+		}
+		// The gang the pods join. It is written before the pods can be
+		// admitted (the storm's own controller creates them), so Volcano
+		// never sees a gang member without a group.
+		if r.gangScheduling() {
+			if err := applyPodGroup(ctx, r.dynamic, r.buildPodGroup(evt)); err != nil {
+				return r.reportFailure(ctx, evt, err)
+			}
 		}
 		// A service that used to run as a Deployment must not keep its old
 		// ReplicaSet alive next to the storm's pods: both match the Service
@@ -1007,15 +1061,24 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 			nodeSelector[key] = evt.AcceleratorType
 		}
 	}
-	// Every pod is one worker and owns exactly one device: parallelism spans
-	// pods (one machine per shard), never several cards inside one container.
-	resources := engineResourcesFor(evt.Accelerator, 1)
+	// A pod owns gpu_per_pod devices (default one). Multi-machine layouts
+	// split their parallelism across pods of this size, so the devices a
+	// container sees and the world size the engine is told always agree.
+	resources := r.podResources(evt)
 	if slice {
 		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
 		annotations[r.policyAnnotation] = r.placementPolicy
 		nodeSelector = mergeSelectors(nodeSelector, r.poolSelector)
 	}
+	// Volcano schedules the pods of one replica as a gang and preempts a
+	// lower priority gang for a higher one (see podgroup.go). Without a
+	// configured scheduler the cluster default places them one by one, which
+	// is the historical behaviour.
+	schedulerName := r.schedulerName
+	priorityClass := r.priorityClassFor(evt.Priority)
 	spec := corev1.PodSpec{
+		SchedulerName:     schedulerName,
+		PriorityClassName: priorityClass,
 		Containers: []corev1.Container{{
 			Name:  "engine",
 			Image: evt.Image.Reference,
@@ -1115,6 +1178,36 @@ func engineResourcesFor(accelerator string, cards int) corev1.ResourceRequiremen
 			corev1.ResourceName(name): quantity,
 		},
 	}
+}
+
+// podResources returns the container resource requests of one pod: the
+// accelerator devices the operator asked for, plus the CPU and memory
+// requests. A zero request is left out of the list entirely, which keeps the
+// pod's shape identical to what it was before these fields existed.
+func (r *k8sReconciler) podResources(evt changeEvent) corev1.ResourceRequirements {
+	cards := evt.GPUPerPod
+	if cards < 1 {
+		cards = 1
+	}
+	res := engineResourcesFor(evt.Accelerator, cards)
+	if evt.CPUMilli > 0 {
+		quantity := *resource.NewMilliQuantity(evt.CPUMilli, resource.DecimalSI)
+		if res.Requests == nil {
+			res.Requests = corev1.ResourceList{}
+		}
+		res.Requests[corev1.ResourceCPU] = quantity
+		// A CPU request without a limit is the right default for a serving
+		// engine: it reserves capacity for the scheduler without capping a
+		// process that legitimately bursts while loading weights.
+	}
+	if evt.MemoryMiB > 0 {
+		quantity := *resource.NewQuantity(evt.MemoryMiB<<20, resource.BinarySI)
+		if res.Requests == nil {
+			res.Requests = corev1.ResourceList{}
+		}
+		res.Requests[corev1.ResourceMemory] = quantity
+	}
+	return res
 }
 
 // sliceResources returns the container resource requests for a

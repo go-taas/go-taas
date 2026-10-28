@@ -6,6 +6,7 @@
 import { useI18n } from '../../i18n';
 import { formatTime } from '../../api';
 import type { OptimizationOverview } from '../../api';
+import { formatMajor } from '../../display';
 
 export default function SummaryCards({
   overview,
@@ -17,7 +18,6 @@ export default function SummaryCards({
   refreshing?: boolean;
 }) {
   const { t } = useI18n();
-  const currency = overview?.currency || '';
   const total = overview?.totalEstimatedMonthlySaving || '0.00';
   const active = overview?.activeCount || '0';
   const dismissed = overview?.dismissedCount || '0';
@@ -28,7 +28,7 @@ export default function SummaryCards({
     <div className="card-row" data-testid="optimization-summary-cards">
       <div className="card" data-testid="optimization-total-saving">
         <div className="card-value">
-          {currency} {total}
+          {formatMajor(total)}
         </div>
         <div className="card-label">{t('optimization.totalSaving')}</div>
         <div className="card-note">{t('optimization.perMonth')}</div>

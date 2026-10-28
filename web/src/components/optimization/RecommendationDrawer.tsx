@@ -7,6 +7,7 @@ import { useMemo } from 'react';
 import { navigate } from '../../router';
 import { useI18n } from '../../i18n';
 import type { OptimizationRecommendation } from '../../api';
+import { formatMajor } from '../../display';
 
 // INPUT_LABELS maps the rule-specific inputs keys to i18n labels; the
 // values render verbatim (numbers, booleans, nested objects as JSON).
@@ -79,7 +80,7 @@ export default function RecommendationDrawer({
         <h3>{t('optimization.what')}</h3>
         <p data-testid="optimization-drawer-what">{rec.suggestion}</p>
         <p className="card-value">
-          ≈ {rec.currency} {rec.estimatedMonthlySaving} / {t('optimization.month')}
+          ≈ {formatMajor(rec.estimatedMonthlySaving)} / {t('optimization.month')}
         </p>
 
         {/* Why — the rule inputs */}
@@ -123,7 +124,7 @@ export default function RecommendationDrawer({
                   <tr key={alt.modelId}>
                     <td className="mono">{alt.modelName}</td>
                     <td>
-                      {rec.currency} {alt.estimatedMonthlySaving}
+                      {formatMajor(alt.estimatedMonthlySaving)}
                     </td>
                     <td className="mono">{alt.inputPricePerMillion}</td>
                     <td className="mono">{alt.outputPricePerMillion}</td>

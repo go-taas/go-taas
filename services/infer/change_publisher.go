@@ -90,7 +90,16 @@ type changeEvent struct {
 	// other topologies).
 	PrefillReplicas int `json:"prefill_replicas,omitempty"`
 	DecodeReplicas  int `json:"decode_replicas,omitempty"`
-	PublishedAt     time.Time `json:"published_at"`
+	// GPUPerPod / CPUMilli / MemoryMiB are the per-pod resource requests of
+	// every role. GPUPerPod 0 reads as 1; the CPU and memory requests are
+	// omitted when zero, which leaves the pod's shape to the image.
+	GPUPerPod int   `json:"gpu_per_pod,omitempty"`
+	CPUMilli  int64 `json:"cpu_milli,omitempty"`
+	MemoryMiB int64 `json:"memory_mib,omitempty"`
+	// Priority is the scheduling priority ("high", "normal", "low"). It is
+	// what Volcano preempts on, so it is carried on every event.
+	Priority    string    `json:"priority,omitempty"`
+	PublishedAt time.Time `json:"published_at"`
 }
 
 // buildChangeEvent composes the change event for a service row with its
@@ -117,22 +126,26 @@ func buildChangeEvent(eventType string, svc *InferenceService, modelName, weight
 			Reference: imageReference,
 			Engine:    engine,
 		},
-		Replicas:        svc.Replicas,
-		Accelerator:     svc.Accelerator,
-		AcceleratorType: svc.AcceleratorType,
-		PoolID:          svc.PoolID,
-		SliceTemplateID: svc.SliceTemplateID,
-		SliceMemoryMiB:  svc.SliceMemoryGiB * 1024,
-		SliceComputePct: svc.SliceComputePct,
-		EngineArgs:      EngineArgsMap(svc.EngineArgs),
-		ExtraArgs:       ExtraArgsList(svc.ExtraArgs),
-		RoleEngineArgs:  RoleEngineArgsList(svc.RoleEngineArgs),
-		Topology:        storedTopologyName(svc.Topology),
+		Replicas:             svc.Replicas,
+		Accelerator:          svc.Accelerator,
+		AcceleratorType:      svc.AcceleratorType,
+		PoolID:               svc.PoolID,
+		SliceTemplateID:      svc.SliceTemplateID,
+		SliceMemoryMiB:       svc.SliceMemoryGiB * 1024,
+		SliceComputePct:      svc.SliceComputePct,
+		EngineArgs:           EngineArgsMap(svc.EngineArgs),
+		ExtraArgs:            ExtraArgsList(svc.ExtraArgs),
+		RoleEngineArgs:       RoleEngineArgsList(svc.RoleEngineArgs),
+		Topology:             storedTopologyName(svc.Topology),
 		TensorParallelSize:   maxInt(svc.TensorParallelSize, 1),
 		PipelineParallelSize: maxInt(svc.PipelineParallelSize, 1),
-		PrefillReplicas:     svc.PrefillReplicas,
-		DecodeReplicas:      svc.DecodeReplicas,
-		PublishedAt:     time.Now().UTC(),
+		PrefillReplicas:      svc.PrefillReplicas,
+		DecodeReplicas:       svc.DecodeReplicas,
+		GPUPerPod:            svc.GPUPerPod,
+		CPUMilli:             svc.CPUMilli,
+		MemoryMiB:            svc.MemoryMiB,
+		Priority:             svc.Priority,
+		PublishedAt:          time.Now().UTC(),
 	}
 }
 

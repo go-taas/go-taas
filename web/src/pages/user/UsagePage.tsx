@@ -38,8 +38,11 @@ export default function UsagePage() {
       {balance && (
         <div className="balance-widget" data-testid="usage-balance-widget">
           {balance.mode === 'prepaid'
-            ? t('uusage.balance', { balance: balance.balance, currency: balance.currency })
-            : t('uusage.quota', { quota: balance.monthlyQuotaCents, used: balance.usedThisCycleCents })}
+            ? t('uusage.balance', { balance: formatMoney(balance.balanceCents) })
+            : t('uusage.quota', {
+                quota: formatMoney(balance.monthlyQuotaCents),
+                used: formatMoney(balance.usedThisCycleCents),
+              })}
         </div>
       )}
       {cards && (

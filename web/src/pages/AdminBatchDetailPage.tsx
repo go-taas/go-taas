@@ -11,6 +11,7 @@ import { useI18n } from '../i18n';
 import { useParams, navigate } from '../router';
 import { formatTime } from '../api';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
+import { formatMoney } from '../display';
 import type { BatchJob } from './user/UserBatchPage';
 
 interface GetResponse {
@@ -159,7 +160,7 @@ export default function AdminBatchDetailPage() {
           <div>
             <span className="kv-label">{t('batch.colCost')}</span>
             <span>
-              {job.cost} {job.currency}
+              {formatMoney(job.cost)}
             </span>
           </div>
         </div>

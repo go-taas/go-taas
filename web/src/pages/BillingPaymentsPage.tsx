@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 import { formatTime } from '../api';
 
 interface PaymentChannel {
@@ -99,7 +100,7 @@ export default function BillingPaymentsPage() {
           <tbody>
             {intents.map((i) => (
               <tr key={i.intentId} data-testid={`payment-intent-row-${i.intentId}`}>
-                <td>{i.amountCents}</td>
+                <td>{formatMoney(i.amountCents)}</td>
                 <td>{i.channel}</td>
                 <td data-testid={`payment-intent-status-${i.intentId}`}>{tEnum('state', i.status)}</td>
                 <td>{formatTime(i.createdAt)}</td>

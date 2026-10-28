@@ -121,6 +121,20 @@ type InferenceService struct {
 	// SliceComputePct is the assigned slice compute percentage (feature
 	// #52, AD14).
 	SliceComputePct int64 `gorm:"column:slice_compute_pct;not null;default:0"`
+	// GPUPerPod is the number of accelerator devices one pod of the
+	// service requests. 0 reads as 1, which is what every service created
+	// before this column existed actually got.
+	GPUPerPod int `gorm:"column:gpu_per_pod;not null;default:0"`
+	// CPUMilli is the CPU request of one pod in milli-cores (0 = no
+	// request). Milli-cores keep a fractional request exact across the
+	// wire, the database and the pod spec.
+	CPUMilli int64 `gorm:"column:cpu_milli;not null;default:0"`
+	// MemoryMiB is the memory request of one pod in MiB (0 = no request).
+	MemoryMiB int64 `gorm:"column:memory_mib;not null;default:0"`
+	// Priority is the scheduling priority: "high", "normal" or "low".
+	// Empty reads as normal. Volcano preempts a lower priority gang with a
+	// higher one.
+	Priority string `gorm:"column:priority;size:16;not null;default:''"`
 	// CreatedAt is the creation time (UTC).
 	CreatedAt time.Time
 	// UpdatedAt is the last state change.

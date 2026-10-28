@@ -5,6 +5,7 @@ import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { formatTime } from '../api';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 
 interface Invoice {
   invoiceId: string;
@@ -66,7 +67,7 @@ export default function BillingInvoicesPage() {
             {invoices.map((inv) => (
               <tr key={inv.invoiceId} data-testid={`invoice-row-${inv.invoiceId}`}>
                 <td>{formatTime(inv.periodStart)} – {formatTime(inv.periodEnd)}</td>
-                <td>{inv.totalCents} {inv.currency}</td>
+                <td>{formatMoney(inv.totalCents)}</td>
                 <td>{tEnum('state', inv.status)}</td>
                 <td>{formatTime(inv.issuedAt)}</td>
                 <td>

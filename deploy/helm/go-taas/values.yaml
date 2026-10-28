@@ -560,6 +560,9 @@ taasServer:
   #       endpointBaseURL: https://infer.example.com   # CONFIG_INFER_ENDPOINTBASEURL
   #     model:
   #       weightsDir: /data/weights                    # CONFIG_MODEL_WEIGHTSDIR
+  #       upload:
+  #         maxArchiveBytes: 214748364800              # CONFIG_MODEL_UPLOAD_MAXARCHIVEBYTES (200 GiB)
+  #         tempDir: ""                                # CONFIG_MODEL_UPLOAD_TEMPDIR
   #     image:
   #       harbor:
   #         url: hub.example.com                       # CONFIG_IMAGE_HARBOR_URL
@@ -665,6 +668,18 @@ controller:
       # `go-taas.com/accelerator`, falling back to `gpu-vendor` when no node
       # carries that.
       acceleratorLabelKey: ""
+      # Pod scheduling for inference pods. With Volcano installed, the pods of
+      # one replica are gang-scheduled (all placed or none) and a service's
+      # priority may preempt a lower one; without it the cluster default
+      # scheduler places them one by one and the priority is only a
+      # PriorityClass on the pod.
+      #
+      #   scheduling:
+      #     schedulerName: volcano              # CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME
+      #     priorityClassHigh: high-priority    # CONFIG_CONTROLLER_SCHEDULING_PRIORITYCLASSHIGH
+      #     priorityClassNormal: normal-priority
+      #     priorityClassLow: low-priority
+      #     queue: ""                           # Volcano queue, default if empty
       weights:
         # -- Name of the shared model-weights PVC the controller ensures (`controller.weights.pvcName`).
         pvcName: model-weights

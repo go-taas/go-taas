@@ -68,3 +68,28 @@ export function formatAmount(
   const amount = Number.isFinite(value as number) ? (value as number) / 100 : 0;
   return `${currencySymbol(currency)}${amount.toFixed(digits)}`;
 }
+
+/**
+ * formatMajor renders an amount that is already in major units (a bill total,
+ * a batch cost the API reports as a decimal string) in the display currency.
+ * It exists so those figures get the same symbol and precision as the
+ * minor-unit ones instead of printing a bare number and a currency code.
+ */
+export function formatMajor(
+  amount: number | string | undefined,
+  digits = 2,
+  currency?: string,
+): string {
+  const value = typeof amount === 'string' ? parseFloat(amount) : amount;
+  const safe = Number.isFinite(value as number) ? (value as number) : 0;
+  return `${currencySymbol(currency)}${safe.toFixed(digits)}`;
+}
+
+/**
+ * displayCurrencyLabel is the currency code every amount on the console is
+ * printed in. It is used where a unit has to appear in text (a form label)
+ * rather than next to a number.
+ */
+export function displayCurrencyLabel(): string {
+  return displayCurrency;
+}

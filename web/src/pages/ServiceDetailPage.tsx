@@ -195,6 +195,22 @@ export default function ServiceDetailPage() {
               </div>
             </div>
           )}
+          <div className="detail-item">
+            <div className="label">{t('service.podShape')}</div>
+            <div className="value" data-testid="service-pod-shape">
+              {t('service.podShapeValue', {
+                gpus: String(s.scheduling?.gpuPerPod || 1),
+                cpu: String(s.scheduling?.cpuCores || 0),
+                memory: String(Math.round((s.scheduling?.memoryMib || 0) / 1024)),
+              })}
+            </div>
+          </div>
+          <div className="detail-item">
+            <div className="label">{t('service.priority')}</div>
+            <div className="value" data-testid="service-priority">
+              {t(`deploy.priority${prioritySuffix(s.scheduling?.priority)}`)}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -329,6 +345,18 @@ function topologyLabelKey(topology?: string): string {
   }
 }
 
+// prioritySuffix maps a stored priority onto the locale key suffix.
+function prioritySuffix(priority?: string): string {
+  switch (priority) {
+    case 'high':
+      return 'High';
+    case 'low':
+      return 'Low';
+    default:
+      return 'Normal';
+  }
+}
+
 // TopologyDialog changes the serving layout in place: the service keeps its
 // id and endpoints, and the controller rolls the StormService out with the
 // new roles. Editing is only meaningful for the layout fields, so replicas
@@ -351,6 +379,15 @@ function TopologyDialog({
   const [prefill, setPrefill] = useState(String(service.prefillReplicas || 1));
   const [decode, setDecode] = useState(String(service.decodeReplicas || 1));
   const [replicas, setReplicas] = useState(String(service.replicas || 1));
+  // The per-pod shape and priority are editable here too: they ride with the
+  // layout, and a redeploy is exactly when an operator realizes a pod needs
+  // more memory or a higher priority.
+  const [gpuPerPod, setGpuPerPod] = useState(String(service.scheduling?.gpuPerPod || 1));
+  const [cpuCores, setCpuCores] = useState(String(service.scheduling?.cpuCores ?? 0));
+  const [memoryGiB, setMemoryGiB] = useState(
+    String(Math.round((service.scheduling?.memoryMib || 0) / 1024)),
+  );
+  const [priority, setPriority] = useState(service.scheduling?.priority || 'normal');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -359,6 +396,11 @@ function TopologyDialog({
     const ppv = parseInt(pp, 10) || 1;
     if (topology === 'multinode' && tpv * ppv < 2) {
       setError(t('deploy.errorMultiNodeParallel'));
+      return;
+    }
+    const perPod = parseInt(gpuPerPod, 10) || 1;
+    if (topology !== 'single' && (tpv * ppv) % perPod !== 0) {
+      setError(t('deploy.errorGpuPerPod', { devices: tpv * ppv, perPod }));
       return;
     }
     setSubmitting(true);
@@ -375,6 +417,12 @@ function TopologyDialog({
           prefillReplicas: String(parseInt(prefill, 10) || 1),
           decodeReplicas: String(parseInt(decode, 10) || 1),
           replicas: String(parseInt(replicas, 10) || 0),
+          scheduling: {
+            gpuPerPod: perPod,
+            cpuCores: Number(cpuCores) || 0,
+            memoryMib: Math.round((Number(memoryGiB) || 0) * 1024),
+            priority,
+          },
         },
       );
       onSaved();
@@ -470,6 +518,55 @@ function TopologyDialog({
             value={replicas}
             onChange={(e) => setReplicas(e.target.value)}
           />
+        </div>
+        <div className="form-field">
+          <label htmlFor="topology-gpu-per-pod">{t('deploy.gpuPerPod')}</label>
+          <input
+            id="topology-gpu-per-pod"
+            data-testid="topology-gpu-per-pod"
+            type="number"
+            min={1}
+            max={8}
+            value={gpuPerPod}
+            onChange={(e) => setGpuPerPod(e.target.value)}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="topology-cpu">{t('deploy.cpuCores')}</label>
+          <input
+            id="topology-cpu"
+            data-testid="topology-cpu-cores"
+            type="number"
+            min={0}
+            step="0.5"
+            value={cpuCores}
+            onChange={(e) => setCpuCores(e.target.value)}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="topology-memory">{t('deploy.memoryGiB')}</label>
+          <input
+            id="topology-memory"
+            data-testid="topology-memory-gib"
+            type="number"
+            min={0}
+            step="1"
+            value={memoryGiB}
+            onChange={(e) => setMemoryGiB(e.target.value)}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="topology-priority">{t('deploy.priority')}</label>
+          <select
+            id="topology-priority"
+            data-testid="topology-priority-select"
+            value={priority}
+            onChange={(e) => setPriority(e.target.value)}
+          >
+            <option value="high">{t('deploy.priorityHigh')}</option>
+            <option value="normal">{t('deploy.priorityNormal')}</option>
+            <option value="low">{t('deploy.priorityLow')}</option>
+          </select>
         </div>
       </div>
       <div className="dialog-actions">

@@ -54,6 +54,11 @@ rules:
   - apiGroups: ["autoscaling.aibrix.ai"]
     resources: ["podautoscalers"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # Volcano gang groups: one PodGroup per inference service, so the pods of a
+  # replica are placed together and a higher priority may preempt a lower one.
+  - apiGroups: ["scheduling.volcano.sh"]
+    resources: ["podgroups"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # The per-model HTTPRoute lives in the AIBrix gateway namespace and points
   # at the inference Service in the controller's own namespace, which the
   # ReferenceGrant authorises.

@@ -425,6 +425,35 @@ message CreateInferenceServiceRequest {
   // sequence limits and so on. An entry overrides the shared engine_args
   // for that role only; roles without an entry use engine_args as-is.
   repeated RoleEngineArgs role_engine_args = 19;
+  // scheduling is the per-pod resource shape and the scheduling priority
+  // every topology accepts (single, multinode, pd). Omitted leaves the
+  // platform default: one device per pod and no CPU/memory request.
+  PodScheduling scheduling = 20;
+}
+
+// PodScheduling is how much of the node one pod of the service asks for,
+// plus the priority it competes with. It is uniform across a service's
+// roles: a prefill and a decode pod of the same PD service differ in
+// engine arguments, not in the hardware they were promised.
+//
+// The platform schedules these pods through Volcano: the pods of one
+// replica form a gang (all of them are placed or none is), and a higher
+// priority may preempt a lower one.
+message PodScheduling {
+  // gpu_per_pod is the number of accelerator devices one pod requests.
+  // 0 (and 1) mean one device. A multi-machine replica spans
+  // tensor x pipeline devices, so the total is split into pods of this
+  // size: 8 devices with gpu_per_pod=4 is two pods.
+  int32 gpu_per_pod = 1;
+  // cpu_cores is the CPU request of one pod in cores (0 = no request).
+  // Fractional values are stored as milli-cores.
+  double cpu_cores = 2;
+  // memory_mib is the memory request of one pod in MiB (0 = no request).
+  int64 memory_mib = 3;
+  // priority is "high", "normal" or "low" (empty = normal). Priority is
+  // what Volcano preempts on: a high-priority gang may evict a
+  // low-priority one when the cluster cannot fit both.
+  string priority = 4;
 }
 
 // EngineParamTemplate is a reusable set of engine parameters plus the
@@ -648,6 +677,9 @@ message InferenceServiceSummary {
   // for the single-node and distributed topologies.
   int32 prefill_replicas = 21;
   int32 decode_replicas = 22;
+  // scheduling is the per-pod resource shape and priority the service was
+  // created (or last updated) with.
+  PodScheduling scheduling = 23;
 }
 
 
@@ -757,6 +789,10 @@ message UpdateInferenceServiceTopologyRequest {
   // keeps the stored ones; a role present here overrides the shared
   // engine_args for that role only.
   repeated RoleEngineArgs role_engine_args = 8;
+  // scheduling replaces the per-pod resource shape and priority. Omitted
+  // keeps the stored values, so a topology change never silently resizes
+  // the pods.
+  PodScheduling scheduling = 9;
 }
 
 message UpdateInferenceServiceTopologyResponse {

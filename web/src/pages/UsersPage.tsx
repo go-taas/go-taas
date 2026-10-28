@@ -118,6 +118,8 @@ export default function UsersPage() {
             <thead>
               <tr>
                 <th>{t('users.colUser')}</th>
+                <th>{t('users.colOrganization')}</th>
+                <th>{t('users.colProject')}</th>
                 <th>{t('users.colEmail')}</th>
                 <th>{t('users.colState')}</th>
                 <th>{t('users.colCreated')}</th>
@@ -134,6 +136,23 @@ export default function UsersPage() {
                       {user.displayName ? '' : ''}
                     </div>
                     <div className="muted small mono">{user.userId}</div>
+                  </td>
+                  {/* A platform administrator places people into an
+                      organization and a project from this page, so the row
+                      shows where each account currently sits. The API sends
+                      the display name next to the id; an account that joined
+                      nothing shows a dash rather than an empty cell. */}
+                  <td data-testid={`user-org-cell-${user.userId}`}>
+                    {user.organizationName || user.organizationId || '—'}
+                    {user.organizationName && user.organizationId && (
+                      <div className="muted small mono">{user.organizationId}</div>
+                    )}
+                  </td>
+                  <td data-testid={`user-project-cell-${user.userId}`}>
+                    {user.projectName || user.projectId || '—'}
+                    {user.projectName && user.projectId && (
+                      <div className="muted small mono">{user.projectId}</div>
+                    )}
                   </td>
                   <td>{user.email || '—'}</td>
                   <td>

@@ -362,6 +362,29 @@ type ControllerConfig struct {
 	// Cluster configures the per-cluster health collection loop (feature
 	// #40, Section 9).
 	Cluster ControllerClusterConfig `mapstructure:"cluster"`
+	// Scheduling configures how inference pods are placed: the scheduler
+	// they ask for, the PriorityClass a service priority maps onto, and the
+	// Volcano queue their PodGroup joins.
+	Scheduling ControllerSchedulingConfig `mapstructure:"scheduling"`
+}
+
+// ControllerSchedulingConfig holds the pod-scheduling settings.
+type ControllerSchedulingConfig struct {
+	// SchedulerName is the scheduler inference pods ask for. "volcano"
+	// turns on gang scheduling (one replica's pods are placed together or
+	// not at all) and preemption between priorities; empty keeps the
+	// cluster default scheduler.
+	SchedulerName string `mapstructure:"schedulerName"`
+	// PriorityClassHigh / Normal / Low are the Kubernetes PriorityClass
+	// names a service's priority maps onto. An empty entry leaves the pod
+	// with the cluster default class, and a name that does not exist keeps
+	// the pod from being admitted, so these are deployment settings.
+	PriorityClassHigh   string `mapstructure:"priorityClassHigh"`
+	PriorityClassNormal string `mapstructure:"priorityClassNormal"`
+	PriorityClassLow    string `mapstructure:"priorityClassLow"`
+	// Queue is the Volcano queue the PodGroup joins. Empty uses Volcano's
+	// default queue.
+	Queue string `mapstructure:"queue"`
 }
 
 // WeightsConfig holds the model-weights storage settings used by the
@@ -547,6 +570,19 @@ type ModelConfig struct {
 	// weights downloaded from a model hub are written. Empty disables
 	// the model-download feature.
 	WeightsDir string `mapstructure:"weightsDir"`
+	// Upload configures the local model-upload flow (an archive of a model
+	// directory that the platform extracts into WeightsDir).
+	Upload ModelUploadConfig `mapstructure:"upload"`
+}
+
+// ModelUploadConfig holds the local model-upload limits.
+type ModelUploadConfig struct {
+	// MaxArchiveBytes caps one uploaded archive. Defaults to 200 GiB, which
+	// fits an open model's weights in a single file.
+	MaxArchiveBytes int64 `mapstructure:"maxArchiveBytes"`
+	// TempDir is where the archive is staged before it is extracted. Empty
+	// uses the OS temp directory.
+	TempDir string `mapstructure:"tempDir"`
 }
 
 // LogConfig holds logging settings loaded from configuration files.
