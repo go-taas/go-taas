@@ -19,14 +19,16 @@ AIBrix 恰好提供了缺失的这套原语：**`StormService`**（`orchestratio
 | 拓扑 | Storm 形态 | 每个副本的 Pod 数 |
 | --- | --- | --- |
 | `single` | 单角色 `worker`，`podGroupSize = 1` | 1 |
-| `distributed` | 单角色 `worker`，`podGroupSize = TP × PP` | TP × PP（每个分片一个 Pod） |
-| `pd` | `prefill` 与 `decode` 两个角色，各自副本数与 `podGroupSize = TP × PP` | (prefill + decode) × TP × PP |
+| `distributed` | 单角色 `worker`；Pod 内把模型分片到 TP × PP 张卡 | 1（申请 TP × PP 张卡） |
+| `pd` | `prefill` 与 `decode` 两个角色，各自副本数与 TP × PP 张卡 | prefill + decode |
 
 现在推理服务**始终**是一个 StormService。Deployment 构建逻辑仅保留给没有 dynamic client 的控制器（单元测试、未安装 CRD 的环境），以及用于删除旧控制器遗留的 Deployment。
 
 ## 2. 架构决策
 
-**AD1 —— 每个服务一个承载对象。** storm 的 `spec.replicas` 就是服务的 `replicas`；PD 的一个 storm 副本等于一对 prefill + decode。`Service`（`<name>-svc`）、`ModelClaim` 的 Pod 选择器与状态跟随器仍然按共享资源标签（`go-taas.com/service-id`、`app`、`app.kubernetes.io/managed-by`）选中 Pod，角色模板会带上这些标签，因此 Pod 下游的链路完全不变。
+**AD1 —— 每个服务一个承载对象。** storm 的 `spec.replicas` 就是服务的 `replicas`；PD 的一个 storm 副本等于一对 prefill + decode。
+
+**AD1a —— 并行发生在 Pod 内部，而不是跨 Pod。** 张量/流水并行的副本以**一个** Pod 运行，并按分片数申请设备（`TP × PP` 张卡），`podGroupSize` 保持 1。跨 Pod 的分片组需要每个 rank 的会合信息（world size、node rank、master address），StormService 控制器不会注入这些信息；而 vLLM 在 world size 大于 Pod 可见设备数时会拒绝启动——这在真实集群上已复现（按 Pod 分片时报错 “World size (2) is larger than the number of available GPUs (1)”）。因此多节点推理需要用户自行提供 rank 配置，不在本次范围内。`Service`（`<name>-svc`）、`ModelClaim` 的 Pod 选择器与状态跟随器仍然按共享资源标签（`go-taas.com/service-id`、`app`、`app.kubernetes.io/managed-by`）选中 Pod，角色模板会带上这些标签，因此 Pod 下游的链路完全不变。
 
 **AD2 —— 拓扑是数据，不是代码。** `inference_services.topology` 存 `single` / `distributed` / `pd`，同时存 `tensor_parallel_size`、`pipeline_parallel_size`、`prefill_replicas`、`decode_replicas`。读取时空值归一化为 `single`（即历史数据行的语义）。接口契约使用同一套小写名称，控制台与后端使用同一词汇。
 
@@ -117,9 +119,9 @@ rpc UpdateInferenceServiceTopology(UpdateInferenceServiceTopologyRequest)
 
 ## 9. 验收标准
 
-- **AC1** 以 `topology=distributed, TP=4, PP=2` 创建服务后，拓扑被持久化并发布，storm 只有一个 `worker` 角色且 `podGroupSize: 8`。
+- **AC1** 以 `topology=distributed, TP=4, PP=2` 创建服务后，拓扑被持久化并发布，storm 只有一个 `worker` 角色且 `podGroupSize: 1`，Pod 申请 8 张卡。
 - **AC2** 以 `topology=distributed, TP=PP=1` 创建时返回 10319，且不发布任何状态。
-- **AC3** 创建 PD 服务后生成 `prefill`、`decode` 两个角色，副本数符合请求，引擎命令行携带对应角色的 KV 传输模式。
+- **AC3** 创建 PD 服务后生成 `prefill`、`decode` 两个角色，副本数符合请求，每个 Pod 申请 TP × PP 张卡，引擎命令行携带对应角色的 KV 传输模式。
 - **AC4** `:update-topology` 使服务回到 `pending`、重新发布 upsert，并保持服务 ID 不变。
 - **AC5** 开启自动扩缩容的服务获得 `scaleTargetRef.kind = StormService` 的 `PodAutoscaler`，且不创建 HPA；关闭后该对象被删除并固定 storm 副本数。
 - **AC6** 删除服务后 storm、Service、`ModelClaim`、路由与扩缩容器一并清理。

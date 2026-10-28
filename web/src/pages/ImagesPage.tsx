@@ -93,7 +93,7 @@ export default function ImagesPage() {
           <button
             className="secondary"
             data-testid="import-image"
-            disabled={registry ? !registry.configured : false}
+            disabled={registry !== null && !registry.configured}
             title={registry && !registry.configured ? t('images.registryUnconfigured') : undefined}
             onClick={() => setImportOpen(true)}
           >
@@ -109,7 +109,11 @@ export default function ImagesPage() {
 
       <div className="panel" style={{ marginBottom: 14 }} data-testid="image-registry-card">
         <h3 style={{ marginTop: 0 }}>{t('images.registryTitle')}</h3>
-        {registry?.configured ? (
+        {registry === null ? (
+          <div className="muted" data-testid="image-registry-loading">
+            {t('common.loading')}
+          </div>
+        ) : registry.configured ? (
           <div className="detail-grid">
             <div className="detail-item">
               <div className="label">{t('images.registryHostname')}</div>

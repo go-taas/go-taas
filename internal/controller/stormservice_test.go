@@ -43,6 +43,17 @@ func roleCommand(t *testing.T, role map[string]any) []string {
 	return out
 }
 
+// roleGPURequest reads the engine container's accelerator request.
+func roleGPURequest(t *testing.T, role map[string]any) string {
+	t.Helper()
+	spec := role["template"].(map[string]any)["spec"].(map[string]any)
+	containers := spec["containers"].([]any)
+	resources := containers[0].(map[string]any)["resources"].(map[string]any)
+	limits := resources["limits"].(map[string]any)
+	value, _ := limits["nvidia.com/gpu"].(string)
+	return value
+}
+
 // roleLabelOf reads a role template label.
 func roleLabelOf(t *testing.T, role map[string]any, key string) string {
 	t.Helper()
@@ -102,8 +113,10 @@ func TestBuildStormServiceDistributed(t *testing.T) {
 	roles := stormRolesOf(t, storm)
 	require.Len(t, roles, 1)
 	assert.Equal(t, stormRoleWorker, roles[0]["name"])
-	assert.Equal(t, int64(8), roles[0]["podGroupSize"],
-		"one pod group per replica: one pod per tensor/pipeline shard")
+	assert.Equal(t, int64(1), roles[0]["podGroupSize"],
+		"parallelism shards the model inside one pod, so the group is one pod")
+	assert.Equal(t, "8", roleGPURequest(t, roles[0]),
+		"the pod asks for one device per shard, so vLLM's world size fits")
 
 	command := roleCommand(t, roles[0])
 	assert.Contains(t, command, "--tensor-parallel-size")
@@ -131,13 +144,15 @@ func TestBuildStormServicePD(t *testing.T) {
 	prefill, decode := roles[0], roles[1]
 	assert.Equal(t, stormRolePrefill, prefill["name"])
 	assert.Equal(t, int64(2), prefill["replicas"])
-	assert.Equal(t, int64(2), prefill["podGroupSize"])
+	assert.Equal(t, int64(1), prefill["podGroupSize"])
 	assert.Equal(t, stormRolePrefill, roleLabelOf(t, prefill, roleLabel))
+	assert.Equal(t, "2", roleGPURequest(t, prefill), "each prefill worker shards across both devices")
 
 	assert.Equal(t, stormRoleDecode, decode["name"])
 	assert.Equal(t, int64(3), decode["replicas"])
-	assert.Equal(t, int64(2), decode["podGroupSize"])
+	assert.Equal(t, int64(1), decode["podGroupSize"])
 	assert.Equal(t, stormRoleDecode, roleLabelOf(t, decode, roleLabel))
+	assert.Equal(t, "2", roleGPURequest(t, decode))
 
 	// vLLM needs the KV transfer role: prefill produces, decode consumes.
 	prefillCmd := strings.Join(roleCommand(t, prefill), " ")

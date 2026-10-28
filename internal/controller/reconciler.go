@@ -1003,7 +1003,10 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, e
 			nodeSelector[key] = evt.AcceleratorType
 		}
 	}
-	resources := engineResources(evt.Accelerator)
+	// A tensor/pipeline-parallel replica shards the model across devices
+	// inside one pod, so it requests one device per shard. A single-node
+	// replica requests exactly one.
+	resources := engineResourcesFor(evt.Accelerator, evt.parallelCards())
 	if slice {
 		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
 		annotations[r.policyAnnotation] = r.placementPolicy
@@ -1064,16 +1067,29 @@ func gpuResourceName(accelerator string) string {
 // scheduler places the pod on a node with free capacity. Unknown
 // accelerators get no resource request.
 func engineResources(accelerator string) corev1.ResourceRequirements {
+	return engineResourcesFor(accelerator, 1)
+}
+
+// engineResourcesFor returns the container resource requests for cards units
+// of an accelerator's extended resource. A tensor/pipeline-parallel replica
+// needs one device per shard in the single pod that runs it, so the pod asks
+// for TP × PP devices: the engine's world size must not exceed the devices the
+// pod can see (vLLM refuses to start otherwise).
+func engineResourcesFor(accelerator string, cards int) corev1.ResourceRequirements {
 	name := gpuResourceName(accelerator)
 	if name == "" {
 		return corev1.ResourceRequirements{}
 	}
+	if cards < 1 {
+		cards = 1
+	}
+	quantity := resource.MustParse(strconv.Itoa(cards))
 	return corev1.ResourceRequirements{
 		Limits: corev1.ResourceList{
-			corev1.ResourceName(name): resource.MustParse("1"),
+			corev1.ResourceName(name): quantity,
 		},
 		Requests: corev1.ResourceList{
-			corev1.ResourceName(name): resource.MustParse("1"),
+			corev1.ResourceName(name): quantity,
 		},
 	}
 }
@@ -1343,6 +1359,20 @@ func (r *k8sReconciler) buildService(evt changeEvent) *corev1.Service {
 // PodAutoscaler. The historical "hpa-" prefix is kept so an object created
 // before the move to the AIBrix autoscaler is updated (not duplicated).
 func autoscalerName(name string) string { return "hpa-" + name }
+
+// parallelCards is how many devices one replica needs: the product of the
+// tensor and pipeline parallelism, and 1 for a single-node replica or a
+// shared-GPU slice.
+func (e changeEvent) parallelCards() int {
+	cards := e.TensorParallelSize * e.PipelineParallelSize
+	if cards < 1 {
+		cards = 1
+	}
+	if e.Topology != topologyDistributed && e.Topology != topologyPD {
+		return 1
+	}
+	return cards
+}
 
 // resourceLabels returns the label set shared by the Deployment and
 // Service for one inference service.

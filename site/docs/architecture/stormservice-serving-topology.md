@@ -19,14 +19,15 @@ AIBrix ships exactly the missing primitive: **`StormService`** (`orchestration.a
 | Topology | Storm shape | Pods per storm replica |
 | --- | --- | --- |
 | `single` | one role `worker`, `podGroupSize = 1` | 1 |
-| `distributed` | one role `worker`, `podGroupSize = TP × PP` | TP × PP (one pod per shard) |
-| `pd` | roles `prefill` and `decode`, each with its own replicas and `podGroupSize = TP × PP` | (prefill + decode) × TP × PP |
+| `distributed` | one role `worker`; the pod shards the model across TP × PP devices | 1 (requesting TP × PP devices) |
+| `pd` | roles `prefill` and `decode`, each with its own replica count and TP × PP devices | prefill + decode |
 
 Serving is now **always** a StormService. The Deployment builder remains only for a controller started without a dynamic client (unit tests, a CRD-less install) and to delete a Deployment left by an older controller.
 
 ## 2. Architecture decisions
 
-**AD1 — One serving object per service.** `spec.replicas` of the storm is the service's `replicas` for every topology; a PD storm replica is one prefill + decode pair. The Service (`<name>-svc`), the `ModelClaim` pod selector and the status follower keep selecting on the shared resource labels (`go-taas.com/service-id`, `app`, `app.kubernetes.io/managed-by`), which the role templates carry. Nothing downstream of the pods changed.
+**AD1 — One serving object per service.** `spec.replicas` of the storm is the service's `replicas` for every topology; a PD storm replica is one prefill + decode pair.
+**AD1a — Parallelism shards inside the pod, not across pods.** A tensor/pipeline-parallel replica runs as **one** pod that requests one device per shard (`TP × PP` devices); `podGroupSize` stays 1. A multi-pod shard group needs a per-rank rendezvous (world size, node rank, master address) that the storm controller does not inject, and vLLM refuses to start when its world size exceeds the devices the pod can see — this was observed on the live cluster, where per-pod sharding failed with "World size (2) is larger than the number of available GPUs (1)". Multi-node serving therefore needs the operator's own rank configuration and is out of scope. The Service (`<name>-svc`), the `ModelClaim` pod selector and the status follower keep selecting on the shared resource labels (`go-taas.com/service-id`, `app`, `app.kubernetes.io/managed-by`), which the role templates carry. Nothing downstream of the pods changed.
 
 **AD2 — The topology is data, not code.** `inference_services.topology` stores `single` / `distributed` / `pd` with `tensor_parallel_size`, `pipeline_parallel_size`, `prefill_replicas`, `decode_replicas`. Reads normalize an empty value to `single`, which is what a row written before the column existed means. The wire contract uses the same lowercase names, so the console and the API speak one vocabulary.
 
@@ -117,9 +118,9 @@ Limitations stated plainly: PD and multi-pod distributed serving need more than 
 
 ## 9. Acceptance criteria
 
-- **AC1** Creating a service with `topology=distributed, TP=4, PP=2` stores the layout, publishes it and produces one storm role with `podGroupSize: 8`.
+- **AC1** Creating a service with `topology=distributed, TP=4, PP=2` stores the layout, publishes it, produces one storm role with `podGroupSize: 1`, and the pod requests 8 devices.
 - **AC2** Creating with `topology=distributed, TP=PP=1` fails with 10319 and publishes nothing.
-- **AC3** Creating a PD service produces two roles, `prefill` and `decode`, with the requested replica counts, and the engine command carries the role's KV-transfer mode.
+- **AC3** Creating a PD service produces two roles, `prefill` and `decode`, with the requested replica counts, each pod requesting TP × PP devices, and the engine command carries the role's KV-transfer mode.
 - **AC4** `:update-topology` returns the service to `pending`, republishes the upsert and keeps the service id.
 - **AC5** A service with autoscaling enabled gets a `PodAutoscaler` whose `scaleTargetRef.kind` is `StormService` and no HPA; disabling autoscaling deletes it and pins the storm's replicas.
 - **AC6** Deleting a service removes the storm, the Service, the `ModelClaim`, the route and the autoscaler.

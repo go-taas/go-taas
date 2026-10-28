@@ -73,8 +73,8 @@ type stormRole struct {
 	Name string
 	// Replicas is how many pod groups of this role one storm replica runs.
 	Replicas int32
-	// PodGroupSize is how many pods one pod group has: the replicas'
-	// tensor/pipeline shards.
+	// PodGroupSize is how many pods one pod group has. It is 1: parallelism
+	// shards the model inside the pod (see stormRoles).
 	PodGroupSize int32
 	// EngineRole is the prefill/decode role passed to the engine; empty for
 	// the worker role.
@@ -82,14 +82,17 @@ type stormRole struct {
 }
 
 // stormRoles turns the requested topology into the storm's role set.
+//
+// Every role runs one pod per worker: parallelism shards the model inside
+// that pod (the pod requests one device per shard), because a multi-pod
+// tensor-parallel group needs a per-rank rendezvous (world size, node rank,
+// master address) that the storm controller does not inject. A "pod group" is
+// therefore always one pod, and the topology is expressed by the roles and by
+// the devices each pod asks for.
 func stormRoles(evt changeEvent) []stormRole {
-	podGroup := clampReplicas(evt.TensorParallelSize) * clampReplicas(evt.PipelineParallelSize)
-	if podGroup < 1 {
-		podGroup = 1
-	}
 	switch evt.Topology {
 	case topologyDistributed:
-		return []stormRole{{Name: stormRoleWorker, Replicas: 1, PodGroupSize: podGroup}}
+		return []stormRole{{Name: stormRoleWorker, Replicas: 1, PodGroupSize: 1}}
 	case topologyPD:
 		prefill := clampReplicas(evt.PrefillReplicas)
 		if prefill < 1 {
@@ -100,8 +103,8 @@ func stormRoles(evt changeEvent) []stormRole {
 			decode = 1
 		}
 		return []stormRole{
-			{Name: stormRolePrefill, Replicas: prefill, PodGroupSize: podGroup, EngineRole: stormRolePrefill},
-			{Name: stormRoleDecode, Replicas: decode, PodGroupSize: podGroup, EngineRole: stormRoleDecode},
+			{Name: stormRolePrefill, Replicas: prefill, PodGroupSize: 1, EngineRole: stormRolePrefill},
+			{Name: stormRoleDecode, Replicas: decode, PodGroupSize: 1, EngineRole: stormRoleDecode},
 		}
 	default:
 		return []stormRole{{Name: stormRoleWorker, Replicas: 1, PodGroupSize: 1}}

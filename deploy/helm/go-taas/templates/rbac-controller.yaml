@@ -42,9 +42,14 @@ rules:
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods"]
     verbs: ["get", "list"]
-  # AIBrix serving scheme: ModelClaims and PodAutoscalers.
+  # AIBrix serving scheme: ModelClaims, StormServices and PodAutoscalers. A
+  # StormService is the serving object (its RoleSets and Pods are created by
+  # the AIBrix controller, which already owns those permissions).
   - apiGroups: ["model.aibrix.ai"]
     resources: ["modelclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["orchestration.aibrix.ai"]
+    resources: ["stormservices"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["autoscaling.aibrix.ai"]
     resources: ["podautoscalers"]
