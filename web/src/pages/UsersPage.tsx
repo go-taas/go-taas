@@ -120,8 +120,6 @@ export default function UsersPage() {
                 <th>{t('users.colUser')}</th>
                 <th>{t('users.colEmail')}</th>
                 <th>{t('users.colState')}</th>
-                <th>{t('users.colOrganization')}</th>
-                <th>{t('users.colProject')}</th>
                 <th>{t('users.colCreated')}</th>
                 <th>{t('common.actions')}</th>
               </tr>
@@ -140,12 +138,6 @@ export default function UsersPage() {
                   <td>{user.email || '—'}</td>
                   <td>
                     <StateBadge state={user.state} />
-                  </td>
-                  <td data-testid={`user-org-name-${user.userId}`}>
-                    {user.organizationName || <span className="muted">—</span>}
-                  </td>
-                  <td data-testid={`user-project-name-${user.userId}`}>
-                    {user.projectName || <span className="muted">—</span>}
                   </td>
                   <td>{formatTime(user.createdAt)}</td>
                   <td>
