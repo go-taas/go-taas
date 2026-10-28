@@ -497,3 +497,15 @@ organization is refused with 10036 regardless of what the client sends.
   fleet-wide where the surface already supports it (usage, cost, forecast,
   audit, inference services), empty otherwise - while a write still needs a
   real, active organization, so an empty id can never create tenant data.
+
+### 9.11 Page copy uses names, not identifiers
+
+The member roster describes itself and its confirmation dialogs by the
+organization's display name (`organizationLabel` in the console resolves it
+from the organization directory, with the console scope's name as a fallback
+and the id only as a last resort), so a person never reads a UUID to know
+which organization a dialog is about. The same reasoning applies to the
+email-change flow: an address another account already owns is refused when
+the code is requested, with a message that names the address, instead of
+letting the caller spend a code and the 60-second resend cooldown before the
+unique index rejects the write.

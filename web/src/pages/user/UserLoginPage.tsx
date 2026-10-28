@@ -9,6 +9,7 @@ import { setSessionToken, type Realm } from '../../api';
 import { realmCustomLoginPath, realmHome } from '../../surface-routes';
 import { useI18n } from '../../i18n';
 import brandLogo from '../../assets/brand/logo.svg';
+import { useResendCooldown, windowSeconds } from '../../hooks/useResendCooldown';
 
 interface PublicProvider {
   providerId: string;
@@ -43,24 +44,8 @@ export default function UserLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [cooldown, setCooldown] = useState(0);
-
-  // Restore the resend cooldown from localStorage on mount.
-  useEffect(() => {
-    const until = parseInt(localStorage.getItem(COOLDOWN_KEY) || '0', 10);
-    const remaining = Math.max(0, Math.ceil((until - Date.now()) / 1000));
-    if (remaining > 0) setCooldown(remaining);
-  }, []);
-
   // 1-minute resend countdown, persisted to localStorage.
-  useEffect(() => {
-    if (cooldown <= 0) {
-      localStorage.removeItem(COOLDOWN_KEY);
-      return;
-    }
-    const id = setInterval(() => setCooldown((c) => c - 1), 1000);
-    return () => clearInterval(id);
-  }, [cooldown]);
+  const cooldown = useResendCooldown(COOLDOWN_KEY);
 
   useEffect(() => {
     api
@@ -92,7 +77,7 @@ export default function UserLoginPage() {
   };
 
   const sendCode = async () => {
-    if (!email.trim() || sendingCode || cooldown > 0) return;
+    if (!email.trim() || sendingCode || !cooldown.ready) return;
     setSendingCode(true);
     setError('');
     try {
@@ -100,9 +85,7 @@ export default function UserLoginPage() {
         email: email.trim(),
         purpose: 'login',
       });
-      const secs = parseInt(data.resendAfterSeconds || '60', 10) || 60;
-      setCooldown(secs);
-      localStorage.setItem(COOLDOWN_KEY, String(Date.now() + secs * 1000));
+      cooldown.start(windowSeconds(data));
     } catch (e) {
       const code = (e as { code?: number }).code;
       setError(code === 10037 ? t('login.errorCooldown') : t('login.errorSendCode'));
@@ -182,11 +165,11 @@ export default function UserLoginPage() {
               type="button"
               className="secondary"
               data-testid="login-send-code"
-              disabled={!email.trim() || sendingCode || cooldown > 0}
+              disabled={!email.trim() || sendingCode || !cooldown.ready}
               onClick={() => void sendCode()}
             >
-              {cooldown > 0
-                ? t('login.resendIn', { seconds: cooldown })
+              {!cooldown.ready
+                ? t('login.resendIn', { seconds: cooldown.remaining })
                 : sendingCode
                   ? t('common.working')
                   : t('login.sendCode')}

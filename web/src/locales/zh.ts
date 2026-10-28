@@ -394,7 +394,7 @@ export const zh: Record<string, string> = {
 
   // ---- Members ----
   'members.title': '成员',
-  'members.subtitle': '<strong>{orgId}</strong> 的组织成员名单。角色：所有者（受保护）、管理员、成员、只读。',
+  'members.subtitle': '<strong>{orgName}</strong> 的组织成员名单。角色：所有者（受保护）、管理员、成员、只读。',
   'members.add': '添加成员',
   'members.empty': '还没有成员。添加第一位成员。',
   'members.colUser': '用户',
@@ -406,7 +406,7 @@ export const zh: Record<string, string> = {
   'members.fieldRole': '角色',
   'members.placeholderUserId': '用户 id',
   'members.removeTitle': '移除成员',
-  'members.removeBody': '将 <strong>{userId}</strong> 从 <strong>{orgId}</strong> 移除？',
+  'members.removeBody': '将 <strong>{userId}</strong> 从 <strong>{orgName}</strong> 移除？',
   'members.loadFailed': '加载成员失败',
   'members.addFailed': '添加成员失败',
   'members.roleFailed': '修改角色失败',
@@ -2519,6 +2519,7 @@ export const zh: Record<string, string> = {
   // ---- User: Profile ----
   'profile.title': '个人资料',
   'profile.username': '用户名（不可修改）',
+  'profile.sendCodeIn': '{seconds}s 后可重新发送',
   'profile.sendCode': '发送验证码',
   'profile.codeSent': '验证码已发送到新邮箱，5 分钟内有效。',
   'profile.codeFailed': '发送验证码失败。',

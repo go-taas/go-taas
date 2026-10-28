@@ -89,6 +89,30 @@ func (s *Service) redisClientFor() (*goredis.Client, error) {
 	return client, nil
 }
 
+// ensureEmailAvailable refuses an address another account already owns.
+// The caller's own address is fine: re-submitting it needs no code.
+func (s *Service) ensureEmailAvailable(ctx context.Context, email string) error {
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return err
+	}
+	owner, err := repo.FindUserByEmail(ctx, email)
+	if err != nil {
+		if isRecordNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	// The service is its own session resolver. A request without a session
+	// (the transitional path) cannot be the owner, so it is refused.
+	callerID, callErr := s.SessionUserID(ctx)
+	if callErr == nil && callerID != "" && owner.ID == callerID {
+		return nil
+	}
+	return apierrors.Newf(apierrors.CodeUserExists,
+		"email %q is already in use by another account", email)
+}
+
 // SendEmailCode generates a verification code, stores it in Redis, and
 // sends it to the given email. A 60-second cooldown prevents resend
 // spam.
@@ -101,6 +125,15 @@ func (s *Service) SendEmailCode(ctx context.Context, req *authv1.SendEmailCodeRe
 	if email == "" || (purpose != emailCodePurposeRegister &&
 		purpose != emailCodePurposeLogin && purpose != emailCodePurposeChangeEmail) {
 		return nil, apierrors.New(apierrors.CodeUserNotFound)
+	}
+	// A changed address must not already belong to another account. The
+	// unique index is the authoritative guard on write; answering here too
+	// keeps the caller from spending a code (and the 60s cooldown) only to
+	// learn the address is taken.
+	if purpose == emailCodePurposeChangeEmail {
+		if err := s.ensureEmailAvailable(ctx, email); err != nil {
+			return nil, err
+		}
 	}
 	client, err := s.redisClientFor()
 	if err != nil {

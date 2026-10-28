@@ -11,6 +11,11 @@ import { useOrg } from '../../org';
 import { useRealm } from '../../surface';
 import { useI18n } from '../../i18n';
 import { profilePath, useProfile, type UserProfile } from '../../profile';
+import { useResendCooldown, windowSeconds } from '../../hooks/useResendCooldown';
+
+// EMAIL_COOLDOWN_KEY is the persisted resend deadline of the email-change
+// code, keyed per console so the two realms do not share a countdown.
+const EMAIL_COOLDOWN_KEY = 'go-taas.profile.email-cooldown-until';
 
 export default function ProfilePage() {
   const api = useApi();
@@ -27,6 +32,9 @@ export default function ProfilePage() {
   const [emailCode, setEmailCode] = useState('');
   const [codeSending, setCodeSending] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
+  // The server refuses a second code inside its window, so the button
+  // counts down instead of letting the user trigger that refusal.
+  const cooldown = useResendCooldown(EMAIL_COOLDOWN_KEY);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -105,15 +113,16 @@ export default function ProfilePage() {
 
   // sendEmailCode asks the platform to mail a code to the new address.
   const sendEmailCode = async () => {
-    if (!email.trim()) return;
+    if (!email.trim() || codeSending || !cooldown.ready) return;
     setCodeSending(true);
     setError('');
     setSaved(false);
     try {
-      await api.post(emailCodePath, orgId, {
+      const data = await api.post<{ resendAfterSeconds?: string }>(emailCodePath, orgId, {
         email: email.trim(),
         purpose: 'change_email',
       });
+      cooldown.start(windowSeconds(data));
       setCodeSent(true);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('profile.codeFailed'));
@@ -223,10 +232,14 @@ export default function ProfilePage() {
                 type="button"
                 className="secondary"
                 data-testid="profile-email-send-code"
-                disabled={codeSending || !emailDirty}
+                disabled={codeSending || !emailDirty || !cooldown.ready}
                 onClick={() => void sendEmailCode()}
               >
-                {codeSending ? t('common.working') : t('profile.sendCode')}
+                {codeSending
+                  ? t('common.working')
+                  : cooldown.ready
+                    ? t('profile.sendCode')
+                    : t('profile.sendCodeIn', { seconds: cooldown.remaining })}
               </button>
             </div>
             <div className="field-hint">{t('profile.emailHint')}</div>

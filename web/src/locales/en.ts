@@ -395,7 +395,7 @@ export const en: Record<string, string> = {
 
   // ---- Members ----
   'members.title': 'Members',
-  'members.subtitle': 'Organization roster for <strong>{orgId}</strong>. Roles: owner (protected), admin, member, viewer.',
+  'members.subtitle': 'Organization roster for <strong>{orgName}</strong>. Roles: owner (protected), admin, member, viewer.',
   'members.add': 'Add member',
   'members.empty': 'No members yet. Add the first member.',
   'members.colUser': 'User',
@@ -407,7 +407,7 @@ export const en: Record<string, string> = {
   'members.fieldRole': 'Role',
   'members.placeholderUserId': 'user id',
   'members.removeTitle': 'Remove member',
-  'members.removeBody': 'Remove <strong>{userId}</strong> from <strong>{orgId}</strong>?',
+  'members.removeBody': 'Remove <strong>{userId}</strong> from <strong>{orgName}</strong>?',
   'members.loadFailed': 'failed to load members',
   'members.addFailed': 'failed to add member',
   'members.roleFailed': 'failed to change role',
@@ -2546,6 +2546,7 @@ export const en: Record<string, string> = {
   // ---- User: Profile ----
   'profile.title': 'My Profile',
   'profile.username': 'Username (immutable)',
+  'profile.sendCodeIn': 'Resend in {seconds}s',
   'profile.sendCode': 'Send code',
   'profile.codeSent': 'A verification code was sent to the new address. It expires in 5 minutes.',
   'profile.codeFailed': 'Failed to send the verification code.',

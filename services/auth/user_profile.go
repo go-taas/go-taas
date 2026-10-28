@@ -120,10 +120,12 @@ func (s *Service) applyEmailChange(ctx context.Context, repo *SSORepository, use
 	}
 	// The email column is unique, so the constraint is the authoritative
 	// duplicate guard (no read-then-write race). A collision maps to
-	// USER_EXISTS for a stable client contract.
+	// USER_EXISTS for a stable client contract, with a message that names
+	// the real cause: the address belongs to another account, not this one.
 	if err := repo.UpdateUserEmail(ctx, userID, email); err != nil {
 		if isUniqueViolation(err) {
-			return apierrors.New(apierrors.CodeUserExists)
+			return apierrors.Newf(apierrors.CodeUserExists,
+				"email %q is already in use by another account", email)
 		}
 		return err
 	}

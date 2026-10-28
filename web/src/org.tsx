@@ -126,6 +126,19 @@ export function useOrganizationPicker(initial = '') {
   return { orgId: selected, orgs, loaded, choose, realm };
 }
 
+// organizationLabel returns the display name of an organization id. It reads
+// the directory first (it is the freshest source), then any caller-supplied
+// fallback such as the console scope's name, and finally the id itself so a
+// page never renders an empty label.
+export function organizationLabel(
+  orgs: OrganizationSummary[],
+  orgId: string,
+  ...fallbacks: string[]
+): string {
+  const found = orgs.find((o) => o.organizationId === orgId);
+  return found?.displayName || fallbacks.find((f) => f) || orgId;
+}
+
 // OrganizationPicker renders the select of useOrganizationPicker.
 export function OrganizationPicker({
   orgs,

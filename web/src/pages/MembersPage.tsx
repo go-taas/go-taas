@@ -3,7 +3,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type OrgMember } from '../api';
-import { OrganizationPicker, useOrganizationPicker } from '../org';
+import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
@@ -22,6 +22,14 @@ export default function MembersPage() {
       : '';
   const { orgId: pickerOrg, orgs, choose } = useOrganizationPicker(requestedOrg);
   const orgId = scopedOrg || pickerOrg;
+  // The roster is described by the organization's name, never by its id.
+  // The directory supplies it; the console scope carries one as a fallback
+  // while the directory call is still in flight.
+  const orgName = organizationLabel(
+    orgs,
+    orgId,
+    scope?.scopeType === 'organization' && scope.organizationId === orgId ? scope.displayName : '',
+  );
   const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
@@ -104,7 +112,7 @@ export default function MembersPage() {
           <h1>{t('members.title')}</h1>
           <div
             className="subtitle"
-            dangerouslySetInnerHTML={{ __html: t('members.subtitle', { orgId }) }}
+            dangerouslySetInnerHTML={{ __html: t('members.subtitle', { orgName }) }}
           />
         </div>
         <div className="toolbar">
@@ -233,7 +241,7 @@ export default function MembersPage() {
             dangerouslySetInnerHTML={{
               __html: t('members.removeBody', {
                 userId: removeTarget.displayName || removeTarget.userId,
-                orgId,
+                orgName,
               }),
             }}
           />

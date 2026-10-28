@@ -168,6 +168,10 @@ func TestServiceUpdateUserProfileEmailTaken(t *testing.T) {
 	_, err := svc.UpdateUserProfile(ctx, &authv1.UpdateUserProfileRequest{Email: "bob@x.com"})
 	require.Error(t, err)
 	assert.EqualValues(t, apierrors.CodeUserExists, apierrors.CodeOf(err))
+	// The message names the real cause - the address, not the account -
+	// so the console does not leave the user guessing which one clashed.
+	assert.Contains(t, err.Error(), "bob@x.com")
+	assert.Contains(t, err.Error(), "already in use")
 }
 
 // TestServiceUpdateUserProfileSameEmail verifies resubmitting the current
@@ -247,4 +251,29 @@ func TestServiceUpdateUserProfileAvatarValidation(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.EqualValues(t, apierrors.CodeTenancyInvalid, apierrors.CodeOf(err))
+}
+
+// TestServiceSendEmailCodeChangeEmailTaken verifies a change-email code is
+// not even sent to an address another account already owns: the caller
+// learns immediately instead of spending a code and the resend cooldown.
+func TestServiceSendEmailCodeChangeEmailTaken(t *testing.T) {
+	svc, db := newSSOService(t)
+	enableEmailVerification(t)
+	ctx := profileUser(t, svc, db, "440722d6-4847-40b6-abb6-db12fc41e1a1", "alice", "alice@x.com", "sess-taken")
+	require.NoError(t, db.Create(&User{
+		ID: "b811aed1-cb28-402e-a03c-c01924da0aac", Username: "bob", Email: "bob@x.com",
+	}).Error)
+
+	_, err := svc.SendEmailCode(ctx, &authv1.SendEmailCodeRequest{
+		Email: "bob@x.com", Purpose: emailCodePurposeChangeEmail,
+	})
+	require.Error(t, err)
+	assert.EqualValues(t, apierrors.CodeUserExists, apierrors.CodeOf(err))
+	assert.Contains(t, err.Error(), "already in use")
+
+	// The caller's own address is not a conflict.
+	_, err = svc.SendEmailCode(ctx, &authv1.SendEmailCodeRequest{
+		Email: "alice@x.com", Purpose: emailCodePurposeChangeEmail,
+	})
+	require.NoError(t, err)
 }
