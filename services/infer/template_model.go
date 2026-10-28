@@ -34,7 +34,9 @@ type EngineParamTemplate struct {
 	// Engine is the serving engine the parameters belong to (vllm, sglang).
 	Engine string `gorm:"size:64;not null;index"`
 	// ModelID narrows the template to one catalog model; empty matches any.
-	ModelID string `gorm:"type:uuid;not null;default:'';index"`
+	// It is a plain string, not a uuid column: an empty value means "any
+	// model", and Postgres rejects '' as a uuid.
+	ModelID string `gorm:"size:64;not null;default:'';index"`
 	// Topology narrows it to a serving layout; empty matches any.
 	Topology string `gorm:"size:16;not null;default:''"`
 	// Accelerator / AcceleratorType narrow it to hardware; empty matches any.
