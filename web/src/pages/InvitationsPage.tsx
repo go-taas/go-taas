@@ -4,7 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type Invitation } from '../api';
-import { OrganizationPicker, useOrganizationPicker } from '../org';
+import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
@@ -17,6 +17,13 @@ export default function InvitationsPage() {
   const scopedOrg = scope?.scopeType === 'organization' ? scope.organizationId : '';
   const { orgId: pickerOrg, orgs, choose } = useOrganizationPicker();
   const orgId = scopedOrg || pickerOrg;
+  // The pipeline is described by the organization's name, never by its id:
+  // the console scope carries the name while the directory is in flight.
+  const orgName = organizationLabel(
+    orgs,
+    orgId,
+    scope?.scopeType === 'organization' && scope.organizationId === orgId ? scope.displayName : '',
+  );
   const { t, tEnum } = useI18n();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -105,7 +112,7 @@ export default function InvitationsPage() {
           <h1>{t('invitations.title')}</h1>
           <div
             className="subtitle"
-            dangerouslySetInnerHTML={{ __html: t('invitations.subtitle', { orgId }) }}
+            dangerouslySetInnerHTML={{ __html: t('invitations.subtitle', { orgName }) }}
           />
         </div>
         <div className="toolbar">

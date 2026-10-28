@@ -414,6 +414,11 @@ func (c *Configuration) applyDefaults() {
 	if c.Image.Harbor.Project == "" {
 		c.Image.Harbor.Project = "taas"
 	}
+	// One uploaded archive is bounded so a single request cannot fill the
+	// node's disk. 8 GiB covers a serving-engine image comfortably.
+	if c.Image.Upload.MaxArchiveBytes <= 0 {
+		c.Image.Upload.MaxArchiveBytes = 8 << 30
+	}
 	// The controller's weights PVC and mount path defaults.
 	if c.Controller.Weights.PVCName == "" {
 		c.Controller.Weights.PVCName = "model-weights"

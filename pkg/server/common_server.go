@@ -54,6 +54,11 @@ type Server interface {
 	// any service can tell a platform administrator from an ordinary
 	// caller. It must be called before Init.
 	SetSessionRolesResolver(r authctx.RolesResolver)
+
+	// SetImageUpload installs the handler for POST
+	// /api/v1/admin/images:upload (a multipart archive). It must be called
+	// before Init; nil leaves the endpoint unregistered.
+	SetImageUpload(fn ImageUploadFunc)
 }
 
 type commonServer struct {
@@ -78,6 +83,10 @@ type commonServer struct {
 	// context. Nil until wired: services then treat every caller as an
 	// ordinary one.
 	sessionRoles authctx.RolesResolver
+
+	// imageUpload handles POST /api/v1/admin/images:upload (a multipart
+	// archive). Nil leaves the endpoint unregistered.
+	imageUpload ImageUploadFunc
 
 	components *components
 }
@@ -201,6 +210,7 @@ func (s *commonServer) Init() {
 			runtime.WithMetadata(PathMetadataAnnotator),
 		)
 		s.initGateway()
+		s.registerUploadRoute()
 	}
 
 	// Build the monitor server (metrics + health + pprof).

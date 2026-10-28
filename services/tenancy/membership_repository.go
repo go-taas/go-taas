@@ -337,3 +337,49 @@ func (r *MembershipRepository) SetJoinRequestStatus(ctx context.Context, id, sta
 	return r.db.DB(ctx).Model(&JoinRequest{}).Where("id = ?", id).
 		Updates(map[string]any{"status": status, "decided_by": decidedBy, "decided_at": decidedAt}).Error
 }
+
+// AllOrgMemberUserIDs returns every user id that belongs to any
+// organization. The roster-candidate pick-list subtracts this set from the
+// account directory: a person belongs to at most one organization, so anyone
+// in it is no longer a candidate.
+func (r *MembershipRepository) AllOrgMemberUserIDs(ctx context.Context) (map[string]bool, error) {
+	var ids []string
+	if err := r.db.DB(ctx).Model(&OrgMember{}).Distinct().Pluck("user_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
+// AllProjectMemberUserIDs returns every user id that belongs to any project,
+// for the same reason as AllOrgMemberUserIDs.
+func (r *MembershipRepository) AllProjectMemberUserIDs(ctx context.Context) (map[string]bool, error) {
+	var ids []string
+	if err := r.db.DB(ctx).Model(&ProjectMember{}).Distinct().Pluck("user_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}
+
+// OrgMemberUserIDs returns the user ids of one organization's roster, so a
+// project's candidate list can be limited to the owning organization.
+func (r *MembershipRepository) OrgMemberUserIDs(ctx context.Context, orgID string) (map[string]bool, error) {
+	var ids []string
+	if err := r.db.DB(ctx).Model(&OrgMember{}).
+		Where("organization_id = ?", orgID).
+		Pluck("user_id", &ids).Error; err != nil {
+		return nil, err
+	}
+	out := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		out[id] = true
+	}
+	return out, nil
+}

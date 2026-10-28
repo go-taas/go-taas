@@ -131,6 +131,13 @@ service TenancyService {
     option (google.api.http) = {get: "/api/v1/admin/tenancy/organizations/{organization_id}/members"};
   }
 
+  // ListOrgMemberCandidates returns the accounts that may still join the
+  // organization: active users who belong to no organization. The console
+  // offers them as a pick-list instead of asking for a user id.
+  rpc ListOrgMemberCandidates(ListOrgMemberCandidatesRequest) returns (ListOrgMemberCandidatesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/organizations/{organization_id}/member-candidates"};
+  }
+
   // AddOrgMember adds a member with a role. Requires admin/owner.
   rpc AddOrgMember(AddOrgMemberRequest) returns (AddOrgMemberResponse) {
     option (google.api.http) = {
@@ -157,6 +164,13 @@ service TenancyService {
   // in the owning organization.
   rpc ListProjectMembers(ListProjectMembersRequest) returns (ListProjectMembersResponse) {
     option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}/members"};
+  }
+
+  // ListProjectMemberCandidates returns the members of the project's
+  // organization who may still join the project: active users who belong
+  // to no project.
+  rpc ListProjectMemberCandidates(ListProjectMemberCandidatesRequest) returns (ListProjectMemberCandidatesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}/member-candidates"};
   }
 
   // AddProjectMember adds a member with a role. Requires admin/owner in
@@ -574,6 +588,32 @@ message ListOrgMembersResponse {
   taas.common.v1.Response response = 1;
   repeated OrgMember members = 2;
   taas.common.v1.PageMeta page_meta = 3;
+}
+
+// MemberCandidate is an account that may still be added to a roster.
+message MemberCandidate {
+  string user_id = 1;
+  string username = 2;
+  string display_name = 3;
+  string email = 4;
+}
+
+message ListOrgMemberCandidatesRequest {
+  string organization_id = 1;
+}
+
+message ListOrgMemberCandidatesResponse {
+  taas.common.v1.Response response = 1;
+  repeated MemberCandidate candidates = 2;
+}
+
+message ListProjectMemberCandidatesRequest {
+  string project_id = 1;
+}
+
+message ListProjectMemberCandidatesResponse {
+  taas.common.v1.Response response = 1;
+  repeated MemberCandidate candidates = 2;
 }
 
 message AddOrgMemberRequest {

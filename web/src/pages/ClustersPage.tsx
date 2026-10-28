@@ -101,20 +101,30 @@ export default function ClustersPage() {
           <h1 data-testid="clusters-title">{t('clusters.title')}</h1>
           <div className="subtitle">{t('clusters.subtitle')}</div>
         </div>
-        <button
-          className="secondary"
-          data-testid="clusters-discover"
-          onClick={() => void discover()}
-          disabled={discovering || loading}
-        >
-          {discovering ? t('clusters.discovering') : t('clusters.discover')}
-        </button>
-        <button className="secondary" data-testid="clusters-refresh" onClick={() => void load()} disabled={loading}>
-          {t('clusters.refresh')}
-        </button>
-        <button className="primary" data-testid="clusters-register" onClick={() => setRegOpen(true)}>
-          {t('clusters.register')}
-        </button>
+        {/* One action group, not three siblings of the flex header: the
+            header spreads its children apart, which pushed these buttons to
+            opposite edges. */}
+        <div className="toolbar">
+          <button
+            className="secondary"
+            data-testid="clusters-discover"
+            onClick={() => void discover()}
+            disabled={discovering || loading}
+          >
+            {discovering ? t('clusters.discovering') : t('clusters.discover')}
+          </button>
+          <button
+            className="secondary"
+            data-testid="clusters-refresh"
+            onClick={() => void load()}
+            disabled={loading}
+          >
+            {t('clusters.refresh')}
+          </button>
+          <button className="primary" data-testid="clusters-register" onClick={() => setRegOpen(true)}>
+            {t('clusters.register')}
+          </button>
+        </div>
       </div>
 
       {error && (

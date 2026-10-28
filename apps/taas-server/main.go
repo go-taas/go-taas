@@ -150,6 +150,32 @@ func main() {
 	// whenever the Harbor registry is configured.
 	if cfg.Image.Harbor.URL != "" {
 		imageSvc.SetImporter(registry.NewSkopeoImporter())
+		// The upload endpoint stages a `docker save` archive and hands it to
+		// the same importer, so an upload lands exactly where a registry
+		// import does. The caller's identity is resolved here (the image
+		// module never reads the users table) for the audit trail.
+		srv.SetImageUpload(func(ctx context.Context, req server.ImageUploadRequest) (*server.ImageUploadResult, error) {
+			actor, _ := authSvc.SessionUserID(ctx)
+			res, err := imageSvc.UploadImage(ctx, image.UploadImageRequest{
+				ArchivePath:     req.ArchivePath,
+				Name:            req.Name,
+				Tag:             req.Tag,
+				SourceReference: req.SourceReference,
+				Accelerator:     req.Accelerator,
+				Engine:          req.Engine,
+				Description:     req.Description,
+				Actor:           actor,
+			})
+			if err != nil {
+				return nil, err
+			}
+			return &server.ImageUploadResult{
+				ImageID:   res.ImageID,
+				Reference: res.Reference,
+				Name:      res.Name,
+				Tag:       res.Tag,
+			}, nil
+		})
 	}
 	inferSvc := infer.New(srv.Components())
 	srv.RegisterService(inferSvc)
@@ -393,6 +419,10 @@ func main() {
 			// Rosters show people, not UUIDs: auth resolves user ids to
 			// display names (falling back to the username).
 			tenancySvc.SetUserLabelResolver(authSvc)
+			// The roster pick-lists offer the accounts that have not joined
+			// yet: auth owns the users table, tenancy owns the membership
+			// tables and does the filtering.
+			tenancySvc.SetCandidateUserDirectory(authSvc)
 			tenancySvc.SetSessionRolesResolver(authSvc)
 			// Feature #51 (AD13): the org quota seams. Tenancy owns the
 			// quota columns; auth rides them on the VerifyAPIKey verdict,

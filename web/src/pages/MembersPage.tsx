@@ -2,11 +2,12 @@
 // and remove. Implements docs/design/org-members-rbac.md FR1, AC1-AC3.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type OrgMember } from '../api';
+import { api, ApiError, type MemberCandidate, type OrgMember } from '../api';
 import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, StateBadge } from '../components';
+import { candidateLabel } from '../candidates';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
@@ -37,6 +38,10 @@ export default function MembersPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [addUserId, setAddUserId] = useState('');
   const [addRole, setAddRole] = useState('member');
+  // The pick-list: accounts that belong to no organization yet. A roster
+  // dropdown beats pasting a UUID, and the API decides eligibility.
+  const [candidates, setCandidates] = useState<MemberCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
   const [removeTarget, setRemoveTarget] = useState<OrgMember | null>(null);
 
   const load = useCallback(async () => {
@@ -58,6 +63,31 @@ export default function MembersPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // Load the eligible accounts whenever the dialog opens, so a member who
+  // joined in the meantime is not offered again.
+  useEffect(() => {
+    if (!addOpen || !orgId) return;
+    let cancelled = false;
+    setCandidatesLoading(true);
+    api
+      .get<{ candidates?: MemberCandidate[] }>(
+        `/api/v1/admin/tenancy/organizations/${orgId}/member-candidates`,
+        orgId,
+      )
+      .then((data) => {
+        if (!cancelled) setCandidates(data.candidates || []);
+      })
+      .catch(() => {
+        if (!cancelled) setCandidates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCandidatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, orgId]);
 
   const addMember = async () => {
     setError('');
@@ -206,13 +236,27 @@ export default function MembersPage() {
         <Dialog title={t('members.addTitle')} onClose={() => setAddOpen(false)}>
           <div className="form">
             <label>
-              {t('members.fieldUserId')}
-              <input
+              {t('members.fieldUser')}
+              <select
                 data-testid="add-member-user-id"
                 value={addUserId}
+                disabled={candidatesLoading}
                 onChange={(e) => setAddUserId(e.target.value)}
-                placeholder={t('members.placeholderUserId')}
-              />
+              >
+                <option value="">
+                  {candidatesLoading
+                    ? t('common.loading')
+                    : candidates.length === 0
+                      ? t('members.noCandidates')
+                      : t('members.selectUser')}
+                </option>
+                {candidates.map((c) => (
+                  <option key={c.userId} value={c.userId}>
+                    {candidateLabel(c)}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">{t('members.candidatesHint')}</span>
             </label>
             <label>
               {t('members.fieldRole')}
@@ -228,9 +272,18 @@ export default function MembersPage() {
                 ))}
               </select>
             </label>
-            <button data-testid="add-member-save" onClick={() => void addMember()}>
-              {t('members.add')}
-            </button>
+            <div className="dialog-actions">
+              <button className="secondary" data-testid="add-member-cancel" onClick={() => setAddOpen(false)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                data-testid="add-member-save"
+                disabled={!addUserId || candidatesLoading}
+                onClick={() => void addMember()}
+              >
+                {t('members.addConfirm')}
+              </button>
+            </div>
           </div>
         </Dialog>
       )}

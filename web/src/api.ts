@@ -43,6 +43,15 @@ export function getSessionToken(realm: Realm): string {
   return localStorage.getItem(tokenKey(realm)) || '';
 }
 
+// sessionAuthHeader returns the Authorization header value for the realm's
+// session, or "" when there is none. It exists so a request that cannot go
+// through the api client (a multipart upload, which needs the browser's
+// upload progress events) authenticates exactly like every other call.
+export function sessionAuthHeader(realm: Realm): string {
+  const token = getSessionToken(realm);
+  return token ? `Bearer ${token}` : '';
+}
+
 export function setSessionToken(realm: Realm, token: string): void {
   if (token) {
     localStorage.setItem(tokenKey(realm), token);
@@ -889,6 +898,17 @@ export interface ProjectMember {
   displayName: string;
   role: string; // admin | member | viewer
   joinedAt: string;
+}
+
+// MemberCandidate is an account a roster may still add: the pick-list the
+// console offers instead of a free-text user id. The API decides who is
+// eligible (no organization for an org roster, no project for a project
+// roster).
+export interface MemberCandidate {
+  userId: string;
+  username: string;
+  displayName: string;
+  email: string;
 }
 
 // ---- user-surface my tenancy (feature #10) ----

@@ -464,6 +464,19 @@ type ImageConfig struct {
 	// imported images are pushed to. Imported images always land in the
 	// configured project (default "taas").
 	Harbor HarborConfig `mapstructure:"harbor"`
+	// Upload configures the image-upload flow (a docker-save archive that
+	// the platform pushes into Harbor).
+	Upload ImageUploadConfig `mapstructure:"upload"`
+}
+
+// ImageUploadConfig holds the image-upload settings.
+type ImageUploadConfig struct {
+	// MaxArchiveBytes caps one uploaded archive. Defaults to 8 GiB, which
+	// covers a model-serving engine image with room to spare.
+	MaxArchiveBytes int64 `mapstructure:"maxArchiveBytes"`
+	// TempDir is where an upload is staged before it is pushed. Empty
+	// uses the OS temp directory.
+	TempDir string `mapstructure:"tempDir"`
 }
 
 // HarborConfig holds the internal container registry (Harbor) settings

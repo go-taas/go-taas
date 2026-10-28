@@ -3,10 +3,11 @@
 // members (requirement 4).
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError } from '../api';
+import { api, ApiError, type MemberCandidate } from '../api';
 import { useI18n } from '../i18n';
 import { ErrorBanner } from '../components';
 import { useAdminScope } from '../admin-scope';
+import { candidateLabel } from '../candidates';
 
 interface ProjectMember {
   userId: string;
@@ -26,6 +27,11 @@ export default function ProjectMembersPage() {
   const [error, setError] = useState('');
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('member');
+  // The pick-list: this organization's members who belong to no project yet.
+  // The API decides eligibility, so the console never offers an account that
+  // cannot join.
+  const [candidates, setCandidates] = useState<MemberCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -51,6 +57,30 @@ export default function ProjectMembersPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  const loadCandidates = useCallback(async () => {
+    if (!projectId) {
+      setCandidates([]);
+      return;
+    }
+    setCandidatesLoading(true);
+    try {
+      const data = await api.get<{ candidates?: MemberCandidate[] }>(
+        `/api/v1/admin/tenancy/projects/${projectId}/member-candidates`,
+        '',
+      );
+      setCandidates(data.candidates || []);
+    } catch {
+      setCandidates([]);
+    } finally {
+      setCandidatesLoading(false);
+    }
+  }, [api, projectId]);
+
+  // Members change the candidate set, so it is reloaded with the roster.
+  useEffect(() => {
+    void loadCandidates();
+  }, [loadCandidates, members]);
 
   const add = async () => {
     if (!userId.trim()) return;
@@ -101,12 +131,26 @@ export default function ProjectMembersPage() {
         <div className="form-grid">
           <label>
             {t('projectMembers.userId')}
-            <input
+            <select
               data-testid="project-member-user"
               value={userId}
+              disabled={candidatesLoading}
               onChange={(e) => setUserId(e.target.value)}
-              placeholder={t('projectMembers.userIdPlaceholder')}
-            />
+            >
+              <option value="">
+                {candidatesLoading
+                  ? t('common.loading')
+                  : candidates.length === 0
+                    ? t('projectMembers.noCandidates')
+                    : t('projectMembers.selectUser')}
+              </option>
+              {candidates.map((c) => (
+                <option key={c.userId} value={c.userId}>
+                  {candidateLabel(c)}
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">{t('projectMembers.candidatesHint')}</span>
           </label>
           <label>
             {t('projectMembers.role')}

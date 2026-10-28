@@ -16,6 +16,7 @@ import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
 import { useI18n } from '../i18n';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
+import UploadImageDialog from '../components/UploadImageDialog';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -39,7 +40,7 @@ export default function ImagesPage() {
   const [engine, setEngine] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [registerOpen, setRegisterOpen] = useState(false);
+  const [uploadOpen, setUploadOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ImageSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageSummary | null>(null);
@@ -99,8 +100,13 @@ export default function ImagesPage() {
           >
             {t('images.import')}
           </button>
-          <button data-testid="register-image" onClick={() => setRegisterOpen(true)}>
-            {t('images.register')}
+          <button
+            data-testid="upload-image"
+            disabled={registry !== null && !registry.configured}
+            title={registry && !registry.configured ? t('images.registryUnconfigured') : undefined}
+            onClick={() => setUploadOpen(true)}
+          >
+            {t('images.upload')}
           </button>
         </div>
       </div>
@@ -250,12 +256,13 @@ export default function ImagesPage() {
         )}
       </div>
 
-      {registerOpen && (
-        <RegisterImageDialog
+      {uploadOpen && (
+        <UploadImageDialog
           orgId={orgId}
-          onClose={() => setRegisterOpen(false)}
+          registry={registry}
+          onClose={() => setUploadOpen(false)}
           onDone={() => {
-            setRegisterOpen(false);
+            setUploadOpen(false);
             void load();
           }}
         />
@@ -309,159 +316,6 @@ export default function ImagesPage() {
         />
       )}
     </div>
-  );
-}
-
-function RegisterImageDialog({
-  orgId,
-  onClose,
-  onDone,
-}: {
-  orgId: string;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [name, setName] = useState('');
-  const [tag, setTag] = useState('');
-  const [digest, setDigest] = useState('');
-  const [accelerator, setAccelerator] = useState('');
-  const [engine, setEngine] = useState('');
-  const [description, setDescription] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-  const { t } = useI18n();
-  const fleet = useFleetAccelerators(orgId);
-
-  useEffect(() => {
-    // Default to the first vendor the cluster reports, or the CPU marker
-    // when it reports none.
-    if (!accelerator) setAccelerator(fleet.vendors[0] || CPU_ACCELERATOR);
-  }, [accelerator, fleet.vendors]);
-
-  const submit = async () => {
-    if (!name.trim()) {
-      setError(t('images.validationName'));
-      return;
-    }
-    if (!tag.trim()) {
-      setError(t('images.validationTag'));
-      return;
-    }
-    if (digest.trim() && !/^sha256:[a-fA-F0-9]{64}$/.test(digest.trim())) {
-      setError(t('images.validationDigest'));
-      return;
-    }
-    if (!engine.trim()) {
-      setError(t('images.validationEngine'));
-      return;
-    }
-    setSubmitting(true);
-    setError('');
-    try {
-      await api.post('/api/v1/admin/images', orgId, {
-        name: name.trim(),
-        tag: tag.trim(),
-        digest: digest.trim() || undefined,
-        accelerator,
-        engine: engine.trim(),
-        description: description.trim(),
-      });
-      onDone();
-    } catch (e) {
-      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('images.registerFailed'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Dialog title={t('images.registerTitle')} onClose={onClose} testId="register-image-dialog">
-      <div className="form-grid">
-        <div className="form-field">
-          <label htmlFor="image-name">{t('images.fieldName')}</label>
-          <input
-            id="image-name"
-            data-testid="image-name-input"
-            value={name}
-            maxLength={255}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('images.placeholderName')}
-          />
-        </div>
-        <div className="form-field">
-          <label htmlFor="image-tag">{t('images.fieldTag')}</label>
-          <input
-            id="image-tag"
-            data-testid="image-tag-input"
-            value={tag}
-            maxLength={128}
-            onChange={(e) => setTag(e.target.value)}
-            placeholder={t('images.placeholderTag')}
-          />
-        </div>
-        <div className="form-field full">
-          <label htmlFor="image-digest">{t('images.fieldDigest')}</label>
-          <input
-            id="image-digest"
-            data-testid="image-digest-input"
-            value={digest}
-            onChange={(e) => setDigest(e.target.value)}
-            placeholder={t('images.placeholderDigest')}
-          />
-        </div>
-        <div className="form-field">
-          <label htmlFor="image-accelerator">{t('images.fieldAccelerator')}</label>
-          <select
-            id="image-accelerator"
-            data-testid="image-accelerator-select"
-            value={accelerator}
-            onChange={(e) => setAccelerator(e.target.value)}
-          >
-            {[...fleet.vendors, CPU_ACCELERATOR].map((a) => (
-              <option key={a} value={a}>
-                {a === CPU_ACCELERATOR ? t('images.acceleratorCpu') : a}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <label htmlFor="image-engine">{t('images.fieldEngine')}</label>
-          <input
-            id="image-engine"
-            data-testid="image-engine-input"
-            value={engine}
-            maxLength={64}
-            onChange={(e) => setEngine(e.target.value)}
-            placeholder={t('images.placeholderEngine')}
-          />
-        </div>
-        <div className="form-field full">
-          <label htmlFor="image-description">{t('common.descriptionOptional')}</label>
-          <textarea
-            id="image-description"
-            data-testid="image-description-input"
-            value={description}
-            maxLength={1024}
-            rows={3}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-      </div>
-      {error && <ErrorBanner message={error} />}
-
-      <div className="dialog-actions">
-        <button className="secondary" onClick={onClose}>
-          {t('common.cancel')}
-        </button>
-        <button
-          data-testid="register-image-submit"
-          disabled={submitting}
-          onClick={() => void submit()}
-        >
-          {submitting ? t('images.registering') : t('images.register')}
-        </button>
-      </div>
-    </Dialog>
   );
 }
 

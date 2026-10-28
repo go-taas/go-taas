@@ -290,6 +290,10 @@ that instead of failing halfway through a transfer.
 - name: CONFIG_IMAGE_HARBOR_PASSWORD
   value: {{ .password | quote }}
 {{- end }}
+{{- if .uploadMaxArchiveBytes }}
+- name: CONFIG_IMAGE_UPLOAD_MAXARCHIVEBYTES
+  value: {{ .uploadMaxArchiveBytes | quote }}
+{{- end }}
 {{- end }}
 {{- end }}
 {{- end -}}

@@ -69,6 +69,11 @@ type Service struct {
 	// and join-request rosters (falling back to the user id when nil).
 	userLabelResolver UserLabelResolver
 
+	// candidateDirectory lists the accounts a roster may still add (the
+	// pick-list the consoles offer instead of a free-text user id). Nil
+	// until wired: the candidate lists are empty rather than wrong.
+	candidateDirectory CandidateUserDirectory
+
 	// concurrency holds the gateway in-flight snapshot consumer
 	// (feature #51, AD14). Nil-safe: a nil consumer answers 0.
 	concurrency *ConcurrencyConsumer

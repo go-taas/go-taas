@@ -216,3 +216,33 @@ func (s *Service) ResolveUserLabels(ctx context.Context, userIDs []string) (map[
 	}
 	return labels, nil
 }
+
+// ListActiveUsers returns every active account, newest first. It is the
+// tenancy service's roster-candidate directory seam: the tenancy module owns
+// the membership tables and subtracts the accounts that already joined, while
+// the account rows stay here.
+func (s *Service) ListActiveUsers(ctx context.Context) ([]tenancy.CandidateUser, error) {
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return nil, err
+	}
+	rows, _, err := repo.ListUsers(ctx, UserFilter{State: UserStateActive}, 0, maxCandidateUsers)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tenancy.CandidateUser, 0, len(rows))
+	for _, row := range rows {
+		out = append(out, tenancy.CandidateUser{
+			UserID:      row.ID,
+			Username:    row.Username,
+			DisplayName: row.DisplayName,
+			Email:       row.Email,
+		})
+	}
+	return out, nil
+}
+
+// maxCandidateUsers bounds the candidate pick-list. A roster pick-list is a
+// human choice, not a report, so a generous page is enough; beyond it the
+// administrator adds the person by user id.
+const maxCandidateUsers = 500

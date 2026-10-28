@@ -547,6 +547,11 @@ taasServer:
     existingSecret: ""
     # -- Key inside `existingSecret` that holds the password.
     existingSecretKey: harbor-password
+    # -- Largest image archive the upload endpoint accepts, in bytes. The
+    # server streams the archive to a temp file before pushing it, so the
+    # bound protects the node's disk; the default (8 GiB, used when 0) fits a
+    # serving-engine image.
+    uploadMaxArchiveBytes: 0
 
   # Config overrides for `configs/*.yaml`, rendered as `CONFIG_*` env vars.
   # Keys mirror the config-file paths, e.g.:
