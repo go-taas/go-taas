@@ -107,6 +107,8 @@ func TestUploadImageUsesFormFieldsWhenArchiveIsUntagged(t *testing.T) {
 	assert.Equal(t, "hub.example.com/taas/my-engine:7", res.Reference)
 	assert.Equal(t, "hub.example.com/taas/my-engine", res.Name)
 	assert.Equal(t, "7", res.Tag)
+	assert.Empty(t, imp.srcRef,
+		"an untagged archive cannot be selected by a reference; the form only names the destination")
 }
 
 func TestUploadImageExplicitNameAndTagWin(t *testing.T) {

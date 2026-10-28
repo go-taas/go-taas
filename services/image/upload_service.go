@@ -91,20 +91,28 @@ func (s *Service) UploadImage(ctx context.Context, req UploadImageRequest) (*Upl
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: image upload is not configured")
 	}
 
-	// The archive names the image it contains; the form fields are the
-	// fallback for an archive whose image was never tagged.
+	// The archive may name the image it contains. That name serves two
+	// different purposes and they must not be confused:
+	//
+	//   archiveRef  selects the member inside the archive (skopeo's
+	//               docker-archive:<path>:<reference> form). An archive
+	//               without a tag cannot be selected this way, so it is
+	//               copied wholesale and named by the destination.
+	//   nameRef     supplies the destination name and tag. The form's
+	//               reference is a legitimate fallback here (the operator
+	//               knows what they saved), but never a selector.
 	archiveRef, err := registry.ReadArchiveReference(req.ArchivePath)
 	if err != nil {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: %v", err)
 	}
-	sourceRef := strings.TrimSpace(archiveRef)
-	if sourceRef == "" {
-		sourceRef = strings.TrimSpace(req.SourceReference)
+	nameRef := strings.TrimSpace(archiveRef)
+	if nameRef == "" {
+		nameRef = strings.TrimSpace(req.SourceReference)
 	}
 	name := strings.TrimSpace(req.Name)
 	tag := strings.TrimSpace(req.Tag)
-	if sourceRef != "" {
-		_, repo, refTag, parseErr := registry.ParseReference(sourceRef)
+	if nameRef != "" {
+		_, repo, refTag, parseErr := registry.ParseReference(nameRef)
 		if parseErr != nil {
 			return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: %v", parseErr)
 		}
@@ -139,14 +147,14 @@ func (s *Service) UploadImage(ctx context.Context, req UploadImageRequest) (*Upl
 		return nil, errors.New(errors.CodeImageExists)
 	}
 
-	// The archive member is selected by its own reference when one is known,
-	// so an archive carrying several tags pushes the intended image; without
-	// it skopeo takes the archive's single tag.
+	// Only an archive-carried reference selects a member: pass it as the
+	// selector, otherwise skopeo copies the archive's image and names it from
+	// the destination.
 	dstCreds := &registry.Credentials{
 		Username: cfg.Image.Harbor.Username,
 		Password: cfg.Image.Harbor.Password,
 	}
-	if err := archiveImporter.ImportArchive(ctx, req.ArchivePath, sourceRef, destRef, dstCreds); err != nil {
+	if err := archiveImporter.ImportArchive(ctx, req.ArchivePath, strings.TrimSpace(archiveRef), destRef, dstCreds); err != nil {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: upload failed: %v", err)
 	}
 
