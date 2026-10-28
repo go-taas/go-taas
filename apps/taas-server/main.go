@@ -643,6 +643,10 @@ func main() {
 			providerSvc.SetModelCatalog(modelSvc)
 			modelSvc.SetProviderNameResolver(providerSvc)
 			inferSvc.SetExternalModelProxy(providerSvc)
+			// The playground forwards to the in-cluster engine service, which
+			// has no gateway plugin in front of it: the control plane verifies
+			// the API key itself, so an invalid key never returns a completion.
+			inferSvc.SetPlaygroundKeyVerifier(authSvc)
 
 			// Feature #49: the routing service resolves the session's
 			// active org and caller, gates the admin routing RPCs by the

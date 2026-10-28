@@ -95,6 +95,9 @@ var messages = map[Code]string{
 	CodeInferLogsUnavailable:     "service logs unavailable",
 	CodeInferEngineArgsInvalid:   "invalid engine argument",
 	CodeInferTopologyInvalid:     "invalid serving topology",
+	CodeEngineTemplateNotFound:   "engine parameter template not found",
+	CodeEngineTemplateExists:     "engine parameter template already exists",
+	CodeEngineTemplateInvalid:    "invalid engine parameter template",
 	CodeInferAccessInvalid:       "inference service access policy invalid",
 
 	// metering

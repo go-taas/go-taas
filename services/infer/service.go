@@ -192,11 +192,19 @@ type Service struct {
 	// shared components.
 	routingPolicyRepo *RoutingPolicyRepository
 
+	// templateRepo persists engine-parameter templates. Production resolves
+	// it lazily from the components; tests and FVT inject it directly.
+	templateRepo *EngineParamTemplateRepository
+
 	// externalProxy proxies a published external model on the metered path
 	// (feature #48, AD14). It is implemented by the provider module and
 	// injected at wiring time. Nil until wired: an external playground
 	// request fails closed.
 	externalProxy ExternalModelProxy
+
+	// playgroundKeyVerifier checks the API key a playground call was given
+	// before it is forwarded, so an invalid key never returns a completion.
+	playgroundKeyVerifier PlaygroundKeyVerifier
 
 	// routingResolver resolves a routing group name to an ordered
 	// attempt list (feature #49, AD14). It is implemented by the routing
@@ -297,6 +305,22 @@ type RoutingResolver interface {
 	// RecordDecision persists the decision trail for the decisions page
 	// (feature #49, AD12). Best-effort: the caller never fails on it.
 	RecordDecision(ctx context.Context, res *routingv1.ResolveRoutingGroupResponse, requestID, groupName, selectedModelID, selectedModelName string, outcomes map[string]string) error
+}
+
+// PlaygroundKeyVerifier checks the API key a playground call was given,
+// before the call is forwarded. The data-plane gateway verifies keys on the
+// public route, but the control plane reaches the engine over the in-cluster
+// service, which carries no plugin — without this check a bogus key would
+// still return a completion (and would not be metered). It is implemented by
+// the auth module, which owns the hash comparison, revocation, expiry and
+// model scope, so there is exactly one implementation of those rules.
+type PlaygroundKeyVerifier interface {
+	// VerifyPlaygroundKey checks the plaintext key for the model and returns
+	// the key's organization. An invalid, revoked or expired key returns a
+	// business error (10028/10029/10030); a key scoped to other models
+	// returns 10039; a key whose organization cannot use the model returns
+	// 10105.
+	VerifyPlaygroundKey(ctx context.Context, plaintext, model, orgID string) error
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -421,6 +445,12 @@ func (s *Service) SetLogFetcher(f LogFetcher) { s.logFetcher = f }
 // #48, AD14). Production wires the provider module; unit tests may inject
 // a fake. Without it an external playground request fails closed.
 func (s *Service) SetExternalModelProxy(p ExternalModelProxy) { s.externalProxy = p }
+
+// SetPlaygroundKeyVerifier installs the playground key check (see
+// PlaygroundKeyVerifier). Production wires the auth module; a nil verifier
+// leaves the playground unauthenticated at the control plane, which only a
+// unit test should do.
+func (s *Service) SetPlaygroundKeyVerifier(v PlaygroundKeyVerifier) { s.playgroundKeyVerifier = v }
 
 // SetRoutingResolver installs the routing-group resolver seam (feature
 // #49, AD14). Production wires the routing module; unit tests may inject
@@ -615,6 +645,7 @@ func NewWithDependencies(
 		mqClient:            mqClient,
 		deploymentEventRepo: deploymentEventRepo,
 		routingPolicyRepo:   NewRoutingPolicyRepository(repo.DB(context.Background())),
+		templateRepo:        NewEngineParamTemplateRepository(repo.DB(context.Background())),
 	}
 }
 
@@ -659,7 +690,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}, &InferenceServiceAccess{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}, &InferenceServiceAccess{}, &EngineParamTemplate{}); err != nil {
 		return err
 	}
 	// Seed the singleton global-default policy (feature #16, §4.3): the

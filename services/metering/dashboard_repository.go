@@ -2,6 +2,9 @@ package metering
 
 import (
 	"context"
+	"sort"
+	"strconv"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -82,14 +85,88 @@ func groupColumn(g DashboardGroupBy) string {
 	}
 }
 
-// DashboardAggregate aggregates charge_records for one organization and
-// range, grouped by UTC day x group dimension (AD2). The cost is
-// SUM(amount) * 100 rounded to integer cents; priced is bool_and(priced)
-// so an understated cost is never silent (FR1.3).
+// usageLineRow is the read-only projection of metering's own usage_lines
+// table: the raw, per-request usage every call records, whether or not it has
+// been priced yet.
+type usageLineRow struct {
+	OrganizationID   string
+	APIKeyID         string
+	ModelID          string
+	AcceleratorType  string
+	PromptTokens     int64
+	CompletionTokens int64
+	CachedTokens     int64
+	ReasoningTokens  int64
+	CompletedAt      time.Time
+}
+
+// TableName overrides the default GORM table name.
+func (usageLineRow) TableName() string { return "usage_lines" }
+
+// DashboardAggregate aggregates the organization's usage for one range,
+// grouped by UTC day x group dimension (AD2).
+//
+// Usage is taken from usage_lines, which every metered call writes; the cost
+// comes from charge_records, which only exist once the settlement job priced
+// the hour. Reading only the charge records (the original behaviour) left the
+// dashboard empty on an installation with no billing account or no price —
+// the usage was there, the view said zero. A (day, group) that has charges
+// reports their cost and is priced; one with only raw usage reports zero cost
+// and is not priced, which the card surfaces as unpriced requests.
 func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID string, since, until int64, groupBy DashboardGroupBy) ([]DashboardAggregateRow, error) {
 	col := groupColumn(groupBy)
-	var rows []DashboardAggregateRow
-	err := r.db.DB(ctx).Model(&chargeRecordRow{}).
+	merged := make(map[string]*DashboardAggregateRow)
+
+	// Raw usage: always present, so tokens and requests are truthful. The
+	// day bucket and the time comparison are dialect-specific (sqlite in
+	// tests, Postgres in production), so the expression follows the dialector
+	// instead of relying on a failing query.
+	dayExpr := "(EXTRACT(EPOCH FROM completed_at)::bigint / 86400) * 86400"
+	lowerBound, upperBound := "to_timestamp(?)", "to_timestamp(?)"
+	if r.db.DB(ctx).Name() == "sqlite" {
+		dayExpr = "(CAST(strftime('%s', completed_at) AS INTEGER) / 86400) * 86400"
+		lowerBound, upperBound = "datetime(?, 'unixepoch')", "datetime(?, 'unixepoch')"
+	}
+	var usage []struct {
+		Day              int64
+		GroupKey         string
+		PromptTokens     int64
+		CompletionTokens int64
+		CachedTokens     int64
+		ReasoningTokens  int64
+		RequestCount     int64
+	}
+	err := r.db.DB(ctx).Model(&usageLineRow{}).
+		Select(dayExpr+" AS day, "+
+			col+" AS group_key, "+
+			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
+			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+
+			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, "+
+			"COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens, "+
+			"COUNT(*) AS request_count").
+		Where("organization_id = ? AND completed_at >= "+lowerBound+" AND completed_at < "+upperBound,
+			orgID, since, until).
+		Group("day, " + col).
+		Scan(&usage).Error
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range usage {
+		key := aggregateKey(row.Day, row.GroupKey)
+		merged[key] = &DashboardAggregateRow{
+			Day:              row.Day,
+			GroupKey:         row.GroupKey,
+			PromptTokens:     row.PromptTokens,
+			CompletionTokens: row.CompletionTokens,
+			CachedTokens:     row.CachedTokens,
+			ReasoningTokens:  row.ReasoningTokens,
+			RequestCount:     row.RequestCount,
+		}
+	}
+
+	// Charges: the priced cost, when settlement has run.
+	var charges []DashboardAggregateRow
+	err = r.db.DB(ctx).Model(&chargeRecordRow{}).
 		Select("(period_start / 86400) * 86400 AS day, "+
 			col+" AS group_key, "+
 			"ROUND(SUM(amount) * 100) AS cost_cents, "+
@@ -102,20 +179,57 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 		Where("organization_id = ? AND period_start >= ? AND period_start < ?",
 			orgID, since, until).
 		Group("day, " + col).
-		Order("day ASC, group_key ASC").
-		Scan(&rows).Error
+		Scan(&charges).Error
 	if err != nil {
 		return nil, err
 	}
-	for i := range rows {
-		rows[i].Priced = rows[i].PricedRaw != 0
+	for _, row := range charges {
+		key := aggregateKey(row.Day, row.GroupKey)
+		entry, ok := merged[key]
+		if !ok {
+			// A charge with no raw usage line (an older row, or a manual
+			// adjustment): keep it, its numbers are the only record.
+			entry = &DashboardAggregateRow{Day: row.Day, GroupKey: row.GroupKey}
+			merged[key] = entry
+		}
+		entry.CostCents = row.CostCents
+		entry.Priced = row.PricedRaw != 0
+		// The raw lines are the source of truth for the token and request
+		// counts; the charge record only fills a bucket that has no raw line
+		// left (retention pruning, or a manual adjustment).
+		if entry.RequestCount == 0 && entry.PromptTokens == 0 && entry.CompletionTokens == 0 {
+			entry.PromptTokens = row.PromptTokens
+			entry.CompletionTokens = row.CompletionTokens
+			entry.CachedTokens = row.CachedTokens
+			entry.ReasoningTokens = row.ReasoningTokens
+			entry.RequestCount = row.RequestCount
+		}
 	}
-	return rows, nil
+
+	out := make([]DashboardAggregateRow, 0, len(merged))
+	for _, row := range merged {
+		out = append(out, *row)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].Day != out[j].Day {
+			return out[i].Day < out[j].Day
+		}
+		return out[i].GroupKey < out[j].GroupKey
+	})
+	return out, nil
 }
 
-// ChargeWatermark returns the last complete hour covered by charging
-// for the organization: the max period_start of its charge records. 0
-// when the org has no charge records yet.
+// aggregateKey is the (day, group) map key.
+func aggregateKey(day int64, group string) string {
+	return strconv.FormatInt(day, 10) + "|" + group
+}
+
+// ChargeWatermark returns how far the organization's numbers are complete.
+//
+// It is the max period_start of its charge records, falling back to the last
+// usage line when nothing has been priced yet: the dashboard reads raw usage
+// too, so reporting "data through 0" on an unpriced installation would
+// contradict the numbers right above it.
 func (r *DashboardRepository) ChargeWatermark(ctx context.Context, orgID string) (int64, error) {
 	var agg struct {
 		Max int64
@@ -127,5 +241,20 @@ func (r *DashboardRepository) ChargeWatermark(ctx context.Context, orgID string)
 	if err != nil {
 		return 0, err
 	}
-	return agg.Max, nil
+	if agg.Max > 0 {
+		return agg.Max, nil
+	}
+	// Unpriced usage: the raw lines are the freshest data the dashboard shows.
+	epoch := "EXTRACT(EPOCH FROM completed_at)::bigint"
+	if r.db.DB(ctx).Name() == "sqlite" {
+		epoch = "CAST(strftime('%s', completed_at) AS INTEGER)"
+	}
+	var raw struct{ Max int64 }
+	if err := r.db.DB(ctx).Model(&usageLineRow{}).
+		Select("COALESCE(MAX("+epoch+"),0) AS max").
+		Where("organization_id = ?", orgID).
+		Scan(&raw).Error; err != nil {
+		return 0, err
+	}
+	return raw.Max, nil
 }

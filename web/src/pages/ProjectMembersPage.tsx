@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type MemberCandidate } from '../api';
 import { useI18n } from '../i18n';
-import { ErrorBanner } from '../components';
+import { Dialog, ErrorBanner } from '../components';
 import { useAdminScope } from '../admin-scope';
 import { candidateLabel } from '../candidates';
 
@@ -21,12 +21,18 @@ const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 export default function ProjectMembersPage() {
   const { scope } = useAdminScope();
   const projectId = scope?.projectId || '';
+  // The console scope carries the project's name, so the roster is described
+  // the way the rest of the console names it.
+  const projectName = scope?.displayName || '';
   const { t } = useI18n();
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('member');
+  // Adding a member is a dialog, exactly like the organization roster: the
+  // page shows the roster, the dialog does the one-off action.
+  const [addOpen, setAddOpen] = useState(false);
   // The pick-list: this organization's members who belong to no project yet.
   // The API decides eligibility, so the console never offers an account that
   // cannot join.
@@ -91,6 +97,7 @@ export default function ProjectMembersPage() {
         role,
       });
       setUserId('');
+      setAddOpen(false);
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('projectMembers.addFailed'));
@@ -123,56 +130,16 @@ export default function ProjectMembersPage() {
 
   return (
     <div className="page" data-testid="project-members-page">
-      <h1>{t('projectMembers.title')}</h1>
-      <div className="subtitle mono">{projectId || t('projectMembers.noProject')}</div>
-      {error && <ErrorBanner message={error} />}
-
-      <div className="panel" style={{ marginBottom: 16 }}>
-        <div className="form-grid">
-          <label>
-            {t('projectMembers.userId')}
-            <select
-              data-testid="project-member-user"
-              value={userId}
-              disabled={candidatesLoading}
-              onChange={(e) => setUserId(e.target.value)}
-            >
-              <option value="">
-                {candidatesLoading
-                  ? t('common.loading')
-                  : candidates.length === 0
-                    ? t('projectMembers.noCandidates')
-                    : t('projectMembers.selectUser')}
-              </option>
-              {candidates.map((c) => (
-                <option key={c.userId} value={c.userId}>
-                  {candidateLabel(c)}
-                </option>
-              ))}
-            </select>
-            <span className="field-hint">{t('projectMembers.candidatesHint')}</span>
-          </label>
-          <label>
-            {t('projectMembers.role')}
-            <select
-              data-testid="project-member-role"
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-            >
-              {ASSIGNABLE_ROLES.map((r) => (
-                <option key={r} value={r}>
-                  {t(`state.${r}`)}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="form-field" style={{ alignSelf: 'end' }}>
-            <button data-testid="project-member-add" disabled={!userId.trim()} onClick={() => void add()}>
-              {t('projectMembers.add')}
-            </button>
-          </div>
+      <div className="page-header">
+        <div>
+          <h1>{t('projectMembers.title')}</h1>
+          <div className="subtitle">{projectName || projectId || t('projectMembers.noProject')}</div>
         </div>
+        <button data-testid="project-member-add-open" onClick={() => setAddOpen(true)}>
+          {t('projectMembers.add')}
+        </button>
       </div>
+      {error && <ErrorBanner message={error} />}
 
       <div className="panel">
         {loading ? (
@@ -235,6 +202,62 @@ export default function ProjectMembersPage() {
           </table>
         )}
       </div>
+
+      {addOpen && (
+        <Dialog title={t('projectMembers.add')} onClose={() => setAddOpen(false)} testId="project-member-add-dialog">
+          <div className="form">
+            <label>
+              {t('projectMembers.userId')}
+              <select
+                data-testid="project-member-user"
+                value={userId}
+                disabled={candidatesLoading}
+                onChange={(e) => setUserId(e.target.value)}
+              >
+                <option value="">
+                  {candidatesLoading
+                    ? t('common.loading')
+                    : candidates.length === 0
+                      ? t('projectMembers.noCandidates')
+                      : t('projectMembers.selectUser')}
+                </option>
+                {candidates.map((c) => (
+                  <option key={c.userId} value={c.userId}>
+                    {candidateLabel(c)}
+                  </option>
+                ))}
+              </select>
+              <span className="field-hint">{t('projectMembers.candidatesHint')}</span>
+            </label>
+            <label>
+              {t('projectMembers.role')}
+              <select
+                data-testid="project-member-role"
+                value={role}
+                onChange={(e) => setRole(e.target.value)}
+              >
+                {ASSIGNABLE_ROLES.map((r) => (
+                  <option key={r} value={r}>
+                    {t(`state.${r}`)}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="dialog-actions">
+              <button className="secondary" data-testid="project-member-add-cancel" onClick={() => setAddOpen(false)}>
+                {t('common.cancel')}
+              </button>
+              <button
+                data-testid="project-member-add"
+                disabled={!userId.trim() || candidatesLoading}
+                onClick={() => void add()}
+              >
+                {t('projectMembers.addConfirm')}
+              </button>
+            </div>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }

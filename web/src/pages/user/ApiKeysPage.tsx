@@ -37,6 +37,9 @@ export default function ApiKeysPage() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ApiKeySummary | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ApiKeySummary | null>(null);
+  // Deleting removes the key instead of keeping it for the audit trail;
+  // revoking stays the reversible-in-spirit action.
+  const [deleteTarget, setDeleteTarget] = useState<ApiKeySummary | null>(null);
   const [scopeTarget, setScopeTarget] = useState<ApiKeySummary | null>(null);
   const [created, setCreated] = useState('');
   const [saved, setSaved] = useState(false);
@@ -83,6 +86,7 @@ export default function ApiKeysPage() {
                 <button className="link" data-testid={`edit-rate-limit-${key.keyId}`} onClick={() => setEditTarget(key)}>{t('common.edit')}</button>
                 <button className="link" data-testid={`edit-scope-${key.keyId}`} onClick={() => setScopeTarget(key)}>{t('uapikeys.scopeEdit')}</button>
                 <button className="link danger" data-testid={`revoke-${key.keyId}`} onClick={() => setRevokeTarget(key)}>{t('uapikeys.revoke')}</button>
+                <button className="link danger" data-testid={`delete-${key.keyId}`} onClick={() => setDeleteTarget(key)}>{t('common.delete')}</button>
               </>}</td>
             </tr>
           ))}</tbody>
@@ -104,6 +108,21 @@ export default function ApiKeysPage() {
               setError(e instanceof Error ? e.message : t('uapikeys.revokeFailed'));
             }
           }}>{t('uapikeys.revoke')}</button>
+        </div>
+      </Dialog>}
+      {deleteTarget && <Dialog title={t('uapikeys.deleteTitle')} testId="delete-key-dialog" onClose={() => setDeleteTarget(null)}>
+        <p>{t('uapikeys.deleteConfirm', { name: deleteTarget.name })}</p>
+        <div className="dialog-actions">
+          <button className="secondary" onClick={() => setDeleteTarget(null)}>{t('common.cancel')}</button>
+          <button className="danger" data-testid="confirm-delete-key" onClick={async () => {
+            try {
+              await api.del(`/api/v1/auth/api-keys/${deleteTarget.keyId}`, orgId);
+              setDeleteTarget(null);
+              void load();
+            } catch (e) {
+              setError(e instanceof Error ? e.message : t('uapikeys.deleteFailed'));
+            }
+          }}>{t('common.delete')}</button>
         </div>
       </Dialog>}
       {created && <Dialog title={t('uapikeys.createdTitle')} testId="created-dialog" onClose={() => saved && setCreated('')}>

@@ -390,9 +390,27 @@ function ImportImageDialog({
     }
   };
 
+  // The destination is a fact, not a placeholder: the platform's own registry
+  // and project, as the server reports them.
+  const destination = registry?.configured
+    ? `${registry.hostname}/${registry.project}`
+    : '';
+
   return (
     <Dialog title={t('images.importTitle')} onClose={onClose} testId="import-image-dialog">
-      <p className="muted">{t('images.importHint')}</p>
+      <p className="muted">
+        {registry?.configured
+          ? t('images.importHintConfigured', { registry: destination })
+          : t('images.importHint')}
+      </p>
+      <div className="kv-grid settings-summary" data-testid="import-destination">
+        <div>
+          <span className="kv-label">{t('images.importDestinationLabel')}</span>
+          <span className="mono settings-url">
+            {destination || t('images.registryUnconfigured')}
+          </span>
+        </div>
+      </div>
       <div className="form-grid">
         <div className="form-field full">
           <label htmlFor="import-source">{t('images.sourceReference')}</label>
@@ -405,14 +423,14 @@ function ImportImageDialog({
             placeholder="docker.io/library/a/b/hello:1.0.0"
           />
           <div className="field-hint">
-            {localName
+            {localName && registry?.configured
               ? t('images.importTarget', {
                   name: localName,
-                  registry: registry?.configured
-                    ? `${registry.hostname}/${registry.project}/`
-                    : '',
+                  registry: `${registry.hostname}/${registry.project}/`,
                 })
-              : t('images.importTargetHint')}
+              : registry?.configured
+                ? t('images.importTargetHintNamed', { registry: `${registry.hostname}/${registry.project}/` })
+                : t('images.registryUnconfigured')}
           </div>
         </div>
         <div className="form-field">

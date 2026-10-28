@@ -67,6 +67,65 @@ service InferServiceService {
     };
   }
 
+  // CreateEngineParamTemplate saves an engine-parameter template: a named
+  // set of engine arguments plus the (engine, model, topology, accelerator)
+  // combination it applies to. The deploy form loads the matching template
+  // instead of making the operator retype the parameters.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc CreateEngineParamTemplate(CreateEngineParamTemplateRequest) returns (CreateEngineParamTemplateResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/engine-param-templates"
+      body: "*"
+    };
+  }
+
+  // ListEngineParamTemplates returns the templates, optionally narrowed to
+  // the ones compatible with a given deployment context (engine, model,
+  // topology, accelerator) and ordered best match first.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListEngineParamTemplates(ListEngineParamTemplatesRequest) returns (ListEngineParamTemplatesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/engine-param-templates"};
+  }
+
+  // GetEngineParamTemplate returns one template.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetEngineParamTemplate(GetEngineParamTemplateRequest) returns (GetEngineParamTemplateResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/engine-param-templates/{template_id}"};
+  }
+
+  // UpdateEngineParamTemplate replaces a template's content.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateEngineParamTemplate(UpdateEngineParamTemplateRequest) returns (UpdateEngineParamTemplateResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/engine-param-templates/{template_id}"
+      body: "*"
+    };
+  }
+
+  // DeleteEngineParamTemplate removes a template.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc DeleteEngineParamTemplate(DeleteEngineParamTemplateRequest) returns (DeleteEngineParamTemplateResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/engine-param-templates/{template_id}"};
+  }
+
+  // ExportEngineParamTemplates returns every template as a portable JSON
+  // document, so a fleet's tuning can be versioned or moved.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ExportEngineParamTemplates(ExportEngineParamTemplatesRequest) returns (ExportEngineParamTemplatesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/engine-param-templates:export"};
+  }
+
+  // ImportEngineParamTemplates loads templates from an exported document.
+  // A name that already exists is skipped or overwritten according to
+  // strategy, and the response reports both counts.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ImportEngineParamTemplates(ImportEngineParamTemplatesRequest) returns (ImportEngineParamTemplatesResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/engine-param-templates:import"
+      body: "*"
+    };
+  }
+
   // GetInferenceServiceAccess returns who may use a service. An empty
   // subject list means every platform user may use it (the default).
   // Admin-surface API: served under /api/v1/admin.
@@ -366,6 +425,140 @@ message CreateInferenceServiceRequest {
   // sequence limits and so on. An entry overrides the shared engine_args
   // for that role only; roles without an entry use engine_args as-is.
   repeated RoleEngineArgs role_engine_args = 19;
+}
+
+// EngineParamTemplate is a reusable set of engine parameters plus the
+// deployment context it applies to. An empty context field matches every
+// value, so a template can be as specific as one model+card or as general as
+// "vLLM defaults".
+message EngineParamTemplate {
+  string template_id = 1;
+  // name is unique among templates: it is how an operator refers to one.
+  string name = 2;
+  string description = 3;
+  // engine is the serving engine the parameters belong to (vllm, sglang, ...).
+  string engine = 4;
+  // model_id narrows the template to one catalog model; empty matches any.
+  string model_id = 5;
+  // model_name is the display name of model_id (read-only).
+  string model_name = 6;
+  // topology narrows it to a serving layout (single/multinode/pd); empty
+  // matches any.
+  string topology = 7;
+  // accelerator and accelerator_type narrow it to hardware; empty matches
+  // any.
+  string accelerator = 8;
+  string accelerator_type = 9;
+  // engine_args are the shared flags, keyed by flag name without dashes.
+  map<string, string> engine_args = 10;
+  // extra_args are free-form arguments.
+  repeated string extra_args = 11;
+  // role_engine_args are the per-role overrides of a multi-machine or PD
+  // layout.
+  repeated RoleEngineArgs role_engine_args = 12;
+  int64 created_at = 13;
+  int64 updated_at = 14;
+  string updated_by = 15;
+  // match_score is how specifically the template matches the query that
+  // listed it (read-only; 0 when the query carried no context).
+  int32 match_score = 16;
+}
+
+message CreateEngineParamTemplateRequest {
+  string name = 1;
+  string description = 2;
+  string engine = 3;
+  string model_id = 4;
+  string topology = 5;
+  string accelerator = 6;
+  string accelerator_type = 7;
+  map<string, string> engine_args = 8;
+  repeated string extra_args = 9;
+  repeated RoleEngineArgs role_engine_args = 10;
+}
+
+message CreateEngineParamTemplateResponse {
+  taas.common.v1.Response response = 1;
+  EngineParamTemplate template = 2;
+}
+
+message ListEngineParamTemplatesRequest {
+  taas.common.v1.PageRequest page = 1;
+  // The match context. Any non-empty field restricts the list to templates
+  // whose same field is empty or equal, ordered by match_score descending.
+  string engine = 2;
+  string model_id = 3;
+  string topology = 4;
+  string accelerator = 5;
+  string accelerator_type = 6;
+  // search narrows by name/description substring.
+  string search = 7;
+}
+
+message ListEngineParamTemplatesResponse {
+  taas.common.v1.Response response = 1;
+  repeated EngineParamTemplate templates = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetEngineParamTemplateRequest {
+  string template_id = 1;
+}
+
+message GetEngineParamTemplateResponse {
+  taas.common.v1.Response response = 1;
+  EngineParamTemplate template = 2;
+}
+
+message UpdateEngineParamTemplateRequest {
+  string template_id = 1; // path
+  string name = 2;
+  string description = 3;
+  string engine = 4;
+  string model_id = 5;
+  string topology = 6;
+  string accelerator = 7;
+  string accelerator_type = 8;
+  map<string, string> engine_args = 9;
+  repeated string extra_args = 10;
+  repeated RoleEngineArgs role_engine_args = 11;
+}
+
+message UpdateEngineParamTemplateResponse {
+  taas.common.v1.Response response = 1;
+  EngineParamTemplate template = 2;
+}
+
+message DeleteEngineParamTemplateRequest {
+  string template_id = 1;
+}
+
+message DeleteEngineParamTemplateResponse {
+  taas.common.v1.Response response = 1;
+}
+
+message ExportEngineParamTemplatesRequest {}
+
+message ExportEngineParamTemplatesResponse {
+  taas.common.v1.Response response = 1;
+  // payload is the JSON document (a versioned envelope with the templates),
+  // ready to be saved to a file and imported elsewhere.
+  string payload = 2;
+  int32 count = 3;
+}
+
+message ImportEngineParamTemplatesRequest {
+  // payload is the document ExportEngineParamTemplates produced.
+  string payload = 1;
+  // strategy is "skip" (default) or "overwrite" for a name that exists.
+  string strategy = 2;
+}
+
+message ImportEngineParamTemplatesResponse {
+  taas.common.v1.Response response = 1;
+  int32 created = 2;
+  int32 overwritten = 3;
+  int32 skipped = 4;
 }
 
 // RoleEngineArgs carries the engine arguments of one storm role.

@@ -49,6 +49,7 @@ import ServiceLogsPage from './pages/ServiceLogsPage';
 import ServiceMetricsPage from './pages/ServiceMetricsPage';
 import DeploymentHistoryPage from './pages/DeploymentHistoryPage';
 import ImagesPage from './pages/ImagesPage';
+import EngineTemplatesPage from './pages/EngineTemplatesPage';
 import ImageDetailPage from './pages/ImageDetailPage';
 import UsagePage from './pages/UsagePage';
 import PricingPage from './pages/PricingPage';
@@ -256,6 +257,7 @@ function AdminSurface() {
               <Route path="/admin/models/:id" element={<ModelDetailPage />} />
               <Route path="/admin/models/:id/versions" element={<ModelVersionsPage />} />
               <Route path="/admin/images" element={<ImagesPage />} />
+              <Route path="/admin/engine-templates" element={<EngineTemplatesPage />} />
               <Route path="/admin/images/:id" element={<ImageDetailPage />} />
               <Route path="/admin/inference-services" element={<InferenceServicesPage />} />
               <Route path="/admin/clusters" element={<ClustersPage />} />

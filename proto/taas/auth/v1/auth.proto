@@ -113,6 +113,19 @@ service AuthService {
     };
   }
 
+  // DeleteAPIKey removes a key permanently. It is the console's "delete"
+  // (a key that never existed for the tenant afterwards); RevokeAPIKey
+  // stays the audit-preserving action. A delete of a key that belongs to
+  // another organization answers 10028.
+  // User-surface API: served under /api/v1; the session's active org
+  // wins and X-Organization-Id is ignored (feature-17 AD6).
+  rpc DeleteAPIKey(DeleteAPIKeyRequest) returns (DeleteAPIKeyResponse) {
+    option (google.api.http) = {
+      delete: "/api/v1/auth/api-keys/{key_id}"
+      additional_bindings: {delete: "/api/v1/admin/auth/api-keys/{key_id}"}
+    };
+  }
+
   // UpdateAPIKey edits a key's name, expiry and rate limits
   // post-creation. It never returns the plaintext and never changes the
   // secret (feature #11, AD4).
@@ -526,6 +539,14 @@ message CreateAPIKeyResponse {
   // creation time and never stored or returned again.
   string api_key = 2;
   string key_id = 3;
+}
+
+message DeleteAPIKeyRequest {
+  string key_id = 1;
+}
+
+message DeleteAPIKeyResponse {
+  taas.common.v1.Response response = 1;
 }
 
 message RevokeAPIKeyRequest {

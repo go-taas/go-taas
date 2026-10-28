@@ -219,3 +219,30 @@ func (r *APIKeyRepository) UpsertSystemCredential(ctx context.Context, row *APIK
 		})
 	})
 }
+
+// DeleteByIDAndOrganization removes a key permanently and returns its lookup
+// hash, so the caller can drop the positive-cache entry. A key that does not
+// belong to the organization answers 10028 (the same code a revoke uses): a
+// tenant must not be able to tell an unknown key from another tenant's.
+func (r *APIKeyRepository) DeleteByIDAndOrganization(ctx context.Context, orgID, keyID string) (string, error) {
+	var lookupHash string
+	err := r.db.WithinTx(ctx, func(ctx context.Context) error {
+		var row APIKey
+		err := r.DB(ctx).
+			Where("id = ? AND organization_id = ?", keyID, orgID).
+			First(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return apierrors.New(apierrors.CodeAPIKeyNotFound)
+		}
+		if err != nil {
+			return err
+		}
+		lookupHash = row.LookupHash
+		return r.DB(ctx).Where("id = ? AND organization_id = ?", keyID, orgID).
+			Delete(&APIKey{}).Error
+	})
+	if err != nil {
+		return "", err
+	}
+	return lookupHash, nil
+}

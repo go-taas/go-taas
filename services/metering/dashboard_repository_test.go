@@ -19,7 +19,7 @@ func newDashboardTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Voucher{}, &UsageRecord{}, &chargeRecordRow{}))
+	require.NoError(t, db.AutoMigrate(&Voucher{}, &UsageRecord{}, &chargeRecordRow{}, &usageLineRow{}))
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()
@@ -138,4 +138,70 @@ func TestChargeWatermark(t *testing.T) {
 	wm, err = repo.ChargeWatermark(ctx, "org-1")
 	require.NoError(t, err)
 	assert.Equal(t, day.Add(2*time.Hour).Unix(), wm)
+}
+
+// mustInsertUsageLine inserts one raw usage line.
+func mustInsertUsageLine(t *testing.T, db *gorm.DB, orgID, keyID string, completedAt time.Time, prompt, completion int64) {
+	t.Helper()
+	require.NoError(t, db.Create(&usageLineRow{
+		OrganizationID: orgID, APIKeyID: keyID, ModelID: "model-a", AcceleratorType: "A800",
+		PromptTokens: prompt, CompletionTokens: completion, CompletedAt: completedAt,
+	}).Error)
+}
+
+// TestDashboardAggregateFallsBackToRawUsage covers the reported bug: an
+// installation with no billing account (so no charge records) showed zero
+// usage even though every call wrote a usage line.
+func TestDashboardAggregateFallsBackToRawUsage(t *testing.T) {
+	db := newDashboardTestDB(t)
+	ctx := context.Background()
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	mustInsertUsageLine(t, db, "org-1", "key-1", day.Add(2*time.Hour), 21, 619)
+	mustInsertUsageLine(t, db, "org-1", "key-1", day.Add(3*time.Hour), 10, 90)
+
+	repo := NewDashboardRepository(db)
+	rows, err := repo.DashboardAggregate(ctx, "org-1", day.Unix(), day.Add(24*time.Hour).Unix(), GroupByAPIKey)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "key-1", rows[0].GroupKey)
+	assert.EqualValues(t, 31, rows[0].PromptTokens)
+	assert.EqualValues(t, 709, rows[0].CompletionTokens)
+	assert.EqualValues(t, 2, rows[0].RequestCount)
+	assert.EqualValues(t, 0, rows[0].CostCents, "unpriced usage costs nothing yet")
+	assert.False(t, rows[0].Priced)
+
+	// The watermark follows the raw lines when nothing is priced.
+	watermark, err := repo.ChargeWatermark(ctx, "org-1")
+	require.NoError(t, err)
+	assert.Equal(t, day.Add(3*time.Hour).Unix(), watermark)
+}
+
+// TestDashboardAggregateMergesChargeAndRawUsage covers the priced case: the
+// cost comes from the charge record, the tokens from the raw lines, and a
+// charge without raw lines (retention-pruned usage) still shows.
+func TestDashboardAggregateMergesChargeAndRawUsage(t *testing.T) {
+	db := newDashboardTestDB(t)
+	ctx := context.Background()
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	h1 := day.Unix()
+
+	mustInsertUsageLine(t, db, "org-1", "key-1", day.Add(time.Hour), 21, 619)
+	mustInsertCharge(t, db, "org-1", "key-1", "model-a", "A800", h1, 1.50, true)
+	// A pruned hour: the charge survives, the raw line does not.
+	mustInsertCharge(t, db, "org-1", "key-2", "model-b", "A800", h1, 2.00, true)
+
+	repo := NewDashboardRepository(db)
+	rows, err := repo.DashboardAggregate(ctx, "org-1", day.Unix(), day.Add(24*time.Hour).Unix(), GroupByAPIKey)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+
+	byKey := map[string]DashboardAggregateRow{}
+	for _, r := range rows {
+		byKey[r.GroupKey] = r
+	}
+	assert.EqualValues(t, 150, byKey["key-1"].CostCents)
+	assert.True(t, byKey["key-1"].Priced)
+	assert.EqualValues(t, 21, byKey["key-1"].PromptTokens)
+	assert.EqualValues(t, 200, byKey["key-2"].CostCents, "a charge without raw usage still counts")
+	assert.EqualValues(t, 1000, byKey["key-2"].PromptTokens, "and its own token count stands in")
 }

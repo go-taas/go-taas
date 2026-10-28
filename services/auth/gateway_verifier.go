@@ -16,6 +16,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 
 	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
 
@@ -115,3 +116,32 @@ func isVerdictCode(code apierrors.Code) bool {
 
 // ensure the interface is satisfied at compile time.
 var _ server.GatewayVerifier = (*Service)(nil)
+
+// VerifyPlaygroundKey verifies the plaintext API key a playground call carries
+// and checks that it belongs to the caller's organization.
+//
+// The playground forwards to the in-cluster engine service, which has no
+// gateway plugin in front of it, so this is the only places the key's hash,
+// revocation, expiry, model scope and tenant authorization are enforced for
+// that path. It reuses VerifyAPIKey — there is deliberately no second
+// implementation of those rules.
+func (s *Service) VerifyPlaygroundKey(ctx context.Context, plaintext, model, orgID string) error {
+	key := strings.TrimSpace(plaintext)
+	if key == "" {
+		return apierrors.New(apierrors.CodeAPIKeyInvalid)
+	}
+	verdict, err := s.VerifyAPIKey(ctx, &authv1.VerifyAPIKeyRequest{
+		KeyDigest: KeyDigest(key),
+		Model:     strings.TrimSpace(model),
+	})
+	if err != nil {
+		return err
+	}
+	// A key from another organization is not a key the caller may spend: the
+	// playground tests the caller's own traffic.
+	if orgID != "" && verdict.GetOrganizationId() != "" && verdict.GetOrganizationId() != orgID {
+		return apierrors.Newf(apierrors.CodeAPIKeyInvalid,
+			"auth: the API key belongs to another organization")
+	}
+	return nil
+}

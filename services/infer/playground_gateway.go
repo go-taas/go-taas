@@ -26,6 +26,11 @@ const playgroundTimeout = 60 * time.Second
 // so a misbehaving gateway cannot exhaust the server's memory.
 const playgroundMaxBodyBytes = 4 << 20
 
+// playgroundDefaultMaxTokens bounds a test call's generation. 512 tokens is a
+// paragraph or two: enough to judge an answer, small enough that a rambling
+// checkpoint does not fill the response pane.
+const playgroundDefaultMaxTokens = 512
+
 // servingGatewayBaseURL resolves the origin the server calls the serving
 // gateway at (no trailing slash, no "/v1"). It prefers the in-cluster
 // address: the public hostname is what users call, and it may not be
@@ -67,24 +72,44 @@ type playgroundChatMessage struct {
 // limits and the model allow-list). The shipped AIBrix gateway does not
 // verify bearer tokens today, so a green result currently proves routing
 // and generation, not that the key is valid.
-func (s *Service) playSelfHostedModel(ctx context.Context, req *inferv1.PlaygroundModelRequest, m *model.Model) (*inferv1.PlaygroundModelResponse, error) {
+func (s *Service) playSelfHostedModel(ctx context.Context, req *inferv1.PlaygroundModelRequest, m *model.Model, orgID string) (*inferv1.PlaygroundModelResponse, error) {
 	apiKey := strings.TrimSpace(req.GetApiKey())
 	if apiKey == "" {
 		return nil, apierrors.Newf(apierrors.CodePlaygroundKeyMissing,
 			"playground: send the API key with the request; keys are stored hashed and cannot be read back")
+	}
+	// Verify the key here, before forwarding. The data-plane gateway checks
+	// keys on its public route, but this call goes to the in-cluster engine
+	// service, which has no plugin in front of it: without this check a
+	// bogus key would return a completion and would never be metered.
+	if s.playgroundKeyVerifier != nil {
+		if err := s.playgroundKeyVerifier.VerifyPlaygroundKey(ctx, apiKey, m.Name, orgID); err != nil {
+			return nil, err
+		}
 	}
 	baseURL := s.servingGatewayBaseURL(ctx)
 	if baseURL == "" {
 		return nil, apierrors.New(apierrors.CodeInferEndpointNotFound)
 	}
 
+	// A test call is a smoke test, not a batch job: bound the generation so a
+	// verbose checkpoint cannot stream hundreds of tokens into the response
+	// pane (the engine would otherwise use its own 2048-token default).
+	maxTokens := req.GetMaxTokens()
+	if maxTokens <= 0 || maxTokens > playgroundDefaultMaxTokens {
+		maxTokens = playgroundDefaultMaxTokens
+	}
+	temperature := req.GetTemperature()
+	if temperature < 0 {
+		temperature = 0
+	}
 	body, err := json.Marshal(playgroundChatBody{
 		// The gateway routes on the served model name, which is the
 		// catalog name rather than the catalog id.
 		Model:       m.Name,
 		Messages:    []playgroundChatMessage{{Role: "user", Content: req.GetPrompt()}},
-		Temperature: req.GetTemperature(),
-		MaxTokens:   req.GetMaxTokens(),
+		Temperature: temperature,
+		MaxTokens:   maxTokens,
 	})
 	if err != nil {
 		return nil, apierrors.Wrap(apierrors.CodeInternal, err, "playground: encode request")

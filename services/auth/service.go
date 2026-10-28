@@ -896,3 +896,55 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 func okResponse() *commonv1.Response {
 	return &commonv1.Response{Code: 0, Message: "OK"}
 }
+
+// DeleteAPIKey removes an API key permanently, unlike RevokeAPIKey which keeps
+// the row for the audit trail. The console offers both: an operator tidying up
+// a leaked test key deletes it, while a production key is revoked so its
+// history stays readable.
+func (s *Service) DeleteAPIKey(ctx context.Context, req *authv1.DeleteAPIKeyRequest) (*authv1.DeleteAPIKeyResponse, error) {
+	orgID, err := s.resolveOrgContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Deleting stays allowed under a disabled organization: it reduces
+	// exposure and never accrues spend.
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
+	if req.GetKeyId() == "" {
+		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: key_id is required")
+	}
+
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	lookupHash, err := repo.DeleteByIDAndOrganization(ctx, orgID, req.GetKeyId())
+	if err != nil {
+		return nil, err
+	}
+
+	// Drop the positive-cache entry so the key stops verifying immediately
+	// rather than after the cache TTL. A cache failure only degrades that
+	// bound and must not fail the delete.
+	if cache, cacheErr := s.verdictCacheFor(); cacheErr == nil {
+		if delErr := cache.Delete(ctx, lookupHash); delErr != nil {
+			logger.S().Warnw("auth: delete api key cache entry failed",
+				"key_id", req.GetKeyId(), "err", delErr)
+		}
+	} else {
+		logger.S().Warnw("auth: verdict cache unavailable during delete", "err", cacheErr)
+	}
+
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    "system",
+		ActorType:      "system",
+		Action:         "api_key.delete",
+		ResourceType:   "api_key",
+		ResourceID:     req.GetKeyId(),
+		Result:         "success",
+	})
+
+	return &authv1.DeleteAPIKeyResponse{Response: okResponse()}, nil
+}

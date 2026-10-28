@@ -109,6 +109,7 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
       { path: '/admin/providers', labelKey: 'nav.providers', testid: 'nav-providers', icon: Cube },
       { path: '/admin/deployments', labelKey: 'nav.deployments', testid: 'nav-deployments', icon: Scroll },
       { path: '/admin/images', labelKey: 'nav.images', testid: 'nav-images', icon: Image },
+      { path: '/admin/engine-templates', labelKey: 'nav.engineTemplates', testid: 'nav-engine-templates', icon: SlidersHorizontal },
     ],
   },
   {

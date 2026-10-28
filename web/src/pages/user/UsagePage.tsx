@@ -6,6 +6,7 @@ import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { formatTime, type BalanceResponse, type UsageDashboardResponse } from '../../api';
+import { formatMoney } from '../../display';
 
 export default function UsagePage() {
   const api = useApi();
@@ -44,7 +45,7 @@ export default function UsagePage() {
       {cards && (
         <div className="cards">
           <div className="card" data-testid="usage-metric-cost">
-            {t('uusage.cost', { n: cards.totalCostCents })}
+            {t('uusage.cost', { n: formatMoney(cards.totalCostCents) })}
           </div>
           <div className="card" data-testid="usage-metric-tokens">
             {t('uusage.tokens', { n: Number(cards.promptTokens) + Number(cards.completionTokens) })}
@@ -52,6 +53,11 @@ export default function UsagePage() {
           <div className="card" data-testid="usage-metric-requests">
             {t('uusage.requests', { n: cards.requestCount })}
           </div>
+        </div>
+      )}
+      {dashboard && Number(cards?.unpricedRequestCount || 0) > 0 && (
+        <div className="hint" data-testid="usage-unpriced-note">
+          {t('uusage.unpriced', { n: cards?.unpricedRequestCount ?? '0' })}
         </div>
       )}
       {dashboard?.dailyBuckets && dashboard.dailyBuckets.length > 0 ? (
@@ -70,7 +76,7 @@ export default function UsagePage() {
                 <tr key={`${bucket.date}-${g.groupKey}`}>
                   <td>{formatTime(bucket.date)}</td>
                   <td>{g.groupKey}</td>
-                  <td>{g.costCents}</td>
+                  <td>{formatMoney(g.costCents)}</td>
                   <td>{Number(g.promptTokens) + Number(g.completionTokens)}</td>
                 </tr>
               )),

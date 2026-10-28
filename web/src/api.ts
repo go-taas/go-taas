@@ -201,6 +201,39 @@ export interface ModelSummary {
   hubModelId?: string;
 }
 
+// EngineParamTemplate is a reusable set of engine parameters plus the
+// deployment context it applies to (an empty context field matches any
+// value). The deploy form loads the matching template so an operator does not
+// retype a dozen flags.
+export interface EngineParamTemplate {
+  templateId: string;
+  name: string;
+  description?: string;
+  engine: string;
+  modelId?: string;
+  modelName?: string;
+  topology?: string;
+  accelerator?: string;
+  acceleratorType?: string;
+  engineArgs?: Record<string, string>;
+  extraArgs?: string[];
+  roleEngineArgs?: RoleEngineArgs[];
+  createdAt?: string;
+  updatedAt?: string;
+  updatedBy?: string;
+  // matchScore is how specifically the template matched the list query
+  // (read-only; the deploy form shows the best match first).
+  matchScore?: number;
+}
+
+// RoleEngineArgs is one role's engine parameters inside a template or a
+// service.
+export interface RoleEngineArgs {
+  role: string;
+  engineArgs?: Record<string, string>;
+  extraArgs?: string[];
+}
+
 // ModelDownload is one background hub download job.
 export interface ModelDownload {
   downloadId: string;

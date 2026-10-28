@@ -93,7 +93,7 @@ func (s *Service) PlaygroundModel(ctx context.Context, req *inferv1.PlaygroundMo
 	if err := s.authorizeServiceUse(ctx, repo, svc.ID, orgID, userID); err != nil {
 		return nil, err
 	}
-	return s.playSelfHostedModel(ctx, req, m)
+	return s.playSelfHostedModel(ctx, req, m, orgID)
 }
 
 // playExternalModel proxies a published external model to its provider on
@@ -207,7 +207,7 @@ func (s *Service) playCandidate(ctx context.Context, req *inferv1.PlaygroundMode
 	if err := s.authorizeServiceUse(ctx, repo, svc.ID, orgID, userID); err != nil {
 		return nil, err
 	}
-	return s.playSelfHostedModel(ctx, req, m)
+	return s.playSelfHostedModel(ctx, req, m, orgID)
 }
 
 // externalChatRequest is the OpenAI-compatible chat request the proxy sends
@@ -254,5 +254,11 @@ func parseChatCompletion(body []byte) (completion string, promptTokens, completi
 	if len(envelope.Choices) > 0 {
 		completion = envelope.Choices[0].Message.Content
 	}
+	// A byte-level tokenizer can end a generation on a partial multi-byte
+	// sequence, and Go's JSON decoder turns those bytes into U+FFFD. Drop them
+	// so the console shows the text the model produced instead of a row of
+	// replacement characters.
+	completion = strings.ToValidUTF8(completion, "")
+	completion = strings.ReplaceAll(completion, "\uFFFD", "")
 	return completion, envelope.Usage.PromptTokens, envelope.Usage.CompletionTokens
 }

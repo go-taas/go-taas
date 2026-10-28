@@ -16,6 +16,7 @@ import {
   type AutoscalingPolicy,
   type GetAutoscalingPolicyResponse,
   type ListVGPUPoolsResponse,
+  type EngineParamTemplate,
   type ModelSummary,
   type ServingTopology,
   type TenantVGPUPool,
@@ -181,6 +182,10 @@ export default function DeployForm({
   // roles, and each may need its own tuning (memory fraction, sequence
   // limits). The shared section above acts as the default they inherit.
   const [roleArgs, setRoleArgs] = useState<Record<string, RoleArgState>>({});
+  // Parameter templates that fit the current engine/model/topology/card. The
+  // operator loads one instead of retyping a dozen flags.
+  const [templates, setTemplates] = useState<EngineParamTemplate[]>([]);
+  const [templateId, setTemplateId] = useState('');
 
   useEffect(() => {
     // Feature #52 (AD2): the pool list for the deploy form. The deploy
@@ -273,6 +278,59 @@ export default function DeployForm({
   const selectedImage = images.find((i) => i.imageId === imageId);
   const engine = selectedImage?.engine || '';
   const params = engineParams(engine);
+
+  useEffect(() => {
+    // The match context is what the operator has chosen so far; the server
+    // filters and ranks, so a template for another engine or model never shows
+    // up. No engine yet (no image chosen) means nothing to match against.
+    if (!engine) {
+      setTemplates([]);
+      setTemplateId('');
+      return;
+    }
+    const params = new URLSearchParams({ engine });
+    if (selectedModelId) params.set('modelId', selectedModelId);
+    if (topology) params.set('topology', topology);
+    if (accelerator && accelerator !== CPU_ACCELERATOR) {
+      params.set('accelerator', accelerator);
+      if (acceleratorType) params.set('acceleratorType', acceleratorType);
+    }
+    let cancelled = false;
+    api
+      .get<{ templates?: EngineParamTemplate[] }>(
+        `/api/v1/admin/engine-param-templates?${params.toString()}`,
+        orgId,
+      )
+      .then((data) => {
+        if (cancelled) return;
+        setTemplates(data.templates || []);
+        setTemplateId('');
+      })
+      .catch(() => {
+        if (!cancelled) setTemplates([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [api, accelerator, acceleratorType, engine, orgId, selectedModelId, topology]);
+
+  // applyTemplate copies a template's parameters into the form. A role the
+  // template defines replaces that role's rows; the shared parameters replace
+  // the shared rows. Nothing else changes, so the operator keeps any manual
+  // edit the template does not cover.
+  const applyTemplate = (id: string) => {
+    setTemplateId(id);
+    const tpl = templates.find((x) => x.templateId === id);
+    if (!tpl) return;
+    setEngineArgs({ ...(tpl.engineArgs || {}) });
+    setExtraArgs([...(tpl.extraArgs || [])]);
+    const nextRoles: Record<string, RoleArgState> = {};
+    for (const role of tpl.roleEngineArgs || []) {
+      nextRoles[role.role] = { args: { ...(role.engineArgs || {}) }, extra: [...(role.extraArgs || [])] };
+    }
+    setRoleArgs(nextRoles);
+  };
+
 
   useEffect(() => {
     if (compatible.length > 0 && !compatible.some((i) => i.imageId === imageId)) {
@@ -584,6 +642,33 @@ export default function DeployForm({
           </div>
         )}
       </div>
+
+      {templates.length > 0 && (
+        <div className="form-grid" style={{ marginBottom: 12 }} data-testid="deploy-template-picker">
+          <div className="form-field full">
+            <label htmlFor="deploy-template">{t('deploy.templateLabel')}</label>
+            <select
+              id="deploy-template"
+              data-testid="deploy-template-select"
+              value={templateId}
+              onChange={(e) => applyTemplate(e.target.value)}
+            >
+              <option value="">{t('deploy.templateNone')}</option>
+              {templates.map((tpl) => (
+                <option key={tpl.templateId} value={tpl.templateId}>
+                  {tpl.name}
+                  {tpl.topology ? ` · ${t(`deploy.topology${tpl.topology === 'pd' ? 'Pd' : tpl.topology === 'single' ? 'Single' : 'MultiNode'}`)}` : ''}
+                </option>
+              ))}
+            </select>
+            <div className="field-hint">
+              {templateId
+                ? t('deploy.templateApplied')
+                : t('deploy.templateHint')}
+            </div>
+          </div>
+        </div>
+      )}
 
       <EngineArgsSection
         engine={engine}

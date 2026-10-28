@@ -162,3 +162,33 @@ func repeat(s string, n int) string {
 	}
 	return string(out)
 }
+
+// TestVerifyPlaygroundKey covers the control-plane key check the playground
+// relies on: an unknown key is rejected, a key from another organization is
+// rejected, and the owner's own key passes.
+func TestVerifyPlaygroundKey(t *testing.T) {
+	env := newTestService(t)
+	created, err := env.svc.CreateAPIKey(orgCtx("org-a"), &authv1.CreateAPIKeyRequest{Name: "playground"})
+	require.NoError(t, err)
+	svc, plaintext := env.svc, created.GetApiKey()
+	ctx := context.Background()
+
+	// The caller's own key passes.
+	require.NoError(t, svc.VerifyPlaygroundKey(ctx, plaintext, "", "org-a"))
+
+	// An unknown key is rejected with the same code the gateway uses.
+	err = svc.VerifyPlaygroundKey(ctx, "sk-not-a-real-key", "", "")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeAPIKeyNotFound, apierrors.CodeOf(err))
+
+	// A key that belongs to another organization is rejected: the playground
+	// tests the caller's own traffic.
+	err = svc.VerifyPlaygroundKey(ctx, plaintext, "", "other-org")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeAPIKeyInvalid, apierrors.CodeOf(err))
+
+	// An empty key is rejected without touching the store.
+	err = svc.VerifyPlaygroundKey(ctx, "  ", "", "")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeAPIKeyInvalid, apierrors.CodeOf(err))
+}

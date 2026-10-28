@@ -152,6 +152,11 @@ const (
 	CodeInferAccessInvalid      Code = 10317 // INFER_ACCESS_INVALID
 	CodeInferEngineArgsInvalid  Code = 10318 // INFER_ENGINE_ARGS_INVALID
 	CodeInferTopologyInvalid    Code = 10319 // INFER_TOPOLOGY_INVALID
+
+	// Engine-parameter template error codes (inference parameter templates).
+	CodeEngineTemplateNotFound Code = 10320 // ENGINE_TEMPLATE_NOT_FOUND
+	CodeEngineTemplateExists   Code = 10321 // ENGINE_TEMPLATE_EXISTS
+	CodeEngineTemplateInvalid  Code = 10322 // ENGINE_TEMPLATE_INVALID
 )
 
 // metering module error codes.

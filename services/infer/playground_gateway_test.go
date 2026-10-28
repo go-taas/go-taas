@@ -227,3 +227,53 @@ func TestPlaygroundModelEnforcesTheAccessPolicy(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "ok", resp.GetCompletion())
 }
+
+// TestParseChatCompletionDropsInvalidUTF8 covers the reported garbled output:
+// a byte-level tokenizer can stop on a partial multi-byte sequence, which Go's
+// JSON decoder renders as U+FFFD inside the text.
+func TestParseChatCompletionDropsInvalidUTF8(t *testing.T) {
+	body := []byte(`{"choices":[{"message":{"content":"海洋很广阔` + "\ufffd" + `"}}],"usage":{"prompt_tokens":3,"completion_tokens":4}}`)
+	completion, prompt, completionTokens := parseChatCompletion(body)
+	assert.Equal(t, "海洋很广阔", completion)
+	assert.EqualValues(t, 3, prompt)
+	assert.EqualValues(t, 4, completionTokens)
+}
+
+// TestPlaygroundKeyIsVerifiedBeforeForwarding covers the reported hole: the
+// call goes to the in-cluster engine service, so the control plane must check
+// the key itself instead of relying on the gateway plugin.
+func TestPlaygroundKeyIsVerifiedBeforeForwarding(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	require.NoError(t, repo.Create(context.Background(), &InferenceService{
+		ID: NewServiceID(), OrganizationID: "org-a", Name: "svc",
+		ModelID: modelID, ModelVersion: "v1", State: StateRunning,
+		Endpoints: []string{"http://e"}, UpdatedAt: time.Now(),
+	}))
+
+	called := false
+	resolver, _ := playgroundGateway(t, func(w http.ResponseWriter, _ *http.Request) {
+		called = true
+		_, _ = w.Write(openAIChatResponse("should not happen"))
+	})
+	svc.SetGatewayResolver(resolver)
+	svc.SetPlaygroundKeyVerifier(rejectingKeyVerifier{err: apierrors.New(apierrors.CodeAPIKeyInvalid)})
+
+	_, err = svc.PlaygroundModel(orgContext("org-a"), &inferv1.PlaygroundModelRequest{
+		ModelId: modelID, Prompt: "hello", MaxTokens: 16, ApiKey: "sk-bogus",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeAPIKeyInvalid, apierrors.CodeOf(err))
+	assert.False(t, called, "a rejected key must never reach the engine")
+}
+
+// rejectingKeyVerifier is a key verifier that always fails.
+type rejectingKeyVerifier struct{ err error }
+
+func (r rejectingKeyVerifier) VerifyPlaygroundKey(context.Context, string, string, string) error {
+	return r.err
+}
