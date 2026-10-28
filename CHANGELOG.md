@@ -1,3 +1,10 @@
+## [1.93.1](https://github.com/go-taas/go-taas/compare/v1.93.0...v1.93.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **infer:** accept the queued and starting reports from the controller ([65f6fb2](https://github.com/go-taas/go-taas/commit/65f6fb274f518d8094b91b83693c9413be297293))
+
 # [1.93.0](https://github.com/go-taas/go-taas/compare/v1.92.1...v1.93.0) (2026-10-28)
 
 
