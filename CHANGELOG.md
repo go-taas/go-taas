@@ -1,3 +1,10 @@
+## [1.92.1](https://github.com/go-taas/go-taas/compare/v1.92.0...v1.92.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console:** name organizations in the user console switcher ([295393b](https://github.com/go-taas/go-taas/commit/295393bdcb8dc79ff33d628dab7d4e58fe0966b4))
+
 # [1.92.0](https://github.com/go-taas/go-taas/compare/v1.91.3...v1.92.0) (2026-10-28)
 
 

@@ -11,7 +11,7 @@ type: application
 version: 0.1.0
 # appVersion tracks the released platform version; the image tag defaults to
 # v<appVersion>.
-appVersion: "1.92.0"
+appVersion: "1.92.1"
 kubeVersion: ">=1.25.0-0"
 home: https://go-taas.com
 icon: https://go-taas.com/assets/avatar-512.png
