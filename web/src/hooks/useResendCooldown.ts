@@ -13,6 +13,9 @@ export interface ResendCooldown {
   ready: boolean;
   /** Start (or restart) the countdown for the given window. */
   start: (seconds: number) => void;
+  /** Clear the countdown; call it when the target address changes, because
+   * the server tracks its window per address. */
+  reset: () => void;
 }
 
 export function useResendCooldown(storageKey: string, defaultSeconds = 60): ResendCooldown {
@@ -43,7 +46,12 @@ export function useResendCooldown(storageKey: string, defaultSeconds = 60): Rese
     [storageKey, defaultSeconds],
   );
 
-  return { remaining, ready: remaining <= 0, start };
+  const reset = useCallback(() => {
+    setRemaining(0);
+    localStorage.removeItem(storageKey);
+  }, [storageKey]);
+
+  return { remaining, ready: remaining <= 0, start, reset };
 }
 
 /** windowSeconds reads the resend window from an email-code reply. */

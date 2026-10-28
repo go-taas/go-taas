@@ -158,7 +158,11 @@ export default function UserLoginPage() {
               id="login-email"
               data-testid="login-email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // The resend window belongs to the address, not the form.
+                cooldown.reset();
+              }}
               autoComplete="email"
             />
             <button

@@ -224,6 +224,9 @@ export default function ProfilePage() {
                 onChange={(e) => {
                   setEmail(e.target.value);
                   setCodeSent(false);
+                  // The server's resend window belongs to the address, so a
+                  // different address starts from a clean countdown.
+                  cooldown.reset();
                 }}
                 data-testid="profile-email"
                 style={{ flex: 1 }}

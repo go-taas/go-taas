@@ -154,7 +154,11 @@ export default function RegisterPage() {
               id="register-email"
               data-testid="register-email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                // The resend window belongs to the address, not the form.
+                cooldown.reset();
+              }}
               autoComplete="email"
             />
             <button
