@@ -1,3 +1,10 @@
+## [1.96.1](https://github.com/go-taas/go-taas/compare/v1.96.0...v1.96.1) (2026-10-28)
+
+
+### Bug Fixes
+
+* **console:** read the project roster name-first ([50b3ea7](https://github.com/go-taas/go-taas/commit/50b3ea72efbe0efda98ce3f8b1d3f32da0edda5f))
+
 # [1.96.0](https://github.com/go-taas/go-taas/compare/v1.95.0...v1.96.0) (2026-10-28)
 
 
