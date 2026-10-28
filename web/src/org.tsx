@@ -4,7 +4,14 @@
 // transitional mode (no operator API call).
 
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
-import { getOrgId, getSessionToken, setOrgId, type OrganizationSummary, type SessionInfo } from './api';
+import {
+  getOrgId,
+  getSessionToken,
+  setOrgId,
+  type MyOrganization,
+  type OrganizationSummary,
+  type SessionInfo,
+} from './api';
 import { useApi, useRealm } from './surface';
 import { useI18n } from './i18n';
 
@@ -194,14 +201,26 @@ export function OrgSwitcher() {
           const sess = await api.get<SessionInfo>(`/api/v1${realm === 'admin' ? '/admin' : ''}/auth/session`, '');
           if (cancelled) return;
           setSession(sess);
-          // The switcher lists the organizations the account belongs to.
-          // A platform administrator belongs to none: the platform console
-          // is platform-wide, so it renders no switcher at all, and the
-          // pages that read organization-scoped data span every
-          // organization.
+          // The switcher lists the organizations the account belongs to,
+          // by name: the user-surface directory answers the account's own
+          // organizations, so the selector reads like every other list
+          // instead of showing raw ids.
+          const names = new Map<string, string>();
+          try {
+            const mine = await api.get<{ organizations: MyOrganization[] }>(
+              '/api/v1/tenancy/my-organizations',
+              '',
+            );
+            for (const o of mine.organizations || []) {
+              names.set(o.organizationId, o.displayName);
+            }
+          } catch {
+            // Names are cosmetic: fall back to the ids below.
+          }
+          if (cancelled) return;
           const list = (sess.accessibleOrgs || []).map((id) => ({
             organizationId: id,
-            displayName: id,
+            displayName: names.get(id) || id,
             state: 'active',
           } as OrganizationSummary));
           setOrgs(list);
