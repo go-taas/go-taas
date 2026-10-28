@@ -289,7 +289,25 @@ sequenceDiagram
 - **E2E**（`test/e2e/tests/usageDashboard.js`，`usageMetering.js` 模式）：针对 compose 栈 — 仪表盘渲染 `usage-dashboard-cards` 与 `usage-chart`（AC1）、指标切换无额外 API 调用即重新渲染（AC3）、分组重新拉取（AC2）、凭证列表显示标注「预估成本」的 `voucher-cost-{id}`（AC4）、导出 CSV 下载当前视图（AC5）、组件显示余额/配额/无账户状态（AC6）、待结算徽标在 `data_through` 之后出现（AC8）。
 - **回归**：既有 e2e 套件保持绿色；计费路径与 `GetBalance` 不受触碰（只读特性）。
 
-## 9. 开放问题
+## 9. 增量 D —— 尚未计价的用量
+
+仪表盘最初只聚合 `charge_records`。这些行由结算写入，因此在一个没有计费账户、没有价格条目、或结算任务尚未运行的部署上，视图是空的，尽管调用确实发生过 —— 用户页面为 `usage_lines` 能够证明的流量显示为 0。
+
+**AD11 —— token 与请求数取自 `usage_lines`，成本取自 `charge_records`。** 每次计量调用都会写一行 `usage_lines`，无论是否已计价，因此它是计数的事实来源。`DashboardAggregate` 因此执行两个查询 —— 按「日 × 维度」分组的原始用量，以及计费记录 —— 并在 `(day, group)` 键上合并：
+
+| 桶 | 成本 | 已计价 |
+| --- | --- | --- |
+| 有原始用量也有计费记录 | 取计费记录的成本 | 是 |
+| 只有原始用量 | 0 | 否 |
+| 只有计费记录（原始行被清理，或手工调整） | 取计费记录的成本 | 是 |
+
+在任何情况下都由原始行决定 token 与请求数；计费记录只填补没有原始行的桶。有用量但未计价的桶会被如实呈现而非隐藏，用户页面会格式化金额并说明部分请求尚未定价 —— 「有流量但没有价格」与「什么都没做」是两条不同的信息。
+
+**AD12 —— 水位回退到最后一行为用例。** `ChargeWatermark` 取计费记录的最大 `period_start`；如果卡片上明明有流量却报告「数据截止到 0」，页面自相矛盾。因此在尚无任何计价时，它改为报告最后一行 `usage_lines` 的时间戳，这恰好就是屏幕上数据的新鲜度。
+
+两个查询共享同一处方言分支：sqlite（测试）用 `strftime`/`datetime(...)`，Postgres（生产）用 `EXTRACT(EPOCH FROM …)::bigint`/`to_timestamp(...)`。分支读取 `r.db.Name()` 而不是 dialector，因为用 dialector 名称比较会被 `staticcheck` 报出。
+
+## 10. 开放问题
 
 | 问题 | 倾向 |
 | --- | --- |

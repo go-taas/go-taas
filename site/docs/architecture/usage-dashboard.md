@@ -289,7 +289,25 @@ All errors are `pkg/errors` business codes in the unified envelope. No new codes
 - **E2E** (`test/e2e/tests/usageDashboard.js`, the `usageMetering.js` pattern): against the compose stack — the dashboard renders `usage-dashboard-cards` and `usage-chart` (AC1), the metric toggle re-renders with no additional API call (AC3), group-by refetches (AC2), the voucher list shows `voucher-cost-{id}` labeled "Est. cost" (AC4), Export CSV downloads the current view (AC5), the widget shows balance/quota/no-account states (AC6), the pending badge appears past `data_through` (AC8).
 - **Regression**: the existing e2e suites stay green; the charge path and `GetBalance` are untouched (read-only feature).
 
-## 9. Open Questions
+## 9. Increment D — Usage That Has Not Been Priced Yet
+
+The dashboard originally aggregated only `charge_records`. Settlement is what writes those rows, so on an installation with no billing account, no price entry, or a settlement job that has not run yet, the view was empty even though the calls had happened — the user page showed zeros for traffic that `usage_lines` could prove.
+
+**AD11 — Tokens and requests come from `usage_lines`; cost comes from `charge_records`.** Every metered call writes a `usage_lines` row whether or not it is priced, so it is the truthful source for counts. `DashboardAggregate` therefore runs two queries — the raw usage grouped by day × dimension, and the charges — and merges them on the `(day, group)` key:
+
+| Bucket | Cost | Priced |
+| --- | --- | --- |
+| raw usage and charges | the charges' cost | true |
+| raw usage only | 0 | false |
+| charges only (pruned raw line, manual adjustment) | the charges' cost | true |
+
+The raw lines win the token and request counts in every case; a charge record only fills a bucket where no raw line exists. A bucket that is usage-but-unpriced is reported rather than hidden, and the user page formats the money and states that some requests are not priced — "your traffic exists but has no price" is a different message from "you did nothing".
+
+**AD12 — The watermark falls back to the last usage line.** `ChargeWatermark` is the max `period_start` of the charges, and reporting "data through 0" while the cards above it show traffic would contradict the page. When nothing has been priced it reports the last `usage_lines` timestamp instead, which is exactly how fresh the data on screen is.
+
+Both queries carry the same dialect branch: sqlite (tests) uses `strftime`/`datetime(...)`, Postgres (production) uses `EXTRACT(EPOCH FROM …)::bigint`/`to_timestamp(...)`. The branch reads `r.db.Name()` rather than the dialector, because a dialector-name comparison is what `staticcheck` flags.
+
+## 10. Open Questions
 
 | Question | Leaning |
 | --- | --- |

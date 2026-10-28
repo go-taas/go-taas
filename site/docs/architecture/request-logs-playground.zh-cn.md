@@ -363,7 +363,21 @@ Runner 侧失败不是 RPC 错误：请求日志保留删除失败仅记录日�
 - **E2E**（`test/e2e/tests/requestLogsPlayground.js`，`usageDashboard.js` 模式）：针对 compose 栈 — 「请求日志」页面渲染 `request-log-row-{id}`、状态过滤为 `request-log-filter-status`、无行匹配时显示空态（AC-A8）；详情对话框 `request-log-detail-{id}` 展示完整元数据（AC-A9）；「调试台」页面控件（`playground-service-select`、`playground-prompt-input`、`playground-send` 在全部就绪前禁用）（AC-B3）；发送渲染带补全/用量/延迟的响应面板 `playground-response`（AC-B1）；失败的推理内联渲染错误（AC-B4）；调试台请求作为普通请求日志行出现（AC-B2）。
 - **回归**：既有 e2e 套件保持绿色；计量事件体扩展是增量的（旧事件携带空 latency/status，以 `success` 与 0 延迟记录），凭证路径逐字节不变。
 
-## 9. 开放问题
+## 9. 增量 C —— 密钥校验与编码
+
+调试台对着真实 vLLM 服务运行后暴露出两个缺陷。
+
+**AD9 —— 控制面自己校验密钥。** AD8 按键身份转发并依赖网关校验。该假设只在公共数据面成立：调试台把请求发往平台的集群内引擎端点（`inferenceGatewayInternalUrl`，一个 Service 地址），该路径上**没有 Wasm 插件**，因此没有任何环节校验密钥，任何根本不是密钥的字符串都能拿到补全。于是 `services/infer` 新增 `PlaygroundKeyVerifier` seam，接到 `auth.VerifyPlaygroundKey`，后者委托给 `VerifyAPIKey`，并额外检查该密钥属于调用方组织。校验在转发之前执行：未知密钥以 10007 失败（组织不符则为 10008），永远不会到达引擎。seam 为 nil 时拒绝调用而非跳过校验，因此半接线的构建不会变成无鉴权代理。
+
+**AD10 —— 补全结果裁剪为合法 UTF-8。** vLLM 的字节级分词器可能在多字节序列中间停止生成，补全因此以半个码点结尾，JSON/UTF-8 解码器会渲染成替换字符（「乱码」）。`parseChatCompletion` 在返回前剔除非法 UTF-8 与 `U+FFFD`。调试台同时把测试调用上限设为 512 token（`playgroundDefaultMaxTokens`）：所服务模型的 `generation_config.json` 会把 `max_tokens` 抬到 2048，既让一次测试调用无谓变慢，也提高了撞上截断窗口的概率。
+
+| 条件 | 错误码 | 说明 |
+| --- | --- | --- |
+| 调试台密钥为空/格式非法 | 10008 | `CodeAPIKeyInvalid` |
+| 调试台密钥未知、已吊销、已过期或超出模型范围 | 10007 | `CodeAPIKeyNotFound`；由控制面在转发前返回（AD9） |
+| 调试台密钥属于其他组织 | 10008 | `CodeAPIKeyInvalid`，消息为 `the API key belongs to another organization` |
+
+## 10. 开放问题
 
 | 问题 | 倾向 |
 | --- | --- |

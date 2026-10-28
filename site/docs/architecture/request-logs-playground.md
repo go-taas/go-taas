@@ -363,7 +363,21 @@ Runner-side failures are not RPC errors: a request-log retention delete failure 
 - **E2E** (`test/e2e/tests/requestLogsPlayground.js`, the `usageDashboard.js` pattern): against the compose stack — the Request Logs page renders `request-log-row-{id}`, the status filter is `request-log-filter-status`, the empty state shows when no rows match (AC-A8); the Detail dialog `request-log-detail-{id}` shows full metadata (AC-A9); the Playground page controls (`playground-service-select`, `playground-prompt-input`, `playground-send` disabled until all set) (AC-B3); a send renders the response pane `playground-response` with completion/usage/latency (AC-B1); a failed inference renders the error inline (AC-B4); a playground request appears as a normal request-log row (AC-B2).
 - **Regression**: the existing e2e suites stay green; the metering event body extension is additive (old events carry empty latency/status and are logged as `success` with 0 latency), and the voucher path is byte-for-byte unchanged.
 
-## 9. Open Questions
+## 9. Increment C — Key Verification and Encoding
+
+Two defects surfaced once the playground was exercised against a live vLLM service.
+
+**AD9 — The control plane verifies the key itself.** AD8 forwards by key identity and relies on the gateway to verify. That assumption only holds on the public data plane: the playground posts to the platform's in-cluster engine endpoint (`inferenceGatewayInternalUrl`, a Service address), which carries **no Wasm plugin**, so nothing on that path validated the key and any string that was not a key at all produced a completion. `services/infer` therefore gains a `PlaygroundKeyVerifier` seam, wired to `auth.VerifyPlaygroundKey`, which delegates to `VerifyAPIKey` and additionally checks that the key belongs to the calling organization. Verification runs before the request is forwarded; an unknown key fails with 10007 (or 10028 for a key of the wrong organization) and never reaches an engine. A nil seam refuses the call rather than skipping the check, so a partially wired build cannot become an unauthenticated proxy.
+
+**AD10 — Completions are trimmed to valid UTF-8.** vLLM's byte-level tokenizer can stop generation inside a multi-byte sequence, and the completion then ends in a partial codepoint that a JSON/UTF-8 decoder renders as replacement characters ("乱码"). `parseChatCompletion` strips invalid UTF-8 and `U+FFFD` from the completion before returning it. The playground also caps a test call at 512 tokens (`playgroundDefaultMaxTokens`): the served model's `generation_config.json` raises `max_tokens` to 2048, which both makes a test call needlessly slow and increases the chance of hitting the truncation window.
+
+| Condition | Code | Notes |
+| --- | --- | --- |
+| Playground key empty / malformed | 10008 | `CodeAPIKeyInvalid` |
+| Playground key unknown, revoked, expired or out of model scope | 10007 | `CodeAPIKeyNotFound`; returned by the control plane before forwarding (AD9) |
+| Playground key belongs to another organization | 10008 | `CodeAPIKeyInvalid`, with `the API key belongs to another organization` |
+
+## 10. Open Questions
 
 | Question | Leaning |
 | --- | --- |
