@@ -195,9 +195,11 @@ export default function ProjectMembersPage() {
               {members.map((m) => (
                 <tr key={m.userId} data-testid={`project-member-row-${m.userId}`}>
                   <td>
-                    <strong className="mono">{m.userId}</strong>
-                    {m.displayName && m.displayName !== m.userId && (
-                      <div className="muted">{m.displayName}</div>
+                    {/* Name first, id underneath: the same reading order as
+                        every other directory list in the console. */}
+                    <strong>{m.displayName || m.userId}</strong>
+                    {m.displayName && (
+                      <div className="muted mono">{m.userId}</div>
                     )}
                   </td>
                   <td>
