@@ -10,10 +10,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	appsv1 "k8s.io/api/apps/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
@@ -601,24 +602,24 @@ func TestEngineCommand(t *testing.T) {
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
 		"--served-model-name", "qwen2.5-0.5b",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1", "qwen2.5-0.5b", nil, nil))
+	}, engineCommand("vllm", "/data/weights", "qwen/v1", "qwen2.5-0.5b", nil, nil, "", changeEvent{}))
 
 	// An empty name leaves the weights path as the served name, which is
 	// what the engine defaults to.
 	assert.Equal(t, []string{
 		"python3", "-m", "vllm.entrypoints.openai.api_server",
 		"--model", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
-	}, engineCommand("vllm", "/data/weights", "qwen/v1", "", nil, nil))
+	}, engineCommand("vllm", "/data/weights", "qwen/v1", "", nil, nil, "", changeEvent{}))
 
 	// SGLang serves on its own module and takes --model-path.
 	assert.Equal(t, []string{
 		"python3", "-m", "sglang.launch_server",
 		"--model-path", "/data/weights/qwen/v1", "--port", "8000", "--host", "0.0.0.0",
 		"--served-model-name", "m",
-	}, engineCommand("sglang", "/data/weights", "qwen/v1", "m", nil, nil))
+	}, engineCommand("sglang", "/data/weights", "qwen/v1", "m", nil, nil, "", changeEvent{}))
 
 	// Unknown engines get no command (the image's default entrypoint runs).
-	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1", "m", nil, nil))
+	assert.Nil(t, engineCommand("", "/data/weights", "qwen/v1", "m", nil, nil, "", changeEvent{}))
 }
 
 func TestModelDir(t *testing.T) {
@@ -759,125 +760,93 @@ func testChangeEventWithAutoscaling(eventType, name string, policy *autoscalingP
 	return evt
 }
 
-func TestBuildHPA(t *testing.T) {
-	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
-		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
-		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
-	})
-	hpa := testReconciler().buildHPA(evt)
-
-	assert.Equal(t, "hpa-demo", hpa.Name)
-	assert.Equal(t, reconcileNamespace, hpa.Namespace)
-	require.NotNil(t, hpa.Spec.MinReplicas)
-	assert.Equal(t, int32(1), *hpa.Spec.MinReplicas)
-	assert.Equal(t, int32(10), hpa.Spec.MaxReplicas)
-	assert.Equal(t, "demo", hpa.Spec.ScaleTargetRef.Name)
-	assert.Equal(t, "Deployment", hpa.Spec.ScaleTargetRef.Kind)
-
-	// Concurrency object metric with AverageValue target.
-	require.Len(t, hpa.Spec.Metrics, 1)
-	m := hpa.Spec.Metrics[0]
-	assert.Equal(t, autoscalingv2.ObjectMetricSourceType, m.Type)
-	require.NotNil(t, m.Object)
-	assert.Equal(t, "taas-infer-concurrency", m.Object.Metric.Name)
-	assert.Equal(t, autoscalingv2.AverageValueMetricType, m.Object.Target.Type)
-	require.NotNil(t, m.Object.Target.AverageValue)
-	assert.Equal(t, int64(32), m.Object.Target.AverageValue.Value())
-
-	// Downscale stabilization window equals the cooldown.
-	require.NotNil(t, hpa.Spec.Behavior)
-	require.NotNil(t, hpa.Spec.Behavior.ScaleDown)
-	require.NotNil(t, hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
-	assert.Equal(t, int32(300), *hpa.Spec.Behavior.ScaleDown.StabilizationWindowSeconds)
-}
-
-func TestBuildHPAScaleToZero(t *testing.T) {
-	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
-		Enabled: true, MinReplicas: 0, MaxReplicas: 5,
-		TargetConcurrency: 16, ScaleToZero: true, CooldownSeconds: 120,
-	})
-	hpa := testReconciler().buildHPA(evt)
-	require.NotNil(t, hpa.Spec.MinReplicas)
-	assert.Equal(t, int32(0), *hpa.Spec.MinReplicas)
-	assert.Equal(t, int32(5), hpa.Spec.MaxReplicas)
-}
-
-func TestApplyUpsertWithAutoscalingCreatesHPA(t *testing.T) {
-	publisher := &recordingPublisher{Client: mq.NewFake()}
-	reconciler, clientset := newFakeReconciler(publisher)
+func TestApplyUpsertWithAutoscalingCreatesPodAutoscaler(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
 
 	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
 		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
 		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
 	})
-	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt)))
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
 
-	// The HPA exists with the desired spec.
-	hpa, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
-		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	// The AIBrix PodAutoscaler exists and targets the service's storm.
+	pa, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).
+		Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, int32(10), hpa.Spec.MaxReplicas)
+	max, _, _ := unstructured.NestedInt64(pa.Object, "spec", "maxReplicas")
+	assert.Equal(t, int64(10), max)
+	ref, _, _ := unstructured.NestedStringMap(pa.Object, "spec", "scaleTargetRef")
+	assert.Equal(t, "StormService", ref["kind"])
 
-	// Re-apply with a different max: the HPA is patched (idempotent).
+	// Re-apply with a different max: the PodAutoscaler is updated
+	// (idempotent).
 	evt2 := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
 		Enabled: true, MinReplicas: 1, MaxReplicas: 20,
 		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
 	})
-	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt2)))
-	hpa, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
-		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt2)))
+	pa, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).
+		Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, int32(20), hpa.Spec.MaxReplicas)
+	max, _, _ = unstructured.NestedInt64(pa.Object, "spec", "maxReplicas")
+	assert.Equal(t, int64(20), max)
 }
 
-func TestApplyUpsertAutoscalingDisabledDeletesHPA(t *testing.T) {
-	publisher := &recordingPublisher{Client: mq.NewFake()}
-	reconciler, clientset := newFakeReconciler(publisher)
+func TestApplyUpsertAutoscalingDisabledDeletesPodAutoscaler(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
 
-	// First enable autoscaling.
 	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
 		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
 		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
 	})
-	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt)))
-	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
-		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
+	_, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).
+		Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 
-	// Then disable: the HPA is deleted and the Deployment is pinned.
+	// Then disable: the PodAutoscaler is deleted and the storm is pinned to
+	// the fixed replica count.
 	disabled := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
 		Enabled: false, MinReplicas: 1, MaxReplicas: 10,
 		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
 	})
 	disabled.Replicas = 3
-	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(disabled)))
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(disabled)))
 
-	_, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
-		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
-	assert.Error(t, err, "HPA should be deleted when autoscaling is disabled")
+	_, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).
+		Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "PodAutoscaler should be deleted when autoscaling is disabled")
 
-	dep, err := clientset.AppsV1().Deployments(reconcileNamespace).
-		Get(context.Background(), "demo", metav1.GetOptions{})
+	storm, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).
+		Get(ctx, "demo", metav1.GetOptions{})
 	require.NoError(t, err)
-	assert.Equal(t, int32(3), *dep.Spec.Replicas, "deployment pinned to fixed count (FR2.5)")
+	replicas, _, _ := unstructured.NestedInt64(storm.Object, "spec", "replicas")
+	assert.Equal(t, int64(3), replicas, "the storm is pinned to the fixed count (FR2.5)")
 }
 
-func TestApplyDeleteRemovesHPA(t *testing.T) {
-	publisher := &recordingPublisher{Client: mq.NewFake()}
-	reconciler, clientset := newFakeReconciler(publisher)
+func TestApplyDeleteRemovesStormAndPodAutoscaler(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
 
 	evt := testChangeEventWithAutoscaling("upsert", "demo", &autoscalingPolicy{
 		Enabled: true, MinReplicas: 1, MaxReplicas: 10,
 		TargetConcurrency: 32, ScaleToZero: false, CooldownSeconds: 300,
 	})
-	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(evt)))
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
+	_, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
+	require.NoError(t, err)
 
-	delEvt := testChangeEvent("delete", "demo")
-	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(), changeMessage(delEvt)))
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(testChangeEvent("delete", "demo"))))
 
-	_, err := clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).
-		Get(context.Background(), "hpa-demo", metav1.GetOptions{})
-	assert.Error(t, err, "HPA should be deleted with the service")
+	_, err = dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "the storm is deleted with the service")
+	_, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "the autoscaler is deleted with the service")
 }
 
 func TestChangeEventDecodeAutoscaling(t *testing.T) {

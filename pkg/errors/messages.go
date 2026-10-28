@@ -93,6 +93,7 @@ var messages = map[Code]string{
 	CodePlaygroundRequestFailed:  "playground request failed",
 	CodeInferLogsUnavailable:     "service logs unavailable",
 	CodeInferEngineArgsInvalid:   "invalid engine argument",
+	CodeInferTopologyInvalid:     "invalid serving topology",
 	CodeInferAccessInvalid:       "inference service access policy invalid",
 
 	// metering

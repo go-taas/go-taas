@@ -17,6 +17,7 @@ import {
   type GetAutoscalingPolicyResponse,
   type ListVGPUPoolsResponse,
   type ModelSummary,
+  type ServingTopology,
   type TenantVGPUPool,
   type VGPUPool,
 } from '../api';
@@ -52,6 +53,35 @@ interface CreateResponse {
 // accelerator inventory), never from a constant: offering hardware the
 // cluster does not have only produces an unschedulable pod.
 
+// topologySummary renders how many pods the layout will create, so an
+// operator sees the footprint before deploying: a PD storm runs prefill and
+// decode pods per replica, a distributed one runs one pod group per replica.
+function topologySummary(
+  t: (key: string, vars?: Record<string, string | number>) => string,
+  topology: ServingTopology,
+  replicas: number,
+  tp: number,
+  pp: number,
+  prefill: number,
+  decode: number,
+): string {
+  if (topology === 'pd') {
+    const perReplica = prefill * tp * pp + decode * tp * pp;
+    return t('deploy.topologySummaryPd', {
+      replicas: String(replicas),
+      prefill: String(prefill),
+      decode: String(decode),
+      pods: String(perReplica * replicas),
+      group: String(tp * pp),
+    });
+  }
+  return t('deploy.topologySummaryDistributed', {
+    replicas: String(replicas),
+    group: String(tp * pp),
+    pods: String(replicas * tp * pp),
+  });
+}
+
 export default function DeployForm({
   orgId,
   modelId,
@@ -77,6 +107,13 @@ export default function DeployForm({
   const [name, setName] = useState('');
   const [acceleratorType, setAcceleratorType] = useState('');
   const [replicas, setReplicas] = useState('1');
+  // Serving topology (single-node / distributed / PD). Every layout is one
+  // AIBrix StormService; the topology decides its roles.
+  const [topology, setTopology] = useState<ServingTopology>('single');
+  const [tensorParallel, setTensorParallel] = useState('1');
+  const [pipelineParallel, setPipelineParallel] = useState('1');
+  const [prefillReplicas, setPrefillReplicas] = useState('1');
+  const [decodeReplicas, setDecodeReplicas] = useState('1');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   // Feature #16 FR2.1: the autoscaling section, pre-filled from the
@@ -207,6 +244,25 @@ export default function DeployForm({
       setError(t('deploy.errorReplicas'));
       return;
     }
+    // Topology: a distributed deploy needs more than one pod per replica,
+    // and PD needs an engine that speaks the prefill/decode split (the
+    // server enforces the same rules).
+    if (topology === 'distributed' && tp * pp < 2) {
+      setError(t('deploy.errorDistributedParallel'));
+      return;
+    }
+    if (topology === 'pd') {
+      if (!['vllm', 'sglang'].includes(engine)) {
+        setError(t('deploy.errorPdEngine'));
+        return;
+      }
+      const prefill = parseInt(prefillReplicas, 10) || 1;
+      const decode = parseInt(decodeReplicas, 10) || 1;
+      if (prefill < 1 || decode < 1) {
+        setError(t('deploy.errorPdReplicas'));
+        return;
+      }
+    }
     if (!imageId) {
       setError(t('deploy.errorImage'));
       return;
@@ -242,6 +298,11 @@ export default function DeployForm({
           Object.entries(engineArgs).filter(([, v]) => v !== undefined && v !== ''),
         ),
         extraArgs: extraArgs.map((a) => a.trim()).filter(Boolean),
+        topology,
+        tensorParallelSize: String(tp),
+        pipelineParallelSize: String(pp),
+        prefillReplicas: String(parseInt(prefillReplicas, 10) || 1),
+        decodeReplicas: String(parseInt(decodeReplicas, 10) || 1),
         ...(sharedGpu ? { poolId, sliceTemplateId } : {}),
       });
       onDeployed(res.serviceId);
@@ -251,6 +312,10 @@ export default function DeployForm({
       setSubmitting(false);
     }
   };
+
+  // The parallelism as the form currently shows it, for the summary line.
+  const tp = parseInt(tensorParallel, 10) || 1;
+  const pp = parseInt(pipelineParallel, 10) || 1;
 
   const setAS = (patch: Partial<AutoscalingPolicy>) => {
     setAutoscaling((p) => ({ ...p, ...patch }));
@@ -380,6 +445,95 @@ export default function DeployForm({
             onChange={(e) => setReplicas(e.target.value)}
           />
         </div>
+      </div>
+
+      <h4 style={{ marginBottom: 8 }}>{t('deploy.topology')}</h4>
+      <div className="form-grid">
+        <div className="form-field">
+          <label htmlFor="deploy-topology">{t('deploy.topologyMode')}</label>
+          <select
+            id="deploy-topology"
+            data-testid="deploy-topology-select"
+            value={topology}
+            onChange={(e) => setTopology(e.target.value as ServingTopology)}
+          >
+            <option value="single">{t('deploy.topologySingle')}</option>
+            <option value="distributed">{t('deploy.topologyDistributed')}</option>
+            <option value="pd">{t('deploy.topologyPd')}</option>
+          </select>
+          <div className="field-hint">{t('deploy.topologyHint')}</div>
+        </div>
+        {topology !== 'single' && (
+          <>
+            <div className="form-field">
+              <label htmlFor="deploy-tp">{t('deploy.tensorParallel')}</label>
+              <input
+                id="deploy-tp"
+                data-testid="deploy-tp-input"
+                type="number"
+                min={1}
+                max={100}
+                value={tensorParallel}
+                onChange={(e) => setTensorParallel(e.target.value)}
+              />
+              <div className="field-hint">{t('deploy.tensorParallelHint')}</div>
+            </div>
+            <div className="form-field">
+              <label htmlFor="deploy-pp">{t('deploy.pipelineParallel')}</label>
+              <input
+                id="deploy-pp"
+                data-testid="deploy-pp-input"
+                type="number"
+                min={1}
+                max={100}
+                value={pipelineParallel}
+                onChange={(e) => setPipelineParallel(e.target.value)}
+              />
+              <div className="field-hint">{t('deploy.pipelineParallelHint')}</div>
+            </div>
+          </>
+        )}
+        {topology === 'pd' && (
+          <>
+            <div className="form-field">
+              <label htmlFor="deploy-prefill">{t('deploy.prefillReplicas')}</label>
+              <input
+                id="deploy-prefill"
+                data-testid="deploy-prefill-input"
+                type="number"
+                min={1}
+                max={100}
+                value={prefillReplicas}
+                onChange={(e) => setPrefillReplicas(e.target.value)}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="deploy-decode">{t('deploy.decodeReplicas')}</label>
+              <input
+                id="deploy-decode"
+                data-testid="deploy-decode-input"
+                type="number"
+                min={1}
+                max={100}
+                value={decodeReplicas}
+                onChange={(e) => setDecodeReplicas(e.target.value)}
+              />
+            </div>
+            <div className="form-field full">
+              <div className="muted" data-testid="deploy-topology-summary">
+                {topologySummary(t, topology, parseInt(replicas, 10) || 1, tp, pp,
+                  parseInt(prefillReplicas, 10) || 1, parseInt(decodeReplicas, 10) || 1)}
+              </div>
+            </div>
+          </>
+        )}
+        {topology === 'distributed' && (
+          <div className="form-field full">
+            <div className="muted" data-testid="deploy-topology-summary">
+              {topologySummary(t, topology, parseInt(replicas, 10) || 1, tp, pp, 1, 1)}
+            </div>
+          </div>
+        )}
       </div>
 
       <EngineArgsSection

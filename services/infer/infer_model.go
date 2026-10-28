@@ -66,6 +66,16 @@ type InferenceService struct {
 	// ExtraArgs are free-form engine arguments appended after EngineArgs,
 	// so a parameter the console does not know about is still usable.
 	ExtraArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	// Topology is the serving layout: single, distributed or pd. Empty on a
+	// row written before topologies existed, which reads as single.
+	Topology string `gorm:"size:16;not null;default:'single'"`
+	// TensorParallelSize is the TP degree of one replica (1 for single).
+	TensorParallelSize int `gorm:"not null;default:1"`
+	// PipelineParallelSize is the PP degree of one replica (1 for single).
+	PipelineParallelSize int `gorm:"not null;default:1"`
+	// PrefillReplicas / DecodeReplicas are the PD role counts (0 otherwise).
+	PrefillReplicas int `gorm:"not null;default:0"`
+	DecodeReplicas  int `gorm:"not null;default:0"`
 	// Endpoints holds the OpenAI-compatible base URLs as a JSON array,
 	// set by the controller through the status subject. The jsonb type
 	// applies on PostgreSQL; SQLite (tests) stores the same JSON text.

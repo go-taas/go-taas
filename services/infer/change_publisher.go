@@ -76,6 +76,17 @@ type changeEvent struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// Topology is the serving layout: single, distributed or pd. The
+	// controller turns it into the AIBrix StormService roles.
+	Topology string `json:"topology,omitempty"`
+	// TensorParallelSize / PipelineParallelSize shape one replica's pod
+	// group (1 for a single-node deploy).
+	TensorParallelSize   int `json:"tensor_parallel_size,omitempty"`
+	PipelineParallelSize int `json:"pipeline_parallel_size,omitempty"`
+	// PrefillReplicas / DecodeReplicas are the PD role counts (0 for the
+	// other topologies).
+	PrefillReplicas int `json:"prefill_replicas,omitempty"`
+	DecodeReplicas  int `json:"decode_replicas,omitempty"`
 	PublishedAt     time.Time `json:"published_at"`
 }
 
@@ -112,8 +123,21 @@ func buildChangeEvent(eventType string, svc *InferenceService, modelName, weight
 		SliceComputePct: svc.SliceComputePct,
 		EngineArgs:      EngineArgsMap(svc.EngineArgs),
 		ExtraArgs:       ExtraArgsList(svc.ExtraArgs),
+		Topology:        storedTopologyName(svc.Topology),
+		TensorParallelSize:   maxInt(svc.TensorParallelSize, 1),
+		PipelineParallelSize: maxInt(svc.PipelineParallelSize, 1),
+		PrefillReplicas:     svc.PrefillReplicas,
+		DecodeReplicas:      svc.DecodeReplicas,
 		PublishedAt:     time.Now().UTC(),
 	}
+}
+
+// maxInt returns the larger of two ints.
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
 }
 
 // publishChange publishes the event on the changes subject. Headers

@@ -206,7 +206,13 @@ const (
 // least one entry with its required per-item fields (metricSourceType,
 // targetMetric, targetValue) plus the per-type fields the webhook demands for
 // metricSourceType=pod (protocolType, port, path).
-func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxReplicas int32, targetConcurrency int32) *unstructured.Unstructured {
+//
+// The scale target is the service's StormService, not a Deployment: serving
+// is always a storm, and a PodAutoscaler can only drive an object that
+// exists. Scaling the storm scales its replica groups, which is exactly the
+// service's replica count for every topology (a PD storm replica is one
+// prefill+decode pair).
+func buildPodAutoscaler(namespace, name string, minReplicas, maxReplicas, targetConcurrency int32) *unstructured.Unstructured {
 	if targetConcurrency < 1 {
 		targetConcurrency = 32
 	}
@@ -214,15 +220,15 @@ func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxRepl
 		"apiVersion": "autoscaling.aibrix.ai/v1alpha1",
 		"kind":       "PodAutoscaler",
 		"metadata": map[string]any{
-			"name":      hpaName(name),
+			"name":      autoscalerName(name),
 			"namespace": namespace,
 			"labels":    map[string]any{mcLabelManagedBy: managedByValue},
 		},
 		"spec": map[string]any{
 			"scaleTargetRef": map[string]any{
-				"apiVersion": "apps/v1",
-				"kind":       "Deployment",
-				"name":       deployment,
+				"apiVersion": "orchestration.aibrix.ai/v1alpha1",
+				"kind":       "StormService",
+				"name":       name,
 			},
 			"minReplicas":     int64(minReplicas),
 			"maxReplicas":     int64(maxReplicas),
@@ -247,14 +253,14 @@ func buildPodAutoscaler(namespace, deployment, name string, minReplicas, maxRepl
 // resourceVersion fails with "the object has been modified" and the
 // retry re-reads the fresh object after a short backoff until the write
 // lands or the bounded attempts are exhausted.
-func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, deployment, name string, minReplicas, maxReplicas, targetConcurrency int32) error {
+func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, name string, minReplicas, maxReplicas, targetConcurrency int32) error {
 	if dyn == nil {
 		return fmt.Errorf("controller: dynamic client unavailable")
 	}
-	desired := buildPodAutoscaler(namespace, deployment, name, minReplicas, maxReplicas, targetConcurrency)
+	desired := buildPodAutoscaler(namespace, name, minReplicas, maxReplicas, targetConcurrency)
 	const maxAttempts = 5
 	for attempt := 0; ; attempt++ {
-		existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, hpaName(name), metav1.GetOptions{})
+		existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, autoscalerName(name), metav1.GetOptions{})
 		if apierrors.IsNotFound(err) {
 			_, err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Create(ctx, desired, metav1.CreateOptions{})
 			return err
@@ -286,7 +292,7 @@ func deletePodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, 
 	if dyn == nil {
 		return
 	}
-	err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Delete(ctx, hpaName(name), metav1.DeleteOptions{})
+	err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Delete(ctx, autoscalerName(name), metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
 		logger.S().Warnw("controller: delete aibrix podautoscaler failed", "name", name, "err", err)
 	}

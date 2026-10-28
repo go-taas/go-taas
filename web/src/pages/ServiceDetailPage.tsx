@@ -11,11 +11,13 @@ import {
   type AutoscalingPolicy,
   type AutoscalingStatus,
   type InferenceServiceSummary,
+  type ServingTopology,
 } from '../api';
 import { useOrg } from '../org';
 import {
   BackLink,
   CopyButton,
+  Dialog,
   ErrorBanner,
   StateBadge,
   usePolling,
@@ -43,6 +45,8 @@ export default function ServiceDetailPage() {
   // servedModel is the catalog model name the serving gateway routes on, so
   // the curl snippet is runnable instead of naming the service.
   const [servedModel, setServedModel] = useState('');
+  // The topology editor is a dialog: changing the layout restarts the pods.
+  const [topologyOpen, setTopologyOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -155,6 +159,44 @@ export default function ServiceDetailPage() {
         </div>
       </div>
 
+      <div className="panel" style={{ marginBottom: 16 }} data-testid="service-topology-card">
+        <div className="panel-header">
+          <h3 style={{ marginTop: 0 }}>{t('service.topology')}</h3>
+          <button
+            className="secondary"
+            data-testid="service-topology-edit"
+            onClick={() => setTopologyOpen(true)}
+          >
+            {t('service.topologyEdit')}
+          </button>
+        </div>
+        <div className="detail-grid">
+          <div className="detail-item">
+            <div className="label">{t('service.topologyMode')}</div>
+            <div className="value" data-testid="service-topology-mode">
+              {t(topologyLabelKey(s.topology))}
+            </div>
+          </div>
+          <div className="detail-item">
+            <div className="label">{t('service.parallelism')}</div>
+            <div className="value" data-testid="service-parallelism">
+              TP {s.tensorParallelSize || 1} · PP {s.pipelineParallelSize || 1}
+            </div>
+          </div>
+          {(s.topology || 'single') === 'pd' && (
+            <div className="detail-item">
+              <div className="label">{t('service.pdRoles')}</div>
+              <div className="value" data-testid="service-pd-roles">
+                {t('service.pdRolesValue', {
+                  prefill: String(s.prefillReplicas || 1),
+                  decode: String(s.decodeReplicas || 1),
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
       {data.assignedSlice && (
         <div className="panel" style={{ marginBottom: 16 }} data-testid="service-slice-card">
           <h3 style={{ marginTop: 0 }}>{t('service.slice')}</h3>
@@ -258,7 +300,186 @@ export default function ServiceDetailPage() {
       </div>
 
       <AccessPolicyCard serviceId={s.serviceId} />
+
+      {topologyOpen && (
+        <TopologyDialog
+          service={s}
+          orgId={orgId}
+          onClose={() => setTopologyOpen(false)}
+          onSaved={() => {
+            setTopologyOpen(false);
+            void load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// topologyLabelKey maps the wire topology to its message key.
+function topologyLabelKey(topology?: string): string {
+  switch (topology) {
+    case 'distributed':
+      return 'deploy.topologyDistributed';
+    case 'pd':
+      return 'deploy.topologyPd';
+    default:
+      return 'deploy.topologySingle';
+  }
+}
+
+// TopologyDialog changes the serving layout in place: the service keeps its
+// id and endpoints, and the controller rolls the StormService out with the
+// new roles. Editing is only meaningful for the layout fields, so replicas
+// are offered here too (a layout change restarts the pods anyway).
+function TopologyDialog({
+  service,
+  orgId,
+  onClose,
+  onSaved,
+}: {
+  service: InferenceServiceSummary;
+  orgId: string;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const [topology, setTopology] = useState<ServingTopology>(service.topology || 'single');
+  const [tp, setTp] = useState(String(service.tensorParallelSize || 1));
+  const [pp, setPp] = useState(String(service.pipelineParallelSize || 1));
+  const [prefill, setPrefill] = useState(String(service.prefillReplicas || 1));
+  const [decode, setDecode] = useState(String(service.decodeReplicas || 1));
+  const [replicas, setReplicas] = useState(String(service.replicas || 1));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const submit = async () => {
+    const tpv = parseInt(tp, 10) || 1;
+    const ppv = parseInt(pp, 10) || 1;
+    if (topology === 'distributed' && tpv * ppv < 2) {
+      setError(t('deploy.errorDistributedParallel'));
+      return;
+    }
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post(
+        `/api/v1/admin/inference-services/${service.serviceId}:update-topology`,
+        orgId,
+        {
+          serviceId: service.serviceId,
+          topology,
+          tensorParallelSize: String(tpv),
+          pipelineParallelSize: String(ppv),
+          prefillReplicas: String(parseInt(prefill, 10) || 1),
+          decodeReplicas: String(parseInt(decode, 10) || 1),
+          replicas: String(parseInt(replicas, 10) || 0),
+        },
+      );
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('service.topologyUpdateFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog title={t('service.topologyEdit')} onClose={onClose} testId="topology-dialog">
+      <p className="muted">{t('service.topologyEditHint')}</p>
+      {error && <div className="field-error">{error}</div>}
+      <div className="form-grid">
+        <div className="form-field full">
+          <label htmlFor="topology-mode">{t('service.topologyMode')}</label>
+          <select
+            id="topology-mode"
+            data-testid="topology-mode-select"
+            value={topology}
+            onChange={(e) => setTopology(e.target.value as ServingTopology)}
+          >
+            <option value="single">{t('deploy.topologySingle')}</option>
+            <option value="distributed">{t('deploy.topologyDistributed')}</option>
+            <option value="pd">{t('deploy.topologyPd')}</option>
+          </select>
+        </div>
+        {topology !== 'single' && (
+          <>
+            <div className="form-field">
+              <label htmlFor="topology-tp">{t('deploy.tensorParallel')}</label>
+              <input
+                id="topology-tp"
+                data-testid="topology-tp-input"
+                type="number"
+                min={1}
+                max={100}
+                value={tp}
+                onChange={(e) => setTp(e.target.value)}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="topology-pp">{t('deploy.pipelineParallel')}</label>
+              <input
+                id="topology-pp"
+                data-testid="topology-pp-input"
+                type="number"
+                min={1}
+                max={100}
+                value={pp}
+                onChange={(e) => setPp(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+        {topology === 'pd' && (
+          <>
+            <div className="form-field">
+              <label htmlFor="topology-prefill">{t('deploy.prefillReplicas')}</label>
+              <input
+                id="topology-prefill"
+                data-testid="topology-prefill-input"
+                type="number"
+                min={1}
+                max={100}
+                value={prefill}
+                onChange={(e) => setPrefill(e.target.value)}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="topology-decode">{t('deploy.decodeReplicas')}</label>
+              <input
+                id="topology-decode"
+                data-testid="topology-decode-input"
+                type="number"
+                min={1}
+                max={100}
+                value={decode}
+                onChange={(e) => setDecode(e.target.value)}
+              />
+            </div>
+          </>
+        )}
+        <div className="form-field">
+          <label htmlFor="topology-replicas">{t('service.replicas')}</label>
+          <input
+            id="topology-replicas"
+            data-testid="topology-replicas-input"
+            type="number"
+            min={1}
+            max={100}
+            value={replicas}
+            onChange={(e) => setReplicas(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose} data-testid="topology-cancel">
+          {t('common.cancel')}
+        </button>
+        <button onClick={() => void submit()} disabled={submitting} data-testid="topology-save">
+          {submitting ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 

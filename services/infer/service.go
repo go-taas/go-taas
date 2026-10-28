@@ -905,6 +905,21 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		sliceInfo = info
 	}
 
+	// Serving topology: validate the layout (and the parallelism it implies)
+	// before any write, so an impossible pod group never reaches the
+	// controller. The engine decides whether PD disaggregation is available.
+	topology, err := NormalizeTopology(
+		req.GetTopology(),
+		int(req.GetTensorParallelSize()),
+		int(req.GetPipelineParallelSize()),
+		int(req.GetPrefillReplicas()),
+		int(req.GetDecodeReplicas()),
+		img.Engine,
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -959,6 +974,11 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		SliceMemoryGiB:  sliceInfo.MemoryGiB,
 		SliceComputePct: sliceInfo.ComputePct,
 		ClusterID:       clusterID,
+		Topology:            topology.Topology,
+		TensorParallelSize:  topology.TensorParallelSize,
+		PipelineParallelSize: topology.PipelineParallelSize,
+		PrefillReplicas:     topology.PrefillReplicas,
+		DecodeReplicas:      topology.DecodeReplicas,
 	}
 	if err := repo.Create(ctx, svc); err != nil {
 		return nil, err
@@ -1396,6 +1416,119 @@ func (s *Service) UpdateInferenceServiceVersion(ctx context.Context, req *inferv
 	}, nil
 }
 
+// UpdateInferenceServiceTopology changes the serving layout of an existing
+// service in place: single-node, distributed (tensor/pipeline parallelism)
+// or PD-disaggregated. The service keeps its identity and endpoints and
+// returns to pending, so the controller rolls the AIBrix StormService out
+// with the new roles.
+//
+// Validation order: service exists (10301), state updatable (10303), image
+// readable, topology valid (10319). Nothing is written when a check fails.
+func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *inferv1.UpdateInferenceServiceTopologyRequest) (*inferv1.UpdateInferenceServiceTopologyResponse, error) {
+	orgID, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.mqClientFor()
+	if err != nil {
+		return nil, err
+	}
+
+	row, err := s.findService(ctx, repo, req.GetServiceId())
+	if err != nil {
+		return nil, err
+	}
+	if row.State == StateTerminated {
+		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
+	}
+
+	// The engine of the service's image decides whether PD disaggregation is
+	// available, so it is read before the layout is validated.
+	img, err := image.Lookup(row.ImageID)
+	if err != nil {
+		return nil, err
+	}
+	topology, err := NormalizeTopology(
+		req.GetTopology(),
+		int(req.GetTensorParallelSize()),
+		int(req.GetPipelineParallelSize()),
+		int(req.GetPrefillReplicas()),
+		int(req.GetDecodeReplicas()),
+		img.Engine,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	replicas := int(req.GetReplicas())
+	if replicas != 0 && (replicas < minReplicas || replicas > maxReplicas) {
+		return nil, apierrors.New(apierrors.CodeInferReplicasInvalid)
+	}
+
+	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas); err != nil {
+		return nil, err
+	}
+
+	updated := *row
+	updated.State = StatePending
+	updated.Topology = topology.Topology
+	updated.TensorParallelSize = topology.TensorParallelSize
+	updated.PipelineParallelSize = topology.PipelineParallelSize
+	updated.PrefillReplicas = topology.PrefillReplicas
+	updated.DecodeReplicas = topology.DecodeReplicas
+	if replicas > 0 {
+		updated.Replicas = replicas
+	}
+
+	modelRepo, err := s.modelRepository()
+	if err != nil {
+		return nil, err
+	}
+	modelVersion, err := modelRepo.FindVersion(ctx, row.ModelID, row.ModelVersion)
+	if err != nil {
+		return nil, err
+	}
+	evt := buildChangeEvent(EventTypeUpsert, &updated, servedModelName(ctx, modelRepo, row),
+		modelVersion.WeightPath, img.Reference(), img.Engine)
+	effective, err := repo.ResolveEffectivePolicy(ctx, &updated)
+	if err != nil {
+		return nil, err
+	}
+	evt.Autoscaling = effective
+	if err := publishChange(ctx, client, evt); err != nil {
+		logger.S().Errorw("infer: publish topology change failed",
+			"service_id", req.GetServiceId(), "err", err)
+		return nil, apierrors.Newf(apierrors.CodeInternal, "infer: publish change failed")
+	}
+
+	// Feature #15: record the successful layout change best-effort.
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.update_topology",
+		ResourceType:   "inference_service",
+		ResourceID:     req.GetServiceId(),
+		Result:         "success",
+	})
+	// Feature #34: record the update in the deployment trail, so the
+	// before/after parallelism is visible next to the other rollouts.
+	s.recordLifecycleEvent(ctx, row, &updated, DeploymentEventUpdate, s.actorFor(ctx, orgID))
+
+	return &inferv1.UpdateInferenceServiceTopologyResponse{
+		Response:  okResponse(),
+		ServiceId: req.GetServiceId(),
+		State:     StatePending,
+	}, nil
+}
+
 // ListServiceLogPods returns the service's pods/containers masked as
 // replica indices (feature #33, AC1). Unknown service → 10301.
 func (s *Service) ListServiceLogPods(ctx context.Context, req *inferv1.ListServiceLogPodsRequest) (*inferv1.ListServiceLogPodsResponse, error) {
@@ -1819,6 +1952,11 @@ func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *infe
 		// row rendered empty even though the column was populated.
 		Accelerator:     row.Accelerator,
 		AcceleratorType: row.AcceleratorType,
+		Topology:            storedTopologyName(row.Topology),
+		TensorParallelSize:  clampToInt32(maxInt(row.TensorParallelSize, 1)),
+		PipelineParallelSize: clampToInt32(maxInt(row.PipelineParallelSize, 1)),
+		PrefillReplicas:     clampToInt32(row.PrefillReplicas),
+		DecodeReplicas:      clampToInt32(row.DecodeReplicas),
 	}
 }
 

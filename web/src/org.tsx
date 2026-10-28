@@ -9,6 +9,7 @@ import {
   getSessionToken,
   setOrgId,
   type MyOrganization,
+  type MyProject,
   type OrganizationSummary,
   type SessionInfo,
 } from './api';
@@ -176,6 +177,81 @@ export function OrganizationPicker({
         )}
       </select>
     </label>
+  );
+}
+
+// OrgIdentity is the user console's account scope block. A user can belong
+// to at most one organization and one project, so there is nothing to
+// switch: the sidebar states which organization and project the account is
+// in, by display name. Joining or leaving happens on the join-request pages,
+// not here.
+export function OrgIdentity() {
+  const realm = useRealm();
+  const api = useApi();
+  const { t } = useI18n();
+  const { orgId } = useOrg();
+  const [orgName, setOrgName] = useState('');
+  const [project, setProject] = useState<MyProject | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    if (!getSessionToken(realm)) {
+      setLoaded(true);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const [mine, projects] = await Promise.all([
+          api
+            .get<{ organizations: MyOrganization[] }>('/api/v1/tenancy/my-organizations', '')
+            .catch(() => ({ organizations: [] as MyOrganization[] })),
+          api
+            .get<{ projects: MyProject[] }>('/api/v1/tenancy/my-projects', '')
+            .catch(() => ({ projects: [] as MyProject[] })),
+        ]);
+        if (cancelled) return;
+        const org =
+          (mine.organizations || []).find((o) => o.organizationId === orgId) ||
+          (mine.organizations || [])[0];
+        setOrgName(org?.displayName || org?.organizationId || '');
+        setProject((projects.projects || [])[0] || null);
+      } finally {
+        if (!cancelled) setLoaded(true);
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
+  }, [api, realm, orgId]);
+
+  if (!loaded && !orgName) return null;
+
+  return (
+    <div className="org-switcher org-identity" data-testid="org-identity">
+      <div className="org-identity-item">
+        <span className="org-identity-label">{t('org.organization')}</span>
+        <span className="org-identity-value" data-testid="org-identity-name">
+          {orgName || t('org.none')}
+        </span>
+        {orgId && (
+          <span className="org-identity-id mono" data-testid="org-identity-id">
+            {orgId}
+          </span>
+        )}
+      </div>
+      <div className="org-identity-item">
+        <span className="org-identity-label">{t('org.project')}</span>
+        <span
+          className="org-identity-value"
+          data-testid="org-identity-project"
+          title={project?.projectId || undefined}
+        >
+          {project?.displayName || t('org.noProject')}
+        </span>
+      </div>
+    </div>
   );
 }
 

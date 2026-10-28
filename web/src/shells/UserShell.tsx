@@ -8,7 +8,7 @@ import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
 import { realmLoginPath } from '../surface-routes';
-import { OrgSwitcher } from '../org';
+import { OrgIdentity } from '../org';
 import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
@@ -168,7 +168,7 @@ export function UserShell({ children }: { children: ReactNode }) {
               );
             })}
           </nav>
-          <OrgSwitcher />
+          <OrgIdentity />
           <QuotaBar />
         </div>
         {getSessionToken(realm) && (

@@ -258,6 +258,26 @@ export interface InferenceServiceSummary {
   // was named at creation.
   accelerator?: string;
   acceleratorType?: string;
+  // Serving topology: single (one pod per replica), distributed (one pod
+  // group per replica) or pd (separate prefill/decode roles). Every layout
+  // is realized by an AIBrix StormService.
+  topology?: ServingTopology;
+  tensorParallelSize?: number;
+  pipelineParallelSize?: number;
+  prefillReplicas?: number;
+  decodeReplicas?: number;
+}
+
+export type ServingTopology = 'single' | 'distributed' | 'pd';
+
+// ImageRegistryConfig is the internal Harbor registry the image import flow
+// pushes to. configured=false means no registry is set and the console
+// disables the import action.
+export interface ImageRegistryConfig {
+  configured: boolean;
+  hostname: string;
+  project: string;
+  exampleReference: string;
 }
 
 // InferenceServiceAccessSubject is one grant in a service's access policy.

@@ -691,3 +691,27 @@ func TestServiceImportImageFlattensPath(t *testing.T) {
 	assert.Equal(t, "hub.example.com/taas/hello", stored.Name)
 	assert.Equal(t, AcceleratorCPU, stored.Accelerator)
 }
+
+// TestServiceGetImageRegistryConfig reports the configured Harbor registry so
+// the console shows the real host and project.
+func TestServiceGetImageRegistryConfig(t *testing.T) {
+	svc, _ := newServiceForTest(t)
+	ctx := context.Background()
+
+	// Unconfigured: the import action is unavailable and nothing is invented.
+	setTestHarbor("", "", "", "")
+	resp, err := svc.GetImageRegistryConfig(ctx, &imagev1.GetImageRegistryConfigRequest{})
+	require.NoError(t, err)
+	assert.False(t, resp.GetConfigured())
+	assert.Empty(t, resp.GetHostname())
+	assert.Empty(t, resp.GetProject())
+
+	// Configured: host, project and the reference shape the import produces.
+	setTestHarbor("hub.example.com", "admin", "secret", "taas")
+	resp, err = svc.GetImageRegistryConfig(ctx, &imagev1.GetImageRegistryConfigRequest{})
+	require.NoError(t, err)
+	assert.True(t, resp.GetConfigured())
+	assert.Equal(t, "hub.example.com", resp.GetHostname())
+	assert.Equal(t, "taas", resp.GetProject())
+	assert.Equal(t, "hub.example.com/taas/<image>:<tag>", resp.GetExampleReference())
+}

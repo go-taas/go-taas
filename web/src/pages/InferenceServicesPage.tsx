@@ -139,6 +139,7 @@ export default function InferenceServicesPage() {
                 <th>{t('services.colAccess')}</th>
                 <th>{t('services.colModel')}</th>
                 <th>{t('services.colReplicas')}</th>
+                <th>{t('services.colTopology')}</th>
                 <th>{t('services.colState')}</th>
                 <th>{t('services.colAutoscaling')}</th>
                 <th>{t('services.colUpdated')}</th>
@@ -168,6 +169,9 @@ export default function InferenceServicesPage() {
                     {s.modelId.slice(0, 8)}… @ {s.modelVersion}
                   </td>
                   <td>{s.replicas}</td>
+                  <td data-testid={`service-topology-${s.name}`}>
+                    <TopologyCell service={s} />
+                  </td>
                   <td>
                     <StateBadge state={s.state} />
                   </td>
@@ -249,6 +253,32 @@ export default function InferenceServicesPage() {
         />
       )}
     </div>
+  );
+}
+
+// TopologyCell renders the serving layout: the mode plus the parallelism
+// that shapes each replica (a PD service also shows its role counts).
+function TopologyCell({ service }: { service: InferenceServiceSummary }) {
+  const { t } = useI18n();
+  const mode = service.topology || 'single';
+  const label =
+    mode === 'distributed'
+      ? t('deploy.topologyDistributed')
+      : mode === 'pd'
+        ? t('deploy.topologyPd')
+        : t('deploy.topologySingle');
+  const tp = service.tensorParallelSize || 1;
+  const pp = service.pipelineParallelSize || 1;
+  return (
+    <span className="muted">
+      {label}
+      {mode !== 'single' && ` · TP ${tp} / PP ${pp}`}
+      {mode === 'pd' &&
+        ` · ${t('service.pdRolesShort', {
+          prefill: String(service.prefillReplicas || 1),
+          decode: String(service.decodeReplicas || 1),
+        })}`}
+    </span>
   );
 }
 

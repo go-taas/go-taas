@@ -12,7 +12,6 @@ import (
 	"time"
 
 	appsv1 "k8s.io/api/apps/v1"
-	autoscalingv2 "k8s.io/api/autoscaling/v2"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
@@ -71,6 +70,17 @@ type changeEvent struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// Topology is the serving layout: single, distributed or pd. It decides
+	// the roles of the StormService the controller writes.
+	Topology string `json:"topology,omitempty"`
+	// TensorParallelSize / PipelineParallelSize shape one replica's pod
+	// group (1 for a single-node deploy).
+	TensorParallelSize   int `json:"tensor_parallel_size,omitempty"`
+	PipelineParallelSize int `json:"pipeline_parallel_size,omitempty"`
+	// PrefillReplicas / DecodeReplicas are the PD role counts (0 for the
+	// other topologies).
+	PrefillReplicas int `json:"prefill_replicas,omitempty"`
+	DecodeReplicas  int `json:"decode_replicas,omitempty"`
 }
 
 // autoscalingPolicy is the effective autoscaling policy carried in a
@@ -566,7 +576,8 @@ func (r *k8sReconciler) publishWarmupStatus(ctx context.Context, taskID, state s
 	return r.statusPublisher.Publish(ctx, mq.DefaultSubjects().ImageWarmupStatus, body, nil)
 }
 
-// applyDelete tears down the Deployment, Service and HPA, ignoring
+// applyDelete tears down the StormService, Service and autoscaler, plus the
+// Deployment an older controller created for the same service, ignoring
 // not-found. The RPC already set state=terminated; no status report is
 // needed.
 func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error {
@@ -580,11 +591,15 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
 		return fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr)
 	}
-	// Feature #16: tear down the HPA alongside the Deployment/Service.
-	hpaErr := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
-		Delete(ctx, hpaName(evt.Name), metav1.DeleteOptions{})
-	if hpaErr != nil && !apierrors.IsNotFound(hpaErr) {
-		return fmt.Errorf("controller: delete hpa %s: %w", evt.Name, hpaErr)
+	// Autoscaling is the AIBrix PodAutoscaler; the HPA delete sweeps an
+	// object an older controller left behind.
+	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
+		return err
+	}
+	// The storm is the serving object: a failed delete is a real error
+	// (something would keep serving after the service was removed).
+	if err := deleteStormService(ctx, r.dynamic, r.namespace, stormServiceName(evt)); err != nil {
+		return fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err)
 	}
 	// Feature #47: tear down the AIBrix ModelClaim and PodAutoscaler
 	// best-effort (ignoring absence and write failures).
@@ -597,6 +612,20 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
 	logger.S().Infow("controller: tore down inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
+	return nil
+}
+
+// deleteLegacyDeployment removes the Deployment an older controller created
+// for the same service. Serving moved to the StormService, so a leftover
+// Deployment would keep its ReplicaSet running next to the storm's pods;
+// both match the Service selector, so the gateway would route to stale pods
+// that serve the previous spec.
+func (r *k8sReconciler) deleteLegacyDeployment(ctx context.Context, name string) error {
+	err := r.clientset.AppsV1().Deployments(r.namespace).
+		Delete(ctx, deploymentName(name), metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("controller: delete legacy deployment %s: %w", name, err)
+	}
 	return nil
 }
 
@@ -621,9 +650,29 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		return r.reportFailure(ctx, evt, err)
 	}
 
-	deployment := r.buildDeployment(ctx, evt)
-	if err := r.createOrUpdateDeployment(ctx, deployment); err != nil {
-		return r.reportFailure(ctx, evt, err)
+	// Serving is an AIBrix StormService: one object per service whose roles
+	// express the topology (single-node, distributed, PD). The plain
+	// Deployment path is only used by a controller started without a dynamic
+	// client (unit tests, a CRD-less install).
+	if r.dynamic != nil {
+		storm, err := r.buildStormService(ctx, evt)
+		if err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
+		if err := applyStormService(ctx, r.dynamic, storm); err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
+		// A service that used to run as a Deployment must not keep its old
+		// ReplicaSet alive next to the storm's pods: both match the Service
+		// selector, so the gateway would route to the stale pods too.
+		if err := r.deleteLegacyDeployment(ctx, evt.Name); err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
+	} else {
+		deployment := r.buildDeployment(ctx, evt)
+		if err := r.createOrUpdateDeployment(ctx, deployment); err != nil {
+			return r.reportFailure(ctx, evt, err)
+		}
 	}
 	svc := r.buildService(evt)
 	if err := r.createOrUpdateService(ctx, svc); err != nil {
@@ -653,46 +702,33 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		}
 	}
 
-	// Feature #16: reconcile the HPA. When autoscaling is enabled, create
-	// or update it; when disabled, delete it and pin the Deployment to the
-	// fixed replica count (FR2.5).
+	// Autoscaling is the AIBrix PodAutoscaler, never a Kubernetes HPA: the
+	// HPA cannot target a StormService, and two autoscalers on one workload
+	// fight over the replica count. A failure to write it is reported as a
+	// failure instead of silently pinning the replica count, so the console
+	// never shows "autoscaled" for a service nothing is scaling.
 	//
-	// Feature #47 (AD13): when the serving scheme is aibrix, the AIBrix
-	// PodAutoscaler replaces the Kubernetes HPA; any AIBrix write failure
-	// logs and falls back to the plain path so serving is never blocked.
-	useAIBrixAutoscaler := false
-	if evt.Autoscaling != nil && evt.Autoscaling.Enabled && r.aibrixScheme() {
-		if err := r.applyAIBrixAutoscaler(ctx, evt); err != nil {
-			logger.S().Warnw("controller: aibrix podautoscaler write failed, falling back to HPA",
-				"service_id", evt.ServiceID, "name", evt.Name, "err", err)
-			// Remove any stale PodAutoscaler before falling back: a
-			// leftover object keeps the AIBrix controller driving its own
-			// derived HPA against the same Deployment, so two autoscalers
-			// would fight over the replica count (observed as a status
-			// write storm on both sides).
-			deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-		} else {
-			useAIBrixAutoscaler = true
-			// Remove any plain HPA so autoscaling is not applied twice.
-			if err := r.deleteHPA(ctx, evt.Name); err != nil {
-				return r.reportFailure(ctx, evt, err)
-			}
-		}
+	// Stale HPAs from an older controller are deleted on every reconcile:
+	// leaving one behind would compete with the PodAutoscaler.
+	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
+		return r.reportFailure(ctx, evt, err)
 	}
 	if evt.Autoscaling != nil && evt.Autoscaling.Enabled {
-		if !useAIBrixAutoscaler {
-			hpa := r.buildHPA(evt)
-			if err := r.createOrUpdateHPA(ctx, hpa); err != nil {
-				return r.reportFailure(ctx, evt, err)
-			}
-		}
-	} else {
-		if err := r.deleteHPA(ctx, evt.Name); err != nil {
+		if err := r.applyAIBrixAutoscaler(ctx, evt); err != nil {
+			// Drop the stale object before reporting: leaving it behind
+			// keeps the AIBrix controller scaling the storm with a policy
+			// nobody asked for.
+			deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
 			return r.reportFailure(ctx, evt, err)
 		}
+	} else {
 		deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-		// Pin the Deployment to the fixed replica count.
-		if err := r.pinDeploymentReplicas(ctx, evt); err != nil {
+		// Pin the workload to the fixed replica count (FR2.5).
+		if r.dynamic != nil {
+			if err := r.pinStormServiceReplicas(ctx, evt); err != nil {
+				return r.reportFailure(ctx, evt, err)
+			}
+		} else if err := r.pinDeploymentReplicas(ctx, evt); err != nil {
 			return r.reportFailure(ctx, evt, err)
 		}
 	}
@@ -715,12 +751,15 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	return nil
 }
 
-// deleteHPA deletes the service's HPA, ignoring not-found.
-func (r *k8sReconciler) deleteHPA(ctx context.Context, name string) error {
+// deleteLegacyHPA deletes a Kubernetes HPA an older controller created for
+// the same service, ignoring not-found. Autoscaling is the AIBrix
+// PodAutoscaler now; a leftover HPA would compete with it for the replica
+// count, so it is swept on every reconcile.
+func (r *k8sReconciler) deleteLegacyHPA(ctx context.Context, name string) error {
 	err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
-		Delete(ctx, hpaName(name), metav1.DeleteOptions{})
+		Delete(ctx, autoscalerName(name), metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		return fmt.Errorf("controller: delete hpa %s: %w", name, err)
+		return fmt.Errorf("controller: delete legacy hpa %s: %w", name, err)
 	}
 	return nil
 }
@@ -750,7 +789,7 @@ func (r *k8sReconciler) applyAIBrixAutoscaler(ctx context.Context, evt changeEve
 	if target < 1 {
 		target = 32
 	}
-	return applyPodAutoscaler(ctx, r.dynamic, r.namespace, deploymentName(evt.Name), evt.Name, minReplicas, maxReplicas, target)
+	return applyPodAutoscaler(ctx, r.dynamic, r.namespace, stormServiceName(evt), minReplicas, maxReplicas, target)
 }
 
 // pinDeploymentReplicas sets the Deployment's replicas to the fixed
@@ -764,27 +803,6 @@ func (r *k8sReconciler) pinDeploymentReplicas(ctx context.Context, evt changeEve
 	}
 	_, err = r.clientset.AppsV1().Deployments(r.namespace).
 		Patch(ctx, deploymentName(evt.Name), types.StrategicMergePatchType, patch, metav1.PatchOptions{})
-	return err
-}
-
-// createOrUpdateHPA creates the HPA or patches the desired spec
-// (idempotent reconcile).
-func (r *k8sReconciler) createOrUpdateHPA(ctx context.Context, hpa *autoscalingv2.HorizontalPodAutoscaler) error {
-	_, err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
-		Create(ctx, hpa, metav1.CreateOptions{})
-	if err == nil {
-		return nil
-	}
-	if !apierrors.IsAlreadyExists(err) {
-		return err
-	}
-	// Strategic merge patch: the spec must be wrapped in a "spec" key.
-	patch, err := json.Marshal(map[string]any{"spec": hpa.Spec})
-	if err != nil {
-		return err
-	}
-	_, err = r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
-		Patch(ctx, hpa.Name, types.StrategicMergePatchType, patch, metav1.PatchOptions{})
 	return err
 }
 
@@ -933,25 +951,7 @@ func (r *k8sReconciler) ensureWeightsPVC(ctx context.Context) error {
 // image, replicas, weight-volume mount and accelerator node selector.
 func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *appsv1.Deployment {
 	labels := resourceLabels(evt)
-	// Feature #52 (AD13): a shared-GPU service requests a HAMI slice
-	// instead of a whole card. The engine container requests the HAMI
-	// extended resources, the pod carries the placement-policy
-	// annotation, and the nodeSelector is constrained to the pool's
-	// label selector so HAMI schedules only onto pool nodes.
-	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
-	annotations := map[string]string{}
-	nodeSelector := acceleratorNodeSelector(r.acceleratorLabelKeyFor(ctx), evt.Accelerator)
-	if evt.AcceleratorType != "" {
-		if key := r.cardTypeLabelKeyFor(ctx, evt.AcceleratorType); key != "" {
-			nodeSelector[key] = evt.AcceleratorType
-		}
-	}
-	resources := engineResources(evt.Accelerator)
-	if slice {
-		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
-		annotations[r.policyAnnotation] = r.placementPolicy
-		nodeSelector = mergeSelectors(nodeSelector, r.poolSelector)
-	}
+	spec, annotations := r.buildPodTemplate(ctx, evt, "")
 	// The serving gateway discovers which model a workload serves from the
 	// workload's own metadata, so both the Deployment (which the gateway
 	// derives the model route from) and its pods (which receive the
@@ -978,40 +978,69 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 			Selector: &metav1.LabelSelector{MatchLabels: labels},
 			Template: corev1.PodTemplateSpec{
 				ObjectMeta: metav1.ObjectMeta{Labels: podLabels, Annotations: podAnnotations},
-				Spec: corev1.PodSpec{
-					Containers: []corev1.Container{{
-						Name:  "engine",
-						Image: evt.Image.Reference,
-						Ports: []corev1.ContainerPort{{ContainerPort: 8000, Name: "http"}},
-						// The engine container requests the accelerator's
-						// extended resource so the scheduler places it on a
-						// node with free capacity and the device plugin
-						// exposes the device to the container.
-						Resources: resources,
-						// The engine command points at the model's weights
-						// directory (the whole JuiceFS filesystem is mounted
-						// at the weights mount path; the model lives in a
-						// subdirectory named by its weight path).
-						Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath, modelName, evt.EngineArgs, evt.ExtraArgs),
-						VolumeMounts: []corev1.VolumeMount{{
-							Name:      "weights",
-							MountPath: r.weights.MountPath,
-							ReadOnly:  true,
-						}},
-					}},
-					Volumes: []corev1.Volume{{
-						Name: "weights",
-						VolumeSource: corev1.VolumeSource{
-							PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-								ClaimName: r.weights.PVCName,
-							},
-						},
-					}},
-					NodeSelector: nodeSelector,
-				},
+				Spec:       spec,
 			},
 		},
 	}
+}
+
+// buildPodTemplate composes the engine pod spec for one role of a service.
+// engineRole is "" for a plain worker pod and "prefill"/"decode" for a
+// PD-disaggregated role; it decides the role-specific engine flags. The
+// returned annotations are the pod-level ones the container needs (the HAMI
+// placement policy for a shared-GPU service).
+func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, engineRole string) (corev1.PodSpec, map[string]string) {
+	// Feature #52 (AD13): a shared-GPU service requests a HAMI slice
+	// instead of a whole card. The engine container requests the HAMI
+	// extended resources, the pod carries the placement-policy
+	// annotation, and the nodeSelector is constrained to the pool's
+	// label selector so HAMI schedules only onto pool nodes.
+	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
+	annotations := map[string]string{}
+	nodeSelector := acceleratorNodeSelector(r.acceleratorLabelKeyFor(ctx), evt.Accelerator)
+	if evt.AcceleratorType != "" {
+		if key := r.cardTypeLabelKeyFor(ctx, evt.AcceleratorType); key != "" {
+			nodeSelector[key] = evt.AcceleratorType
+		}
+	}
+	resources := engineResources(evt.Accelerator)
+	if slice {
+		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
+		annotations[r.policyAnnotation] = r.placementPolicy
+		nodeSelector = mergeSelectors(nodeSelector, r.poolSelector)
+	}
+	spec := corev1.PodSpec{
+		Containers: []corev1.Container{{
+			Name:  "engine",
+			Image: evt.Image.Reference,
+			Ports: []corev1.ContainerPort{{ContainerPort: 8000, Name: "http"}},
+			// The engine container requests the accelerator's
+			// extended resource so the scheduler places it on a
+			// node with free capacity and the device plugin
+			// exposes the device to the container.
+			Resources: resources,
+			// The engine command points at the model's weights
+			// directory (the whole JuiceFS filesystem is mounted
+			// at the weights mount path; the model lives in a
+			// subdirectory named by its weight path).
+			Command: engineCommand(evt.Image.Engine, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), evt.EngineArgs, evt.ExtraArgs, engineRole, evt),
+			VolumeMounts: []corev1.VolumeMount{{
+				Name:      "weights",
+				MountPath: r.weights.MountPath,
+				ReadOnly:  true,
+			}},
+		}},
+		Volumes: []corev1.Volume{{
+			Name: "weights",
+			VolumeSource: corev1.VolumeSource{
+				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
+					ClaimName: r.weights.PVCName,
+				},
+			},
+		}},
+		NodeSelector: nodeSelector,
+	}
+	return spec, annotations
 }
 
 // gpuResourceName maps an accelerator to the Kubernetes extended
@@ -1120,10 +1149,16 @@ func mergeSelectors(base, extra map[string]string) map[string]string {
 // weightPath (e.g. "Qwen__Qwen2.5-0.5B-Instruct/"). The command is
 // engine-specific; unknown engines get no command (the image's default
 // entrypoint runs).
-func engineCommand(engine, mountPath, weightPath, servedName string, engineArgs map[string]string, extraArgs []string) []string {
+//
+// engineRole is "" for a plain worker pod and "prefill"/"decode" for a
+// PD-disaggregated role. The topology flags (tensor/pipeline parallelism and
+// the PD role) are derived from evt and injected only when the operator did
+// not already set them, so an explicit engine argument always wins.
+func engineCommand(engine, mountPath, weightPath, servedName string, engineArgs map[string]string, extraArgs []string, engineRole string, evt changeEvent) []string {
+	args := topologyEngineArgs(engine, engineRole, evt)
 	switch engine {
 	case "vllm":
-		args := []string{
+		base := []string{
 			"python3", "-m", "vllm.entrypoints.openai.api_server",
 			"--model", modelDir(mountPath, weightPath),
 			"--port", strconv.Itoa(enginePort),
@@ -1132,23 +1167,87 @@ func engineCommand(engine, mountPath, weightPath, servedName string, engineArgs 
 		// The engine must accept the name clients send as `model`, which
 		// is the catalog name rather than the weights directory.
 		if servedName != "" {
-			args = append(args, "--served-model-name", servedName)
+			base = append(base, "--served-model-name", servedName)
 		}
-		return appendEngineArgs(args, engineArgs, extraArgs)
+		base = append(base, args...)
+		return appendEngineArgs(base, engineArgs, extraArgs)
 	case "sglang":
-		args := []string{
+		base := []string{
 			"python3", "-m", "sglang.launch_server",
 			"--model-path", modelDir(mountPath, weightPath),
 			"--port", strconv.Itoa(enginePort),
 			"--host", "0.0.0.0",
 		}
 		if servedName != "" {
-			args = append(args, "--served-model-name", servedName)
+			base = append(base, "--served-model-name", servedName)
 		}
-		return appendEngineArgs(args, engineArgs, extraArgs)
+		base = append(base, args...)
+		return appendEngineArgs(base, engineArgs, extraArgs)
 	default:
 		return nil
 	}
+}
+
+// topologyEngineArgs returns the flags a serving topology needs, in the
+// order they are appended to the engine command. Only the parameters the
+// operator cannot express in the generic form are derived here:
+//
+//	distributed  --tensor-parallel-size / --pipeline-parallel-size
+//	pd           the same, plus the role marker: vLLM's kv-transfer-config
+//	             (kv_role producer/consumer) or SGLang's
+//	             --disaggregation-mode prefill/decode
+//
+// Every one of them is skipped when the operator already supplied the flag,
+// so the explicit engine arguments stay authoritative.
+func topologyEngineArgs(engine, engineRole string, evt changeEvent) []string {
+	if evt.Topology != topologyDistributed && evt.Topology != topologyPD {
+		return nil
+	}
+	args := make([]string, 0, 6)
+	tp := evt.TensorParallelSize
+	if tp < 1 {
+		tp = 1
+	}
+	pp := evt.PipelineParallelSize
+	if pp < 1 {
+		pp = 1
+	}
+	if _, set := evt.EngineArgs["tensor-parallel-size"]; !set && tp > 1 {
+		args = append(args, "--tensor-parallel-size", strconv.Itoa(tp))
+	}
+	if _, set := evt.EngineArgs["pipeline-parallel-size"]; !set && pp > 1 {
+		args = append(args, "--pipeline-parallel-size", strconv.Itoa(pp))
+	}
+	if engineRole == "" {
+		return args
+	}
+	switch engine {
+	case "vllm":
+		if _, set := evt.EngineArgs["kv-transfer-config"]; set {
+			return args
+		}
+		kvRole := "kv_producer"
+		if engineRole == stormRoleDecode {
+			kvRole = "kv_consumer"
+		}
+		config, err := json.Marshal(map[string]any{
+			"kv_connector": pdKVConnector,
+			"kv_role":      kvRole,
+			// The two PD roles form one KV transfer group.
+			"kv_rank":          0,
+			"kv_parallel_size": 2,
+		})
+		if err != nil {
+			return args
+		}
+		args = append(args, "--kv-transfer-config", string(config))
+	case "sglang":
+		if _, set := evt.EngineArgs["disaggregation-mode"]; set {
+			return args
+		}
+		args = append(args, "--disaggregation-mode", engineRole)
+	}
+	return args
 }
 
 // enginePortExplicit reports whether the operator pinned the port through
@@ -1240,74 +1339,10 @@ func (r *k8sReconciler) buildService(evt changeEvent) *corev1.Service {
 	}
 }
 
-// buildHPA composes the HorizontalPodAutoscaler for a change event with
-// autoscaling enabled (feature #16, §7.1): a concurrency object metric
-// with an AverageValue target, min/max replicas from the policy, and a
-// downscale stabilization window equal to the cooldown.
-func (r *k8sReconciler) buildHPA(evt changeEvent) *autoscalingv2.HorizontalPodAutoscaler {
-	policy := evt.Autoscaling
-	if policy == nil {
-		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10, TargetConcurrency: 32, CooldownSeconds: 300}
-	}
-	minReplicas := clampReplicas(policy.MinReplicas)
-	if minReplicas < 0 {
-		minReplicas = 0
-	}
-	maxReplicas := clampReplicas(policy.MaxReplicas)
-	if maxReplicas < 1 {
-		maxReplicas = 1
-	}
-	target := clampReplicas(policy.TargetConcurrency)
-	if target < 1 {
-		target = 32
-	}
-	cooldown := clampReplicas(policy.CooldownSeconds)
-	if cooldown < 0 {
-		cooldown = 0
-	}
-	labels := resourceLabels(evt)
-	return &autoscalingv2.HorizontalPodAutoscaler{
-		ObjectMeta: metav1.ObjectMeta{
-			Name:      hpaName(evt.Name),
-			Namespace: r.namespace,
-			Labels:    labels,
-		},
-		Spec: autoscalingv2.HorizontalPodAutoscalerSpec{
-			ScaleTargetRef: autoscalingv2.CrossVersionObjectReference{
-				APIVersion: "apps/v1",
-				Kind:       "Deployment",
-				Name:       deploymentName(evt.Name),
-			},
-			MinReplicas: &minReplicas,
-			MaxReplicas: maxReplicas,
-			Metrics: []autoscalingv2.MetricSpec{{
-				Type: autoscalingv2.ObjectMetricSourceType,
-				Object: &autoscalingv2.ObjectMetricSource{
-					DescribedObject: autoscalingv2.CrossVersionObjectReference{
-						APIVersion: "v1",
-						Kind:       "Service",
-						Name:       serviceName(evt.Name),
-					},
-					Metric: autoscalingv2.MetricIdentifier{
-						Name: "taas-infer-concurrency",
-					},
-					Target: autoscalingv2.MetricTarget{
-						Type:         autoscalingv2.AverageValueMetricType,
-						AverageValue: resource.NewQuantity(int64(target), resource.DecimalSI),
-					},
-				},
-			}},
-			Behavior: &autoscalingv2.HorizontalPodAutoscalerBehavior{
-				ScaleDown: &autoscalingv2.HPAScalingRules{
-					StabilizationWindowSeconds: &cooldown,
-				},
-			},
-		},
-	}
-}
-
-// hpaName is the Kubernetes resource name of a service's HPA.
-func hpaName(name string) string { return "hpa-" + name }
+// autoscalerName is the Kubernetes resource name of a service's
+// PodAutoscaler. The historical "hpa-" prefix is kept so an object created
+// before the move to the AIBrix autoscaler is updated (not duplicated).
+func autoscalerName(name string) string { return "hpa-" + name }
 
 // resourceLabels returns the label set shared by the Deployment and
 // Service for one inference service.

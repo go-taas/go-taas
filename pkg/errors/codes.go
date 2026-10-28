@@ -148,6 +148,7 @@ const (
 	CodeInferLogsUnavailable    Code = 10316 // INFER_LOGS_UNAVAILABLE
 	CodeInferAccessInvalid      Code = 10317 // INFER_ACCESS_INVALID
 	CodeInferEngineArgsInvalid  Code = 10318 // INFER_ENGINE_ARGS_INVALID
+	CodeInferTopologyInvalid    Code = 10319 // INFER_TOPOLOGY_INVALID
 )
 
 // metering module error codes.

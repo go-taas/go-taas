@@ -698,6 +698,28 @@ func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageReque
 	}, nil
 }
 
+// GetImageRegistryConfig reports the internal Harbor registry the import flow
+// pushes to. The console renders the real host and project instead of
+// assuming one, so an operator can see where an imported image will land
+// before starting the transfer. Unconfigured installs report
+// configured=false and the console disables the import action.
+func (s *Service) GetImageRegistryConfig(_ context.Context, _ *imagev1.GetImageRegistryConfigRequest) (*imagev1.GetImageRegistryConfigResponse, error) {
+	cfg := config.GetConfig()
+	if cfg == nil || cfg.Image.Harbor.URL == "" {
+		return &imagev1.GetImageRegistryConfigResponse{Response: okResponse()}, nil
+	}
+	project := cfg.Image.Harbor.Project
+	return &imagev1.GetImageRegistryConfigResponse{
+		Response:   okResponse(),
+		Configured: true,
+		Hostname:   cfg.Image.Harbor.URL,
+		Project:    project,
+		// The example is the shape every import produces: the source
+		// registry's namespace tree is flattened away.
+		ExampleReference: cfg.Image.Harbor.URL + "/" + project + "/<image>:<tag>",
+	}, nil
+}
+
 // ListImages returns registered images, optionally filtered by the
 // accelerator and engine they support.
 func (s *Service) ListImages(ctx context.Context, req *imagev1.ListImagesRequest) (*imagev1.ListImagesResponse, error) {

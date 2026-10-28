@@ -55,6 +55,18 @@ service InferServiceService {
     };
   }
 
+  // UpdateInferenceServiceTopology changes a service's serving topology
+  // (single-node, distributed or PD-disaggregated) and the parallelism it
+  // runs with, keeping the same service_id. The controller rolls the
+  // AIBrix StormService out with the new roles.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateInferenceServiceTopology(UpdateInferenceServiceTopologyRequest) returns (UpdateInferenceServiceTopologyResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/inference-services/{service_id}:update-topology"
+      body: "*"
+    };
+  }
+
   // GetInferenceServiceAccess returns who may use a service. An empty
   // subject list means every platform user may use it (the default).
   // Admin-surface API: served under /api/v1/admin.
@@ -330,6 +342,24 @@ message CreateInferenceServiceRequest {
   // for the parameters the form does not know about. Each entry is one
   // argument exactly as it should appear on the command line.
   repeated string extra_args = 13;
+  // topology selects how the service is laid out on the fleet, as one of
+  // "single" (one pod per replica), "distributed" (one pod group per
+  // replica: tensor/pipeline parallelism) or "pd" (separate prefill and
+  // decode roles). Empty reads as "single". Every layout is realized by an
+  // AIBrix StormService.
+  string topology = 14;
+  // tensor_parallel_size is the number of GPUs one replica shards the
+  // model across (distributed and PD topologies).
+  int32 tensor_parallel_size = 15;
+  // pipeline_parallel_size is the number of pipeline stages one replica
+  // runs.
+  int32 pipeline_parallel_size = 16;
+  // prefill_replicas is the number of prefill workers in a PD
+  // disaggregated service. Ignored for the other topologies.
+  int32 prefill_replicas = 17;
+  // decode_replicas is the number of decode workers in a PD
+  // disaggregated service. Ignored for the other topologies.
+  int32 decode_replicas = 18;
 }
 
 message CreateInferenceServiceResponse {
@@ -395,7 +425,20 @@ message InferenceServiceSummary {
   // inventory, so a reader shows the platform alone rather than inventing a
   // card.
   string accelerator_type = 17;
+  // topology is the serving layout the service runs with: "single",
+  // "distributed" or "pd".
+  string topology = 18;
+  // tensor_parallel_size / pipeline_parallel_size are the parallelism the
+  // service runs with.
+  int32 tensor_parallel_size = 19;
+  int32 pipeline_parallel_size = 20;
+  // prefill_replicas / decode_replicas are the PD role counts. They are 0
+  // for the single-node and distributed topologies.
+  int32 prefill_replicas = 21;
+  int32 decode_replicas = 22;
 }
+
+
 
 message GetInferenceServiceRequest {
   string service_id = 1;
@@ -480,6 +523,30 @@ message UpdateInferenceServiceVersionResponse {
   taas.common.v1.Response response = 1;
   string service_id = 2;
   string state = 3; // deploying
+}
+
+// UpdateInferenceServiceTopology changes the serving layout of an
+// existing service in place. It is a spec change like a scale: the
+// service keeps its identity and its endpoints, and the controller rolls
+// the storm out with the new roles.
+message UpdateInferenceServiceTopologyRequest {
+  string service_id = 1; // path
+  // topology is "single", "distributed" or "pd".
+  string topology = 2;
+  int32 tensor_parallel_size = 3;
+  int32 pipeline_parallel_size = 4;
+  // prefill_replicas / decode_replicas are required for PD topologies and
+  // ignored otherwise.
+  int32 prefill_replicas = 5;
+  int32 decode_replicas = 6;
+  // replicas is the number of replica groups. 0 keeps the current count.
+  int32 replicas = 7;
+}
+
+message UpdateInferenceServiceTopologyResponse {
+  taas.common.v1.Response response = 1;
+  string service_id = 2;
+  string state = 3; // pending
 }
 
 message DeleteInferenceServiceRequest {

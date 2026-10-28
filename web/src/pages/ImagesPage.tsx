@@ -4,7 +4,14 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { navigate } from '../router';
-import { api, ApiError, formatTime, type ImageSummary, type PageMeta } from '../api';
+import {
+  api,
+  ApiError,
+  formatTime,
+  type ImageRegistryConfig,
+  type ImageSummary,
+  type PageMeta,
+} from '../api';
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
 import { useI18n } from '../i18n';
@@ -37,6 +44,9 @@ export default function ImagesPage() {
   const [editTarget, setEditTarget] = useState<ImageSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<ImageSummary | null>(null);
   const [warmupTarget, setWarmupTarget] = useState<ImageSummary | null>(null);
+  // The Harbor registry imported images land in, as configured by the chart.
+  // Read from the server so the page never hard-codes a host or project.
+  const [registry, setRegistry] = useState<ImageRegistryConfig | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -65,6 +75,13 @@ export default function ImagesPage() {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    api
+      .get<ImageRegistryConfig>('/api/v1/admin/image-registry-config', orgId)
+      .then((data) => setRegistry(data))
+      .catch(() => setRegistry(null));
+  }, [orgId]);
+
   return (
     <div>
       <div className="page-header">
@@ -76,6 +93,8 @@ export default function ImagesPage() {
           <button
             className="secondary"
             data-testid="import-image"
+            disabled={registry ? !registry.configured : false}
+            title={registry && !registry.configured ? t('images.registryUnconfigured') : undefined}
             onClick={() => setImportOpen(true)}
           >
             {t('images.import')}
@@ -87,6 +106,36 @@ export default function ImagesPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+
+      <div className="panel" style={{ marginBottom: 14 }} data-testid="image-registry-card">
+        <h3 style={{ marginTop: 0 }}>{t('images.registryTitle')}</h3>
+        {registry?.configured ? (
+          <div className="detail-grid">
+            <div className="detail-item">
+              <div className="label">{t('images.registryHostname')}</div>
+              <div className="value mono" data-testid="image-registry-hostname">
+                {registry.hostname}
+              </div>
+            </div>
+            <div className="detail-item">
+              <div className="label">{t('images.registryProject')}</div>
+              <div className="value mono" data-testid="image-registry-project">
+                {registry.project}
+              </div>
+            </div>
+            <div className="detail-item">
+              <div className="label">{t('images.registryExample')}</div>
+              <div className="value mono" data-testid="image-registry-example">
+                {registry.exampleReference}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="muted" data-testid="image-registry-unconfigured">
+            {t('images.registryUnconfigured')}
+          </div>
+        )}
+      </div>
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <select
@@ -211,6 +260,7 @@ export default function ImagesPage() {
       {importOpen && (
         <ImportImageDialog
           orgId={orgId}
+          registry={registry}
           onClose={() => setImportOpen(false)}
           onDone={() => {
             setImportOpen(false);
@@ -394,6 +444,7 @@ function RegisterImageDialog({
         </div>
       </div>
       {error && <ErrorBanner message={error} />}
+
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
@@ -416,10 +467,12 @@ function RegisterImageDialog({
 // where the image will land instead of asking for a registry.
 function ImportImageDialog({
   orgId,
+  registry,
   onClose,
   onDone,
 }: {
   orgId: string;
+  registry: ImageRegistryConfig | null;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -495,7 +548,12 @@ function ImportImageDialog({
           />
           <div className="field-hint">
             {localName
-              ? t('images.importTarget', { name: localName })
+              ? t('images.importTarget', {
+                  name: localName,
+                  registry: registry?.configured
+                    ? `${registry.hostname}/${registry.project}/`
+                    : '',
+                })
               : t('images.importTargetHint')}
           </div>
         </div>
@@ -561,6 +619,7 @@ function ImportImageDialog({
         </div>
       </div>
       {error && <ErrorBanner message={error} />}
+
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
@@ -625,6 +684,7 @@ function EditImageDialog({
         </div>
       </div>
       {error && <ErrorBanner message={error} />}
+
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
@@ -678,6 +738,7 @@ function DeleteImageDialog({
     >
       <p>{t('images.deleteBody')}</p>
       {error && <ErrorBanner message={error} />}
+
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
@@ -822,6 +883,7 @@ function WarmupDialog({
         )}
       </div>
       {error && <ErrorBanner message={error} />}
+
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}

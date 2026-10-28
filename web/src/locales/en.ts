@@ -313,6 +313,8 @@ export const en: Record<string, string> = {
 
   // ---- Org switcher ----
   'org.none': 'No organization',
+  'org.project': 'Project',
+  'org.noProject': 'No project',
   'org.organization': 'Organization',
 
   // ---- Login ----
@@ -588,11 +590,17 @@ export const en: Record<string, string> = {
 
   // ---- Images ----
   'images.title': 'Images',
+  'images.registryTitle': 'Import registry (Harbor)',
+  'images.registryHostname': 'Registry host',
+  'images.registryProject': 'Project',
+  'images.registryExample': 'Imported reference shape',
+  'images.registryUnconfigured': 'No internal registry is configured, so importing external images is unavailable. Set image.harbor in the chart to enable it.',
+
   'images.subtitle': 'Engine images available for one-click deployment, with warmup pre-pull support.',
   'images.import': 'Import Image',
   'images.importTitle': 'Import an image into the local registry',
   'images.importHint': 'The image is pulled from its source registry and pushed into this cluster\'s Harbor project, then registered. Only the image name and tag are kept, so docker.io/a/b/hello:1.0.0 becomes <harbor>/<project>/hello:1.0.0.',
-  'images.importTarget': 'Will be registered as <harbor>/<project>/{name}.',
+  'images.importTarget': 'Will be registered as {registry}{name}.',
   'images.importTargetHint': 'Enter a full source reference including the tag.',
   'images.importing': 'Importing…',
   'images.importFailed': 'Failed to import the image.',
@@ -753,6 +761,15 @@ export const en: Record<string, string> = {
 
   // ---- Service Detail ----
   'service.back': 'Back to Inference Services',
+  'service.topology': 'Serving topology',
+  'service.topologyMode': 'Layout',
+  'service.topologyEdit': 'Edit layout',
+  'service.topologyEditHint': 'Changing the layout restarts the service with the new roles. The service id and endpoints stay the same.',
+  'service.topologyUpdateFailed': 'Failed to update the serving layout',
+  'service.parallelism': 'Parallelism',
+  'service.pdRoles': 'PD roles',
+  'service.pdRolesValue': '{prefill} prefill / {decode} decode',
+  'service.pdRolesShort': 'P{prefill}/D{decode}',
   'service.spec': 'Specification',
   'service.model': 'Model',
   'service.image': 'Image',
@@ -1114,6 +1131,7 @@ export const en: Record<string, string> = {
   'services.colReplicas': 'Replicas',
   'services.colState': 'State',
   'services.colAutoscaling': 'Autoscaling',
+  'services.colTopology': 'Topology',
   'services.colUpdated': 'Updated',
   'services.autoscaling': 'Autoscaling',
   'services.scale': 'Scale',
@@ -1615,6 +1633,21 @@ export const en: Record<string, string> = {
   'engine.schedulePolicyHint': 'Batching order: lpm (longest prefix match), random, fcfs or dfs-weight.',
   'engine.cacheReport': 'Enable cache report',
   'engine.cacheReportHint': 'Report prefix-cache hit statistics.',
+  'deploy.topology': 'Serving topology',
+  'deploy.topologyMode': 'Layout',
+  'deploy.topologySingle': 'Single node (one pod per replica)',
+  'deploy.topologyDistributed': 'Distributed (one pod group per replica)',
+  'deploy.topologyPd': 'PD disaggregated (prefill + decode)',
+  'deploy.topologyHint': 'Every layout runs on an AIBrix StormService; the layout decides its roles.',
+  'deploy.tensorParallel': 'Tensor parallel size',
+  'deploy.pipelineParallel': 'Pipeline parallel size',
+  'deploy.prefillReplicas': 'Prefill workers',
+  'deploy.decodeReplicas': 'Decode workers',
+  'deploy.topologySummaryPd': '{replicas} replica(s) × ({prefill} prefill + {decode} decode) pod group(s) of {group} pod(s) = {pods} pod(s).',
+  'deploy.topologySummaryDistributed': '{replicas} replica(s) × pod group of {group} pod(s) = {pods} pod(s).',
+  'deploy.errorDistributedParallel': 'Distributed serving needs tensor parallel × pipeline parallel > 1.',
+  'deploy.errorPdEngine': 'PD disaggregation requires a vLLM or SGLang image.',
+  'deploy.errorPdReplicas': 'Prefill and decode need at least one worker each.',
   'deploy.title': 'Deploy {name}',
   'deploy.noPools': 'No shared-GPU pools are available',
   'deploy.cardTypeHint': 'Leave empty to use any card of this accelerator family; a value must be a card type from the accelerator inventory.',

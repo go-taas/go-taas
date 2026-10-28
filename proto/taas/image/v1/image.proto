@@ -31,6 +31,15 @@ service ImageService {
     };
   }
 
+  // GetImageRegistryConfig reports the internal Harbor registry the
+  // import flow pushes to, so the console shows the real host and project
+  // instead of assuming one. Unconfigured installs report configured=false
+  // and the import action stays disabled.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetImageRegistryConfig(GetImageRegistryConfigRequest) returns (GetImageRegistryConfigResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/image-registry-config"};
+  }
+
   // ListImages returns registered images, optionally filtered by the
   // compatibility matrix.
   // Admin-surface API: served under /api/v1/admin.
@@ -148,6 +157,22 @@ message RegisterImageRequest {
 message RegisterImageResponse {
   taas.common.v1.Response response = 1;
   string image_id = 2;
+}
+
+message GetImageRegistryConfigRequest {}
+
+message GetImageRegistryConfigResponse {
+  taas.common.v1.Response response = 1;
+  // configured is false when no Harbor registry is set; the import action
+  // is then unavailable.
+  bool configured = 2;
+  // hostname is the registry host images are imported into.
+  string hostname = 3;
+  // project is the Harbor project imported images are pushed to.
+  string project = 4;
+  // example_reference shows the reference shape an import produces
+  // ("<hostname>/<project>/<image>:<tag>").
+  string example_reference = 5;
 }
 
 message ImportImageRequest {

@@ -189,6 +189,39 @@ func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, 
 	})
 }
 
+// UpdateTopology applies an in-place serving-layout change and returns the
+// service to pending so the controller rolls the new storm out. The
+// service_id and endpoints are untouched; replicas is only written when
+// non-zero. A miss maps to CodeInferServiceNotFound.
+func (r *InferenceServiceRepository) UpdateTopology(
+	ctx context.Context, orgID, serviceID string, spec TopologySpec, replicas int,
+) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		updates := map[string]any{
+			"topology":               spec.Topology,
+			"tensor_parallel_size":   spec.TensorParallelSize,
+			"pipeline_parallel_size": spec.PipelineParallelSize,
+			"prefill_replicas":       spec.PrefillReplicas,
+			"decode_replicas":        spec.DecodeReplicas,
+			"state":                  StatePending,
+		}
+		if replicas > 0 {
+			updates["replicas"] = replicas
+		}
+		res := r.DB(ctx).
+			Model(&InferenceService{}).
+			Where("id = ? AND organization_id = ?", serviceID, orgID).
+			Updates(updates)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apierrors.New(apierrors.CodeInferServiceNotFound)
+		}
+		return nil
+	})
+}
+
 // UpdateModelVersion applies an in-place version change: it sets the new
 // model_version and transitions the service to deploying (feature #32,
 // AD6). The service_id and endpoints are untouched. A miss maps to

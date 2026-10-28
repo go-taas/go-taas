@@ -93,8 +93,10 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 		pod := newestPod(pods.Items)
 		// A container that will never start is a failure now, not in 20
 		// minutes: the reason (ImagePullBackOff, CreateContainerError,
-		// OOMKilled) is actionable.
-		if reason := terminalPodFailure(pod); reason != "" {
+		// OOMKilled) is actionable. A storm has several pods (one per
+		// device, one per PD role), so any pod that can never start fails
+		// the whole deploy: the pod group cannot serve without it.
+		if reason := terminalPodFailureIn(pods.Items); reason != "" {
 			return errors.New(reason)
 		}
 
@@ -110,7 +112,12 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 				"service_id", evt.ServiceID, "name", evt.Name, "node", pod.Spec.NodeName)
 		}
 
-		if pod.Status.PodIP != "" && r.probeEngine(ctx, pod.Status.PodIP, port) {
+		// "running" means an engine is actually serving. In a distributed or
+		// PD storm only one pod of the group exposes the API (rank 0 / the
+		// decode role), and which one it is is the engine's business, so the
+		// first pod that answers is enough; polling the wrong rank forever
+		// would report a healthy service as failed.
+		if r.anyPodAnswers(ctx, pods.Items, port) {
 			return nil
 		}
 
@@ -123,6 +130,22 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 		case <-ticker.C:
 		}
 	}
+}
+
+// anyPodAnswers reports whether any live pod of the service answers the
+// engine's health endpoint. A distributed or PD storm only exposes the API on
+// one pod, and which one is the engine's business, so the first answer wins.
+func (r *k8sReconciler) anyPodAnswers(ctx context.Context, pods []corev1.Pod, port int) bool {
+	for i := range pods {
+		pod := &pods[i]
+		if pod.DeletionTimestamp != nil || pod.Status.PodIP == "" {
+			continue
+		}
+		if r.probeEngine(ctx, pod.Status.PodIP, port) {
+			return true
+		}
+	}
+	return false
 }
 
 // probeEngine runs the injected prober, or the HTTP health probe.
@@ -174,6 +197,22 @@ func newestPod(pods []corev1.Pod) corev1.Pod {
 		}
 	}
 	return newest
+}
+
+// terminalPodFailureIn returns the first terminal failure among the pods of a
+// storm. A pod that is being deleted is skipped: a rolling update leaves
+// terminating pods around, and their old state says nothing about the new
+// desired spec.
+func terminalPodFailureIn(pods []corev1.Pod) string {
+	for i := range pods {
+		if pods[i].DeletionTimestamp != nil {
+			continue
+		}
+		if reason := terminalPodFailure(pods[i]); reason != "" {
+			return reason
+		}
+	}
+	return ""
 }
 
 // terminalPodFailure returns a human-readable reason when the pod can never

@@ -29,6 +29,7 @@ func newFakeDynamic(objs ...k8sruntime.Object) *dynamicfake.FakeDynamicClient {
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{
 		modelClaimGVR:    "ModelClaimList",
 		podAutoscalerGVR: "PodAutoscalerList",
+		stormServiceGVR:  "StormServiceList",
 	}, objs...)
 }
 
@@ -113,8 +114,8 @@ func TestApplyAndDeleteModelClaim(t *testing.T) {
 func TestApplyPodAutoscaler(t *testing.T) {
 	dyn := newFakeDynamic()
 	ctx := context.Background()
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
-	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 1, 5, 32))
+	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	max, _, _ := unstructured.NestedInt64(got.Object, "spec", "maxReplicas")
 	assert.Equal(t, int64(5), max)
@@ -129,11 +130,11 @@ func TestApplyPodAutoscaler(t *testing.T) {
 // schema validation) can no longer hide a missing required field — the
 // regression behind the row-47 bug report.
 func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
-	pa := buildPodAutoscaler(reconcileNamespace, "demo-deploy", "demo", 1, 5, 48)
+	pa := buildPodAutoscaler(reconcileNamespace, "demo", 1, 5, 48)
 
 	assert.Equal(t, "PodAutoscaler", pa.GetKind())
 	assert.Equal(t, "autoscaling.aibrix.ai/v1alpha1", pa.GetAPIVersion())
-	assert.Equal(t, hpaName("demo"), pa.GetName())
+	assert.Equal(t, autoscalerName("demo"), pa.GetName())
 	assert.Equal(t, reconcileNamespace, pa.GetNamespace())
 	assert.Equal(t, managedByValue, pa.GetLabels()[mcLabelManagedBy])
 
@@ -152,10 +153,10 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, found, "spec.scaleTargetRef is CRD-required and must be set")
 	assert.Equal(t, map[string]any{
-		"apiVersion": "apps/v1",
-		"kind":       "Deployment",
-		"name":       "demo-deploy",
-	}, ref)
+		"apiVersion": "orchestration.aibrix.ai/v1alpha1",
+		"kind":       "StormService",
+		"name":       "demo",
+	}, ref, "autoscaling targets the service's StormService, never a Deployment")
 
 	// spec.scalingStrategy is a CRD-required string enum: HPA | KPA | APA.
 	strategy, found, err := unstructured.NestedString(pa.Object, "spec", "scalingStrategy")
@@ -194,8 +195,8 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 		"targetValue must be the target concurrency rendered as a string")
 
 	// A non-positive target concurrency falls back to the platform default
-	// (mirrors buildHPA's clamp), never an empty targetValue.
-	defaulted := buildPodAutoscaler(reconcileNamespace, "demo-deploy", "demo", 1, 5, 0)
+	// never an empty targetValue.
+	defaulted := buildPodAutoscaler(reconcileNamespace, "demo", 1, 5, 0)
 	ds, found, err := unstructured.NestedSlice(defaulted.Object, "spec", "metricsSources")
 	require.NoError(t, err)
 	require.True(t, found)
@@ -211,8 +212,8 @@ func TestBuildPodAutoscalerSatisfiesCRD(t *testing.T) {
 func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
 	dyn := newFakeDynamic()
 	ctx := context.Background()
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 32))
-	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 2, 8, 32))
+	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	strategy, found, err := unstructured.NestedString(got.Object, "spec", "scalingStrategy")
 	require.NoError(t, err)
@@ -220,8 +221,8 @@ func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
 	assert.Equal(t, podAutoscalerScalingStrategy, strategy)
 
 	// Idempotent re-apply keeps the strategy on the update path too.
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 32))
-	got, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 2, 8, 32))
+	got, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	strategy, _, err = unstructured.NestedString(got.Object, "spec", "scalingStrategy")
 	require.NoError(t, err)
@@ -237,7 +238,7 @@ func TestApplyPodAutoscalerWritesScalingStrategy(t *testing.T) {
 func TestApplyPodAutoscalerRetriesOnConflict(t *testing.T) {
 	dyn := newFakeDynamic()
 	ctx := context.Background()
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 1, 5, 32))
 
 	// Fail the first update with a conflict, then let the retry succeed.
 	var conflicts int
@@ -246,14 +247,14 @@ func TestApplyPodAutoscalerRetriesOnConflict(t *testing.T) {
 			conflicts++
 			return true, nil, apierrors.NewConflict(
 				schema.GroupResource{Group: "autoscaling.aibrix.ai", Resource: "podautoscalers"},
-				hpaName("demo"), errors.New("the object has been modified"))
+				autoscalerName("demo"), errors.New("the object has been modified"))
 		}
 		return false, nil, nil
 	})
 
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 48))
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 2, 8, 48))
 	assert.Equal(t, 1, conflicts, "exactly one injected conflict must have been absorbed")
-	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	got, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err)
 	max, found, err := unstructured.NestedInt64(got.Object, "spec", "maxReplicas")
 	require.NoError(t, err)
@@ -273,15 +274,15 @@ func TestApplyPodAutoscalerRetriesOnConflict(t *testing.T) {
 func TestApplyPodAutoscalerGivesUpAfterRepeatedConflicts(t *testing.T) {
 	dyn := newFakeDynamic()
 	ctx := context.Background()
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 1, 5, 32))
 
 	dyn.PrependReactor("update", "podautoscalers", func(_ k8stesting.Action) (bool, k8sruntime.Object, error) {
 		return true, nil, apierrors.NewConflict(
 			schema.GroupResource{Group: "autoscaling.aibrix.ai", Resource: "podautoscalers"},
-			hpaName("demo"), errors.New("the object has been modified"))
+			autoscalerName("demo"), errors.New("the object has been modified"))
 	})
 
-	err := applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 2, 8, 48)
+	err := applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 2, 8, 48)
 	require.Error(t, err, "persistent conflicts must surface as an error")
 	assert.True(t, apierrors.IsConflict(err), "the surfaced error must be the conflict")
 	deletePodAutoscaler(ctx, dyn, reconcileNamespace, "demo")
@@ -330,56 +331,56 @@ func TestApplyUpsertWritesModelClaimUnderAIBrix(t *testing.T) {
 	assert.Equal(t, "vllm", engine)
 }
 
-func TestApplyUpsertFallsBackWhenModelClaimWriteFails(t *testing.T) {
-	// A dynamic client over a scheme without the GVR returns an error on
-	// write; the plain serving path must still succeed (AD13).
-	dyn := dynamicfake.NewSimpleDynamicClient(k8sruntime.NewScheme())
+func TestApplyUpsertFailsWhenStormWriteFails(t *testing.T) {
+	// Serving is the StormService: when the CRD write fails the reconcile
+	// must fail loudly instead of silently falling back to a Deployment the
+	// platform no longer manages.
+	dyn := newFakeDynamic()
+	dyn.PrependReactor("create", "stormservices", func(_ k8stesting.Action) (bool, k8sruntime.Object, error) {
+		return true, nil, errors.New(`no matches for kind "StormService"`)
+	})
 	reconciler, clientset, _ := newAIBrixFakeReconciler(dyn)
 
 	err := reconciler.ApplyInferServiceChange(context.Background(), changeMessage(testChangeEvent("upsert", "demo")))
-	require.NoError(t, err)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "failed")
 
-	// The Deployment was still reconciled despite the ModelClaim failure.
-	_, err = clientset.AppsV1().Deployments(reconcileNamespace).Get(context.Background(), "demo", metav1.GetOptions{})
-	require.NoError(t, err)
+	// No Deployment was created as a hidden fallback.
+	_, depErr := clientset.AppsV1().Deployments(reconcileNamespace).Get(context.Background(), "demo", metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(depErr))
 }
 
-// TestApplyUpsertFallsBackAndCleansStalePodAutoscaler asserts the HPA
-// fallback path deletes a leftover AIBrix PodAutoscaler: a stale object
-// keeps the AIBrix controller driving its own derived HPA against the
-// same Deployment, so two autoscalers would fight over the replica count
-// (observed live as a status write storm on both sides).
-func TestApplyUpsertFallsBackAndCleansStalePodAutoscaler(t *testing.T) {
+// TestApplyUpsertFailsAndCleansStalePodAutoscaler asserts an autoscaler write
+// failure is reported (never silently replaced by a Kubernetes HPA) and the
+// stale PodAutoscaler is removed so nothing scales the storm with an outdated
+// policy.
+func TestApplyUpsertFailsAndCleansStalePodAutoscaler(t *testing.T) {
 	dyn := newFakeDynamic()
 	reconciler, clientset, _ := newAIBrixFakeReconciler(dyn)
 	ctx := context.Background()
 
-	// Seed a stale PodAutoscaler from an earlier successful write.
 	evt := testChangeEvent("upsert", "demo")
 	evt.Autoscaling = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 5, TargetConcurrency: 32}
-	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", "demo", 1, 5, 32))
-	_, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
+	require.NoError(t, applyPodAutoscaler(ctx, dyn, reconcileNamespace, "demo", 1, 5, 32))
+	_, err := dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	require.NoError(t, err, "seed PodAutoscaler must exist")
 
-	// Make every subsequent PodAutoscaler write fail with a conflict so
-	// the reconciler takes the HPA fallback path.
+	// Every subsequent PodAutoscaler update fails with a conflict.
 	dyn.PrependReactor("update", "podautoscalers", func(_ k8stesting.Action) (bool, k8sruntime.Object, error) {
 		return true, nil, apierrors.NewConflict(
 			schema.GroupResource{Group: "autoscaling.aibrix.ai", Resource: "podautoscalers"},
-			hpaName("demo"), errors.New("the object has been modified"))
+			autoscalerName("demo"), errors.New("the object has been modified"))
 	})
 
-	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
+	err = reconciler.ApplyInferServiceChange(ctx, changeMessage(evt))
+	require.Error(t, err, "an autoscaler write failure is a reconcile failure")
 
-	// The stale PodAutoscaler must be gone: the fallback owns autoscaling
-	// via the plain HPA alone.
-	_, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
-	require.Error(t, err, "stale PodAutoscaler must be deleted on HPA fallback")
+	// The stale PodAutoscaler is gone and no HPA was ever created: the
+	// platform does not keep a second autoscaler around.
+	_, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	assert.True(t, apierrors.IsNotFound(err))
-
-	// The plain HPA must exist and own the autoscaling.
-	_, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).Get(ctx, hpaName("demo"), metav1.GetOptions{})
-	require.NoError(t, err, "fallback HPA must be created")
+	_, err = clientset.AutoscalingV2().HorizontalPodAutoscalers(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "no Kubernetes HPA is created")
 }
 
 func TestRuntimeSchemeConsumerSetsScheme(t *testing.T) {
