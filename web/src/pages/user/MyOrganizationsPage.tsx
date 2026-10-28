@@ -59,8 +59,8 @@ export default function MyOrganizationsPage() {
               {orgs.map((org) => (
                 <tr key={org.organizationId} data-testid={`my-org-row-${org.organizationId}`}>
                   <td>
-                    <strong className="mono">{org.organizationId}</strong>
-                    <div className="muted">{org.displayName}</div>
+                    <strong>{org.displayName || org.organizationId}</strong>
+                    <div className="muted small mono">{org.organizationId}</div>
                   </td>
                   <td>
                     <StateBadge state={org.role} />

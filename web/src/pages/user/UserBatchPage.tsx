@@ -68,11 +68,8 @@ export default function UserBatchPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  // The builder is a collapsible panel, open by default when the job
-  // list is empty (design §5.3 "Batch builder"); once jobs exist it
-  // starts collapsed and opens via the New batch action.
+  // The builder is a collapsible panel behind the New batch action.
   const [builderOpen, setBuilderOpen] = useState(false);
-  const [builderInitialized, setBuilderInitialized] = useState(false);
   const [busyId, setBusyId] = useState('');
   const [cancelTarget, setCancelTarget] = useState<BatchJob | null>(null);
 
@@ -86,18 +83,12 @@ export default function UserBatchPage() {
       const data = await api.get<ListResponse>(`/api/v1/batch?${params.toString()}`, orgId);
       setJobs((data.batchJobs || []).map((j) => ({ ...j, status: shortStatus(j.status) })));
       setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
-      // First load decides the builder's initial visibility: open when
-      // the list is empty (design §5.3), collapsed otherwise.
-      if (!builderInitialized) {
-        setBuilderOpen(!(data.batchJobs || []).length);
-        setBuilderInitialized(true);
-      }
     } catch (e) {
       setError(e instanceof Error ? e.message : t('batch.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, offset, t, builderInitialized]);
+  }, [api, orgId, offset, t]);
 
   useEffect(() => {
     void load();

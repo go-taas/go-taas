@@ -882,6 +882,7 @@ export interface MyOrganization {
 export interface MyProject {
   projectId: string;
   organizationId: string;
+  organizationDisplayName: string;
   displayName: string;
   role: string; // admin | member | viewer
 }

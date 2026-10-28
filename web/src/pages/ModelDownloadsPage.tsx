@@ -322,7 +322,10 @@ function DownloadProgress({ download }: { download: ModelDownload }) {
       data-testid={`download-progress-${download.downloadId}`}
       data-percent={pct}
     >
-      <div className="progress-bar" style={{ width: `${pct}%` }} />
+      {/* progress-fill is the fill; progress-bar is the track, so nesting
+          a progress-bar here would paint a second grey track instead of a
+          growing bar. */}
+      <div className="progress-fill" style={{ width: `${pct}%` }} />
     </div>
   );
 }

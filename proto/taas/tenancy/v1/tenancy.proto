@@ -823,6 +823,10 @@ message MyProject {
   string display_name = 3;
   // role is admin / member / viewer.
   string role = 4;
+  // organization_display_name is the owning organization's display name, so
+  // the end-user project list reads like the admin directory instead of
+  // showing a bare id.
+  string organization_display_name = 5;
 }
 
 message GetMyProjectsRequest {}

@@ -51,7 +51,7 @@ export default function ModelDetailPage() {
   if (error)
     return (
       <div>
-        <BackLink to="/models" label={t('modeldetail.back')} />
+        <BackLink to="/admin/models" label={t('modeldetail.back')} />
         <ErrorBanner message={error} />
       </div>
     );
@@ -59,7 +59,7 @@ export default function ModelDetailPage() {
 
   return (
     <div>
-      <BackLink to="/models" label={t('modeldetail.back')} />
+      <BackLink to="/admin/models" label={t('modeldetail.back')} />
       <div className="page-header">
         <div>
           <h1 data-testid="model-detail-name">

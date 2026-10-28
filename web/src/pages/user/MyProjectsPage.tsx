@@ -60,10 +60,13 @@ export default function MyProjectsPage() {
               {projects.map((project) => (
                 <tr key={project.projectId} data-testid={`my-project-row-${project.projectId}`}>
                   <td>
-                    <strong className="mono">{project.projectId}</strong>
-                    <div className="muted">{project.displayName}</div>
+                    <strong>{project.displayName || project.projectId}</strong>
+                    <div className="muted small mono">{project.projectId}</div>
                   </td>
-                  <td className="mono">{project.organizationId}</td>
+                  <td>
+                    <strong>{project.organizationDisplayName || project.organizationId}</strong>
+                    <div className="muted small mono">{project.organizationId}</div>
+                  </td>
                   <td>
                     <StateBadge state={project.role} />
                   </td>
