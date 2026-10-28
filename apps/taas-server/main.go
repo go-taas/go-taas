@@ -105,6 +105,10 @@ func main() {
 	srv.RegisterService(tenancySvc)
 	authSvc := auth.New(srv.Components())
 	srv.RegisterService(authSvc)
+	// The caller's session roles ride on the request context, so any
+	// service can tell a platform administrator - who owns no tenant -
+	// from an ordinary caller without a resolver of its own.
+	srv.SetSessionRolesResolver(authSvc)
 	// One role guard serves every service. It recognises the
 	// platform-administrator session role, which lives on the account
 	// rather than in an organization roster, so the platform console works

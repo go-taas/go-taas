@@ -27,6 +27,13 @@ func NewOrgGuard(db *gorm.DB) *OrgGuard {
 // does not exist. Used by read paths: history stays visible for
 // organizations of any state.
 func (g *OrgGuard) RequireExists(ctx context.Context, orgID string) error {
+	if orgID == "" {
+		// No organization context: a platform administrator owns no tenant
+		// and the platform console is platform-wide, so there is nothing to
+		// validate. A write still goes through RequireActive below, which
+		// refuses the empty id.
+		return nil
+	}
 	_, err := g.repo.FindOrganization(ctx, orgID)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apierrors.New(apierrors.CodeOrganizationNotFound)

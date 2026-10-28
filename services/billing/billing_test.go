@@ -11,6 +11,7 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/go-taas/go-taas/pkg/authctx"
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
@@ -601,3 +602,31 @@ func TestReconciliationRunnerGraceBoundary(t *testing.T) {
 	require.NoError(t, db.Model(&UsageLine{}).Where("charged_charge_id IS NOT NULL").Count(&charged).Error)
 	assert.Equal(t, int64(0), charged, "the hour is not yet eligible")
 }
+
+// TestResolveOrgPlatformAdminWithoutOrganization verifies the platform
+// administrator gets an empty (platform-wide) organization context instead
+// of an error, while an ordinary caller without an organization is still
+// refused.
+func TestResolveOrgPlatformAdminWithoutOrganization(t *testing.T) {
+	svc := newBillingTestService(t)
+	ctx := context.Background()
+
+	// No session, no header: unauthorized for an ordinary caller.
+	_, err := svc.resolveOrg(ctx)
+	assert.Equal(t, apierrors.CodeUnauthorized, apierrors.CodeOf(err))
+
+	// A platform administrator owns no tenant: the context is empty.
+	adminCtx := authctx.WithResolver(ctx, fakeBillingRoles{roles: []string{"platform-admin"}})
+	org, err := svc.resolveOrg(adminCtx)
+	require.NoError(t, err)
+	assert.Empty(t, org)
+
+	// A non-platform session is still refused.
+	plainCtx := authctx.WithResolver(ctx, fakeBillingRoles{roles: []string{"admin"}})
+	_, err = svc.resolveOrg(plainCtx)
+	assert.Equal(t, apierrors.CodeUnauthorized, apierrors.CodeOf(err))
+}
+
+type fakeBillingRoles struct{ roles []string }
+
+func (f fakeBillingRoles) SessionRoles(context.Context) ([]string, error) { return f.roles, nil }

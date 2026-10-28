@@ -387,3 +387,18 @@ func TestRequirePlatformAdmin(t *testing.T) {
 	svc.SetSessionRolesResolver(&fakeRolesResolver{roles: []string{RolePlatformAdmin}})
 	require.NoError(t, svc.RequirePlatformAdmin(ctx))
 }
+
+// TestOrgGuardEmptyOrganization verifies an empty organization context is
+// valid for reads (a platform administrator owns no tenant) and refused for
+// writes.
+func TestOrgGuardEmptyOrganization(t *testing.T) {
+	db := newTestDB(t)
+	guard := NewOrgGuard(db)
+	ctx := context.Background()
+
+	// Reads: nothing to validate.
+	require.NoError(t, guard.RequireExists(ctx, ""))
+
+	// Writes: an empty organization is not a real one.
+	assert.Equal(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(guard.RequireActive(ctx, "")))
+}

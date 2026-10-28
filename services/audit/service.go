@@ -16,6 +16,7 @@ import (
 	auditv1 "github.com/go-taas/go-taas/proto/taas/audit/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
+	"github.com/go-taas/go-taas/pkg/authctx"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
 )
@@ -204,7 +205,15 @@ func (s *Service) resolveOrg(ctx context.Context) (string, error) {
 			return org, nil
 		}
 	}
-	return resolveOrganizationID(ctx)
+	org, err := resolveOrganizationID(ctx)
+	if err != nil && authctx.IsPlatformAdmin(ctx) {
+		// A platform administrator belongs to no organization: the platform
+		// console is platform-wide, so an empty organization is a valid
+		// context. Reads then span every organization (or return nothing);
+		// a write still needs a real, active organization.
+		return "", nil
+	}
+	return org, err
 }
 
 // resolveActorUserID returns the caller's user id for the end-user

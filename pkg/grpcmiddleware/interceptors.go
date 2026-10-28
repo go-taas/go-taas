@@ -9,6 +9,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	"github.com/go-taas/go-taas/pkg/authctx"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
 )
@@ -20,6 +21,19 @@ func UnaryServerInterceptor() grpc.UnaryServerInterceptor {
 		logger.S().Debugw("grpc request", "method", info.FullMethod)
 		resp, err := handler(ctx, req)
 		return resp, normalizeError(err)
+	}
+}
+
+// SessionRolesInterceptor parks the caller's session roles on the request
+// context, so a handler can tell a platform administrator from an ordinary
+// caller without a resolver of its own. It performs no I/O: the roles are
+// resolved on first use (see pkg/authctx).
+func SessionRolesInterceptor(r authctx.RolesResolver) grpc.UnaryServerInterceptor {
+	return func(ctx context.Context, req any, _ *grpc.UnaryServerInfo, handler grpc.UnaryHandler) (any, error) {
+		if r != nil {
+			ctx = authctx.WithResolver(ctx, r)
+		}
+		return handler(ctx, req)
 	}
 }
 

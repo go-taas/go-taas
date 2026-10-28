@@ -143,22 +143,6 @@ export function OrgSwitcher() {
   const [loaded, setLoaded] = useState(false);
   const [session, setSession] = useState<SessionInfo | null>(null);
 
-  // adoptOrganization sets the organization locally and, when a session is
-  // present, makes it the session's active organization so the server
-  // resolves the same one.
-  const adoptOrganization = async (id: string) => {
-    setOrgId(id);
-    if (!getSessionToken(realm)) return;
-    try {
-      await api.post(`/api/v1${realm === 'admin' ? '/admin' : ''}/auth/session/org`, '', {
-        organizationId: id,
-      });
-    } catch {
-      // The switch failed server-side; the local id is still set.
-    }
-  };
-
-
   useEffect(() => {
     let cancelled = false;
     const load = async () => {
@@ -167,38 +151,17 @@ export function OrgSwitcher() {
           const sess = await api.get<SessionInfo>(`/api/v1${realm === 'admin' ? '/admin' : ''}/auth/session`, '');
           if (cancelled) return;
           setSession(sess);
-          // A platform administrator belongs to no organization yet
-          // administers every one, so the selector offers the whole
-          // registry; anybody else sees only the organizations they joined.
-          const isPlatform = (sess.roles || []).includes('platform-admin');
-          if (isPlatform) {
-            try {
-              const data = await api.get<{ organizations: OrganizationSummary[] }>(
-                '/api/v1/admin/tenancy/organizations?page.limit=100',
-                '',
-              );
-              if (cancelled) return;
-              setOrgs((data.organizations || []).filter((o) => o.organizationId !== 'platform'));
-            } catch {
-              // Fall through to the membership list below.
-            }
-          }
+          // The switcher lists the organizations the account belongs to.
+          // A platform administrator belongs to none: the platform console
+          // is platform-wide, so it renders no switcher at all, and the
+          // pages that read organization-scoped data span every
+          // organization.
           const list = (sess.accessibleOrgs || []).map((id) => ({
             organizationId: id,
             displayName: id,
             state: 'active',
           } as OrganizationSummary));
-          setOrgs((prev) => {
-            const resolved = prev.length > 0 ? prev : list;
-            // The platform administrator has no organization of its own.
-            // Adopt the first one so the organization-scoped pages have a
-            // context; the switcher above shows which one is in effect and
-            // changes it, or clears it when there is none.
-            if (isPlatform && !sess.activeOrg && resolved.length > 0) {
-              void adoptOrganization(resolved[0].organizationId);
-            }
-            return resolved;
-          });
+          setOrgs(list);
           if (sess.activeOrg) {
             setOrgId(sess.activeOrg);
           }

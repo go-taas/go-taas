@@ -24,6 +24,7 @@ import (
 	"google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/go-taas/go-taas/pkg/authctx"
 	"github.com/go-taas/go-taas/pkg/config"
 	grpcmiddleware "github.com/go-taas/go-taas/pkg/grpcmiddleware"
 	"github.com/go-taas/go-taas/pkg/logger"
@@ -47,6 +48,12 @@ type Server interface {
 
 	// Components returns the shared platform components.
 	Components() Components
+
+	// SetSessionRolesResolver installs the resolver that puts the
+	// caller's session roles on the request context (see pkg/authctx), so
+	// any service can tell a platform administrator from an ordinary
+	// caller. It must be called before Init.
+	SetSessionRolesResolver(r authctx.RolesResolver)
 }
 
 type commonServer struct {
@@ -67,7 +74,18 @@ type commonServer struct {
 	// requests through, preserving pre-split behaviour.
 	realmResolver SessionRealmResolver
 
+	// sessionRoles resolves the caller's session roles for the request
+	// context. Nil until wired: services then treat every caller as an
+	// ordinary one.
+	sessionRoles authctx.RolesResolver
+
 	components *components
+}
+
+// SetSessionRolesResolver installs the resolver that puts the caller's
+// session roles on the request context.
+func (s *commonServer) SetSessionRolesResolver(r authctx.RolesResolver) {
+	s.sessionRoles = r
 }
 
 // NewServer constructs a Server from opts.
@@ -136,8 +154,18 @@ func (s *commonServer) Init() {
 	}
 
 	// Build the gRPC server with the standard interceptor chain.
+	var sessionRoles authctx.RolesResolver
+	if s.sessionRoles != nil {
+		sessionRoles = s.sessionRoles
+	}
 	interceptors := append(
-		[]grpc.UnaryServerInterceptor{grpcmiddleware.UnaryServerInterceptor()},
+		[]grpc.UnaryServerInterceptor{
+			grpcmiddleware.UnaryServerInterceptor(),
+			// Park the caller's session roles on the context so a service
+			// can recognise a platform administrator. The interceptor
+			// itself does no I/O: the roles are resolved on first use.
+			grpcmiddleware.SessionRolesInterceptor(sessionRoles),
+		},
 		s.opts.UnaryInterceptors...,
 	)
 	s.grpcServer = grpc.NewServer(grpc.ChainUnaryInterceptor(interceptors...))

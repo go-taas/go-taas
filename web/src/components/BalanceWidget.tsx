@@ -20,9 +20,16 @@ export default function BalanceWidget() {
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [noAccount, setNoAccount] = useState(false);
 
+  // A balance belongs to one organization. The platform console has no
+  // organization of its own, so there is nothing to show and nothing to
+  // ask for: a platform administrator reads the per-organization accounts
+  // on the billing-accounts page instead.
+  const scoped = Boolean(orgId);
+
   useEffect(() => {
     setNoAccount(false);
     setBalance(null);
+    if (!scoped) return undefined;
     api
       .get<BalanceResponse>('/api/v1/admin/billing/balance', orgId)
       .then((data) => setBalance(data))
@@ -33,9 +40,9 @@ export default function BalanceWidget() {
           setNoAccount(true);
         }
       });
-  }, [orgId]);
+  }, [orgId, scoped]);
 
-  if (noAccount) {
+  if (!scoped || noAccount) {
     return (
       <div className="balance-widget muted" data-testid="usage-balance-widget">
         {t('balance.noAccount')}
