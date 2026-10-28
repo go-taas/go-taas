@@ -1,3 +1,10 @@
+# [1.94.0](https://github.com/go-taas/go-taas/compare/v1.93.1...v1.94.0) (2026-10-28)
+
+
+### Features
+
+* **tenancy,image,console:** member quotas, project delete, fleet-driven catalogs ([5ad5805](https://github.com/go-taas/go-taas/commit/5ad58054c4a3ea333b90069588a8553f4ed5b8a6))
+
 ## [1.93.1](https://github.com/go-taas/go-taas/compare/v1.93.0...v1.93.1) (2026-10-28)
 
 
