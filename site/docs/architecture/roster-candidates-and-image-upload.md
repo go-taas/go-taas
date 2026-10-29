@@ -92,6 +92,7 @@ The roster pick-lists assume the invariant "an account belongs to at most one or
 | the platform anchor is spared | `platform` is the tenancy anchor of the platform, not an affiliation a person joins |
 | the target organization's projects are kept | a project inside the organization being joined survives |
 | other projects cleared (project add) | an account belongs to at most one project |
+| a duplicate join is refused first | adding someone who is already in that organization answers 10029 *before* anything is deleted, so a request that returns an error has not moved the account in the meantime |
 
 **An owner is not movable.** An organization must keep an owner, and the roster already refuses to remove one (10032). The move refuses the same way instead of finding a loophole through the platform directory: an owner must hand ownership over first.
 

@@ -524,3 +524,31 @@ func TestAddOrgMemberRefusesToMoveAnOwner(t *testing.T) {
 	require.NotNil(t, still, "a refused move must leave the owner in place")
 	assert.Equal(t, RoleOwner, still.Role)
 }
+
+// TestAddOrgMemberRejectsDuplicateWithoutMoving proves a rejected duplicate
+// leaves the account where it was: the request returned an error, so it must
+// not have deleted the membership it was asked to replace.
+func TestAddOrgMemberRejectsDuplicateWithoutMoving(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+
+	seedOrganization(t, svc, "org-a", "Org A")
+	seedOrganization(t, svc, "org-b", "Org B")
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedMember(t, svc, "org-b", "u-admin", RoleOwner)
+	// The user is already a member of org-b and also holds org-a.
+	seedMember(t, svc, "org-b", "u-2", RoleMember)
+	seedMember(t, svc, "org-a", "u-2", RoleMember)
+
+	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-b", UserId: "u-2", Role: RoleAdmin,
+	})
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeMemberExists, ae.Code)
+
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	kept, err := repo.FindMember(ctx, "org-a", "u-2")
+	require.NoError(t, err)
+	assert.NotNil(t, kept, "a rejected duplicate must not clear the other membership")
+}
