@@ -87,7 +87,8 @@ AND (accelerator_type = :accelerator_type OR accelerator_type = '')
 - 为空的 `engine`；
 - 不在 `single` / `multinode` / `pd` 内的 `topology`（历史值 `distributed` 会像其他地方一样归一化为 `multinode`）；
 - 已带前缀横线或含 `=` 的 `engine_args` 键 —— 键是参数名本身，值是参数值；
-- 不在 `worker` / `prefill` / `decode` 内的 `role_engine_args` 角色。
+- 不在 `worker` / `prefill` / `decode` 内的 `role_engine_args` 角色；
+- 空模板：既没有 `engine_args`，也没有 `extra_args` 与 `role_engine_args`。
 
 重名返回 10321；get/update/delete 未命中返回 10320。
 
@@ -144,7 +145,7 @@ AND (accelerator_type = :accelerator_type OR accelerator_type = '')
 | 只保存已填写的值 | 停留在默认值的输入框并不算调优过的值，而一个充满默认值的模板会掩盖真正重要的那几个参数。公共参数、自由参数与角色参数中的空项在提交前会被剔除。 |
 | 同时记录上下文 | 引擎、模型、拓扑与加速卡决定了模板何时再次出现、何时不出现在别人的选项里。弹窗在保存前展示该上下文（`template-context`）与数量（`{args} 个参数 · {extra} 个自由参数 · {roles} 个角色覆盖`）。 |
 | 模型范围可选 | `template-scope-select` 决定模板属于「仅当前模型」（常见情况）还是「该引擎下的任意模型」（`model_id` 留空）。排序仍然生效：模型专属模板得分高于通用模板。 |
-| 没有内容则拒绝 | 完全没有参数的模板在弹窗内即被拒绝，而不是交给服务端，因为空模板永远没有用处。 |
+| 没有内容则拒绝 | 完全没有参数的模板在弹窗**与**服务端（10322）都会被拒绝。一条匹配所有部署却什么都不加载的记录比没有更糟：它占着列表、会参与真实上下文的打分，运维选了它却看不到任何变化。 |
 | 保存后自动选中新模板 | 保存后重新执行匹配查询并选中新模板，因此「是否成功」的答案就在上方的下拉行里，无需刷新页面。 |
 
 ## 8. 验收标准

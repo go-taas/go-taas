@@ -146,6 +146,14 @@ func (s *Service) validateTemplate(
 	if err != nil {
 		return templateInput{}, err
 	}
+	// A template with no parameters records nothing worth loading. The deploy
+	// form refuses one before sending it; the API refuses it too, because a
+	// client other than the console would otherwise fill the list with empty
+	// rows that match everything and change nothing.
+	if isEmptyJSONObject(storedArgs) && isEmptyJSONArray(storedExtra) && isEmptyJSONArray(storedRoles) {
+		return templateInput{}, apierrors.Newf(apierrors.CodeEngineTemplateInvalid,
+			"infer: the template needs at least one engine parameter, extra argument or role override")
+	}
 	return templateInput{
 		Name:            trimmedName,
 		Description:     trimmedDescription,
@@ -158,6 +166,25 @@ func (s *Service) validateTemplate(
 		ExtraArgs:       storedExtra,
 		RoleEngineArgs:  storedRoles,
 	}, nil
+}
+
+// isEmptyJSONObject reports whether a stored JSON document holds no entries.
+// The encoded form is what the row carries, so the emptiness check looks at
+// the document rather than at the request that produced it.
+func isEmptyJSONObject(doc datatypes.JSON) bool {
+	return isEmptyJSON(doc, "{}")
+}
+
+// isEmptyJSONArray is the list counterpart of isEmptyJSONObject.
+func isEmptyJSONArray(doc datatypes.JSON) bool {
+	return isEmptyJSON(doc, "[]")
+}
+
+// isEmptyJSON compares a stored document against an empty shape, tolerating
+// the null an absent value encodes to.
+func isEmptyJSON(doc datatypes.JSON, empty string) bool {
+	trimmed := strings.TrimSpace(string(doc))
+	return trimmed == "" || trimmed == "null" || trimmed == empty
 }
 
 // isValidAcceleratorToken accepts the CPU marker or a vendor token, the same

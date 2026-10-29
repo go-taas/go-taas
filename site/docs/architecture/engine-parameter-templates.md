@@ -87,7 +87,8 @@ Ordering is `match_score DESC, name ASC`, so a tie is stable and the list does n
 - an empty `engine`;
 - a `topology` outside `single` / `multinode` / `pd` (legacy `distributed` is normalised to `multinode`, as it is everywhere else);
 - an `engine_args` key that already carries leading dashes or a `=` — the key is the flag name alone, and the value is the argument;
-- a `role_engine_args` role outside `worker` / `prefill` / `decode`.
+- a `role_engine_args` role outside `worker` / `prefill` / `decode`;
+- an empty template: no `engine_args`, no `extra_args` and no `role_engine_args`.
 
 Duplicate names map to 10321; a miss on get/update/delete maps to 10320.
 
@@ -144,7 +145,7 @@ The deploy form (`DeployForm`) has a **parameter template** picker above the eng
 | Only filled values are captured | An input left at its default is not a tuned value, and a template full of defaults hides the three flags that matter. Empty shared/extra/role entries are dropped before the POST. |
 | The context is captured too | Engine, model, topology and accelerator are what make the template appear again for the same combination and stay out of the way for others. The dialog shows that context (`template-context`) and the counts (`{args} parameters · {extra} extra arguments · {roles} role overrides`) before saving. |
 | Model scope is a choice | `template-scope-select` decides whether the template claims the selected model only (the common case) or any model on the engine (`model_id` left empty). Rank still applies: a model-specific template scores above a general one. |
-| Nothing to save is refused | A template with no parameters at all is rejected in the dialog instead of on the server, because an empty template is never useful. |
+| Nothing to save is refused | A template with no parameters at all is rejected in the dialog *and* on the server (10322). A row that matches every deployment and loads nothing is worse than no row: it occupies the list, scores against real contexts, and an operator who picks it sees no change. |
 | The new template is selected afterwards | After a save the match query re-runs and the new template is selected, so the answer to "did it work" is the row above, not a page reload. |
 
 ## 8. Acceptance criteria
