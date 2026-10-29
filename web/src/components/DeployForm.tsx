@@ -9,7 +9,7 @@
 // ListModels?organization_id, so a restricted model the organization is
 // not granted is not selectable.
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   api,
   ApiError,
@@ -205,6 +205,11 @@ export default function DeployForm({
   // templateEpoch forces the match query to re-run after a save, so a new
   // template appears in the picker without a page reload.
   const [templateEpoch, setTemplateEpoch] = useState(0);
+  // keepTemplateId is the template to select once the reload finishes. A
+  // context change clears the selection (the old template no longer applies),
+  // but a save happens *in* the current context, so the row it produced must
+  // stay selected instead of snapping back to "none".
+  const keepTemplateId = useRef('');
 
   useEffect(() => {
     // Feature #52 (AD2): the pool list for the deploy form. The deploy
@@ -322,8 +327,11 @@ export default function DeployForm({
       )
       .then((data) => {
         if (cancelled) return;
-        setTemplates(data.templates || []);
-        setTemplateId('');
+        const list = data.templates || [];
+        setTemplates(list);
+        const keep = keepTemplateId.current;
+        setTemplateId(keep && list.some((tpl) => tpl.templateId === keep) ? keep : '');
+        keepTemplateId.current = '';
       })
       .catch(() => {
         if (!cancelled) setTemplates([]);
@@ -813,8 +821,8 @@ export default function DeployForm({
             // Re-run the match query and select what was just saved: the
             // operator's next question is "did it work", and the row above
             // answers it.
+            keepTemplateId.current = saved;
             setTemplateEpoch((n) => n + 1);
-            setTemplateId(saved);
             setParamsTab('shared');
           }}
         />
