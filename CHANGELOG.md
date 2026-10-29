@@ -1,3 +1,11 @@
+## [1.100.3](https://github.com/go-taas/go-taas/compare/v1.100.2...v1.100.3) (2026-10-29)
+
+
+### Bug Fixes
+
+* **console:** keep the saved template selected in the deploy form ([8b37f11](https://github.com/go-taas/go-taas/commit/8b37f11bd8737d01880fd4dcec5ca6e2a2419219))
+* **console:** name the display currency in the cost chart legend ([f8607db](https://github.com/go-taas/go-taas/commit/f8607db2b89459fd8b6d055efeb3a8c9c4b2b0be))
+
 ## [1.100.2](https://github.com/go-taas/go-taas/compare/v1.100.1...v1.100.2) (2026-10-29)
 
 
