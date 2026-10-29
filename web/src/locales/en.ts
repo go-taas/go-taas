@@ -1629,7 +1629,7 @@ export const en: Record<string, string> = {
   'cost.colCost': 'Cost',
   'cost.colTokens': 'Tokens',
   'cost.colCostPerToken': 'Cost per token',
-  'cost.metricCost': 'cost ($)',
+  'cost.metricCost': 'cost ({currency})',
   'cost.metricCostPerToken': 'cost per token',
   'errors.chartAria': 'Error analysis chart',
   'errors.rate': 'Error rate',

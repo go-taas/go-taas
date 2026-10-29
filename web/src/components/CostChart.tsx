@@ -6,7 +6,7 @@
 
 import { useMemo } from 'react';
 import type { CostSeriesPoint } from '../api';
-import { formatAmount, formatMajor } from '../display';
+import { displayCurrencyLabel, formatAmount, formatMajor } from '../display';
 import { useI18n } from '../i18n';
 
 export type CostMetric = 'cost' | 'tokens' | 'costPerToken';
@@ -125,13 +125,18 @@ function barWidth(count: number): number {
 }
 
 // metricLabel returns the localized legend label of a metric.
-function metricLabel(metric: CostMetric, t: (key: string) => string): string {
+function metricLabel(
+  metric: CostMetric,
+  t: (key: string, vars?: Record<string, string | number>) => string,
+): string {
   switch (metric) {
     case 'tokens':
       return t('cost.metric.tokens');
     case 'costPerToken':
       return t('cost.metricCostPerToken');
     default:
-      return t('cost.metricCost');
+      // The unit comes from the installation's preference, not a literal: a
+      // legend that says "$" next to ¥ values is the same bug the amounts had.
+      return t('cost.metricCost', { currency: displayCurrencyLabel() });
   }
 }

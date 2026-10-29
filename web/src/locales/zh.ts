@@ -1600,7 +1600,7 @@ export const zh: Record<string, string> = {
   'cost.colCost': '成本',
   'cost.colTokens': '词元数',
   'cost.colCostPerToken': '每词元成本',
-  'cost.metricCost': '成本（$）',
+  'cost.metricCost': '成本（{currency}）',
   'cost.metricCostPerToken': '每词元成本',
   'errors.chartAria': '错误分析图表',
   'errors.rate': '错误率',
