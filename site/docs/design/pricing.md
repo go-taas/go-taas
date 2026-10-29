@@ -59,7 +59,7 @@ Pitfalls to avoid:
 | D8 | A bucket with **no applicable price** produces a charge record with `amount = 0` and `priced = false` (surfaced in the console), never an error, and never blocks anything upstream | Missing prices are an operator gap to surface, not a pipeline fault; settlement independence is preserved both directions |
 | D9 | **Bills are computed, not stored**: `ListBills` aggregates `charge_records` by `(organization, calendar month)` on read; `bill_id` is deterministic (`{org}-{YYYYMM}`); balance, quota, holds and payments are feature #8 | Charge records are the durable evidence; a monthly view over them is cheap and always consistent; account modes need their own design |
 | D10 | New error codes: **10507 `CodePriceInvalid`** (negative rates, empty model/card, malformed tiers, currency mismatch) and **10508 `CodeBillingRangeInvalid`** (`since > until` or range > 366 days on billing queries); the reserved 10502–10506 stay for feature #8 | The 105xx block is billing's; validation vs range vs future funds errors stay distinct, mirroring the metering D9 pattern |
-| D11 | Console gains a **Pricing page** (`/admin/pricing`): the matrix table (model, card, in/out/cache rates, tier summary, effective from, currency), a set-price dialog (model dropdown from the catalog, card input with suggestions, rates, tiers editor, effective date), and a history toggle; and a **Bills page** (`/admin/billing`): monthly bill summaries with a charge-record drill-down (per key/model/card rows, amounts, priced badge). Both are admin-surface, org-scoped like Usage | The scannable matrix is the industry acceptance bar (pattern 5); bills close the loop from prices to money; the page split keeps pricing (write-heavy) apart from bills (read-only) |
+| D11 | Console gains a **Pricing page** (`/admin/pricing`): the matrix table (model, card, in/out/cache rates, tier summary, effective from, currency), a set-price dialog (model dropdown from the catalog, card dropdown from the live accelerator inventory plus a `default` row, rates, tiers editor, effective date, and **no currency picker** — a price is always authored in the installation's settlement currency, so the dialog omits `currency` and lets the server apply `billing.currency`), and a history toggle; and a **Bills page** (`/admin/billing`): monthly bill summaries with a charge-record drill-down (per key/model/card rows, amounts, priced badge). Both are admin-surface, org-scoped like Usage | The scannable matrix is the industry acceptance bar (pattern 5); bills close the loop from prices to money; the page split keeps pricing (write-heavy) apart from bills (read-only) |
 | D12 | **Packages/bundles are deferred** (they entangle with #8's balance), as are price deletion/matrix reset and usage-line retention (open items) | Tiered pricing covers volume discounts; the rest is scope discipline |
 
 ### 1.4 Scope Boundary
@@ -198,7 +198,7 @@ flowchart TD
     A["Administrator opens Pricing"] --> B["GET /api/v1/admin/billing/prices"]
     B --> C["Matrix table: model × card rows, rates, tiers, effective badges"]
     C --> D{"Set price"}
-    D --> E["Dialog: model, card, rates, tiers, effective from"]
+    D --> E["Dialog: model (catalog select), card (fleet select), rates, tiers, effective from"]
     E --> F{"Valid?"}
     F -->|No| G["Inline 10507 errors"]
     G --> E

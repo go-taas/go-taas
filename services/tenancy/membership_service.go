@@ -112,6 +112,13 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 	if err != nil {
 		return nil, err
 	}
+	// An account belongs to at most one organization: joining one is a move,
+	// not an addition. Clearing the previous membership (and any project the
+	// user held in another organization) before inserting keeps the invariant
+	// true, so the directory and the console agree on where the person is.
+	if err := repo.MoveUserToOrg(ctx, orgID, userID); err != nil {
+		return nil, err
+	}
 	m := &OrgMember{
 		OrganizationID: orgID,
 		UserID:         userID,
@@ -119,6 +126,10 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 		JoinedAt:       time.Now().UTC(),
 	}
 	if err := repo.AddMember(ctx, m); err != nil {
+		// The insert can still collide when the user was already a member of
+		// this very organization: MoveUserToOrg kept that row, so "add" is a
+		// role change request. Report it as the existing conflict rather than
+		// as a failure of the move.
 		return nil, err
 	}
 	// Feature #15: record the successful member add best-effort.

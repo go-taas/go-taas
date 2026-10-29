@@ -32,6 +32,10 @@ The platform administrator sets three installation-wide values on `/admin/displa
 
 **AD5 — Every amount is printed in the platform's display currency.** The console has one currency; a page that appends the *stored* code (`{amount} {record.currency}`) is what kept saying USD on an installation configured for CNY. Every money renderer therefore goes through `formatMoney` (minor units), `formatMajor` (major units, e.g. a bill total) or `formatAmount` (an explicit precision), and none of them appends a stored code. A price row still shows its own currency in the *pricing* table, because there a currency is part of the data being edited, not a unit of presentation.
 
+**AD5b — The cost and usage analytics pages are the same rule.** The sweep is not limited to the billing pages: the cost analytics cards, the cost chart tooltips, the per-key usage cards and rankings, the user-side usage-keys page, the forecasts and the optimization savings all print through the same helpers. They used to hard-code `$` in a local `costDollars` — which is exactly why the 成本 page kept saying dollars after the installation switched to CNY. A chart tooltip is not exempt either: a bare number there reads as a different unit than the axis beside it.
+
+**AD5c — A price is authored in the settlement currency.** The set-price dialog sends no `currency` and offers no picker; the server applies `billing.currency`. Authoring a price in a *display* currency would store an amount in a unit nothing converts, and the console would then print it as if it were the settlement currency.
+
 **AD6 — The settlement currency is shown next to the display currency.** Amounts are stored in `billing.currency` from the server configuration and printed in the display currency; without conversion those two must be the same value. The page therefore shows the configured settlement currency and warns when it differs, and an installation that prices in CNY sets `billing.currency: CNY` (the chart's `configOverrides`). A silent mismatch would put a ¥ sign on a dollar figure, which is worse than the bug it replaced.
 
 ## 2. Model downloads on the catalog

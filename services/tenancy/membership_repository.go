@@ -63,6 +63,82 @@ func (r *MembershipRepository) AddMember(ctx context.Context, m *OrgMember) erro
 	return nil
 }
 
+// MoveUserToOrg clears the memberships a user may not keep once they join
+// orgID: every other organization and every project that belongs to another
+// organization, because an account belongs to at most one organization and to
+// projects of that organization only.
+//
+// The rule used to be documentation only. Joining a second organization left
+// the first row in place, and the directory — which resolves the *oldest*
+// membership — kept showing the organization the user had just left, so an
+// administrator who moved someone saw nothing change. Doing it in one
+// transaction keeps the invariant true even when the process dies between the
+// delete and the insert that follows.
+//
+// The platform organization is exempt: it is the tenancy anchor of the
+// platform itself, not a tenant a person joins, and it is never the
+// affiliation the directory reports (see MembershipResolver.UserAffiliation).
+func (r *MembershipRepository) MoveUserToOrg(ctx context.Context, orgID, userID string) error {
+	if orgID == "" || userID == "" {
+		return nil
+	}
+	// An organization must keep an owner: moving an owner out would leave
+	// their previous organization without one. The roster already refuses to
+	// remove an owner (10032), so the move refuses too instead of finding a
+	// loophole through the platform directory.
+	owned, err := r.OwnedOrgIDs(ctx, userID, orgID)
+	if err != nil {
+		return err
+	}
+	if len(owned) > 0 {
+		return apierrors.Newf(apierrors.CodeOwnerProtected,
+			"tenancy: the user owns organization %s; hand ownership over before moving them", owned[0])
+	}
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		if err := r.db.DB(ctx).
+			Where("user_id = ? AND organization_id <> ? AND organization_id <> ?", userID, orgID, platformOrgID).
+			Delete(&OrgMember{}).Error; err != nil {
+			return err
+		}
+		// Projects are owned by an organization: a member of org B cannot sit
+		// on a project of org A, and leaving the row behind would keep
+		// granting them a project the directory no longer associates them
+		// with.
+		return r.db.DB(ctx).Exec(`
+			DELETE FROM project_members
+			WHERE user_id = ?
+			  AND project_id IN (SELECT id FROM projects WHERE organization_id <> ?)`,
+			userID, orgID).Error
+	})
+}
+
+// OwnedOrgIDs returns the organizations, other than excludeOrgID, in which the
+// user is the owner. The platform anchor is not counted: it owns nothing a
+// person can be moved out of.
+func (r *MembershipRepository) OwnedOrgIDs(ctx context.Context, userID, excludeOrgID string) ([]string, error) {
+	var ids []string
+	err := r.db.DB(ctx).Model(&OrgMember{}).
+		Where("user_id = ? AND role = ? AND organization_id <> ? AND organization_id <> ?",
+			userID, RoleOwner, excludeOrgID, platformOrgID).
+		Pluck("organization_id", &ids).Error
+	if err != nil {
+		return nil, err
+	}
+	return ids, nil
+}
+
+// MoveUserToProject clears a user's other project memberships, so an account
+// belongs to at most one project. It is the project-level counterpart of
+// MoveUserToOrg.
+func (r *MembershipRepository) MoveUserToProject(ctx context.Context, projectID, userID string) error {
+	if projectID == "" || userID == "" {
+		return nil
+	}
+	return r.db.DB(ctx).
+		Where("user_id = ? AND project_id <> ?", userID, projectID).
+		Delete(&ProjectMember{}).Error
+}
+
 // SetMemberRole updates a member's role.
 func (r *MembershipRepository) SetMemberRole(ctx context.Context, orgID, userID, role string) error {
 	return r.db.DB(ctx).Model(&OrgMember{}).

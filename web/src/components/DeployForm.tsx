@@ -22,7 +22,7 @@ import {
   type TenantVGPUPool,
   type VGPUPool,
 } from '../api';
-import { ErrorBanner } from '../components';
+import { Dialog, ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
 import { engineParams, type EngineParam } from './engineParams';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
@@ -197,6 +197,14 @@ export default function DeployForm({
   // operator loads one instead of retyping a dozen flags.
   const [templates, setTemplates] = useState<EngineParamTemplate[]>([]);
   const [templateId, setTemplateId] = useState('');
+  // Saving the current parameters as a template: the other half of the
+  // feature. Tuning a service and only then realising the values are worth
+  // keeping is the normal order of events, so the save lives next to the
+  // load rather than on a separate page the operator has to go hunting for.
+  const [saveTemplateOpen, setSaveTemplateOpen] = useState(false);
+  // templateEpoch forces the match query to re-run after a save, so a new
+  // template appears in the picker without a page reload.
+  const [templateEpoch, setTemplateEpoch] = useState(0);
 
   useEffect(() => {
     // Feature #52 (AD2): the pool list for the deploy form. The deploy
@@ -323,7 +331,7 @@ export default function DeployForm({
     return () => {
       cancelled = true;
     };
-  }, [api, accelerator, acceleratorType, engine, orgId, selectedModelId, topology]);
+  }, [api, accelerator, acceleratorType, engine, orgId, selectedModelId, topology, templateEpoch]);
 
   // applyTemplate copies a template's parameters into the form. A role the
   // template defines replaces that role's rows; the shared parameters replace
@@ -744,24 +752,41 @@ export default function DeployForm({
         </div>
       </div>
 
-      {templates.length > 0 && (
+      {/* The template row is always present once an engine is known: the
+          save button is how the first template comes into existence, so
+          hiding the row until one exists would be a chicken-and-egg. */}
+      {engine && (
         <div className="form-grid" style={{ marginBottom: 12 }} data-testid="deploy-template-picker">
           <div className="form-field full">
             <label htmlFor="deploy-template">{t('deploy.templateLabel')}</label>
-            <select
-              id="deploy-template"
-              data-testid="deploy-template-select"
-              value={templateId}
-              onChange={(e) => applyTemplate(e.target.value)}
-            >
-              <option value="">{t('deploy.templateNone')}</option>
-              {templates.map((tpl) => (
-                <option key={tpl.templateId} value={tpl.templateId}>
-                  {tpl.name}
-                  {tpl.topology ? ` · ${t(`deploy.topology${tpl.topology === 'pd' ? 'Pd' : tpl.topology === 'single' ? 'Single' : 'MultiNode'}`)}` : ''}
+            <div className="toolbar" style={{ gap: 8 }}>
+              <select
+                id="deploy-template"
+                data-testid="deploy-template-select"
+                style={{ flex: '1 1 auto' }}
+                value={templateId}
+                onChange={(e) => applyTemplate(e.target.value)}
+                disabled={templates.length === 0}
+              >
+                <option value="">
+                  {templates.length === 0 ? t('deploy.templateNoMatch') : t('deploy.templateNone')}
                 </option>
-              ))}
-            </select>
+                {templates.map((tpl) => (
+                  <option key={tpl.templateId} value={tpl.templateId}>
+                    {tpl.name}
+                    {tpl.topology ? ` · ${t(`deploy.topology${tpl.topology === 'pd' ? 'Pd' : tpl.topology === 'single' ? 'Single' : 'MultiNode'}`)}` : ''}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                className="secondary"
+                data-testid="deploy-template-save"
+                onClick={() => setSaveTemplateOpen(true)}
+              >
+                {t('deploy.templateSave')}
+              </button>
+            </div>
             <div className="field-hint">
               {templateId
                 ? t('deploy.templateApplied')
@@ -769,6 +794,30 @@ export default function DeployForm({
             </div>
           </div>
         </div>
+      )}
+
+      {saveTemplateOpen && (
+        <SaveTemplateDialog
+          orgId={orgId}
+          engine={engine}
+          modelId={selectedModelId}
+          topology={topology}
+          accelerator={accelerator === CPU_ACCELERATOR ? '' : accelerator}
+          acceleratorType={acceleratorType}
+          engineArgs={engineArgs}
+          extraArgs={extraArgs}
+          roleEngineArgs={roleArgPayload(roleArgs)}
+          onClose={() => setSaveTemplateOpen(false)}
+          onSaved={(saved) => {
+            setSaveTemplateOpen(false);
+            // Re-run the match query and select what was just saved: the
+            // operator's next question is "did it work", and the row above
+            // answers it.
+            setTemplateEpoch((n) => n + 1);
+            setTemplateId(saved);
+            setParamsTab('shared');
+          }}
+        />
       )}
 
       {/* One tab per parameter set: the shared defaults plus one per role of
@@ -985,6 +1034,178 @@ export default function DeployForm({
         </button>
       </div>
     </div>
+  );
+}
+
+// SaveTemplateDialog stores the deploy form's current engine parameters as a
+// named template, tagged with the context they were tuned for.
+//
+// The context matters as much as the flags: a value tuned for one model on one
+// card type is rarely transferable, so the dialog captures the engine, model,
+// topology and accelerator the operator currently has selected. That is what
+// makes the template show up again for the same combination and stay out of the
+// way for others, and it is why the summary line is shown before saving — the
+// operator should see what the template will claim to apply to.
+function SaveTemplateDialog({
+  orgId,
+  engine,
+  modelId,
+  topology,
+  accelerator,
+  acceleratorType,
+  engineArgs,
+  extraArgs,
+  roleEngineArgs,
+  onClose,
+  onSaved,
+}: {
+  orgId: string;
+  engine: string;
+  modelId: string;
+  topology: ServingTopology;
+  accelerator: string;
+  acceleratorType: string;
+  engineArgs: Record<string, string>;
+  extraArgs: string[];
+  roleEngineArgs: ReturnType<typeof roleArgPayload>;
+  onClose: () => void;
+  onSaved: (templateId: string) => void;
+}) {
+  const { t } = useI18n();
+  const [name, setName] = useState('');
+  const [description, setDescription] = useState('');
+  // Whether the template claims to apply to the selected model only or to any
+  // model on this engine. Values tuned per model are the common case, but
+  // "vLLM on one 4090" is worth reusing across models, so the operator
+  // decides instead of the form guessing.
+  const [scope, setScope] = useState<'model' | 'any'>('model');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Only what the form actually holds is saved: an input left at its default
+  // is not a tuned value, and a template full of defaults hides the three
+  // flags that matter.
+  const filledArgs = Object.fromEntries(
+    Object.entries(engineArgs).filter(([, v]) => v !== undefined && v !== ''),
+  );
+  const filledExtra = extraArgs.map((a) => a.trim()).filter(Boolean);
+  const filledRoles = roleEngineArgs;
+  const hasValues =
+    Object.keys(filledArgs).length > 0 || filledExtra.length > 0 || filledRoles.length > 0;
+
+  const save = async () => {
+    if (!name.trim()) {
+      setError(t('deploy.templateNameRequired'));
+      return;
+    }
+    if (!hasValues) {
+      setError(t('deploy.templateEmpty'));
+      return;
+    }
+    setSaving(true);
+    setError('');
+    try {
+      const res = await api.post<{ template?: EngineParamTemplate }>(
+        '/api/v1/admin/engine-param-templates',
+        orgId,
+        {
+          name: name.trim(),
+          description: description.trim(),
+          engine,
+          modelId: scope === 'model' ? modelId : '',
+          topology,
+          accelerator,
+          acceleratorType,
+          engineArgs: filledArgs,
+          extraArgs: filledExtra,
+          roleEngineArgs: filledRoles,
+        },
+      );
+      onSaved(res.template?.templateId || '');
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('deploy.templateSaveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const context = [
+    engine,
+    scope === 'model' ? t('deploy.templateThisModel') : t('deploy.templateAnyModel'),
+    t(`deploy.topology${topology === 'pd' ? 'Pd' : topology === 'single' ? 'Single' : 'MultiNode'}`),
+    acceleratorType || accelerator || undefined,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  return (
+    <Dialog title={t('deploy.templateSaveTitle')} onClose={onClose} testId="deploy-template-dialog">
+      <p className="muted">{t('deploy.templateSaveHint')}</p>
+      <div className="form-grid">
+        <div className="form-field full">
+          <label htmlFor="template-name">{t('deploy.templateName')}</label>
+          <input
+            id="template-name"
+            data-testid="template-name-input"
+            value={name}
+            maxLength={128}
+            disabled={saving}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('deploy.templateNamePlaceholder')}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="template-scope">{t('deploy.templateScope')}</label>
+          <select
+            id="template-scope"
+            data-testid="template-scope-select"
+            value={scope}
+            disabled={saving}
+            onChange={(e) => setScope(e.target.value as 'model' | 'any')}
+          >
+            <option value="model">{t('deploy.templateScopeModel')}</option>
+            <option value="any">{t('deploy.templateScopeAny')}</option>
+          </select>
+          <div className="field-hint">{t('deploy.templateScopeHint')}</div>
+        </div>
+        <div className="form-field">
+          <label htmlFor="template-description">{t('deploy.templateDescription')}</label>
+          <input
+            id="template-description"
+            data-testid="template-description-input"
+            value={description}
+            maxLength={512}
+            disabled={saving}
+            onChange={(e) => setDescription(e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="kv-grid" data-testid="template-context">
+        <div>
+          <span className="kv-label">{t('deploy.templateContextLabel')}</span>
+          <span className="mono">{context}</span>
+        </div>
+        <div>
+          <span className="kv-label">{t('deploy.templateParamsLabel')}</span>
+          <span>
+            {t('deploy.templateParamsValue', {
+              args: String(Object.keys(filledArgs).length),
+              extra: String(filledExtra.length),
+              roles: String(filledRoles.length),
+            })}
+          </span>
+        </div>
+      </div>
+      {error && <div className="field-error">{error}</div>}
+      <div className="dialog-actions">
+        <button className="secondary" data-testid="template-cancel" onClick={onClose} disabled={saving}>
+          {t('common.cancel')}
+        </button>
+        <button data-testid="template-save" onClick={() => void save()} disabled={saving}>
+          {saving ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 

@@ -7,6 +7,7 @@
 import type { UsageKeysCard } from '../api';
 import { formatTime } from '../api';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 
 // errorRatePercent derives the error rate as a percentage.
 function errorRatePercent(card: UsageKeysCard): string {
@@ -15,9 +16,9 @@ function errorRatePercent(card: UsageKeysCard): string {
   return `${((parseInt(card.errorCount || '0', 10) / req) * 100).toFixed(1)}%`;
 }
 
-// costDollars formats integer cents as dollars.
+// costDollars formats integer cents in the platform's display currency.
 function costDollars(cents: string): string {
-  return `$${(parseInt(cents || '0', 10) / 100).toFixed(2)}`;
+  return formatMoney(cents);
 }
 
 export default function UsageKeysCards({ cards }: { cards: UsageKeysCard }) {

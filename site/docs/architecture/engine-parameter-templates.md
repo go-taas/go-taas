@@ -137,6 +137,16 @@ A new name is created in both cases. The response reports `created`, `overwritte
 
 The deploy form (`DeployForm`) has a **parameter template** picker above the engine arguments. It queries `ListEngineParamTemplates` with the currently selected engine/model/topology/card as context, so the dropdown only offers templates that can apply, best match first. Choosing one fills the shared flags, the extra arguments and each visible role's flags, then shows `已载入模板。下方仍可继续调整，服务会保存自己的副本。` — loading a template is a copy, not a reference: later editing the template never changes a service that was already deployed from it, and the service stores its own arguments like any hand-typed deployment.
 
+**Saving from the deploy form.** Tuning a service and only then realising the values are worth keeping is the normal order of events, so the form also *saves*: `deploy-template-save` opens a dialog that stores the parameters currently entered as a template.
+
+| Decision | Why |
+| --- | --- |
+| Only filled values are captured | An input left at its default is not a tuned value, and a template full of defaults hides the three flags that matter. Empty shared/extra/role entries are dropped before the POST. |
+| The context is captured too | Engine, model, topology and accelerator are what make the template appear again for the same combination and stay out of the way for others. The dialog shows that context (`template-context`) and the counts (`{args} parameters · {extra} extra arguments · {roles} role overrides`) before saving. |
+| Model scope is a choice | `template-scope-select` decides whether the template claims the selected model only (the common case) or any model on the engine (`model_id` left empty). Rank still applies: a model-specific template scores above a general one. |
+| Nothing to save is refused | A template with no parameters at all is rejected in the dialog instead of on the server, because an empty template is never useful. |
+| The new template is selected afterwards | After a save the match query re-runs and the new template is selected, so the answer to "did it work" is the row above, not a page reload. |
+
 ## 8. Acceptance criteria
 
 1. Creating a template with a duplicate name returns 10321; with an empty engine or an unknown topology, 10322.
@@ -146,5 +156,7 @@ The deploy form (`DeployForm`) has a **parameter template** picker above the eng
 5. Re-importing the same document with `skip` creates nothing; with `overwrite` it replaces every one and `skipped` is 0.
 6. In the deploy form, selecting a template fills the engine-argument inputs and the extra-argument rows.
 7. A deployed service keeps its arguments after the source template is edited or deleted.
+8. The deploy form saves the currently entered parameters as a template; only filled values are stored, the selected model is included unless "any model" is chosen, and a template with nothing in it is refused.
+9. Saving a template does not deploy anything and does not change the service being created.
 
 Verified live on https://taas.sudoinfotech.com: template list/create/match/export over the API, the templates page rendering, and the deploy form filling `max-model-len` = 8192, `gpu-memory-utilization` = 0.9 and an `--enable-chunked-prefill` row from a loaded template.

@@ -305,7 +305,15 @@ function AddToOrgDialog({
           (o) => o.organizationId !== 'platform',
         );
         setOrgs(list);
-        setSelected((prev) => prev || list[0]?.organizationId || '');
+        // Open on the user's current organization when they have one, so the
+        // dialog shows where they are before the operator changes it.
+        setSelected(
+          (prev) =>
+            prev ||
+            list.find((o) => o.organizationId === user.organizationId)?.organizationId ||
+            list[0]?.organizationId ||
+            '',
+        );
       })
       .catch(() => setOrgs([]))
       .finally(() => {
@@ -314,17 +322,40 @@ function AddToOrgDialog({
     return () => {
       cancelled = true;
     };
-  }, [orgId]);
+  }, [orgId, user.organizationId]);
+
+  // A save moves the account: joining an organization clears the previous one
+  // (and the projects the user held there), so the operator is told before,
+  // not left wondering why the old roster still listed them.
+  const movingFrom = user.organizationId && user.organizationId !== selected ? user.organizationId : '';
+  // The warning names organizations, not ids: the operator picked them by
+  // name and should read them back the same way.
+  const orgLabel = (id: string) => {
+    const org = orgs.find((o) => o.organizationId === id);
+    return org?.displayName && org.displayName !== id ? org.displayName : id;
+  };
 
   const submit = async () => {
     if (!selected) return;
     setSubmitting(true);
     setError('');
     try {
-      await api.post(`/api/v1/admin/tenancy/organizations/${selected}/members`, orgId, {
-        userId: user.userId,
-        role,
-      });
+      if (selected === user.organizationId) {
+        // The user is already in this organization, so the only thing that
+        // can change is the role: posting a "new member" would be refused as
+        // a duplicate. The owner's role is not editable here (the server
+        // protects it with 10032), which is the same rule the roster applies.
+        await api.patch(
+          `/api/v1/admin/tenancy/organizations/${selected}/members/${user.userId}`,
+          orgId,
+          { role },
+        );
+      } else {
+        await api.post(`/api/v1/admin/tenancy/organizations/${selected}/members`, orgId, {
+          userId: user.userId,
+          role,
+        });
+      }
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('users.addOrgFailed'));
@@ -360,6 +391,16 @@ function AddToOrgDialog({
             ))}
           </select>
         </label>
+        {movingFrom && (
+          <div className="form-field full">
+            <div className="error" data-testid="user-add-org-move-warning">
+              {t('users.addOrgMoveWarning', {
+                from: user.organizationName || orgLabel(movingFrom),
+                to: orgLabel(selected),
+              })}
+            </div>
+          </div>
+        )}
         <label>
           {t('users.role')}
           <select

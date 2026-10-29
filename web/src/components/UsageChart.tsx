@@ -6,6 +6,7 @@
 import { useMemo } from 'react';
 import type { DailyBucket, DashboardGroup } from '../api';
 import { useI18n } from '../i18n';
+import { formatMajor } from '../display';
 
 export type ChartMetric = 'cost' | 'tokens' | 'requests';
 
@@ -84,7 +85,7 @@ export default function UsageChart({
             height={Math.max(h, 0.5)}
             fill={seg.color}
           >
-            <title>{`${seg.key}: ${seg.value.toLocaleString()}`}</title>
+            <title>{`${seg.key}: ${metric === 'cost' ? formatMajor(seg.value) : seg.value.toLocaleString()}`}</title>
           </rect>
         );
       });

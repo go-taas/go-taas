@@ -7,13 +7,14 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   formatTime,
+  type ModelSummary,
   type PageMeta,
   type PriceEntry,
   type PriceTier,
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { usePlatformDisplay } from '../platform';
+import { useFleetAccelerators } from '../hooks/useFleetAccelerators';
 import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
 
 interface PricesResponse {
@@ -29,9 +30,10 @@ interface SetPriceResponse {
 
 const PAGE_SIZE = 20;
 
-// SUPPORTED_CURRENCIES is the set of currencies the set-price dialog
-// offers. It mirrors the backend billing.supportedCurrencies config.
-const SUPPORTED_CURRENCIES = ['USD', 'CNY'];
+// DEFAULT_CARD is the price row that applies to every card type a model runs
+// on. The pricing matrix falls back to it when no card-specific row matches,
+// so it is offered next to the real card types.
+const DEFAULT_CARD = 'default';
 
 // tierLabel renders one tier's bound compactly (1.2M style).
 function tierBound(tokens: number): string {
@@ -53,6 +55,21 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  // The catalog resolves a price row's model id to a readable name; the same
+  // list fills the dialog's model picker.
+  const [models, setModels] = useState<ModelSummary[]>([]);
+
+  useEffect(() => {
+    api
+      .get<{ models?: ModelSummary[] }>('/api/v1/admin/models?page.limit=200', orgId)
+      .then((data) => setModels(data.models || []))
+      .catch(() => setModels([]));
+  }, [api, orgId]);
+
+  const modelName = useCallback(
+    (id: string) => models.find((m) => m.modelId === id)?.name || id,
+    [models],
+  );
 
   const load = useCallback(async () => {
     setError('');
@@ -148,7 +165,8 @@ export default function PricingPage() {
                   data-testid={`pricing-row-${p.modelId}-${p.acceleratorType}`}
                 >
                   <td>
-                    <strong className="mono">{p.modelId}</strong>
+                    <strong>{modelName(p.modelId)}</strong>
+                    <div className="muted small mono">{p.modelId}</div>
                   </td>
                   <td className="mono">{p.acceleratorType}</td>
                   <td>{p.inputPricePerMillion}</td>
@@ -180,6 +198,7 @@ export default function PricingPage() {
       {dialogOpen && (
         <SetPriceDialog
           orgId={orgId}
+          models={models}
           onClose={() => setDialogOpen(false)}
           onSaved={() => {
             setDialogOpen(false);
@@ -195,26 +214,30 @@ export default function PricingPage() {
 // failures (10507) render inline.
 function SetPriceDialog({
   orgId,
+  models,
   onClose,
   onSaved,
 }: {
   orgId: string;
+  models: ModelSummary[];
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { t } = useI18n();
   const [modelId, setModelId] = useState('');
-  const [card, setCard] = useState('');
+  const [card, setCard] = useState(DEFAULT_CARD);
   const [inputRate, setInputRate] = useState('');
   const [outputRate, setOutputRate] = useState('');
   const [cachedRate, setCachedRate] = useState('0');
-  // A new price is authored in the platform's display currency by default;
-  // the operator can still price a model in another currency.
-  const platform = usePlatformDisplay();
-  const [currency, setCurrency] = useState(platform.currency);
   const [tiers, setTiers] = useState<PriceTier[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
+
+  // The model and the card type are picked from what the platform actually
+  // has, not typed from memory: a price row pointing at a model id or card
+  // name that does not exist prices nothing at all, and the operator would
+  // only discover it when settlement silently left the usage unpriced.
+  const fleet = useFleetAccelerators(orgId);
 
   const addTier = () => {
     setTiers((prev) => [
@@ -233,7 +256,11 @@ function SetPriceDialog({
         inputPricePerMillion: Number(inputRate) || 0,
         outputPricePerMillion: Number(outputRate) || 0,
         cachedPricePerMillion: Number(cachedRate) || 0,
-        currency,
+        // No currency is sent: a price is authored in the installation's
+        // settlement currency, which the server knows (billing.currency). The
+        // console prints it in the display currency, so the two must agree —
+        // the system-preferences page warns when they do not, and picking a
+        // currency here would let a price be stored in a unit no one converts.
       };
       if (tiers.length > 0) {
         body.tiers = tiers.map((t) => ({
@@ -257,21 +284,38 @@ function SetPriceDialog({
       <div className="form-grid">
         <label>
           {t('pricing.fieldModel')}
-          <input
+          <select
             data-testid="set-price-model"
             value={modelId}
             onChange={(e) => setModelId(e.target.value)}
-            placeholder={t('pricing.placeholderModel')}
-          />
+          >
+            <option value="">{t('pricing.selectModel')}</option>
+            {models.map((m) => (
+              <option key={m.modelId} value={m.modelId}>
+                {m.name}
+                {m.external ? ` (${t('modeldetail.external')})` : ''}
+              </option>
+            ))}
+          </select>
+          {models.length === 0 && (
+            <span className="field-hint">{t('pricing.noModels')}</span>
+          )}
         </label>
         <label>
           {t('pricing.fieldCard')}
-          <input
+          <select
             data-testid="set-price-card"
             value={card}
             onChange={(e) => setCard(e.target.value)}
-            placeholder={t('pricing.placeholderCard')}
-          />
+          >
+            <option value={DEFAULT_CARD}>{t('pricing.cardDefault')}</option>
+            {fleet.cardTypes.map((c) => (
+              <option key={`${c.vendor}:${c.cardType}`} value={c.cardType}>
+                {c.cardType}
+              </option>
+            ))}
+          </select>
+          <span className="field-hint">{t('pricing.cardHint')}</span>
         </label>
         <label>
           {t('pricing.fieldInput')}
@@ -305,20 +349,6 @@ function SetPriceDialog({
             value={cachedRate}
             onChange={(e) => setCachedRate(e.target.value)}
           />
-        </label>
-        <label>
-          {t('pricing.fieldCurrency')}
-          <select
-            data-testid="set-price-currency"
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value)}
-          >
-            {SUPPORTED_CURRENCIES.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
         </label>
       </div>
 

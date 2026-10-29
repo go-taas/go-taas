@@ -8,6 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
+import { formatMoney } from '../../display';
 import { ErrorBanner } from '../../components';
 import ForecastChart, { type ForecastMetric } from '../../components/ForecastChart';
 
@@ -193,7 +194,7 @@ export default function UserForecastPage() {
             <div className="card">
               <div className="card-label">{t('forecast.forecastCost')}</div>
               <div className="card-value" data-testid="forecast-cost">
-                {summary ? `${(parseInt(summary.totalCostCents || '0', 10) / 100).toFixed(2)}` : '0'}
+                {formatMoney(summary ? summary.totalCostCents : '0')}
               </div>
             </div>
             <div className="card">

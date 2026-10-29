@@ -4,10 +4,11 @@
 
 import type { UsageKeyTopRow } from '../api';
 import { useI18n } from '../i18n';
+import { formatMoney } from '../display';
 
-// costDollars formats integer cents as dollars.
+// costDollars formats integer cents in the platform's display currency.
 function costDollars(cents: string): string {
-  return `$${(parseInt(cents || '0', 10) / 100).toFixed(2)}`;
+  return formatMoney(cents);
 }
 
 export default function TopKeysList({

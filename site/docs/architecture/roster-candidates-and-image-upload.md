@@ -79,6 +79,24 @@ Passing a form reference as a selector fails with `Tag "…" not found` — the 
 - **Invitations** names the organization by display name (`organizationLabel`, falling back to the console scope's name) instead of printing its UUID.
 - **Clusters** groups *discover / refresh / register* into one `.toolbar`, because the page header distributes its direct children with `space-between` — three sibling buttons were pushed to opposite edges.
 
+## 3b. Joining is a move
+
+The roster pick-lists assume the invariant "an account belongs to at most one organization and one project". It used to be documentation only: `AddOrgMember` inserted the new row and left the old one, and the directory — which resolves the *oldest* membership — kept reporting the organization the user had just left. Moving someone between organizations therefore looked like it did nothing.
+
+`MoveUserToOrg` (`AddOrgMember`) and `MoveUserToProject` (`AddProjectMember`) make it true at write time, in one transaction with the insert that follows:
+
+| Rule | Effect |
+| --- | --- |
+| other organizations cleared | `DELETE FROM org_members WHERE user_id = ? AND organization_id <> ? AND organization_id <> 'platform'` |
+| projects of other organizations cleared | a member of org B cannot hold a project of org A, so those `project_members` rows go too |
+| the platform anchor is spared | `platform` is the tenancy anchor of the platform, not an affiliation a person joins |
+| the target organization's projects are kept | a project inside the organization being joined survives |
+| other projects cleared (project add) | an account belongs to at most one project |
+
+**An owner is not movable.** An organization must keep an owner, and the roster already refuses to remove one (10032). The move refuses the same way instead of finding a loophole through the platform directory: an owner must hand ownership over first.
+
+The console reflects this: the users page's dialog opens on the account's current organization, shows a warning naming the organization it will leave (and that its projects there go with it), and — when the organization does not change — sends a role update (`PATCH`) instead of a duplicate "add" that would answer 10029.
+
 ## 4. Errors
 
 | Code | Name | When |
@@ -88,6 +106,8 @@ Passing a form reference as a selector fails with `Tag "…" not found` — the 
 | 10203 | `IMAGE_INCOMPATIBLE` | accelerator is not a known vendor or `cpu` |
 | 10007 / 10036 | role errors | caller may not administer the roster |
 | 10006 | `PROJECT_NOT_FOUND` | project candidate list for a missing project |
+| 10029 | `MEMBER_EXISTS` | adding an account that is already in that organization (the console sends a role update instead) |
+| 10032 | `OWNER_PROTECTED` | moving an account out of an organization it owns |
 
 ## 5. Configuration
 
@@ -113,6 +133,9 @@ The chart exposes `harbor.uploadMaxArchiveBytes` (0 uses the default). The conso
 - **AC6** An untagged archive uploads correctly (nothing selects a member by the form reference).
 - **AC7** `image.upload.maxArchiveBytes` bounds the request; the chart exposes it.
 - **AC8** The image page has no register action; the invitations page names the organization; the cluster actions are one group.
+- **AC9** Adding a user to a second organization removes the first membership and any project membership held in the organization they left; the directory then reports the new organization.
+- **AC10** A project of the organization being joined is kept across the move.
+- **AC11** Moving an owner is refused with 10032 and nothing changes.
 
 ## 7. Verification
 

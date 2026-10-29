@@ -8,6 +8,7 @@
 import { useMemo } from 'react';
 import type { UsageKeysSeriesPoint } from '../api';
 import { useI18n } from '../i18n';
+import { formatMajor } from '../display';
 
 export type UsageKeysMetric = 'requests' | 'tokens' | 'cost' | 'errorRate';
 
@@ -92,7 +93,7 @@ export default function UsageKeysChart({
             height={b.h}
             fill={b.color}
           >
-            <title>{`${new Date(parseInt(b.bucket, 10) * 1000).toISOString()}: ${b.value.toLocaleString()}`}</title>
+            <title>{`${new Date(parseInt(b.bucket, 10) * 1000).toISOString()}: ${metric === 'cost' ? formatMajor(b.value) : b.value.toLocaleString()}`}</title>
           </rect>
         ))}
       </svg>

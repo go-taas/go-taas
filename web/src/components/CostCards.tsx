@@ -6,19 +6,18 @@
 
 import type { CostAnalyticsCard } from '../api';
 import { formatTime } from '../api';
+import { formatAmount, formatMoney } from '../display';
 import { useI18n } from '../i18n';
 
-// costDollars formats integer cents as dollars.
-function costDollars(cents: string): string {
-  return `$${(parseInt(cents || '0', 10) / 100).toFixed(2)}`;
-}
-
-// costPerToken derives cost-per-token as cents per 1000 tokens.
+// costPerToken derives the price of 1000 tokens from the cents/token ratio,
+// in the platform's display currency. It used to hard-code a dollar sign,
+// which is what kept this page saying $ after the installation switched to
+// CNY.
 function costPerToken(card: CostAnalyticsCard): string {
   const tokens = parseInt(card.totalTokens || '0', 10);
   if (tokens === 0) return '—';
   const cents = parseInt(card.totalCostCents || '0', 10);
-  return `$${((cents / tokens) * 1000 / 100).toFixed(4)}/1k`;
+  return `${formatAmount((cents / tokens) * 1000, 4)}/1k`;
 }
 
 export default function CostCards({ cards }: { cards: CostAnalyticsCard }) {
@@ -27,7 +26,7 @@ export default function CostCards({ cards }: { cards: CostAnalyticsCard }) {
   return (
     <div className="card-row" data-testid="cost-cards">
       <div className="card" data-testid="cost-card-total-cost">
-        <div className="card-value">{costDollars(cards.totalCostCents)}</div>
+        <div className="card-value">{formatMoney(cards.totalCostCents)}</div>
         <div className="card-label">{t('costCards.totalCost')}</div>
         <div className="card-note">{t('common.dataThrough', { time: dataThrough })}</div>
       </div>

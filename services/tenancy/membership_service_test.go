@@ -358,3 +358,169 @@ func TestRoleGuardTruthTable(t *testing.T) {
 	err = guard.RequireAdminOrOwner(ctx, "org-a", "u-nobody")
 	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
 }
+
+// seedOrganization adds an organization row directly, so the directory can
+// resolve a membership's display name.
+func seedOrganization(t *testing.T, svc *Service, orgID, displayName string) {
+	t.Helper()
+	repo := NewRepository(svc.repo.db.DB(context.Background()))
+	require.NoError(t, repo.CreateOrganization(context.Background(), &Organization{
+		ID: orgID, DisplayName: displayName, State: StateActive,
+	}))
+}
+
+// TestAddOrgMemberMovesTheUserAcrossOrganizations covers the single-organization
+// rule at write time: joining a second organization removes the first, and with
+// it any project membership the user held inside the organization they left.
+func TestAddOrgMemberMovesTheUserAcrossOrganizations(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+
+	seedOrganization(t, svc, "org-a", "Org A")
+	seedOrganization(t, svc, "org-b", "Org B")
+	// The caller administers both organizations.
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedMember(t, svc, "org-b", "u-admin", RoleOwner)
+	// The user starts out in org-a, on a project of org-a.
+	seedMember(t, svc, "org-a", "u-2", RoleMember)
+	seedProject(t, svc, "proj-a", "org-a")
+	seedProjectMember(t, svc, "proj-a", "u-2", RoleMember)
+
+	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-b", UserId: "u-2", Role: RoleMember,
+	})
+	require.NoError(t, err)
+
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	// The old organization membership is gone.
+	old, err := repo.FindMember(ctx, "org-a", "u-2")
+	require.NoError(t, err)
+	assert.Nil(t, old, "joining org-b must remove the org-a membership")
+
+	// The new one exists.
+	moved, err := repo.FindMember(ctx, "org-b", "u-2")
+	require.NoError(t, err)
+	require.NotNil(t, moved)
+	assert.Equal(t, RoleMember, moved.Role)
+
+	// The project of the organization they left is no longer theirs.
+	pm, err := repo.FindProjectMember(ctx, "proj-a", "u-2")
+	require.NoError(t, err)
+	assert.Nil(t, pm, "a project of the previous organization must not survive the move")
+
+	// The directory resolves the new organization.
+	resolver := NewMembershipResolver(svc.repo.db.DB(ctx))
+	affiliation, err := resolver.UserAffiliation(ctx, "u-2")
+	require.NoError(t, err)
+	assert.Equal(t, "org-b", affiliation.OrganizationID)
+	assert.Equal(t, "Org B", affiliation.OrganizationName)
+	assert.Empty(t, affiliation.ProjectID)
+}
+
+// TestAddOrgMemberKeepsProjectsOfTheTargetOrganization proves the move does not
+// take away a project the user already holds inside the organization they are
+// joining.
+func TestAddOrgMemberKeepsProjectsOfTheTargetOrganization(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+
+	seedOrganization(t, svc, "org-a", "Org A")
+	seedOrganization(t, svc, "org-b", "Org B")
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedMember(t, svc, "org-b", "u-admin", RoleOwner)
+	seedProject(t, svc, "proj-b", "org-b")
+	seedProjectMember(t, svc, "proj-b", "u-2", RoleMember)
+
+	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-b", UserId: "u-2", Role: RoleMember,
+	})
+	require.NoError(t, err)
+
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	pm, err := repo.FindProjectMember(ctx, "proj-b", "u-2")
+	require.NoError(t, err)
+	require.NotNil(t, pm, "a project of the target organization must be kept")
+}
+
+// TestAddOrgMemberKeepsThePlatformMembership proves the platform anchor is not
+// treated as an affiliation the move clears.
+func TestAddOrgMemberKeepsThePlatformMembership(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+
+	seedOrganization(t, svc, "org-a", "Org A")
+	seedOrganization(t, svc, "org-b", "Org B")
+	seedMember(t, svc, platformOrgID, "u-admin", RoleOwner)
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedMember(t, svc, "org-b", "u-admin", RoleOwner)
+	seedMember(t, svc, "org-a", "u-2", RoleMember)
+
+	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-b", UserId: "u-2", Role: RoleMember,
+	})
+	require.NoError(t, err)
+
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	platform, err := repo.FindMember(ctx, platformOrgID, "u-2")
+	require.NoError(t, err)
+	assert.Nil(t, platform, "the user was never in the platform organization")
+
+	anchor, err := repo.FindMember(ctx, platformOrgID, "u-admin")
+	require.NoError(t, err)
+	assert.NotNil(t, anchor, "the platform anchor membership is never cleared by a move")
+}
+
+// TestAddProjectMemberMovesTheUserAcrossProjects covers the same rule at the
+// project level: an account belongs to at most one project.
+func TestAddProjectMemberMovesTheUserAcrossProjects(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+
+	seedOrganization(t, svc, "org-a", "Org A")
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedProject(t, svc, "proj-1", "org-a")
+	seedProject(t, svc, "proj-2", "org-a")
+	seedProjectMember(t, svc, "proj-1", "u-2", RoleMember)
+
+	_, err := svc.AddProjectMember(ctx, &tenancyv1.AddProjectMemberRequest{
+		ProjectId: "proj-2", UserId: "u-2", Role: RoleMember,
+	})
+	require.NoError(t, err)
+
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	first, err := repo.FindProjectMember(ctx, "proj-1", "u-2")
+	require.NoError(t, err)
+	assert.Nil(t, first, "joining a second project must remove the first membership")
+
+	second, err := repo.FindProjectMember(ctx, "proj-2", "u-2")
+	require.NoError(t, err)
+	require.NotNil(t, second)
+}
+
+// TestAddOrgMemberRefusesToMoveAnOwner keeps an organization from losing its
+// last owner through the platform directory: the move is refused with 10032,
+// the same code the roster returns when removing an owner.
+func TestAddOrgMemberRefusesToMoveAnOwner(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+
+	seedOrganization(t, svc, "org-a", "Org A")
+	seedOrganization(t, svc, "org-b", "Org B")
+	seedMember(t, svc, "org-a", "u-owner", RoleOwner)
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+	seedMember(t, svc, "org-b", "u-admin", RoleOwner)
+
+	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
+		OrganizationId: "org-b", UserId: "u-owner", Role: RoleMember,
+	})
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeOwnerProtected, ae.Code)
+
+	// Nothing moved.
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	still, err := repo.FindMember(ctx, "org-a", "u-owner")
+	require.NoError(t, err)
+	require.NotNil(t, still, "a refused move must leave the owner in place")
+	assert.Equal(t, RoleOwner, still.Role)
+}

@@ -6,6 +6,7 @@
 
 import { useMemo } from 'react';
 import type { CostSeriesPoint } from '../api';
+import { formatAmount, formatMajor } from '../display';
 import { useI18n } from '../i18n';
 
 export type CostMetric = 'cost' | 'tokens' | 'costPerToken';
@@ -89,7 +90,7 @@ export default function CostChart({
             height={b.h}
             fill={b.color}
           >
-            <title>{`${new Date(parseInt(b.bucket, 10) * 1000).toISOString()}: ${b.value.toLocaleString()}`}</title>
+            <title>{`${new Date(parseInt(b.bucket, 10) * 1000).toISOString()}: ${formatMetric(b.value, metric)}`}</title>
           </rect>
         ))}
       </svg>
@@ -101,6 +102,19 @@ export default function CostChart({
       </div>
     </div>
   );
+}
+
+// formatMetric renders a plotted value in the metric's own unit, so a cost
+// tooltip carries the platform's currency symbol instead of a bare number.
+function formatMetric(value: number, metric: CostMetric): string {
+  switch (metric) {
+    case 'tokens':
+      return value.toLocaleString();
+    case 'costPerToken':
+      return `${formatAmount(Math.round(value), 4)}/token`;
+    default:
+      return formatMajor(value);
+  }
 }
 
 // barWidth recomputes the bar width from the bar count.
