@@ -1,3 +1,10 @@
+## [1.100.1](https://github.com/go-taas/go-taas/compare/v1.100.0...v1.100.1) (2026-10-29)
+
+
+### Bug Fixes
+
+* **tenancy:** refuse a duplicate join before moving the account ([6668f59](https://github.com/go-taas/go-taas/commit/6668f59fed515c0302e9d2f316bc19bc68d4d181))
+
 # [1.100.0](https://github.com/go-taas/go-taas/compare/v1.99.0...v1.100.0) (2026-10-29)
 
 
