@@ -1,3 +1,10 @@
+## [1.100.2](https://github.com/go-taas/go-taas/compare/v1.100.1...v1.100.2) (2026-10-29)
+
+
+### Bug Fixes
+
+* **infer:** reject a template that carries nothing ([d170ab9](https://github.com/go-taas/go-taas/commit/d170ab972b05511ad0d9b350685038b45f8a013e))
+
 ## [1.100.1](https://github.com/go-taas/go-taas/compare/v1.100.0...v1.100.1) (2026-10-29)
 
 
