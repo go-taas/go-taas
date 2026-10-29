@@ -1,3 +1,10 @@
+# [1.100.0](https://github.com/go-taas/go-taas/compare/v1.99.0...v1.100.0) (2026-10-29)
+
+
+### Features
+
+* **billing,tenancy,infer,console:** price pickers, template save, currency sweep, org move ([331d81f](https://github.com/go-taas/go-taas/commit/331d81fe22b93e919d04c7f825aed7ac496df1f0))
+
 # [1.99.0](https://github.com/go-taas/go-taas/compare/v1.98.0...v1.99.0) (2026-10-28)
 
 
