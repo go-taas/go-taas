@@ -98,12 +98,12 @@ Go TaaS 不内置这些组件。请使用它们各自的 Chart 安装，并遵�
 ### 3.1 Gateway API 与 Envoy Gateway
 
 ```bash
-# Gateway API CRD（standard 通道）
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+# Gateway API CRD（standard 通道；v1.5.1 为参考部署使用的版本）
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
-# Envoy Gateway
+# Envoy Gateway（参考部署为 v1.8.1；上游当前版本为 v1.9.x）
 helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.2.1 --namespace envoy-gateway-system --create-namespace
+  --version v1.8.1 --namespace envoy-gateway-system --create-namespace
 kubectl wait --timeout=5m -n envoy-gateway-system \
   deployment/envoy-gateway --for=condition=Available
 ```
@@ -140,17 +140,24 @@ kubectl -n envoy-gateway-system get gateway envoy-gateway   # ADDRESS 即入口�
 
 ### 3.2 AIBrix
 
+AIBrix 以发布清单形式分发；请按其 README 的顺序安装（先依赖，再 CRD，最后组件）：
+
 ```bash
 export AIBRIX_VERSION=v0.7.0     # 参考部署使用 0.7.0；更高版本同样可用
-kubectl create namespace aibrix-system
-helm install aibrix oci://ghcr.io/vllm-project/aibrix/charts/aibrix \
-  --version ${AIBRIX_VERSION#v} --namespace aibrix-system
+
+# 依赖（Envoy Gateway、KubeRay 等）
+kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-dependency-${AIBRIX_VERSION}.yaml" --server-side
 # CRD 单独发布，这样卸载 operator 不会删除用户资源
-kubectl apply -f https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core.crds.yaml
+kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-crds-${AIBRIX_VERSION}.yaml" --server-side
+# operator 及其数据面
+kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-${AIBRIX_VERSION}.yaml"
 
 kubectl -n aibrix-system get pods
 kubectl get gatewayclass                      # 应看到 aibrix-eg，Accepted=True
 ```
+
+AIBrix 同时提供 Helm Chart；
+[官方安装文档](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html)对两种方式都有说明。
 
 AIBrix 会自带 Envoy 数据面；它创建的 Service 就是平台转发推理流量指向的目标（步骤 9 会说明如何确定其名称）。
 

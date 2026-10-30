@@ -99,12 +99,12 @@ Go TaaS does not vendor these. Install them with their own charts and follow the
 ### 3.1 Gateway API and Envoy Gateway
 
 ```bash
-# Gateway API CRDs (standard channel)
-kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.2.1/standard-install.yaml
+# Gateway API CRDs (standard channel; v1.5.1 is what the reference deployment runs)
+kubectl apply -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.1/standard-install.yaml
 
-# Envoy Gateway
+# Envoy Gateway (v1.8.1 is what the reference deployment runs; v1.9.x is current upstream)
 helm install envoy-gateway oci://docker.io/envoyproxy/gateway-helm \
-  --version v1.2.1 --namespace envoy-gateway-system --create-namespace
+  --version v1.8.1 --namespace envoy-gateway-system --create-namespace
 kubectl wait --timeout=5m -n envoy-gateway-system \
   deployment/envoy-gateway --for=condition=Available
 ```
@@ -141,17 +141,26 @@ kubectl -n envoy-gateway-system get gateway envoy-gateway   # ADDRESS is the ent
 
 ### 3.2 AIBrix
 
+AIBrix ships release manifests; install them in the documented order (dependencies, CRDs, then
+components), which is also what its README prescribes:
+
 ```bash
 export AIBRIX_VERSION=v0.7.0     # the reference deployment runs 0.7.0; newer releases work
-kubectl create namespace aibrix-system
-helm install aibrix oci://ghcr.io/vllm-project/aibrix/charts/aibrix \
-  --version ${AIBRIX_VERSION#v} --namespace aibrix-system
-# CRDs ship as their own release so uninstalling the operator keeps user resources
-kubectl apply -f https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core.crds.yaml
+
+# dependencies (Envoy Gateway, KubeRay, ...)
+kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-dependency-${AIBRIX_VERSION}.yaml" --server-side
+# CRDs ship separately so uninstalling the operator does not delete user resources
+kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-crds-${AIBRIX_VERSION}.yaml" --server-side
+# the operator and its data plane
+kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-${AIBRIX_VERSION}.yaml"
 
 kubectl -n aibrix-system get pods
 kubectl get gatewayclass                      # expect aibrix-eg, Accepted=True
 ```
+
+AIBrix also publishes a Helm chart; the
+[installation guide](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html)
+documents both routes.
 
 AIBrix installs its own Envoy data plane; the Service it creates is what the platform routes inference traffic to (step 9 discovers its exact name).
 
