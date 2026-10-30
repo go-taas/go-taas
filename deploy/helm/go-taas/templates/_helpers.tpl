@@ -268,7 +268,20 @@ Import is disabled when hostname is empty, and the console then explains
 that instead of failing halfway through a transfer.
 */}}
 {{- define "go-taas.harbor.env" -}}
-{{- with .Values.harbor }}
+{{/*
+Two locations are accepted. `harbor` (top level) is canonical and what the
+chart used to render; `taasServer.harbor` is where earlier values files
+documented the same block, so a values file written against that
+documentation is not silently ignored.
+*/}}
+{{- $harbor := deepCopy (.Values.harbor | default dict) -}}
+{{- $legacy := deepCopy (((.Values.taasServer) | default dict).harbor | default dict) -}}
+{{- if $legacy -}}
+{{/* merge keeps the destination's values, so `harbor` (the destination)
+     wins over the legacy location on any key both set. */}}
+{{- $harbor = merge $harbor $legacy -}}
+{{- end -}}
+{{- with $harbor }}
 {{- if .hostname }}
 - name: CONFIG_IMAGE_HARBOR_URL
   value: {{ .hostname | quote }}

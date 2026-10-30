@@ -199,21 +199,66 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 
 ## 快速开始
 
-### 一键部署（Helm）
+完整且经过验证的安装路径 —— 集群前置条件、每个第三方组件及其官方安装文档、生产 values 文件、
+带域名与证书的控制台暴露、首次使用清单 —— 见
+**[在 Kubernetes 上安装 Go TaaS](./site/docs/getting-started/installation.zh-cn.md)**
+（[English](./site/docs/getting-started/installation.md)）。快速路径如下：
 
-使用自研 [Helm Chart](./deploy/helm/go-taas) 把整套栈部署到 Kubernetes（要求 Kubernetes 1.25+ 与 Helm 3.8+）：
+### 1. Kubernetes（已有集群可跳过）
+
+参考部署运行在 **[RKE2](https://docs.rke2.io/install/quickstart)** 上；k3s、kind 以及托管
+Kubernetes（EKS/GKE/AKS）同样可用。要求：Kubernetes 1.25+，且存在默认 StorageClass。
+GPU 节点需安装 NVIDIA GPU Operator（或厂商 device plugin），使 `nvidia.com/gpu` 可分配。
+
+### 2. 第三方组件
+
+请使用它们各自的 Chart 安装 —— 平台不内置这些组件：
+
+| 组件 | 用途 | 官方安装文档 |
+| --- | --- | --- |
+| Gateway API CRD + Envoy Gateway | 通过 Gateway 以 TLS 暴露控制台 | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
+| AIBrix | 推理服务（`StormService`、`ModelClaim`、`aibrix-eg`） | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| Volcano | Gang 调度与优先级抢占 | [Volcano](https://volcano.sh/en/docs/installation/) |
+| JuiceFS CSI（或任意 RWX 存储） | 控制面与推理 Pod 共享的模型权重 | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
+| Harbor（可选） | 把外部镜像导入/上传到自有仓库 | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
+| kube-prometheus-stack（可选） | 指标与延迟页面 | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
+| HAMi（可选） | vGPU 切分 | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| cert-manager（可选） | 签发控制台与推理域名证书 | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
+
+只要**控制台**的话，除集群与一个 StorageClass 外不需要安装任何组件。
+
+### 3. 安装平台
 
 ```bash
-helm install taas deploy/helm/go-taas --namespace taas --create-namespace
-kubectl --namespace taas port-forward svc/taas-server 9091:9091
-# 控制台：http://127.0.0.1:9091/ · /admin
+git clone https://github.com/go-taas/go-taas.git
+cd go-taas
+
+helm install taas deploy/helm/go-taas \
+  --namespace taas --create-namespace \
+  --set auth.seedSso.adminLocalPassword='<YourStr0ng!Pass>'
 ```
 
-默认配置下，Chart 会在集群内置备 PostgreSQL、Redis、RabbitMQ 与 **Keycloak**（每个依赖均可切换为外部实例），并把凭据接线到控制面。内置 Keycloak 会 seed 出 `go-taas` realm 与 `admin`/`admin` 用户，因此可以立即登录控制台。完整的 values 参考、外部依赖接线方式与生产检查清单见 Chart 的 [README](./deploy/helm/go-taas/README.zh-cn.md)（英文版 [README.md](./deploy/helm/go-taas/README.md)）。
+默认配置下 Chart 会在集群内置备 PostgreSQL、Redis 与 RabbitMQ，把凭据生成到发布的 Secret 中，
+并在平台自有账号体系中初始化管理员 `admin` —— 不需要任何 IdP（`dependencies.keycloak.mode`
+默认为 `disabled`）。用于真实部署时，请复制带注释的
+[生产 values 文件](./site/docs/getting-started/installation.zh-cn.md#51-values-文件)，补上共享权重 PVC、
+Harbor 仓库与 Volcano 调度配置。
 
-若要通过网关或 Ingress 暴露控制台，请把 Keycloak 的 redirect URI 与 web origin 设置为公网地址（见 Chart README 的「SSO 与内置 Keycloak」一节）。
+### 4. 打开控制台
 
-### 环境要求
+```bash
+kubectl --namespace taas port-forward svc/taas-go-taas-server 9091:9091
+# 用户控制台：http://127.0.0.1:9091/ · 管理控制台：http://127.0.0.1:9091/admin
+```
+
+用 `admin` 与 `auth.seedSso.adminLocalPassword` 中的密码登录。要通过真实域名 + Gateway 暴露，
+请应用[控制台 HTTPRoute](./site/docs/getting-started/installation.zh-cn.md#方案-b--gateway-api-httproute--真实域名与证书)，
+并务必带上 `timeouts.request: 900s`（模型与镜像上传都是长时间传输）。
+
+> 资源名由发布名与 Chart 名拼接：发布名 `taas` + Chart `go-taas` 得到 `taas-go-taas-server`、
+> `taas-go-taas-postgresql` 等。
+
+### 环境要求（源码构建）
 
 - Go 1.26+
 - golangci-lint v2
@@ -237,10 +282,11 @@ make build   # 构建二进制
 make test    # 完整测试目标
 ```
 
-### Docker Compose 体验
+### Docker Compose（开发环境）
 
-一键体验环境：控制面（含控制台）+ PostgreSQL + Redis + 消息队列 + 挂载共享
-模型权重文件系统的 JuiceFS 客户端。
+面向有本地 Kubernetes 上下文的机器的一键体验环境：控制面（含控制台）+ PostgreSQL + Redis +
+消息队列 + 挂载共享模型权重文件系统的 JuiceFS 客户端。它是开发环境，不是安装方式 —— 需要多人
+共享的部署请使用 Helm Chart。
 
 ```bash
 cp .env.example .env   # 填写 Harbor 与 JuiceFS/MinIO 配置（见下）
@@ -289,21 +335,15 @@ docker run -p 8080:8080 -e TASS_PROXY_PASS=http://<网关地址>:9091 \
 make compose-up GOPROXY=https://goproxy.cn,direct NPM_REGISTRY=https://registry.npmmirror.com
 ```
 
-### 生产部署（Helm）
+### Helm Chart 参考
 
-在专属 Kubernetes 环境中，使用自研 Helm Chart 部署控制面：[deploy/helm/go-taas](./deploy/helm/go-taas)（完整的 values 参考、外部依赖接线方式与生产检查清单见 Chart 的 [README](./deploy/helm/go-taas/README.zh-cn.md)，英文版为 [README.md](./deploy/helm/go-taas/README.md)）：
-
-```bash
-helm install taas deploy/helm/go-taas --namespace taas --create-namespace
-kubectl --namespace taas port-forward svc/taas-server 9091:9091
-# 控制台：http://127.0.0.1:9091/
-```
-
-PostgreSQL、Redis、RabbitMQ 与 Keycloak 通过按依赖配置的策略接入控制面 —— 既可以是 Chart 置备并管理的集群内实例，也可以是外部服务（Chart 不负责其部署，只负责把凭据接入）。内置 Keycloak 会 seed 出 `go-taas` realm 与 `admin`/`admin` 用户，让控制台立即可用；通过网关或 Ingress 暴露时，请把 `dependencies.keycloak.internal.redirectUri` 与 `webOrigin` 设置为公网地址。凭据可来自 Chart 的密钥生成器、`secrets.existingSecret`，或两者并用。本地可用以下目标校验 Chart：
+所有 values —— 外接 PostgreSQL / Redis / RabbitMQ、使用已有 Secret 提供凭据、资源标签、数据面
+Gateway 与网关插件 —— 都记录在 Chart 的 [README](./deploy/helm/go-taas/README.zh-cn.md)
+（[English](./deploy/helm/go-taas/README.md)）中。本地可用以下目标校验 Chart：
 
 ```bash
-make helm-lint        # lint the chart (values schema included)
-make helm-template    # render all templates with default values
+make helm-lint        # lint Chart（含 values schema）
+make helm-template    # 用默认 values 渲染全部模板
 ```
 
 ## 使用示例
@@ -344,11 +384,14 @@ curl https://<your-taas-host>/v1/chat/completions \
 | 文档 | 语言 |
 | --- | --- |
 | [文档浏览器](https://go-taas.com/docs.html) | English / 中文 |
+| [安装与部署指南](./site/docs/getting-started/installation.zh-cn.md) | 中文 |
+| [Installation and deployment guide](./site/docs/getting-started/installation.md) | English |
 | [Architecture Design](./site/docs/design/architecture.md) | English |
 | [架构设计文档](./site/docs/design/architecture.zh-cn.md) | 中文 |
 
 [`site/docs/`](./site/docs) 目录包含完整文档集，浏览器渲染的正是这些文件：
 
+- [`site/docs/getting-started/`](./site/docs/getting-started) —— 安装与部署指南（英文 + `zh-cn`）。
 - [`site/docs/design/`](./site/docs/design) —— 每个特性点的产品/UI 设计文档（英文 + `zh-cn`）。
 - [`site/docs/architecture/`](./site/docs/architecture) —— 每个特性点的架构与详细设计文档（英文 + `zh-cn`）。
 - `site/docs/api/` —— 按服务生成的 OpenAPI/Swagger 规范（auth、model、infer、billing 等），由 `make pbgen` 生成，不入库。

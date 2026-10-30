@@ -20,6 +20,7 @@ site/
 ├── vendor/          # pinned third-party builds (see vendor/README.md)
 ├── docs/            # the documentation set, served as static files
 │   ├── manifest.json  # generated index (do not edit by hand)
+│   ├── getting-started/  # installation and deployment guide, EN + zh-cn
 │   ├── design/        # product/UI design documents, EN + zh-cn per feature point
 │   ├── architecture/  # architecture and detailed design documents, EN + zh-cn
 │   └── api/           # generated OpenAPI specs (git-ignored; see below)

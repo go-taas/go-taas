@@ -23,6 +23,7 @@ const CHECK = process.argv.includes("--check");
 
 /** Sections shown in the sidebar, in order, with their localized labels. */
 const SECTIONS = [
+  { id: "getting-started", title: { en: "Getting started", "zh-CN": "快速开始" } },
   { id: "design", title: { en: "Design documents", "zh-CN": "设计文档" } },
   { id: "architecture", title: { en: "Architecture documents", "zh-CN": "架构文档" } },
 ];

@@ -200,21 +200,67 @@ See the [Architecture Design](./site/docs/design/architecture.md) for component 
 
 ## Getting Started
 
-### Quick Start with Helm
+The full, verified path — cluster prerequisites, every third-party component with its official
+installation link, the production values file, console exposure with DNS and TLS, and the first-run
+checklist — lives in **[Installing Go TaaS on Kubernetes](./site/docs/getting-started/installation.md)**
+([中文](./site/docs/getting-started/installation.zh-cn.md)). The quick path:
 
-Deploy the full stack to Kubernetes with the self-hosted [Helm chart](./deploy/helm/go-taas) (requires Kubernetes 1.25+ and Helm 3.8+):
+### 1. Kubernetes (skip if you have a cluster)
+
+The reference deployment runs on **[RKE2](https://docs.rke2.io/install/quickstart)**; k3s, kind and
+managed Kubernetes (EKS/GKE/AKS) work too. Requirements: Kubernetes 1.25+ with a default
+StorageClass. GPU nodes need the NVIDIA GPU Operator (or the vendor's device plugin) so
+`nvidia.com/gpu` is allocatable.
+
+### 2. Third-party components
+
+Install these with their own charts — the platform does not vendor them:
+
+| Component | Needed for | Official installation guide |
+| --- | --- | --- |
+| Gateway API CRDs + Envoy Gateway | exposing the console through a Gateway with TLS | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
+| AIBrix | inference serving (`StormService`, `ModelClaim`, `aibrix-eg`) | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| Volcano | gang scheduling + priority preemption | [Volcano](https://volcano.sh/en/docs/installation/) |
+| JuiceFS CSI (or any RWX storage) | model weights shared by the control plane and inference pods | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
+| Harbor (optional) | image import / upload into your own registry | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
+| kube-prometheus-stack (optional) | metrics and latency pages | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
+| HAMi (optional) | vGPU slicing | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| cert-manager (optional) | issuing the console and inference certificates | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
+
+The **console alone** needs none of them beyond a cluster and a StorageClass.
+
+### 3. Install the platform
 
 ```bash
-helm install taas deploy/helm/go-taas --namespace taas --create-namespace
-kubectl --namespace taas port-forward svc/taas-server 9091:9091
-# console: http://127.0.0.1:9091/ · /admin
+git clone https://github.com/go-taas/go-taas.git
+cd go-taas
+
+helm install taas deploy/helm/go-taas \
+  --namespace taas --create-namespace \
+  --set auth.seedSso.adminLocalPassword='<YourStr0ng!Pass>'
 ```
 
-With no overrides the chart provisions in-cluster PostgreSQL, Redis, RabbitMQ, and **Keycloak** (each switchable to an external instance) and wires their credentials to the control plane. The bundled Keycloak seeds the `go-taas` realm and an `admin`/`admin` user, so you can log in to the console immediately. For the full values reference, external-dependency wiring, and the production checklist, see the chart's [README](./deploy/helm/go-taas/README.md) ([Chinese mirror](./deploy/helm/go-taas/README.zh-cn.md)).
+With no further overrides the chart provisions in-cluster PostgreSQL, Redis and RabbitMQ, generates
+their credentials into the release Secret, and seeds the platform administrator `admin` in its own
+account store — no IdP required (`dependencies.keycloak.mode: disabled` is the default). For a real
+deployment, copy the annotated [production values file](./site/docs/getting-started/installation.md#51-the-values-file)
+and add the shared weights PVC, the Harbor registry and the Volcano scheduling block.
 
-To expose the console behind a gateway or Ingress, set the Keycloak redirect URI and web origin to the public URL (see the chart README's *SSO and the bundled Keycloak* section).
+### 4. Open the console
 
-### Prerequisites
+```bash
+kubectl --namespace taas port-forward svc/taas-go-taas-server 9091:9091
+# end-user console: http://127.0.0.1:9091/ · admin console: http://127.0.0.1:9091/admin
+```
+
+Sign in as `admin` with the password from `auth.seedSso.adminLocalPassword`. To expose it on a real
+hostname behind a Gateway, apply the [console HTTPRoute](./site/docs/getting-started/installation.md#option-b--gateway-api-httproute-with-real-dns-and-tls)
+with `timeouts.request: 900s` (model and image uploads are long transfers).
+
+> Resource names are prefixed with the release name and the chart name: release `taas` + chart
+> `go-taas` gives `taas-go-taas-server`, `taas-go-taas-postgresql`, and so on.
+
+### Prerequisites (building from source)
 
 - Go 1.26+
 - golangci-lint v2
@@ -238,9 +284,12 @@ make build   # build the binary
 make test    # full test target
 ```
 
-### Docker Compose
+### Docker Compose (development stack)
 
-A one-command experience environment: control plane (with console), PostgreSQL, Redis, the message queue, and a JuiceFS client that mounts the shared model-weights filesystem.
+A one-command experience environment for a machine with a local Kubernetes context: control plane
+(with console), PostgreSQL, Redis, the message queue, and a JuiceFS client that mounts the shared
+model-weights filesystem. It is a development environment, not an installation path — use the Helm
+chart for anything shared.
 
 ```bash
 cp .env.example .env   # fill in Harbor + JuiceFS/MinIO values (see below)
@@ -295,24 +344,12 @@ On restricted networks, point the image build at local mirrors:
 make compose-up GOPROXY=https://goproxy.cn,direct NPM_REGISTRY=https://registry.npmmirror.com
 ```
 
-### Production Deployment (Helm)
+### Helm chart reference
 
-For dedicated Kubernetes environments, deploy the control plane with the self-hosted Helm chart at [deploy/helm/go-taas](./deploy/helm/go-taas) (see the chart's [README](./deploy/helm/go-taas/README.md), with a Chinese mirror at [README.zh-cn.md](./deploy/helm/go-taas/README.zh-cn.md), for the full values reference, external-dependency wiring, and production checklist):
-
-```bash
-helm install taas deploy/helm/go-taas --namespace taas --create-namespace
-kubectl --namespace taas port-forward svc/taas-server 9091:9091
-# console: http://127.0.0.1:9091/
-```
-
-PostgreSQL, Redis, RabbitMQ and Keycloak link to the control plane via
-configurable strategies (per dependency) — either as chart-managed internal
-instances, or via external services the chart wires the credentials against.
-The bundled Keycloak seeds the `go-taas` realm and an `admin`/`admin` user so
-the console is usable immediately; set `dependencies.keycloak.internal.redirectUri`
-and `webOrigin` to the public URL when exposing it behind a gateway or Ingress.
-Use the secret generator, `existingSecret`, or both. Local validation renders
-and lints the chart:
+Every value — external PostgreSQL / Redis / RabbitMQ, credentials from an existing Secret, resource
+labels, the data-plane Gateway and the gateway plugin — is documented in the chart's
+[README](./deploy/helm/go-taas/README.md) ([中文](./deploy/helm/go-taas/README.zh-cn.md)). Local
+validation renders and lints the chart:
 
 ```bash
 make helm-lint        # lint the chart (values schema included)
@@ -359,12 +396,15 @@ document directly:
 | Document | Language |
 | --- | --- |
 | [Documentation browser](https://go-taas.com/docs.html) | English / 中文 |
+| [Installation and deployment guide](./site/docs/getting-started/installation.md) | English |
+| [安装与部署指南](./site/docs/getting-started/installation.zh-cn.md) | 中文 |
 | [Architecture Design](./site/docs/design/architecture.md) | English |
 | [架构设计文档](./site/docs/design/architecture.zh-cn.md) | 中文 |
 
 The [`site/docs/`](./site/docs) directory carries the full documentation set — the same
 files the browser renders:
 
+- [`site/docs/getting-started/`](./site/docs/getting-started) — the installation and deployment guide (EN + `zh-cn`).
 - [`site/docs/design/`](./site/docs/design) — product/UI design documents, one per feature point (EN + `zh-cn`).
 - [`site/docs/architecture/`](./site/docs/architecture) — architecture and detailed design documents, one per feature point (EN + `zh-cn`).
 - `site/docs/api/` — OpenAPI/Swagger specs per service (auth, model, infer, billing, …), generated by `make pbgen` and not committed.

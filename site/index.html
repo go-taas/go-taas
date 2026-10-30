@@ -355,16 +355,18 @@ cd go-taas</code></pre>
               <div>
                 <h3 data-i18n="qs.s2t">Install with Helm</h3>
                 <pre class="code-block"><code>helm install taas deploy/helm/go-taas \
-  --namespace taas --create-namespace</code></pre>
-                <p class="qs-note" data-i18n="qs.s2d">With no overrides, the chart provisions in-cluster PostgreSQL, Redis, and RabbitMQ and wires their credentials to the control plane.</p>
+  --namespace taas --create-namespace \
+  --set auth.seedSso.adminLocalPassword='&lt;YourStr0ng!Pass&gt;'</code></pre>
+                <p class="qs-note" data-i18n="qs.s2d">With no further overrides the chart provisions in-cluster PostgreSQL, Redis, and RabbitMQ and seeds the platform administrator in its own account store — no IdP required.</p>
               </div>
             </div>
             <div class="qs-step">
               <div class="qs-num">3</div>
               <div>
                 <h3 data-i18n="qs.s3t">Open a console</h3>
-                <pre class="code-block"><code>kubectl --namespace taas port-forward svc/taas-server 9091:9091</code></pre>
-                <p class="qs-note" data-i18n="qs.s3note">End-user console: http://127.0.0.1:9091/ · Admin console: http://127.0.0.1:9091/admin</p>
+                <pre class="code-block"><code>kubectl --namespace taas port-forward \
+  svc/taas-go-taas-server 9091:9091</code></pre>
+                <p class="qs-note" data-i18n="qs.s3note">End-user console: http://127.0.0.1:9091/ · Admin console: http://127.0.0.1:9091/admin — sign in as admin with the password you set above.</p>
                 <p class="qs-note" data-i18n="qs.s3note2">Each console has its own session. End-user APIs live under /api/v1/*; management APIs live under /api/v1/admin/*.</p>
               </div>
             </div>
@@ -380,7 +382,8 @@ cd go-taas</code></pre>
             <pre class="code-block"><code>make helm-lint      # lint the chart
 make helm-template  # render templates
 helm uninstall taas # remove the release</code></pre>
-            <p class="qs-note" data-i18n="qs.mirror">For sizing, external PostgreSQL / Redis / RabbitMQ, and TLS, see the chart values: deploy/helm/go-taas/values.yaml.</p>
+            <p class="qs-note" data-i18n="qs.mirror">For cluster prerequisites, third-party components (Gateway API, AIBrix, Volcano, JuiceFS, Harbor) and TLS, read the installation guide.</p>
+            <p class="qs-note"><a href="docs.html?doc=getting-started/installation" data-i18n="qs.guide">Installation guide →</a></p>
           </div>
         </div>
       </div>

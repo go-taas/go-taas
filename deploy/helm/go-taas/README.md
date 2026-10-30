@@ -107,12 +107,19 @@ Project links: [website](https://go-taas.com) ·
 
 ## SSO and the bundled Keycloak
 
-The chart bundles a Keycloak IdP by default (`dependencies.keycloak.mode:
-internal`) so the console is usable out of the box. On first start the
-`taas-server` seeds the `go-taas` realm's client (`go-taas-console`) and an
-`admin`/`admin` user (with the `admin` realm role), and the auth Migrate hook
-inserts the matching SSO provider row. Log in at the console with
-`admin`/`admin`.
+`dependencies.keycloak.mode` has three values, and only the last two install
+anything:
+
+| Mode | What happens |
+| --- | --- |
+| `disabled` (**default**) | no IdP is deployed or seeded; the platform's own account store is the only sign-in path, and the seeded `admin` account is how you log in |
+| `internal` | the chart provisions a single-replica Keycloak; on first start `taas-server` seeds the `go-taas` realm's client (`go-taas-console`) and an `admin`/`admin` user (with the `admin` realm role), and the auth Migrate hook inserts the matching SSO provider row |
+| `external` | no Keycloak is deployed; the issuer/client/redirect URI in `dependencies.keycloak.external` are seeded into the provider row so the console can sign in against your IdP |
+
+The seeded **local** account (`admin` + `auth.seedSso.adminLocalPassword`) is
+created in every mode, because the platform's own account store must work
+without an external IdP. With `internal`, `admin`/`admin` is the *Keycloak*
+account and the local password still applies to the local account.
 
 To expose the console behind a gateway or Ingress, set the redirect URI and
 web origin to the public URL:
@@ -135,10 +142,13 @@ To use an existing IdP instead of the bundled one, set
 client secret, and redirect URI. The chart then skips the Keycloak
 Deployment/Service/PVC and points the SSO seed at the external IdP.
 
-> **Production note**: the seeded `admin`/`admin` and `alice`/`alice-password`
-> credentials are for evaluation only. Change them (or disable the seed with
-> `auth.seedSso.enabled: false` and register your own IdP through the admin
-> API) before exposing the console publicly.
+> **Production note**: the credentials created by the seed are for evaluation
+> only — the local administrator's `auth.seedSso.adminLocalPassword` and, with
+> `mode: internal`, Keycloak's `admin`/`admin`. Change both before exposing the
+> console publicly: the local password from the account's profile page (or the
+> values file before the first install), the Keycloak one in the Keycloak admin
+> console. To run without the IdP entirely, leave `dependencies.keycloak.mode:
+> disabled` (the default).
 
 ### Seeded local admin account
 
@@ -195,25 +205,99 @@ overriding the ones above.
 
 ## Requirements
 
-* Kubernetes 1.25+
-* Helm 3.8+ (the templates use `dig`)
+* Kubernetes 1.25+ with a default StorageClass
+* Helm 3.8+ (the templates use `dig`) or Helm 4.x
+* permission to create cluster-scoped objects (the chart installs ClusterRoles
+  and a ClusterRoleBinding)
+
+### Third-party components
+
+The chart deploys the platform, not its infrastructure. These are installed
+separately, with their own charts and their own documentation:
+
+| Component | Needed for | Chart values that depend on it | Official installation guide |
+| --- | --- | --- | --- |
+| Gateway API CRDs + Envoy Gateway | exposing the console through a Gateway; the data-plane gateway plugin | `dataPlane.enabled`, `gatewayPlugin.enabled` | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
+| AIBrix | inference serving (`StormService`, `ModelClaim`, `PodAutoscaler`, the `aibrix-eg` class) | `dataPlane.backend`, `controller.config.runtime.aibrix.*` | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| Volcano | gang scheduling and priority preemption; the PriorityClasses the values name | `controller.config.controller.scheduling` | [Volcano](https://volcano.sh/en/docs/installation/) |
+| JuiceFS CSI (or any ReadWriteMany class) | one model-weights filesystem shared by the server and the inference pods | `controller.config.controller.weights.storageClass`, `taasServer.extraVolumes` | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
+| Harbor (optional) | image import / upload into your own registry | `taasServer.harbor` | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
+| kube-prometheus-stack (optional) | the metrics and latency pages | `monitoring.prometheusURL` | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
+| HAMi (optional) | vGPU slicing | `vgpu.hami.*` (config file) | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| cert-manager (optional) | issuing the console and inference certificates | — | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
+
+Defaults keep the requirements at zero: `dataPlane.enabled`, `gatewayPlugin.enabled`
+and `taasServer.harbor.hostname` are off/empty, and an empty
+`controller.config.controller.scheduling` leaves inference pods on the cluster's
+default scheduler. The step-by-step path, including the cluster preparation the
+chart cannot do for you, is the
+[installation guide](../../../site/docs/getting-started/installation.md).
 
 ## Install
 
 ```bash
 helm install taas deploy/helm/go-taas \
-  --namespace taas --create-namespace
+  --namespace taas --create-namespace \
+  --set auth.seedSso.adminLocalPassword='<YourStr0ng!Pass>'
 ```
 
-With no overrides the release provisions PostgreSQL, Redis and RabbitMQ in
-cluster, generates their credentials (and the two encryption master keys)
-into the chart Secret, and wires the control plane to them. The namespace
-managed by the controller is `taas-infer`.
+With no further overrides the release provisions PostgreSQL, Redis and RabbitMQ
+in cluster, generates their credentials (and the two encryption master keys)
+into the chart Secret, and wires the control plane to them. Keycloak is **not**
+deployed by default (`dependencies.keycloak.mode: disabled`): the platform seeds
+the administrator `admin` in its own account store with the password from
+`auth.seedSso.adminLocalPassword`, so the console is usable without an IdP. Set
+the password to satisfy the policy (>= 8 characters, at least three of
+upper/lower/digit/symbol). The namespace managed by the controller is
+`taas-infer`.
+
+Resource names carry the release name and the chart name: release `taas` + chart
+`go-taas` gives `taas-go-taas-server`, `taas-go-taas-controller`,
+`taas-go-taas-postgresql`, and so on. Discover the server Service when in doubt:
 
 ```bash
-kubectl --namespace taas port-forward svc/taas-server 9091:9091
-# console: http://127.0.0.1:9091/
+kubectl --namespace taas get svc -l app.kubernetes.io/component=server
+kubectl --namespace taas port-forward svc/taas-go-taas-server 9091:9091
+# console: http://127.0.0.1:9091/ · admin console: http://127.0.0.1:9091/admin
+# sign in as "admin" with auth.seedSso.adminLocalPassword
 ```
+
+### Exposing the console
+
+The chart creates no Ingress or HTTPRoute for the console. Attach it to the
+Gateway that terminates TLS for your hostname (see
+[Gateway API and Envoy Gateway](../../../site/docs/getting-started/installation.md#31-gateway-api-and-envoy-gateway)):
+
+```yaml
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: taas-console
+  namespace: taas
+spec:
+  parentRefs:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      name: envoy-gateway
+      namespace: envoy-gateway-system
+      sectionName: https
+  hostnames:
+    - taas.example.com
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - kind: Service
+          name: taas-go-taas-server
+          port: 9091
+      timeouts:
+        request: 900s      # model and image uploads are long single requests
+```
+
+Alternatively set `taasServer.service.type: NodePort` or `LoadBalancer` and put
+your own proxy in front of it; terminate TLS somewhere before the console.
 
 The server fails fast when a dependency is unreachable and Kubernetes restarts
 it, so on a fresh install it may restart once or twice while the in-cluster
@@ -349,6 +433,21 @@ Three mechanisms, highest precedence first:
 | `controller.createNamespace` | `true` | create the managed inference namespace |
 | `controller.config.controller.namespace` | `taas-infer` | namespace the controller manages |
 | `controller.config.controller.weights.*` | `model-weights` / `/data/weights` / `""` | shared weights PVC name, mount path, StorageClass |
+| `controller.config.controller.scheduling.schedulerName` | `""` | `volcano` turns on gang scheduling with the PodGroups the controller writes; empty keeps the cluster default scheduler |
+| `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | PriorityClasses a service priority maps onto; an unmapped priority leaves the pod with the cluster default class |
+| `dependencies.keycloak.mode` | `disabled` | `disabled`, `internal` (chart-provisioned Keycloak) or `external` |
+| `dependencies.keycloak.external.*` | — | `issuer`, `clientId`, `clientSecret`, `redirectUri` (seeded into the SSO provider row) |
+| `dependencies.keycloak.internal.redirectUri` / `webOrigin` | localhost values | the console's public URL when `mode: internal` |
+| `auth.seedSso.adminLocalPassword` | `Pass4admin` | initial password of the seeded platform administrator `admin` |
+| `harbor.hostname` / `project` / `username` | `""` / `taas` / `""` | the internal registry: image import and upload are disabled while `hostname` is empty (`taasServer.harbor.*` is an accepted alias) |
+| `harbor.password` / `existingSecret` / `existingSecretKey` | `""` / `""` / `harbor-password` | push credential, inline or from an existing Secret |
+| `harbor.uploadMaxArchiveBytes` | `0` (8 GiB) | largest image archive the upload endpoint accepts |
+| `dataPlane.enabled` / `hostname` | `false` / `""` | publish the inference gateway under a hostname through the chart-owned Gateway |
+| `dataPlane.parentRef.name` / `namespace` / `sectionName` | `taas-inference` / release ns / `https` | the Gateway that terminates TLS for the inference host |
+| `dataPlane.backend.name` / `namespace` / `port` | AIBrix Envoy Service / `yunzhi-system` / `80` | the Service the data-plane route forwards to |
+| `gatewayPlugin.enabled` / `failOpen` / `cacheTTL` / `verifyTimeout` | `false` / `false` / `30s` / `500ms` | the Wasm filter that verifies API keys and reports metered usage |
+| `monitoring.prometheusURL` | `""` | Prometheus base URL; empty falls back to the controller's own samples |
+| `monitoring.inferencePodMonitor.*` | enabled | PodMonitor scraping the engine's own metrics (needs the Prometheus Operator CRDs) |
 | `configOverrides` | `{}` | raw configuration file merged last |
 
 `values.schema.json` validates the types, the `mode` and `service.type`
@@ -356,6 +455,29 @@ enumerations and the port ranges; cross-field rules (an external dependency
 needs a host, an external database needs a password unless
 `secrets.existingSecret` is set) are enforced by the templates with
 actionable messages.
+
+## Container registry (Harbor)
+
+The image catalog's import and upload flows push engine images into the cluster's
+own registry. Two obvious values are all an operator sets:
+
+```yaml
+# canonical location
+harbor:
+  hostname: hub.example.com        # empty disables import and upload
+  project: taas                    # Harbor project imported images land in
+  username: admin
+  existingSecret: taas-harbor-push # a Secret holding the password
+  existingSecretKey: harbor-password
+  # password: ""                   # inline, discouraged; prefer existingSecret
+  uploadMaxArchiveBytes: 0         # 0 = the 8 GiB default
+```
+
+`taasServer.harbor` is accepted as an alias for values files written against
+earlier documentation; both paths render the same `CONFIG_IMAGE_HARBOR_*`
+environment variables, and the top-level block wins when both are set. While
+`hostname` is empty the console disables the import/upload actions and says why,
+instead of failing halfway through a transfer.
 
 ## Shared model weights
 

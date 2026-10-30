@@ -432,6 +432,31 @@ gatewayPlugin:
   # endpoint is reachable from Envoy but not from the internet.
   internalHostname: taas-internal.invalid
 
+# The cluster's own container registry (Harbor), used by the image import
+# flow: an operator points at the local Harbor and the console can pull an
+# external image into it and register the local reference. Import is
+# disabled while `hostname` is empty, and the console then says so instead
+# of failing halfway through a transfer.
+harbor:
+  # -- Harbor hostname, e.g. `hub.example.com`. Empty disables image import.
+  hostname: ""
+  # -- Harbor project imported images are pushed to.
+  project: taas
+  # -- Harbor account used to push imported images.
+  username: ""
+  # -- Harbor password. Prefer `existingSecret`; an inline value lands in
+  # the rendered manifest.
+  password: ""
+  # -- Name of an existing Secret holding the Harbor password.
+  existingSecret: ""
+  # -- Key inside `existingSecret` that holds the password.
+  existingSecretKey: harbor-password
+  # -- Largest image archive the upload endpoint accepts, in bytes. The
+  # server streams the archive to a temp file before pushing it, so the
+  # bound protects the node's disk; the default (8 GiB, used when 0) fits a
+  # serving-engine image.
+  uploadMaxArchiveBytes: 0
+
 taasServer:
   # -- Deploy the control-plane server.
   enabled: true
@@ -528,31 +553,10 @@ taasServer:
     timeoutSeconds: 3
     # -- Consecutive readiness failures before the pod leaves the Service endpoints.
     failureThreshold: 3
-  # The cluster's own container registry (Harbor), used by the image import
-  # flow: an operator points at the local Harbor and the console can pull an
-  # external image into it and register the local reference. Import is
-  # disabled while `hostname` is empty, and the console then says so instead
-  # of failing halfway through a transfer.
-  harbor:
-    # -- Harbor hostname, e.g. `hub.example.com`. Empty disables image import.
-    hostname: ""
-    # -- Harbor project imported images are pushed to.
-    project: taas
-    # -- Harbor account used to push imported images.
-    username: ""
-    # -- Harbor password. Prefer `existingSecret`; an inline value lands in
-    # the rendered manifest.
-    password: ""
-    # -- Name of an existing Secret holding the Harbor password.
-    existingSecret: ""
-    # -- Key inside `existingSecret` that holds the password.
-    existingSecretKey: harbor-password
-    # -- Largest image archive the upload endpoint accepts, in bytes. The
-    # server streams the archive to a temp file before pushing it, so the
-    # bound protects the node's disk; the default (8 GiB, used when 0) fits a
-    # serving-engine image.
-    uploadMaxArchiveBytes: 0
-
+  # The cluster's own container registry (Harbor) lives at the top level of
+  # this file as `harbor:` — see the block there. The same settings are also
+  # accepted here (`taasServer.harbor`) for values files written against the
+  # earlier documentation; the top-level key wins.
   # Config overrides for `configs/*.yaml`, rendered as `CONFIG_*` env vars.
   # Keys mirror the config-file paths, e.g.:
   #   config:
