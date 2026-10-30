@@ -691,6 +691,7 @@ kubectl -n taas-infer get pods,stormservices,podgroups
 | 默认安装不需要任何第三方组件 | 默认渲染结果只有 Deployment、Service、PVC、RBAC、Namespace 与 Secret —— 没有 Gateway API 或 AIBrix 对象 |
 | PriorityClass 片段能被 API 接受 | 对参考集群执行 `kubectl apply --dry-run=client` |
 | 控制台导航路径、`/healthz` 端口与登录响应准确 | 对照运行中的参考部署（控制台快照、`POST /api/v1/auth/login`、Chart 在 9092 上的探针） |
+| 全新空库会初始化管理员，并接受文档中的登录 | 用本提交构建的服务端连接空的 PostgreSQL/Redis/RabbitMQ，并设置 `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`：`POST /api/v1/auth/login` 返回 `realm: "admin"` 与会话令牌，错误密码返回 `10002 invalid credentials`，`GET /api/v1/admin/auth/users` 返回 seed 的 `admin`，9092 的 `/healthz` 返回 `ok`，而 9091 返回控制台页面 |
 | 默认镜像标签存在 | `ghcr.io/go-taas/go-taas/taas-server:v<Chart appVersion>` 在仓库中可解析 |
 | 文档中的配置项通过 `helm lint --strict` | 以 CI 方式对 Chart 执行 |
 

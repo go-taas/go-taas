@@ -696,6 +696,7 @@ kubectl -n taas-infer get pods,stormservices,podgroups
 | Default install needs no third-party component | the default render contains only Deployments, Services, PVCs, RBAC, a Namespace and a Secret — no Gateway API or AIBrix objects |
 | The PriorityClass snippet is accepted by the API | `kubectl apply --dry-run=client` against the reference cluster |
 | The catalog/console navigation paths, `/healthz` port and login response are accurate | checked against the running reference deployment (console snapshots, `POST /api/v1/auth/login`, chart probes on 9092) |
+| A fresh, empty database seeds the administrator and accepts the documented login | a server built from this commit was started against an empty PostgreSQL/Redis/RabbitMQ with `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD` set: `POST /api/v1/auth/login` returned `realm: "admin"` and a session token, the wrong password returned `10002 invalid credentials`, `GET /api/v1/admin/auth/users` answered with the seeded `admin`, and `/healthz` on 9092 returned `ok` while 9091 answered with the console page |
 | The default image tag exists | `ghcr.io/go-taas/go-taas/taas-server:v<chart appVersion>` resolves in the registry |
 | `helm lint --strict` passes with the documented keys | run in CI-like fashion on the chart |
 
