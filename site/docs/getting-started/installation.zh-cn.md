@@ -6,7 +6,7 @@
 | 文档范围 | 受支持的安装路径、第三方依赖及官方安装链接、Chart 无法代劳的集群准备步骤、生产 values 文件、控制台的三种暴露方式、数据面与推理域名、升级与卸载，以及实践中遇到的故障及其解决办法 |
 | 所属模块 | `deploy/helm/go-taas`（Chart） · `apps/taas-server`、`apps/controller`（镜像） · `internal/controller`（推理资源） · `site/docs`（本文档） |
 | 关联文档 | Chart README（完整 values 参考，仓库内 `deploy/helm/go-taas/README.zh-cn.md`） · [架构设计](../design/architecture.zh-cn.md)（控制面 / 数据面划分） · [StormService 服务拓扑](../architecture/stormservice-serving-topology.zh-cn.md)（控制器为一次部署创建什么） |
-| 状态 | 已实现 —— 已在单节点 RKE2 集群验证（Kubernetes v1.36、Helm 4.3、AIBrix 0.7、Volcano 1.15、Envoy Gateway 1.8、JuiceFS CSI 0.32） |
+| 状态 | 已实现 —— 参考部署运行在单节点 RKE2 集群（Kubernetes v1.36、Helm 4.3、AIBrix 0.7、Volcano 1.15、Envoy Gateway 1.8、JuiceFS CSI 0.32）；本文档每个片段都已针对 Chart 校验（见第 12 节） |
 
 ---
 
@@ -44,7 +44,10 @@
 
 - `kubectl`，且其上下文具备创建集群级对象的权限（Chart 会创建 ClusterRole 与 ClusterRoleBinding）；
 - Helm 3.8+ 或 Helm 4.x；
-- 创建命名空间的权限（或已存在的 `taas` 命名空间）。
+- 创建命名空间的权限（或已存在的 `taas` 命名空间）；
+- 一个**默认 StorageClass**：集群内的 PostgreSQL、Redis 与 RabbitMQ 各自需要一个
+  PersistentVolumeClaim。没有默认存储类时它们的 Pod 会一直 `Pending` —— 请安装存储插件
+  （longhorn、local-path 等），或把 `dependencies.*.internal.persistence.storageClass` 指向已有的存储类。
 
 ## 2. 步骤 1 —— Kubernetes（可选）
 
@@ -650,6 +653,7 @@ helm uninstall taas -n taas
 | 现象 | 原因 | 解决办法 |
 | --- | --- | --- |
 | `helm install` 报找不到 `Gateway`/`HTTPRoute`，或 `no matches for kind "EnvoyExtensionPolicy"` | 开启了 `dataPlane.enabled`/`gatewayPlugin.enabled`，但缺少 Gateway API 或 Envoy Gateway CRD | 先执行步骤 3.1，或把两者设为 `false` 只先跑控制台 |
+| `kubectl -n taas get pods` 中 PostgreSQL/Redis/RabbitMQ 处于 `Pending`，`describe pod` 提示 `no persistent volumes available for this claim` | 集群没有默认 StorageClass（或所请求的存储类不存在） | 安装存储插件，或把 `dependencies.*.internal.persistence.storageClass` 设为已有存储类；`persistence.enabled: false`（emptyDir）仅用于开发，Pod 重新调度会丢数据 |
 | 服务端 Pod `CrashLoopBackOff`，日志 `init db failed ... dial tcp ...: connection refused` | 首次启动时 PostgreSQL 尚未就绪 | 全新安装出现一两次属正常；若持续，请检查 `kubectl -n taas get pods -l app.kubernetes.io/component=postgresql` 与发布 Secret |
 | Pod `ImagePullBackOff`，`failed to resolve reference ... not found` | 标签在仓库中不存在，或缺少拉取凭据 | 核对标签（`helm -n taas get values taas \| grep tag`）并确认 `imagePullSecrets` 指向存在的 Secret |
 | 推送同标签新镜像后 Pod 仍 `ImagePullBackOff` 或运行旧代码 | `imagePullPolicy: IfNotPresent`，节点已缓存该标签 | 推新标签（推荐），或删除 Pod 让 kubelet 重新解析 |
@@ -672,7 +676,18 @@ kubectl -n taas get events --sort-by=.lastTimestamp | tail -20
 kubectl -n taas-infer get pods,stormservices,podgroups
 ```
 
-## 12. 其他配置在哪里看
+## 12. 本文档的验证方式
+
+| 结论 | 验证方式 |
+| --- | --- |
+| 5.1 的 values 文件（以及 9.2 的数据面片段）合法且能生效 | 从本文档原样抽取后用 `helm template taas deploy/helm/go-taas -f …` 渲染：得到 5 个 Deployment、ConfigMap/Secret 路径，以及预期的 `CONFIG_IMAGE_HARBOR_URL`、`CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME`、`CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`、`CONFIG_MODEL_WEIGHTSDIR` 取值 |
+| 默认安装不需要任何第三方组件 | 默认渲染结果只有 Deployment、Service、PVC、RBAC、Namespace 与 Secret —— 没有 Gateway API 或 AIBrix 对象 |
+| PriorityClass 片段能被 API 接受 | 对参考集群执行 `kubectl apply --dry-run=client` |
+| 控制台导航路径、`/healthz` 端口与登录响应准确 | 对照运行中的参考部署（控制台快照、`POST /api/v1/auth/login`、Chart 在 9092 上的探针） |
+| 默认镜像标签存在 | `ghcr.io/go-taas/go-taas/taas-server:v<Chart appVersion>` 在仓库中可解析 |
+| 文档中的配置项通过 `helm lint --strict` | 以 CI 方式对 Chart 执行 |
+
+## 13. 其他配置在哪里看
 
 | 主题 | 文档 |
 | --- | --- |

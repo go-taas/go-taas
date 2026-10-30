@@ -6,7 +6,7 @@
 | Document scope | The supported installation path, the third-party dependencies and their official installation links, the cluster preparation steps the chart cannot do for you, the production values file, three ways to expose the console, the data plane and inference hostname, upgrade/uninstall, and the failure modes seen in practice with their fixes |
 | Owning modules | `deploy/helm/go-taas` (chart) · `apps/taas-server`, `apps/controller` (images) · `internal/controller` (inference resources) · `site/docs` (this guide) |
 | Related documents | Chart README (full values reference, in the repository at `deploy/helm/go-taas/README.md`) · [Architecture Design](../design/architecture.md) (control plane / data plane split) · [StormService Serving Topology](../architecture/stormservice-serving-topology.md) (what the controller creates for a deployment) |
-| Status | Implemented — verified on a single-node RKE2 cluster (Kubernetes v1.36, Helm 4.3, AIBrix 0.7, Volcano 1.15, Envoy Gateway 1.8, JuiceFS CSI 0.32) |
+| Status | Implemented — the reference deployment runs on a single-node RKE2 cluster (Kubernetes v1.36, Helm 4.3, AIBrix 0.7, Volcano 1.15, Envoy Gateway 1.8, JuiceFS CSI 0.32); every snippet here is validated against the chart (see section 13) |
 
 ---
 
@@ -44,7 +44,11 @@ You need, on the machine you run `helm` from:
 
 - `kubectl` with a context that can create cluster-scoped objects (the chart installs ClusterRoles and a ClusterRoleBinding);
 - Helm 3.8+ or Helm 4.x;
-- permission to create a namespace (or an existing `taas` namespace).
+- permission to create a namespace (or an existing `taas` namespace);
+- a **default StorageClass**: the in-cluster PostgreSQL, Redis and RabbitMQ each request a
+  PersistentVolumeClaim. Without one their pods stay `Pending` — either install a provisioner
+  (longhorn, local-path, …) or point
+  `dependencies.*.internal.persistence.storageClass` at a class you have.
 
 ## 2. Step 1 — Kubernetes (optional)
 
@@ -652,6 +656,7 @@ The release Secret and the inference namespace (`taas-infer`, annotated `keep`) 
 | Symptom | Cause | Fix |
 | --- | --- | --- |
 | `helm install` fails: `Gateway`/`HTTPRoute` not found, or `no matches for kind "EnvoyExtensionPolicy"` | Gateway API CRDs or Envoy Gateway CRDs are missing while `dataPlane.enabled`/`gatewayPlugin.enabled` is on | install step 3.1 first, or set both to `false` to bring up the console only |
+| `kubectl -n taas get pods` shows PostgreSQL/Redis/RabbitMQ `Pending`, and `kubectl -n taas describe pod` says `no persistent volumes available for this claim` | the cluster has no default StorageClass (or the requested one does not exist) | install a provisioner, or set `dependencies.*.internal.persistence.storageClass` to an existing class; `persistence.enabled: false` (emptyDir) is development-only and loses data on reschedule |
 | Server pod `CrashLoopBackOff` with `init db failed ... dial tcp ...: connect: connection refused` | PostgreSQL was not ready yet at first start | expected once or twice on a fresh install; if it persists, check `kubectl -n taas get pods -l app.kubernetes.io/component=postgresql` and the release Secret |
 | Pod `ImagePullBackOff`, `failed to resolve reference ... not found` | the tag does not exist in the registry, or the pull secret is missing | verify the tag (`helm -n taas get values taas \| grep tag`) and that `imagePullSecrets` names an existing Secret |
 | Pod `ImagePullBackOff` after pushing a new image with the same tag | `imagePullPolicy: IfNotPresent` and the tag was already cached on the node | push a new tag (recommended) or delete the pod so the kubelet re-resolves it |
@@ -674,7 +679,18 @@ kubectl -n taas get events --sort-by=.lastTimestamp | tail -20
 kubectl -n taas-infer get pods,stormservices,podgroups
 ```
 
-## 12. Where the rest of the configuration lives
+## 12. How this guide is verified
+
+| Claim | How it was checked |
+| --- | --- |
+| The values file in 5.1 (and the data-plane block in 9.2) is valid and reaches the containers | extracted from this document verbatim and rendered with `helm template taas deploy/helm/go-taas -f …`: 5 Deployments, both ConfigMap/Secret paths, and the expected `CONFIG_IMAGE_HARBOR_URL`, `CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME`, `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`, `CONFIG_MODEL_WEIGHTSDIR` values |
+| Default install needs no third-party component | the default render contains only Deployments, Services, PVCs, RBAC, a Namespace and a Secret — no Gateway API or AIBrix objects |
+| The PriorityClass snippet is accepted by the API | `kubectl apply --dry-run=client` against the reference cluster |
+| The catalog/console navigation paths, `/healthz` port and login response are accurate | checked against the running reference deployment (console snapshots, `POST /api/v1/auth/login`, chart probes on 9092) |
+| The default image tag exists | `ghcr.io/go-taas/go-taas/taas-server:v<chart appVersion>` resolves in the registry |
+| `helm lint --strict` passes with the documented keys | run in CI-like fashion on the chart |
+
+## 13. Where the rest of the configuration lives
 
 | Topic | Document |
 | --- | --- |
