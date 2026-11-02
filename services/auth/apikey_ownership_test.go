@@ -411,6 +411,29 @@ func TestOwnerScopedRepositoryOperations(t *testing.T) {
 	assert.Nil(t, gone)
 }
 
+// TestUpdateAPIKeyOwnershipClearsOwnerWithSession verifies that an
+// administrator clears ownership through a real session: an empty
+// owner means organization-shared, not "assign the caller".
+func TestUpdateAPIKeyOwnershipClearsOwnerWithSession(t *testing.T) {
+	env := newSessionEnv(t)
+	ctx := sessionCtx("admin-fvt")
+	created, err := env.svc.CreateAPIKey(ctx, &authv1.CreateAPIKeyRequest{
+		Name: "admin-key", OwnerUserId: "alice",
+	})
+	require.NoError(t, err)
+	row, err := env.repo.FindByIDAndOrganization(context.Background(), "org-a", created.GetKeyId())
+	require.NoError(t, err)
+	require.NotNil(t, row.OwnerUserID)
+	assert.Equal(t, "alice", *row.OwnerUserID)
+
+	resp, err := env.svc.UpdateAPIKeyOwnership(ctx, &authv1.UpdateAPIKeyOwnershipRequest{
+		KeyId: created.GetKeyId(),
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.GetKey().GetShared())
+	assert.Empty(t, resp.GetKey().GetOwnerUserId())
+}
+
 func TestDeleteAPIKeyByNonOwnerIsNotFound(t *testing.T) {
 	env := newSessionEnv(t)
 	created, err := env.svc.CreateAPIKey(sessionCtx("alice"), &authv1.CreateAPIKeyRequest{Name: "alice"})

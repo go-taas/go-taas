@@ -240,9 +240,15 @@ func (s *Service) UpdateAPIKeyOwnership(ctx context.Context, req *authv1.UpdateA
 	if err != nil {
 		return nil, err
 	}
-	owner, err := s.resolveRequestedOwner(ctx, orgID, access, req.GetOwnerUserId(), false)
-	if err != nil {
-		return nil, err
+	// On a transfer an empty owner clears ownership (the key becomes
+	// organization-shared); it never means "assign the caller", which is
+	// the create-time rule.
+	var owner *string
+	if requested := strings.TrimSpace(req.GetOwnerUserId()); requested != "" {
+		owner, err = s.resolveRequestedOwner(ctx, orgID, access, requested, false)
+		if err != nil {
+			return nil, err
+		}
 	}
 	project, err := s.resolveRequestedProject(ctx, orgID, access, req.GetProjectId())
 	if err != nil {

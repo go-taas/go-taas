@@ -251,6 +251,15 @@ func TestFVTApiKeyOwnerLifecycle(t *testing.T) {
 		"ownerUserId": "alice",
 	})
 	assert.EqualValues(t, 10036, body["code"], "member transfer: %v", body)
+
+	// An administrator clears the owner: the key becomes organization-shared
+	// (the empty owner is never read as "assign the caller").
+	code, body = env.call(t, "admin-fvt", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
+		"ownerUserId": "",
+	})
+	require.Equal(t, http.StatusOK, code, "clear owner: %v", body)
+	assert.Equal(t, true, body["key"].(map[string]any)["shared"])
+	assert.Empty(t, body["key"].(map[string]any)["ownerUserId"])
 }
 
 // TestFVTApiKeyProjectScope covers project assignment and validation.
