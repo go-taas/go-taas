@@ -17,6 +17,14 @@ export default function UsagePage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
+    if (!orgId) {
+      // No organization: there is nothing to aggregate. Say so instead of
+      // showing an empty table that looks like a data problem.
+      setDashboard(null);
+      setBalance(null);
+      setError('');
+      return;
+    }
     api
       .get<UsageDashboardResponse>('/api/v1/metering/usage-dashboard', orgId)
       .then(setDashboard)
@@ -35,6 +43,11 @@ export default function UsagePage() {
     <div className="page" data-testid="usage-dashboard-cards">
       <h1>{t('uusage.title')}</h1>
       {error && <div className="error">{error}</div>}
+      {!orgId && (
+        <div className="empty-state" data-testid="usage-no-org">
+          {t('uusage.noOrg')}
+        </div>
+      )}
       {balance && (
         <div className="balance-widget" data-testid="usage-balance-widget">
           {balance.mode === 'prepaid'
@@ -45,7 +58,7 @@ export default function UsagePage() {
               })}
         </div>
       )}
-      {cards && (
+      {orgId && cards && (
         <div className="cards">
           <div className="card" data-testid="usage-metric-cost">
             {t('uusage.cost', { n: formatMoney(cards.totalCostCents) })}
@@ -63,7 +76,7 @@ export default function UsagePage() {
           {t('uusage.unpriced', { n: cards?.unpricedRequestCount ?? '0' })}
         </div>
       )}
-      {dashboard?.dailyBuckets && dashboard.dailyBuckets.length > 0 ? (
+      {orgId && dashboard?.dailyBuckets && dashboard.dailyBuckets.length > 0 ? (
         <table className="table" data-testid="usage-table">
           <thead>
             <tr>

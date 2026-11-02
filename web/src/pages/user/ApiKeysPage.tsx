@@ -15,10 +15,6 @@ interface CreateResponse {
   apiKey: string;
 }
 
-// KeyScope selects the ownership view: the caller's own keys or the
-// organization-shared ones.
-type KeyScope = 'mine' | 'shared';
-
 function rateLimitLabel(key: ApiKeySummary, t: (key: string) => string): string {
   const rpm = Number(key.rateLimitRpm || 0);
   const tpm = Number(key.rateLimitTpm || 0);
@@ -56,18 +52,17 @@ export default function ApiKeysPage() {
   const [scopeTarget, setScopeTarget] = useState<ApiKeySummary | null>(null);
   const [created, setCreated] = useState('');
   const [saved, setSaved] = useState(false);
-  const [scope, setScope] = useState<KeyScope>('mine');
 
   const load = useCallback(async () => {
     try {
       const data = await api.get<{ keys?: ApiKeySummary[] }>(
-        `/api/v1/auth/api-keys?page.limit=100&scope=${scope}`, orgId);
+        '/api/v1/auth/api-keys?page.limit=100&scope=mine', orgId);
       setKeys(data.keys || []);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : t('uapikeys.loadFailed'));
     }
-  }, [api, orgId, t, scope]);
+  }, [api, orgId, t]);
 
   useEffect(() => {
     void load();
@@ -80,10 +75,6 @@ export default function ApiKeysPage() {
         <button data-testid="create-api-key" onClick={() => setCreateOpen(true)}>{t('uapikeys.create')}</button>
       </div>
       {error && <ErrorBanner message={error} />}
-      <div className="tabs" data-testid="key-scope-tabs">
-        <button className={scope === 'mine' ? 'active' : 'secondary'} data-testid="scope-tab-mine" onClick={() => setScope('mine')}>{t('uapikeys.scopeMine')}</button>
-        <button className={scope === 'shared' ? 'active' : 'secondary'} data-testid="scope-tab-shared" onClick={() => setScope('shared')}>{t('uapikeys.scopeShared')}</button>
-      </div>
       {keys.length === 0 ? (
         <div className="empty" data-testid="api-keys-empty">{t('uapikeys.empty')}</div>
       ) : (
@@ -173,7 +164,6 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
   const [modelsError, setModelsError] = useState('');
   const [projects, setProjects] = useState<MyProject[]>([]);
   const [projectId, setProjectId] = useState(apiKey?.projectId || '');
-  const [shared, setShared] = useState(Boolean(apiKey?.shared));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const edit = Boolean(apiKey);
@@ -217,10 +207,7 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
     setError('');
     try {
       const body: Record<string, unknown> = { name: name.trim(), rateLimitRpm: rpm || '0', rateLimitTpm: tpm || '0' };
-      if (!edit) {
-        if (projectId) body.projectId = projectId;
-        if (shared) body.shared = true;
-      }
+      if (!edit && projectId) body.projectId = projectId;
       if (!edit && scopeMode === 'restricted') body.models = scopeModels;
       if (apiKey) body.expiresAt = apiKey.expiresAt || '0';
       if (!edit && expiry !== 'never') body.expiresAt = String(Math.floor(Date.now() / 1000) + Number(expiry) * 86400);
@@ -248,10 +235,6 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
           <option value="">{t('uapikeys.projectNone')}</option>
           {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.displayName}</option>)}
         </select></div>}
-      {!edit && <div className="form-field full">
-        <label className="checkbox"><input type="checkbox" data-testid="key-shared-checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} /> {t('uapikeys.fieldShared')}</label>
-        <div className="card-note">{t('uapikeys.fieldSharedNote')}</div>
-      </div>}
       <div className="form-field"><label htmlFor="rate-limit-rpm">{t('uapikeys.fieldRpm')}</label><input id="rate-limit-rpm" data-testid={edit ? 'edit-rate-limit-rpm' : 'rate-limit-rpm'} type="number" min={0} step={1} value={rpm} onChange={(event) => setRpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
       <div className="form-field"><label htmlFor="rate-limit-tpm">{t('uapikeys.fieldTpm')}</label><input id="rate-limit-tpm" data-testid={edit ? 'edit-rate-limit-tpm' : 'rate-limit-tpm'} type="number" min={0} step={1} value={tpm} onChange={(event) => setTpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
       {!edit && <div className="form-field full scope-section">
@@ -262,9 +245,12 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
           ? <ErrorBanner message={modelsError} />
           : <div className="scope-model-list" data-testid="scope-model-list">
               {availableModels.map((m) => (
-                <label key={m.modelId} className="checkbox">
+                <label key={m.modelId} className="scope-model-item">
                   <input type="checkbox" data-testid={`scope-model-${m.modelId}`} checked={scopeModels.includes(m.modelId)} onChange={() => toggleScopeModel(m.modelId)} />
-                  <span>{m.modelId}{m.name && m.name !== m.modelId ? ` · ${m.name}` : ''}</span>
+                  <span className="scope-model-name">{m.name || m.modelId}</span>
+                  {m.name && m.name !== m.modelId && (
+                    <span className="scope-model-id mono">{m.modelId}</span>
+                  )}
                 </label>
               ))}
             </div>)}
@@ -331,9 +317,12 @@ function ScopeDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
           ? <ErrorBanner message={modelsError} />
           : <div className="scope-model-list" data-testid="scope-model-list">
               {availableModels.map((m) => (
-                <label key={m.modelId} className="checkbox">
+                <label key={m.modelId} className="scope-model-item">
                   <input type="checkbox" data-testid={`scope-model-${m.modelId}`} checked={scopeModels.includes(m.modelId)} onChange={() => toggleScopeModel(m.modelId)} />
-                  <span>{m.modelId}{m.name && m.name !== m.modelId ? ` · ${m.name}` : ''}</span>
+                  <span className="scope-model-name">{m.name || m.modelId}</span>
+                  {m.name && m.name !== m.modelId && (
+                    <span className="scope-model-id mono">{m.modelId}</span>
+                  )}
                 </label>
               ))}
             </div>)}

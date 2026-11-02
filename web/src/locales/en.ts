@@ -469,6 +469,8 @@ export const en: Record<string, string> = {
   'apikeys.title': 'API Keys',
   'apikeys.subtitle': 'Keys authenticate Agents against the Inference Gateway. The secret is shown only once at creation.',
   'apikeys.create': 'Create API Key',
+  'apikeys.createShared': 'Organization-shared key',
+  'apikeys.createSharedNote': 'A shared key has no personal owner: every organization administrator manages it and it carries no personal quota. Only the organization console can create one.',
   'apikeys.empty': 'No API keys yet. Create one to authenticate Agent calls.',
   'apikeys.colName': 'Name',
   'apikeys.colOwner': 'Owner',
@@ -686,6 +688,7 @@ export const en: Record<string, string> = {
   'projects.members': 'Members',
   'projects.membersTitle': 'Members of project {projectId}',
   'projects.membersAdd': 'Add member',
+  'projects.membersAddConfirm': 'Add',
   'projects.membersEmpty': 'This project has no members yet.',
   'projects.membersColUser': 'User',
   'projects.membersColRole': 'Role',
@@ -2849,6 +2852,7 @@ export const en: Record<string, string> = {
   'uusage.unpriced': '{n} request(s) are not priced yet, so their cost shows as zero until settlement runs.',
   'uusage.empty': 'No usage yet.',
   'uusage.loadFailed': 'failed to load usage',
+'uusage.noOrg': 'You have not joined an organization yet, so there is no usage to show.',
 
   // ---- User: My organizations & projects ----
   'myorgs.title': 'My Organizations',

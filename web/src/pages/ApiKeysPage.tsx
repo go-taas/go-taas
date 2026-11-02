@@ -361,6 +361,9 @@ function CreateDialog({
   const [expiryDays, setExpiryDays] = useState('never');
   const [rpm, setRpm] = useState('');
   const [tpm, setTpm] = useState('');
+  // Only the organization console creates a shared key: a personal key in
+  // the user console always belongs to its owner.
+  const [shared, setShared] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { t } = useI18n();
@@ -380,6 +383,7 @@ function CreateDialog({
       }
       if (rpm.trim() !== '') body.rateLimitRpm = String(parseInt(rpm, 10));
       if (tpm.trim() !== '') body.rateLimitTpm = String(parseInt(tpm, 10));
+      if (shared) body.shared = true;
       const res = await api.post<CreateResponse>(
         '/api/v1/admin/auth/api-keys',
         orgId,
@@ -444,6 +448,18 @@ function CreateDialog({
             onChange={(e) => setTpm(e.target.value)}
             placeholder={t('apikeys.placeholderZero')}
           />
+        </div>
+        <div className="form-field full">
+          <label className="checkbox">
+            <input
+              type="checkbox"
+              data-testid="key-shared-checkbox"
+              checked={shared}
+              onChange={(e) => setShared(e.target.checked)}
+            />
+            {t('apikeys.createShared')}
+          </label>
+          <div className="card-note">{t('apikeys.createSharedNote')}</div>
         </div>
       </div>
       {error && <ErrorBanner message={error} />}

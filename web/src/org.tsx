@@ -42,9 +42,28 @@ export function OrgProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
     api
       .get<SessionInfo>(`/api/v1${realm === 'admin' ? '/admin' : ''}/auth/session`, '')
-      .then((sess) => {
+      .then(async (sess) => {
         if (cancelled) return;
-        const active = sess.activeOrg || NO_ORG;
+        let active = sess.activeOrg || NO_ORG;
+        // A stored id can outlive the membership that justified it. On the
+        // user surface the account's own organization list is authoritative:
+        // a stale id is cleared so no request is framed around a tenant the
+        // account no longer belongs to.
+        if (active && realm === 'user') {
+          try {
+            const mine = await api.get<{ organizations: MyOrganization[] }>(
+              '/api/v1/tenancy/my-organizations',
+              '',
+            );
+            const owned = (mine.organizations || []).some(
+              (o) => o.organizationId === active,
+            );
+            if (!owned) active = NO_ORG;
+          } catch {
+            // The list is a guard, not a requirement: keep the session value.
+          }
+        }
+        if (cancelled) return;
         if (active !== getOrgId(realm)) {
           setOrgId(realm, active);
           setOrgIdState(active);
@@ -190,7 +209,11 @@ export function OrgIdentity() {
   const api = useApi();
   const { t } = useI18n();
   const { orgId } = useOrg();
+  // orgName is set only when the account really belongs to an
+  // organization: the id badge below must never show a stored id the
+  // account has no membership for.
   const [orgName, setOrgName] = useState('');
+  const [resolvedOrgId, setResolvedOrgId] = useState('');
   const [project, setProject] = useState<MyProject | null>(null);
   const [loaded, setLoaded] = useState(false);
 
@@ -213,8 +236,10 @@ export function OrgIdentity() {
         if (cancelled) return;
         const org =
           (mine.organizations || []).find((o) => o.organizationId === orgId) ||
-          (mine.organizations || [])[0];
-        setOrgName(org?.displayName || org?.organizationId || '');
+          (mine.organizations || [])[0] ||
+          null;
+        setOrgName(org ? org.displayName || org.organizationId : '');
+        setResolvedOrgId(org?.organizationId || '');
         setProject((projects.projects || [])[0] || null);
       } finally {
         if (!cancelled) setLoaded(true);
@@ -235,9 +260,9 @@ export function OrgIdentity() {
         <span className="org-identity-value" data-testid="org-identity-name">
           {orgName || t('org.none')}
         </span>
-        {orgId && (
+        {resolvedOrgId && (
           <span className="org-identity-id mono" data-testid="org-identity-id">
-            {orgId}
+            {resolvedOrgId}
           </span>
         )}
       </div>

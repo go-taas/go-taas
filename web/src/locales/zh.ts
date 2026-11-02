@@ -466,6 +466,8 @@ export const zh: Record<string, string> = {
   'apikeys.title': 'API 密钥',
   'apikeys.subtitle': '密钥用于 Agent 向推理网关进行身份认证。密钥只在创建时显示一次。',
   'apikeys.create': '创建 API 密钥',
+  'apikeys.createShared': '组织共享 Key',
+  'apikeys.createSharedNote': '组织共享 Key 没有个人属主：由组织管理员管理，不计入个人配额。仅组织控制台可以创建。',
   'apikeys.empty': '还没有 API 密钥。创建一个以认证 Agent 调用。',
   'apikeys.colName': '名称',
   'apikeys.colOwner': '归属人',
@@ -682,6 +684,7 @@ export const zh: Record<string, string> = {
   'projects.members': '成员',
   'projects.membersTitle': '项目 {projectId} 的成员',
   'projects.membersAdd': '添加成员',
+  'projects.membersAddConfirm': '添加',
   'projects.membersEmpty': '该项目暂无成员。',
   'projects.membersColUser': '用户',
   'projects.membersColRole': '角色',
@@ -2817,6 +2820,7 @@ export const zh: Record<string, string> = {
   'uusage.unpriced': '有 {n} 次请求尚未计价，费用暂记为 0，待结算后更新。',
   'uusage.empty': '还没有用量。',
   'uusage.loadFailed': '加载用量失败',
+'uusage.noOrg': '你尚未加入组织，暂无用量数据。',
 
   // ---- User: My organizations & projects ----
   'myorgs.title': '我的组织',

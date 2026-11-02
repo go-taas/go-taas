@@ -257,6 +257,12 @@ func (s *Service) resolveOrg(ctx context.Context) (string, error) {
 		} else if org != "" {
 			return org, nil
 		}
+		// A session with no organization is authoritative: the account
+		// belongs to no tenant, so the client-supplied header must not
+		// frame the read around one. Returning "" reads as "no data".
+		if uid, err := s.sessionUserID(ctx); err == nil && uid != "" {
+			return "", nil
+		}
 	}
 	org, err := resolveOrganizationID(ctx)
 	if err != nil && authctx.IsPlatformAdmin(ctx) {
@@ -267,6 +273,16 @@ func (s *Service) resolveOrg(ctx context.Context) (string, error) {
 		return "", nil
 	}
 	return org, err
+}
+
+// sessionUserID returns the authenticated caller's id, or "" when no
+// session is present. It is the session-presence probe resolveOrg uses to
+// decide whether the transitional header may still be honored.
+func (s *Service) sessionUserID(ctx context.Context) (string, error) {
+	if s.sessionUserResolver == nil {
+		return "", nil
+	}
+	return s.sessionUserResolver.SessionUserID(ctx)
 }
 
 // surfaceFromContext derives the metering surface from the request path.

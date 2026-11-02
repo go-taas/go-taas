@@ -8,10 +8,12 @@ import {
   ApiError,
   formatTime,
   type OrganizationSummary,
+  type MemberCandidate,
   type PageMeta,
   type ProjectMember,
   type ProjectSummary,
 } from '../api';
+import { candidateLabel } from '../candidates';
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
 import { useI18n } from '../i18n';
@@ -601,6 +603,11 @@ function ProjectMembersDialog({
   const [addOpen, setAddOpen] = useState(false);
   const [addUserId, setAddUserId] = useState('');
   const [addRole, setAddRole] = useState('member');
+  // Candidates are the organization's members who belong to no project:
+  // a person belongs to one project, so a free-text id would only invite
+  // an error the pick-list can prevent.
+  const [candidates, setCandidates] = useState<MemberCandidate[]>([]);
+  const [candidatesLoading, setCandidatesLoading] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -621,6 +628,29 @@ function ProjectMembersDialog({
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    if (!addOpen) return;
+    let cancelled = false;
+    setCandidatesLoading(true);
+    api
+      .get<{ candidates?: MemberCandidate[] }>(
+        `/api/v1/admin/tenancy/projects/${project.projectId}/member-candidates`,
+        orgId,
+      )
+      .then((data) => {
+        if (!cancelled) setCandidates(data.candidates || []);
+      })
+      .catch(() => {
+        if (!cancelled) setCandidates([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCandidatesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [addOpen, api, orgId, project.projectId]);
 
   const addMember = async () => {
     setError('');
@@ -673,11 +703,13 @@ function ProjectMembersDialog({
       testId="project-members-dialog"
     >
       {error && <ErrorBanner message={error} />}
-      <div className="dialog-actions" style={{ justifyContent: 'flex-start', marginBottom: 12 }}>
-        <button data-testid="project-member-add-button" onClick={() => setAddOpen(true)}>
-          {t('projects.membersAdd')}
-        </button>
-      </div>
+      {!addOpen && (
+        <div className="dialog-actions" style={{ justifyContent: 'flex-start', marginBottom: 12 }}>
+          <button data-testid="project-member-add-button" onClick={() => setAddOpen(true)}>
+            {t('projects.membersAdd')}
+          </button>
+        </div>
+      )}
       {loading ? (
         <div className="loading">{t('common.loading')}</div>
       ) : members.length === 0 ? (
@@ -730,12 +762,26 @@ function ProjectMembersDialog({
         <div className="form" style={{ marginTop: 12 }}>
           <label>
             {t('projects.membersFieldUserId')}
-            <input
+            <select
               data-testid="project-member-add-user-id"
               value={addUserId}
+              disabled={candidatesLoading}
               onChange={(e) => setAddUserId(e.target.value)}
-              placeholder={t('projects.membersPlaceholderUserId')}
-            />
+            >
+              <option value="">
+                {candidatesLoading
+                  ? t('common.loading')
+                  : candidates.length === 0
+                    ? t('projectMembers.noCandidates')
+                    : t('projectMembers.selectUser')}
+              </option>
+              {candidates.map((c) => (
+                <option key={c.userId} value={c.userId}>
+                  {candidateLabel(c)}
+                </option>
+              ))}
+            </select>
+            <span className="field-hint">{t('projectMembers.candidatesHint')}</span>
           </label>
           <label>
             {t('projects.membersFieldRole')}
@@ -749,8 +795,12 @@ function ProjectMembersDialog({
               <option value="viewer">{tEnum('state', 'viewer')}</option>
             </select>
           </label>
-          <button data-testid="project-member-add-save" onClick={() => void addMember()}>
-            {t('projects.membersAdd')}
+          <button
+            data-testid="project-member-add-save"
+            disabled={!addUserId.trim() || candidatesLoading}
+            onClick={() => void addMember()}
+          >
+            {t('projects.membersAddConfirm')}
           </button>
         </div>
       )}

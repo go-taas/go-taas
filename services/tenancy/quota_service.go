@@ -98,6 +98,12 @@ func (s *Service) resolveOrg(ctx context.Context) (string, error) {
 		} else if org != "" {
 			return org, nil
 		}
+		// A session with no organization is authoritative: the account
+		// belongs to no tenant, so the client-supplied header must not
+		// frame the read around one.
+		if uid, _, err := s.resolveSessionActor(ctx); err == nil && uid != "" {
+			return "", nil
+		}
 	}
 	org, err := resolveOrganizationID(ctx)
 	if err != nil && authctx.IsPlatformAdmin(ctx) {
