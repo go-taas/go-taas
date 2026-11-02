@@ -17,6 +17,7 @@ type UsageKeysBucketRow struct {
 	ErrorCount     int64
 	TotalTokens    int64
 	TotalCostCents int64
+	TotalCostMicros int64
 	AvgLatencyMs   int64
 	P95LatencyMs   int64
 	BucketSeconds  int64
@@ -34,6 +35,7 @@ type UsageKeyAggRow struct {
 	ErrorCount     int64
 	TotalTokens    int64
 	TotalCostCents int64
+	TotalCostMicros int64
 	AvgLatencyMs   int64
 	P95LatencyMs   int64
 	DataThrough    int64
@@ -93,25 +95,26 @@ func (r *UsageKeysRepository) AggregateUsageKey(ctx context.Context, orgID, apiK
 	return aggregateUsageKeyBuckets(filtered, bucketSize), nil
 }
 
-// ChargeCostByKey returns the per-key cost (integer cents) from
-// charge_records within the org filter and range (AD1).
+// ChargeCostByKey returns the per-key cost from charge_records within the
+// org filter and range (AD1), in micro-units so a sub-cent charge is not
+// rounded to zero.
 func (r *UsageKeysRepository) ChargeCostByKey(ctx context.Context, orgFilter string, since, until int64) (map[string]int64, error) {
 	query := r.db.DB(ctx).Model(&chargeRecordRow{}).
-		Select("api_key_id, ROUND(SUM(amount) * 100) AS cost_cents").
+		Select("api_key_id, CAST(ROUND(SUM(amount) * 1000000) AS INTEGER) AS cost_micros").
 		Where("period_start >= ? AND period_start < ?", since, until)
 	if orgFilter != "" {
 		query = query.Where("organization_id = ?", orgFilter)
 	}
 	var rows []struct {
-		APIKeyID  string
-		CostCents int64
+		APIKeyID   string
+		CostMicros int64
 	}
 	if err := query.Group("api_key_id").Scan(&rows).Error; err != nil {
 		return nil, err
 	}
 	out := make(map[string]int64, len(rows))
 	for _, row := range rows {
-		out[row.APIKeyID] = row.CostCents
+		out[row.APIKeyID] = row.CostMicros
 	}
 	return out, nil
 }

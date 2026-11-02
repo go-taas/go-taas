@@ -87,7 +87,8 @@ func (s *Service) GetUsageKeysOverview(ctx context.Context, req *meteringv1.GetU
 			RequestCount:   k.RequestCount,
 			ErrorCount:     k.ErrorCount,
 			TotalTokens:    k.TotalTokens,
-			TotalCostCents: costs[k.APIKeyID],
+			TotalCostCents: costs[k.APIKeyID] / 10000,
+			TotalCostMicros: costs[k.APIKeyID],
 			AvgLatencyMs:   k.AvgLatencyMs,
 			P95LatencyMs:   k.P95LatencyMs,
 			DataThrough:    k.DataThrough,
@@ -161,7 +162,8 @@ func (s *Service) GetUsageKeys(ctx context.Context, req *meteringv1.GetUsageKeys
 	}
 
 	cards := buildUsageKeysCards(buckets, watermark)
-	cards.TotalCostCents = costs[apiKeyID]
+	cards.TotalCostCents = costs[apiKeyID] / 10000
+	cards.TotalCostMicros = costs[apiKeyID]
 	series := buildUsageKeysSeries(buckets, costs)
 
 	return &meteringv1.GetUsageKeysResponse{
@@ -200,6 +202,7 @@ func buildUsageKeysCards(buckets []UsageKeysBucketRow, watermark int64) *meterin
 		card.ErrorCount += b.ErrorCount
 		card.TotalTokens += b.TotalTokens
 		card.TotalCostCents += b.TotalCostCents
+		card.TotalCostMicros += b.TotalCostMicros
 		latencySum += b.AvgLatencyMs * b.RequestCount
 		latencyCount += b.RequestCount
 		for i := int64(0); i < b.RequestCount; i++ {
@@ -236,7 +239,8 @@ func buildTopKeys(keys []*meteringv1.UsageKeyRow, costs map[string]int64) []*met
 		out = append(out, &meteringv1.UsageKeyTopRow{
 			ApiKeyId:       k.ApiKeyId,
 			ApiKeyName:     k.ApiKeyName,
-			TotalCostCents: costs[k.ApiKeyId],
+			TotalCostCents: costs[k.ApiKeyId] / 10000,
+			TotalCostMicros: costs[k.ApiKeyId],
 			RequestCount:   k.RequestCount,
 			TotalTokens:    k.TotalTokens,
 		})
@@ -254,6 +258,7 @@ func buildUsageKeysSeries(buckets []UsageKeysBucketRow, _ map[string]int64) []*m
 			ErrorCount:     b.ErrorCount,
 			TotalTokens:    b.TotalTokens,
 			TotalCostCents: b.TotalCostCents,
+			TotalCostMicros: b.TotalCostMicros,
 			AvgLatencyMs:   b.AvgLatencyMs,
 			P95LatencyMs:   b.P95LatencyMs,
 		})

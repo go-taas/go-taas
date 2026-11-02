@@ -540,6 +540,8 @@ export interface UsageRecordSummary {
 
 export interface DashboardCard {
   totalCostCents: string;
+  // totalCostMicros is the same amount at 1e-6 currency precision.
+  totalCostMicros: string;
   currency: string;
   promptTokens: string;
   completionTokens: string;
@@ -553,6 +555,8 @@ export interface DashboardCard {
 export interface DashboardGroup {
   groupKey: string;
   costCents: string;
+  // costMicros is the same amount at 1e-6 currency precision.
+  costMicros: string;
   promptTokens: string;
   completionTokens: string;
   cachedTokens: string;
@@ -638,6 +642,7 @@ export interface UsageKeysCard {
   errorCount: string;
   totalTokens: string;
   totalCostCents: string;
+  totalCostMicros: string;
   avgLatencyMs: string;
   p95LatencyMs: string;
   dataThrough: string;
@@ -651,6 +656,7 @@ export interface UsageKeyRow {
   errorCount: string;
   totalTokens: string;
   totalCostCents: string;
+  totalCostMicros: string;
   avgLatencyMs: string;
   p95LatencyMs: string;
   dataThrough: string;
@@ -660,6 +666,7 @@ export interface UsageKeyTopRow {
   apiKeyId: string;
   apiKeyName: string;
   totalCostCents: string;
+  totalCostMicros: string;
   requestCount: string;
   totalTokens: string;
   sharePct: string;
@@ -671,6 +678,7 @@ export interface UsageKeysSeriesPoint {
   errorCount: string;
   totalTokens: string;
   totalCostCents: string;
+  totalCostMicros: string;
   avgLatencyMs: string;
   p95LatencyMs: string;
 }
@@ -735,6 +743,7 @@ export interface GetErrorAnalysisResponse {
 
 export interface CostAnalyticsCard {
   totalCostCents: string;
+  totalCostMicros: string;
   totalTokens: string;
   topDimensionValue: string;
   topDimensionSharePct: string;
@@ -745,6 +754,7 @@ export interface CostBreakdownRow {
   dimensionValue: string;
   dimensionName: string;
   totalCostCents: string;
+  totalCostMicros: string;
   totalTokens: string;
   costPerToken: string;
   sharePct: string;
@@ -753,6 +763,7 @@ export interface CostBreakdownRow {
 export interface CostSeriesPoint {
   bucket: string;
   totalCostCents: string;
+  totalCostMicros: string;
   totalTokens: string;
   costPerToken: string;
 }
@@ -1239,6 +1250,19 @@ export function formatTime(unixSeconds: string | number | undefined): string {
   return zone
     ? new Date(n * 1000).toLocaleString(undefined, { timeZone: zone })
     : new Date(n * 1000).toLocaleString();
+}
+
+/**
+ * formatDay renders a day bucket as a date. The server groups usage into
+ * UTC days, so the label is the UTC date of the bucket; formatting it with
+ * the viewer's zone would print 08:00 for a UTC-midnight bucket and read
+ * like a wrong timestamp.
+ */
+export function formatDay(unixSeconds: string | number | undefined): string {
+  if (unixSeconds === undefined || unixSeconds === null || unixSeconds === '0') return '—';
+  const n = typeof unixSeconds === 'string' ? parseInt(unixSeconds, 10) : unixSeconds;
+  if (!isFinite(n) || n <= 0) return '—';
+  return new Date(n * 1000).toISOString().slice(0, 10);
 }
 
 // ---- inference load testing (feature #20) ----

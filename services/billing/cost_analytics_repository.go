@@ -189,41 +189,47 @@ func dimensionValue(row costChargeRow, dimension string) string {
 
 // costBucketAccum accumulates one time bucket.
 type costBucketAccum struct {
-	bucket         int64
-	totalCostCents int64
-	totalTokens    int64
+	bucket          int64
+	totalCostCents  int64
+	totalCostMicros int64
+	totalTokens     int64
 }
 
 func (a *costBucketAccum) add(row costChargeRow) {
 	a.totalCostCents += int64(row.Amount * 100)
+	a.totalCostMicros += AmountMicros(row.Amount)
 	a.totalTokens += row.PromptTokens + row.CompletionTokens + row.CachedTokens + row.ReasoningTokens
 }
 
 func (a *costBucketAccum) row(bucketSize int64) CostBucketRow {
 	return CostBucketRow{
-		Bucket:         a.bucket,
-		TotalCostCents: a.totalCostCents,
-		TotalTokens:    a.totalTokens,
-		BucketSeconds:  bucketSize,
+		Bucket:          a.bucket,
+		TotalCostCents:  a.totalCostCents,
+		TotalCostMicros: a.totalCostMicros,
+		TotalTokens:     a.totalTokens,
+		BucketSeconds:   bucketSize,
 	}
 }
 
 // costBreakdownAccum accumulates one dimension value's aggregate.
 type costBreakdownAccum struct {
-	dimensionValue string
-	totalCostCents int64
-	totalTokens    int64
+	dimensionValue  string
+	totalCostCents  int64
+	totalCostMicros int64
+	totalTokens     int64
 }
 
 func (a *costBreakdownAccum) add(row costChargeRow) {
 	a.totalCostCents += int64(row.Amount * 100)
+	a.totalCostMicros += AmountMicros(row.Amount)
 	a.totalTokens += row.PromptTokens + row.CompletionTokens + row.CachedTokens + row.ReasoningTokens
 }
 
 func (a *costBreakdownAccum) row() CostBreakdownAggRow {
 	return CostBreakdownAggRow{
-		DimensionValue: a.dimensionValue,
-		TotalCostCents: a.totalCostCents,
-		TotalTokens:    a.totalTokens,
+		DimensionValue:  a.dimensionValue,
+		TotalCostCents:  a.totalCostCents,
+		TotalCostMicros: a.totalCostMicros,
+		TotalTokens:     a.totalTokens,
 	}
 }

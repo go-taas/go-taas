@@ -346,10 +346,12 @@ func TestComputeAmount(t *testing.T) {
 	// Tier rates override the entry rates (input/output only).
 	assert.Equal(t, 1.5+2.9+0.1, computeAmount(group, entry, 1.0, 7.25))
 
-	// Rounding to 2 decimals.
+	// Sub-cent precision: 123457 tokens at 3.5/1M = 0.4320995, kept to
+	// micro-unit precision instead of being rounded to 0.
 	group2 := &UsageGroup{PromptTokens: 123_457, CompletionTokens: 0, CachedTokens: 0}
 	amount := computeAmount(group2, entry, 0, 0)
-	assert.Equal(t, 0.43, amount)
+	assert.Equal(t, 0.4321, amount)
+	assert.EqualValues(t, 432100, AmountMicros(amount))
 }
 
 // AC8: tier selection by month-to-date volume boundaries.

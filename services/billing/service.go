@@ -534,6 +534,29 @@ func (s *Service) SetPrice(_ context.Context, req *billingv1.SetPriceRequest) (*
 	}, nil
 }
 
+// DeletePrice removes one price version (admin surface). An unknown id
+// answers 10509, the same block SetPrice uses for an invalid price. A
+// committed charge is untouched: it stores its own amount and price_id, so
+// deleting a version never rewrites the ledger.
+func (s *Service) DeletePrice(_ context.Context, req *billingv1.DeletePriceRequest) (*billingv1.DeletePriceResponse, error) {
+	priceID := strings.TrimSpace(req.GetPriceId())
+	if priceID == "" {
+		return nil, apierrors.New(apierrors.CodePriceInvalid)
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	removed, err := repo.DeletePrice(context.Background(), priceID)
+	if err != nil {
+		return nil, err
+	}
+	if !removed {
+		return nil, apierrors.New(apierrors.CodePriceInvalid)
+	}
+	return &billingv1.DeletePriceResponse{Response: okResponse()}, nil
+}
+
 // validatePrice applies the SetPrice validation matrix (architecture
 // Section 4.3): the first failure returns 10507.
 func validatePrice(req *billingv1.SetPriceRequest) error {

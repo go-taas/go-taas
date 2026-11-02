@@ -5,8 +5,8 @@ import { useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
-import { formatTime, type BalanceResponse, type UsageDashboardResponse } from '../../api';
-import { formatMoney } from '../../display';
+import { formatDay, type BalanceResponse, type UsageDashboardResponse } from '../../api';
+import { formatMicros, formatMoney } from '../../display';
 
 export default function UsagePage() {
   const api = useApi();
@@ -61,7 +61,7 @@ export default function UsagePage() {
       {orgId && cards && (
         <div className="cards">
           <div className="card" data-testid="usage-metric-cost">
-            {t('uusage.cost', { n: formatMoney(cards.totalCostCents) })}
+            {t('uusage.cost', { n: formatMicros(cards.totalCostMicros) })}
           </div>
           <div className="card" data-testid="usage-metric-tokens">
             {t('uusage.tokens', { n: Number(cards.promptTokens) + Number(cards.completionTokens) })}
@@ -90,9 +90,9 @@ export default function UsagePage() {
             {dashboard.dailyBuckets.map((bucket) =>
               (bucket.groups || []).map((g) => (
                 <tr key={`${bucket.date}-${g.groupKey}`}>
-                  <td>{formatTime(bucket.date)}</td>
+                  <td>{formatDay(bucket.date)}</td>
                   <td>{g.groupKey}</td>
-                  <td>{formatMoney(g.costCents)}</td>
+                  <td>{formatMicros(g.costMicros)}</td>
                   <td>{Number(g.promptTokens) + Number(g.completionTokens)}</td>
                 </tr>
               )),

@@ -70,6 +70,18 @@ export function formatAmount(
 }
 
 /**
+ * formatMicros renders a micro-unit amount (1e-6 currency) with adaptive
+ * precision: two decimals once the amount reaches a cent, up to six
+ * decimals below it, so a sub-cent charge is not printed as zero.
+ */
+export function formatMicros(micros: number | string | undefined, currency?: string): string {
+  const value = typeof micros === 'string' ? parseInt(micros, 10) : micros;
+  const amount = Number.isFinite(value as number) ? (value as number) / 1_000_000 : 0;
+  const digits = amount === 0 || Math.abs(amount) >= 0.01 ? 2 : 6;
+  return `${currencySymbol(currency)}${amount.toFixed(digits)}`;
+}
+
+/**
  * formatMajor renders an amount that is already in major units (a bill total,
  * a batch cost the API reports as a decimal string) in the display currency.
  * It exists so those figures get the same symbol and precision as the

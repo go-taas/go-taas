@@ -52,6 +52,7 @@ func (s *Service) GetUsageDashboard(ctx context.Context, req *meteringv1.GetUsag
 		buckets[day] = append(buckets[day], &meteringv1.DashboardGroup{
 			GroupKey:         row.GroupKey,
 			CostCents:        row.CostCents,
+			CostMicros:       row.CostMicros,
 			PromptTokens:     row.PromptTokens,
 			CompletionTokens: row.CompletionTokens,
 			CachedTokens:     row.CachedTokens,
@@ -75,6 +76,7 @@ func (s *Service) GetUsageDashboard(ctx context.Context, req *meteringv1.GetUsag
 	}
 	for _, row := range rows {
 		cards.TotalCostCents += row.CostCents
+		cards.TotalCostMicros += row.CostMicros
 		cards.PromptTokens += row.PromptTokens
 		cards.CompletionTokens += row.CompletionTokens
 		cards.CachedTokens += row.CachedTokens

@@ -94,8 +94,8 @@ func TestChargeCostByKey(t *testing.T) {
 	repo := NewUsageKeysRepository(db)
 	costs, err := repo.ChargeCostByKey(context.Background(), "org-a", now-3600, now+3600)
 	require.NoError(t, err)
-	assert.Equal(t, int64(150), costs["k1"])
-	assert.Equal(t, int64(250), costs["k2"])
+	assert.Equal(t, int64(1_500_000), costs["k1"], "micro-units: 1.50 is 1_500_000 micros")
+	assert.Equal(t, int64(2_500_000), costs["k2"], "micro-units: 2.50 is 2_500_000 micros")
 }
 
 func TestUsageKeysDataThrough(t *testing.T) {

@@ -161,8 +161,14 @@ func centsFromAmount(amount float64) int64 {
 	return int64(math.Round(amount * 100))
 }
 
-// computeAmount applies the D2 formula: per-1M rates times token
-// counts, summed and rounded to 2 decimals.
+// amountScale is the precision charges are stored at: 1e-6 currency
+// units. A 2-decimal rounding would erase any usage below one cent (a few
+// thousand tokens at a per-million rate), which is most per-request
+// traffic, so the ledger keeps micros and the console formats them.
+const amountScale = 1_000_000
+
+// computeAmount applies the D2 formula: per-1M rates times token counts,
+// summed and rounded to micro-unit precision.
 func computeAmount(group *UsageGroup, entry *PriceEntry, tierInputRate, tierOutputRate float64) float64 {
 	inputRate := entry.InputPricePerMillion
 	outputRate := entry.OutputPricePerMillion
@@ -173,7 +179,13 @@ func computeAmount(group *UsageGroup, entry *PriceEntry, tierInputRate, tierOutp
 	amount := float64(group.PromptTokens)*inputRate/1_000_000 +
 		float64(group.CompletionTokens)*outputRate/1_000_000 +
 		float64(group.CachedTokens)*entry.CachedPricePerMillion/1_000_000
-	return math.Round(amount*100) / 100
+	return math.Round(amount*amountScale) / amountScale
+}
+
+// AmountMicros converts a stored amount into integer micro-units. It is
+// the exact companion of computeAmount's rounding.
+func AmountMicros(amount float64) int64 {
+	return int64(math.Round(amount * amountScale))
 }
 
 // selectTier picks the volume tier for the month-to-date volume: the

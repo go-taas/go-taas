@@ -49,6 +49,7 @@ type DashboardAggregateRow struct {
 	Day              int64
 	GroupKey         string
 	CostCents        int64
+	CostMicros       int64
 	PromptTokens     int64
 	CompletionTokens int64
 	CachedTokens     int64
@@ -170,6 +171,7 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 		Select("(period_start / 86400) * 86400 AS day, "+
 			col+" AS group_key, "+
 			"ROUND(SUM(amount) * 100) AS cost_cents, "+
+			"CAST(ROUND(SUM(amount) * 1000000) AS INTEGER) AS cost_micros, "+
 			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
 			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+
 			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, "+
@@ -193,6 +195,7 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 			merged[key] = entry
 		}
 		entry.CostCents = row.CostCents
+		entry.CostMicros = row.CostMicros
 		entry.Priced = row.PricedRaw != 0
 		// The raw lines are the source of truth for the token and request
 		// counts; the charge record only fills a bucket that has no raw line

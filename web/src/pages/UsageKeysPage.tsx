@@ -7,7 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { formatMoney } from '../display';
+import { formatMicros } from '../display';
 import { navigate } from '../router';
 import { ErrorBanner, Pagination } from '../components';
 import UsageKeysChart, { type UsageKeysMetric } from '../components/UsageKeysChart';
@@ -47,9 +47,9 @@ function errorRatePercent(row: UsageKeyRow): string {
   return `${((parseInt(row.errorCount || '0', 10) / req) * 100).toFixed(1)}%`;
 }
 
-// costDollars renders integer cents in the platform's display currency.
-function costDollars(cents: string): string {
-  return formatMoney(cents);
+// costDollars renders micro-unit cost in the platform's display currency.
+function costDollars(micros: string): string {
+  return formatMicros(micros);
 }
 
 export default function UsageKeysPage() {
@@ -307,7 +307,7 @@ export default function UsageKeysPage() {
                     <td>{parseInt(k.requestCount || '0', 10).toLocaleString()}</td>
                     <td>{errorRatePercent(k)}</td>
                     <td>{parseInt(k.totalTokens || '0', 10).toLocaleString()}</td>
-                    <td>{costDollars(k.totalCostCents)}</td>
+                    <td>{costDollars(k.totalCostMicros)}</td>
                     <td>{k.avgLatencyMs || '0'} ms</td>
                     <td>{k.p95LatencyMs || '0'} ms</td>
                     <td>{k.dataThrough ? formatTime(k.dataThrough) : '—'}</td>

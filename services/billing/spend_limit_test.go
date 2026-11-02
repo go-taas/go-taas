@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
+
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
 // fakeSpendLimits is the SpendLimitResolver seam for the funds tests.
@@ -126,4 +128,42 @@ func TestScopedSpentCentsFiltersScope(t *testing.T) {
 	cents, err = repo.ScopedSpentCents(context.Background(), "org-a", now-60, "", "")
 	require.NoError(t, err)
 	assert.EqualValues(t, 1500, cents)
+}
+
+// TestDeletePriceRemovesOnlyTheVersion covers the admin delete: the row
+// disappears, an unknown id answers 10509, and a committed charge keeps
+// its amount.
+func TestDeletePriceRemovesOnlyTheVersion(t *testing.T) {
+	db := newBillingTestDB(t)
+	svc := NewForFVT(db, nil)
+	repo := NewRepository(db)
+	ctx := context.Background()
+
+	stored, err := repo.UpsertPrice(ctx, &PriceEntry{
+		ModelID: "m1", AcceleratorType: "default",
+		InputPricePerMillion: 1, OutputPricePerMillion: 1,
+		Currency: "CNY", EffectiveFrom: 1, TiersJSON: []byte("[]"),
+	})
+	require.NoError(t, err)
+
+	// A committed charge references the version.
+	require.NoError(t, db.Create(&ChargeRecord{
+		ID: uuid.NewString(), OrganizationID: "org-a", APIKeyID: "k1", ModelID: "m1",
+		AcceleratorType: "default", PeriodStart: 1, PeriodEnd: 3601,
+		Amount: 0.5, Currency: "CNY", TierIndex: -1, Priced: true, PriceID: &stored.ID,
+	}).Error)
+
+	_, err = svc.DeletePrice(ctx, &billingv1.DeletePriceRequest{PriceId: stored.ID})
+	require.NoError(t, err)
+
+	remaining, err := repo.FindPrice(ctx, stored.ID)
+	require.NoError(t, err)
+	assert.Nil(t, remaining)
+
+	var charge ChargeRecord
+	require.NoError(t, db.Where("api_key_id = ?", "k1").First(&charge).Error)
+	assert.Equal(t, 0.5, charge.Amount, "a committed charge keeps its amount")
+
+	_, err = svc.DeletePrice(ctx, &billingv1.DeletePriceRequest{PriceId: stored.ID})
+	assert.Equal(t, apierrors.CodePriceInvalid, apierrors.CodeOf(err))
 }

@@ -337,6 +337,10 @@ message GetUsageDashboardRequest {
 message DashboardCard {
   // total_cost_cents is the summed charge amount in minor units.
   int64 total_cost_cents = 1;
+  // total_cost_micros is the same amount at 1e-6 currency precision, so
+  // a sub-cent charge is not rounded away. Clients that can show it
+  // should prefer it over total_cost_cents.
+  int64 total_cost_micros = 10;
   string currency = 2;
   int64 prompt_tokens = 3;
   int64 completion_tokens = 4;
@@ -355,6 +359,8 @@ message DashboardGroup {
   // group_key is the api_key_id / model_id / accelerator_type.
   string group_key = 1;
   int64 cost_cents = 2;
+  // cost_micros is the same amount at 1e-6 currency precision.
+  int64 cost_micros = 9;
   int64 prompt_tokens = 3;
   int64 completion_tokens = 4;
   int64 cached_tokens = 5;
@@ -459,6 +465,8 @@ message UsageKeysCard {
   int64 error_count = 2;
   int64 total_tokens = 3;
   int64 total_cost_cents = 4;
+  // total_cost_micros is the same amount at 1e-6 currency precision.
+  int64 total_cost_micros = 8;
   int64 avg_latency_ms = 5;
   int64 p95_latency_ms = 6;
   // data_through is the start of the last complete bucket covered by
@@ -475,6 +483,8 @@ message UsageKeyRow {
   int64 error_count = 5;
   int64 total_tokens = 6;
   int64 total_cost_cents = 7;
+  // total_cost_micros is the same amount at 1e-6 currency precision.
+  int64 total_cost_micros = 15;
   int64 avg_latency_ms = 8;
   int64 p95_latency_ms = 9;
   // data_through is the key's last complete bucket (AD7).
@@ -494,6 +504,8 @@ message UsageKeyTopRow {
   string api_key_id = 1;
   string api_key_name = 2;
   int64 total_cost_cents = 3;
+  // total_cost_micros is the same amount at 1e-6 currency precision.
+  int64 total_cost_micros = 7;
   int64 request_count = 4;
   int64 total_tokens = 5;
   // share_pct is derived client-side as key cost / total cost.
@@ -509,6 +521,8 @@ message UsageKeysSeriesPoint {
   int64 error_count = 3;
   int64 total_tokens = 4;
   int64 total_cost_cents = 5;
+  // total_cost_micros is the same amount at 1e-6 currency precision.
+  int64 total_cost_micros = 8;
   int64 avg_latency_ms = 6;
   int64 p95_latency_ms = 7;
 }

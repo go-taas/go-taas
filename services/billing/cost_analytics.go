@@ -76,6 +76,7 @@ func (s *Service) GetCostAnalyticsOverview(ctx context.Context, req *billingv1.G
 			DimensionValue: b.DimensionValue,
 			DimensionName:  s.dimensionName(dimension, b.DimensionValue),
 			TotalCostCents: b.TotalCostCents,
+			TotalCostMicros: b.TotalCostMicros,
 			TotalTokens:    b.TotalTokens,
 		})
 	}
@@ -203,6 +204,7 @@ func buildCostCards(buckets []CostBucketRow, breakdown []CostBreakdownAggRow, wa
 	card := &billingv1.CostAnalyticsCard{DataThrough: watermark}
 	for _, b := range buckets {
 		card.TotalCostCents += b.TotalCostCents
+		card.TotalCostMicros += b.TotalCostMicros
 		card.TotalTokens += b.TotalTokens
 	}
 	if len(breakdown) > 0 {
@@ -218,6 +220,7 @@ func buildCostSeries(buckets []CostBucketRow) []*billingv1.CostSeriesPoint {
 		out = append(out, &billingv1.CostSeriesPoint{
 			Bucket:         b.Bucket,
 			TotalCostCents: b.TotalCostCents,
+			TotalCostMicros: b.TotalCostMicros,
 			TotalTokens:    b.TotalTokens,
 		})
 	}

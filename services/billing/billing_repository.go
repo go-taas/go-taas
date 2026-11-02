@@ -397,3 +397,28 @@ func (r *Repository) ModelName(ctx context.Context, modelID string) (string, err
 	}
 	return name, nil
 }
+
+// FindPrice returns one price version by id, or nil when it does not
+// exist. The delete path uses it to answer not-found before mutating.
+func (r *Repository) FindPrice(ctx context.Context, priceID string) (*PriceEntry, error) {
+	var row PriceEntry
+	err := r.DB(ctx).Where("id = ?", priceID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
+// DeletePrice removes one price version. Committed charges keep their
+// stored amount and price_id, so the ledger is unaffected; only future
+// settlement stops reading the version.
+func (r *Repository) DeletePrice(ctx context.Context, priceID string) (bool, error) {
+	result := r.DB(ctx).Where("id = ?", priceID).Delete(&PriceEntry{})
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}

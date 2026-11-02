@@ -26,6 +26,14 @@ service BillingService {
     option (google.api.http) = {get: "/api/v1/admin/billing/prices"};
   }
 
+  // DeletePrice removes one price version. Charges already committed keep
+  // their stored amount and price_id; only future settlement stops using
+  // the version. An unknown id returns 10509.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc DeletePrice(DeletePriceRequest) returns (DeletePriceResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/billing/prices/{price_id}"};
+  }
+
   // GetBalance returns the prepaid balance or postpaid quota of an
   // organization.
   // User-surface API: served under /api/v1; the session's active org
@@ -381,6 +389,14 @@ message SetPriceRequest {
   int64 effective_from = 7;
   // tiers is the optional ordered volume-tier list; empty means flat.
   repeated PriceTier tiers = 8;
+}
+
+message DeletePriceRequest {
+  string price_id = 1;
+}
+
+message DeletePriceResponse {
+  taas.common.v1.Response response = 1;
 }
 
 message SetPriceResponse {
@@ -1077,6 +1093,9 @@ message GetCostAnalyticsResponse {
 // integer cents and integer tokens only.
 message CostAnalyticsCard {
   int64 total_cost_cents = 1;
+  // total_cost_micros is the same amount at 1e-6 currency precision, so a
+  // sub-cent charge is not rounded away.
+  int64 total_cost_micros = 6;
   int64 total_tokens = 2;
   // top_dimension_value is the top dimension value by cost.
   string top_dimension_value = 3;
@@ -1093,6 +1112,8 @@ message CostBreakdownRow {
   string dimension_value = 1;
   string dimension_name = 2;
   int64 total_cost_cents = 3;
+  // total_cost_micros is the same amount at 1e-6 currency precision.
+  int64 total_cost_micros = 7;
   int64 total_tokens = 4;
   // cost_per_token and share_pct are derived client-side.
   int64 cost_per_token = 5;
@@ -1105,6 +1126,8 @@ message CostSeriesPoint {
   // days, daily otherwise, AD6).
   int64 bucket = 1;
   int64 total_cost_cents = 2;
+  // total_cost_micros is the same amount at 1e-6 currency precision.
+  int64 total_cost_micros = 5;
   int64 total_tokens = 3;
   // cost_per_token is derived client-side as cost / tokens.
   int64 cost_per_token = 4;
