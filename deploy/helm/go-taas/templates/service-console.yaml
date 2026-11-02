@@ -1,4 +1,8 @@
-{{- if .Values.console.enabled }}
+{{- /* Defensive lookups: a values set written before the console block
+       existed passes only a partial map. */ -}}
+{{- $console := .Values.console | default dict }}
+{{- if $console.enabled }}
+{{- $svc := $console.service | default dict }}
 apiVersion: v1
 kind: Service
 metadata:
@@ -6,16 +10,16 @@ metadata:
   labels:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: console
-  {{- with .Values.console.service.annotations }}
+  {{- with $svc.annotations }}
   annotations:
     {{- toYaml . | nindent 4 }}
   {{- end }}
 spec:
-  type: {{ .Values.console.service.type }}
+  type: {{ $svc.type | default "ClusterIP" }}
   ports:
     # The standalone console (nginx serving the Vite bundle).
     - name: http
-      port: {{ .Values.console.service.port }}
+      port: {{ $svc.port | default 8080 }}
       targetPort: http
       protocol: TCP
   selector:

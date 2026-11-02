@@ -1,4 +1,19 @@
-{{- if .Values.console.enabled }}
+{{- /* Defensive lookups: an upgrade from a values set written before the
+       console block existed passes only a partial map, so every nested
+       access falls back to the documented default. */ -}}
+{{- $console := .Values.console | default dict }}
+{{- if $console.enabled }}
+{{- $svc := $console.service | default dict }}
+{{- $image := $console.image | default dict }}
+{{- $podSC := $console.podSecurityContext | default dict }}
+{{- $sc := $console.securityContext | default dict }}
+{{- $writable := $console.writableDirs | default list }}
+{{- $liveness := $console.livenessProbe | default dict }}
+{{- $readiness := $console.readinessProbe | default dict }}
+{{- $taasServer := .Values.taasServer | default dict }}
+{{- $serverSvc := $taasServer.service | default dict }}
+{{- $gateway := $serverSvc.gateway | default dict }}
+{{- $gatewayPort := $gateway.port | default 9091 }}
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -7,7 +22,7 @@ metadata:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: console
 spec:
-  replicas: {{ .Values.console.replicaCount }}
+  replicas: {{ $console.replicaCount | default 1 }}
   selector:
     matchLabels:
       {{- include "go-taas.selectorLabels" . | nindent 6 }}
@@ -17,11 +32,11 @@ spec:
       labels:
         {{- include "go-taas.labels" . | nindent 8 }}
         app.kubernetes.io/component: console
-        {{- with .Values.console.podLabels }}
+        {{- with $console.podLabels }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       annotations:
-        {{- with .Values.console.podAnnotations }}
+        {{- with $console.podAnnotations }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
     spec:
@@ -29,78 +44,84 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- with $podSC }}
       securityContext:
-        {{- toYaml .Values.console.podSecurityContext | nindent 8 }}
-      terminationGracePeriodSeconds: {{ .Values.console.terminationGracePeriodSeconds }}
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      terminationGracePeriodSeconds: {{ $console.terminationGracePeriodSeconds | default 30 }}
       containers:
         - name: console
-          image: {{ include "go-taas.image" (dict "root" . "name" "taas-console" "image" .Values.console.image) }}
-          imagePullPolicy: {{ .Values.console.image.pullPolicy | default .Values.image.pullPolicy }}
+          image: {{ include "go-taas.image" (dict "root" . "name" "taas-console" "image" $image) }}
+          imagePullPolicy: {{ $image.pullPolicy | default .Values.image.pullPolicy }}
           ports:
             - name: http
-              containerPort: {{ .Values.console.service.port }}
+              containerPort: {{ $svc.port | default 8080 }}
               protocol: TCP
           env:
             # The gateway the console proxies /api/ to. Defaults to the
             # server service; the nginx template substitutes it at startup.
             - name: TASS_PROXY_PASS
-              value: {{ .Values.console.proxyPass | default (printf "http://%s:%d" (include "go-taas.server.name" .) (int .Values.taasServer.service.gateway.port)) | quote }}
-            {{- with .Values.console.extraEnv }}
+              value: {{ $console.proxyPass | default (printf "http://%s:%d" (include "go-taas.server.name" .) (int $gatewayPort)) | quote }}
+            {{- with $console.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
-          {{- if .Values.console.livenessProbe.enabled }}
+          {{- if $liveness.enabled }}
           livenessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: {{ .Values.console.livenessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.console.livenessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.console.livenessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.console.livenessProbe.failureThreshold }}
+            initialDelaySeconds: {{ $liveness.initialDelaySeconds | default 10 }}
+            periodSeconds: {{ $liveness.periodSeconds | default 20 }}
+            timeoutSeconds: {{ $liveness.timeoutSeconds | default 3 }}
+            failureThreshold: {{ $liveness.failureThreshold | default 3 }}
           {{- end }}
-          {{- if .Values.console.readinessProbe.enabled }}
+          {{- if $readiness.enabled }}
           readinessProbe:
             httpGet:
               path: /
               port: http
-            initialDelaySeconds: {{ .Values.console.readinessProbe.initialDelaySeconds }}
-            periodSeconds: {{ .Values.console.readinessProbe.periodSeconds }}
-            timeoutSeconds: {{ .Values.console.readinessProbe.timeoutSeconds }}
-            failureThreshold: {{ .Values.console.readinessProbe.failureThreshold }}
+            initialDelaySeconds: {{ $readiness.initialDelaySeconds | default 5 }}
+            periodSeconds: {{ $readiness.periodSeconds | default 10 }}
+            timeoutSeconds: {{ $readiness.timeoutSeconds | default 3 }}
+            failureThreshold: {{ $readiness.failureThreshold | default 3 }}
           {{- end }}
+          {{- with $console.resources }}
           resources:
-            {{- toYaml .Values.console.resources | nindent 12 }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sc }}
           securityContext:
-            {{- toYaml .Values.console.securityContext | nindent 12 }}
-          {{- if or .Values.console.extraVolumeMounts .Values.console.writableDirs }}
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- if or $console.extraVolumeMounts $writable }}
           volumeMounts:
-            {{- range .Values.console.writableDirs }}
+            {{- range $writable }}
             - name: {{ .name }}
               mountPath: {{ .mountPath }}
             {{- end }}
-            {{- with .Values.console.extraVolumeMounts }}
+            {{- with $console.extraVolumeMounts }}
             {{- toYaml . | nindent 12 }}
             {{- end }}
           {{- end }}
-      {{- if or .Values.console.extraVolumes .Values.console.writableDirs }}
+      {{- if or $console.extraVolumes $writable }}
       volumes:
-        {{- range .Values.console.writableDirs }}
+        {{- range $writable }}
         - name: {{ .name }}
           emptyDir: {}
         {{- end }}
-        {{- with .Values.console.extraVolumes }}
+        {{- with $console.extraVolumes }}
         {{- toYaml . | nindent 8 }}
         {{- end }}
       {{- end }}
-      {{- with .Values.console.nodeSelector }}
+      {{- with $console.nodeSelector }}
       nodeSelector:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.console.tolerations }}
+      {{- with $console.tolerations }}
       tolerations:
         {{- toYaml . | nindent 8 }}
       {{- end }}
-      {{- with .Values.console.affinity }}
+      {{- with $console.affinity }}
       affinity:
         {{- toYaml . | nindent 8 }}
       {{- end }}
