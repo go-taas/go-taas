@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -74,6 +75,18 @@ func (c *fakeCatalog) LookupExternalModel(_ context.Context, modelID, modelName 
 		}
 	}
 	return nil, apierrors.New(apierrors.CodeProviderNotPublished)
+}
+
+// ListExternalModelNames returns the published names the fake knows.
+func (c *fakeCatalog) ListExternalModelNames(_ context.Context) ([]string, error) {
+	names := make([]string, 0, len(c.byName))
+	for name, cm := range c.byName {
+		if cm.Published {
+			names = append(names, name)
+		}
+	}
+	sort.Strings(names)
+	return names, nil
 }
 
 // newProviderSvc builds a provider service over a fresh in-memory database

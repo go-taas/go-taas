@@ -76,7 +76,7 @@ func (r *Repository) IsModelAuthorized(ctx context.Context, modelRef, organizati
 	// uuid column and comparing it to a name is a SQL type error rather than
 	// a "no grants" answer — an error that turned every gateway-verified
 	// request into a 503.
-	modelID, err := r.resolveModelRef(ctx, modelRef)
+	modelID, err := r.ResolveModelRef(ctx, modelRef)
 	if err != nil {
 		return false, err
 	}
@@ -97,9 +97,11 @@ func (r *Repository) IsModelAuthorized(ctx context.Context, modelRef, organizati
 	return r.HasAuthorization(ctx, modelID, organizationID)
 }
 
-// resolveModelRef maps a model id or a served model name to the catalog id.
-// It returns "" when the reference is neither.
-func (r *Repository) resolveModelRef(ctx context.Context, ref string) (string, error) {
+// ResolveModelRef maps a model id or a served model name to the catalog id.
+// It is the exported form of the resolution the authorization gate uses, so
+// the auth module can compare a key's scope (catalog ids) with the model
+// name the data plane carries. An unknown reference returns "".
+func (r *Repository) ResolveModelRef(ctx context.Context, ref string) (string, error) {
 	if ref == "" {
 		return "", nil
 	}

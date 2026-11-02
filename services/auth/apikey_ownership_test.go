@@ -504,3 +504,46 @@ func TestRestoreAPIKeyOwnership(t *testing.T) {
 	_, err = env.svc.RestoreAPIKey(sessionCtx("admin-fvt"), &authv1.RestoreAPIKeyRequest{KeyId: created.GetKeyId()})
 	require.NoError(t, err)
 }
+
+// scopeResolver maps a served name to its catalog id, the way the model
+// repository does.
+type scopeResolver struct {
+	byName map[string]string
+}
+
+func (s scopeResolver) IsModelAuthorized(context.Context, string, string) (bool, error) {
+	return true, nil
+}
+
+func (s scopeResolver) ResolveModelRef(_ context.Context, ref string) (string, error) {
+	if id, ok := s.byName[ref]; ok {
+		return id, nil
+	}
+	return ref, nil
+}
+
+// TestVerifyAPIKeyScopeMatchesServedName covers the name/id mismatch: a
+// key scoped to a catalog id must accept the served model name, because
+// that is all the data plane carries.
+func TestVerifyAPIKeyScopeMatchesServedName(t *testing.T) {
+	env := newTestService(t)
+	ctx := orgCtx("org-a")
+
+	created, err := env.svc.CreateAPIKey(ctx, &authv1.CreateAPIKeyRequest{
+		Name:   "scoped",
+		Models: []string{"model-uuid"},
+	})
+	require.NoError(t, err)
+	env.svc.SetModelAuthorizer(scopeResolver{byName: map[string]string{"qwen": "model-uuid"}})
+
+	digest := KeyDigest(created.GetApiKey())
+	_, err = env.svc.VerifyAPIKey(context.Background(), &authv1.VerifyAPIKeyRequest{
+		KeyDigest: digest, Model: "qwen",
+	})
+	require.NoError(t, err, "the served name must match the stored catalog id")
+
+	_, err = env.svc.VerifyAPIKey(context.Background(), &authv1.VerifyAPIKeyRequest{
+		KeyDigest: digest, Model: "other-model",
+	})
+	assert.Equal(t, apierrors.CodeAPIKeyModelNotAllowed, apierrors.CodeOf(err))
+}

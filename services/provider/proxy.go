@@ -110,42 +110,17 @@ func (s *Service) ProxyExternalChat(ctx context.Context, modelID, orgID, apiKeyI
 	if err != nil {
 		return nil, err
 	}
-	timeout := resolved.TimeoutSeconds
-	if timeout <= 0 {
-		timeout = defaultRequestTimeoutSeconds
-	}
-	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
-	defer cancel()
-
-	target := trimTrailingSlashes(resolved.BaseURL) + "/chat/completions"
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, target, bytes.NewReader(injectUpstreamModel(body, resolved.UpstreamModelID)))
-	if err != nil {
-		return nil, apierrors.New(apierrors.CodeProviderUpstreamUnavailable)
-	}
-	req.Header.Set("Content-Type", "application/json")
-	if resolved.APIKey != "" {
-		req.Header.Set("Authorization", "Bearer "+resolved.APIKey)
-	}
-	for name, value := range resolved.ExtraHeaders {
-		req.Header.Set(name, value)
-	}
 
 	requestID := uuid.NewString()
 	start := time.Now()
-	resp, err := s.probeClient.httpClient.Do(req)
+	respBody, status, err := s.postChat(ctx, resolved, body)
 	latency := time.Since(start).Milliseconds()
 	if err != nil {
 		s.emitMetering(ctx, requestID, orgID, apiKeyID, modelID, meteringUsage{}, latency, "error")
-		return nil, upstreamTransportError(err, timeout)
-	}
-	defer func() { _ = resp.Body.Close() }()
-	respBody, readErr := io.ReadAll(resp.Body)
-	if readErr != nil {
-		s.emitMetering(ctx, requestID, orgID, apiKeyID, modelID, meteringUsage{}, latency, "error")
-		return nil, apierrors.New(apierrors.CodeProviderUpstreamUnavailable)
+		return nil, err
 	}
 
-	switch code := resp.StatusCode; {
+	switch code := status; {
 	case code >= 200 && code < 300:
 		usage := parseUsage(respBody)
 		s.emitMetering(ctx, requestID, orgID, apiKeyID, modelID, usage, latency, "success")
@@ -159,6 +134,71 @@ func (s *Service) ProxyExternalChat(ctx context.Context, modelID, orgID, apiKeyI
 		s.emitMetering(ctx, requestID, orgID, apiKeyID, modelID, meteringUsage{}, latency, "error")
 		return nil, apierrors.New(apierrors.CodeProviderUpstreamUnavailable)
 	}
+}
+
+// ProxyExternalChatForGateway proxies one data-plane chat completion for an
+// external catalog model addressed by its served name.
+//
+// It is the OpenAI-compatible data plane's fallback backend: a model with no
+// self-hosted inference service behind it is served from its provider
+// instead of failing at the router. Attribution and metering are the gateway
+// plugin's job on this path (it measures every request and emits the event),
+// so this method deliberately records nothing: a second event here would
+// count the same tokens twice.
+func (s *Service) ProxyExternalChatForGateway(ctx context.Context, modelName string, body []byte) ([]byte, error) {
+	resolved, err := s.resolve(ctx, "", modelName)
+	if err != nil {
+		return nil, err
+	}
+	respBody, status, err := s.postChat(ctx, resolved, body)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case status >= 200 && status < 300:
+		return respBody, nil
+	case status == http.StatusUnauthorized || status == http.StatusForbidden:
+		return nil, apierrors.New(apierrors.CodeProviderUpstreamUnauthorized)
+	default:
+		return nil, apierrors.New(apierrors.CodeProviderUpstreamUnavailable)
+	}
+}
+
+// postChat performs the upstream call for one resolved external model and
+// returns the response body with its status code. A transport failure or an
+// unreadable body is already mapped to a platform code, so callers only have
+// to translate the status.
+func (s *Service) postChat(ctx context.Context, resolved *resolvedExternal, body []byte) ([]byte, int, error) {
+	timeout := resolved.TimeoutSeconds
+	if timeout <= 0 {
+		timeout = defaultRequestTimeoutSeconds
+	}
+	reqCtx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
+	defer cancel()
+
+	target := trimTrailingSlashes(resolved.BaseURL) + "/chat/completions"
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodPost, target, bytes.NewReader(injectUpstreamModel(body, resolved.UpstreamModelID)))
+	if err != nil {
+		return nil, 0, apierrors.New(apierrors.CodeProviderUpstreamUnavailable)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if resolved.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+resolved.APIKey)
+	}
+	for name, value := range resolved.ExtraHeaders {
+		req.Header.Set(name, value)
+	}
+
+	resp, err := s.probeClient.httpClient.Do(req)
+	if err != nil {
+		return nil, 0, upstreamTransportError(err, timeout)
+	}
+	defer func() { _ = resp.Body.Close() }()
+	respBody, readErr := io.ReadAll(resp.Body)
+	if readErr != nil {
+		return nil, resp.StatusCode, apierrors.New(apierrors.CodeProviderUpstreamUnavailable)
+	}
+	return respBody, resp.StatusCode, nil
 }
 
 // upstreamTransportError maps a transport failure to 13013.
@@ -273,4 +313,14 @@ func parseUsage(body []byte) meteringUsage {
 		CachedTokens:     envelope.Usage.CachedTokens,
 		ReasoningTokens:  envelope.Usage.ReasoningTokens,
 	}
+}
+
+// ListExternalModelNames returns the served names of every published
+// external model, so the data plane can tell a provider-backed model from one
+// an inference service serves.
+func (s *Service) ListExternalModelNames(ctx context.Context) ([]string, error) {
+	if s.catalog == nil {
+		return nil, apierrors.Newf(apierrors.CodeInternal, "provider: model catalog unavailable")
+	}
+	return s.catalog.ListExternalModelNames(ctx)
 }

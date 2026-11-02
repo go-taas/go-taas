@@ -26,6 +26,11 @@ type ModelAuthorizer interface {
 	// model: always for a model with zero grants, otherwise only for the
 	// organizations in its grant list.
 	IsModelAuthorized(ctx context.Context, modelID, organizationID string) (bool, error)
+	// ResolveModelRef maps a model id or a served name to the catalog id,
+	// or "" when the reference is neither. The per-key scope stores catalog
+	// ids while the data plane carries the name, so the comparison needs
+	// this resolution.
+	ResolveModelRef(ctx context.Context, ref string) (string, error)
 }
 
 // defaultModelAuthCacheTTL bounds the revoke-propagation window of the

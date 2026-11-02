@@ -26,6 +26,11 @@ type fakeModelAuthorizer struct {
 	err    error
 }
 
+// ResolveModelRef echoes the reference: these tests compare ids only.
+func (f *fakeModelAuthorizer) ResolveModelRef(_ context.Context, ref string) (string, error) {
+	return ref, nil
+}
+
 func (f *fakeModelAuthorizer) IsModelAuthorized(_ context.Context, modelID, organizationID string) (bool, error) {
 	f.calls++
 	if f.err != nil {

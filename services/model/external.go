@@ -159,3 +159,30 @@ func (s *Service) providerName(ctx context.Context, m *Model) string {
 	}
 	return name
 }
+
+// ListExternalModelNames returns the served names of every published
+// external model.
+//
+// The data plane needs this set to tell a provider-backed model (no
+// self-hosted workload) from one an inference service serves, so a chat
+// request can be answered instead of failing at the router.
+func (s *Service) ListExternalModelNames(ctx context.Context) ([]string, error) {
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	return repo.ListExternalModelNames(ctx)
+}
+
+// ListExternalModelNames returns the published external model names.
+func (r *Repository) ListExternalModelNames(ctx context.Context) ([]string, error) {
+	var names []string
+	err := r.DB(ctx).Model(&Model{}).
+		Where("external = ? AND published = ?", true, true).
+		Order("name ASC").
+		Pluck("name", &names).Error
+	if err != nil {
+		return nil, err
+	}
+	return names, nil
+}

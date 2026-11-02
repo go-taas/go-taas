@@ -1009,9 +1009,19 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 	// 10105). An empty list skips the check entirely: an unscoped key
 	// behaves exactly as before (AC3).
 	if len(verdict.Models) > 0 && req.GetModel() != "" {
+		// The scope stores catalog ids while the data plane carries the
+		// served name, so both sides are resolved to the catalog id before
+		// comparing; a name that is not in the catalog can only match a
+		// scope entry stored as that name.
+		requested := strings.TrimSpace(req.GetModel())
+		if s.modelAuthorizer != nil {
+			if resolved, err := s.modelAuthorizer.ResolveModelRef(ctx, requested); err == nil && resolved != "" {
+				requested = resolved
+			}
+		}
 		allowed := false
 		for _, m := range verdict.Models {
-			if m == req.GetModel() {
+			if m == requested || m == strings.TrimSpace(req.GetModel()) {
 				allowed = true
 				break
 			}

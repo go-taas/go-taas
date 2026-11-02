@@ -63,6 +63,10 @@ type ModelCatalog interface {
 	// LookupExternalModel returns the catalog model by id (preferred) or
 	// name, or 13015 when it is not an external model.
 	LookupExternalModel(ctx context.Context, modelID, modelName string) (*model.ExternalModel, error)
+	// ListExternalModelNames returns the served names of every published
+	// external model: the set the data plane can answer for without a
+	// self-hosted workload.
+	ListExternalModelNames(ctx context.Context) ([]string, error)
 }
 
 // SessionOrgResolver resolves the session's active organization.
