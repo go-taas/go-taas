@@ -60,6 +60,10 @@ func (s *Service) RecordGatewayUsage(ctx context.Context, req *server.GatewayUsa
 		RequestID:      req.RequestID,
 		OrganizationID: req.OrganizationID,
 		APIKeyID:       req.APIKeyID,
+		// The plugin echoes the ownership it got from the verdict; it is
+		// what makes per-user and per-project attribution possible.
+		OwnerUserID: req.OwnerUserID,
+		ProjectID:   req.ProjectID,
 		ModelID:        modelID,
 		ServiceID:      serviceID,
 		Usage: tokenUsage{

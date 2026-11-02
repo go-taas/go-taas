@@ -165,7 +165,7 @@ func (r *Repository) UnchargedGroups(ctx context.Context, apiKeyID string, perio
 	var rows []UsageGroup
 	err := r.DB(ctx).Model(&UsageLine{}).
 		Select("organization_id, api_key_id, model_id, accelerator_type, "+
-			"COALESCE(MAX(owner_user_id), '') AS owner_user_id, "+
+			"COALESCE(MAX(CAST(owner_user_id AS TEXT)), '') AS owner_user_id, "+
 			"COALESCE(MAX(project_id), '') AS project_id, "+
 			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
 			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+

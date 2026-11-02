@@ -9,7 +9,7 @@ import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import type { GetMyQuotaResponse } from '../../api';
-import QuotaDimensionCard from './quotas/QuotaDimensionCard';
+import QuotaDimensionCard, { type QuotaLimits as QuotaLimitsLike } from './quotas/QuotaDimensionCard';
 
 export default function UserQuotasPage() {
   const api = useApi();
@@ -41,12 +41,16 @@ export default function UserQuotasPage() {
   const u = data?.usage;
   const personal = data?.personalQuota;
   const effective = data?.effectiveQuota;
-  const allUnlimited =
-    q &&
-    parseInt(q.maxConcurrentRequests, 10) === 0 &&
-    parseInt(q.maxInferenceServices, 10) === 0 &&
-    parseInt(q.maxBatchJobsPerDay, 10) === 0 &&
-    parseInt(q.maxOutputTokensPerRequest, 10) === 0;
+  // The effective tuple is what actually applies: an unlimited
+  // organization budget with a personal cap is a limited account, so the
+  // empty state must look at the effective value, not the org row.
+  const effectiveUnlimited = (quota?: QuotaLimitsLike | null) =>
+    !quota ||
+    (parseInt(quota.maxConcurrentRequests, 10) === 0 &&
+      parseInt(quota.maxInferenceServices, 10) === 0 &&
+      parseInt(quota.maxBatchJobsPerDay, 10) === 0 &&
+      parseInt(quota.maxOutputTokensPerRequest, 10) === 0);
+  const allUnlimited = q && effectiveUnlimited(effective) && effectiveUnlimited(q);
 
   const mailto = data?.requestIncreaseEmail
     ? `mailto:${data.requestIncreaseEmail}?subject=${encodeURIComponent(t('quota.increaseSubject', { org: q?.organizationName || '' }))}&body=${encodeURIComponent(t('quota.increaseBody', { org: q?.organizationName || '' }))}`

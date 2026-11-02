@@ -62,9 +62,9 @@ func newOwnershipFvtEnv(t *testing.T) *ownershipFvtEnv {
 		}).Error)
 	}
 	for _, m := range []*tenancy.OrgMember{
-		{OrganizationID: "org-fvt", UserID: "admin-fvt", Role: tenancy.RoleAdmin, JoinedAt: time.Now().UTC()},
-		{OrganizationID: "org-fvt", UserID: "alice", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC()},
-		{OrganizationID: "org-fvt", UserID: "bob", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC()},
+		{OrganizationID: "org-fvt", UserID: "33333333-3333-4333-8333-333333333333", Role: tenancy.RoleAdmin, JoinedAt: time.Now().UTC()},
+		{OrganizationID: "org-fvt", UserID: "11111111-1111-4111-8111-111111111111", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC()},
+		{OrganizationID: "org-fvt", UserID: "22222222-2222-4222-8222-222222222222", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC()},
 	} {
 		require.NoError(t, db.Create(m).Error)
 	}
@@ -75,7 +75,7 @@ func newOwnershipFvtEnv(t *testing.T) *ownershipFvtEnv {
 		require.NoError(t, db.Create(p).Error)
 	}
 	require.NoError(t, db.Create(&tenancy.ProjectMember{
-		ProjectID: "proj-a", UserID: "alice", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC(),
+		ProjectID: "proj-a", UserID: "11111111-1111-4111-8111-111111111111", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC(),
 	}).Error)
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
@@ -122,7 +122,7 @@ func newOwnershipFvtEnv(t *testing.T) *ownershipFvtEnv {
 	t.Cleanup(gwSrv.Close)
 
 	env := &ownershipFvtEnv{db: db, gwSrv: gwSrv, conn: conn, auth: authSvc, ten: tenSvc, tokens: map[string]string{}}
-	for _, user := range []string{"admin-fvt", "alice", "bob"} {
+	for _, user := range []string{"33333333-3333-4333-8333-333333333333", "11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"} {
 		// The session store is keyed by session id; the gateway forwards the
 		// bearer value the session layer looks up.
 		token := "sess-" + user
@@ -188,38 +188,38 @@ func TestFVTApiKeyOwnerLifecycle(t *testing.T) {
 	env := newOwnershipFvtEnv(t)
 
 	// A member's key belongs to that member.
-	aliceKey, _ := env.createKey(t, "alice", map[string]any{"name": "alice-key"})
+	aliceKey, _ := env.createKey(t, "11111111-1111-4111-8111-111111111111", map[string]any{"name": "alice-key"})
 
-	code, body := env.call(t, "alice", http.MethodGet, "/api/v1/auth/api-keys", nil)
+	code, body := env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodGet, "/api/v1/auth/api-keys", nil)
 	require.Equal(t, http.StatusOK, code, "alice list: %v", body)
 	keys := body["keys"].([]any)
 	require.Len(t, keys, 1, "alice sees only her own key")
 	aliceRow := keys[0].(map[string]any)
 	assert.Equal(t, aliceKey, aliceRow["keyId"])
-	assert.Equal(t, "alice", aliceRow["ownerUserId"])
+	assert.Equal(t, "11111111-1111-4111-8111-111111111111", aliceRow["ownerUserId"])
 	assert.Equal(t, false, aliceRow["shared"])
 	assert.Equal(t, "org-fvt", aliceRow["organizationId"])
 
 	// Bob does not see alice's key by default, and cannot manage it.
-	code, body = env.call(t, "bob", http.MethodGet, "/api/v1/auth/api-keys", nil)
+	code, body = env.call(t, "22222222-2222-4222-8222-222222222222", http.MethodGet, "/api/v1/auth/api-keys", nil)
 	require.Equal(t, http.StatusOK, code, "bob list: %v", body)
 	assert.Empty(t, body["keys"], "bob has no keys")
 
-	_, body = env.call(t, "bob", http.MethodPost, "/api/v1/auth/api-keys/"+aliceKey+":revoke", nil)
+	_, body = env.call(t, "22222222-2222-4222-8222-222222222222", http.MethodPost, "/api/v1/auth/api-keys/"+aliceKey+":revoke", nil)
 	assert.EqualValues(t, 10007, body["code"], "bob cannot revoke alice's key: %v", body)
 
 	// An administrator sees every key of the organization.
-	code, body = env.call(t, "admin-fvt", http.MethodGet, "/api/v1/auth/api-keys?scope=all", nil)
+	code, body = env.call(t, "33333333-3333-4333-8333-333333333333", http.MethodGet, "/api/v1/auth/api-keys?scope=all", nil)
 	require.Equal(t, http.StatusOK, code, "admin list: %v", body)
 	assert.Len(t, body["keys"].([]any), 1)
 
 	// A plain member may not ask for the organization-wide view.
-	_, body = env.call(t, "alice", http.MethodGet, "/api/v1/auth/api-keys?scope=all", nil)
+	_, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodGet, "/api/v1/auth/api-keys?scope=all", nil)
 	assert.EqualValues(t, 10036, body["code"], "alice all-scope: %v", body)
 
 	// An administrator creates an organization-shared key.
-	sharedKey, _ := env.createKey(t, "admin-fvt", map[string]any{"name": "shared", "shared": true})
-	code, body = env.call(t, "alice", http.MethodGet, "/api/v1/auth/api-keys?scope=shared", nil)
+	sharedKey, _ := env.createKey(t, "33333333-3333-4333-8333-333333333333", map[string]any{"name": "shared", "shared": true})
+	code, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodGet, "/api/v1/auth/api-keys?scope=shared", nil)
 	require.Equal(t, http.StatusOK, code, "shared list: %v", body)
 	sharedRows := body["keys"].([]any)
 	require.Len(t, sharedRows, 1)
@@ -227,34 +227,34 @@ func TestFVTApiKeyOwnerLifecycle(t *testing.T) {
 	assert.Equal(t, true, sharedRows[0].(map[string]any)["shared"])
 
 	// A member cannot manage a shared key (administrators only).
-	_, body = env.call(t, "alice", http.MethodPost, "/api/v1/auth/api-keys/"+sharedKey+":revoke", nil)
+	_, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodPost, "/api/v1/auth/api-keys/"+sharedKey+":revoke", nil)
 	assert.EqualValues(t, 10007, body["code"], "alice shared revoke: %v", body)
 
 	// An administrator transfers alice's key to bob.
-	code, body = env.call(t, "admin-fvt", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
-		"ownerUserId": "bob",
+	code, body = env.call(t, "33333333-3333-4333-8333-333333333333", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
+		"ownerUserId": "22222222-2222-4222-8222-222222222222",
 	})
 	require.Equal(t, http.StatusOK, code, "transfer: %v", body)
-	assert.Equal(t, "bob", body["key"].(map[string]any)["ownerUserId"])
+	assert.Equal(t, "22222222-2222-4222-8222-222222222222", body["key"].(map[string]any)["ownerUserId"])
 
 	// Bob now owns and manages it; alice no longer sees it.
-	code, body = env.call(t, "bob", http.MethodPut, "/api/v1/auth/api-keys/"+aliceKey, map[string]any{
+	code, body = env.call(t, "22222222-2222-4222-8222-222222222222", http.MethodPut, "/api/v1/auth/api-keys/"+aliceKey, map[string]any{
 		"name": "bob-renamed", "rateLimitRpm": 10,
 	})
 	require.Equal(t, http.StatusOK, code, "bob update: %v", body)
-	code, body = env.call(t, "alice", http.MethodGet, "/api/v1/auth/api-keys", nil)
+	code, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodGet, "/api/v1/auth/api-keys", nil)
 	require.Equal(t, http.StatusOK, code)
 	assert.Empty(t, body["keys"], "alice no longer owns the key")
 
 	// A member cannot transfer ownership.
-	_, body = env.call(t, "bob", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
-		"ownerUserId": "alice",
+	_, body = env.call(t, "22222222-2222-4222-8222-222222222222", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
+		"ownerUserId": "11111111-1111-4111-8111-111111111111",
 	})
 	assert.EqualValues(t, 10036, body["code"], "member transfer: %v", body)
 
 	// An administrator clears the owner: the key becomes organization-shared
 	// (the empty owner is never read as "assign the caller").
-	code, body = env.call(t, "admin-fvt", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
+	code, body = env.call(t, "33333333-3333-4333-8333-333333333333", http.MethodPut, "/api/v1/admin/auth/api-keys/"+aliceKey+"/ownership", map[string]any{
 		"ownerUserId": "",
 	})
 	require.Equal(t, http.StatusOK, code, "clear owner: %v", body)
@@ -267,13 +267,13 @@ func TestFVTApiKeyProjectScope(t *testing.T) {
 	env := newOwnershipFvtEnv(t)
 
 	// Alice belongs to proj-a, so she may place a key there.
-	code, body := env.call(t, "alice", http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
+	code, body := env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
 		"name": "proj-key", "projectId": "proj-a",
 	})
 	require.Equal(t, http.StatusOK, code, "project key: %v", body)
 	keyID := body["keyId"].(string)
 
-	code, body = env.call(t, "alice", http.MethodGet, "/api/v1/auth/api-keys?scope=mine", nil)
+	code, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodGet, "/api/v1/auth/api-keys?scope=mine", nil)
 	require.Equal(t, http.StatusOK, code)
 	row := body["keys"].([]any)[0].(map[string]any)
 	assert.Equal(t, keyID, row["keyId"])
@@ -281,20 +281,20 @@ func TestFVTApiKeyProjectScope(t *testing.T) {
 	assert.Equal(t, "Project A", row["projectDisplayName"])
 
 	// A project of another organization is rejected.
-	code, body = env.call(t, "alice", http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
+	code, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
 		"name": "bad-project", "projectId": "proj-other",
 	})
 	assert.NotEqual(t, http.StatusOK, code, "cross-org project: %v", body)
 	assert.EqualValues(t, 10008, body["code"])
 
 	// A member may not place a key in a project they do not belong to.
-	_, body = env.call(t, "bob", http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
+	_, body = env.call(t, "22222222-2222-4222-8222-222222222222", http.MethodPost, "/api/v1/auth/api-keys", map[string]any{
 		"name": "not-my-project", "projectId": "proj-a",
 	})
 	assert.EqualValues(t, 10036, body["code"], "non-member project: %v", body)
 
 	// Filtering by project returns the assigned key.
-	code, body = env.call(t, "admin-fvt", http.MethodGet, "/api/v1/auth/api-keys?scope=all&project_id=proj-a", nil)
+	code, body = env.call(t, "33333333-3333-4333-8333-333333333333", http.MethodGet, "/api/v1/auth/api-keys?scope=all&project_id=proj-a", nil)
 	require.Equal(t, http.StatusOK, code, "project filter: %v", body)
 	assert.Len(t, body["keys"].([]any), 1)
 }
@@ -303,7 +303,7 @@ func TestFVTApiKeyProjectScope(t *testing.T) {
 // owner/project attribution and the minimum of the three quota tiers.
 func TestFVTApiKeyVerdictOwnershipQuota(t *testing.T) {
 	env := newOwnershipFvtEnv(t)
-	ctx := env.sessionCtx("admin-fvt")
+	ctx := env.sessionCtx("33333333-3333-4333-8333-333333333333")
 
 	// Organization cap 10 requests, project cap 20, personal cap 5.
 	_, err := env.ten.UpdateOrganizationQuota(ctx, &tenancyv1.UpdateOrganizationQuotaRequest{
@@ -317,13 +317,13 @@ func TestFVTApiKeyVerdictOwnershipQuota(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = env.ten.UpdateUserQuota(ctx, &tenancyv1.UpdateUserQuotaRequest{
-		UserId:                "alice",
+		UserId:                "11111111-1111-4111-8111-111111111111",
 		OrganizationId:        "org-fvt",
 		MaxConcurrentRequests: ptrInt64(5),
 	})
 	require.NoError(t, err)
 
-	_, created := env.createKey(t, "alice", map[string]any{
+	_, created := env.createKey(t, "11111111-1111-4111-8111-111111111111", map[string]any{
 		"name": "scoped-key", "projectId": "proj-a",
 	})
 	plaintext := created["apiKey"].(string)
@@ -331,20 +331,20 @@ func TestFVTApiKeyVerdictOwnershipQuota(t *testing.T) {
 	client := authv1.NewAuthServiceClient(env.conn)
 	verdict, err := client.VerifyAPIKey(context.Background(), &authv1.VerifyAPIKeyRequest{KeyDigest: auth.KeyDigest(plaintext)})
 	require.NoError(t, err)
-	assert.Equal(t, "alice", verdict.GetOwnerUserId())
+	assert.Equal(t, "11111111-1111-4111-8111-111111111111", verdict.GetOwnerUserId())
 	assert.Equal(t, "proj-a", verdict.GetProjectId())
 	assert.Equal(t, "org-fvt", verdict.GetOrganizationId())
 	assert.Equal(t, int64(5), verdict.GetMaxConcurrentRequests(), "personal cap is the strictest")
 
 	// Removing the personal cap leaves the organization cap (10).
 	_, err = env.ten.UpdateUserQuota(ctx, &tenancyv1.UpdateUserQuotaRequest{
-		UserId:                "alice",
+		UserId:                "11111111-1111-4111-8111-111111111111",
 		OrganizationId:        "org-fvt",
 		MaxConcurrentRequests: ptrInt64(0),
 	})
 	require.NoError(t, err)
 	// A new key gets a fresh verdict (the positive cache is keyed by digest).
-	_, created2 := env.createKey(t, "alice", map[string]any{
+	_, created2 := env.createKey(t, "11111111-1111-4111-8111-111111111111", map[string]any{
 		"name": "scoped-key-2", "projectId": "proj-a",
 	})
 	verdict, err = client.VerifyAPIKey(context.Background(), &authv1.VerifyAPIKeyRequest{

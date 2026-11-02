@@ -5,6 +5,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
+
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	tenancyv1 "github.com/go-taas/go-taas/proto/taas/tenancy/v1"
 
@@ -117,7 +119,7 @@ func (s *Service) GetUserQuota(ctx context.Context, req *tenancyv1.GetUserQuotaR
 		return nil, err
 	}
 	userID := strings.TrimSpace(req.GetUserId())
-	if userID == "" {
+	if !validUserID(userID) {
 		return nil, apierrors.New(apierrors.CodeUserNotFound)
 	}
 	repo, err := s.repository()
@@ -151,7 +153,7 @@ func (s *Service) UpdateUserQuota(ctx context.Context, req *tenancyv1.UpdateUser
 		return nil, err
 	}
 	userID := strings.TrimSpace(req.GetUserId())
-	if userID == "" {
+	if !validUserID(userID) {
 		return nil, apierrors.New(apierrors.CodeUserNotFound)
 	}
 	repo, err := s.repository()
@@ -284,6 +286,17 @@ func (s *Service) requireQuotaOrgExists(ctx context.Context, orgID string) (*Org
 		return nil, err
 	}
 	return org, nil
+}
+
+// validUserID reports whether the id can be looked up in a uuid column.
+// PostgreSQL rejects a non-UUID with a type error, so the shape is
+// checked first and a bad id answers not-found instead of failing.
+func validUserID(userID string) bool {
+	if userID == "" {
+		return false
+	}
+	_, err := uuid.Parse(userID)
+	return err == nil
 }
 
 // memberRole returns the user's role in the organization, or "" when the

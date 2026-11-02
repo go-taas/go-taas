@@ -26,7 +26,7 @@ func newUserQuotaServiceDB(t *testing.T) *gorm.DB {
 		_ = sqlDB.Close()
 	})
 	require.NoError(t, db.Create(&Organization{ID: "org-a", DisplayName: "A", State: StateActive}).Error)
-	for _, u := range []string{"u1", "u2"} {
+	for _, u := range []string{"11111111-1111-4111-8111-111111111111", "22222222-2222-4222-8222-222222222222"} {
 		require.NoError(t, db.Create(&OrgMember{
 			OrganizationID: "org-a", UserID: u, Role: RoleMember, JoinedAt: time.Now().UTC(),
 		}).Error)
@@ -48,11 +48,11 @@ func TestListUserQuotasIsRosterDriven(t *testing.T) {
 
 	// A name filter narrows the roster.
 	resp, err = svc.ListUserQuotas(context.Background(), &tenancyv1.ListUserQuotasRequest{
-		OrganizationId: "org-a", Name: "u2",
+		OrganizationId: "org-a", Name: "22222222-2222-4222-8222-222222222222",
 	})
 	require.NoError(t, err)
 	require.Len(t, resp.GetQuotas(), 1)
-	assert.Equal(t, "u2", resp.GetQuotas()[0].GetUserId())
+	assert.Equal(t, "22222222-2222-4222-8222-222222222222", resp.GetQuotas()[0].GetUserId())
 
 	// An unknown organization is rejected.
 	_, err = svc.ListUserQuotas(context.Background(), &tenancyv1.ListUserQuotasRequest{
@@ -68,7 +68,7 @@ func TestUpdateUserQuotaValidatesAndCombines(t *testing.T) {
 	svc := NewForFVT(db)
 
 	resp, err := svc.UpdateUserQuota(context.Background(), &tenancyv1.UpdateUserQuotaRequest{
-		UserId:                "u1",
+		UserId:                "11111111-1111-4111-8111-111111111111",
 		OrganizationId:        "org-a",
 		MaxConcurrentRequests: i64ptr(4),
 		MonthlySpendLimitCents: i64ptr(1500),
@@ -81,7 +81,7 @@ func TestUpdateUserQuotaValidatesAndCombines(t *testing.T) {
 	// The effective value reports the organization cap when the personal
 	// one is cleared.
 	resp, err = svc.UpdateUserQuota(context.Background(), &tenancyv1.UpdateUserQuotaRequest{
-		UserId:                "u1",
+		UserId:                "11111111-1111-4111-8111-111111111111",
 		OrganizationId:        "org-a",
 		MaxConcurrentRequests: i64ptr(0),
 	})
@@ -90,11 +90,11 @@ func TestUpdateUserQuotaValidatesAndCombines(t *testing.T) {
 
 	// Out-of-range values are rejected.
 	_, err = svc.UpdateUserQuota(context.Background(), &tenancyv1.UpdateUserQuotaRequest{
-		UserId: "u1", OrganizationId: "org-a", MaxConcurrentRequests: i64ptr(10001),
+		UserId: "11111111-1111-4111-8111-111111111111", OrganizationId: "org-a", MaxConcurrentRequests: i64ptr(10001),
 	})
 	assert.Equal(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(err))
 	_, err = svc.UpdateUserQuota(context.Background(), &tenancyv1.UpdateUserQuotaRequest{
-		UserId: "u1", OrganizationId: "org-a", MonthlySpendLimitCents: i64ptr(-1),
+		UserId: "11111111-1111-4111-8111-111111111111", OrganizationId: "org-a", MonthlySpendLimitCents: i64ptr(-1),
 	})
 	assert.Equal(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(err))
 
@@ -110,15 +110,15 @@ func TestGetUserQuota(t *testing.T) {
 	svc := NewForFVT(db)
 	ctx := context.Background()
 
-	resp, err := svc.GetUserQuota(ctx, &tenancyv1.GetUserQuotaRequest{UserId: "u1", OrganizationId: "org-a"})
+	resp, err := svc.GetUserQuota(ctx, &tenancyv1.GetUserQuotaRequest{UserId: "11111111-1111-4111-8111-111111111111", OrganizationId: "org-a"})
 	require.NoError(t, err)
-	assert.Equal(t, "u1", resp.GetQuota().GetUserId())
+	assert.Equal(t, "11111111-1111-4111-8111-111111111111", resp.GetQuota().GetUserId())
 	assert.EqualValues(t, 0, resp.GetQuota().GetMaxConcurrentRequests())
 
 	require.NoError(t, db.Create(&UserQuota{
-		OrganizationID: "org-a", UserID: "u1", MaxBatchJobsPerDay: 3,
+		OrganizationID: "org-a", UserID: "11111111-1111-4111-8111-111111111111", MaxBatchJobsPerDay: 3,
 	}).Error)
-	resp, err = svc.GetUserQuota(ctx, &tenancyv1.GetUserQuotaRequest{UserId: "u1", OrganizationId: "org-a"})
+	resp, err = svc.GetUserQuota(ctx, &tenancyv1.GetUserQuotaRequest{UserId: "11111111-1111-4111-8111-111111111111", OrganizationId: "org-a"})
 	require.NoError(t, err)
 	assert.EqualValues(t, 3, resp.GetQuota().GetMaxBatchJobsPerDay())
 

@@ -466,7 +466,13 @@ func main() {
 			tenancySvc.SetSessionOrgResolver(authSvc)
 			authSvc.SetOrgQuotaReader(tenancySvc)
 			inferSvc.SetOrgQuotaReader(tenancySvc)
+			// The service-count check applies the personal tier on top of
+			// the organization budget.
+			inferSvc.SetQuotaResolver(tenancySvc)
 			batchSvc.SetOrgQuotaReader(tenancySvc)
+			// The daily-jobs check applies the personal tier on top of the
+			// organization budget.
+			batchSvc.SetQuotaResolver(tenancySvc)
 			// The audit service (feature #15) resolves the session's
 			// active org and caller for the admin/end-user audit reads,
 			// and gates the admin audit RPCs by the caller's role.

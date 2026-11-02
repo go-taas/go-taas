@@ -26,8 +26,9 @@ type UserQuotaFilter struct {
 func (r *Repository) ListUserQuotas(ctx context.Context, filter UserQuotaFilter) ([]*UserQuota, int64, error) {
 	query := r.db.DB(ctx).Model(&UserQuota{}).Where("organization_id = ?", filter.OrganizationID)
 	if filter.Name != "" {
+		// CAST keeps the filter portable: PostgreSQL has no lower(uuid).
 		like := "%" + strings.ToLower(filter.Name) + "%"
-		query = query.Where("LOWER(user_id) LIKE ?", like)
+		query = query.Where("LOWER(CAST(user_id AS TEXT)) LIKE ?", like)
 	}
 	if filter.UserIDs != nil {
 		if len(filter.UserIDs) == 0 {

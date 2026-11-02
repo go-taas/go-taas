@@ -119,6 +119,12 @@ type Service struct {
 	// Nil until wired: the check reads as unlimited.
 	orgQuotaReader tenancy.OrgQuotaReader
 
+	// quotaResolver resolves the three-level effective limits for the
+	// service-count check. When wired it supersedes orgQuotaReader so a
+	// personal budget tightens the tenant budget; the project tier does
+	// not apply to inference services (they carry no project).
+	quotaResolver tenancy.QuotaResolver
+
 	// sessionOrgResolver resolves the session's active organization for
 	// the user-realm playground (feature-17 AD6). Nil until wired: the
 	// transitional X-Organization-Id header is used.
@@ -347,6 +353,11 @@ func (s *Service) SetOrgGuard(g *tenancy.OrgGuard) { s.orgGuard = g }
 // AD13). Nil reads as unlimited (existing FVT setups unchanged).
 func (s *Service) SetOrgQuotaReader(r tenancy.OrgQuotaReader) { s.orgQuotaReader = r }
 
+// SetQuotaResolver injects the three-level quota resolver for the
+// service-count check. Production and FVT wire it; nil keeps the
+// organization-only rule.
+func (s *Service) SetQuotaResolver(r tenancy.QuotaResolver) { s.quotaResolver = r }
+
 // SetSessionOrgResolver injects the session-organization resolver used
 // by the user-realm playground (feature-17 AD6). Production and FVT wire
 // the auth service; unit tests may inject a fake.
@@ -531,14 +542,11 @@ func (s *Service) checkOrg(ctx context.Context, orgID string, requireActive bool
 // naming the current count and the limit. Existing services are never
 // deleted by a tightening (D6).
 func (s *Service) checkServiceQuota(ctx context.Context, orgID string) error {
-	if s.orgQuotaReader == nil {
-		return nil
-	}
-	q, err := s.orgQuotaReader.OrgQuota(ctx, orgID)
+	limit, err := s.serviceQuotaLimit(ctx, orgID)
 	if err != nil {
 		return err
 	}
-	if q.MaxInferenceServices == 0 {
+	if limit == 0 {
 		return nil
 	}
 	repo, err := s.repository()
@@ -549,11 +557,40 @@ func (s *Service) checkServiceQuota(ctx context.Context, orgID string) error {
 	if err != nil {
 		return err
 	}
-	if count >= q.MaxInferenceServices {
+	if count >= limit {
 		return apierrors.Newf(apierrors.CodeQuotaServiceCountExceeded,
-			"your organization has reached its limit of %d inference services; request an increase or remove an unused service", q.MaxInferenceServices)
+			"your organization has reached its limit of %d inference services; request an increase or remove an unused service", limit)
 	}
 	return nil
+}
+
+// serviceQuotaLimit resolves the effective service-count cap: the
+// three-level value when the resolver is wired, else the organization
+// row. 0 means unlimited.
+func (s *Service) serviceQuotaLimit(ctx context.Context, orgID string) (int64, error) {
+	if s.quotaResolver != nil {
+		userID := ""
+		if s.sessionUserResolver != nil {
+			if id, err := s.sessionUserResolver.SessionUserID(ctx); err == nil {
+				userID = id
+			}
+		}
+		q, err := s.quotaResolver.EffectiveQuota(ctx, orgID, "", userID)
+		if err != nil {
+			logger.S().Warnw("infer: effective quota read failed, degrading to the organization rule",
+				"org", orgID, "err", err)
+		} else {
+			return q.MaxInferenceServices, nil
+		}
+	}
+	if s.orgQuotaReader == nil {
+		return 0, nil
+	}
+	q, err := s.orgQuotaReader.OrgQuota(ctx, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return q.MaxInferenceServices, nil
 }
 
 // requireAdminRole enforces the minimum org role on the admin infer RPCs

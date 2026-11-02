@@ -17,6 +17,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/authctx"
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/tenancy"
@@ -81,6 +82,12 @@ type Service struct {
 	// CreateBatchJob daily-jobs check (feature #51, AD13). Nil until
 	// wired: the check reads as unlimited.
 	orgQuotaReader tenancy.OrgQuotaReader
+
+	// quotaResolver resolves the three-level effective limits for the
+	// daily-jobs check. When wired it supersedes orgQuotaReader so a
+	// personal budget tightens the tenant budget; batch jobs carry no
+	// project, so only the organization and personal tiers apply.
+	quotaResolver tenancy.QuotaResolver
 }
 
 // New constructs the batch service.
@@ -96,6 +103,11 @@ func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgReso
 // SetOrgQuotaReader injects the tenancy org-quota reader (feature #51,
 // AD13). Nil reads as unlimited (existing FVT setups unchanged).
 func (s *Service) SetOrgQuotaReader(r tenancy.OrgQuotaReader) { s.orgQuotaReader = r }
+
+// SetQuotaResolver injects the three-level quota resolver for the
+// daily-jobs check. Production and FVT wire it; nil keeps the
+// organization-only rule.
+func (s *Service) SetQuotaResolver(r tenancy.QuotaResolver) { s.quotaResolver = r }
 
 // SetSessionUserResolver injects the session-user resolver.
 func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserResolver = r }
@@ -252,14 +264,11 @@ func (s *Service) requireAdminRole(ctx context.Context, orgID string) error {
 // naming today's count and the limit. Canceled and failed jobs count —
 // the guard is on submissions, not successes.
 func (s *Service) checkBatchQuota(ctx context.Context, orgID string) error {
-	if s.orgQuotaReader == nil {
-		return nil
-	}
-	q, err := s.orgQuotaReader.OrgQuota(ctx, orgID)
+	limit, err := s.batchQuotaLimit(ctx, orgID)
 	if err != nil {
 		return err
 	}
-	if q.MaxBatchJobsPerDay == 0 {
+	if limit == 0 {
 		return nil
 	}
 	repo, err := s.repository()
@@ -270,11 +279,40 @@ func (s *Service) checkBatchQuota(ctx context.Context, orgID string) error {
 	if err != nil {
 		return err
 	}
-	if count >= q.MaxBatchJobsPerDay {
+	if count >= limit {
 		return apierrors.Newf(apierrors.CodeQuotaBatchJobsExceeded,
-			"your organization has reached its daily limit of %d batch jobs; new submissions resume at midnight", q.MaxBatchJobsPerDay)
+			"your organization has reached its daily limit of %d batch jobs; new submissions resume at midnight", limit)
 	}
 	return nil
+}
+
+// batchQuotaLimit resolves the effective daily-jobs cap: the three-level
+// value when the resolver is wired, else the organization row. 0 means
+// unlimited.
+func (s *Service) batchQuotaLimit(ctx context.Context, orgID string) (int64, error) {
+	if s.quotaResolver != nil {
+		userID := ""
+		if s.sessionUserResolver != nil {
+			if id, err := s.sessionUserResolver.SessionUserID(ctx); err == nil {
+				userID = id
+			}
+		}
+		q, err := s.quotaResolver.EffectiveQuota(ctx, orgID, "", userID)
+		if err != nil {
+			logger.S().Warnw("batch: effective quota read failed, degrading to the organization rule",
+				"org", orgID, "err", err)
+		} else {
+			return q.MaxBatchJobsPerDay, nil
+		}
+	}
+	if s.orgQuotaReader == nil {
+		return 0, nil
+	}
+	q, err := s.orgQuotaReader.OrgQuota(ctx, orgID)
+	if err != nil {
+		return 0, err
+	}
+	return q.MaxBatchJobsPerDay, nil
 }
 
 // todayAtMidnight returns the local midnight of today in the configured

@@ -59,3 +59,33 @@ func TestCreateBatchJobDailyQuota(t *testing.T) {
 	require.NoError(t, err)
 	assert.NotEmpty(t, resp.GetBatchJob().GetBatchId())
 }
+
+// fakeBatchQuotaResolver is the three-level quota seam.
+type fakeBatchQuotaResolver struct {
+	quota tenancy.EffectiveQuota
+	err   error
+}
+
+func (f fakeBatchQuotaResolver) EffectiveQuota(context.Context, string, string, string) (tenancy.EffectiveQuota, error) {
+	return f.quota, f.err
+}
+
+// TestBatchQuotaLimitUsesEffectiveValue covers the personal tier: the
+// daily-jobs check reads the combined limit.
+func TestBatchQuotaLimitUsesEffectiveValue(t *testing.T) {
+	svc := NewForFVT(nil, nil)
+	svc.SetQuotaResolver(fakeBatchQuotaResolver{quota: tenancy.EffectiveQuota{MaxBatchJobsPerDay: 4}})
+	limit, err := svc.batchQuotaLimit(context.Background(), "org-a")
+	require.NoError(t, err)
+	assert.EqualValues(t, 4, limit)
+}
+
+// TestBatchQuotaLimitFallsBackToOrganization covers the degradation rule.
+func TestBatchQuotaLimitFallsBackToOrganization(t *testing.T) {
+	svc := NewForFVT(nil, nil)
+	svc.SetQuotaResolver(fakeBatchQuotaResolver{err: assert.AnError})
+	svc.SetOrgQuotaReader(fakeBatchOrgQuotaReader{quota: tenancy.OrgQuota{MaxBatchJobsPerDay: 6}})
+	limit, err := svc.batchQuotaLimit(context.Background(), "org-a")
+	require.NoError(t, err)
+	assert.EqualValues(t, 6, limit)
+}

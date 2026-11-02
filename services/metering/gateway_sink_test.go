@@ -133,6 +133,25 @@ func TestRecordGatewayUsagePublishesTheConsumerShape(t *testing.T) {
 	assert.Equal(t, "success", decoded.Status)
 }
 
+// TestRecordGatewayUsageCarriesOwnership proves the plugin's ownership
+// echo survives the sink: without it every voucher, usage record and
+// charge would be attributed to nobody.
+func TestRecordGatewayUsageCarriesOwnership(t *testing.T) {
+	svc, client, db := newSinkTestEnv(t)
+	require.NoError(t, db.Create(&model.Model{ID: "model-gw", Name: "qwen-2.5-0.5b"}).Error)
+
+	req := gatewayEvent()
+	req.OwnerUserID = "user-1"
+	req.ProjectID = "proj-1"
+	_, err := svc.RecordGatewayUsage(context.Background(), req)
+	require.NoError(t, err)
+
+	var decoded meteringEvent
+	require.NoError(t, json.Unmarshal(client.bodies[0], &decoded))
+	assert.Equal(t, "user-1", decoded.OwnerUserID)
+	assert.Equal(t, "proj-1", decoded.ProjectID)
+}
+
 // TestRecordGatewayUsageResolvesTheService covers attribution: the voucher
 // should name the service that served the request when one is running.
 func TestRecordGatewayUsageResolvesTheService(t *testing.T) {
