@@ -552,7 +552,10 @@ func (s *Service) DeletePrice(_ context.Context, req *billingv1.DeletePriceReque
 		return nil, err
 	}
 	if !removed {
-		return nil, apierrors.New(apierrors.CodePriceInvalid)
+		// A well-formed id that matches no version is a miss, not a
+		// malformed request: the console has to tell "already deleted" from
+		// "you sent nonsense".
+		return nil, apierrors.New(apierrors.CodePriceNotFound)
 	}
 	return &billingv1.DeletePriceResponse{Response: okResponse()}, nil
 }

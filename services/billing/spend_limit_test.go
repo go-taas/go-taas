@@ -131,7 +131,7 @@ func TestScopedSpentCentsFiltersScope(t *testing.T) {
 }
 
 // TestDeletePriceRemovesOnlyTheVersion covers the admin delete: the row
-// disappears, an unknown id answers 10509, and a committed charge keeps
+// disappears, an unknown id answers 10501, and a committed charge keeps
 // its amount.
 func TestDeletePriceRemovesOnlyTheVersion(t *testing.T) {
 	db := newBillingTestDB(t)
@@ -165,5 +165,9 @@ func TestDeletePriceRemovesOnlyTheVersion(t *testing.T) {
 	assert.Equal(t, 0.5, charge.Amount, "a committed charge keeps its amount")
 
 	_, err = svc.DeletePrice(ctx, &billingv1.DeletePriceRequest{PriceId: stored.ID})
+	assert.Equal(t, apierrors.CodePriceNotFound, apierrors.CodeOf(err))
+
+	// An empty id is a malformed request rather than a miss.
+	_, err = svc.DeletePrice(ctx, &billingv1.DeletePriceRequest{PriceId: "  "})
 	assert.Equal(t, apierrors.CodePriceInvalid, apierrors.CodeOf(err))
 }
