@@ -13,7 +13,7 @@ metadata:
 spec:
   type: {{ .Values.taasServer.service.type }}
   ports:
-    # REST gateway and embedded admin console.
+    # REST gateway (the standalone console proxies /api/ to it).
     - name: gateway
       port: {{ .Values.taasServer.service.gateway.port }}
       targetPort: gateway

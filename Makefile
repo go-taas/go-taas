@@ -30,9 +30,9 @@ IMAGE_TAG  ?= dev
 DOCKERFILE ?= build/docker/Dockerfile
 
 # Binaries published as images; each maps to a Dockerfile build target.
-# "taas-console" is the standalone nginx image of the console (the same
-# Vite bundle embedded into taas-server) for independent frontend
-# deployments.
+# "taas-console" is the standalone nginx image of the console (the Vite
+# bundle), deployed separately by the Helm chart; the server image is
+# API-only and does not embed the frontend.
 IMAGE_TARGETS ?= taas-server taas-controller taas-console
 
 # Network build-args for image builds. Override on the command line for

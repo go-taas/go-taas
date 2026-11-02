@@ -58,7 +58,7 @@ AD1–AD8 restate the UI/UX design's decisions as implementation-level rules. **
 
 | Layer / component | Owns | Changes in this feature |
 | --- | --- | --- |
-| **Static bundle (SPA)** | One Vite bundle (`web/dist`), embedded into `taas-server` at `pkg/server/console/`; served by the gateway's SPA fallback | Two route trees, two shells, a realm-scoped API client, the legacy-key migration, the redirect table |
+| **Static bundle (SPA)** | One Vite bundle (`web/dist`), shipped as the standalone `taas-console` image (nginx) and deployed separately by the Helm chart; nginx serves the SPA and proxies `/api/` to the gateway. The server image is API-only. | Two route trees, two shells, a realm-scoped API client, the legacy-key migration, the redirect table |
 | **Gateway (`pkg/server`)** | HTTP composition: `RealmGuard` → `withConsole` → `runtime.ServeMux`; the incoming header matcher (`X-Organization-Id`); the unified error renderer; the SPA fallback that serves `index.html` for every non-`/api/` path | New `RealmGuard` + `SessionRealmResolver` seam + service-registration wiring; no change to the fallback (it already serves `/admin/...`) |
 | **grpc-gateway mux** | Path → RPC routing from `google.api.http` annotations | New bindings for 5 new RPCs and 14 existing RPCs (Section 5) |
 | **`auth`** | Users, SSO providers, identity bindings, API keys, Redis sessions, session identity for other services | Session `realm`; realm-pinned login bindings; `ListPublicSSOProviders`; `SessionRealm`; `SessionActiveOrg` seam implementation; `CreateSessionForTest` unchanged |
@@ -665,7 +665,7 @@ sequenceDiagram
 
     Tenant->>Browser: opens /usage
     Browser->>GW: GET /usage
-    GW-->>Browser: index.html from the embedded bundle
+    GW-->>Browser: index.html from the console image (nginx)
     Browser->>Browser: surface router picks the user surface, no redirect
     Browser->>Browser: adoptLegacyStorage user
     Browser->>GW: GET /api/v1/auth/session with the user token
@@ -767,7 +767,7 @@ existing config-file keys, and this feature adds no new deployable component
 
 ## 12. Rollout and Upgrade Notes
 
-1. **Deploy order**: one binary. `taas-server` carries the gateway, the services and the embedded console bundle, so proto regeneration, the guard and the SPA ship together. No ordering constraint between services exists (they share one process).
+1. **Deploy order**: the server and the console are separate Deployments. `taas-server` carries the gateway and the services; `taas-console` carries the SPA and proxies `/api/` to the server. Roll the server first, then the console; a console started before the server answers 502 on `/api/` until the server is ready.
 2. **Database**: none — no table, column, index or SQL script changes (Section 6). The upgrade path is a rolling restart.
 3. **Sessions**: sessions minted before the upgrade have no realm and answer 10027 once, forcing a single re-login per browser (AC24). Nothing is deleted server-side; the keys expire on their own.
 4. **Browser storage**: the first console that boots adopts the legacy keys and removes them (AD9). A browser that only ever used the old console therefore keeps its organization context; a pre-split session token causes one redirect to the sign-in page with `reason=expired`.

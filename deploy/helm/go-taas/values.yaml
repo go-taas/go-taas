@@ -1,9 +1,10 @@
 # Default values for the go-taas chart.
 #
 # The chart deploys the control plane — `taas-server` (gRPC, the REST
-# gateway and the embedded admin console) and `controller` (the Kubernetes
-# reconciler) — and turns every third-party dependency connection into a
-# value. There are three configuration mechanisms, in decreasing priority:
+# gateway), `taas-console` (the standalone frontend) and `controller` (the
+# Kubernetes reconciler) — and turns every third-party dependency
+# connection into a value. There are three configuration mechanisms, in
+# decreasing priority:
 #
 #   1. `dependencies.*` — structured connectivity for PostgreSQL, Redis and
 #      RabbitMQ. Each block has a `mode`:
@@ -494,7 +495,7 @@ taasServer:
     # -- Annotations for the Service (e.g. a cloud load-balancer configuration).
     annotations: {}
     gateway:
-      # -- Port of the REST gateway and embedded admin console.
+      # -- Port of the REST gateway (the console proxies `/api/` to it).
       port: 9091
     grpc:
       # -- Publish the gRPC port on the Service.
@@ -596,6 +597,90 @@ taasServer:
   # -- Extra volume mounts for the server container.
   extraVolumeMounts: []
   # -- Grace period for the server to drain in-flight requests.
+  terminationGracePeriodSeconds: 30
+
+# console: the standalone frontend (nginx serving the Vite bundle). The
+# frontend is NOT embedded in the server image; it is deployed here as its
+# own Deployment and the console hostname routes to it. nginx reverse-proxies
+# /api/ to the server's gateway, so the console keeps same-origin API access.
+console:
+  # -- Deploy the standalone console.
+  enabled: true
+  # -- Number of console replicas.
+  replicaCount: 1
+  image:
+    # -- Image name appended to `image.repository` (the Dockerfile build target).
+    name: taas-console
+    # -- Image tag for this component. Empty uses `image.tag`, then `v<Chart.appVersion>`.
+    tag: ""
+    # -- Image pull policy for this component. Empty uses `image.pullPolicy`.
+    pullPolicy: ""
+  # -- The gateway the console proxies /api/ to. Defaults to the server
+  # service (TASS_PROXY_PASS). Override when the server is external.
+  proxyPass: ""
+  service:
+    # -- Service type: `ClusterIP`, `NodePort` or `LoadBalancer`.
+    type: ClusterIP
+    # -- Annotations for the Service (e.g. a cloud load-balancer configuration).
+    annotations: {}
+    # -- Port the console listens on.
+    port: 8080
+  # -- Extra annotations for the console pod.
+  podAnnotations: {}
+  # -- Extra labels for the console pod.
+  podLabels: {}
+  # -- Pod-level security context.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    fsGroup: 101
+  # -- Container-level security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  # -- EmptyDir mounts nginx needs to write to under a read-only root.
+  # The nginx image writes its pid and cache here; the console bundle
+  # itself is read-only.
+  writableDirs:
+    - name: nginx-run
+      mountPath: /run
+    - name: nginx-cache
+      mountPath: /var/cache/nginx
+    - name: nginx-tmp
+      mountPath: /tmp
+  # -- Resource requests/limits for the console container.
+  resources: {}
+  # -- Node selector for the console pod.
+  nodeSelector: {}
+  # -- Tolerations for the console pod.
+  tolerations: []
+  # -- Affinity for the console pod.
+  affinity: {}
+  livenessProbe:
+    # -- Enable the liveness probe (HTTP GET / on the console port).
+    enabled: true
+    initialDelaySeconds: 10
+    periodSeconds: 20
+    timeoutSeconds: 3
+    failureThreshold: 3
+  readinessProbe:
+    # -- Enable the readiness probe (HTTP GET / on the console port).
+    enabled: true
+    initialDelaySeconds: 5
+    periodSeconds: 10
+    timeoutSeconds: 3
+    failureThreshold: 3
+  # -- Extra environment variables appended to the console container.
+  extraEnv: []
+  # -- Extra volumes for the console pod.
+  extraVolumes: []
+  # -- Extra volume mounts for the console container.
+  extraVolumeMounts: []
+  # -- Grace period for the console to drain in-flight requests.
   terminationGracePeriodSeconds: 30
 
 # controller: the reconciliation loop that turns desired-state messages into

@@ -1,8 +1,8 @@
 <!doctype html>
-<!-- Placeholder console bundle. The real bundle is built from web/ and
-     overlaid at image-build time (build/docker/Dockerfile copies
-     web/dist over this directory). Serving this placeholder keeps the
-     gateway functional in a source checkout without Node.js. -->
+<!-- Placeholder console bundle. The real frontend ships as the standalone
+     taas-console image (nginx); the server image is API-only and does not
+     embed the Vite bundle. Serving this placeholder keeps the gateway
+     functional in a source checkout without Node.js. -->
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -10,9 +10,9 @@
   </head>
   <body>
     <p>
-      The admin console bundle is not built in this environment. Build it
-      with <code>cd web &amp;&amp; npm ci &amp;&amp; npm run build</code>, or
-      use the Docker image where it is built automatically.
+      The admin console is served by the standalone <code>taas-console</code>
+      image. This server is API-only; deploy the console separately (the Helm
+      chart does this by default) and route the console hostname to it.
     </p>
   </body>
 </html>

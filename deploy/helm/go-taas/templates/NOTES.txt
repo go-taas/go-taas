@@ -2,12 +2,16 @@
 The go-taas control plane is installed in namespace {{ .Release.Namespace }}.
 
 Endpoints:
-{{- if .Values.taasServer.service.monitor.enabled }}
-  # The console, its REST API and the metrics/health port:
-{{- end }}
+{{- if .Values.console.enabled }}
+  # The standalone console (nginx) and its REST API:
+  kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "go-taas.console.name" . }} {{ .Values.console.service.port }}:{{ .Values.console.service.port }}
+  console:  http://127.0.0.1:{{ .Values.console.service.port }}/
+  REST API: http://127.0.0.1:{{ .Values.console.service.port }}/api/v1/...
+{{- else }}
+  # The server's gateway (API only; the console is not deployed):
   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "go-taas.server.name" . }} {{ .Values.taasServer.service.gateway.port }}:{{ .Values.taasServer.service.gateway.port }}
-  console:  http://127.0.0.1:{{ .Values.taasServer.service.gateway.port }}/
   REST API: http://127.0.0.1:{{ .Values.taasServer.service.gateway.port }}/api/v1/...
+{{- end }}
 {{- if .Values.taasServer.service.grpc.enabled }}
   gRPC:     {{ include "go-taas.server.name" . }}.{{ .Release.Namespace }}.svc:{{ .Values.taasServer.service.grpc.port }}
 {{- end }}

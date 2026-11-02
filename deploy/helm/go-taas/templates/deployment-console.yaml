@@ -1,0 +1,107 @@
+{{- if .Values.console.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "go-taas.console.name" . }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: console
+spec:
+  replicas: {{ .Values.console.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "go-taas.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: console
+  template:
+    metadata:
+      labels:
+        {{- include "go-taas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: console
+        {{- with .Values.console.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      annotations:
+        {{- with .Values.console.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.console.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ .Values.console.terminationGracePeriodSeconds }}
+      containers:
+        - name: console
+          image: {{ include "go-taas.image" (dict "root" . "name" "taas-console" "image" .Values.console.image) }}
+          imagePullPolicy: {{ .Values.console.image.pullPolicy | default .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ .Values.console.service.port }}
+              protocol: TCP
+          env:
+            # The gateway the console proxies /api/ to. Defaults to the
+            # server service; the nginx template substitutes it at startup.
+            - name: TASS_PROXY_PASS
+              value: {{ .Values.console.proxyPass | default (printf "http://%s:%d" (include "go-taas.server.name" .) (int .Values.taasServer.service.gateway.port)) | quote }}
+            {{- with .Values.console.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- if .Values.console.livenessProbe.enabled }}
+          livenessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ .Values.console.livenessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.console.livenessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.console.livenessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.console.livenessProbe.failureThreshold }}
+          {{- end }}
+          {{- if .Values.console.readinessProbe.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: http
+            initialDelaySeconds: {{ .Values.console.readinessProbe.initialDelaySeconds }}
+            periodSeconds: {{ .Values.console.readinessProbe.periodSeconds }}
+            timeoutSeconds: {{ .Values.console.readinessProbe.timeoutSeconds }}
+            failureThreshold: {{ .Values.console.readinessProbe.failureThreshold }}
+          {{- end }}
+          resources:
+            {{- toYaml .Values.console.resources | nindent 12 }}
+          securityContext:
+            {{- toYaml .Values.console.securityContext | nindent 12 }}
+          {{- if or .Values.console.extraVolumeMounts .Values.console.writableDirs }}
+          volumeMounts:
+            {{- range .Values.console.writableDirs }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- with .Values.console.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- end }}
+      {{- if or .Values.console.extraVolumes .Values.console.writableDirs }}
+      volumes:
+        {{- range .Values.console.writableDirs }}
+        - name: {{ .name }}
+          emptyDir: {}
+        {{- end }}
+        {{- with .Values.console.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- end }}
+      {{- with .Values.console.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.console.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.console.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

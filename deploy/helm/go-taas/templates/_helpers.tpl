@@ -47,6 +47,10 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s-server" (include "go-taas.fullname" .) -}}
 {{- end -}}
 
+{{- define "go-taas.console.name" -}}
+{{- printf "%s-console" (include "go-taas.fullname" .) -}}
+{{- end -}}
+
 {{- define "go-taas.controller.name" -}}
 {{- printf "%s-controller" (include "go-taas.fullname" .) -}}
 {{- end -}}

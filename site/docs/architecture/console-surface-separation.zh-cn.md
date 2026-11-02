@@ -58,7 +58,7 @@ AD1–AD8 把 UI/UX 设计的决策落成实现级规则。**AD9–AD11 是架�
 
 | 层 / 组件 | 负责 | 本功能的变更 |
 | --- | --- | --- |
-| **静态 bundle（SPA）** | 一个 Vite bundle（`web/dist`），构建时嵌入 `taas-server` 的 `pkg/server/console/`，由网关的 SPA 回退服务 | 两棵路由树、两个外壳、按 realm 作用域的 API 客户端、遗留键迁移、重定向表 |
+| **静态 bundle（SPA）** | 一个 Vite bundle（`web/dist`），打包为独立的 `taas-console` 镜像（nginx），由 Helm chart 单独部署；nginx 提供 SPA 并把 `/api/` 反向代理到网关。`taas-server` 镜像只提供 API。 | 两棵路由树、两个外壳、按 realm 作用域的 API 客户端、遗留键迁移、重定向表 |
 | **网关（`pkg/server`）** | HTTP 组装：`RealmGuard` → `withConsole` → `runtime.ServeMux`；入站头匹配器（`X-Organization-Id`）；统一错误渲染；对所有非 `/api/` 路径回退 `index.html` | 新增 `RealmGuard` + `SessionRealmResolver` 接缝 + 服务注册接线；回退逻辑不变（它本来就服务 `/admin/...`） |
 | **grpc-gateway mux** | 由 `google.api.http` 注解完成「路径 → RPC」路由 | 5 个新 RPC 与 14 个既有 RPC 的新绑定（第 5 节） |
 | **`auth`** | 用户、SSO provider、身份绑定、API Key、Redis 会话、供其他服务使用的会话身份 | 会话 `realm`；按 realm 绑定的登录绑定；`ListPublicSSOProviders`；`SessionRealm`；`SessionActiveOrg` 接缝实现；`CreateSessionForTest` 不变 |
@@ -665,7 +665,7 @@ sequenceDiagram
 
     Tenant->>Browser: opens /usage
     Browser->>GW: GET /usage
-    GW-->>Browser: index.html from the embedded bundle
+    GW-->>Browser: index.html from the console image (nginx)
     Browser->>Browser: surface router picks the user surface, no redirect
     Browser->>Browser: adoptLegacyStorage user
     Browser->>GW: GET /api/v1/auth/session with the user token
@@ -764,7 +764,7 @@ sequenceDiagram
 
 ## 12. 发布与升级说明
 
-1. **部署顺序**：单个二进制。`taas-server` 同时承载网关、服务与内嵌的控制台 bundle，因此 proto 重新生成、守卫与 SPA 一起上线。服务之间没有顺序约束（它们在同一进程内）。
+1. **部署顺序**：server 与 console 是两个独立 Deployment。`taas-server` 承载网关与服务；`taas-console` 承载 SPA 并把 `/api/` 反向代理到 server。先滚动 server，再滚动 console；console 先启动时，`/api/` 在 server 就绪前返回 502。
 2. **数据库**：无 —— 不改表、列、索引或 SQL 脚本（第 6 节）。升级路径是一次滚动重启。
 3. **会话**：升级前签发的会话没有 realm，会返回一次 10027，对每个浏览器强制一次重新登录（AC24）。服务端不删除任何东西；键自行过期。
 4. **浏览器存储**：先启动的控制台吸收遗留键并移除它们（AD9）。因此只用过旧控制台的浏览器会保留其组织上下文；拆分前的会话 token 会导致一次带 `reason=expired` 的登录页跳转。

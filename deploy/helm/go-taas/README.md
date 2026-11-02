@@ -9,8 +9,10 @@ connects the control plane to an operator-managed service.
 
 | Resource | Source | Notes |
 | --- | --- | --- |
-| `Deployment/<release>-server` | always | `taas-server`: gRPC (9090), REST gateway + embedded admin console (9091), metrics/health (9092) |
+| `Deployment/<release>-server` | always | `taas-server`: gRPC (9090), REST gateway (9091), metrics/health (9092). The server image is API-only; the frontend is not embedded. |
 | `Service/<release>-server` | always | ClusterIP by default; the gRPC and monitor ports are published too |
+| `Deployment/<release>-console` | `console.enabled` | `taas-console`: the standalone frontend (nginx serving the Vite bundle), proxying `/api/` to the server's gateway |
+| `Service/<release>-console` | `console.enabled` | ClusterIP by default; the console's HTTP port |
 | `ServiceAccount`, `ClusterRole`, `ClusterRoleBinding` | `controller.rbac.create` | the permissions the controller needs to reconcile inference workloads |
 | `Deployment/<release>-controller` | always | consumes the desired-state stream and drives Kubernetes |
 | `Namespace/<inference namespace>` | `controller.createNamespace` | the namespace the controller manages, taken from `controller.config.controller.namespace` |
@@ -264,8 +266,10 @@ kubectl --namespace taas port-forward svc/taas-go-taas-server 9091:9091
 
 ### Exposing the console
 
-The chart creates no Ingress or HTTPRoute for the console. Attach it to the
-Gateway that terminates TLS for your hostname (see
+The chart deploys the console as its own `Deployment/<release>-console` and
+`Service/<release>-console` (nginx serving the Vite bundle, proxying `/api/` to
+the server's gateway). The chart creates no Ingress or HTTPRoute for it. Attach
+it to the Gateway that terminates TLS for your hostname (see
 [Gateway API and Envoy Gateway](../../../site/docs/getting-started/installation.md#31-gateway-api-and-envoy-gateway)):
 
 ```yaml
@@ -290,14 +294,16 @@ spec:
             value: /
       backendRefs:
         - kind: Service
-          name: taas-go-taas-server
-          port: 9091
+          name: <release>-console
+          port: 8080
       timeouts:
         request: 900s      # model and image uploads are long single requests
 ```
 
-Alternatively set `taasServer.service.type: NodePort` or `LoadBalancer` and put
-your own proxy in front of it; terminate TLS somewhere before the console.
+The console proxies `/api/` to the server's gateway (`TASS_PROXY_PASS`,
+defaulting to the `<release>-server` service). Alternatively set
+`console.service.type: NodePort` or `LoadBalancer` and put your own proxy in
+front of it; terminate TLS somewhere before the console.
 
 The server fails fast when a dependency is unreachable and Kubernetes restarts
 it, so on a fresh install it may restart once or twice while the in-cluster
@@ -420,13 +426,17 @@ Three mechanisms, highest precedence first:
 | `secrets.webhookSecretEncryptionKey` / `providerSecretEncryptionKey` | `""` | empty generates a random key |
 | `taasServer.enabled` / `replicaCount` | `true` / `1` | deploy the control-plane server |
 | `taasServer.service.type` | `ClusterIP` | `ClusterIP`, `NodePort` or `LoadBalancer` |
-| `taasServer.service.gateway.port` | `9091` | REST gateway and console |
+| `taasServer.service.gateway.port` | `9091` | REST gateway (the console proxies `/api/` to it) |
 | `taasServer.service.grpc.enabled` / `port` | `true` / `9090` | gRPC API |
 | `taasServer.service.monitor.enabled` / `port` | `true` / `9092` | Prometheus metrics and `/healthz` |
 | `taasServer.args` | `[]` | extra container arguments |
 | `taasServer.config` / `secretConfig` | `{}` | `configs/*.yaml` overrides |
 | `taasServer.extraEnv` / `extraVolumes` / `extraVolumeMounts` | `[]` | escape hatches for a shared weights filesystem, a `secretKeyRef`, ... |
 | `taasServer.livenessProbe` / `readinessProbe` | enabled | HTTP probes on the monitor port |
+| `console.enabled` / `replicaCount` | `true` / `1` | deploy the standalone frontend (nginx) |
+| `console.service.type` / `port` | `ClusterIP` / `8080` | the console's Service |
+| `console.proxyPass` | `""` | the gateway `/api/` is proxied to; defaults to the server service |
+| `console.extraEnv` / `extraVolumes` / `extraVolumeMounts` | `[]` | escape hatches for the console pod |
 | `controller.enabled` / `replicaCount` | `true` / `1` | deploy the reconciler |
 | `controller.rbac.create` | `true` | create the ClusterRole and its binding |
 | `controller.rbac.existingClusterRole` | `""` | bind an existing ClusterRole instead |

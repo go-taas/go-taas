@@ -23,10 +23,11 @@ import (
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 )
 
-// consoleFS holds the built admin console bundle (web/dist). The build
-// step copies the Vite output here via a symlink-free copy in the
-// Dockerfile; a missing bundle leaves the console disabled (API-only
-// gateway), which keeps unit-test and library consumers working.
+// consoleFS holds the console bundle (web/dist). The server image is
+// API-only: the real frontend ships as the standalone taas-console image,
+// so this embed carries only the placeholder index.html. A missing bundle
+// leaves the console disabled (API-only gateway), which keeps unit-test
+// and library consumers working.
 //
 //go:embed all:console
 var consoleFS embed.FS

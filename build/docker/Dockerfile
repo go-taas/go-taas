@@ -5,6 +5,11 @@
 #   docker build --target taas-controller -t <registry>/taas-controller:tag .
 #   docker build --target taas-console    -t <registry>/taas-console:tag .
 #
+# The frontend is NOT embedded in taas-server: it ships as the standalone
+# taas-console image (nginx) and is deployed separately by the Helm chart.
+# The server image is API-only; the embedded placeholder in
+# pkg/server/console keeps the gateway functional in a source checkout.
+#
 # Build metadata is injected via --build-arg by CI and persisted as
 # OCI image labels (visible via `docker inspect --format '{{json .Config.Labels}}'`).
 
@@ -100,9 +105,11 @@ RUN go mod download
 COPY . .
 
 # Overlay the freshly generated protobuf code (the checkout does not
-# contain it) and the console bundle built above.
+# contain it). The console bundle is deliberately NOT copied here: the
+# frontend ships as the standalone taas-console image, so the server
+# image is API-only (the embedded placeholder keeps the gateway
+# functional in a source checkout).
 COPY --from=buf /src/proto/ /src/proto/
-COPY --from=console-builder /web/dist/ /src/pkg/server/console/
 
 ARG TARGETARCH
 ARG VERSION
@@ -179,10 +186,10 @@ USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/taas-controller"]
 
 # ---- taas-console -----------------------------------------------------
-# Standalone console image: the same Vite bundle that is embedded into
-# taas-server, served by nginx with /api/ reverse-proxied to the gateway.
-# Use it when the console should scale or be released independently of
-# the control plane.
+# Standalone console image: the Vite bundle served by nginx with /api/
+# reverse-proxied to the gateway. This is the primary way the frontend is
+# deployed; the Helm chart runs it as its own Deployment and routes the
+# console hostname to it.
 #   docker build --target taas-console -t <registry>/taas-console:tag .
 # The gateway address is set at runtime via TASS_PROXY_PASS (default
 # http://taas-server:9091); see build/docker/console.nginx.conf.
