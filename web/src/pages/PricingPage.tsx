@@ -55,6 +55,9 @@ export default function PricingPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editTarget, setEditTarget] = useState<PriceEntry | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PriceEntry | null>(null);
+  const [busy, setBusy] = useState('');
   // The catalog resolves a price row's model id to a readable name; the same
   // list fills the dialog's model picker.
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -91,6 +94,20 @@ export default function PricingPage() {
       setLoading(false);
     }
   }, [orgId, offset, includeHistory, t]);
+
+  const deletePrice = async (price: PriceEntry) => {
+    setBusy(price.priceId);
+    setError('');
+    try {
+      await api.del(`/api/v1/admin/billing/prices/${price.priceId}`, orgId);
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('pricing.deleteFailed'));
+    } finally {
+      setBusy('');
+    }
+  };
 
   useEffect(() => {
     setLoading(true);
@@ -156,6 +173,7 @@ export default function PricingPage() {
                 <th>{t('pricing.colTiers')}</th>
                 <th>{t('pricing.colCurrency')}</th>
                 <th>{t('pricing.colEffective')}</th>
+                <th>{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -185,6 +203,22 @@ export default function PricingPage() {
                   </td>
                   <td>{p.currency}</td>
                   <td>{formatTime(p.effectiveFrom)}</td>
+                  <td>
+                    <button
+                      className="link"
+                      data-testid={`pricing-edit-${p.priceId}`}
+                      onClick={() => setEditTarget(p)}
+                    >
+                      {t('common.edit')}
+                    </button>
+                    <button
+                      className="link danger"
+                      data-testid={`pricing-delete-${p.priceId}`}
+                      onClick={() => setDeleteTarget(p)}
+                    >
+                      {t('common.delete')}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -206,6 +240,46 @@ export default function PricingPage() {
           }}
         />
       )}
+
+      {editTarget && (
+        <SetPriceDialog
+          orgId={orgId}
+          models={models}
+          existing={editTarget}
+          onClose={() => setEditTarget(null)}
+          onSaved={() => {
+            setEditTarget(null);
+            void load();
+          }}
+        />
+      )}
+
+      {deleteTarget && (
+        <Dialog
+          title={t('pricing.deleteTitle')}
+          testId="pricing-delete-dialog"
+          onClose={() => setDeleteTarget(null)}
+        >
+          <p>{t('pricing.deleteConfirm', {
+            model: modelName(deleteTarget.modelId),
+            card: deleteTarget.acceleratorType,
+          })}</p>
+          {error && <ErrorBanner message={error} />}
+          <div className="dialog-actions">
+            <button className="secondary" onClick={() => setDeleteTarget(null)}>
+              {t('common.cancel')}
+            </button>
+            <button
+              className="danger"
+              data-testid="confirm-pricing-delete"
+              disabled={busy === deleteTarget.priceId}
+              onClick={() => void deletePrice(deleteTarget)}
+            >
+              {busy === deleteTarget.priceId ? t('common.saving') : t('common.delete')}
+            </button>
+          </div>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -215,21 +289,24 @@ export default function PricingPage() {
 function SetPriceDialog({
   orgId,
   models,
+  existing,
   onClose,
   onSaved,
 }: {
   orgId: string;
   models: ModelSummary[];
+  existing?: PriceEntry;
   onClose: () => void;
   onSaved: () => void;
 }) {
   const { t } = useI18n();
-  const [modelId, setModelId] = useState('');
-  const [card, setCard] = useState(DEFAULT_CARD);
-  const [inputRate, setInputRate] = useState('');
-  const [outputRate, setOutputRate] = useState('');
-  const [cachedRate, setCachedRate] = useState('0');
-  const [tiers, setTiers] = useState<PriceTier[]>([]);
+  const edit = Boolean(existing);
+  const [modelId, setModelId] = useState(existing?.modelId || '');
+  const [card, setCard] = useState(existing?.acceleratorType || DEFAULT_CARD);
+  const [inputRate, setInputRate] = useState(existing ? String(existing.inputPricePerMillion) : '');
+  const [outputRate, setOutputRate] = useState(existing ? String(existing.outputPricePerMillion) : '');
+  const [cachedRate, setCachedRate] = useState(existing ? String(existing.cachedPricePerMillion) : '0');
+  const [tiers, setTiers] = useState<PriceTier[]>(existing?.tiers || []);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -269,6 +346,10 @@ function SetPriceDialog({
           outputPricePerMillion: Number(t.outputPricePerMillion) || 0,
         }));
       }
+      // An edit keeps the version's effective_from: the upsert keys on
+      // (model, card, effective_from), so a new timestamp would insert a
+      // second version instead of correcting this one.
+      if (edit && existing) body.effectiveFrom = existing.effectiveFrom;
       await api.put<SetPriceResponse>('/api/v1/admin/billing/prices', orgId, body);
       onSaved();
     } catch (e) {
@@ -279,7 +360,11 @@ function SetPriceDialog({
   };
 
   return (
-    <Dialog title={t('pricing.setTitle')} onClose={onClose} testId="set-price-dialog">
+    <Dialog
+      title={t(edit ? 'pricing.editTitle' : 'pricing.setTitle')}
+      onClose={onClose}
+      testId={edit ? 'edit-price-dialog' : 'set-price-dialog'}
+    >
       {error && <ErrorBanner message={error} />}
       <div className="form-grid">
         <label>
