@@ -1,0 +1,114 @@
+{{- /* Defensive lookups: an upgrade from a values set written before the
+       modelRouter block existed passes only a partial map, so every nested
+       access falls back to the documented default. */ -}}
+{{- $mr := .Values.modelRouter | default dict }}
+{{- if $mr.enabled }}
+{{- $image := $mr.image | default dict }}
+{{- $podSC := $mr.podSecurityContext | default dict }}
+{{- $sc := $mr.securityContext | default dict }}
+{{- $dp := .Values.dataPlane | default dict }}
+{{- $backend := $dp.backend | default dict }}
+{{- $backendNamespace := $backend.namespace | default .Release.Namespace }}
+{{- $backendPort := $backend.port | default 80 }}
+{{- $taasServer := .Values.taasServer | default dict }}
+{{- $serverSvc := $taasServer.service | default dict }}
+{{- $monitor := $serverSvc.monitor | default dict }}
+{{- $monitorPort := $monitor.port | default 9092 }}
+{{- $port := int ($mr.port | default 8000) }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "go-taas.modelRouter.name" . }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: model-router
+spec:
+  replicas: {{ $mr.replicaCount | default 2 }}
+  selector:
+    matchLabels:
+      {{- include "go-taas.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: model-router
+  template:
+    metadata:
+      labels:
+        {{- include "go-taas.labels" . | nindent 8 }}
+        app.kubernetes.io/component: model-router
+      annotations:
+        checksum/config: {{ include "go-taas.configOverrides.checksum" . }}
+        {{- with $mr.podAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $podSC }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: model-router
+          image: {{ include "go-taas.image" (dict "root" . "name" "taas-model-router" "image" $image) }}
+          imagePullPolicy: {{ $image.pullPolicy | default .Values.image.pullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $port }}
+              protocol: TCP
+          env:
+            - name: TAAS_LISTEN_ADDR
+              value: {{ printf ":%d" $port | quote }}
+            # The control plane's provider proxy lives on the monitor port,
+            # behind the gateway plugin's shared secret.
+            - name: TAAS_SERVER_URL
+              value: {{ printf "http://%s:%d" (include "go-taas.server.name" .) (int $monitorPort) | quote }}
+            - name: TAAS_SERVER_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "go-taas.secretName" . }}
+                  key: gateway-plugin-token
+            # Everything the router does not serve itself goes to the serving
+            # gateway, which routes it to the inference service.
+            - name: TAAS_GATEWAY_URL
+              value: {{ printf "http://%s.%s.svc:%d" ($backend.name | default "aibrix-eg") $backendNamespace (int $backendPort) | quote }}
+            - name: TAAS_MODEL_REFRESH_SECONDS
+              value: {{ include "go-taas.durationSeconds" (dict "value" ($mr.refreshInterval | default "30s") "fallback" 30) | quote }}
+            - name: TAAS_REQUEST_TIMEOUT_SECONDS
+              value: {{ include "go-taas.durationSeconds" (dict "value" ($mr.requestTimeout | default "600s") "fallback" 600) | quote }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 20
+            timeoutSeconds: 3
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: http
+            initialDelaySeconds: 2
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          {{- with $mr.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with $sc }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+      {{- with $mr.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $mr.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $mr.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

@@ -145,3 +145,48 @@ func TestDataPlaneRouterWithoutClientFails(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no dynamic client")
 }
+
+// TestDataPlaneRouteSendsChatToTheModelRouter covers the provider-model fix:
+// with a router configured the chat endpoint is matched first, so a model with
+// no inference service can be answered, and every other path keeps going to
+// the inference gateway.
+func TestDataPlaneRouteSendsChatToTheModelRouter(t *testing.T) {
+	dyn := newRouteFake()
+	router := NewDataPlaneRouter(dyn)
+	cfg := testDataPlaneConfig()
+	cfg.ModelRouterName = "taas-model-router"
+	cfg.ModelRouterNamespace = "taas"
+	cfg.ModelRouterPort = 8080
+	require.NoError(t, router.Ensure(context.Background(), "llm.example.com", cfg))
+
+	route, err := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), DataPlaneRouteName, metav1.GetOptions{})
+	require.NoError(t, err)
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	require.Len(t, rules, 2)
+
+	chat := rules[0].(map[string]any)
+	matches := chat["matches"].([]any)
+	path := matches[0].(map[string]any)["path"].(map[string]any)
+	assert.Equal(t, DataPlaneChatPath, path["value"])
+	chatBackends := chat["backendRefs"].([]any)
+	assert.Equal(t, "taas-model-router", chatBackends[0].(map[string]any)["name"])
+	assert.Equal(t, int64(8080), chatBackends[0].(map[string]any)["port"])
+
+	rest := rules[1].(map[string]any)
+	restMatches := rest["matches"].([]any)
+	assert.Equal(t, "/", restMatches[0].(map[string]any)["path"].(map[string]any)["value"])
+	assert.Equal(t, "envoy-aibrix", rest["backendRefs"].([]any)[0].(map[string]any)["name"])
+}
+
+// TestDataPlaneRouteWithoutRouterIsUnchanged covers the default install: no
+// router means the single catch-all rule the data plane always had.
+func TestDataPlaneRouteWithoutRouterIsUnchanged(t *testing.T) {
+	dyn := newRouteFake()
+	router := NewDataPlaneRouter(dyn)
+	require.NoError(t, router.Ensure(context.Background(), "llm.example.com", testDataPlaneConfig()))
+
+	route, err := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), DataPlaneRouteName, metav1.GetOptions{})
+	require.NoError(t, err)
+	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
+	require.Len(t, rules, 1)
+}

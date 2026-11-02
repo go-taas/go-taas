@@ -1,0 +1,20 @@
+{{- $mr := .Values.modelRouter | default dict }}
+{{- if $mr.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "go-taas.modelRouter.name" . }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: model-router
+spec:
+  type: ClusterIP
+  ports:
+    - name: http
+      port: {{ $mr.port | default 8000 }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: model-router
+{{- end }}

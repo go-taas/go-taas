@@ -237,7 +237,28 @@ server's config parser expects; the filter's config wants milliseconds.
 {{- end -}}
 {{- end -}}
 
+{{/*
+Seconds from a Go duration string ("30s"), for components that take an
+integer instead of a duration.
+*/}}
+{{- define "go-taas.durationSeconds" -}}
+{{- $raw := .value -}}
+{{- $fallback := .fallback -}}
+{{- if hasSuffix "s" $raw -}}
+{{- atoi (trimSuffix "s" $raw) -}}
+{{- else if hasSuffix "m" $raw -}}
+{{- mul (atoi (trimSuffix "m" $raw)) 60 -}}
+{{- else -}}
+{{- $fallback -}}
+{{- end -}}
+{{- end -}}
+
 {{/* Data-plane gateway plugin token: configured, or generated. */}}
+{{/* Name of the data-plane model router Service. */}}
+{{- define "go-taas.modelRouter.name" -}}
+{{- printf "%s-model-router" (include "go-taas.fullname" .) | trunc 63 | trimSuffix "-" -}}
+{{- end -}}
+
 {{- define "go-taas.gatewayPluginToken" -}}
 {{- $token := .Values.gatewayPlugin.token -}}
 {{- if $token -}}
@@ -552,6 +573,12 @@ route; these are its install-time parts.
       "backendName" ($backend.name | default "")
       "backendNamespace" ($backend.namespace | default "")
       "backendPort" ($backend.port | default 80) -}}
+{{- $mr := .Values.modelRouter | default dict -}}
+{{- if $mr.enabled -}}
+{{- $_ := set $dataPlane "modelRouterName" (include "go-taas.modelRouter.name" .) -}}
+{{- $_ := set $dataPlane "modelRouterNamespace" .Release.Namespace -}}
+{{- $_ := set $dataPlane "modelRouterPort" (int ($mr.port | default 8000)) -}}
+{{- end -}}
 {{- $runtime := get $overrides "runtime" | default dict -}}
 {{- $_ := set $runtime "dataPlane" $dataPlane -}}
 {{- $_ := set $overrides "runtime" $runtime -}}

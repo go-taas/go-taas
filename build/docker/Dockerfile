@@ -4,6 +4,7 @@
 #   docker build --target taas-server     -t <registry>/taas-server:tag .
 #   docker build --target taas-controller -t <registry>/taas-controller:tag .
 #   docker build --target taas-console    -t <registry>/taas-console:tag .
+#   docker build --target taas-model-router -t <registry>/taas-model-router:tag .
 #
 # The frontend is NOT embedded in taas-server: it ships as the standalone
 # taas-console image (nginx) and is deployed separately by the Helm chart.
@@ -128,7 +129,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
       -X main.version=${VERSION} \
       -X main.commit=${COMMIT} \
       -X main.buildTime=${BUILD_TIME}" \
-    -o /out/taas-controller ./apps/controller
+    -o /out/taas-controller ./apps/controller && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
+    go build -trimpath \
+    -ldflags "-s -w \
+      -X main.version=${VERSION} \
+      -X main.commit=${COMMIT} \
+      -X main.buildTime=${BUILD_TIME}" \
+    -o /out/taas-model-router ./apps/model-router
 
 # ---- taas-server ------------------------------------------------------
 # The runtime image carries skopeo (used by the image-import flow to copy
@@ -184,6 +192,28 @@ COPY configs /etc/taas/configs
 WORKDIR /etc/taas
 USER nonroot:nonroot
 ENTRYPOINT ["/usr/local/bin/taas-controller"]
+
+# ---- taas-model-router ------------------------------------------------
+# The data plane's model selector: it forwards a chat completion either to the
+# control plane's provider proxy (a model the platform sells from a provider)
+# or to the serving gateway (a model an inference service serves). It holds no
+# state, so the image is a static binary on distroless.
+FROM gcr.io/distroless/static-debian12:nonroot AS taas-model-router
+ARG VERSION
+ARG COMMIT
+ARG BUILD_TIME
+LABEL org.opencontainers.image.title="taas-model-router" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.url="https://go-taas.com" \
+      org.opencontainers.image.source="https://github.com/go-taas/go-taas" \
+      org.opencontainers.image.documentation="https://go-taas.com/docs.html" \
+      org.opencontainers.image.licenses="Apache-2.0"
+COPY --from=builder /out/taas-model-router /usr/local/bin/taas-model-router
+USER nonroot:nonroot
+EXPOSE 8000
+ENTRYPOINT ["/usr/local/bin/taas-model-router"]
 
 # ---- taas-console -----------------------------------------------------
 # Standalone console image: the Vite bundle served by nginx with /api/

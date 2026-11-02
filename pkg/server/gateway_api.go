@@ -235,6 +235,10 @@ func (s *commonServer) initGatewayAPI() {
 	if verifier != nil {
 		s.monitorMux.HandleFunc(gatewayVerifyPath, guard(s.verifyHandler(verifier)))
 	}
+	// Provider-backed models ride the same token: the endpoints spend the
+	// platform's provider credentials, so the caller has to be as trusted as
+	// the plugin itself.
+	s.initExternalModels(guard)
 	if sink != nil {
 		s.monitorMux.HandleFunc(gatewayUsagePath, guard(s.usageHandler(sink)))
 	}

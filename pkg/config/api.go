@@ -968,6 +968,14 @@ type RuntimeDataPlaneConfig struct {
 	BackendNamespace string `mapstructure:"backendNamespace"`
 	// BackendPort is the gateway's HTTP port. Default 80.
 	BackendPort int32 `mapstructure:"backendPort"`
+	// ModelRouterName and ModelRouterNamespace identify the data-plane model
+	// router Service. When set, the route sends the chat endpoint there first
+	// and everything else to the inference gateway, so a model the platform
+	// sells from a provider can be answered.
+	ModelRouterName      string `mapstructure:"modelRouterName"`
+	ModelRouterNamespace string `mapstructure:"modelRouterNamespace"`
+	// ModelRouterPort is the router's HTTP port.
+	ModelRouterPort int32 `mapstructure:"modelRouterPort"`
 }
 
 // GatewayPluginConfig holds the data-plane gateway plugin settings

@@ -13,6 +13,8 @@ connects the control plane to an operator-managed service.
 | `Service/<release>-server` | always | ClusterIP by default; the gRPC and monitor ports are published too |
 | `Deployment/<release>-console` | `console.enabled` | `taas-console`: the standalone frontend (nginx serving the Vite bundle), proxying `/api/` to the server's gateway |
 | `Service/<release>-console` | `console.enabled` | ClusterIP by default; the console's HTTP port |
+| `Deployment/<release>-model-router` | `modelRouter.enabled` | `taas-model-router`: sends a chat completion for a provider-backed model to the provider and everything else to the inference gateway |
+| `Service/<release>-model-router` | `modelRouter.enabled` | ClusterIP; the router's HTTP port, a backend of the data-plane route |
 | `ServiceAccount`, `ClusterRole`, `ClusterRoleBinding` | `controller.rbac.create` | the permissions the controller needs to reconcile inference workloads |
 | `Deployment/<release>-controller` | always | consumes the desired-state stream and drives Kubernetes |
 | `Namespace/<inference namespace>` | `controller.createNamespace` | the namespace the controller manages, taken from `controller.config.controller.namespace` |
@@ -53,6 +55,32 @@ from it, so one release produces one plugin version. Changing the artifact
 requires a restart of the data-plane Envoy deployment — Envoy caches the Wasm
 VM per worker, and a restart is also what re-fetches the code. On a fresh
 install this is automatic.
+
+## Provider-backed models on the data plane
+
+`modelRouter.enabled` deploys the model router and points the chat endpoint at
+it. Without it, a model the platform sells from a provider answers "model does
+not exist" on the OpenAI-compatible endpoint: the serving gateway picks a
+backend by the model a request names, and nothing serves a provider model.
+
+```yaml
+modelRouter:
+  enabled: true
+  replicaCount: 2        # stateless; two so a rollout does not interrupt inference
+  refreshInterval: 30s   # how soon a newly published provider model becomes callable
+  requestTimeout: 600s   # matches the routing rule's timeout
+```
+
+The router asks the server which catalog models are provider-backed every
+`refreshInterval` and forwards those to the server's provider proxy; every
+other model goes to the inference gateway exactly as before. Authentication,
+rate limits and model allow-lists stay on the gateway, which runs before this
+hop, so turning the router on does not move any enforcement.
+
+It requires `dataPlane.enabled` (the router is a backend of that route) and
+`gatewayPlugin.enabled` (the provider proxy is behind the plugin's shared
+secret). The plugin authenticates the caller first, then the router decides
+the upstream; a request that skips the plugin is not routed here at all.
 
 ## The data plane has its own gateway
 
@@ -219,7 +247,7 @@ separately, with their own charts and their own documentation:
 
 | Component | Needed for | Chart values that depend on it | Official installation guide |
 | --- | --- | --- | --- |
-| Gateway API CRDs + Envoy Gateway | exposing the console through a Gateway; the data-plane gateway plugin | `dataPlane.enabled`, `gatewayPlugin.enabled` | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
+| Gateway API CRDs + Envoy Gateway | exposing the console through a Gateway; the data-plane gateway plugin | `dataPlane.enabled`, `gatewayPlugin.enabled`, `modelRouter.enabled` | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
 | AIBrix | inference serving (`StormService`, `ModelClaim`, `PodAutoscaler`, the `aibrix-eg` class) | `dataPlane.backend`, `controller.config.runtime.aibrix.*` | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
 | Volcano | gang scheduling and priority preemption; the PriorityClasses the values name | `controller.config.controller.scheduling` | [Volcano](https://volcano.sh/en/docs/installation/) |
 | JuiceFS CSI (or any ReadWriteMany class) | one model-weights filesystem shared by the server and the inference pods | `controller.config.controller.weights.storageClass`, `taasServer.extraVolumes` | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
@@ -456,6 +484,7 @@ Three mechanisms, highest precedence first:
 | `dataPlane.parentRef.name` / `namespace` / `sectionName` | `taas-inference` / release ns / `https` | the Gateway that terminates TLS for the inference host |
 | `dataPlane.backend.name` / `namespace` / `port` | AIBrix Envoy Service / `yunzhi-system` / `80` | the Service the data-plane route forwards to |
 | `gatewayPlugin.enabled` / `failOpen` / `cacheTTL` / `verifyTimeout` | `false` / `false` / `30s` / `500ms` | the Wasm filter that verifies API keys and reports metered usage |
+| `modelRouter.enabled` / `replicaCount` / `refreshInterval` | `false` / `2` / `30s` | serves provider-backed models on the data plane by choosing between the provider and the inference gateway |
 | `monitoring.prometheusURL` | `""` | Prometheus base URL; empty falls back to the controller's own samples |
 | `monitoring.inferencePodMonitor.*` | enabled | PodMonitor scraping the engine's own metrics (needs the Prometheus Operator CRDs) |
 | `configOverrides` | `{}` | raw configuration file merged last |

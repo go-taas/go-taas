@@ -393,6 +393,71 @@ dataPlane:
     namespace: yunzhi-system
     port: 80
 
+# The data-plane model router.
+#
+# The serving gateway picks a backend by the model a request names, which works
+# for a model an inference service serves and fails for one the platform sells
+# from a provider: nothing serves it, so the caller is told the model does not
+# exist. The router fronts the chat endpoint and forwards a provider-backed
+# model to the control plane's provider proxy, everything else to the inference
+# gateway unchanged.
+#
+# Authentication, rate limits and metering stay on the gateway, which runs
+# before this hop; the router only chooses an upstream. Enabling it needs
+# `dataPlane.enabled` (the router is a backend of that route) and
+# `gatewayPlugin.enabled` (the provider proxy is behind the plugin's shared
+# secret).
+modelRouter:
+  # -- Deploy the router and send the chat endpoint to it.
+  enabled: false
+  # -- Number of router replicas. The router is stateless; run more than one so
+  # a rollout does not interrupt inference.
+  replicaCount: 2
+  image:
+    # -- Image name appended to `image.repository` (the Dockerfile build target).
+    name: taas-model-router
+    # -- Image tag for this component. Empty uses `image.tag`, then `v<Chart.appVersion>`.
+    tag: ""
+    # -- Image pull policy for this component. Empty uses `image.pullPolicy`.
+    pullPolicy: ""
+  # -- Port the router listens on (also the Service port).
+  port: 8000
+  # -- How often the provider-backed model list is reloaded. A newly published
+  # provider model becomes callable within this window, without a restart.
+  refreshInterval: 30s
+  # -- Budget for one forwarded request. It matches the routing rule's
+  # timeout, so a long generation is never cut off here first.
+  requestTimeout: 600s
+  # -- Extra annotations for the router pod.
+  podAnnotations: {}
+  # -- Pod-level security context. The image runs as uid/gid 65532 (nonroot).
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 65532
+    runAsGroup: 65532
+    fsGroup: 65532
+  # -- Container-level security context.
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: true
+    capabilities:
+      drop:
+        - ALL
+  # -- Resource requests/limits for the router container.
+  resources:
+    requests:
+      cpu: 100m
+      memory: 64Mi
+    limits:
+      cpu: "1"
+      memory: 256Mi
+  # -- Node selector for the router pods.
+  nodeSelector: {}
+  # -- Tolerations for the router pods.
+  tolerations: []
+  # -- Affinity for the router pods.
+  affinity: {}
+
 # The data-plane gateway plugin (Wasm) in front of the inference gateway.
 #
 # It performs API-key authentication and token metering at the gateway, so

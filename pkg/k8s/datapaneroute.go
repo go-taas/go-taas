@@ -27,6 +27,9 @@ const (
 	// dataPlaneGrantSuffix names the ReferenceGrant that lets the route
 	// reference the gateway Service across namespaces.
 	dataPlaneGrantSuffix = "-reserved-referencegrant-in-"
+	// DataPlaneChatPath is the OpenAI-compatible chat endpoint the route sends
+	// to the model router.
+	DataPlaneChatPath = "/v1/chat/completions"
 )
 
 // Gateway API resources.
@@ -62,6 +65,54 @@ func (r *DataPlaneRouter) Ensure(ctx context.Context, hostname string, cfg confi
 		}
 	}
 	return r.apply(ctx, httpRouteGVR, route)
+}
+
+// dataPlaneRules renders the route's rules in match order.
+//
+// The chat endpoint goes to the model router when one is configured: the
+// router is the only component that can tell a model an inference service
+// serves from one the platform sells from a provider, and the gateway would
+// answer "model does not exist" for the latter. Every other path keeps going
+// straight to the inference gateway, so self-hosted traffic is unchanged.
+// Both rules stream, so both carry the long request timeout.
+func dataPlaneRules(cfg config.RuntimeDataPlaneConfig, routeNamespace string) []any {
+	rules := make([]any, 0, 2)
+	if cfg.ModelRouterName != "" && cfg.ModelRouterPort > 0 {
+		namespace := cfg.ModelRouterNamespace
+		if namespace == "" {
+			namespace = routeNamespace
+		}
+		rules = append(rules, map[string]any{
+			"matches": []any{map[string]any{
+				"path": map[string]any{"type": "PathPrefix", "value": DataPlaneChatPath},
+			}},
+			"backendRefs": []any{map[string]any{
+				"group":     "",
+				"kind":      "Service",
+				"name":      cfg.ModelRouterName,
+				"namespace": namespace,
+				"port":      int64(cfg.ModelRouterPort),
+				"weight":    int64(1),
+			}},
+			"timeouts": map[string]any{"request": "600s"},
+		})
+	}
+	return append(rules, map[string]any{
+		"matches": []any{map[string]any{
+			"path": map[string]any{"type": "PathPrefix", "value": "/"},
+		}},
+		"backendRefs": []any{map[string]any{
+			"group":     "",
+			"kind":      "Service",
+			"name":      cfg.BackendName,
+			"namespace": cfg.BackendNamespace,
+			"port":      int64(cfg.BackendPort),
+			"weight":    int64(1),
+		}},
+		// Inference answers stream; a short timeout would cut a long
+		// generation off mid-stream.
+		"timeouts": map[string]any{"request": "600s"},
+	})
 }
 
 // ServedHostnames reports the hostnames the route currently serves, so the
@@ -150,22 +201,7 @@ func buildDataPlaneObjects(hostname string, cfg config.RuntimeDataPlaneConfig) (
 		"spec": map[string]any{
 			"hostnames":  []any{hostname},
 			"parentRefs": []any{parent},
-			"rules": []any{map[string]any{
-				"matches": []any{map[string]any{
-					"path": map[string]any{"type": "PathPrefix", "value": "/"},
-				}},
-				"backendRefs": []any{map[string]any{
-					"group":     "",
-					"kind":      "Service",
-					"name":      cfg.BackendName,
-					"namespace": cfg.BackendNamespace,
-					"port":      int64(cfg.BackendPort),
-					"weight":    int64(1),
-				}},
-				// Inference answers stream; a short timeout would cut a long
-				// generation off mid-stream.
-				"timeouts": map[string]any{"request": "600s"},
-			}},
+			"rules":      dataPlaneRules(cfg, routeNamespace),
 		},
 	}}
 	if routeNamespace == cfg.BackendNamespace {
