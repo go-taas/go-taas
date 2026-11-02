@@ -13,6 +13,7 @@ import (
 	"google.golang.org/grpc"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/modelrouter"
 )
 
 const testExternalToken = "external-token"
@@ -218,4 +219,12 @@ func TestExternalChatHandlerRejectsWrongMethod(t *testing.T) {
 	mux := newExternalTestServer(t, &fakeExternalModels{resp: `{}`})
 	rec := externalRequest(t, mux, http.MethodGet, externalChatPath, "")
 	assert.Equal(t, http.StatusMethodNotAllowed, rec.Code)
+}
+
+// TestGatewayTokenHeaderMatchesTheRouter keeps the internal endpoints and the
+// data-plane router in step. A mismatch makes every provider-backed model a
+// 401, which the router's own tests cannot catch because they use its constant
+// on both ends.
+func TestGatewayTokenHeaderMatchesTheRouter(t *testing.T) {
+	assert.Equal(t, gatewayTokenHeader, modelrouter.GatewayTokenHeader)
 }

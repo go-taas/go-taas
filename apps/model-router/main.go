@@ -39,6 +39,11 @@ func main() {
 	}
 	listen := envOr("TAAS_LISTEN_ADDR", ":8000")
 
+	if err := logger.Init(logger.DefaultConfig()); err != nil {
+		panic(err)
+	}
+	defer logger.Sync()
+
 	router, err := modelrouter.New(cfg)
 	if err != nil {
 		logger.S().Fatalw("model router: invalid configuration", "err", err)

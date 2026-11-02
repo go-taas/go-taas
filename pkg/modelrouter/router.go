@@ -55,9 +55,11 @@ const (
 	// ExternalChatPath is the control plane's provider chat proxy.
 	ExternalChatPath = "/internal/gateway/external/chat/completions"
 	// GatewayTokenHeader is the header name carrying the shared secret the
-	// control plane's internal gateway API requires. It is a header name, not
-	// a credential: the value comes from the release Secret.
-	GatewayTokenHeader = "X-Taas-Gateway-Token" //nolint:gosec // header name, not a secret
+	// control plane's internal gateway API requires. It is the same header the
+	// Wasm plugin presents, so one secret and one header guard every internal
+	// caller. A header name, not a credential: the value comes from the
+	// release Secret.
+	GatewayTokenHeader = "X-Gateway-Token" //nolint:gosec // header name, not a secret
 
 	// defaultRefreshInterval is how often the provider-backed model set is
 	// reloaded. A newly published provider model becomes callable within one
