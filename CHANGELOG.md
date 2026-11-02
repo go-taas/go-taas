@@ -1,3 +1,19 @@
+# [1.101.0](https://github.com/go-taas/go-taas/compare/v1.100.3...v1.101.0) (2026-11-02)
+
+
+### Bug Fixes
+
+* **auth,tenancy,metering,billing:** propagate attribution and enforce personal caps ([1367738](https://github.com/go-taas/go-taas/commit/136773850ad68a49bb67835f1241fe70b8c0a388))
+* **auth:** clear a key owner on transfer instead of reassigning ([22cd9ed](https://github.com/go-taas/go-taas/commit/22cd9ed925de2078a69b623aca3203bb69e826ef))
+* **metering:** cast ownership columns before grouping ([cbf29be](https://github.com/go-taas/go-taas/commit/cbf29bebed02770f838e60353b033c3fca16ab9d))
+* **tenancy:** answer 13306 for an unknown organization in the user quota RPCs ([2ede192](https://github.com/go-taas/go-taas/commit/2ede192d9981240c7b23ed5961735072b33d3762))
+
+
+### Features
+
+* **auth,tenancy,metering,billing:** own api keys by user with project and quotas ([64cbefe](https://github.com/go-taas/go-taas/commit/64cbefe1386deca991c9d167b8a61a42a8e55173))
+* **console,docs:** manage personal api keys and user quotas ([4363efb](https://github.com/go-taas/go-taas/commit/4363efb15ef0cbe511819f1068a6739efa19104b))
+
 ## [1.100.3](https://github.com/go-taas/go-taas/compare/v1.100.2...v1.100.3) (2026-10-29)
 
 
