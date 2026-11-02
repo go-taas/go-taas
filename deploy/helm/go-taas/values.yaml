@@ -642,9 +642,9 @@ console:
     capabilities:
       drop:
         - ALL
-  # -- EmptyDir mounts nginx needs to write to under a read-only root.
-  # The nginx image writes its pid and cache here; the console bundle
-  # itself is read-only.
+  # -- EmptyDir mounts nginx needs to write to under a read-only root:
+  # its pid, its cache, and the conf.d directory the entrypoint renders
+  # the TASS_PROXY_PASS template into. The console bundle is read-only.
   writableDirs:
     - name: nginx-run
       mountPath: /run
@@ -652,6 +652,8 @@ console:
       mountPath: /var/cache/nginx
     - name: nginx-tmp
       mountPath: /tmp
+    - name: nginx-conf
+      mountPath: /etc/nginx/conf.d
   # -- Resource requests/limits for the console container.
   resources: {}
   # -- Node selector for the console pod.
