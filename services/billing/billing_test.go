@@ -630,3 +630,36 @@ func TestResolveOrgPlatformAdminWithoutOrganization(t *testing.T) {
 type fakeBillingRoles struct{ roles []string }
 
 func (f fakeBillingRoles) SessionRoles(context.Context) ([]string, error) { return f.roles, nil }
+
+// TestPriceOnceResolvesTheModelNameAlias covers the legacy price rows: a
+// price written against the model's name (an older console or a manual
+// API call) still prices usage that metering recorded as a catalog id.
+func TestPriceOnceResolvesTheModelNameAlias(t *testing.T) {
+	db := newBillingTestDB(t)
+	svc := newBillingTestService(t)
+	repo := NewRepository(db)
+	ctx := context.Background()
+	hour := time.Now().UTC().Add(-3 * time.Hour).Truncate(time.Hour)
+
+	// The catalog knows the id -> name mapping; billing reads it read-only.
+	require.NoError(t, db.Exec(`CREATE TABLE models (id TEXT PRIMARY KEY, name TEXT NOT NULL)`).Error)
+	require.NoError(t, db.Exec(`INSERT INTO models (id, name) VALUES ('model-uuid', 'qwen')`).Error)
+
+	// The price keys on the deployment name, not the catalog id.
+	_, err := repo.UpsertPrice(ctx, &PriceEntry{
+		ModelID: "qwen", AcceleratorType: "default",
+		InputPricePerMillion: 2, OutputPricePerMillion: 4,
+		Currency: "USD", EffectiveFrom: 1, TiersJSON: []byte("[]"),
+	})
+	require.NoError(t, err)
+
+	seedLine(t, db, "r-alias", "org-1", "key-1", "model-uuid", "A800",
+		hour.Add(10*time.Minute), 1_000_000, 500_000)
+
+	require.NoError(t, svc.PriceOnce(ctx, "key-1", hour.Unix()))
+
+	var charge ChargeRecord
+	require.NoError(t, db.Where("api_key_id = ?", "key-1").First(&charge).Error)
+	assert.True(t, charge.Priced, "the name-keyed price must apply")
+	assert.Equal(t, 4.0, charge.Amount, "2 per 1M input + 4 per 1M output * 0.5M")
+}

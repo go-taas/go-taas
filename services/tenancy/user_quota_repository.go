@@ -117,7 +117,6 @@ func (r *Repository) ProjectQuotaLimits(ctx context.Context, projectID string) (
 	}
 	return QuotaLimits{
 		MaxConcurrentRequests:     row.MaxConcurrentRequests,
-		MaxInferenceServices:      row.MaxInferenceServices,
 		MaxBatchJobsPerDay:        row.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: row.MaxOutputTokensPerRequest,
 		MonthlySpendLimitCents:    row.MonthlySpendLimitCents,
@@ -135,7 +134,6 @@ func (r *Repository) MigrateProjectMemberQuotas(ctx context.Context) error {
 		UserID                    string
 		OrganizationID            string
 		MaxConcurrentRequests     int64
-		MaxInferenceServices      int64
 		MaxBatchJobsPerDay        int64
 		MaxOutputTokensPerRequest int64
 	}
@@ -144,7 +142,6 @@ func (r *Repository) MigrateProjectMemberQuotas(ctx context.Context) error {
 		Select(`project_members.user_id,
 			projects.organization_id,
 			COALESCE(MIN(CASE WHEN project_members.max_concurrent_requests > 0 THEN project_members.max_concurrent_requests END), 0) AS max_concurrent_requests,
-			COALESCE(MIN(CASE WHEN project_members.max_inference_services > 0 THEN project_members.max_inference_services END), 0) AS max_inference_services,
 			COALESCE(MIN(CASE WHEN project_members.max_batch_jobs_per_day > 0 THEN project_members.max_batch_jobs_per_day END), 0) AS max_batch_jobs_per_day,
 			COALESCE(MIN(CASE WHEN project_members.max_output_tokens_per_request > 0 THEN project_members.max_output_tokens_per_request END), 0) AS max_output_tokens_per_request`).
 		Joins("JOIN projects ON projects.id = project_members.project_id").
@@ -168,7 +165,6 @@ func (r *Repository) MigrateProjectMemberQuotas(ctx context.Context) error {
 			OrganizationID:            m.OrganizationID,
 			UserID:                    m.UserID,
 			MaxConcurrentRequests:     m.MaxConcurrentRequests,
-			MaxInferenceServices:      m.MaxInferenceServices,
 			MaxBatchJobsPerDay:        m.MaxBatchJobsPerDay,
 			MaxOutputTokensPerRequest: m.MaxOutputTokensPerRequest,
 			QuotaUpdatedAt:            time.Now().UTC(),

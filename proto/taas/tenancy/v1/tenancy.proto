@@ -808,7 +808,8 @@ message OrganizationQuota {
   string organization_id = 1;
   string organization_name = 2;
   int64 max_concurrent_requests = 3;
-  int64 max_inference_services = 4;
+  reserved 4;
+  reserved "max_inference_services";
   int64 max_batch_jobs_per_day = 5;
   int64 max_output_tokens_per_request = 6;
   int64 updated_at = 7; // unix seconds, 0 = never updated
@@ -829,7 +830,7 @@ message QuotaUsage {
 message QuotaChangeEntry {
   int64 changed_at = 1; // unix seconds
   string operator = 2; // acting user id
-  string dimension = 3; // max_concurrent_requests | max_inference_services | max_batch_jobs_per_day | max_output_tokens_per_request
+  string dimension = 3; // max_concurrent_requests | max_batch_jobs_per_day | max_output_tokens_per_request
   int64 old_value = 4;
   int64 new_value = 5;
 }
@@ -867,7 +868,8 @@ message UpdateOrganizationQuotaRequest {
   string organization_id = 1;
   // optional tracks presence: absent = unchanged, explicit 0 = unlimited.
   optional int64 max_concurrent_requests = 2;
-  optional int64 max_inference_services = 3;
+  reserved 3;
+  reserved "max_inference_services";
   optional int64 max_batch_jobs_per_day = 4;
   optional int64 max_output_tokens_per_request = 5;
 }
@@ -901,7 +903,8 @@ message GetMyQuotaResponse {
 // field is 0 when unlimited.
 message EffectiveQuota {
   int64 max_concurrent_requests = 1;
-  int64 max_inference_services = 2;
+  reserved 2;
+  reserved "max_inference_services";
   int64 max_batch_jobs_per_day = 3;
   int64 max_output_tokens_per_request = 4;
   int64 monthly_spend_limit_cents = 5;
@@ -920,7 +923,8 @@ message UserQuota {
   // empty when the user is not an organization member.
   string role = 4;
   int64 max_concurrent_requests = 5;
-  int64 max_inference_services = 6;
+  reserved 6;
+  reserved "max_inference_services";
   int64 max_batch_jobs_per_day = 7;
   int64 max_output_tokens_per_request = 8;
   // monthly_spend_limit_cents is the personal monthly spend cap over the
@@ -963,7 +967,8 @@ message UpdateUserQuotaRequest {
   string organization_id = 2;
   // optional tracks presence: absent = unchanged, explicit 0 = unlimited.
   optional int64 max_concurrent_requests = 3;
-  optional int64 max_inference_services = 4;
+  reserved 4;
+  reserved "max_inference_services";
   optional int64 max_batch_jobs_per_day = 5;
   optional int64 max_output_tokens_per_request = 6;
   optional int64 monthly_spend_limit_cents = 7;
@@ -1136,7 +1141,8 @@ message ProjectQuota {
   string organization_id = 2;
   string project_name = 3;
   int64 max_concurrent_requests = 4;
-  int64 max_inference_services = 5;
+  reserved 5;
+  reserved "max_inference_services";
   int64 max_batch_jobs_per_day = 6;
   int64 max_output_tokens_per_request = 7;
   int64 updated_at = 8;
@@ -1160,7 +1166,8 @@ message GetProjectQuotaResponse {
 message UpdateProjectQuotaRequest {
   string project_id = 1;
   optional int64 max_concurrent_requests = 2;
-  optional int64 max_inference_services = 3;
+  reserved 3;
+  reserved "max_inference_services";
   optional int64 max_batch_jobs_per_day = 4;
   optional int64 max_output_tokens_per_request = 5;
   optional int64 monthly_spend_limit_cents = 6;
@@ -1191,7 +1198,8 @@ message ProjectMemberQuota {
   string display_name = 4;
   string role = 5;
   int64 max_concurrent_requests = 6;
-  int64 max_inference_services = 7;
+  reserved 7;
+  reserved "max_inference_services";
   int64 max_batch_jobs_per_day = 8;
   int64 max_output_tokens_per_request = 9;
   int64 updated_at = 10;
@@ -1212,7 +1220,8 @@ message UpdateProjectMemberQuotaRequest {
   string project_id = 1;
   string user_id = 2;
   optional int64 max_concurrent_requests = 3;
-  optional int64 max_inference_services = 4;
+  reserved 4;
+  reserved "max_inference_services";
   optional int64 max_batch_jobs_per_day = 5;
   optional int64 max_output_tokens_per_request = 6;
 }

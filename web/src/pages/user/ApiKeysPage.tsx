@@ -52,6 +52,7 @@ export default function ApiKeysPage() {
   const [scopeTarget, setScopeTarget] = useState<ApiKeySummary | null>(null);
   const [created, setCreated] = useState('');
   const [saved, setSaved] = useState(false);
+  const [busy, setBusy] = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -63,6 +64,19 @@ export default function ApiKeysPage() {
       setError(e instanceof Error ? e.message : t('uapikeys.loadFailed'));
     }
   }, [api, orgId, t]);
+
+  const restoreKey = async (key: ApiKeySummary) => {
+    setBusy(key.keyId);
+    setError('');
+    try {
+      await api.post(`/api/v1/auth/api-keys/${key.keyId}:restore`, orgId, {});
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('uapikeys.restoreFailed'));
+    } finally {
+      setBusy('');
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -93,12 +107,15 @@ export default function ApiKeysPage() {
               <td>{formatTime(key.createdAt)}</td>
               <td>{key.expiresAt && key.expiresAt !== '0' ? formatTime(key.expiresAt) : t('common.never')}</td>
               <td><StateBadge state={key.revoked ? 'revoked' : 'active'} /></td>
-              <td>{!key.revoked && <>
+              <td>{!key.revoked ? <>
                 <button className="link" data-testid={`edit-rate-limit-${key.keyId}`} onClick={() => setEditTarget(key)}>{t('common.edit')}</button>
                 <button className="link" data-testid={`edit-scope-${key.keyId}`} onClick={() => setScopeTarget(key)}>{t('uapikeys.scopeEdit')}</button>
                 <button className="link danger" data-testid={`revoke-${key.keyId}`} onClick={() => setRevokeTarget(key)}>{t('uapikeys.revoke')}</button>
+              </> : (
+                <button className="link" data-testid={`restore-${key.keyId}`} disabled={busy === key.keyId} onClick={() => void restoreKey(key)}>{t('uapikeys.restore')}</button>
+              )}
                 <button className="link danger" data-testid={`delete-${key.keyId}`} onClick={() => setDeleteTarget(key)}>{t('common.delete')}</button>
-              </>}</td>
+              </td>
             </tr>
           ))}</tbody>
         </table>

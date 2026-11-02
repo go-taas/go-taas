@@ -82,7 +82,6 @@ func TestValidateQuotaRanges(t *testing.T) {
 	assert.NoError(t, ValidateQuota("max_concurrent_requests", 0))
 	assert.NoError(t, ValidateQuota("max_concurrent_requests", 1))
 	assert.NoError(t, ValidateQuota("max_concurrent_requests", 10000))
-	assert.NoError(t, ValidateQuota("max_inference_services", 1000))
 	assert.NoError(t, ValidateQuota("max_batch_jobs_per_day", 10000))
 	assert.NoError(t, ValidateQuota("max_output_tokens_per_request", 0))
 	assert.NoError(t, ValidateQuota("max_output_tokens_per_request", 64))
@@ -91,7 +90,6 @@ func TestValidateQuotaRanges(t *testing.T) {
 	// Invalid: out of range.
 	assert.EqualValues(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(ValidateQuota("max_concurrent_requests", 10001)))
 	assert.EqualValues(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(ValidateQuota("max_concurrent_requests", -1)))
-	assert.EqualValues(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(ValidateQuota("max_inference_services", 1001)))
 	assert.EqualValues(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(ValidateQuota("max_batch_jobs_per_day", 10001)))
 	assert.EqualValues(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(ValidateQuota("max_output_tokens_per_request", 63)))
 	assert.EqualValues(t, apierrors.CodeQuotaInvalid, apierrors.CodeOf(ValidateQuota("max_output_tokens_per_request", 32769)))
@@ -103,12 +101,12 @@ func TestUpdateOrganizationQuotaSetsAndAudits(t *testing.T) {
 	req := &tenancyv1.UpdateOrganizationQuotaRequest{
 		OrganizationId:        env.orgID,
 		MaxConcurrentRequests: int64Ptr(50),
-		MaxInferenceServices:  int64Ptr(20),
+		MaxBatchJobsPerDay:    int64Ptr(20),
 	}
 	resp, err := env.svc.UpdateOrganizationQuota(env.ctx, req)
 	require.NoError(t, err)
 	assert.Equal(t, int64(50), resp.GetQuota().GetMaxConcurrentRequests())
-	assert.Equal(t, int64(20), resp.GetQuota().GetMaxInferenceServices())
+	assert.Equal(t, int64(20), resp.GetQuota().GetMaxBatchJobsPerDay())
 	assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.GetQuota().GetUpdatedBy())
 	assert.NotZero(t, resp.GetQuota().GetUpdatedAt())
 
@@ -120,7 +118,7 @@ func TestUpdateOrganizationQuotaSetsAndAudits(t *testing.T) {
 	assert.Equal(t, "max_concurrent_requests", hist.GetChanges()[0].GetDimension())
 	assert.Equal(t, int64(0), hist.GetChanges()[0].GetOldValue())
 	assert.Equal(t, int64(50), hist.GetChanges()[0].GetNewValue())
-	assert.Equal(t, "max_inference_services", hist.GetChanges()[1].GetDimension())
+	assert.Equal(t, "max_batch_jobs_per_day", hist.GetChanges()[1].GetDimension())
 }
 
 func TestUpdateOrganizationQuotaNoOpWritesNothing(t *testing.T) {
@@ -182,18 +180,18 @@ func TestGetOrganizationQuotaReturnsHistory(t *testing.T) {
 	})
 	require.NoError(t, err)
 	_, err = env.svc.UpdateOrganizationQuota(env.ctx, &tenancyv1.UpdateOrganizationQuotaRequest{
-		OrganizationId:       env.orgID,
-		MaxInferenceServices: int64Ptr(20),
+		OrganizationId:     env.orgID,
+		MaxBatchJobsPerDay: int64Ptr(20),
 	})
 	require.NoError(t, err)
 
 	resp, err := env.svc.GetOrganizationQuota(env.ctx, &tenancyv1.GetOrganizationQuotaRequest{OrganizationId: env.orgID})
 	require.NoError(t, err)
 	assert.Equal(t, int64(50), resp.GetQuota().GetMaxConcurrentRequests())
-	assert.Equal(t, int64(20), resp.GetQuota().GetMaxInferenceServices())
+	assert.Equal(t, int64(20), resp.GetQuota().GetMaxBatchJobsPerDay())
 	// Newest first: the second event (services) comes first.
 	require.Len(t, resp.GetChanges(), 2)
-	assert.Equal(t, "max_inference_services", resp.GetChanges()[0].GetDimension())
+	assert.Equal(t, "max_batch_jobs_per_day", resp.GetChanges()[0].GetDimension())
 	assert.Equal(t, "max_concurrent_requests", resp.GetChanges()[1].GetDimension())
 }
 

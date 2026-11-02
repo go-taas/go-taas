@@ -165,7 +165,6 @@ func (r *Repository) UpdateProjectQuotas(ctx context.Context, p *Project) error 
 	return r.db.DB(ctx).Model(&Project{}).Where("id = ?", p.ID).
 		Updates(map[string]any{
 			"max_concurrent_requests":      p.MaxConcurrentRequests,
-			"max_inference_services":       p.MaxInferenceServices,
 			"max_batch_jobs_per_day":       p.MaxBatchJobsPerDay,
 			"max_output_tokens_per_request": p.MaxOutputTokensPerRequest,
 			"monthly_spend_limit_cents":    p.MonthlySpendLimitCents,

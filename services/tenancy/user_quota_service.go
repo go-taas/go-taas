@@ -173,7 +173,6 @@ func (s *Service) UpdateUserQuota(ctx context.Context, req *tenancyv1.UpdateUser
 		value *int64
 	}{
 		{"max_concurrent_requests", req.MaxConcurrentRequests},
-		{"max_inference_services", req.MaxInferenceServices},
 		{"max_batch_jobs_per_day", req.MaxBatchJobsPerDay},
 		{"max_output_tokens_per_request", req.MaxOutputTokensPerRequest},
 		{"monthly_spend_limit_cents", req.MonthlySpendLimitCents},
@@ -323,9 +322,6 @@ func applyUserQuotaPatch(row *UserQuota, patch map[string]int64) {
 	if v, ok := patch["max_concurrent_requests"]; ok {
 		row.MaxConcurrentRequests = v
 	}
-	if v, ok := patch["max_inference_services"]; ok {
-		row.MaxInferenceServices = v
-	}
 	if v, ok := patch["max_batch_jobs_per_day"]; ok {
 		row.MaxBatchJobsPerDay = v
 	}
@@ -351,7 +347,6 @@ func summarizeUserQuota(row *UserQuota, orgID, userID, role string, labels map[s
 	}
 	if row != nil {
 		q.MaxConcurrentRequests = row.MaxConcurrentRequests
-		q.MaxInferenceServices = row.MaxInferenceServices
 		q.MaxBatchJobsPerDay = row.MaxBatchJobsPerDay
 		q.MaxOutputTokensPerRequest = row.MaxOutputTokensPerRequest
 		q.MonthlySpendLimitCents = row.MonthlySpendLimitCents
@@ -368,7 +363,6 @@ func summarizeUserQuota(row *UserQuota, orgID, userID, role string, labels map[s
 func effectiveQuotaProto(q EffectiveQuota) *tenancyv1.EffectiveQuota {
 	return &tenancyv1.EffectiveQuota{
 		MaxConcurrentRequests:     q.MaxConcurrentRequests,
-		MaxInferenceServices:      q.MaxInferenceServices,
 		MaxBatchJobsPerDay:        q.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: q.MaxOutputTokensPerRequest,
 		MonthlySpendLimitCents:    q.MonthlySpendLimitCents,

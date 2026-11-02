@@ -39,7 +39,6 @@ export default function QuotaBar() {
   const u = data.usage;
   const allUnlimited =
     parseInt(q.maxConcurrentRequests, 10) === 0 &&
-    parseInt(q.maxInferenceServices, 10) === 0 &&
     parseInt(q.maxBatchJobsPerDay, 10) === 0 &&
     parseInt(q.maxOutputTokensPerRequest, 10) === 0;
   if (allUnlimited) return null;
@@ -50,12 +49,6 @@ export default function QuotaBar() {
       label: t('quota.barInFlight'),
       current: parseInt(u.concurrentRequests, 10),
       limit: parseInt(q.maxConcurrentRequests, 10),
-    },
-    {
-      dim: 'inference_services',
-      label: t('quota.barServices'),
-      current: parseInt(u.inferenceServices, 10),
-      limit: parseInt(q.maxInferenceServices, 10),
     },
     {
       dim: 'batch_jobs_today',

@@ -691,6 +691,67 @@ func (s *Service) RevokeAPIKey(ctx context.Context, req *authv1.RevokeAPIKeyRequ
 	return &authv1.RevokeAPIKeyResponse{Response: okResponse()}, nil
 }
 
+// RestoreAPIKey lifts a soft revocation on a key that has not expired.
+// Revocation only flips a flag, so the same secret works again; an
+// expired key cannot be restored because expiry is an independent check
+// the caller can only change through UpdateAPIKey.
+func (s *Service) RestoreAPIKey(ctx context.Context, req *authv1.RestoreAPIKeyRequest) (*authv1.RestoreAPIKeyResponse, error) {
+	orgID, err := s.resolveOrgContext(ctx)
+	if err != nil {
+		return nil, err
+	}
+	// Restoring a key under a disabled organization would re-enable
+	// spend, so it needs an active tenant like a create does.
+	if err := s.checkOrg(ctx, orgID, true); err != nil {
+		return nil, err
+	}
+	if req.GetKeyId() == "" {
+		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: key_id is required")
+	}
+	row, access, err := s.requireKeyManage(ctx, orgID, req.GetKeyId())
+	if err != nil {
+		return nil, err
+	}
+	if row.ExpiresAt != nil && time.Now().After(*row.ExpiresAt) {
+		return nil, apierrors.New(apierrors.CodeAPIKeyExpired)
+	}
+
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	restored, lookupHash, err := repo.RestoreByIDAndOrganization(ctx, orgID, row.ID)
+	if err != nil {
+		return nil, err
+	}
+	if restored == nil {
+		return nil, apierrors.New(apierrors.CodeAPIKeyNotFound)
+	}
+
+	// Drop the negative/positive cache entry so the key verifies again on
+	// the next request rather than after the TTL.
+	if cache, cacheErr := s.verdictCacheFor(); cacheErr == nil {
+		if delErr := cache.Delete(ctx, lookupHash); delErr != nil {
+			logger.S().Warnw("auth: delete api key cache entry failed on restore",
+				"key_id", restored.ID, "err", delErr)
+		}
+	}
+
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    actorIDFor(access),
+		ActorType:      actorTypeFor(access),
+		Action:         "api_key.restore",
+		ResourceType:   "api_key",
+		ResourceID:     restored.ID,
+		Result:         "success",
+	})
+	return &authv1.RestoreAPIKeyResponse{
+		Response: okResponse(),
+		Key:      s.summarizeAPIKeyWithLookup(ctx, restored),
+	}, nil
+}
+
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.
 func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {

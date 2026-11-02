@@ -39,7 +39,6 @@ type Organization struct {
 	// Service quotas (feature #51, AD11). 0 = unlimited; when set the
 	// values sit inside the documented ranges (design D2).
 	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
-	MaxInferenceServices      int64     `gorm:"not null;default:0"`
 	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
 	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
 	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`
@@ -65,7 +64,6 @@ type Project struct {
 	// sit inside the documented ranges. Written only through
 	// UpdateProjectQuota.
 	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
-	MaxInferenceServices      int64     `gorm:"not null;default:0"`
 	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
 	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
 	// MonthlySpendLimitCents caps the project's monthly spend over its

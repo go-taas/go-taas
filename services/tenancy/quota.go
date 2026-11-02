@@ -12,8 +12,6 @@ const (
 	// MaxConcurrentRequestsMax is the upper bound for the in-flight
 	// request cap.
 	MaxConcurrentRequestsMax = 10000
-	// MaxInferenceServicesMax is the upper bound for the service cap.
-	MaxInferenceServicesMax = 1000
 	// MaxBatchJobsPerDayMax is the upper bound for the daily batch cap.
 	MaxBatchJobsPerDayMax = 10000
 	// MaxOutputTokensPerRequestMin is the lower bound for the per-request
@@ -28,7 +26,6 @@ const (
 // FR1.1). All fields are int64 with 0 = unlimited.
 type OrgQuota struct {
 	MaxConcurrentRequests     int64
-	MaxInferenceServices      int64
 	MaxBatchJobsPerDay        int64
 	MaxOutputTokensPerRequest int64
 	// MonthlySpendLimitCents is the organization account's cross-mode
@@ -63,10 +60,6 @@ func ValidateQuota(dimension string, value int64) error {
 	case "max_concurrent_requests":
 		if value < 0 || value > MaxConcurrentRequestsMax {
 			return apierrors.Newf(apierrors.CodeQuotaInvalid, "max_concurrent_requests must be 0 (unlimited) or 1-10000")
-		}
-	case "max_inference_services":
-		if value < 0 || value > MaxInferenceServicesMax {
-			return apierrors.Newf(apierrors.CodeQuotaInvalid, "max_inference_services must be 0 (unlimited) or 1-1000")
 		}
 	case "max_batch_jobs_per_day":
 		if value < 0 || value > MaxBatchJobsPerDayMax {

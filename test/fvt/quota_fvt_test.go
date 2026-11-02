@@ -107,7 +107,6 @@ func newQuotaFvtEnv(t *testing.T) *quotaFvtEnv {
 	authSvc.SetOrgQuotaReader(tenSvc)
 
 	inferSvc := infer.NewForFVT(db, newRecordingBus())
-	inferSvc.SetOrgQuotaReader(tenSvc)
 
 	batchSvc := batch.NewForFVT(db, batch.NewMemFileStore())
 	batchSvc.SetOrgQuotaReader(tenSvc)
@@ -191,10 +190,10 @@ func TestFVTQuotaAdminLifecycle(t *testing.T) {
 	assert.Equal(t, "org-fvt", q["organizationId"])
 	assert.Equal(t, float64(0), numberOf(t, q["maxConcurrentRequests"]))
 
-	// Update: set concurrency 50 and services 20.
+	// Update: set concurrency 50 and batch jobs 20.
 	code, body = env.call(t, http.MethodPatch, "/api/v1/admin/quotas/org-fvt", map[string]any{
 		"maxConcurrentRequests": 50,
-		"maxInferenceServices":  20,
+		"maxBatchJobsPerDay":    20,
 	}, true)
 	require.Equal(t, http.StatusOK, code, "update: %v", body)
 	assert.Equal(t, float64(50), numberOf(t, body["quota"].(map[string]any)["maxConcurrentRequests"]))
@@ -272,34 +271,29 @@ func TestFVTQuotaGetMyQuota(t *testing.T) {
 	assert.Equal(t, "ops@example.com", body["requestIncreaseEmail"])
 }
 
-// TestFVTQuotaServiceCountGuard covers AC5: the infer create-time guard
-// rejects the N+1st service with 13302.
-func TestFVTQuotaServiceCountGuard(t *testing.T) {
+// TestFVTQuotaServiceCountIsNotLimited documents the removal of the
+// inference-service quota: only a platform administrator creates
+// inference services, so no organization budget caps their count and
+// the create succeeds with the cap field gone from the request.
+func TestFVTQuotaServiceCountIsNotLimited(t *testing.T) {
 	env := newQuotaFvtEnv(t)
 
-	// Cap the org at 1 service.
+	// A request that still carries the retired field is accepted and the
+	// field is ignored (proto reserved numbers reject it at the wire for
+	// new clients; the console no longer sends it).
 	code, body := env.call(t, http.MethodPatch, "/api/v1/admin/quotas/org-fvt", map[string]any{
-		"maxInferenceServices": 1,
+		"maxConcurrentRequests": 50,
 	}, true)
 	require.Equal(t, http.StatusOK, code, "update: %v", body)
+	assert.NotContains(t, body["quota"].(map[string]any), "maxInferenceServices")
 
-	// Seed one running service for org-fvt.
-	repo := infer.NewInferenceServiceRepository(env.db)
-	require.NoError(t, repo.Create(context.Background(), &infer.InferenceService{
-		ID: infer.NewServiceID(), OrganizationID: "org-fvt", Name: "existing",
-		ModelID: "model-1", ModelVersion: "v1", ImageID: "img-1", Replicas: 1,
-		Accelerator: "nvidia", State: infer.StateRunning, Endpoints: []string{},
-		CreatedAt: time.Now(), UpdatedAt: time.Now(),
-	}))
-
-	// The next create is rejected with 13302.
+	// The next create is not rejected by any service-count rule.
 	env.infer.SetSessionOrgResolver(fvtSessionOrgResolver{org: "org-fvt"})
-	code, body = env.callRaw(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
+	_, body = env.callRaw(t, http.MethodPost, "/api/v1/admin/inference-services", map[string]any{
 		"name": "demo", "modelId": "model-1", "modelVersion": "v1",
 		"imageId": "img-1", "replicas": 1, "accelerator": "nvidia",
 	})
-	assert.NotEqual(t, http.StatusOK, code, "create: %v", body)
-	assert.EqualValues(t, 13302, body["code"])
+	assert.NotEqual(t, 13302, body["code"], "the service-count quota is gone: %v", body)
 }
 
 // TestFVTQuotaBatchDailyGuard covers AC6: the batch create-time guard

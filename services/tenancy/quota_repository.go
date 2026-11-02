@@ -51,9 +51,9 @@ func (r *Repository) ListOrganizationQuotas(ctx context.Context, filter QuotaLis
 	}
 	switch filter.LimitState {
 	case "limited":
-		query = query.Where("max_concurrent_requests > 0 OR max_inference_services > 0 OR max_batch_jobs_per_day > 0 OR max_output_tokens_per_request > 0")
+		query = query.Where("max_concurrent_requests > 0 OR max_batch_jobs_per_day > 0 OR max_output_tokens_per_request > 0")
 	case "unlimited":
-		query = query.Where("max_concurrent_requests = 0 AND max_inference_services = 0 AND max_batch_jobs_per_day = 0 AND max_output_tokens_per_request = 0")
+		query = query.Where("max_concurrent_requests = 0 AND max_batch_jobs_per_day = 0 AND max_output_tokens_per_request = 0")
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
@@ -167,7 +167,6 @@ func (r *Repository) OrgQuota(ctx context.Context, orgID string) (OrgQuota, erro
 	}
 	return OrgQuota{
 		MaxConcurrentRequests:     row.MaxConcurrentRequests,
-		MaxInferenceServices:      row.MaxInferenceServices,
 		MaxBatchJobsPerDay:        row.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: row.MaxOutputTokensPerRequest,
 	}, nil

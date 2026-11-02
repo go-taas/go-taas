@@ -18,8 +18,6 @@ type UserQuota struct {
 	UserID string `gorm:"type:uuid;not null;primaryKey"`
 	// MaxConcurrentRequests caps the user's in-flight requests.
 	MaxConcurrentRequests int64 `gorm:"not null;default:0"`
-	// MaxInferenceServices caps the inference services the user creates.
-	MaxInferenceServices int64 `gorm:"not null;default:0"`
 	// MaxBatchJobsPerDay caps the batch jobs the user submits per day.
 	MaxBatchJobsPerDay int64 `gorm:"not null;default:0"`
 	// MaxOutputTokensPerRequest caps one request's output tokens.
@@ -44,7 +42,6 @@ func (q *UserQuota) Limits() QuotaLimits {
 	}
 	return QuotaLimits{
 		MaxConcurrentRequests:     q.MaxConcurrentRequests,
-		MaxInferenceServices:      q.MaxInferenceServices,
 		MaxBatchJobsPerDay:        q.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: q.MaxOutputTokensPerRequest,
 		MonthlySpendLimitCents:    q.MonthlySpendLimitCents,

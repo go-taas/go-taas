@@ -73,7 +73,6 @@ type ProjectMember struct {
 	// them per person, so the limits follow the human rather than the
 	// project as a whole. 0 means unlimited.
 	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
-	MaxInferenceServices      int64     `gorm:"not null;default:0"`
 	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
 	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
 	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`

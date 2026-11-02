@@ -73,6 +73,22 @@ func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *Usag
 			return err
 		}
 	}
+	// A price row may key on the model's name (the deployment name an
+	// older console sent) while metering records the catalog id. Retrying
+	// with the name keeps that price effective instead of charging zero.
+	if entry == nil {
+		if name, nameErr := repo.ModelName(ctx, group.ModelID); nameErr == nil && name != "" && name != group.ModelID {
+			for _, card := range []string{group.AcceleratorType, defaultCardType} {
+				entry, err = repo.ApplicablePrice(ctx, name, card, group.PeriodStart)
+				if err != nil {
+					return err
+				}
+				if entry != nil {
+					break
+				}
+			}
+		}
+	}
 
 	record := &ChargeRecord{
 		ID:                uuid.NewString(),

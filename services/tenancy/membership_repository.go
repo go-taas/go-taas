@@ -216,7 +216,6 @@ func (r *MembershipRepository) UpdateProjectMemberQuota(ctx context.Context, pro
 		Where("project_id = ? AND user_id = ?", projectID, userID).
 		Updates(map[string]any{
 			"max_concurrent_requests":       quota.MaxConcurrentRequests,
-			"max_inference_services":        quota.MaxInferenceServices,
 			"max_batch_jobs_per_day":        quota.MaxBatchJobsPerDay,
 			"max_output_tokens_per_request": quota.MaxOutputTokensPerRequest,
 			"quota_updated_by":              quota.QuotaUpdatedBy,

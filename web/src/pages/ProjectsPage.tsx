@@ -826,7 +826,6 @@ function ProjectQuotaDialog({
 }) {
   const { t } = useI18n();
   const [maxConcurrent, setMaxConcurrent] = useState('');
-  const [maxServices, setMaxServices] = useState('');
   const [maxBatch, setMaxBatch] = useState('');
   const [maxTokens, setMaxTokens] = useState('');
   const [maxSpend, setMaxSpend] = useState('');
@@ -842,7 +841,6 @@ function ProjectQuotaDialog({
       )
       .then((d) => {
         setMaxConcurrent(String(d.quota.maxConcurrentRequests || '0'));
-        setMaxServices(String(d.quota.maxInferenceServices || '0'));
         setMaxBatch(String(d.quota.maxBatchJobsPerDay || '0'));
         setMaxTokens(String(d.quota.maxOutputTokensPerRequest || '0'));
         setMaxSpend(String(d.quota.monthlySpendLimitCents || '0'));
@@ -857,7 +855,6 @@ function ProjectQuotaDialog({
     try {
       await api.patch(`/api/v1/admin/tenancy/projects/${project.projectId}/quota`, orgId, {
         maxConcurrentRequests: maxConcurrent || '0',
-        maxInferenceServices: maxServices || '0',
         maxBatchJobsPerDay: maxBatch || '0',
         maxOutputTokensPerRequest: maxTokens || '0',
         monthlySpendLimitCents: maxSpend || '0',
@@ -885,11 +882,6 @@ function ProjectQuotaDialog({
             {t('projects.quotaConcurrent')}
             <input data-testid="quota-concurrent" value={maxConcurrent}
               onChange={(e) => setMaxConcurrent(e.target.value)} />
-          </label>
-          <label>
-            {t('projects.quotaServices')}
-            <input data-testid="quota-services" value={maxServices}
-              onChange={(e) => setMaxServices(e.target.value)} />
           </label>
           <label>
             {t('projects.quotaBatch')}

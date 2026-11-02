@@ -37,10 +37,9 @@ func TestFVTUserQuotaAdminLifecycle(t *testing.T) {
 	_, body = env.call(t, "11111111-1111-4111-8111-111111111111", http.MethodGet, "/api/v1/admin/tenancy/user-quotas", nil)
 	assert.EqualValues(t, 10036, body["code"], "member list: %v", body)
 
-	// Set the four dimensions plus the personal monthly spend cap.
+	// Set the three resource dimensions plus the personal monthly spend cap.
 	code, body = env.call(t, "33333333-3333-4333-8333-333333333333", http.MethodPatch, "/api/v1/admin/tenancy/user-quotas/11111111-1111-4111-8111-111111111111", map[string]any{
 		"maxConcurrentRequests":     5,
-		"maxInferenceServices":      3,
 		"maxBatchJobsPerDay":        7,
 		"maxOutputTokensPerRequest": 1024,
 		"monthlySpendLimitCents":    2500,

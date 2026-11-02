@@ -98,9 +98,6 @@ func (s *Service) UpdateProjectMemberQuota(ctx context.Context, req *tenancyv1.U
 	if v, ok := optionalQuota(req.MaxConcurrentRequests); ok {
 		member.MaxConcurrentRequests = v
 	}
-	if v, ok := optionalQuota(req.MaxInferenceServices); ok {
-		member.MaxInferenceServices = v
-	}
 	if v, ok := optionalQuota(req.MaxBatchJobsPerDay); ok {
 		member.MaxBatchJobsPerDay = v
 	}
@@ -146,7 +143,6 @@ func summarizeMemberQuota(m *ProjectMember, p *Project, labels map[string]string
 		DisplayName:               labels[m.UserID],
 		Role:                      m.Role,
 		MaxConcurrentRequests:     m.MaxConcurrentRequests,
-		MaxInferenceServices:      m.MaxInferenceServices,
 		MaxBatchJobsPerDay:        m.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: m.MaxOutputTokensPerRequest,
 		UpdatedBy:                 m.QuotaUpdatedBy,

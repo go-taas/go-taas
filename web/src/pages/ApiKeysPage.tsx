@@ -72,6 +72,7 @@ export default function ApiKeysPage() {
   const [revokeTarget, setRevokeTarget] = useState<ApiKeySummary | null>(null);
   const [editTarget, setEditTarget] = useState<ApiKeySummary | null>(null);
   const [transferTarget, setTransferTarget] = useState<ApiKeySummary | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<ApiKeySummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -89,6 +90,32 @@ export default function ApiKeysPage() {
       setLoading(false);
     }
   }, [orgId, offset, t]);
+
+  const [busy, setBusy] = useState('');
+
+  const restoreKey = async (key: ApiKeySummary) => {
+    setBusy(key.keyId);
+    setError('');
+    try {
+      await api.post(`/api/v1/admin/auth/api-keys/${key.keyId}:restore`, orgId, {});
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.restoreFailed'));
+    } finally {
+      setBusy('');
+    }
+  };
+
+  const deleteKey = async (key: ApiKeySummary) => {
+    setError('');
+    try {
+      await api.del(`/api/v1/admin/auth/api-keys/${key.keyId}`, orgId);
+      setDeleteTarget(null);
+      await load();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.deleteFailed'));
+    }
+  };
 
   useEffect(() => {
     void load();
@@ -152,7 +179,7 @@ export default function ApiKeysPage() {
                   <td>{formatTime(k.createdAt)}</td>
                   <td>{k.expiresAt && k.expiresAt !== '0' ? formatTime(k.expiresAt) : t('common.never')}</td>
                   <td>
-                    {!k.revoked && (
+                    {!k.revoked ? (
                       <>
                         <button
                           className="link"
@@ -176,7 +203,23 @@ export default function ApiKeysPage() {
                           {t('apikeys.revoke')}
                         </button>
                       </>
+                    ) : (
+                      <button
+                        className="link"
+                        data-testid={`restore-${k.keyId}`}
+                        onClick={() => void restoreKey(k)}
+                        disabled={busy === k.keyId}
+                      >
+                        {t('apikeys.restore')}
+                      </button>
                     )}
+                    <button
+                      className="link danger"
+                      data-testid={`delete-${k.keyId}`}
+                      onClick={() => setDeleteTarget(k)}
+                    >
+                      {t('common.delete')}
+                    </button>
                   </td>
                 </tr>
               ))}
@@ -249,6 +292,28 @@ export default function ApiKeysPage() {
             void load();
           }}
         />
+      )}
+
+      {deleteTarget && (
+        <Dialog
+          title={t('apikeys.deleteTitle')}
+          testId="delete-key-dialog"
+          onClose={() => setDeleteTarget(null)}
+        >
+          <p>{t('apikeys.deleteConfirm', { name: deleteTarget.name })}</p>
+          <div className="dialog-actions">
+            <button className="secondary" onClick={() => setDeleteTarget(null)}>
+              {t('common.cancel')}
+            </button>
+            <button
+              className="danger"
+              data-testid="confirm-delete-key"
+              onClick={() => void deleteKey(deleteTarget)}
+            >
+              {t('common.delete')}
+            </button>
+          </div>
+        </Dialog>
       )}
     </div>
   );

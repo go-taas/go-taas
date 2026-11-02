@@ -9,7 +9,6 @@ import "context"
 // Every field is 0 when the tier sets no limit.
 type QuotaLimits struct {
 	MaxConcurrentRequests     int64
-	MaxInferenceServices      int64
 	MaxBatchJobsPerDay        int64
 	MaxOutputTokensPerRequest int64
 	MonthlySpendLimitCents    int64
@@ -26,7 +25,6 @@ func CombineLimits(limits ...QuotaLimits) QuotaLimits {
 	out := QuotaLimits{}
 	for _, l := range limits {
 		out.MaxConcurrentRequests = minNonZero(out.MaxConcurrentRequests, l.MaxConcurrentRequests)
-		out.MaxInferenceServices = minNonZero(out.MaxInferenceServices, l.MaxInferenceServices)
 		out.MaxBatchJobsPerDay = minNonZero(out.MaxBatchJobsPerDay, l.MaxBatchJobsPerDay)
 		out.MaxOutputTokensPerRequest = minNonZero(out.MaxOutputTokensPerRequest, l.MaxOutputTokensPerRequest)
 		out.MonthlySpendLimitCents = minNonZero(out.MonthlySpendLimitCents, l.MonthlySpendLimitCents)

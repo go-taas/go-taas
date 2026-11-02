@@ -175,7 +175,6 @@ func quotaProto(org *Organization, updatedByName string) *tenancyv1.Organization
 		OrganizationId:            org.ID,
 		OrganizationName:          org.DisplayName,
 		MaxConcurrentRequests:     org.MaxConcurrentRequests,
-		MaxInferenceServices:      org.MaxInferenceServices,
 		MaxBatchJobsPerDay:        org.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: org.MaxOutputTokensPerRequest,
 		UpdatedBy:                 org.QuotaUpdatedBy,
@@ -316,9 +315,6 @@ func (s *Service) UpdateOrganizationQuota(ctx context.Context, req *tenancyv1.Up
 	if err := apply("max_concurrent_requests", req.MaxConcurrentRequests != nil, req.GetMaxConcurrentRequests(), org.MaxConcurrentRequests); err != nil {
 		return nil, err
 	}
-	if err := apply("max_inference_services", req.MaxInferenceServices != nil, req.GetMaxInferenceServices(), org.MaxInferenceServices); err != nil {
-		return nil, err
-	}
 	if err := apply("max_batch_jobs_per_day", req.MaxBatchJobsPerDay != nil, req.GetMaxBatchJobsPerDay(), org.MaxBatchJobsPerDay); err != nil {
 		return nil, err
 	}
@@ -420,7 +416,6 @@ func orgQuotaLimits(org *Organization) QuotaLimits {
 	}
 	return QuotaLimits{
 		MaxConcurrentRequests:     org.MaxConcurrentRequests,
-		MaxInferenceServices:      org.MaxInferenceServices,
 		MaxBatchJobsPerDay:        org.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: org.MaxOutputTokensPerRequest,
 	}

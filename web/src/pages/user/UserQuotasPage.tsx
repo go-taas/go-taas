@@ -47,7 +47,6 @@ export default function UserQuotasPage() {
   const effectiveUnlimited = (quota?: QuotaLimitsLike | null) =>
     !quota ||
     (parseInt(quota.maxConcurrentRequests, 10) === 0 &&
-      parseInt(quota.maxInferenceServices, 10) === 0 &&
       parseInt(quota.maxBatchJobsPerDay, 10) === 0 &&
       parseInt(quota.maxOutputTokensPerRequest, 10) === 0);
   const allUnlimited = q && effectiveUnlimited(effective) && effectiveUnlimited(q);
@@ -81,7 +80,6 @@ export default function UserQuotasPage() {
         <>
           <div className="cards-row" data-testid="quota-cards">
             <QuotaDimensionCard dimension="concurrent_requests" quota={q} usage={u!} />
-            <QuotaDimensionCard dimension="inference_services" quota={q} usage={u!} />
             <QuotaDimensionCard dimension="batch_jobs_today" quota={q} usage={u!} />
             <QuotaDimensionCard dimension="output_tokens_per_request" quota={q} usage={u!} />
           </div>
@@ -95,7 +93,6 @@ export default function UserQuotasPage() {
               <h2>{t('quota.personalTitle')}</h2>
               <div className="cards-row" data-testid="personal-quota-cards">
                 <QuotaDimensionCard dimension="concurrent_requests" quota={personal} label={t('quota.personalLabel')} />
-                <QuotaDimensionCard dimension="inference_services" quota={personal} label={t('quota.personalLabel')} />
                 <QuotaDimensionCard dimension="batch_jobs_today" quota={personal} label={t('quota.personalLabel')} />
                 <QuotaDimensionCard dimension="output_tokens_per_request" quota={personal} label={t('quota.personalLabel')} />
               </div>
@@ -106,7 +103,6 @@ export default function UserQuotasPage() {
               <h2>{t('quota.effectiveTitle')}</h2>
               <div className="cards-row" data-testid="effective-quota-cards">
                 <QuotaDimensionCard dimension="concurrent_requests" quota={effective} label={t('quota.effectiveLabel')} />
-                <QuotaDimensionCard dimension="inference_services" quota={effective} label={t('quota.effectiveLabel')} />
                 <QuotaDimensionCard dimension="batch_jobs_today" quota={effective} label={t('quota.effectiveLabel')} />
                 <QuotaDimensionCard dimension="output_tokens_per_request" quota={effective} label={t('quota.effectiveLabel')} />
               </div>

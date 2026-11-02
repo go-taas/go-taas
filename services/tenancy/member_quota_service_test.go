@@ -40,11 +40,9 @@ func TestServiceProjectMemberQuotas(t *testing.T) {
 		ProjectId:             "proj-q",
 		UserId:                "u-a",
 		MaxConcurrentRequests: ptrInt64(50),
-		MaxInferenceServices:  ptrInt64(2),
 	})
 	require.NoError(t, err)
 	assert.EqualValues(t, 50, updated.Quota.GetMaxConcurrentRequests())
-	assert.EqualValues(t, 2, updated.Quota.GetMaxInferenceServices())
 
 	// The other member is untouched.
 	list, err = svc.ListProjectMemberQuotas(ctx, &tenancyv1.ListProjectMemberQuotasRequest{ProjectId: "proj-q"})

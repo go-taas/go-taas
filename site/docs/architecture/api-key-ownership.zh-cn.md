@@ -60,7 +60,6 @@ effective(dim) = minNonZero(org[dim], project[dim], user[dim])
 | 维度 | 组织 | 项目 | 个人 |
 | --- | --- | --- | --- |
 | `max_concurrent_requests` | `organizations` | `projects` | `user_quotas` |
-| `max_inference_services` | `organizations` | `projects` | `user_quotas` |
 | `max_batch_jobs_per_day` | `organizations` | `projects` | `user_quotas` |
 | `max_output_tokens_per_request` | `organizations` | `projects` | `user_quotas` |
 | `monthly_spend_limit_cents` | `billing_accounts` | `projects` | `user_quotas` |
@@ -73,11 +72,12 @@ effective(dim) = minNonZero(org[dim], project[dim], user[dim])
 | --- | --- | --- |
 | 并发请求 | 数据面 | `VerifyAPIKey` 返回生效上限，Wasm 插件本地拒绝 |
 | 单请求输出 token | 数据面 | 同一 verdict 字段，插件截断请求 |
-| 推理服务数 | 控制面 | `CreateInferenceService` 比较生效数量上限 |
 | 每日批任务 | 控制面 | `CreateBatchJob` 比较生效每日上限 |
 | 月度消费 | 控制面（`CheckFunds`） | 生效消费上限与作用域内费用总额比较 |
 
-两个数据面上限随 Redis verdict 缓存下发，传播边界为缓存 TTL（默认 30 秒）。配额解析只在缓存未命中时执行。推理服务与批任务不带项目，因此其创建时检查只合并组织与个人两层。
+两个数据面上限随 Redis verdict 缓存下发，传播边界为缓存 TTL（默认 30 秒）。配额解析只在缓存未命中时执行。批任务不带项目，因此其创建时检查只合并组织与个人两层。
+
+推理服务属于平台资产，只有平台管理员可以创建，因此不在组织、项目或个人三层设置数量配额。
 
 配额读取失败时该层降级为不限并记录告警：授权侧故障不应中断推理。
 
@@ -117,6 +117,7 @@ flowchart LR
 - `CreateAPIKey` 新增 `project_id`、`owner_user_id`、`shared`。
 - 新增 `UpdateAPIKeyOwnership`（`PUT /api/v1/admin/auth/api-keys/{key_id}/ownership`）。
 - `VerifyAPIKeyResponse` 新增 `owner_user_id`、`project_id`，两个上限字段改为三级生效值。
+- `RestoreAPIKey`（`POST .../{key_id}:restore`）恢复未过期 Key 的吊销状态，密钥本身不变。
 
 ### tenancy
 

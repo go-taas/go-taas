@@ -26,14 +26,13 @@ func newQuotaTestDB(t *testing.T) *gorm.DB {
 }
 
 func TestCombineLimitsTakesStrictestNonZero(t *testing.T) {
-	org := QuotaLimits{MaxConcurrentRequests: 10, MaxInferenceServices: 20, MonthlySpendLimitCents: 5000}
+	org := QuotaLimits{MaxConcurrentRequests: 10, MaxBatchJobsPerDay: 90, MonthlySpendLimitCents: 5000}
 	project := QuotaLimits{MaxConcurrentRequests: 30, MaxBatchJobsPerDay: 7}
 	user := QuotaLimits{MaxConcurrentRequests: 4, MaxOutputTokensPerRequest: 1024}
 
 	got := CombineLimits(org, project, user)
 	assert.EqualValues(t, 4, got.MaxConcurrentRequests, "smallest non-zero wins")
-	assert.EqualValues(t, 20, got.MaxInferenceServices)
-	assert.EqualValues(t, 7, got.MaxBatchJobsPerDay)
+	assert.EqualValues(t, 7, got.MaxBatchJobsPerDay, "the project cap is stricter than the organization cap")
 	assert.EqualValues(t, 1024, got.MaxOutputTokensPerRequest)
 	assert.EqualValues(t, 5000, got.MonthlySpendLimitCents)
 }
@@ -52,9 +51,9 @@ func TestCombineLimitsZeroIsUnlimited(t *testing.T) {
 }
 
 func TestOrgQuotaLimitsProjection(t *testing.T) {
-	q := OrgQuota{MaxConcurrentRequests: 1, MaxInferenceServices: 2, MaxBatchJobsPerDay: 3,
+	q := OrgQuota{MaxConcurrentRequests: 1, MaxBatchJobsPerDay: 3,
 		MaxOutputTokensPerRequest: 4, MonthlySpendLimitCents: 5}
-	assert.Equal(t, QuotaLimits{1, 2, 3, 4, 5}, q.Limits())
+	assert.Equal(t, QuotaLimits{1, 3, 4, 5}, q.Limits())
 	assert.Equal(t, QuotaLimits{}, (*UserQuota)(nil).Limits())
 }
 

@@ -199,7 +199,6 @@ export interface UserQuota {
   displayName: string;
   role: string;
   maxConcurrentRequests: string;
-  maxInferenceServices: string;
   maxBatchJobsPerDay: string;
   maxOutputTokensPerRequest: string;
   monthlySpendLimitCents: string;
@@ -212,7 +211,6 @@ export interface UserQuota {
 // the organization, project and personal tiers. 0 = unlimited.
 export interface EffectiveQuota {
   maxConcurrentRequests: string;
-  maxInferenceServices: string;
   maxBatchJobsPerDay: string;
   maxOutputTokensPerRequest: string;
   monthlySpendLimitCents: string;
@@ -1823,7 +1821,6 @@ export interface OrganizationQuota {
   organizationId: string;
   organizationName: string;
   maxConcurrentRequests: string; // int64 -> decimal string; 0 = unlimited
-  maxInferenceServices: string;
   maxBatchJobsPerDay: string;
   maxOutputTokensPerRequest: string;
   updatedAt: string; // unix seconds, 0 = never updated

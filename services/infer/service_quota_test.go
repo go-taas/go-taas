@@ -1,48 +1,42 @@
 package infer
 
 import (
-	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/go-taas/go-taas/services/tenancy"
+	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 )
 
-// fakeQuotaResolver is the three-level quota seam.
-type fakeQuotaResolver struct {
-	quota tenancy.EffectiveQuota
-	err   error
-	calls int
-}
+// TestCreateInferenceServiceIsNotQuotaLimited documents the removal of
+// the service-count quota: inference services are platform assets that
+// only a platform administrator creates, so no organization, project or
+// personal budget caps them. Creation succeeds without any quota seam.
+func TestCreateInferenceServiceIsNotQuotaLimited(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
 
-func (f *fakeQuotaResolver) EffectiveQuota(_ context.Context, _, _, _ string) (tenancy.EffectiveQuota, error) {
-	f.calls++
-	return f.quota, f.err
-}
-
-// TestServiceQuotaLimitUsesEffectiveValue covers the personal tier: the
-// service-count check reads the combined limit, not the organization row.
-func TestServiceQuotaLimitUsesEffectiveValue(t *testing.T) {
-	svc := NewForFVT(nil, nil)
-	resolver := &fakeQuotaResolver{quota: tenancy.EffectiveQuota{MaxInferenceServices: 3}}
-	svc.SetQuotaResolver(resolver)
-
-	limit, err := svc.serviceQuotaLimit(context.Background(), "org-a")
+	repo, err := svc.repository()
 	require.NoError(t, err)
-	assert.EqualValues(t, 3, limit)
-	assert.Equal(t, 1, resolver.calls)
+	// Seed a running service: with the old organization cap this would
+	// have been the moment the next create was rejected.
+	seedService(t, repo, "org-1", "existing", StateRunning, time.Now())
+
+	for _, name := range []string{"svc-a", "svc-b", "svc-c"} {
+		resp, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+			Name:         name,
+			ModelId:      modelID,
+			ModelVersion: "v1",
+			ImageId:      "img-vllm-nvidia",
+			Replicas:     1,
+			Accelerator:  "nvidia",
+		})
+		require.NoError(t, err, "create %s must not be quota-limited", name)
+		assert.NotEmpty(t, resp.GetServiceId())
+	}
 }
 
-// TestServiceQuotaLimitFallsBackToOrganization covers the degradation
-// rule: a resolver failure keeps the organization-only rule.
-func TestServiceQuotaLimitFallsBackToOrganization(t *testing.T) {
-	svc := NewForFVT(nil, nil)
-	svc.SetQuotaResolver(&fakeQuotaResolver{err: assert.AnError})
-	svc.SetOrgQuotaReader(fakeInferOrgQuotaReader{quota: tenancy.OrgQuota{MaxInferenceServices: 9}})
-
-	limit, err := svc.serviceQuotaLimit(context.Background(), "org-a")
-	require.NoError(t, err)
-	assert.EqualValues(t, 9, limit)
-}
+var _ = assert.EqualValues

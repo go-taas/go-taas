@@ -10,14 +10,12 @@ import type { QuotaUsage } from '../../../api';
 // effective quota projections: every dimension is a string on the wire.
 export interface QuotaLimits {
   maxConcurrentRequests: string;
-  maxInferenceServices: string;
   maxBatchJobsPerDay: string;
   maxOutputTokensPerRequest: string;
 }
 
 export type QuotaDimension =
   | 'concurrent_requests'
-  | 'inference_services'
   | 'batch_jobs_today'
   | 'output_tokens_per_request';
 
@@ -37,8 +35,6 @@ export default function QuotaDimensionCard({
   const limit = parseInt(
     dimension === 'concurrent_requests'
       ? quota.maxConcurrentRequests
-      : dimension === 'inference_services'
-        ? quota.maxInferenceServices
         : dimension === 'batch_jobs_today'
           ? quota.maxBatchJobsPerDay
           : quota.maxOutputTokensPerRequest,
@@ -47,8 +43,6 @@ export default function QuotaDimensionCard({
   const current = parseInt(
     dimension === 'concurrent_requests'
       ? usage?.concurrentRequests || '0'
-      : dimension === 'inference_services'
-        ? usage?.inferenceServices || '0'
         : dimension === 'batch_jobs_today'
           ? usage?.batchJobsToday || '0'
           : '0',

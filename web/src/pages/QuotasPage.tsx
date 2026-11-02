@@ -14,13 +14,13 @@ const PAGE_SIZE = 20;
 
 // The tier presets (feature #51, AD17): UI constants, not a data model.
 const PRESETS: Record<string, { label: string; values: Record<string, string> }> = {
-  default: { label: 'quota.preset.default', values: { maxConcurrentRequests: '0', maxInferenceServices: '0', maxBatchJobsPerDay: '0', maxOutputTokensPerRequest: '0' } },
-  starter: { label: 'quota.preset.starter', values: { maxConcurrentRequests: '10', maxInferenceServices: '3', maxBatchJobsPerDay: '5', maxOutputTokensPerRequest: '4096' } },
-  growth: { label: 'quota.preset.growth', values: { maxConcurrentRequests: '50', maxInferenceServices: '20', maxBatchJobsPerDay: '50', maxOutputTokensPerRequest: '8192' } },
-  enterprise: { label: 'quota.preset.enterprise', values: { maxConcurrentRequests: '200', maxInferenceServices: '100', maxBatchJobsPerDay: '500', maxOutputTokensPerRequest: '16384' } },
+  default: { label: 'quota.preset.default', values: { maxConcurrentRequests: '0', maxBatchJobsPerDay: '0', maxOutputTokensPerRequest: '0' } },
+  starter: { label: 'quota.preset.starter', values: { maxConcurrentRequests: '10', maxBatchJobsPerDay: '5', maxOutputTokensPerRequest: '4096' } },
+  growth: { label: 'quota.preset.growth', values: { maxConcurrentRequests: '50', maxBatchJobsPerDay: '50', maxOutputTokensPerRequest: '8192' } },
+  enterprise: { label: 'quota.preset.enterprise', values: { maxConcurrentRequests: '200', maxBatchJobsPerDay: '500', maxOutputTokensPerRequest: '16384' } },
 };
 
-const DIMENSIONS = ['maxConcurrentRequests', 'maxInferenceServices', 'maxBatchJobsPerDay', 'maxOutputTokensPerRequest'] as const;
+const DIMENSIONS = ['maxConcurrentRequests', 'maxBatchJobsPerDay', 'maxOutputTokensPerRequest'] as const;
 
 export default function QuotasPage() {
   const api = useApi();
@@ -121,7 +121,6 @@ export default function QuotasPage() {
             <tr>
               <th>{t('quota.colOrg')}</th>
               <th>{t('quota.colConcurrency')}</th>
-              <th>{t('quota.colServices')}</th>
               <th>{t('quota.colBatch')}</th>
               <th>{t('quota.colTokenCap')}</th>
               <th>{t('quota.colUpdated')}</th>
@@ -141,9 +140,6 @@ export default function QuotasPage() {
                   </td>
                   <td data-testid={`quota-usage-concurrency-${q.organizationId}`}>
                     {usageOrUnlimited(u.concurrentRequests, q.maxConcurrentRequests, t('common.unlimited'))}
-                  </td>
-                  <td data-testid={`quota-usage-services-${q.organizationId}`}>
-                    {usageOrUnlimited(u.inferenceServices, q.maxInferenceServices, t('common.unlimited'))}
                   </td>
                   <td data-testid={`quota-usage-batch-${q.organizationId}`}>
                     {usageOrUnlimited(u.batchJobsToday, q.maxBatchJobsPerDay, t('common.unlimited'))}
@@ -217,7 +213,6 @@ function QuotaEditDialog({
   const { t } = useI18n();
   const [values, setValues] = useState<Record<string, string>>({
     maxConcurrentRequests: row.quota.maxConcurrentRequests,
-    maxInferenceServices: row.quota.maxInferenceServices,
     maxBatchJobsPerDay: row.quota.maxBatchJobsPerDay,
     maxOutputTokensPerRequest: row.quota.maxOutputTokensPerRequest,
   });
@@ -233,8 +228,7 @@ function QuotaEditDialog({
     const next: Record<string, string> = {};
     const ranges: Record<string, [number, number]> = {
       maxConcurrentRequests: [1, 10000],
-      maxInferenceServices: [1, 1000],
-      maxBatchJobsPerDay: [1, 10000],
+        maxBatchJobsPerDay: [1, 10000],
       maxOutputTokensPerRequest: [64, 32768],
     };
     for (const dim of DIMENSIONS) {

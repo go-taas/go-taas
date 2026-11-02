@@ -72,7 +72,6 @@ A tier can therefore tighten the tenant budget but never loosen it.
 | Dimension | Organization | Project | Personal |
 | --- | --- | --- | --- |
 | `max_concurrent_requests` | `organizations` | `projects` | `user_quotas` |
-| `max_inference_services` | `organizations` | `projects` | `user_quotas` |
 | `max_batch_jobs_per_day` | `organizations` | `projects` | `user_quotas` |
 | `max_output_tokens_per_request` | `organizations` | `projects` | `user_quotas` |
 | `monthly_spend_limit_cents` | `billing_accounts` | `projects` | `user_quotas` |
@@ -86,14 +85,16 @@ budget per tenant.
 | --- | --- | --- |
 | Concurrent requests | Data plane | `VerifyAPIKey` returns the effective cap; the Wasm plugin rejects locally |
 | Output tokens per request | Data plane | Same verdict field; the plugin clamps the request |
-| Inference services | Control plane | `CreateInferenceService` compares the effective count cap |
 | Batch jobs per day | Control plane | `CreateBatchJob` compares the effective daily cap |
 | Monthly spend | Control plane (`CheckFunds`) | Effective spend cap compared against the scoped charge total |
 
 The two data-plane caps ride the Redis verdict cache, so their propagation
 bound is the cache TTL (default 30s). The quota resolver runs only on a cache
-miss. Inference services and batch jobs carry no project, so their create-time
-checks combine the organization and personal tiers only.
+miss. Batch jobs carry no project, so their create-time check combines the
+organization and personal tiers only.
+
+Inference services are platform assets: only a platform administrator creates
+them, so there is no organization, project or personal cap on their count.
 
 A quota read failure degrades that tier to unlimited and logs a warning: an
 authorization outage must not stop inference.
@@ -146,6 +147,8 @@ Analytics dimensions: usage supports `group_by=api_key|model|user|project` and
   (`PUT /api/v1/admin/auth/api-keys/{key_id}/ownership`).
 - `VerifyAPIKeyResponse` gains `owner_user_id`, `project_id`, and its two caps
   now carry the effective (three-level) values.
+- `RestoreAPIKey` (`POST .../{key_id}:restore`) lifts a revocation on a key
+  that has not expired; the secret is unchanged.
 
 ### tenancy
 

@@ -465,10 +465,6 @@ func main() {
 			// infer and batch check them at create time.
 			tenancySvc.SetSessionOrgResolver(authSvc)
 			authSvc.SetOrgQuotaReader(tenancySvc)
-			inferSvc.SetOrgQuotaReader(tenancySvc)
-			// The service-count check applies the personal tier on top of
-			// the organization budget.
-			inferSvc.SetQuotaResolver(tenancySvc)
 			batchSvc.SetOrgQuotaReader(tenancySvc)
 			// The daily-jobs check applies the personal tier on top of the
 			// organization budget.

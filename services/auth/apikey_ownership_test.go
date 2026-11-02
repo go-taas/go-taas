@@ -447,3 +447,60 @@ func TestDeleteAPIKeyByNonOwnerIsNotFound(t *testing.T) {
 	_, err = env.svc.DeleteAPIKey(sessionCtx("alice"), &authv1.DeleteAPIKeyRequest{KeyId: created.GetKeyId()})
 	require.NoError(t, err)
 }
+
+// TestRestoreAPIKeyLiftsRevocation covers the restore path: a revoked key
+// verifies again after restore, and the secret is unchanged.
+func TestRestoreAPIKeyLiftsRevocation(t *testing.T) {
+	env := newSessionEnv(t)
+	ctx := sessionCtx("alice")
+	created, err := env.svc.CreateAPIKey(ctx, &authv1.CreateAPIKeyRequest{Name: "restorable"})
+	require.NoError(t, err)
+
+	digest := KeyDigest(created.GetApiKey())
+	_, err = env.svc.RevokeAPIKey(ctx, &authv1.RevokeAPIKeyRequest{KeyId: created.GetKeyId()})
+	require.NoError(t, err)
+	_, err = env.svc.VerifyAPIKey(context.Background(), &authv1.VerifyAPIKeyRequest{KeyDigest: digest})
+	assert.Equal(t, apierrors.CodeAPIKeyRevoked, apierrors.CodeOf(err))
+
+	resp, err := env.svc.RestoreAPIKey(ctx, &authv1.RestoreAPIKeyRequest{KeyId: created.GetKeyId()})
+	require.NoError(t, err)
+	assert.False(t, resp.GetKey().GetRevoked())
+	assert.EqualValues(t, 0, resp.GetKey().GetRevokedAt())
+
+	// The same secret verifies again.
+	_, err = env.svc.VerifyAPIKey(context.Background(), &authv1.VerifyAPIKeyRequest{KeyDigest: digest})
+	require.NoError(t, err, "restored key must verify with the original secret")
+}
+
+// TestRestoreAPIKeyRejectsExpired covers the expiry rule: expiry is an
+// independent check, so restoring an expired key would re-enable nothing.
+func TestRestoreAPIKeyRejectsExpired(t *testing.T) {
+	env := newSessionEnv(t)
+	ctx := sessionCtx("alice")
+	created, err := env.svc.CreateAPIKey(ctx, &authv1.CreateAPIKeyRequest{Name: "expiring"})
+	require.NoError(t, err)
+	require.NoError(t, env.db.Model(&APIKey{}).Where("id = ?", created.GetKeyId()).
+		Updates(map[string]any{"revoked": true}).Error)
+	past := time.Now().Add(-time.Hour)
+	require.NoError(t, env.db.Model(&APIKey{}).Where("id = ?", created.GetKeyId()).
+		Update("expires_at", past).Error)
+
+	_, err = env.svc.RestoreAPIKey(ctx, &authv1.RestoreAPIKeyRequest{KeyId: created.GetKeyId()})
+	assert.Equal(t, apierrors.CodeAPIKeyExpired, apierrors.CodeOf(err))
+}
+
+// TestRestoreAPIKeyOwnership covers the authorization rule: a member may
+// not restore another member's key.
+func TestRestoreAPIKeyOwnership(t *testing.T) {
+	env := newSessionEnv(t)
+	created, err := env.svc.CreateAPIKey(sessionCtx("alice"), &authv1.CreateAPIKeyRequest{Name: "mine"})
+	require.NoError(t, err)
+	require.NoError(t, env.db.Model(&APIKey{}).Where("id = ?", created.GetKeyId()).
+		Update("revoked", true).Error)
+
+	_, err = env.svc.RestoreAPIKey(sessionCtx("bob"), &authv1.RestoreAPIKeyRequest{KeyId: created.GetKeyId()})
+	assert.Equal(t, apierrors.CodeAPIKeyNotFound, apierrors.CodeOf(err))
+
+	_, err = env.svc.RestoreAPIKey(sessionCtx("admin-fvt"), &authv1.RestoreAPIKeyRequest{KeyId: created.GetKeyId()})
+	require.NoError(t, err)
+}

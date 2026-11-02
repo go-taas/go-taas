@@ -19,7 +19,6 @@ interface ListResponse {
 // dims maps each editable field onto its wire name and label key.
 const dims = [
   { field: 'maxConcurrentRequests', label: 'quotas.maxConcurrent' },
-  { field: 'maxInferenceServices', label: 'quotas.maxServices' },
   { field: 'maxBatchJobsPerDay', label: 'quotas.maxBatch' },
   { field: 'maxOutputTokensPerRequest', label: 'quotas.maxTokens' },
   { field: 'monthlySpendLimitCents', label: 'quotas.maxSpend' },
@@ -92,7 +91,6 @@ export default function UserQuotasPage() {
                 <th>{t('quotas.colUser')}</th>
                 <th>{t('quotas.colRole')}</th>
                 <th>{t('quotas.maxConcurrent')}</th>
-                <th>{t('quotas.maxServices')}</th>
                 <th>{t('quotas.maxBatch')}</th>
                 <th>{t('quotas.maxTokens')}</th>
                 <th>{t('quotas.maxSpend')}</th>
@@ -105,7 +103,6 @@ export default function UserQuotasPage() {
                   <td>{row.displayName || row.userId}</td>
                   <td>{row.role || '—'}</td>
                   <td>{unlimitedOr(t, row.maxConcurrentRequests)}</td>
-                  <td>{unlimitedOr(t, row.maxInferenceServices)}</td>
                   <td>{unlimitedOr(t, row.maxBatchJobsPerDay)}</td>
                   <td>{unlimitedOr(t, row.maxOutputTokensPerRequest)}</td>
                   <td>{unlimitedOr(t, row.monthlySpendLimitCents)}</td>

@@ -11,6 +11,10 @@
 > **Three-level update:** these organization quotas now combine with project and
 > personal limits by taking the minimum of the non-zero values. See
 > [API Key Ownership and Three-Level Quotas](./api-key-ownership.md).
+>
+> **Service-count removal:** `max_inference_services` is gone from every quota
+> projection and check. Inference services are platform assets that only a
+> platform administrator creates, so no tenant budget caps their count.
 
 ---
 

@@ -35,7 +35,7 @@
 | Per-key usage statistics, cost attribution, last-used timestamp | Feature #4 metering & settlement |
 | Session-derived caller identity (SSO, sessions, organization registry) | Feature #7 |
 | The Wasm plugin itself (digest computation, local cache, fail-closed policy) | Data-plane track, already specified in [Architecture Design](../design/architecture.md) Section 3.3 |
-| In-place secret rotation and un-revoke | Not planned — rotation is create-new + switch + revoke-old (design decision D5) |
+| In-place secret rotation | Not planned — rotation is create-new + switch + revoke-old (design decision D5). Revocation is reversible through `RestoreAPIKey` while the key has not expired. |
 | Negative caching of unknown keys (DoS hardening) | Follow-up hardening, see Section 12 |
 | Mapping business error codes to HTTP statuses in the gateway | Platform-wide follow-up, see Section 12 |
 

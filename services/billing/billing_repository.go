@@ -380,3 +380,20 @@ func (r *Repository) BillSummaries(ctx context.Context, orgID string, since, unt
 func monthStartOf(t time.Time) int64 {
 	return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC).Unix()
 }
+
+// ModelName returns the catalog model's display name for an id, or ""
+// when the id is not in the catalog. It backs the price-alias fallback:
+// a price row written against the model's name (an older console or a
+// manual API call) still prices usage that metering recorded as a
+// catalog id.
+func (r *Repository) ModelName(ctx context.Context, modelID string) (string, error) {
+	if modelID == "" {
+		return "", nil
+	}
+	var name string
+	err := r.DB(ctx).Table("models").Select("name").Where("id = ?", modelID).Scan(&name).Error
+	if err != nil {
+		return "", err
+	}
+	return name, nil
+}

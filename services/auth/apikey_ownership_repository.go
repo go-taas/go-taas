@@ -242,3 +242,48 @@ func (r *APIKeyRepository) UpdateScopeByIDAndOrganizationOwned(ctx context.Conte
 func apiKeyNotFound() error {
 	return apierrors.New(apierrors.CodeAPIKeyNotFound)
 }
+
+// RestoreByIDAndOrganization lifts a soft revocation, scoped to the
+// owning organization. The secret is untouched: revocation only flips a
+// flag, so the same key material works again. It returns the updated row
+// and its lookup hash (for cache invalidation), or nil when the key does
+// not belong to the organization (no cross-tenant existence leak).
+func (r *APIKeyRepository) RestoreByIDAndOrganization(ctx context.Context, orgID, keyID string) (*APIKey, string, error) {
+	var row APIKey
+	var lookupHash string
+	err := r.db.WithinTx(ctx, func(ctx context.Context) error {
+		err := r.DB(ctx).
+			Where("id = ? AND organization_id = ?", keyID, orgID).
+			First(&row).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil
+		}
+		if err != nil {
+			return err
+		}
+		lookupHash = row.LookupHash
+		// gorm.Expr("NULL") is required: a plain nil in the update map is
+		// skipped, which would leave the original revocation time behind.
+		if err := r.UpdateFields(ctx, row.ID, map[string]any{
+			"revoked":    false,
+			"revoked_at": gorm.Expr("NULL"),
+		}); err != nil {
+			return err
+		}
+		// Re-select into a fresh struct: GORM does not clear a pointer
+		// field (revoked_at) that the earlier read already populated.
+		var fresh APIKey
+		if err := r.DB(ctx).Where("id = ?", row.ID).First(&fresh).Error; err != nil {
+			return err
+		}
+		row = fresh
+		return nil
+	})
+	if err != nil {
+		return nil, "", err
+	}
+	if row.ID == "" {
+		return nil, "", nil
+	}
+	return &row, lookupHash, nil
+}

@@ -113,6 +113,25 @@ service AuthService {
     };
   }
 
+  // RestoreAPIKey lifts a soft revocation on a key that has not expired.
+  // The secret is unchanged: revocation only flips a flag, so restoring
+  // re-enables the same key. A key whose expiry has passed cannot be
+  // restored; edit its expiry or create a new key instead.
+  // User-surface API: served under /api/v1; the session's active org
+  // wins and X-Organization-Id is ignored (feature-17 AD6).
+  rpc RestoreAPIKey(RestoreAPIKeyRequest) returns (RestoreAPIKeyResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/auth/api-keys/{key_id}:restore"
+      body: "*"
+      additional_bindings: {
+        // Deprecated (console-surface-separation): kept functional for
+        // the transitional migration window.
+        post: "/api/v1/admin/auth/api-keys/{key_id}:restore"
+        body: "*"
+      }
+    };
+  }
+
   // DeleteAPIKey removes a key permanently. It is the console's "delete"
   // (a key that never existed for the tenant afterwards); RevokeAPIKey
   // stays the audit-preserving action. A delete of a key that belongs to
@@ -599,6 +618,16 @@ message CreateAPIKeyResponse {
   // creation time and never stored or returned again.
   string api_key = 2;
   string key_id = 3;
+}
+
+message RestoreAPIKeyRequest {
+  string key_id = 1;
+}
+
+message RestoreAPIKeyResponse {
+  taas.common.v1.Response response = 1;
+  // key carries the restored summary; never the plaintext.
+  APIKeySummary key = 2;
 }
 
 message DeleteAPIKeyRequest {

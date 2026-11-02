@@ -247,7 +247,6 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
       { path: '/activity', labelKey: 'nav.activity', testid: 'user-nav-activity', icon: Pulse },
       { path: '/webhooks', labelKey: 'nav.webhooks', testid: 'user-nav-webhooks', icon: LinkSimple },
       { path: '/notifications', labelKey: 'nav.notifications', testid: 'user-nav-notifications', icon: Bell },
-      { path: '/models', labelKey: 'nav.models', testid: 'user-nav-models', icon: Cube },
       { path: '/traces', labelKey: 'nav.traces', testid: 'user-nav-traces', icon: ChartLine },
       { path: '/errors', labelKey: 'nav.errors', testid: 'user-nav-errors', icon: ChartLine },
       { path: '/account/export', labelKey: 'nav.dataExport', testid: 'user-nav-data-export', icon: DownloadSimple },
