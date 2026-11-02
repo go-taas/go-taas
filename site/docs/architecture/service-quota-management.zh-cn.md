@@ -8,6 +8,9 @@
 | 相关文档 | [需求分析与 UI/UX 设计](../design/service-quota-management.md) · [架构设计](../design/architecture.md) §2.4 `auth`/`infer`、§3.1 控制网关、§3.2 数据面 · [限流与消费限额](./rate-limits-spend-limits.md)（本功能扩展的 per-key RPM/TPM 判定搭载模式、先于配额执行的 10037 检查） · [余额与配额账户模式](./balance-quota.md)（在配额之后执行的资金检查 10502） · [多租户](./multi-tenancy.md)（配额列落地的 organizations 表） · [批量推理](./batch-inference.md)（每日计数读取的 `batch_jobs` 表） · [推理自动扩缩容](./inference-autoscaling.md)（网关在途 MQ 上报先例，彼处 AD11） · [API Key 管理](./api-key-management.md)（其 TTL 界定传播窗口的判定缓存） · [审计日志](./audit-logging.md)（`quota.updated` 事件与变更历史读取） · [控制台双面分离](./console-surface-separation.md)（两个面、脱敏投影规则） |
 | 状态 | 架构设计完成，已移交 Developer 智能体 |
 
+> **三级更新：** 这些组织配额现在与项目、个人配额按非零最小值合并执行。
+> 见 [API Key 归属与三级配额](./api-key-ownership.zh-cn.md)。
+
 ---
 
 ## 1. 概述与目标

@@ -297,7 +297,7 @@ export function organizationNavCategories(): NavCategory[] {
         { path: '/admin/members', labelKey: 'nav.members', testid: 'nav-members', icon: Users },
         { path: '/admin/invitations', labelKey: 'nav.invitations', testid: 'nav-invitations', icon: Envelope },
         { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
-        { path: '/admin/project-quotas', labelKey: 'nav.memberQuotas', testid: 'nav-member-quotas', icon: SlidersHorizontal },
+        { path: '/admin/user-quotas', labelKey: 'nav.userQuotas', testid: 'nav-user-quotas', icon: SlidersHorizontal },
       ],
     },
     {
@@ -325,7 +325,6 @@ export function projectNavCategories(): NavCategory[] {
       items: [
         { path: '/admin/project-members', labelKey: 'nav.projectMembers', testid: 'nav-project-members', icon: Users },
         { path: '/admin/join-requests', labelKey: 'nav.joinRequests', testid: 'nav-join-requests', icon: UserPlus },
-        { path: '/admin/project-quotas', labelKey: 'nav.memberQuotasShort', testid: 'nav-member-quotas', icon: SlidersHorizontal },
       ],
     },
   ];

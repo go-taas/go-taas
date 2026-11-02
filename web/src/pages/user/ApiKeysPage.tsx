@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
-import { ApiError, formatTime, type ApiKeySummary, type AvailableModel } from '../../api';
+import { ApiError, formatTime, type ApiKeySummary, type AvailableModel, type MyProject } from '../../api';
 import { CopyButton, Dialog, ErrorBanner, StateBadge } from '../../components';
 
 interface CreateResponse {
@@ -15,11 +15,24 @@ interface CreateResponse {
   apiKey: string;
 }
 
+// KeyScope selects the ownership view: the caller's own keys or the
+// organization-shared ones.
+type KeyScope = 'mine' | 'shared';
+
 function rateLimitLabel(key: ApiKeySummary, t: (key: string) => string): string {
   const rpm = Number(key.rateLimitRpm || 0);
   const tpm = Number(key.rateLimitTpm || 0);
   if (!rpm && !tpm) return t('uapikeys.unlimited');
   return [rpm ? `${rpm} RPM` : '', tpm ? `${tpm.toLocaleString()} TPM` : ''].filter(Boolean).join(' · ');
+}
+
+// ownerLabel renders who the key belongs to and its project.
+function ownerLabel(key: ApiKeySummary, t: (key: string, vars?: Record<string, string | number>) => string): string {
+  const owner = key.shared || !key.ownerUserId
+    ? t('uapikeys.ownerShared')
+    : (key.ownerDisplayName || key.ownerUserId);
+  const project = key.projectDisplayName || key.projectId;
+  return project ? `${owner} · ${project}` : owner;
 }
 
 function scopeLabel(key: ApiKeySummary, t: (key: string, vars?: Record<string, string | number>) => string): string {
@@ -43,16 +56,18 @@ export default function ApiKeysPage() {
   const [scopeTarget, setScopeTarget] = useState<ApiKeySummary | null>(null);
   const [created, setCreated] = useState('');
   const [saved, setSaved] = useState(false);
+  const [scope, setScope] = useState<KeyScope>('mine');
 
   const load = useCallback(async () => {
     try {
-      const data = await api.get<{ keys?: ApiKeySummary[] }>('/api/v1/auth/api-keys?page.limit=100', orgId);
+      const data = await api.get<{ keys?: ApiKeySummary[] }>(
+        `/api/v1/auth/api-keys?page.limit=100&scope=${scope}`, orgId);
       setKeys(data.keys || []);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : t('uapikeys.loadFailed'));
     }
-  }, [api, orgId, t]);
+  }, [api, orgId, t, scope]);
 
   useEffect(() => {
     void load();
@@ -65,18 +80,23 @@ export default function ApiKeysPage() {
         <button data-testid="create-api-key" onClick={() => setCreateOpen(true)}>{t('uapikeys.create')}</button>
       </div>
       {error && <ErrorBanner message={error} />}
+      <div className="tabs" data-testid="key-scope-tabs">
+        <button className={scope === 'mine' ? 'active' : 'secondary'} data-testid="scope-tab-mine" onClick={() => setScope('mine')}>{t('uapikeys.scopeMine')}</button>
+        <button className={scope === 'shared' ? 'active' : 'secondary'} data-testid="scope-tab-shared" onClick={() => setScope('shared')}>{t('uapikeys.scopeShared')}</button>
+      </div>
       {keys.length === 0 ? (
         <div className="empty" data-testid="api-keys-empty">{t('uapikeys.empty')}</div>
       ) : (
         <table className="table" data-testid="api-keys-table">
           <thead><tr>
-            <th>{t('uapikeys.colName')}</th><th>{t('uapikeys.colPrefix')}</th><th>{t('uapikeys.colRateLimit')}</th>
+            <th>{t('uapikeys.colName')}</th><th>{t('uapikeys.colPrefix')}</th><th>{t('uapikeys.colOwner')}</th><th>{t('uapikeys.colRateLimit')}</th>
             <th>{t('uapikeys.colScope')}</th>
             <th>{t('uapikeys.colCreated')}</th><th>{t('uapikeys.colExpires')}</th><th>{t('uapikeys.colStatus')}</th><th>{t('uapikeys.actions')}</th>
           </tr></thead>
           <tbody>{keys.map((key) => (
             <tr key={key.keyId} data-testid={`api-key-row-${key.keyId}`}>
               <td>{key.name}</td><td>{key.prefix}</td>
+              <td data-testid={`owner-cell-${key.keyId}`}>{ownerLabel(key, t)}</td>
               <td data-testid={`rate-limit-cell-${key.keyId}`}>{rateLimitLabel(key, t)}</td>
               <td data-testid={`scope-cell-${key.keyId}`}>{scopeLabel(key, t)}</td>
               <td>{formatTime(key.createdAt)}</td>
@@ -151,12 +171,26 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
   const [scopeModels, setScopeModels] = useState<string[]>([]);
   const [availableModels, setAvailableModels] = useState<AvailableModel[]>([]);
   const [modelsError, setModelsError] = useState('');
+  const [projects, setProjects] = useState<MyProject[]>([]);
+  const [projectId, setProjectId] = useState(apiKey?.projectId || '');
+  const [shared, setShared] = useState(Boolean(apiKey?.shared));
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const edit = Boolean(apiKey);
 
   // Load the org-granted model list once for the create-mode scope
   // picker (feature #46, AD7): the same list the playground uses.
+  // The project picker lists the caller's own projects: a member may
+  // only place a key in a project they belong to.
+  useEffect(() => {
+    if (edit) return;
+    let cancelled = false;
+    api.get<{ projects?: MyProject[] }>('/api/v1/tenancy/my-projects', orgId)
+      .then((data) => { if (!cancelled) setProjects(data.projects || []); })
+      .catch(() => { if (!cancelled) setProjects([]); });
+    return () => { cancelled = true; };
+  }, [api, orgId, edit]);
+
   useEffect(() => {
     if (edit) return;
     let cancelled = false;
@@ -183,6 +217,10 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
     setError('');
     try {
       const body: Record<string, unknown> = { name: name.trim(), rateLimitRpm: rpm || '0', rateLimitTpm: tpm || '0' };
+      if (!edit) {
+        if (projectId) body.projectId = projectId;
+        if (shared) body.shared = true;
+      }
       if (!edit && scopeMode === 'restricted') body.models = scopeModels;
       if (apiKey) body.expiresAt = apiKey.expiresAt || '0';
       if (!edit && expiry !== 'never') body.expiresAt = String(Math.floor(Date.now() / 1000) + Number(expiry) * 86400);
@@ -205,6 +243,15 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
     <div className="form-grid">
       <div className="form-field full"><label htmlFor="user-key-name">{t('uapikeys.fieldName')}</label><input id="user-key-name" data-testid="key-name-input" maxLength={64} value={name} onChange={(event) => setName(event.target.value)} /></div>
       {!edit && <div className="form-field full"><label htmlFor="user-key-expiry">{t('uapikeys.fieldExpiry')}</label><select id="user-key-expiry" data-testid="key-expiry-select" value={expiry} onChange={(event) => setExpiry(event.target.value)}><option value="never">{t('common.never')}</option><option value="30">{t('common.30days')}</option><option value="90">{t('common.90days')}</option><option value="365">{t('common.365days')}</option></select></div>}
+      {!edit && <div className="form-field full"><label htmlFor="user-key-project">{t('uapikeys.fieldProject')}</label>
+        <select id="user-key-project" data-testid="key-project-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
+          <option value="">{t('uapikeys.projectNone')}</option>
+          {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.displayName}</option>)}
+        </select></div>}
+      {!edit && <div className="form-field full">
+        <label className="checkbox"><input type="checkbox" data-testid="key-shared-checkbox" checked={shared} onChange={(event) => setShared(event.target.checked)} /> {t('uapikeys.fieldShared')}</label>
+        <div className="card-note">{t('uapikeys.fieldSharedNote')}</div>
+      </div>}
       <div className="form-field"><label htmlFor="rate-limit-rpm">{t('uapikeys.fieldRpm')}</label><input id="rate-limit-rpm" data-testid={edit ? 'edit-rate-limit-rpm' : 'rate-limit-rpm'} type="number" min={0} step={1} value={rpm} onChange={(event) => setRpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
       <div className="form-field"><label htmlFor="rate-limit-tpm">{t('uapikeys.fieldTpm')}</label><input id="rate-limit-tpm" data-testid={edit ? 'edit-rate-limit-tpm' : 'rate-limit-tpm'} type="number" min={0} step={1} value={tpm} onChange={(event) => setTpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
       {!edit && <div className="form-field full scope-section">

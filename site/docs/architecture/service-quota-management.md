@@ -8,6 +8,10 @@
 | Related documents | [Requirement Analysis and UI/UX Design](../design/service-quota-management.md) · [Architecture Design](../design/architecture.md) §2.4 `auth`/`infer`, §3.1 control gateway, §3.2 data plane · [Rate Limits & Spend Limits](./rate-limits-spend-limits.md) (the per-key RPM/TPM verdict-riding pattern this feature extends, the 10037 check that runs first) · [Balance & Quota Account Modes](./balance-quota.md) (the funds check 10502 that runs after quotas) · [Multi-Tenancy](./multi-tenancy.md) (the organizations table the columns land on) · [Batch Inference](./batch-inference.md) (the `batch_jobs` table the daily counter reads) · [Inference Autoscaling](./inference-autoscaling.md) (the gateway in-flight MQ reporting precedent, AD11 there) · [API Key Management](./api-key-management.md) (the verdict cache whose TTL bounds propagation) · [Audit Logging](./audit-logging.md) (the `quota.updated` events and the change-history read) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the masked-projection rule) |
 | Status | Architecture complete, handed to the Developer agent |
 
+> **Three-level update:** these organization quotas now combine with project and
+> personal limits by taking the minimum of the non-zero values. See
+> [API Key Ownership and Three-Level Quotas](./api-key-ownership.md).
+
 ---
 
 ## 1. Overview and Goals

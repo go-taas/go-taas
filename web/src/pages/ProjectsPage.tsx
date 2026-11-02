@@ -779,6 +779,7 @@ function ProjectQuotaDialog({
   const [maxServices, setMaxServices] = useState('');
   const [maxBatch, setMaxBatch] = useState('');
   const [maxTokens, setMaxTokens] = useState('');
+  const [maxSpend, setMaxSpend] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -794,6 +795,7 @@ function ProjectQuotaDialog({
         setMaxServices(String(d.quota.maxInferenceServices || '0'));
         setMaxBatch(String(d.quota.maxBatchJobsPerDay || '0'));
         setMaxTokens(String(d.quota.maxOutputTokensPerRequest || '0'));
+        setMaxSpend(String(d.quota.monthlySpendLimitCents || '0'));
       })
       .catch((e) => setError(e instanceof Error ? e.message : t('projects.quotaLoadFailed')))
       .finally(() => setLoading(false));
@@ -808,6 +810,7 @@ function ProjectQuotaDialog({
         maxInferenceServices: maxServices || '0',
         maxBatchJobsPerDay: maxBatch || '0',
         maxOutputTokensPerRequest: maxTokens || '0',
+        monthlySpendLimitCents: maxSpend || '0',
       });
       onClose();
     } catch (e) {
@@ -847,6 +850,11 @@ function ProjectQuotaDialog({
             {t('projects.quotaTokens')}
             <input data-testid="quota-tokens" value={maxTokens}
               onChange={(e) => setMaxTokens(e.target.value)} />
+          </label>
+          <label>
+            {t('projects.quotaSpend')}
+            <input data-testid="quota-spend" value={maxSpend}
+              onChange={(e) => setMaxSpend(e.target.value)} />
           </label>
         </div>
       )}

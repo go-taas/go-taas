@@ -2,7 +2,15 @@
 // Implements docs/design/api-key-management.md FR1-FR3, AC1-AC4, AC8, AC9.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, formatTime, type ApiKeySummary, type PageMeta } from '../api';
+import {
+  api,
+  ApiError,
+  formatTime,
+  type ApiKeySummary,
+  type PageMeta,
+  type ProjectSummary,
+  type UserSummary,
+} from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import {
@@ -63,13 +71,14 @@ export default function ApiKeysPage() {
   const [savedConfirmed, setSavedConfirmed] = useState(false);
   const [revokeTarget, setRevokeTarget] = useState<ApiKeySummary | null>(null);
   const [editTarget, setEditTarget] = useState<ApiKeySummary | null>(null);
+  const [transferTarget, setTransferTarget] = useState<ApiKeySummary | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
       const data = await api.get<ListResponse>(
-        `/api/v1/admin/auth/api-keys?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
+        `/api/v1/admin/auth/api-keys?page.offset=${offset}&page.limit=${PAGE_SIZE}&scope=all`,
         orgId,
       );
       setKeys(data.keys || []);
@@ -111,6 +120,8 @@ export default function ApiKeysPage() {
             <thead>
               <tr>
                 <th>{t('apikeys.colName')}</th>
+                <th>{t('apikeys.colOwner')}</th>
+                <th>{t('apikeys.colProject')}</th>
                 <th>{t('apikeys.colKey')}</th>
                 <th>{t('apikeys.colStatus')}</th>
                 <th>{t('apikeys.colRateLimit')}</th>
@@ -123,6 +134,14 @@ export default function ApiKeysPage() {
               {keys.map((k) => (
                 <tr key={k.keyId} data-testid={`api-key-row-${k.keyId}`}>
                   <td>{k.name}</td>
+                  <td data-testid={`owner-cell-${k.keyId}`}>
+                    {k.shared || !k.ownerUserId
+                      ? t('apikeys.ownerShared')
+                      : (k.ownerDisplayName || k.ownerUserId)}
+                  </td>
+                  <td data-testid={`project-cell-${k.keyId}`}>
+                    {k.projectDisplayName || k.projectId || t('apikeys.projectNone')}
+                  </td>
                   <td className="mono">{k.prefix}…</td>
                   <td>
                     <StateBadge state={keyStatus(k)} />
@@ -141,6 +160,13 @@ export default function ApiKeysPage() {
                           onClick={() => setEditTarget(k)}
                         >
                           {t('common.edit')}
+                        </button>
+                        <button
+                          className="link"
+                          data-testid={`transfer-${k.keyId}`}
+                          onClick={() => setTransferTarget(k)}
+                        >
+                          {t('apikeys.transfer')}
                         </button>
                         <button
                           className="link danger"
@@ -212,7 +238,113 @@ export default function ApiKeysPage() {
           }}
         />
       )}
+
+      {transferTarget && (
+        <TransferDialog
+          apiKey={transferTarget}
+          orgId={orgId}
+          onClose={() => setTransferTarget(null)}
+          onTransferred={() => {
+            setTransferTarget(null);
+            void load();
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+// TransferDialog moves a key to another member or project, or turns it
+// into an organization-shared key. Only an organization administrator
+// may transfer; the server enforces that.
+function TransferDialog({
+  apiKey,
+  orgId,
+  onClose,
+  onTransferred,
+}: {
+  apiKey: ApiKeySummary;
+  orgId: string;
+  onClose: () => void;
+  onTransferred: () => void;
+}) {
+  const { t } = useI18n();
+  const [ownerUserId, setOwnerUserId] = useState(apiKey.ownerUserId || '');
+  const [projectId, setProjectId] = useState(apiKey.projectId || '');
+  const [shared, setShared] = useState(Boolean(apiKey.shared));
+  const [users, setUsers] = useState<UserSummary[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.get<{ users?: UserSummary[] }>('/api/v1/admin/auth/users?page.limit=100', orgId)
+      .then((data) => setUsers(data.users || []))
+      .catch(() => setUsers([]));
+    api.get<{ projects?: ProjectSummary[] }>(`/api/v1/admin/tenancy/projects?organization_id=${orgId}&page.limit=100`, orgId)
+      .then((data) => setProjects(data.projects || []))
+      .catch(() => setProjects([]));
+  }, [api, orgId]);
+
+  const submit = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      await api.put(`/api/v1/admin/auth/api-keys/${apiKey.keyId}/ownership`, orgId, {
+        ownerUserId: shared ? '' : ownerUserId,
+        projectId,
+        shared,
+      });
+      onTransferred();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.transferFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog title={t('apikeys.transferTitle')} testId="transfer-dialog" onClose={onClose}>
+      <p className="muted">{t('apikeys.transferNote', { name: apiKey.name })}</p>
+      <div className="form-grid">
+        <div className="form-field full">
+          <label className="checkbox">
+            <input type="checkbox" data-testid="transfer-shared" checked={shared}
+              onChange={(event) => { setShared(event.target.checked); if (event.target.checked) setOwnerUserId(''); }} />
+            {t('apikeys.transferShared')}
+          </label>
+        </div>
+        {!shared && (
+          <div className="form-field full">
+            <label htmlFor="transfer-owner">{t('apikeys.colOwner')}</label>
+            <select id="transfer-owner" data-testid="transfer-owner-select" value={ownerUserId}
+              onChange={(event) => setOwnerUserId(event.target.value)}>
+              <option value="">{t('apikeys.ownerPlaceholder')}</option>
+              {users.map((u) => (
+                <option key={u.userId} value={u.userId}>{u.displayName || u.username || u.userId}</option>
+              ))}
+            </select>
+          </div>
+        )}
+        <div className="form-field full">
+          <label htmlFor="transfer-project">{t('apikeys.colProject')}</label>
+          <select id="transfer-project" data-testid="transfer-project-select" value={projectId}
+            onChange={(event) => setProjectId(event.target.value)}>
+            <option value="">{t('apikeys.projectNone')}</option>
+            {projects.map((p) => (
+              <option key={p.projectId} value={p.projectId}>{p.displayName}</option>
+            ))}
+          </select>
+        </div>
+      </div>
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
+        <button data-testid="submit-transfer" disabled={saving} onClick={() => void submit()}>
+          {saving ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
   );
 }
 

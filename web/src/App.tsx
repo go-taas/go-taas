@@ -94,7 +94,7 @@ import ForecastPage from './pages/ForecastPage';
 import QuotasPage from './pages/QuotasPage';
 import OrgSettingsPage from './pages/OrgSettingsPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
-import ProjectMemberQuotasPage from './pages/ProjectMemberQuotasPage';
+import UserQuotasAdminPage from './pages/UserQuotasAdminPage';
 import OptimizationPage from './pages/OptimizationPage';
 import VGPUPoolsPage from './pages/VGPUPoolsPage';
 import VGPUPoolDetailPage from './pages/VGPUPoolDetailPage';
@@ -304,7 +304,7 @@ function AdminSurface() {
               <Route path="/admin/quotas" element={<QuotasPage />} />
               <Route path="/admin/org-settings" element={<OrgSettingsPage />} />
               <Route path="/admin/project-members" element={<ProjectMembersPage />} />
-              <Route path="/admin/project-quotas" element={<ProjectMemberQuotasPage />} />
+              <Route path="/admin/user-quotas" element={<UserQuotasAdminPage />} />
               <Route path="/admin/optimization" element={<OptimizationPage />} />
               <Route path="/admin/vgpu-pools" element={<VGPUPoolsPage />} />
               <Route path="/admin/vgpu-pools/:poolId" element={<VGPUPoolDetailPage />} />

@@ -8,6 +8,11 @@
 | Related documents | [Requirement Analysis and UI/UX Design](../design/api-key-management.md) · [Architecture Design](../design/architecture.md) Section 2.1 (`auth` responsibilities) and Section 3.3 (the Inference Gateway's API Key authentication chain) |
 | Status | Architecture complete, handed to the Developer agent |
 
+> **Ownership update:** keys now carry a personal owner and an optional project.
+> See [API Key Ownership and Three-Level Quotas](./api-key-ownership.md) for the
+> current model; this document remains the reference for the key lifecycle,
+> hashing and revocation mechanics.
+
 ---
 
 ## 1. Goals and Non-Goals

@@ -39,6 +39,8 @@ export default function UserQuotasPage() {
 
   const q = data?.quota;
   const u = data?.usage;
+  const personal = data?.personalQuota;
+  const effective = data?.effectiveQuota;
   const allUnlimited =
     q &&
     parseInt(q.maxConcurrentRequests, 10) === 0 &&
@@ -83,6 +85,28 @@ export default function UserQuotasPage() {
             <a className="button" data-testid="quota-request-increase" href={mailto}>
               {t('quota.requestIncrease')}
             </a>
+          )}
+          {personal && (
+            <>
+              <h2>{t('quota.personalTitle')}</h2>
+              <div className="cards-row" data-testid="personal-quota-cards">
+                <QuotaDimensionCard dimension="concurrent_requests" quota={personal} label={t('quota.personalLabel')} />
+                <QuotaDimensionCard dimension="inference_services" quota={personal} label={t('quota.personalLabel')} />
+                <QuotaDimensionCard dimension="batch_jobs_today" quota={personal} label={t('quota.personalLabel')} />
+                <QuotaDimensionCard dimension="output_tokens_per_request" quota={personal} label={t('quota.personalLabel')} />
+              </div>
+            </>
+          )}
+          {effective && (
+            <>
+              <h2>{t('quota.effectiveTitle')}</h2>
+              <div className="cards-row" data-testid="effective-quota-cards">
+                <QuotaDimensionCard dimension="concurrent_requests" quota={effective} label={t('quota.effectiveLabel')} />
+                <QuotaDimensionCard dimension="inference_services" quota={effective} label={t('quota.effectiveLabel')} />
+                <QuotaDimensionCard dimension="batch_jobs_today" quota={effective} label={t('quota.effectiveLabel')} />
+                <QuotaDimensionCard dimension="output_tokens_per_request" quota={effective} label={t('quota.effectiveLabel')} />
+              </div>
+            </>
           )}
           <p className="muted">{t('quota.operatorNote')}</p>
         </>

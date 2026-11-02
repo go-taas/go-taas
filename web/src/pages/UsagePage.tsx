@@ -221,6 +221,8 @@ export default function UsagePage() {
           <option value="api_key">{t('usage.groupApiKey')}</option>
           <option value="model">{t('usage.groupModel')}</option>
           <option value="accelerator_type">{t('usage.groupAccelerator')}</option>
+          <option value="user">{t('usage.groupUser')}</option>
+          <option value="project">{t('usage.groupProject')}</option>
         </select>
         <button
           className="secondary"

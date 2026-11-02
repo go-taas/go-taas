@@ -21,7 +21,7 @@ const RANGE_PRESETS = [
   { id: '30d', labelKey: 'cost.range30d', hours: 30 * 24 },
   { id: 'custom', labelKey: 'cost.customRange', hours: 0 },
 ];
-const DIMENSIONS = ['organization', 'model', 'api_key'];
+const DIMENSIONS = ['organization', 'model', 'api_key', 'user', 'project'];
 
 function rangeFor(preset: string, customSince: string, customUntil: string): { since: number; until: number } {
   const now = Math.floor(Date.now() / 1000);

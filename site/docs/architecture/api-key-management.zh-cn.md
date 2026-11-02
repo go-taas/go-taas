@@ -8,6 +8,10 @@
 | 相关文档 | [需求分析与 UI/UX 设计](../design/api-key-management.zh-cn.md) · [架构设计文档](../design/architecture.zh-cn.md) 第 2.1 节（`auth` 职责）、第 3.3 节（推理 Gateway 的 API Key 鉴权调用链） |
 | 状态 | 架构完成，已移交 Developer agent |
 
+> **归属更新：** Key 现在带有个人属主与可选项目。
+> 当前模型见 [API Key 归属与三级配额](./api-key-ownership.zh-cn.md)；本文档继续作为
+> Key 生命周期、哈希与撤销机制的参考。
+
 ---
 
 ## 1. 目标与非目标

@@ -178,6 +178,44 @@ export interface ApiKeySummary {
   // models is the key's model allow-list (feature #46): catalog model
   // IDs in stored order; empty/undefined = all org-granted models.
   models?: string[];
+  // organizationId is the key's owning organization.
+  organizationId?: string;
+  // ownerUserId is the key's personal owner; empty means the key is
+  // organization-shared.
+  ownerUserId?: string;
+  ownerDisplayName?: string;
+  // projectId is the key's optional project.
+  projectId?: string;
+  projectDisplayName?: string;
+  // shared reports whether the key has no personal owner.
+  shared?: boolean;
+}
+
+// UserQuota is one user's limits inside an organization. A 0 limit is
+// unlimited.
+export interface UserQuota {
+  organizationId: string;
+  userId: string;
+  displayName: string;
+  role: string;
+  maxConcurrentRequests: string;
+  maxInferenceServices: string;
+  maxBatchJobsPerDay: string;
+  maxOutputTokensPerRequest: string;
+  monthlySpendLimitCents: string;
+  updatedAt: string;
+  updatedBy: string;
+  updatedByDisplayName: string;
+}
+
+// EffectiveQuota is the limit the data plane enforces after combining
+// the organization, project and personal tiers. 0 = unlimited.
+export interface EffectiveQuota {
+  maxConcurrentRequests: string;
+  maxInferenceServices: string;
+  maxBatchJobsPerDay: string;
+  maxOutputTokensPerRequest: string;
+  monthlySpendLimitCents: string;
 }
 
 export interface ModelSummary {
@@ -1837,6 +1875,12 @@ export interface GetMyQuotaResponse {
   quota: OrganizationQuota;
   usage: QuotaUsage;
   requestIncreaseEmail: string;
+  // personalQuota is the caller's own quota; an empty organizationId
+  // means no personal row exists (unlimited).
+  personalQuota?: UserQuota;
+  // effectiveQuota is the minimum of the non-zero organization, project
+  // and personal limits.
+  effectiveQuota?: EffectiveQuota;
 }
 
 // ---- vGPU slicing pool (feature #52) ----
