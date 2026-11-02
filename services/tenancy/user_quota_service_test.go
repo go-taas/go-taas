@@ -58,7 +58,7 @@ func TestListUserQuotasIsRosterDriven(t *testing.T) {
 	_, err = svc.ListUserQuotas(context.Background(), &tenancyv1.ListUserQuotasRequest{
 		OrganizationId: "missing",
 	})
-	assert.Equal(t, apierrors.CodeOrganizationNotFound, apierrors.CodeOf(err))
+	assert.Equal(t, apierrors.CodeQuotaNotFound, apierrors.CodeOf(err))
 }
 
 func TestUpdateUserQuotaValidatesAndCombines(t *testing.T) {

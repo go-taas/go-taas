@@ -264,7 +264,7 @@ func (s *Service) resolveQuotaOrg(ctx context.Context, requested string) (string
 		orgID = org
 	}
 	if orgID == "" {
-		return "", apierrors.New(apierrors.CodeOrganizationNotFound)
+		return "", apierrors.New(apierrors.CodeQuotaNotFound)
 	}
 	if _, err := s.requireQuotaOrgExists(ctx, orgID); err != nil {
 		return "", err
@@ -280,7 +280,9 @@ func (s *Service) requireQuotaOrgExists(ctx context.Context, orgID string) (*Org
 	}
 	org, err := repo.FindOrganization(ctx, orgID)
 	if isRecordNotFound(err) {
-		return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+		// The quota error block (13306) is what the other quota RPCs
+		// answer for an unknown organization; one block for one domain.
+		return nil, apierrors.New(apierrors.CodeQuotaNotFound)
 	}
 	if err != nil {
 		return nil, err
