@@ -1,3 +1,16 @@
+# [1.102.0](https://github.com/go-taas/go-taas/compare/v1.101.0...v1.102.0) (2026-11-02)
+
+
+### Bug Fixes
+
+* **helm:** give nginx a writable conf.d under the read-only root ([d879e9c](https://github.com/go-taas/go-taas/commit/d879e9c2c6c57d5722c1dcb7ba3421d84bef34e1))
+* **helm:** tolerate a partial console values block ([a21d184](https://github.com/go-taas/go-taas/commit/a21d1842eb3918dad0456a4f63d6859a82267b09))
+
+
+### Features
+
+* **build,helm:** deploy the console separately and drop it from the server image ([b7cd4c1](https://github.com/go-taas/go-taas/commit/b7cd4c10b30c93985e5da44893b2e3c7ed686368))
+
 # [1.101.0](https://github.com/go-taas/go-taas/compare/v1.100.3...v1.101.0) (2026-11-02)
 
 
