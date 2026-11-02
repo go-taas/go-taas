@@ -693,7 +693,6 @@ export const en: Record<string, string> = {
   'projects.membersColUser': 'User',
   'projects.membersColRole': 'Role',
   'projects.membersFieldUserId': 'User ID',
-  'projects.membersPlaceholderUserId': 'User ID',
   'projects.membersFieldRole': 'Role',
   'projects.membersLoadFailed': 'failed to load project members',
   'projects.membersAddFailed': 'failed to add project member',
@@ -2274,9 +2273,6 @@ export const en: Record<string, string> = {
   'uapikeys.ownerShared': 'Shared',
   'uapikeys.fieldProject': 'Project',
   'uapikeys.projectNone': 'No project',
-  'uapikeys.fieldShared': 'Share with the organization',
-  'uapikeys.fieldSharedNote':
-    'A shared key has no personal owner: it is managed by organization administrators and has no personal quota.',
   'uapikeys.scopeAll': 'All models',
   'uapikeys.scopeCount': '{count} models',
   'uapikeys.scopeSection': 'Model scope',
