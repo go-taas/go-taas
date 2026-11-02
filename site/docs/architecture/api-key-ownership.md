@@ -92,7 +92,8 @@ budget per tenant.
 
 The two data-plane caps ride the Redis verdict cache, so their propagation
 bound is the cache TTL (default 30s). The quota resolver runs only on a cache
-miss.
+miss. Inference services and batch jobs carry no project, so their create-time
+checks combine the organization and personal tiers only.
 
 A quota read failure degrades that tier to unlimited and logs a warning: an
 authorization outage must not stop inference.
