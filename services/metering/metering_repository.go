@@ -282,9 +282,11 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 	case "model":
 		groupExpr = "model_id"
 	case "user":
-		groupExpr = "COALESCE(owner_user_id, '')"
+		// CAST keeps the uuid column portable: PostgreSQL refuses to
+		// COALESCE a uuid with '' while SQLite stores it as text.
+		groupExpr = "COALESCE(CAST(owner_user_id AS TEXT), '')"
 	case "project":
-		groupExpr = "COALESCE(project_id, '')"
+		groupExpr = "COALESCE(CAST(project_id AS TEXT), '')"
 	}
 
 	// Settled part. The model dimension is absent from usage_records, so
@@ -300,7 +302,7 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 		}
 		q := r.DB(ctx).Model(&UsageRecord{}).
 			Select(groupExpr+" AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "+
-				"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, SUM(request_count) AS request_count", groupExpr).
+				"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, SUM(request_count) AS request_count").
 			Where("organization_id = ?", orgID)
 		q = applyRecordRange(q, since, until)
 		if err := q.Group(groupExpr).Scan(&settled).Error; err != nil {
@@ -320,7 +322,7 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 			Hours    int64
 		}
 		qh := r.DB(ctx).Model(&UsageRecord{}).
-			Select(groupExpr+" AS group_key, COUNT(DISTINCT period_start) AS hours", groupExpr).
+			Select(groupExpr+" AS group_key, COUNT(DISTINCT period_start) AS hours").
 			Where("organization_id = ?", orgID)
 		qh = applyRecordRange(qh, since, until)
 		if err := qh.Group(groupExpr).Scan(&hours).Error; err != nil {
@@ -366,7 +368,7 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 	}
 	pq := r.DB(ctx).Model(&Voucher{}).
 		Select(groupExpr+" AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "+
-			"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, COUNT(*) AS count", groupExpr)
+			"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, COUNT(*) AS count")
 	pq = applyVoucherRangeOrg(pq, orgID, since, until)
 	if err := pq.Where("settled_usage_record_id IS NULL").Group(groupExpr).Scan(&pending).Error; err != nil {
 		return nil, err
