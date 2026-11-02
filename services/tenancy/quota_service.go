@@ -384,10 +384,39 @@ func (s *Service) GetMyQuota(ctx context.Context, _ *tenancyv1.GetMyQuotaRequest
 	if cfg := config.GetConfig(); cfg != nil {
 		requestIncreaseEmail = cfg.Quota.RequestIncreaseTo
 	}
+	// The personal tier is resolved from the session; a caller without a
+	// session has no personal budget (unlimited). The effective tuple is
+	// the same combination the data plane enforces.
+	var personal *UserQuota
+	userID, userErr := s.sessionUserID(ctx)
+	if userErr == nil && userID != "" {
+		personal, err = repo.FindUserQuota(ctx, org.ID, userID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	effective := CombineLimits(orgQuotaLimits(org), personal.Limits())
+	labels := s.labelsForUsers(ctx, []string{userID, org.QuotaUpdatedBy})
 	return &tenancyv1.GetMyQuotaResponse{
 		Response:             okResponse(),
-		Quota:                quotaProto(org, s.userLabel(ctx, org.QuotaUpdatedBy)),
+		Quota:                quotaProto(org, labels[org.QuotaUpdatedBy]),
 		Usage:                s.quotaUsage(ctx, repo, org.ID),
 		RequestIncreaseEmail: requestIncreaseEmail,
+		PersonalQuota:        summarizeUserQuota(personal, org.ID, userID, "", labels),
+		EffectiveQuota:       effectiveQuotaProto(effective),
 	}, nil
 }
+
+// orgQuotaLimits projects an organization row onto the limit tuple.
+func orgQuotaLimits(org *Organization) QuotaLimits {
+	if org == nil {
+		return QuotaLimits{}
+	}
+	return QuotaLimits{
+		MaxConcurrentRequests:     org.MaxConcurrentRequests,
+		MaxInferenceServices:      org.MaxInferenceServices,
+		MaxBatchJobsPerDay:        org.MaxBatchJobsPerDay,
+		MaxOutputTokensPerRequest: org.MaxOutputTokensPerRequest,
+	}
+}
+

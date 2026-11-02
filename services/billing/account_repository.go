@@ -369,6 +369,26 @@ func (r *AccountRepository) CheckFundsSnapshot(ctx context.Context, orgID string
 	return r.FindByOrg(ctx, orgID)
 }
 
+// ScopedSpentCents returns the charged amount (integer cents) for one
+// owner or project since the cycle start. An empty scope returns the
+// organization-wide total. It backs the three-level spend gate.
+func (r *AccountRepository) ScopedSpentCents(ctx context.Context, orgID string, since int64, ownerUserID, projectID string) (int64, error) {
+	query := r.db.WithContext(ctx).Model(&ChargeRecord{}).
+		Select("COALESCE(ROUND(SUM(amount) * 100), 0)").
+		Where("organization_id = ? AND period_start >= ?", orgID, since)
+	if ownerUserID != "" {
+		query = query.Where("owner_user_id = ?", ownerUserID)
+	}
+	if projectID != "" {
+		query = query.Where("project_id = ?", projectID)
+	}
+	var cents int64
+	if err := query.Scan(&cents).Error; err != nil {
+		return 0, err
+	}
+	return cents, nil
+}
+
 // AutoRechargeCandidates returns prepaid accounts with auto-recharge
 // enabled and balance below the threshold (feature-14 AD4).
 func (r *AccountRepository) AutoRechargeCandidates(ctx context.Context) ([]*Account, error) {

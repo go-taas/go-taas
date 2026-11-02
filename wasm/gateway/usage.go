@@ -42,6 +42,8 @@ type usageReport struct {
 	requestID      string
 	organizationID string
 	keyID          string
+	ownerUserID    string
+	projectID      string
 	model          string
 	usage          tokenUsage
 	status         string
@@ -184,6 +186,10 @@ func usageBody(rep *usageReport) []byte {
 	b.WriteString(jsonEscape(rep.organizationID))
 	b.WriteString(`","api_key_id":"`)
 	b.WriteString(jsonEscape(rep.keyID))
+	b.WriteString(`","owner_user_id":"`)
+	b.WriteString(jsonEscape(rep.ownerUserID))
+	b.WriteString(`","project_id":"`)
+	b.WriteString(jsonEscape(rep.projectID))
 	b.WriteString(`","model":"`)
 	b.WriteString(jsonEscape(rep.model))
 	b.WriteString(`","usage":{"prompt_tokens":`)

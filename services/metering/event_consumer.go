@@ -20,6 +20,11 @@ type meteringEvent struct {
 	RequestID      string     `json:"request_id"`
 	OrganizationID string     `json:"organization_id"`
 	APIKeyID       string     `json:"api_key_id"`
+	// OwnerUserID is the key's personal owner ("" for a shared key) —
+	// the metering attribution dimension.
+	OwnerUserID string `json:"owner_user_id"`
+	// ProjectID is the key's project ("" when unassigned).
+	ProjectID string `json:"project_id"`
 	ModelID        string     `json:"model_id"`
 	ServiceID      string     `json:"service_id"`
 	Usage          tokenUsage `json:"usage"`

@@ -138,7 +138,7 @@ func TestServiceRangeValidation(t *testing.T) {
 	assert.Equal(t, apierrors.CodeMeteringRangeInvalid, ae.Code)
 
 	// An unknown group_by is also a 10404.
-	_, err = svc.GetUsageSummary(ctx, &meteringv1.GetUsageSummaryRequest{GroupBy: "user"})
+	_, err = svc.GetUsageSummary(ctx, &meteringv1.GetUsageSummaryRequest{GroupBy: "region"})
 	require.Error(t, err)
 	ae, ok = apierrors.As(err)
 	require.True(t, ok)

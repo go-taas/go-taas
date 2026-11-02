@@ -54,6 +54,12 @@ type UsageLine struct {
 	OrganizationID string `gorm:"size:64;not null;index:idx_usage_lines_org_completed,priority:1"`
 	// APIKeyID is the API Key that made the request.
 	APIKeyID string `gorm:"size:64;not null;index:idx_usage_lines_key_completed,priority:1"`
+	// OwnerUserID is the key's personal owner at request time; NULL for
+	// an organization-shared key. Snapshot, not a join: attribution
+	// must survive a key transfer or deletion.
+	OwnerUserID *string `gorm:"type:uuid;index:idx_usage_lines_org_owner,priority:2"`
+	// ProjectID is the key's project at request time.
+	ProjectID *string `gorm:"size:64;index:idx_usage_lines_org_project,priority:2"`
 	// ModelID is the model that served the request.
 	ModelID string `gorm:"size:128;not null"`
 	// ServiceID optionally names the inference service.
@@ -91,6 +97,12 @@ type ChargeRecord struct {
 	OrganizationID string `gorm:"size:64;not null;index:idx_charge_records_org_period,priority:1"`
 	// APIKeyID is the charged API Key.
 	APIKeyID string `gorm:"size:64;not null;uniqueIndex:idx_charge_records_group_period,priority:1"`
+	// OwnerUserID is the key's personal owner at charge time; NULL for
+	// a shared key. Indexed for the per-user spend check.
+	OwnerUserID *string `gorm:"type:uuid;index:idx_charge_records_org_owner_charged,priority:2"`
+	// ProjectID is the key's project at charge time; indexed for the
+	// per-project spend check.
+	ProjectID *string `gorm:"size:64;index:idx_charge_records_org_project_charged,priority:2"`
 	// ModelID is the model group.
 	ModelID string `gorm:"size:128;not null;uniqueIndex:idx_charge_records_group_period,priority:2"`
 	// AcceleratorType is the card group.
@@ -148,8 +160,12 @@ type PriceTier struct {
 // UsageGroup is one (model, card) group of uncharged usage lines within
 // an (api_key, hour) bucket — the charging unit.
 type UsageGroup struct {
-	OrganizationID   string
-	APIKeyID         string
+	OrganizationID string
+	APIKeyID       string
+	// OwnerUserID and ProjectID are the key's attribution snapshot for
+	// the group ("" when unassigned).
+	OwnerUserID      string
+	ProjectID        string
 	ModelID          string
 	AcceleratorType  string
 	PeriodStart      int64
@@ -184,6 +200,8 @@ type ChargeFilter struct {
 	OrganizationID string
 	APIKeyID       string
 	ModelID        string
+	OwnerUserID    string
+	ProjectID      string
 	Since          int64
 	Until          int64
 	Offset         int
@@ -197,4 +215,21 @@ type BillSummaryRow struct {
 	Currency      string
 	ChargeCount   int64
 	UnpricedCount int64
+}
+
+// optionalBillingID converts an empty ownership id to a NULL column
+// value.
+func optionalBillingID(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
+}
+
+// derefBillingID returns "" for a nil ownership id.
+func derefBillingID(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }

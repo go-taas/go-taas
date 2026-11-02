@@ -161,6 +161,60 @@ type Service struct {
 	// the resolved org context (AD9). Nil until wired: no role check
 	// (unit tests).
 	roleGuard RoleGuard
+
+	// userLabelResolver resolves an API key owner id to a display label
+	// for the usage analytics rows. Nil until wired: the id is shown.
+	userLabelResolver UserLabelResolver
+
+	// projectLabelResolver resolves a project id to its display name.
+	// Nil until wired: the id is shown.
+	projectLabelResolver ProjectLabelResolver
+}
+
+// UserLabelResolver resolves user ids to display labels. It is
+// implemented by the auth module.
+type UserLabelResolver interface {
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
+// ProjectLabelResolver resolves a project id to its display name. It is
+// implemented by the tenancy service.
+type ProjectLabelResolver interface {
+	ProjectName(ctx context.Context, projectID string) (string, error)
+}
+
+// SetUserLabelResolver injects the owner-label resolver.
+func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolver = r }
+
+// SetProjectLabelResolver injects the project-label resolver.
+func (s *Service) SetProjectLabelResolver(r ProjectLabelResolver) { s.projectLabelResolver = r }
+
+// userLabel resolves one user id to a display label, falling back to
+// the id itself.
+func (s *Service) userLabel(ctx context.Context, userID string) string {
+	if userID == "" || s.userLabelResolver == nil {
+		return userID
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, []string{userID})
+	if err != nil {
+		return userID
+	}
+	if label := labels[userID]; label != "" {
+		return label
+	}
+	return userID
+}
+
+// projectLabel resolves one project id to its display name, falling
+// back to the id itself.
+func (s *Service) projectLabel(ctx context.Context, projectID string) string {
+	if projectID == "" || s.projectLabelResolver == nil {
+		return projectID
+	}
+	if name, err := s.projectLabelResolver.ProjectName(ctx, projectID); err == nil && name != "" {
+		return name
+	}
+	return projectID
 }
 
 // New constructs the metering service. The repository is wired lazily
@@ -431,6 +485,8 @@ func (s *Service) handleEvent(ctx context.Context, ev *meteringEvent) (string, e
 		RequestID:        ev.RequestID,
 		OrganizationID:   ev.OrganizationID,
 		APIKeyID:         ev.APIKeyID,
+		OwnerUserID:      optionalID(ev.OwnerUserID),
+		ProjectID:        optionalID(ev.ProjectID),
 		ModelID:          ev.ModelID,
 		PromptTokens:     ev.Usage.PromptTokens,
 		CompletionTokens: ev.Usage.CompletionTokens,
@@ -494,6 +550,8 @@ func (s *Service) writeRequestLog(ctx context.Context, repo *Repository, ev *met
 		RequestID:        ev.RequestID,
 		OrganizationID:   ev.OrganizationID,
 		APIKeyID:         ev.APIKeyID,
+		OwnerUserID:      optionalID(ev.OwnerUserID),
+		ProjectID:        optionalID(ev.ProjectID),
 		ModelID:          ev.ModelID,
 		PromptTokens:     ev.Usage.PromptTokens,
 		CompletionTokens: ev.Usage.CompletionTokens,
@@ -525,6 +583,9 @@ func validateEvent(ev *meteringEvent) error {
 		return invalid
 	}
 	if strings.TrimSpace(ev.APIKeyID) == "" || len(ev.APIKeyID) > maxAPIKeyIDLen {
+		return invalid
+	}
+	if len(ev.OwnerUserID) > maxOrgIDLen || len(ev.ProjectID) > maxOrgIDLen {
 		return invalid
 	}
 	if strings.TrimSpace(ev.ModelID) == "" || len(ev.ModelID) > maxModelIDLen {
@@ -682,14 +743,16 @@ func (s *Service) GetUsageSummary(ctx context.Context, req *meteringv1.GetUsageS
 	if groupBy == "" {
 		groupBy = "api_key"
 	}
-	if groupBy != "api_key" && groupBy != "model" {
+	switch groupBy {
+	case "api_key", "model", "user", "project":
+	default:
 		return nil, apierrors.New(apierrors.CodeMeteringRangeInvalid)
 	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
 	}
-	rows, err := repo.UsageSummary(ctx, orgID, since, until, groupBy == "model")
+	rows, err := repo.UsageSummary(ctx, orgID, since, until, groupBy)
 	if err != nil {
 		return nil, err
 	}
@@ -731,6 +794,8 @@ func (s *Service) ListUsageRecords(ctx context.Context, req *meteringv1.ListUsag
 	rows, total, err := repo.ListUsageRecords(ctx, UsageRecordFilter{
 		OrganizationID: orgID,
 		APIKeyID:       req.GetApiKeyId(),
+		OwnerUserID:    req.GetOwnerUserId(),
+		ProjectID:      req.GetProjectId(),
 		Since:          since,
 		Until:          until,
 		Offset:         offset,
@@ -745,6 +810,8 @@ func (s *Service) ListUsageRecords(ctx context.Context, req *meteringv1.ListUsag
 			UsageRecordId:    row.ID,
 			OrganizationId:   row.OrganizationID,
 			ApiKeyId:         row.APIKeyID,
+			OwnerUserId:      derefID(row.OwnerUserID),
+			ProjectId:        derefID(row.ProjectID),
 			PeriodStart:      row.PeriodStart,
 			PeriodEnd:        row.PeriodEnd,
 			PromptTokens:     row.PromptTokens,
@@ -775,6 +842,8 @@ func summarizeVoucher(v *Voucher) *meteringv1.VoucherSummary {
 		ModelId:        v.ModelID,
 		ApiKeyId:       v.APIKeyID,
 		ServiceId:      serviceID,
+		OwnerUserId:    derefID(v.OwnerUserID),
+		ProjectId:      derefID(v.ProjectID),
 		Settled:        v.SettledUsageRecordID != nil,
 		CompletedAt:    v.CompletedAt.Unix(),
 		Usage: &meteringv1.TokenUsage{

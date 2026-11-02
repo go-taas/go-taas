@@ -114,6 +114,12 @@ func (r *Repository) applyVoucherFilters(query *gorm.DB, filter VoucherFilter) *
 	if filter.ModelID != "" {
 		query = query.Where("model_id = ?", filter.ModelID)
 	}
+	if filter.OwnerUserID != "" {
+		query = query.Where("owner_user_id = ?", filter.OwnerUserID)
+	}
+	if filter.ProjectID != "" {
+		query = query.Where("project_id = ?", filter.ProjectID)
+	}
 	if filter.Since > 0 {
 		query = query.Where("completed_at >= ?", time.Unix(filter.Since, 0).UTC())
 	}
@@ -179,6 +185,8 @@ func (r *Repository) SettleBucket(ctx context.Context, bucket HourBucket, now ti
 			ID:               uuid.NewString(),
 			OrganizationID:   bucket.OrganizationID,
 			APIKeyID:         bucket.APIKeyID,
+			OwnerUserID:      bucket.OwnerUserID,
+			ProjectID:        bucket.ProjectID,
 			PeriodStart:      bucket.PeriodStart,
 			PeriodEnd:        bucket.PeriodStart + 3600,
 			PromptTokens:     agg.Prompt,
@@ -224,6 +232,12 @@ func (r *Repository) ListUsageRecords(ctx context.Context, filter UsageRecordFil
 	if filter.APIKeyID != "" {
 		query = query.Where("api_key_id = ?", filter.APIKeyID)
 	}
+	if filter.OwnerUserID != "" {
+		query = query.Where("owner_user_id = ?", filter.OwnerUserID)
+	}
+	if filter.ProjectID != "" {
+		query = query.Where("project_id = ?", filter.ProjectID)
+	}
 	if filter.Since > 0 {
 		query = query.Where("period_start >= ?", filter.Since)
 	}
@@ -245,10 +259,11 @@ func (r *Repository) ListUsageRecords(ctx context.Context, filter UsageRecordFil
 }
 
 // UsageSummary aggregates usage for one organization and range, grouped
-// by api key (default) or model. The settled part reads usage_records;
-// the pending part aggregates unsettled vouchers; both are merged in Go
-// with the settled/pending hour split (FR4.1, AC8).
-func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, until int64, groupByModel bool) ([]*UsageSummaryRow, error) {
+// by api key (default), model, user or project. The settled part reads
+// usage_records (or vouchers for the model dimension, which the records
+// do not carry); the pending part aggregates unsettled vouchers; both
+// are merged in Go with the settled/pending hour split (FR4.1, AC8).
+func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, until int64, groupBy string) ([]*UsageSummaryRow, error) {
 	rows := map[string]*UsageSummaryRow{}
 	getRow := func(key string) *UsageSummaryRow {
 		if row, ok := rows[key]; ok {
@@ -259,12 +274,22 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 		return row
 	}
 
-	// Settled part: usage records overlapping the range.
-	groupCol := "api_key_id"
-	if groupByModel {
-		groupCol = "model_id"
+	// groupExpr is the SQL expression each source groups by. The
+	// ownership dimensions coalesce NULL to "" so a shared key or an
+	// unassigned project is a real bucket the console can label.
+	groupExpr := "api_key_id"
+	switch groupBy {
+	case "model":
+		groupExpr = "model_id"
+	case "user":
+		groupExpr = "COALESCE(owner_user_id, '')"
+	case "project":
+		groupExpr = "COALESCE(project_id, '')"
 	}
-	if !groupByModel {
+
+	// Settled part. The model dimension is absent from usage_records, so
+	// it is aggregated from settled vouchers instead.
+	if groupBy != "model" {
 		var settled []struct {
 			GroupKey     string
 			Prompt       int64
@@ -274,10 +299,11 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 			RequestCount int64
 		}
 		q := r.DB(ctx).Model(&UsageRecord{}).
-			Select("api_key_id AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, " +
-				"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, SUM(request_count) AS request_count")
+			Select(groupExpr+" AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "+
+				"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, SUM(request_count) AS request_count", groupExpr).
+			Where("organization_id = ?", orgID)
 		q = applyRecordRange(q, since, until)
-		if err := q.Group("api_key_id").Scan(&settled).Error; err != nil {
+		if err := q.Group(groupExpr).Scan(&settled).Error; err != nil {
 			return nil, err
 		}
 		for _, s := range settled {
@@ -288,24 +314,22 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 			row.ReasoningTokens += s.Reasoning
 			row.RequestCount += s.RequestCount
 		}
-		// Settled hours: distinct period_start per key.
+		// Settled hours: distinct period_start per group.
 		var hours []struct {
 			GroupKey string
 			Hours    int64
 		}
 		qh := r.DB(ctx).Model(&UsageRecord{}).
-			Select("api_key_id AS group_key, COUNT(DISTINCT period_start) AS hours")
+			Select(groupExpr+" AS group_key, COUNT(DISTINCT period_start) AS hours", groupExpr).
+			Where("organization_id = ?", orgID)
 		qh = applyRecordRange(qh, since, until)
-		if err := qh.Group("api_key_id").Scan(&hours).Error; err != nil {
+		if err := qh.Group(groupExpr).Scan(&hours).Error; err != nil {
 			return nil, err
 		}
 		for _, h := range hours {
 			getRow(h.GroupKey).SettledHours += h.Hours
 		}
 	} else {
-		// Grouping by model cannot use usage_records (they carry no
-		// model dimension): settled vouchers are aggregated instead —
-		// the settled flag on each voucher identifies its bucket.
 		var settled []struct {
 			GroupKey   string
 			Prompt     int64
@@ -315,7 +339,7 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 			Count      int64
 		}
 		q := r.DB(ctx).Model(&Voucher{}).
-			Select("model_id AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, " +
+			Select("model_id AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "+
 				"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, COUNT(*) AS count")
 		q = applyVoucherRangeOrg(q, orgID, since, until)
 		if err := q.Where("settled_usage_record_id IS NOT NULL").Group("model_id").Scan(&settled).Error; err != nil {
@@ -341,10 +365,10 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 		Count      int64
 	}
 	pq := r.DB(ctx).Model(&Voucher{}).
-		Select(groupCol + " AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, " +
-			"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, COUNT(*) AS count")
+		Select(groupExpr+" AS group_key, SUM(prompt_tokens) AS prompt, SUM(completion_tokens) AS completion, "+
+			"SUM(cached_tokens) AS cached, SUM(reasoning_tokens) AS reasoning, COUNT(*) AS count", groupExpr)
 	pq = applyVoucherRangeOrg(pq, orgID, since, until)
-	if err := pq.Where("settled_usage_record_id IS NULL").Group(groupCol).Scan(&pending).Error; err != nil {
+	if err := pq.Where("settled_usage_record_id IS NULL").Group(groupExpr).Scan(&pending).Error; err != nil {
 		return nil, err
 	}
 	for _, p := range pending {
@@ -367,10 +391,7 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 	pendingHours := map[string]map[int64]struct{}{}
 	for i := range pendingVouchers {
 		v := &pendingVouchers[i]
-		key := v.APIKeyID
-		if groupByModel {
-			key = v.ModelID
-		}
+		key := usageGroupKey(v, groupBy)
 		bucket := v.CompletedAt.Unix() / 3600 * 3600
 		if pendingHours[key] == nil {
 			pendingHours[key] = map[int64]struct{}{}
@@ -386,6 +407,26 @@ func (r *Repository) UsageSummary(ctx context.Context, orgID string, since, unti
 		out = append(out, row)
 	}
 	return out, nil
+}
+
+// usageGroupKey projects a voucher onto the summary dimension key.
+func usageGroupKey(v *Voucher, groupBy string) string {
+	switch groupBy {
+	case "model":
+		return v.ModelID
+	case "user":
+		if v.OwnerUserID != nil {
+			return *v.OwnerUserID
+		}
+		return ""
+	case "project":
+		if v.ProjectID != nil {
+			return *v.ProjectID
+		}
+		return ""
+	default:
+		return v.APIKeyID
+	}
 }
 
 // applyRecordRange adds the period_start range conditions to a

@@ -159,6 +159,18 @@ service AuthService {
     };
   }
 
+  // UpdateAPIKeyOwnership transfers a key's personal owner and project
+  // inside its organization, or turns it into an organization-shared key
+  // (owner unset). Only an organization owner/admin (or a platform
+  // administrator) may transfer a key; the key's organization never
+  // changes.
+  rpc UpdateAPIKeyOwnership(UpdateAPIKeyOwnershipRequest) returns (UpdateAPIKeyOwnershipResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/auth/api-keys/{key_id}/ownership"
+      body: "*"
+    };
+  }
+
   // VerifyAPIKey checks an API key on behalf of the data-plane gateway.
   // It is called per request by the gateway's Wasm plugin and is backed
   // by a Redis positive cache.
@@ -460,6 +472,15 @@ message ListAPIKeysRequest {
   // filter must be server-side: client-side filtering over server-side
   // pagination is incorrect (a page may contain no active keys).
   bool active_only = 2;
+  // scope selects the ownership view: "mine" (the caller's own keys,
+  // the default), "shared" (organization-shared keys with no personal
+  // owner) or "all" (every key in the organization; organization
+  // administrators only). An unknown value is rejected.
+  string scope = 3;
+  // project_id filters the list to one project.
+  string project_id = 4;
+  // owner_user_id filters the list to one owner.
+  string owner_user_id = 5;
 }
 
 message ListAPIKeysResponse {
@@ -486,6 +507,20 @@ message APIKeySummary {
   // models is the key's model allow-list (feature #46, AD1): catalog
   // model IDs in stored order; empty = all org-granted models.
   repeated string models = 10;
+  // organization_id is the key's owning organization.
+  string organization_id = 11;
+  // owner_user_id is the key's personal owner; empty means the key is
+  // organization-shared.
+  string owner_user_id = 12;
+  // owner_display_name is the owner's display name (else username).
+  string owner_display_name = 13;
+  // project_id is the key's optional project inside the organization.
+  string project_id = 14;
+  // project_display_name is the project's display name.
+  string project_display_name = 15;
+  // shared reports whether the key has no personal owner and is managed
+  // by the organization.
+  bool shared = 16;
 }
 
 message CreateAPIKeyRequest {
@@ -498,6 +533,16 @@ message CreateAPIKeyRequest {
   // models is the optional initial model allow-list (feature #46):
   // 0-50 distinct catalog model IDs; empty = unrestricted.
   repeated string models = 5;
+  // project_id optionally places the key in a project of the caller's
+  // organization. A member may only place a key in a project they
+  // belong to.
+  string project_id = 6;
+  // owner_user_id optionally assigns the key to another member. Only an
+  // organization owner/admin may do so; empty means the caller.
+  string owner_user_id = 7;
+  // shared creates an organization-shared key with no personal owner.
+  // Only an organization owner/admin may do so.
+  bool shared = 8;
 }
 
 message UpdateAPIKeyRequest {
@@ -530,6 +575,21 @@ message UpdateAPIKeyScopeResponse {
   taas.common.v1.Response response = 1;
   // key carries the updated summary (including models); never the
   // plaintext.
+  APIKeySummary key = 2;
+}
+
+message UpdateAPIKeyOwnershipRequest {
+  string key_id = 1;
+  // owner_user_id is the new personal owner; empty clears the owner and
+  // turns the key into an organization-shared key.
+  string owner_user_id = 2;
+  // project_id is the new project; empty removes the project. The
+  // project must belong to the key's organization.
+  string project_id = 3;
+}
+
+message UpdateAPIKeyOwnershipResponse {
+  taas.common.v1.Response response = 1;
   APIKeySummary key = 2;
 }
 
@@ -576,14 +636,21 @@ message VerifyAPIKeyResponse {
   int64 rate_limit_rpm = 5;
   // rate_limit_tpm is the max tokens per minute; 0 = unlimited.
   int64 rate_limit_tpm = 6;
-  // max_concurrent_requests is the org's in-flight request cap; 0 =
-  // unlimited (feature #51, design D3). The gateway enforces it
-  // locally after the rate-limit check.
+  // max_concurrent_requests is the effective in-flight request cap:
+  // the minimum of the non-zero organization, project and personal
+  // limits; 0 = unlimited. The gateway enforces it locally after the
+  // rate-limit check.
   int64 max_concurrent_requests = 7;
-  // max_output_tokens_per_request is the org's per-request output
-  // token cap; 0 = unlimited. The gateway validates or clamps the
-  // request's max_tokens against it before dispatch.
+  // max_output_tokens_per_request is the effective per-request output
+  // token cap (same three-level minimum); 0 = unlimited. The gateway
+  // validates or clamps the request's max_tokens against it before
+  // dispatch.
   int64 max_output_tokens_per_request = 8;
+  // owner_user_id is the key's personal owner; empty for a
+  // organization-shared key.
+  string owner_user_id = 9;
+  // project_id is the key's project; empty when unassigned.
+  string project_id = 10;
 }
 
 // ---- SSO federation (feature #7) ----

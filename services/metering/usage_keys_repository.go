@@ -26,6 +26,10 @@ type UsageKeysBucketRow struct {
 type UsageKeyAggRow struct {
 	APIKeyID       string
 	OrganizationID string
+	// OwnerUserID and ProjectID are the key's attribution snapshot from
+	// the request logs.
+	OwnerUserID string
+	ProjectID   string
 	RequestCount   int64
 	ErrorCount     int64
 	TotalTokens    int64
@@ -63,8 +67,8 @@ func (r *UsageKeysRepository) APIKeyName(ctx context.Context, apiKeyID string) (
 // AggregateUsageKeys aggregates request_logs for the fleet per-key view:
 // the per-bucket series rows and the per-key rows, within the optional
 // org and model filters and the range.
-func (r *UsageKeysRepository) AggregateUsageKeys(ctx context.Context, orgFilter, modelFilter string, since, until, bucketSize int64) ([]UsageKeysBucketRow, []UsageKeyAggRow, error) {
-	rows, err := r.fetchLogs(ctx, orgFilter, modelFilter, since, until)
+func (r *UsageKeysRepository) AggregateUsageKeys(ctx context.Context, filter UsageKeysFilter, since, until, bucketSize int64) ([]UsageKeysBucketRow, []UsageKeyAggRow, error) {
+	rows, err := r.fetchLogs(ctx, filter, since, until)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -76,7 +80,7 @@ func (r *UsageKeysRepository) AggregateUsageKeys(ctx context.Context, orgFilter,
 // AggregateUsageKey aggregates request_logs for one key: the per-bucket
 // series rows, within the org filter and the range.
 func (r *UsageKeysRepository) AggregateUsageKey(ctx context.Context, orgID, apiKeyID string, since, until, bucketSize int64) ([]UsageKeysBucketRow, error) {
-	rows, err := r.fetchLogs(ctx, orgID, "", since, until)
+	rows, err := r.fetchLogs(ctx, UsageKeysFilter{OrganizationID: orgID}, since, until)
 	if err != nil {
 		return nil, err
 	}
@@ -116,8 +120,8 @@ func (r *UsageKeysRepository) ChargeCostByKey(ctx context.Context, orgFilter str
 // request logs for the filters and range (AD7): the most recent
 // request-log created_at truncated to the bucket boundary, minus one
 // bucket. 0 when no request logs match.
-func (r *UsageKeysRepository) DataThrough(ctx context.Context, orgFilter, modelFilter string, since, until, bucketSize int64) (int64, error) {
-	rows, err := r.fetchLogs(ctx, orgFilter, modelFilter, since, until)
+func (r *UsageKeysRepository) DataThrough(ctx context.Context, filter UsageKeysFilter, since, until, bucketSize int64) (int64, error) {
+	rows, err := r.fetchLogs(ctx, filter, since, until)
 	if err != nil {
 		return 0, err
 	}
@@ -135,15 +139,29 @@ func (r *UsageKeysRepository) DataThrough(ctx context.Context, orgFilter, modelF
 	return last - bucketSize, nil
 }
 
+// UsageKeysFilter narrows the per-key analytics (feature #28).
+type UsageKeysFilter struct {
+	OrganizationID string
+	ModelID        string
+	OwnerUserID    string
+	ProjectID      string
+}
+
 // fetchLogs loads the request-log rows within the filters and range.
-func (r *UsageKeysRepository) fetchLogs(ctx context.Context, orgFilter, modelFilter string, since, until int64) ([]RequestLog, error) {
+func (r *UsageKeysRepository) fetchLogs(ctx context.Context, filter UsageKeysFilter, since, until int64) ([]RequestLog, error) {
 	base := r.db.DB(ctx).Model(&RequestLog{}).
 		Where("created_at >= ? AND created_at < ?", unixTime(since), unixTime(until))
-	if orgFilter != "" {
-		base = base.Where("organization_id = ?", orgFilter)
+	if filter.OrganizationID != "" {
+		base = base.Where("organization_id = ?", filter.OrganizationID)
 	}
-	if modelFilter != "" {
-		base = base.Where("model_id = ?", modelFilter)
+	if filter.ModelID != "" {
+		base = base.Where("model_id = ?", filter.ModelID)
+	}
+	if filter.OwnerUserID != "" {
+		base = base.Where("owner_user_id = ?", filter.OwnerUserID)
+	}
+	if filter.ProjectID != "" {
+		base = base.Where("project_id = ?", filter.ProjectID)
 	}
 	var rows []RequestLog
 	if err := base.Order("created_at ASC").Scan(&rows).Error; err != nil {
@@ -180,7 +198,12 @@ func aggregateUsageKeys(rows []RequestLog, bucketSize int64) []UsageKeyAggRow {
 	for _, row := range rows {
 		acc := byKey[row.APIKeyID]
 		if acc == nil {
-			acc = &usageKeyAccum{apiKeyID: row.APIKeyID, orgID: row.OrganizationID}
+			acc = &usageKeyAccum{
+				apiKeyID:    row.APIKeyID,
+				orgID:       row.OrganizationID,
+				ownerUserID: derefID(row.OwnerUserID),
+				projectID:   derefID(row.ProjectID),
+			}
 			byKey[row.APIKeyID] = acc
 		}
 		acc.add(row)
@@ -234,6 +257,8 @@ func (a *usageKeyBucketAccum) row(bucketSize int64) UsageKeysBucketRow {
 type usageKeyAccum struct {
 	apiKeyID     string
 	orgID        string
+	ownerUserID  string
+	projectID    string
 	requestCount int64
 	errorCount   int64
 	latencySum   int64
@@ -255,6 +280,8 @@ func (a *usageKeyAccum) row(_ int64) UsageKeyAggRow {
 	return UsageKeyAggRow{
 		APIKeyID:       a.apiKeyID,
 		OrganizationID: a.orgID,
+		OwnerUserID:    a.ownerUserID,
+		ProjectID:      a.projectID,
 		RequestCount:   a.requestCount,
 		ErrorCount:     a.errorCount,
 		TotalTokens:    a.totalTokens,

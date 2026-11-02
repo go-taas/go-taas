@@ -165,6 +165,8 @@ func (r *Repository) UnchargedGroups(ctx context.Context, apiKeyID string, perio
 	var rows []UsageGroup
 	err := r.DB(ctx).Model(&UsageLine{}).
 		Select("organization_id, api_key_id, model_id, accelerator_type, "+
+			"COALESCE(MAX(owner_user_id), '') AS owner_user_id, "+
+			"COALESCE(MAX(project_id), '') AS project_id, "+
 			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
 			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+
 			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, "+
@@ -280,6 +282,12 @@ func (r *Repository) ListCharges(ctx context.Context, filter ChargeFilter) ([]*C
 	if filter.ModelID != "" {
 		query = query.Where("model_id = ?", filter.ModelID)
 	}
+	if filter.OwnerUserID != "" {
+		query = query.Where("owner_user_id = ?", filter.OwnerUserID)
+	}
+	if filter.ProjectID != "" {
+		query = query.Where("project_id = ?", filter.ProjectID)
+	}
 	if filter.Since > 0 {
 		query = query.Where("period_start >= ?", filter.Since)
 	}
@@ -298,6 +306,27 @@ func (r *Repository) ListCharges(ctx context.Context, filter ChargeFilter) ([]*C
 		return nil, 0, err
 	}
 	return rows, total, nil
+}
+
+// ScopedSpentCents returns the charged amount (integer cents) of the
+// charges that match the supplied scope since the cycle start. An empty
+// owner or project skips that condition. The read is used by the
+// monthly spend gate for the project and personal tiers.
+func (r *Repository) ScopedSpentCents(ctx context.Context, orgID string, since int64, ownerUserID, projectID string) (int64, error) {
+	query := r.DB(ctx).Model(&ChargeRecord{}).
+		Select("COALESCE(ROUND(SUM(amount) * 100), 0)").
+		Where("organization_id = ? AND period_start >= ?", orgID, since)
+	if ownerUserID != "" {
+		query = query.Where("owner_user_id = ?", ownerUserID)
+	}
+	if projectID != "" {
+		query = query.Where("project_id = ?", projectID)
+	}
+	var cents int64
+	if err := query.Scan(&cents).Error; err != nil {
+		return 0, err
+	}
+	return cents, nil
 }
 
 // BillSummaries aggregates the organization's charge records into

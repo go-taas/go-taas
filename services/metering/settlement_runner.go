@@ -22,6 +22,10 @@ type settlementEvent struct {
 	UsageRecordID    string `json:"usage_record_id"`
 	APIKeyID         string `json:"api_key_id"`
 	OrganizationID   string `json:"organization_id"`
+	// OwnerUserID and ProjectID carry the key's attribution snapshot to
+	// billing so a charge is attributed without a control-plane lookup.
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
 	PeriodStart      int64  `json:"period_start"`
 	PeriodEnd        int64  `json:"period_end"`
 	PromptTokens     int64  `json:"prompt_tokens"`
@@ -134,23 +138,31 @@ func (r *SettlementRunner) SettleOnce(ctx context.Context) error {
 
 	// Group into hour buckets; keep only eligible buckets (the hour
 	// closed at least gracePeriod ago, FR3.1/AC6).
-	buckets := map[HourBucket]struct{}{}
+	// The bucket key stays (api_key, hour) — the usage-record unique
+	// key — while the owner/project ride along as the hour's snapshot.
+	buckets := map[string]HourBucket{}
 	for _, v := range unsettled {
 		periodStart := v.CompletedAt.Unix() / 3600 * 3600
 		if now.Unix() < periodStart+3600+int64(r.gracePeriod.Seconds()) {
 			continue // not yet eligible
 		}
-		buckets[HourBucket{
+		key := v.APIKeyID + "|" + formatBucketStart(periodStart)
+		if _, ok := buckets[key]; ok {
+			continue
+		}
+		buckets[key] = HourBucket{
 			APIKeyID:       v.APIKeyID,
 			OrganizationID: v.OrganizationID,
 			PeriodStart:    periodStart,
-		}] = struct{}{}
+			OwnerUserID:    v.OwnerUserID,
+			ProjectID:      v.ProjectID,
+		}
 	}
 
 	// Settle buckets with bounded concurrency.
 	if len(buckets) > 0 {
 		queue := make(chan HourBucket, len(buckets))
-		for b := range buckets {
+		for _, b := range buckets {
 			queue <- b
 		}
 		close(queue)
@@ -179,6 +191,30 @@ func (r *SettlementRunner) SettleOnce(ctx context.Context) error {
 	return r.publishUnpublished(ctx)
 }
 
+// formatBucketStart renders an hour start for the in-memory bucket key.
+func formatBucketStart(v int64) string {
+	const digits = "0123456789"
+	if v == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for v > 0 {
+		i--
+		buf[i] = digits[v%10]
+		v /= 10
+	}
+	return string(buf[i:])
+}
+
+// derefID returns "" for a nil attribution id.
+func derefID(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
+}
+
 // publishUnpublished publishes one settlement event per unpublished
 // usage record and marks it published on success. A publish failure
 // leaves the record unpublished; the next pass re-publishes (FR3.4).
@@ -192,6 +228,8 @@ func (r *SettlementRunner) publishUnpublished(ctx context.Context) error {
 			UsageRecordID:    rec.ID,
 			APIKeyID:         rec.APIKeyID,
 			OrganizationID:   rec.OrganizationID,
+			OwnerUserID:      derefID(rec.OwnerUserID),
+			ProjectID:        derefID(rec.ProjectID),
 			PeriodStart:      rec.PeriodStart,
 			PeriodEnd:        rec.PeriodEnd,
 			PromptTokens:     rec.PromptTokens,

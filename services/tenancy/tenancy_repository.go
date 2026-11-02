@@ -168,6 +168,7 @@ func (r *Repository) UpdateProjectQuotas(ctx context.Context, p *Project) error 
 			"max_inference_services":       p.MaxInferenceServices,
 			"max_batch_jobs_per_day":       p.MaxBatchJobsPerDay,
 			"max_output_tokens_per_request": p.MaxOutputTokensPerRequest,
+			"monthly_spend_limit_cents":    p.MonthlySpendLimitCents,
 			"quota_updated_by":             p.QuotaUpdatedBy,
 			"quota_updated_at":             p.QuotaUpdatedAt,
 		}).Error

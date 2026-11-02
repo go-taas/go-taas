@@ -34,10 +34,19 @@ type keyVerdict struct {
 	// the scope from the cache without a DB hit per request, on both
 	// the cache-hit and cache-miss paths.
 	Models []string `json:"models,omitempty"`
+	// OwnerUserID is the key's personal owner ("" for a shared key). It
+	// rides the verdict so the data plane can attribute usage without a
+	// database read per request.
+	OwnerUserID string `json:"owner_user_id,omitempty"`
+	// ProjectID is the key's project ("" when unassigned).
+	ProjectID string `json:"project_id,omitempty"`
 }
 
-// cacheKeyPrefix namespaces the API-key verdict entries in Redis.
-const cacheKeyPrefix = "taas:auth:apikey:"
+// cacheKeyPrefix namespaces the API-key verdict entries in Redis. The
+// version suffix was bumped when the verdict gained the ownership
+// fields: an older entry cannot be decoded into the new shape, and a
+// fresh prefix makes the upgrade a cold cache instead of a misread.
+const cacheKeyPrefix = "taas:auth:apikey:v2:"
 
 // cacheKey returns the Redis key of a digest's verdict entry.
 func cacheKey(digest string) string { return cacheKeyPrefix + digest }

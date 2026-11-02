@@ -54,7 +54,7 @@ func TestAggregateUsageKeys(t *testing.T) {
 	seedUsageLog(t, db, "org-a", "k2", "m1", now, 50, "success", 5, 10)
 
 	repo := NewUsageKeysRepository(db)
-	buckets, keys, err := repo.AggregateUsageKeys(context.Background(), "org-a", "", now.Add(-2*time.Hour).Unix(), now.Add(time.Hour).Unix(), 3600)
+	buckets, keys, err := repo.AggregateUsageKeys(context.Background(), UsageKeysFilter{OrganizationID: "org-a"}, now.Add(-2*time.Hour).Unix(), now.Add(time.Hour).Unix(), 3600)
 	require.NoError(t, err)
 	assert.Len(t, buckets, 2)
 	assert.Len(t, keys, 2)
@@ -104,7 +104,7 @@ func TestUsageKeysDataThrough(t *testing.T) {
 	seedUsageLog(t, db, "org-a", "k1", "m1", now, 100, "success", 10, 20)
 
 	repo := NewUsageKeysRepository(db)
-	watermark, err := repo.DataThrough(context.Background(), "org-a", "", now.Add(-time.Hour).Unix(), now.Add(time.Hour).Unix(), 3600)
+	watermark, err := repo.DataThrough(context.Background(), UsageKeysFilter{OrganizationID: "org-a"}, now.Add(-time.Hour).Unix(), now.Add(time.Hour).Unix(), 3600)
 	require.NoError(t, err)
 	// The last complete bucket is the hour before the most recent log.
 	lastBucket := (now.Unix() / 3600) * 3600

@@ -157,6 +157,10 @@ type verdict struct {
 	rateLimitTPM              int64
 	maxConcurrentRequests     int64
 	maxOutputTokensPerRequest int64
+	// ownerUserID and projectID are the key's attribution, echoed on the
+	// usage event so metering needs no control-plane lookup.
+	ownerUserID string
+	projectID   string
 	// fetchedAtSeconds is the coarse clock when the answer arrived, for the
 	// local cache TTL.
 	fetchedAtSeconds int64
@@ -179,6 +183,8 @@ func parseVerdict(body []byte) (*verdict, bool) {
 		rateLimitTPM:              root.intOr("rate_limit_tpm"),
 		maxConcurrentRequests:     root.intOr("max_concurrent_requests"),
 		maxOutputTokensPerRequest: root.intOr("max_output_tokens_per_request"),
+		ownerUserID:               root.stringOr("owner_user_id"),
+		projectID:                 root.stringOr("project_id"),
 	}
 	return v, true
 }

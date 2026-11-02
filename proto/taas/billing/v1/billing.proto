@@ -488,6 +488,10 @@ message ListChargesRequest {
   string api_key_id = 5;
   // model_id filters the list to one model.
   string model_id = 6;
+  // owner_user_id filters the list to one API key owner.
+  string owner_user_id = 7;
+  // project_id filters the list to one project.
+  string project_id = 8;
 }
 
 message ListChargesResponse {
@@ -519,6 +523,11 @@ message ChargeRecordSummary {
   // priced reports whether a price applied (false means amount 0).
   bool priced = 17;
   int64 charged_at = 18;
+  // owner_user_id is the charged key's personal owner; empty when the
+  // key was organization-shared at charge time.
+  string owner_user_id = 19;
+  // project_id is the charged key's project; empty when unassigned.
+  string project_id = 20;
 }
 
 message CreateAccountRequest {
@@ -679,6 +688,12 @@ message Transaction {
 
 message CheckFundsRequest {
   string organization_id = 1;
+  // owner_user_id optionally narrows the check to one key owner's
+  // personal monthly spend limit.
+  string owner_user_id = 2;
+  // project_id optionally narrows the check to one project's monthly
+  // spend limit.
+  string project_id = 3;
 }
 
 message CheckFundsResponse {
@@ -697,6 +712,16 @@ message CheckFundsResponse {
   int64 monthly_spend_limit_cents = 8;
   // spent_this_cycle_cents is the total spend within the current cycle.
   int64 spent_this_cycle_cents = 9;
+  // effective_monthly_spend_limit_cents is the minimum of the non-zero
+  // organization, project and personal spend limits; 0 = unlimited.
+  int64 effective_monthly_spend_limit_cents = 10;
+  // owner_spent_this_cycle_cents is the owner's spend in the cycle.
+  int64 owner_spent_this_cycle_cents = 11;
+  // project_spent_this_cycle_cents is the project's spend in the cycle.
+  int64 project_spent_this_cycle_cents = 12;
+  // scoped_spent_this_cycle_cents is the amount the effective limit is
+  // compared against (the narrowest supplied scope).
+  int64 scoped_spent_this_cycle_cents = 13;
 }
 
 // ---- Payments, invoices & auto-recharge (feature-14) ----
@@ -1011,8 +1036,9 @@ message GetCostAnalyticsOverviewRequest {
   // since = until - 24h. A range > 92 days is rejected (10404).
   int64 since = 2;
   int64 until = 3;
-  // dimension is one of organization / model / api_key (default
-  // organization). An unsupported value returns 11301 (AD2).
+  // dimension is one of organization / model / api_key / user /
+  // project (default organization). An unsupported value returns 11301
+  // (AD2).
   string dimension = 4;
 }
 
@@ -1028,8 +1054,9 @@ message GetCostAnalyticsRequest {
   // binding) or X-Organization-Id (admin binding); the field exists for
   // gRPC-direct callers.
   string organization_id = 1;
-  // dimension is one of organization / model / api_key (admin) or
-  // model / api_key (user). An unsupported value returns 11301 (AD2).
+  // dimension is one of organization / model / api_key / user /
+  // project (admin) or model / api_key / user / project (user). An
+  // unsupported value returns 11301 (AD2).
   string dimension = 2;
   // value is the dimension value (e.g. a model_id or api_key_id).
   string value = 3;

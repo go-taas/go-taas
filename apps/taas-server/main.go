@@ -317,6 +317,14 @@ func main() {
 			orgGuard := tenancy.NewOrgGuard(gormDB)
 			roleGuard = tenancy.NewRoleGuardWithSessions(gormDB, authSvc)
 			authSvc.SetOrgGuard(orgGuard)
+			// API key ownership: a key belongs to a person inside an
+			// organization and optionally a project. The role guard
+			// decides who administers the organization, the project
+			// lookup validates and names the project, and the quota
+			// resolver combines the three limit tiers for the verdict.
+			authSvc.SetRoleGuard(roleGuard)
+			authSvc.SetProjectLookup(tenancySvc)
+			authSvc.SetQuotaResolver(tenancySvc)
 			inferSvc.SetOrgGuard(orgGuard)
 			meteringSvc.SetOrgGuard(orgGuard)
 			billingSvc.SetOrgGuard(orgGuard)
@@ -353,6 +361,9 @@ func main() {
 			modelSvc.SetSessionOrgResolver(authSvc)
 			inferSvc.SetSessionOrgResolver(authSvc)
 			meteringSvc.SetSessionOrgResolver(authSvc)
+			// Usage analytics show owner and project names, not ids.
+			meteringSvc.SetUserLabelResolver(authSvc)
+			meteringSvc.SetProjectLabelResolver(tenancySvc)
 			billingSvc.SetSessionOrgResolver(authSvc)
 			// Feature #52 (AD10/AD13/AD15/AD16): the vGPU slicing-pool
 			// seams. The vgpu service resolves the session's active org
@@ -415,6 +426,9 @@ func main() {
 			// RPCs by the caller's role (AD6).
 			billingSvc.SetSessionUserResolver(authSvc)
 			billingSvc.SetRoleGuard(roleGuard)
+			// The funds check applies the project and personal monthly
+			// spend caps on top of the account cap.
+			billingSvc.SetSpendLimitResolver(tenancySvc)
 			// The per-request cost attributor reads billing's
 			// price_entries over the shared database (feature #9, AD3).
 			meteringSvc.SetCostAttributor(metering.NewCostAttributor(gormDB))

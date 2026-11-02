@@ -190,6 +190,10 @@ message ListVouchersRequest {
   string api_key_id = 5;
   // model_id filters the list to one model.
   string model_id = 6;
+  // owner_user_id filters the vouchers to one API key owner.
+  string owner_user_id = 7;
+  // project_id filters the vouchers to one project.
+  string project_id = 8;
 }
 
 message ListVouchersResponse {
@@ -218,6 +222,12 @@ message VoucherSummary {
   int64 estimated_cost_cents = 10;
   // priced reports whether a price entry applied to this request.
   bool priced = 11;
+  // owner_user_id is the key owner the request was attributed to;
+  // empty for an organization-shared key.
+  string owner_user_id = 12;
+  // project_id is the key's project at request time; empty when
+  // unassigned.
+  string project_id = 13;
 }
 
 message GetVoucherRequest {
@@ -237,8 +247,8 @@ message GetUsageSummaryRequest {
   // since = until - 24h. A range > 92 days is rejected.
   int64 since = 2;
   int64 until = 3;
-  // group_by selects the aggregation key: "api_key" (default) or
-  // "model".
+  // group_by selects the aggregation key: "api_key" (default),
+  // "model", "user" or "project".
   string group_by = 4;
 }
 
@@ -268,6 +278,10 @@ message ListUsageRecordsRequest {
   int64 until = 4;
   // api_key_id filters the records to one API key.
   string api_key_id = 5;
+  // owner_user_id filters the records to one API key owner.
+  string owner_user_id = 6;
+  // project_id filters the records to one project.
+  string project_id = 7;
 }
 
 message UsageRecordSummary {
@@ -282,6 +296,10 @@ message UsageRecordSummary {
   int64 reasoning_tokens = 9;
   int64 request_count = 10;
   int64 settled_at = 11;
+  // owner_user_id is the key owner the usage was attributed to.
+  string owner_user_id = 12;
+  // project_id is the key's project at settlement time.
+  string project_id = 13;
 }
 
 message ListUsageRecordsResponse {
@@ -400,6 +418,10 @@ message GetUsageKeysOverviewRequest {
   int64 until = 3;
   // model_id optionally filters the cards, keys, and series to one model.
   string model_id = 4;
+  // owner_user_id optionally filters to one API key owner.
+  string owner_user_id = 5;
+  // project_id optionally filters to one project.
+  string project_id = 6;
 }
 
 message GetUsageKeysOverviewResponse {
@@ -457,6 +479,14 @@ message UsageKeyRow {
   int64 p95_latency_ms = 9;
   // data_through is the key's last complete bucket (AD7).
   int64 data_through = 10;
+  // owner_user_id is the key's personal owner; empty when shared.
+  string owner_user_id = 11;
+  // owner_display_name is the owner's display name (else username).
+  string owner_display_name = 12;
+  // project_id is the key's project; empty when unassigned.
+  string project_id = 13;
+  // project_display_name is the project's display name.
+  string project_display_name = 14;
 }
 
 // UsageKeyTopRow is one key in the top-keys ranking (default 5 by cost).

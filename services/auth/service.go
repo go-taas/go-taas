@@ -67,6 +67,21 @@ type Service struct {
 	// fields read 0 = unlimited (the transitional seam convention).
 	orgQuotaReader tenancy.OrgQuotaReader
 
+	// quotaResolver resolves the three-level (organization, project,
+	// personal) effective limits that ride the verdict. When wired it
+	// supersedes orgQuotaReader; nil keeps the organization-only rule.
+	quotaResolver tenancy.QuotaResolver
+
+	// projectLookup resolves project facts for API key ownership
+	// validation and display. Nil until wired: project assignment is
+	// validated for shape only.
+	projectLookup ProjectLookup
+
+	// roleGuard resolves the caller's organization role for API key
+	// management. Nil until wired: the transitional organization
+	// boundary is the only gate.
+	roleGuard *tenancy.RoleGuard
+
 	// ssoRepo persists SSO providers, identity bindings, and users
 	// (feature #7). Wired lazily from the shared components.
 	ssoRepo *SSORepository
@@ -366,15 +381,46 @@ func (s *Service) ListAPIKeys(ctx context.Context, req *authv1.ListAPIKeysReques
 		return nil, err
 	}
 
+	access, err := s.resolveKeyAccess(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
 	offset, limit := normalizePagination(req.GetPage())
-	rows, total, err := repo.ListByOrganization(ctx, orgID, offset, limit, req.GetActiveOnly(), time.Now())
+	filter := APIKeyFilter{
+		OrganizationID: orgID,
+		ActiveOnly:     req.GetActiveOnly(),
+		ProjectID:      strings.TrimSpace(req.GetProjectId()),
+	}
+	switch scope := strings.TrimSpace(req.GetScope()); scope {
+	case "", "mine":
+		if access.hasSession {
+			owner := access.userID
+			filter.OwnerUserID = &owner
+		}
+	case "shared":
+		filter.SharedOnly = true
+	case "all":
+		if access.hasSession && !access.admin {
+			return nil, apierrors.New(apierrors.CodeForbidden)
+		}
+	default:
+		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: unknown scope %q", scope)
+	}
+	if requestedOwner := strings.TrimSpace(req.GetOwnerUserId()); requestedOwner != "" {
+		if access.hasSession && !access.admin && requestedOwner != access.userID {
+			return nil, apierrors.New(apierrors.CodeForbidden)
+		}
+		filter.OwnerUserID = &requestedOwner
+		filter.SharedOnly = false
+	}
+	rows, total, err := repo.ListByFilter(ctx, filter, offset, limit, time.Now())
 	if err != nil {
 		return nil, err
 	}
 
 	keys := make([]*authv1.APIKeySummary, 0, len(rows))
 	for _, row := range rows {
-		keys = append(keys, summarizeAPIKey(row))
+		keys = append(keys, s.summarizeAPIKeyWithLookup(ctx, row))
 	}
 	return &authv1.ListAPIKeysResponse{
 		Response: okResponse(),
@@ -424,6 +470,16 @@ func summarizeAPIKey(row *APIKey) *authv1.APIKeySummary {
 		RateLimitRpm: row.RateLimitRPM,
 		RateLimitTpm: row.RateLimitTPM,
 		Models:       decodeModelIDs(row.Models),
+		// Ownership is always present on the wire: the ids are the
+		// stable reference, the names are display sugar.
+		OrganizationId: row.OrganizationID,
+		Shared:         row.OwnerUserID == nil,
+	}
+	if row.OwnerUserID != nil {
+		summary.OwnerUserId = *row.OwnerUserID
+	}
+	if row.ProjectID != nil {
+		summary.ProjectId = *row.ProjectID
 	}
 	if row.ExpiresAt != nil {
 		summary.ExpiresAt = row.ExpiresAt.Unix()
@@ -508,6 +564,22 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 		return nil, err
 	}
 
+	// Ownership (organization + optional project + personal owner). A
+	// member's key is their own; an administrator may create a shared
+	// key or assign another member.
+	access, err := s.resolveKeyAccess(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	owner, err := s.resolveRequestedOwner(ctx, orgID, access, req.GetOwnerUserId(), req.GetShared())
+	if err != nil {
+		return nil, err
+	}
+	project, err := s.resolveRequestedProject(ctx, orgID, access, req.GetProjectId())
+	if err != nil {
+		return nil, err
+	}
+
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -534,6 +606,8 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 		Salt:           salt,
 		SaltedHash:     saltedHash,
 		OrganizationID: orgID,
+		OwnerUserID:    owner,
+		ProjectID:      project,
 		CreatedAt:      time.Now().UTC(),
 		ExpiresAt:      expiresAt,
 		Revoked:        false,
@@ -544,6 +618,16 @@ func (s *Service) CreateAPIKey(ctx context.Context, req *authv1.CreateAPIKeyRequ
 	if err := repo.Create(ctx, row); err != nil {
 		return nil, err
 	}
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    actorIDFor(access),
+		ActorType:      actorTypeFor(access),
+		Action:         "api_key.create",
+		ResourceType:   "api_key",
+		ResourceID:     row.ID,
+		Result:         "success",
+		Metadata:       ownershipMetadata(owner, project),
+	})
 
 	return &authv1.CreateAPIKeyResponse{
 		Response: okResponse(),
@@ -568,11 +652,15 @@ func (s *Service) RevokeAPIKey(ctx context.Context, req *authv1.RevokeAPIKeyRequ
 		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: key_id is required")
 	}
 
+	row, access, err := s.requireKeyManage(ctx, orgID, req.GetKeyId())
+	if err != nil {
+		return nil, err
+	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
 	}
-	lookupHash, err := repo.RevokeByIDAndOrganization(ctx, orgID, req.GetKeyId(), time.Now().UTC())
+	lookupHash, err := repo.RevokeByIDAndOrganization(ctx, orgID, row.ID, time.Now().UTC())
 	if err != nil {
 		return nil, err
 	}
@@ -592,8 +680,8 @@ func (s *Service) RevokeAPIKey(ctx context.Context, req *authv1.RevokeAPIKeyRequ
 	// Feature #15: record the successful revoke best-effort (AC1/AC3).
 	s.recordAudit(ctx, &audit.AuditEvent{
 		OrganizationID: orgID,
-		ActorUserID:    "system",
-		ActorType:      "system",
+		ActorUserID:    actorIDFor(access),
+		ActorType:      actorTypeFor(access),
 		Action:         "api_key.revoke",
 		ResourceType:   "api_key",
 		ResourceID:     req.GetKeyId(),
@@ -648,6 +736,9 @@ func (s *Service) UpdateAPIKey(ctx context.Context, req *authv1.UpdateAPIKeyRequ
 		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: rate limits must be non-negative")
 	}
 
+	if _, _, err := s.requireKeyManage(ctx, orgID, req.GetKeyId()); err != nil {
+		return nil, err
+	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
@@ -699,6 +790,9 @@ func (s *Service) UpdateAPIKeyScope(ctx context.Context, req *authv1.UpdateAPIKe
 	// checker is wired. Empty clears the scope.
 	models, err := s.validateKeyScope(ctx, req.GetModels())
 	if err != nil {
+		return nil, err
+	}
+	if _, _, err := s.requireKeyManage(ctx, orgID, req.GetKeyId()); err != nil {
 		return nil, err
 	}
 
@@ -832,21 +926,15 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 			RateLimitRPM:   row.RateLimitRPM,
 			RateLimitTPM:   row.RateLimitTPM,
 			Models:         decodeModelIDs(row.Models),
+			OwnerUserID:    derefString(row.OwnerUserID),
+			ProjectID:      derefString(row.ProjectID),
 		}
-		// Feature #51 (AD12): the org's hot-path quota caps ride the
-		// verdict. A quota-read error logs a warning and degrades to
-		// unlimited (fail-open) — an auth outage over a quota-display
-		// hiccup would stop all inference.
-		if s.orgQuotaReader != nil {
-			q, err := s.orgQuotaReader.OrgQuota(ctx, row.OrganizationID)
-			if err != nil {
-				logger.S().Warnw("auth: org quota read failed, degrading to unlimited",
-					"org", row.OrganizationID, "err", err)
-			} else {
-				verdict.MaxConcurrentRequests = q.MaxConcurrentRequests
-				verdict.MaxOutputTokensPerRequest = q.MaxOutputTokensPerRequest
-			}
-		}
+		// The effective hot-path caps (the minimum of the non-zero
+		// organization, project and personal limits) ride the verdict. A
+		// read error logs a warning and degrades to the organization-only
+		// rule (fail-open): an auth outage over a quota-display hiccup
+		// would stop all inference.
+		verdict.MaxConcurrentRequests, verdict.MaxOutputTokensPerRequest = s.effectiveHotPathCaps(ctx, row)
 		if err := cache.Set(ctx, digest, verdict, s.apiKeyCacheTTL()); err != nil {
 			// A cache write failure only costs performance, not security.
 			logger.S().Warnw("auth: cache verdict write failed", "key_id", row.ID, "err", err)
@@ -889,7 +977,43 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 		RateLimitTpm:              verdict.RateLimitTPM,
 		MaxConcurrentRequests:     verdict.MaxConcurrentRequests,
 		MaxOutputTokensPerRequest: verdict.MaxOutputTokensPerRequest,
+		OwnerUserId:               verdict.OwnerUserID,
+		ProjectId:                 verdict.ProjectID,
 	}, nil
+}
+
+// effectiveHotPathCaps resolves the two caps the data plane enforces
+// locally (in-flight requests and per-request output tokens). The
+// three-level resolver wins when wired; the organization-only reader is
+// the fallback; both degrade to unlimited on a read error.
+func (s *Service) effectiveHotPathCaps(ctx context.Context, row *APIKey) (int64, int64) {
+	if s.quotaResolver != nil {
+		q, err := s.quotaResolver.EffectiveQuota(ctx, row.OrganizationID,
+			derefString(row.ProjectID), derefString(row.OwnerUserID))
+		if err == nil {
+			return q.MaxConcurrentRequests, q.MaxOutputTokensPerRequest
+		}
+		logger.S().Warnw("auth: effective quota read failed, degrading to the organization rule",
+			"org", row.OrganizationID, "key", row.ID, "err", err)
+	}
+	if s.orgQuotaReader == nil {
+		return 0, 0
+	}
+	q, err := s.orgQuotaReader.OrgQuota(ctx, row.OrganizationID)
+	if err != nil {
+		logger.S().Warnw("auth: org quota read failed, degrading to unlimited",
+			"org", row.OrganizationID, "err", err)
+		return 0, 0
+	}
+	return q.MaxConcurrentRequests, q.MaxOutputTokensPerRequest
+}
+
+// derefString returns "" for a nil pointer and the value otherwise.
+func derefString(v *string) string {
+	if v == nil {
+		return ""
+	}
+	return *v
 }
 
 // okResponse builds the success envelope.
@@ -915,11 +1039,15 @@ func (s *Service) DeleteAPIKey(ctx context.Context, req *authv1.DeleteAPIKeyRequ
 		return nil, apierrors.Newf(apierrors.CodeAPIKeyInvalid, "auth: key_id is required")
 	}
 
+	row, access, err := s.requireKeyManage(ctx, orgID, req.GetKeyId())
+	if err != nil {
+		return nil, err
+	}
 	repo, err := s.repository()
 	if err != nil {
 		return nil, err
 	}
-	lookupHash, err := repo.DeleteByIDAndOrganization(ctx, orgID, req.GetKeyId())
+	lookupHash, err := repo.DeleteByIDAndOrganization(ctx, orgID, row.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -938,8 +1066,8 @@ func (s *Service) DeleteAPIKey(ctx context.Context, req *authv1.DeleteAPIKeyRequ
 
 	s.recordAudit(ctx, &audit.AuditEvent{
 		OrganizationID: orgID,
-		ActorUserID:    "system",
-		ActorType:      "system",
+		ActorUserID:    actorIDFor(access),
+		ActorType:      actorTypeFor(access),
 		Action:         "api_key.delete",
 		ResourceType:   "api_key",
 		ResourceID:     req.GetKeyId(),

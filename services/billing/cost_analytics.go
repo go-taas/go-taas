@@ -14,6 +14,8 @@ var costDimensions = map[string]bool{
 	"organization": true,
 	"model":        true,
 	"api_key":      true,
+	"user":         true,
+	"project":      true,
 }
 
 // GetCostAnalyticsOverview returns cost analytics: summary cards, a
@@ -177,6 +179,16 @@ func (s *Service) dimensionName(dimension, value string) string {
 	case "api_key":
 		var name string
 		if err := db.Table("api_keys").Select("name").Where("id = ?", value).Scan(&name).Error; err == nil && name != "" {
+			return name
+		}
+	case "project":
+		var name string
+		if err := db.Table("projects").Select("display_name").Where("id = ?", value).Scan(&name).Error; err == nil && name != "" {
+			return name
+		}
+	case "user":
+		var name string
+		if err := db.Table("users").Select("display_name").Where("id = ?", value).Scan(&name).Error; err == nil && name != "" {
 			return name
 		}
 	}

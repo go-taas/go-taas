@@ -34,7 +34,7 @@ func TestFakeVerdictCache(t *testing.T) {
 }
 
 func TestCacheKeyFormat(t *testing.T) {
-	assert.Equal(t, "taas:auth:apikey:"+KeyDigest("sk-x"), cacheKey(KeyDigest("sk-x")))
+	assert.Equal(t, "taas:auth:apikey:v2:"+KeyDigest("sk-x"), cacheKey(KeyDigest("sk-x")))
 }
 
 func TestRedisVerdictCacheNilClient(t *testing.T) {

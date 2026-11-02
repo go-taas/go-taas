@@ -80,6 +80,19 @@ type RoleGuard interface {
 // (feature-25 AD6): the fleet view is operator-scoped.
 const roleAdmin = "admin"
 
+// SpendLimitResolver resolves the project and personal monthly spend
+// caps consumed by CheckFunds. It is implemented by the tenancy
+// service; nil until wired, in which case only the account's own limit
+// applies.
+type SpendLimitResolver interface {
+	// ProjectMonthlySpendLimitCents returns the project cap (0 =
+	// unlimited).
+	ProjectMonthlySpendLimitCents(ctx context.Context, projectID string) (int64, error)
+	// UserMonthlySpendLimitCents returns the user cap inside the
+	// organization (0 = unlimited).
+	UserMonthlySpendLimitCents(ctx context.Context, orgID, userID string) (int64, error)
+}
+
 // Service implements the billing gRPC service.
 type Service struct {
 	billingv1.UnimplementedBillingServiceServer
@@ -107,6 +120,10 @@ type Service struct {
 	// sessionUserResolver resolves the caller's user id for the admin
 	// role check (feature #10). Nil until wired: no role check.
 	sessionUserResolver SessionUserResolver
+
+	// spendLimitResolver resolves the project and personal monthly spend
+	// caps. Nil until wired: only the account limit applies.
+	spendLimitResolver SpendLimitResolver
 
 	// roleGuard gates the admin billing-report RPCs by the caller's role
 	// in the resolved org context (feature-25 AD6). Nil until wired: no
@@ -154,6 +171,10 @@ func (s *Service) SetSessionOrgResolver(r SessionOrgResolver) { s.sessionOrgReso
 // SetSessionUserResolver injects the session-user resolver used by the
 // admin role check (feature #10).
 func (s *Service) SetSessionUserResolver(r SessionUserResolver) { s.sessionUserResolver = r }
+
+// SetSpendLimitResolver injects the project/personal spend-limit
+// resolver. Production and FVT wire it; nil keeps the account-only cap.
+func (s *Service) SetSpendLimitResolver(r SpendLimitResolver) { s.spendLimitResolver = r }
 
 // SetRoleGuard injects the org role guard that gates the admin
 // billing-report RPCs by the caller's role (feature-25 AD6).
@@ -653,6 +674,8 @@ func (s *Service) ListCharges(ctx context.Context, req *billingv1.ListChargesReq
 		OrganizationID: orgID,
 		APIKeyID:       strings.TrimSpace(req.GetApiKeyId()),
 		ModelID:        strings.TrimSpace(req.GetModelId()),
+		OwnerUserID:    strings.TrimSpace(req.GetOwnerUserId()),
+		ProjectID:      strings.TrimSpace(req.GetProjectId()),
 		Since:          since,
 		Until:          until,
 		Offset:         offset,
@@ -697,6 +720,8 @@ func summarizeCharge(c *ChargeRecord) *billingv1.ChargeRecordSummary {
 		TierIndex:        clampTierIndex(c.TierIndex),
 		Priced:           c.Priced,
 		ChargedAt:        c.ChargedAt.Unix(),
+		OwnerUserId:      derefBillingID(c.OwnerUserID),
+		ProjectId:        derefBillingID(c.ProjectID),
 	}
 }
 

@@ -26,7 +26,7 @@ package main
 
 import "strings"
 
-const verdictFieldCount = 9
+const verdictFieldCount = 11
 
 // encodeVerdict serializes a verdict for shared data.
 func encodeVerdict(v *verdict) []byte {
@@ -43,6 +43,8 @@ func encodeVerdict(v *verdict) []byte {
 		formatInt(v.fetchedAtSeconds),
 		sanitizeField(v.organizationID),
 		sanitizeField(v.keyID),
+		sanitizeField(v.ownerUserID),
+		sanitizeField(v.projectID),
 	}
 	return []byte(strings.Join(parts, "|"))
 }
@@ -57,7 +59,7 @@ func decodeVerdict(raw []byte) (*verdict, bool) {
 	}
 	nums := make([]int64, verdictFieldCount)
 	for i, part := range parts {
-		if i == 0 || i == 7 || i == 8 {
+		if i == 0 || i == 7 || i == 8 || i == 9 || i == 10 {
 			continue
 		}
 		n, ok := parseFloat(part)
@@ -78,6 +80,8 @@ func decodeVerdict(raw []byte) (*verdict, bool) {
 		maxConcurrentRequests:     nums[4],
 		maxOutputTokensPerRequest: nums[5],
 		fetchedAtSeconds:          nums[6],
+		ownerUserID:               parts[9],
+		projectID:                 parts[10],
 		organizationID:            parts[7],
 		keyID:                     parts[8],
 	}, true

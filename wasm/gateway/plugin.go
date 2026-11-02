@@ -465,6 +465,8 @@ func (h *httpContext) emitUsage() {
 		requestID:      h.requestID,
 		organizationID: h.verdict.organizationID,
 		keyID:          h.verdict.keyID,
+		ownerUserID:    h.verdict.ownerUserID,
+		projectID:      h.verdict.projectID,
 		model:          h.model,
 		usage:          usage,
 		status:         "success",

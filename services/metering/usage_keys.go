@@ -53,11 +53,17 @@ func (s *Service) GetUsageKeysOverview(ctx context.Context, req *meteringv1.GetU
 		return nil, err
 	}
 	bucketSize := bucketSizeForRange(since, until)
-	buckets, keys, err := repo.AggregateUsageKeys(ctx, orgFilter, modelFilter, since, until, bucketSize)
+	filter := UsageKeysFilter{
+		OrganizationID: orgFilter,
+		ModelID:        modelFilter,
+		OwnerUserID:    strings.TrimSpace(req.GetOwnerUserId()),
+		ProjectID:      strings.TrimSpace(req.GetProjectId()),
+	}
+	buckets, keys, err := repo.AggregateUsageKeys(ctx, filter, since, until, bucketSize)
 	if err != nil {
 		return nil, err
 	}
-	watermark, err := repo.DataThrough(ctx, orgFilter, modelFilter, since, until, bucketSize)
+	watermark, err := repo.DataThrough(ctx, filter, since, until, bucketSize)
 	if err != nil {
 		return nil, err
 	}
@@ -71,9 +77,13 @@ func (s *Service) GetUsageKeysOverview(ctx context.Context, req *meteringv1.GetU
 	for _, k := range keys {
 		name, _ := repo.APIKeyName(ctx, k.APIKeyID)
 		keyRows = append(keyRows, &meteringv1.UsageKeyRow{
-			ApiKeyId:       k.APIKeyID,
-			ApiKeyName:     name,
-			OrganizationId: k.OrganizationID,
+			ApiKeyId:           k.APIKeyID,
+			ApiKeyName:         name,
+			OrganizationId:     k.OrganizationID,
+			OwnerUserId:        k.OwnerUserID,
+			OwnerDisplayName:   s.userLabel(ctx, k.OwnerUserID),
+			ProjectId:          k.ProjectID,
+			ProjectDisplayName: s.projectLabel(ctx, k.ProjectID),
 			RequestCount:   k.RequestCount,
 			ErrorCount:     k.ErrorCount,
 			TotalTokens:    k.TotalTokens,
@@ -137,7 +147,7 @@ func (s *Service) GetUsageKeys(ctx context.Context, req *meteringv1.GetUsageKeys
 	if err != nil {
 		return nil, err
 	}
-	watermark, err := repo.DataThrough(ctx, orgFilter, "", since, until, bucketSize)
+	watermark, err := repo.DataThrough(ctx, UsageKeysFilter{OrganizationID: orgFilter}, since, until, bucketSize)
 	if err != nil {
 		return nil, err
 	}

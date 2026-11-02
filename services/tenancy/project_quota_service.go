@@ -64,6 +64,12 @@ func (s *Service) UpdateProjectQuota(ctx context.Context, req *tenancyv1.UpdateP
 	if v, ok := optionalQuota(req.MaxOutputTokensPerRequest); ok {
 		p.MaxOutputTokensPerRequest = v
 	}
+	if v := req.MonthlySpendLimitCents; v != nil {
+		if err := ValidateQuota("monthly_spend_limit_cents", *v); err != nil {
+			return nil, err
+		}
+		p.MonthlySpendLimitCents = *v
+	}
 	actor, err := s.sessionUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -111,6 +117,7 @@ func summarizeProjectQuota(p *Project, updatedByName string) *tenancyv1.ProjectQ
 		MaxInferenceServices:      p.MaxInferenceServices,
 		MaxBatchJobsPerDay:        p.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: p.MaxOutputTokensPerRequest,
+		MonthlySpendLimitCents:    p.MonthlySpendLimitCents,
 		UpdatedBy:                 p.QuotaUpdatedBy,
 		UpdatedByDisplayName:      updatedByName,
 	}

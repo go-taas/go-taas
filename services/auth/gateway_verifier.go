@@ -77,6 +77,8 @@ func (s *Service) VerifyGatewayKey(ctx context.Context, req *server.GatewayVerif
 		RateLimitTPM:              verdict.GetRateLimitTpm(),
 		MaxConcurrentRequests:     verdict.GetMaxConcurrentRequests(),
 		MaxOutputTokensPerRequest: verdict.GetMaxOutputTokensPerRequest(),
+		OwnerUserID:               verdict.GetOwnerUserId(),
+		ProjectID:                 verdict.GetProjectId(),
 	}, nil
 }
 

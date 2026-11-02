@@ -26,9 +26,19 @@ type APIKey struct {
 	Salt string `gorm:"size:32;not null"`
 	// SaltedHash is the base64 of Argon2id(key_digest, salt).
 	SaltedHash string `gorm:"size:128;not null"`
-	// OrganizationID is the owning organization (transitional plain
-	// string; foreign key deferred to features #6/#7).
+	// OrganizationID is the owning organization. It stays required: it
+	// is the tenant, model-authorization and billing boundary even when
+	// the key has a personal owner.
 	OrganizationID string `gorm:"size:64;not null;index:idx_api_keys_org_created,priority:1"`
+	// OwnerUserID is the key's personal owner. NULL means the key is
+	// organization-shared and has no personal quota or usage
+	// attribution — the pre-ownership behavior, preserved for keys
+	// created before the column existed.
+	OwnerUserID *string `gorm:"type:uuid;index:idx_api_keys_org_owner_created,priority:2"`
+	// ProjectID optionally places the key in a project of the same
+	// organization. NULL means the key belongs to the organization
+	// directly.
+	ProjectID *string `gorm:"size:64;index:idx_api_keys_org_project_created,priority:2"`
 	// CreatedAt is the creation time (UTC).
 	CreatedAt time.Time `gorm:"index:idx_api_keys_org_created,priority:2,sort:DESC"`
 	// ExpiresAt is nil when the key never expires.

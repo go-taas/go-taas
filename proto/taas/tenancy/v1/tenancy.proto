@@ -274,10 +274,33 @@ service TenancyService {
   }
 
   // GetMyQuota returns the caller's own organization quota with live
-  // usage (user surface; the org is resolved from the session, never
-  // from a client-supplied id).
+  // usage, the caller's personal quota, and the effective quota that the
+  // data plane enforces (user surface; the org is resolved from the
+  // session, never from a client-supplied id).
   rpc GetMyQuota(GetMyQuotaRequest) returns (GetMyQuotaResponse) {
     option (google.api.http) = {get: "/api/v1/quotas"};
+  }
+
+  // ListUserQuotas returns the organization's per-user quotas with the
+  // roster labels (admin surface; organization owner/admin or platform
+  // administrator).
+  rpc ListUserQuotas(ListUserQuotasRequest) returns (ListUserQuotasResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/user-quotas"};
+  }
+
+  // GetUserQuota returns one user's quota inside the organization.
+  rpc GetUserQuota(GetUserQuotaRequest) returns (GetUserQuotaResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/tenancy/user-quotas/{user_id}"};
+  }
+
+  // UpdateUserQuota sets any subset of the user's limits inside the
+  // organization. Out-of-range values return 13305; an explicit 0 means
+  // unlimited.
+  rpc UpdateUserQuota(UpdateUserQuotaRequest) returns (UpdateUserQuotaResponse) {
+    option (google.api.http) = {
+      patch: "/api/v1/admin/tenancy/user-quotas/{user_id}"
+      body: "*"
+    };
   }
 
   // GetMyOrganizations returns the caller's own organizations and roles
@@ -864,6 +887,92 @@ message GetMyQuotaResponse {
   // request_increase_email is the configured operator mailbox for the
   // Request-increase mailto (AD18); empty hides the button.
   string request_increase_email = 4;
+  // personal_quota is the caller's own quota inside the active
+  // organization. An empty organization_id means no personal row exists
+  // (unlimited).
+  UserQuota personal_quota = 5;
+  // effective_quota is the value the data plane enforces: the minimum of
+  // the non-zero organization, project and personal limits. 0 = unlimited.
+  EffectiveQuota effective_quota = 6;
+}
+
+// EffectiveQuota is the resolved limit the data plane enforces after
+// combining the organization, project and personal dimensions. Every
+// field is 0 when unlimited.
+message EffectiveQuota {
+  int64 max_concurrent_requests = 1;
+  int64 max_inference_services = 2;
+  int64 max_batch_jobs_per_day = 3;
+  int64 max_output_tokens_per_request = 4;
+  int64 monthly_spend_limit_cents = 5;
+}
+
+// UserQuota is one user's limits inside an organization. Every limit is
+// per dimension with 0 = unlimited. The personal limits combine with the
+// organization/project limits by taking the minimum of the non-zero
+// values.
+message UserQuota {
+  string organization_id = 1;
+  string user_id = 2;
+  // display_name is the member's display name (else username).
+  string display_name = 3;
+  // role is the caller's organization role (owner/admin/member/viewer);
+  // empty when the user is not an organization member.
+  string role = 4;
+  int64 max_concurrent_requests = 5;
+  int64 max_inference_services = 6;
+  int64 max_batch_jobs_per_day = 7;
+  int64 max_output_tokens_per_request = 8;
+  // monthly_spend_limit_cents is the personal monthly spend cap over the
+  // member's API keys; 0 = unlimited.
+  int64 monthly_spend_limit_cents = 9;
+  int64 updated_at = 10;
+  string updated_by = 11;
+  string updated_by_display_name = 12;
+}
+
+message ListUserQuotasRequest {
+  taas.common.v1.PageRequest page = 1;
+  // organization_id selects the organization; empty uses the caller's
+  // active organization.
+  string organization_id = 2;
+  // name filters by user id / display name substring, case-insensitive.
+  string name = 3;
+}
+
+message ListUserQuotasResponse {
+  taas.common.v1.Response response = 1;
+  repeated UserQuota quotas = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetUserQuotaRequest {
+  string user_id = 1;
+  // organization_id selects the organization; empty uses the caller's
+  // active organization.
+  string organization_id = 2;
+}
+
+message GetUserQuotaResponse {
+  taas.common.v1.Response response = 1;
+  UserQuota quota = 2;
+}
+
+message UpdateUserQuotaRequest {
+  string user_id = 1;
+  string organization_id = 2;
+  // optional tracks presence: absent = unchanged, explicit 0 = unlimited.
+  optional int64 max_concurrent_requests = 3;
+  optional int64 max_inference_services = 4;
+  optional int64 max_batch_jobs_per_day = 5;
+  optional int64 max_output_tokens_per_request = 6;
+  optional int64 monthly_spend_limit_cents = 7;
+}
+
+message UpdateUserQuotaResponse {
+  taas.common.v1.Response response = 1;
+  UserQuota quota = 2;
+  EffectiveQuota effective_quota = 3;
 }
 
 // MyOrganization describes one of the caller's organizations and role.
@@ -1034,6 +1143,9 @@ message ProjectQuota {
   string updated_by = 9;
   // updated_by_display_name is the editor's display name (else username).
   string updated_by_display_name = 10;
+  // monthly_spend_limit_cents is the project's monthly spend cap;
+  // 0 = unlimited.
+  int64 monthly_spend_limit_cents = 11;
 }
 
 message GetProjectQuotaRequest {
@@ -1051,6 +1163,7 @@ message UpdateProjectQuotaRequest {
   optional int64 max_inference_services = 3;
   optional int64 max_batch_jobs_per_day = 4;
   optional int64 max_output_tokens_per_request = 5;
+  optional int64 monthly_spend_limit_cents = 6;
 }
 
 message UpdateProjectQuotaResponse {

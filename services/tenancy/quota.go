@@ -31,6 +31,14 @@ type OrgQuota struct {
 	MaxInferenceServices      int64
 	MaxBatchJobsPerDay        int64
 	MaxOutputTokensPerRequest int64
+	// MonthlySpendLimitCents is the organization account's cross-mode
+	// monthly spend cap; 0 = unlimited.
+	MonthlySpendLimitCents int64
+}
+
+// Limits projects the org quota onto the three-tier tuple.
+func (q OrgQuota) Limits() QuotaLimits {
+	return QuotaLimits(q)
 }
 
 // OrgQuotaReader is the read-only seam through which the auth, infer
@@ -67,6 +75,10 @@ func ValidateQuota(dimension string, value int64) error {
 	case "max_output_tokens_per_request":
 		if value < 0 || (value != 0 && (value < MaxOutputTokensPerRequestMin || value > MaxOutputTokensPerRequestMax)) {
 			return apierrors.Newf(apierrors.CodeQuotaInvalid, "max_output_tokens_per_request must be 0 (unlimited) or 64-32768")
+		}
+	case "monthly_spend_limit_cents":
+		if value < 0 {
+			return apierrors.Newf(apierrors.CodeQuotaInvalid, "monthly_spend_limit_cents must be 0 (unlimited) or positive")
 		}
 	default:
 		return apierrors.Newf(apierrors.CodeQuotaInvalid, "unknown quota dimension")

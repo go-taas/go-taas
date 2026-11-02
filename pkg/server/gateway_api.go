@@ -121,6 +121,8 @@ type GatewayVerifyResponse struct {
 	RateLimitTPM              int64  `json:"rate_limit_tpm,omitempty"`
 	MaxConcurrentRequests     int64  `json:"max_concurrent_requests,omitempty"`
 	MaxOutputTokensPerRequest int64  `json:"max_output_tokens_per_request,omitempty"`
+	OwnerUserID               string `json:"owner_user_id,omitempty"`
+	ProjectID                 string `json:"project_id,omitempty"`
 }
 
 // GatewayUsageRequest is one inference request's token usage, emitted by
@@ -139,6 +141,11 @@ type GatewayUsageRequest struct {
 	GenerationMs   int64             `json:"generation_ms"`
 	Status         string            `json:"status"`
 	Error          string            `json:"error"`
+	// OwnerUserID and ProjectID are the key's ownership at request time,
+	// echoed by the gateway so metering can attribute the usage without
+	// a control-plane lookup.
+	OwnerUserID string `json:"owner_user_id"`
+	ProjectID   string `json:"project_id"`
 }
 
 // GatewayTokenUsage is the four-class token breakdown the metering ledger

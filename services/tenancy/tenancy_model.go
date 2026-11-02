@@ -68,8 +68,11 @@ type Project struct {
 	MaxInferenceServices      int64     `gorm:"not null;default:0"`
 	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
 	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
-	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`
-	QuotaUpdatedAt            time.Time `gorm:"default:null"`
+	// MonthlySpendLimitCents caps the project's monthly spend over its
+	// API keys; 0 = unlimited.
+	MonthlySpendLimitCents int64     `gorm:"not null;default:0"`
+	QuotaUpdatedBy         string    `gorm:"size:64;not null;default:''"`
+	QuotaUpdatedAt         time.Time `gorm:"default:null"`
 }
 
 // TableName implements the GORM Tabler interface.

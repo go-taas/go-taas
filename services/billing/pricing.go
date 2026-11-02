@@ -78,6 +78,8 @@ func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *Usag
 		ID:                uuid.NewString(),
 		OrganizationID:    group.OrganizationID,
 		APIKeyID:          group.APIKeyID,
+		OwnerUserID:       optionalBillingID(group.OwnerUserID),
+		ProjectID:         optionalBillingID(group.ProjectID),
 		ModelID:           group.ModelID,
 		AcceleratorType:   group.AcceleratorType,
 		PeriodStart:       group.PeriodStart,

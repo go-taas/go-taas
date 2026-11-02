@@ -196,7 +196,7 @@ func TestRepositoryUsageSummary(t *testing.T) {
 	_, err := repo.SettleBucket(ctx, HourBucket{APIKeyID: "key-1", OrganizationID: "org-1", PeriodStart: hourA.Unix()}, now)
 	require.NoError(t, err)
 
-	rows, err := repo.UsageSummary(ctx, "org-1", now.Add(-6*time.Hour).Unix(), now.Unix(), false)
+	rows, err := repo.UsageSummary(ctx, "org-1", now.Add(-6*time.Hour).Unix(), now.Unix(), "api_key")
 	require.NoError(t, err)
 	require.Len(t, rows, 2)
 
@@ -220,7 +220,7 @@ func TestRepositoryUsageSummary(t *testing.T) {
 	assert.Equal(t, int64(1), k2.PendingHours)
 
 	// Group by model: model-a spans both keys.
-	mrows, err := repo.UsageSummary(ctx, "org-1", now.Add(-6*time.Hour).Unix(), now.Unix(), true)
+	mrows, err := repo.UsageSummary(ctx, "org-1", now.Add(-6*time.Hour).Unix(), now.Unix(), "model")
 	require.NoError(t, err)
 	byModel := map[string]*UsageSummaryRow{}
 	for _, row := range mrows {

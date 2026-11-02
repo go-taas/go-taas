@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/webhook"
 )
@@ -388,6 +389,54 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 		return &billingv1.CheckFundsResponse{Response: okResponse(), Allowed: true, Mode: ""}, nil
 	}
 	allowed, reason := fundsAllowed(account)
+	// Three-level spend gate: the project and personal caps tighten the
+	// account cap (the minimum of the non-zero values). A resolver read
+	// failure degrades that tier to unlimited and never blocks traffic:
+	// the account rule above already ran.
+	effectiveLimit := account.MonthlySpendLimitCents
+	scopedSpent := account.SpentThisCycleCents
+	ownerSpent := int64(0)
+	projectSpent := int64(0)
+	if s.spendLimitResolver != nil {
+		if ownerID := strings.TrimSpace(req.GetOwnerUserId()); ownerID != "" {
+			limit, err := s.spendLimitResolver.UserMonthlySpendLimitCents(ctx, orgID, ownerID)
+			if err != nil {
+				logger.S().Warnw("billing: user spend limit read failed, degrading to unlimited",
+					"org", orgID, "owner", ownerID, "err", err)
+			} else {
+				effectiveLimit = minNonZeroLimit(effectiveLimit, limit)
+				ownerSpent, err = repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, ownerID, "")
+				if err != nil {
+					logger.S().Warnw("billing: user spend read failed, degrading to unlimited",
+						"org", orgID, "owner", ownerID, "err", err)
+					ownerSpent = 0
+				} else if limit > 0 && ownerSpent >= limit {
+					allowed, reason = false, "insufficient_funds"
+				}
+				scopedSpent = ownerSpent
+			}
+		}
+		if projectID := strings.TrimSpace(req.GetProjectId()); projectID != "" {
+			limit, err := s.spendLimitResolver.ProjectMonthlySpendLimitCents(ctx, projectID)
+			if err != nil {
+				logger.S().Warnw("billing: project spend limit read failed, degrading to unlimited",
+					"org", orgID, "project", projectID, "err", err)
+			} else {
+				effectiveLimit = minNonZeroLimit(effectiveLimit, limit)
+				projectSpent, err = repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, "", projectID)
+				if err != nil {
+					logger.S().Warnw("billing: project spend read failed, degrading to unlimited",
+						"org", orgID, "project", projectID, "err", err)
+					projectSpent = 0
+				} else if limit > 0 && projectSpent >= limit {
+					allowed, reason = false, "insufficient_funds"
+				}
+				if strings.TrimSpace(req.GetOwnerUserId()) == "" {
+					scopedSpent = projectSpent
+				}
+			}
+		}
+	}
 	// Feature #26 (AD9): publish the billing.spend_limit_breached
 	// notification event best-effort when the cross-mode spend limit is
 	// reached. A publish failure is logged and never fails the check.
@@ -410,7 +459,27 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 		UsedThisCycleCents:     account.UsedThisCycleCents,
 		MonthlySpendLimitCents: account.MonthlySpendLimitCents,
 		SpentThisCycleCents:    account.SpentThisCycleCents,
+
+		EffectiveMonthlySpendLimitCents: effectiveLimit,
+		OwnerSpentThisCycleCents:        ownerSpent,
+		ProjectSpentThisCycleCents:      projectSpent,
+		ScopedSpentThisCycleCents:       scopedSpent,
 	}, nil
+}
+
+// minNonZeroLimit returns the smaller of two limits, treating 0 as
+// unlimited rather than as the smallest value.
+func minNonZeroLimit(a, b int64) int64 {
+	switch {
+	case a == 0:
+		return b
+	case b == 0:
+		return a
+	case a < b:
+		return a
+	default:
+		return b
+	}
 }
 
 // fundsAllowed evaluates the gating truth table (AC6/AC7): prepaid

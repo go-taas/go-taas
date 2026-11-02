@@ -19,6 +19,13 @@ type Voucher struct {
 	OrganizationID string `gorm:"size:64;not null;index:idx_vouchers_org_completed,priority:1"`
 	// APIKeyID is the API Key that made the request.
 	APIKeyID string `gorm:"size:64;not null;index:idx_vouchers_key_completed,priority:1"`
+	// OwnerUserID is the key's personal owner at request time; NULL for
+	// an organization-shared key. Snapshot, not a join: the attribution
+	// must survive a key transfer or deletion.
+	OwnerUserID *string `gorm:"type:uuid;index:idx_vouchers_org_owner_completed,priority:2"`
+	// ProjectID is the key's project at request time; NULL when the key
+	// is not assigned to one.
+	ProjectID *string `gorm:"size:64;index:idx_vouchers_org_project_completed,priority:2"`
 	// ModelID is the model that served the request.
 	ModelID string `gorm:"size:128;not null"`
 	// ServiceID optionally names the inference service that served the
@@ -54,6 +61,10 @@ type UsageRecord struct {
 	OrganizationID string `gorm:"size:64;not null;index"`
 	// APIKeyID is the settled API Key.
 	APIKeyID string `gorm:"size:64;not null;uniqueIndex:idx_usage_records_key_period,priority:1"`
+	// OwnerUserID is the key's personal owner at settlement time.
+	OwnerUserID *string `gorm:"type:uuid;index:idx_usage_records_org_owner,priority:2"`
+	// ProjectID is the key's project at settlement time.
+	ProjectID *string `gorm:"size:64;index:idx_usage_records_org_project,priority:2"`
 	// PeriodStart is the hour start, unix seconds (UTC).
 	PeriodStart int64 `gorm:"not null;uniqueIndex:idx_usage_records_key_period,priority:2"`
 	// PeriodEnd is PeriodStart + 3600.
@@ -94,6 +105,10 @@ type RequestLog struct {
 	OrganizationID string `gorm:"size:64;not null;index:idx_request_logs_org_created,priority:1"`
 	// APIKeyID is the API Key that made the request.
 	APIKeyID string `gorm:"size:64;not null;index:idx_request_logs_key_created,priority:1"`
+	// OwnerUserID is the key's personal owner at request time.
+	OwnerUserID *string `gorm:"type:uuid;index:idx_request_logs_org_owner,priority:2"`
+	// ProjectID is the key's project at request time.
+	ProjectID *string `gorm:"size:64;index:idx_request_logs_org_project,priority:2"`
 	// ModelID is the model that served the request.
 	ModelID string `gorm:"size:128;not null"`
 	// ServiceID optionally names the inference service.
@@ -125,6 +140,10 @@ type HourBucket struct {
 	APIKeyID       string
 	OrganizationID string
 	PeriodStart    int64
+	// OwnerUserID and ProjectID are the key's attribution snapshot for
+	// the bucket's first observed voucher.
+	OwnerUserID *string
+	ProjectID   *string
 }
 
 // UsageSummaryRow is one aggregated row of the usage summary query:
@@ -146,6 +165,8 @@ type VoucherFilter struct {
 	OrganizationID string
 	APIKeyID       string
 	ModelID        string
+	OwnerUserID    string
+	ProjectID      string
 	Since          int64
 	Until          int64
 	Offset         int
@@ -156,8 +177,20 @@ type VoucherFilter struct {
 type UsageRecordFilter struct {
 	OrganizationID string
 	APIKeyID       string
+	OwnerUserID    string
+	ProjectID      string
 	Since          int64
 	Until          int64
 	Offset         int
 	Limit          int
+}
+
+// optionalID converts an empty ownership id to a NULL column value, so
+// a shared key and an unassigned project stay distinguishable from an
+// empty string.
+func optionalID(v string) *string {
+	if v == "" {
+		return nil
+	}
+	return &v
 }

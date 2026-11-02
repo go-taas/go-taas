@@ -31,7 +31,7 @@ func (r *CostAnalyticsRepository) DB(ctx context.Context) *gorm.DB {
 // AggregateCost aggregates charge_records for the cost view: the
 // per-bucket series rows and the per-dimension-value rows, within the
 // optional org filter, the dimension, and the range. dimension is one of
-// organization / model / api_key; value filters to one dimension value
+// organization / model / api_key / user / project; value filters to one dimension value
 // (empty for the overview).
 func (r *CostAnalyticsRepository) AggregateCost(ctx context.Context, orgFilter, dimension, value string, since, until, bucketSize int64) ([]CostBucketRow, []CostBreakdownAggRow, error) {
 	rows, err := r.fetchCharges(ctx, orgFilter, dimension, value, since, until)
@@ -71,6 +71,8 @@ type costChargeRow struct {
 	OrganizationID string
 	APIKeyID       string
 	ModelID        string
+	OwnerUserID    string
+	ProjectID      string
 	PeriodStart    int64
 	PromptTokens   int64
 	CompletionTokens int64
@@ -101,6 +103,14 @@ func (r *CostAnalyticsRepository) fetchCharges(ctx context.Context, orgFilter, d
 	case "api_key":
 		if value != "" {
 			base = base.Where("api_key_id = ?", value)
+		}
+	case "user":
+		if value != "" {
+			base = base.Where("owner_user_id = ?", value)
+		}
+	case "project":
+		if value != "" {
+			base = base.Where("project_id = ?", value)
 		}
 	}
 	var rows []costChargeRow
@@ -169,6 +179,10 @@ func dimensionValue(row costChargeRow, dimension string) string {
 		return row.ModelID
 	case "api_key":
 		return row.APIKeyID
+	case "user":
+		return row.OwnerUserID
+	case "project":
+		return row.ProjectID
 	}
 	return ""
 }

@@ -24,6 +24,8 @@ type meteringEvent struct {
 	RequestID       string     `json:"request_id"`
 	OrganizationID  string     `json:"organization_id"`
 	APIKeyID        string     `json:"api_key_id"`
+	OwnerUserID     string     `json:"owner_user_id"`
+	ProjectID       string     `json:"project_id"`
 	ModelID         string     `json:"model_id"`
 	ServiceID       string     `json:"service_id"`
 	AcceleratorType string     `json:"accelerator_type"`
@@ -151,6 +153,8 @@ func (s *Service) handleMeteringEvent(ctx context.Context, ev *meteringEvent) (s
 		RequestID:        ev.RequestID,
 		OrganizationID:   ev.OrganizationID,
 		APIKeyID:         ev.APIKeyID,
+		OwnerUserID:      optionalBillingID(ev.OwnerUserID),
+		ProjectID:        optionalBillingID(ev.ProjectID),
 		ModelID:          ev.ModelID,
 		AcceleratorType:  cardType,
 		PromptTokens:     ev.Usage.PromptTokens,
