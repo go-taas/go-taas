@@ -37,6 +37,7 @@ type chargeRecordRow struct {
 	ReasoningTokens  int64
 	RequestCount     int64
 	Amount           float64
+	Currency         string
 	Priced           bool
 }
 
@@ -59,6 +60,11 @@ type DashboardAggregateRow struct {
 	// (0/1), portable across sqlite and Postgres; converted to Priced.
 	PricedRaw int
 	Priced    bool
+	// Currency is the currency the charges were priced in. It is read from
+	// the charge records rather than assumed, because a price may be entered
+	// in a currency other than the platform default and the amounts below are
+	// in the price's currency.
+	Currency string
 }
 
 // DashboardRepository aggregates charge records into the usage
@@ -172,6 +178,7 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 			col+" AS group_key, "+
 			"ROUND(SUM(amount) * 100) AS cost_cents, "+
 			"CAST(ROUND(SUM(amount) * 1000000) AS INTEGER) AS cost_micros, "+
+			"COALESCE(MAX(currency), '') AS currency, "+
 			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
 			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+
 			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, "+
@@ -196,6 +203,7 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 		}
 		entry.CostCents = row.CostCents
 		entry.CostMicros = row.CostMicros
+		entry.Currency = row.Currency
 		entry.Priced = row.PricedRaw != 0
 		// The raw lines are the source of truth for the token and request
 		// counts; the charge record only fills a bucket that has no raw line

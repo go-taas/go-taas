@@ -7,6 +7,7 @@ import (
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	meteringv1 "github.com/go-taas/go-taas/proto/taas/metering/v1"
 
+	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
@@ -69,9 +70,11 @@ func (s *Service) GetUsageDashboard(ctx context.Context, req *meteringv1.GetUsag
 		})
 	}
 
-	// Summary cards derived from the same rows.
+	// Summary cards derived from the same rows. The currency comes from the
+	// charges themselves: a price can be entered in any supported currency,
+	// and reporting the platform default would label CNY amounts as USD.
 	cards := &meteringv1.DashboardCard{
-		Currency:    "USD",
+		Currency:    dashboardCurrency(rows),
 		DataThrough: watermark,
 	}
 	for _, row := range rows {
@@ -223,4 +226,19 @@ func (s *Service) dashboardRepo() (*DashboardRepository, error) {
 		return nil, err
 	}
 	return NewDashboardRepository(db), nil
+}
+
+// dashboardCurrency reports the currency the aggregated charges were priced
+// in, falling back to the platform's configured billing currency and then to
+// USD for an installation that has neither.
+func dashboardCurrency(rows []DashboardAggregateRow) string {
+	for _, row := range rows {
+		if row.Currency != "" && row.CostMicros != 0 {
+			return row.Currency
+		}
+	}
+	if cfg := config.GetConfig(); cfg != nil && cfg.Billing.Currency != "" {
+		return cfg.Billing.Currency
+	}
+	return "USD"
 }
