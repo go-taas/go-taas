@@ -628,8 +628,20 @@ func (s *Service) GetBalance(ctx context.Context, _ *billingv1.GetBalanceRequest
 	if err != nil {
 		return nil, err
 	}
-	if account == nil {
+	// An empty scope means there is no tenant to report on at all — that stays an
+	// error so an unfunded lookup cannot be confused with a missing scope.
+	if orgID == "" {
 		return nil, apierrors.New(apierrors.CodeAccountNotFound)
+	}
+	// A tenant is onboarded before it is funded, so "no account yet" is a normal
+	// state of a real organization rather than an error: the console renders the
+	// unfunded card from has_account=false (feature-18 AD3).
+	if account == nil {
+		return &billingv1.GetBalanceResponse{
+			Response:   okResponse(),
+			Currency:   config.GetConfig().Billing.Currency,
+			HasAccount: false,
+		}, nil
 	}
 	return &billingv1.GetBalanceResponse{
 		Response:            okResponse(),

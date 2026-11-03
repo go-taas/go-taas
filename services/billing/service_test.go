@@ -349,8 +349,8 @@ func TestListBillsSummaries(t *testing.T) {
 	assert.Equal(t, int64(1), bill.GetUnpricedCount())
 }
 
-// GetBalance requires the org header; an org without an account is
-// 10503 (feature #8).
+// GetBalance requires a tenant scope; an organization without an account
+// reports has_account=false (feature #18).
 func TestGetBalanceStub(t *testing.T) {
 	svc := newBillingTestService(t)
 	_, err := svc.GetBalance(context.Background(), &billingv1.GetBalanceRequest{})
@@ -359,11 +359,10 @@ func TestGetBalanceStub(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeUnauthorized, ae.Code)
 
-	_, err = svc.GetBalance(withOrg("org-none"), &billingv1.GetBalanceRequest{})
-	require.Error(t, err)
-	ae, ok = apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeAccountNotFound, ae.Code)
+	resp, err := svc.GetBalance(withOrg("org-none"), &billingv1.GetBalanceRequest{})
+	require.NoError(t, err)
+	assert.False(t, resp.GetHasAccount())
+	assert.Equal(t, int64(0), resp.GetBalanceCents())
 }
 
 // Pagination defaults and clamping.

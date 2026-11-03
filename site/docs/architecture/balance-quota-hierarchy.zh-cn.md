@@ -157,7 +157,7 @@
 
 | RPC | HTTP | 说明 |
 | --- | --- | --- |
-| `GetBalance` | `GET /api/v1/billing/balance` | 调用方所在租户的共享账户，含周期起点与本周期消费 |
+| `GetBalance` | `GET /api/v1/billing/balance` | 调用方所在租户的共享账户，含周期起点与本周期消费；从未充值的租户返回 `has_account=false` 与零余额，而不是报错，控制台据此渲染未开户卡片 |
 | `ListOrganizationBalances` | `GET /api/v1/admin/billing/organization-balances` | 平台管理员：所有租户的资金状况；未开户的租户以 `has_account=false` 列出 |
 | `RechargeOrganization` | `POST /api/v1/admin/billing/organizations/{org_id}/recharge` | 平台管理员：为租户充值，未开户时创建预付费账户 |
 | `DebitOrganization` | `POST /api/v1/admin/billing/organizations/{org_id}/debit` | 平台管理员：扣回资金；必须填写原因，且金额不得超过余额 |
@@ -192,6 +192,7 @@
 | 扣减必须填写原因 | `10510` 交易不合法 |
 | 扣减金额不得超过预付费余额 | `10502` 余额不足 |
 | 扣减目标账户必须存在 | `10503` 账户不存在 |
+| 余额读取必须带租户范围（会话组织，或平台管理员通过 `X-Organization-Id` 指定） | `10503` 账户不存在 |
 
 ## 8. 时序：为租户充值并使用预算
 

@@ -406,12 +406,13 @@ func TestGetBalanceAccount(t *testing.T) {
 	assert.InDelta(t, 123.45, resp.GetBalance(), 0.001)
 	assert.Equal(t, "USD", resp.GetCurrency())
 
-	// No account: 10503.
-	_, err = svc.GetBalance(withOrg("org-2"), &billingv1.GetBalanceRequest{})
-	require.Error(t, err)
-	ae, ok := apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeAccountNotFound, ae.Code)
+	// An organization that is not funded yet reports the emptiness instead of
+	// failing, because the console has to render the unfunded card.
+	empty, err := svc.GetBalance(withOrg("org-2"), &billingv1.GetBalanceRequest{})
+	require.NoError(t, err)
+	assert.False(t, empty.GetHasAccount())
+	assert.Equal(t, int64(0), empty.GetBalanceCents())
+	assert.NotEmpty(t, empty.GetCurrency())
 }
 
 // summarizeAccount computes remaining/usage for both modes.

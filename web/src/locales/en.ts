@@ -582,6 +582,7 @@ export const en: Record<string, string> = {
   'bills.balance': 'Organization balance',
   'bills.quota': 'Organization quota',
   'bills.spentCycle': 'Spent this cycle',
+  'bills.noAccount': 'Not funded yet',
   'bills.subtitle': 'Monthly bills computed from charge records. Unpriced groups are counted and billed at 0 until a price applies.',
   'bills.empty': 'No bills yet. Bills appear after the first charged usage.',
   'bills.colBill': 'Bill',

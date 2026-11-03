@@ -308,3 +308,36 @@ func fvtRolesInterceptor() grpc.UnaryServerInterceptor {
 		return handler(ctx, req)
 	}
 }
+
+// TestFVTUnfundedOrganizationBalance covers the state every tenant starts in:
+// the organization exists but was never funded. The tenant surfaces must report
+// the emptiness rather than fail, because the console has to draw the unfunded
+// card before the first top-up.
+func TestFVTUnfundedOrganizationBalance(t *testing.T) {
+	env := newBalanceFvtEnv(t)
+
+	code, body := env.call(t, nil, http.MethodGet, "/api/v1/billing/balance", nil)
+	require.Equal(t, http.StatusOK, code, "unfunded balance: %v", body)
+	assert.Equal(t, false, body["hasAccount"])
+	assert.EqualValues(t, 0, numberOf(t, body["balanceCents"]))
+	assert.Equal(t, "CNY", body["currency"])
+
+	// A project budget can still be configured before the money arrives; the
+	// spend side simply reports zero.
+	code, body = env.call(t, nil, http.MethodPatch,
+		"/api/v1/admin/tenancy/projects/proj-a/quota",
+		map[string]any{"monthlySpendLimitCents": 20000})
+	require.Equal(t, http.StatusOK, code, "project budget: %v", body)
+	quota := body["quota"].(map[string]any)
+	assert.EqualValues(t, 0, numberOf(t, quota["spentThisCycleCents"]))
+	assert.EqualValues(t, 20000, numberOf(t, quota["remainingCents"]))
+
+	// The operator's page lists the organization as unfunded instead of
+	// erroring on the missing account.
+	code, body = env.call(t, []string{authctx.PlatformAdminRole}, http.MethodGet,
+		"/api/v1/admin/billing/organization-balances", nil)
+	require.Equal(t, http.StatusOK, code, "list: %v", body)
+	rows, _ := body["balances"].([]any)
+	require.Len(t, rows, 1)
+	assert.Equal(t, false, rows[0].(map[string]any)["hasAccount"])
+}

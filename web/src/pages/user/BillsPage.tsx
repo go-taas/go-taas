@@ -47,9 +47,11 @@ export default function BillsPage() {
               {balance.mode === 'postpaid' ? t('bills.quota') : t('bills.balance')}
             </span>
             <strong>
-              {balance.mode === 'postpaid'
-                ? formatMajor(Number(balance.monthlyQuotaCents || 0) / 100, 2, balance.currency)
-                : formatMajor(Number(balance.balanceCents || 0) / 100, 2, balance.currency)}
+              {balance.hasAccount === false
+                ? t('bills.noAccount')
+                : balance.mode === 'postpaid'
+                  ? formatMajor(Number(balance.monthlyQuotaCents || 0) / 100, 2, balance.currency)
+                  : formatMajor(Number(balance.balanceCents || 0) / 100, 2, balance.currency)}
             </strong>
           </span>
           <span>

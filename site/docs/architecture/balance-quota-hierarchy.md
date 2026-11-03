@@ -189,7 +189,7 @@ budget is the binding limit.
 
 | RPC | HTTP | Notes |
 | --- | --- | --- |
-| `GetBalance` | `GET /api/v1/billing/balance` | the shared account of the caller's tenant, with cycle start and cycle spend |
+| `GetBalance` | `GET /api/v1/billing/balance` | the shared account of the caller's tenant, with cycle start and cycle spend; a tenant that was never funded answers `has_account=false` with a zero balance instead of failing, so the console can render the unfunded card before the first top-up |
 | `ListOrganizationBalances` | `GET /api/v1/admin/billing/organization-balances` | platform administrator: every tenant with its position; tenants without an account are listed with `has_account=false` |
 | `RechargeOrganization` | `POST /api/v1/admin/billing/organizations/{org_id}/recharge` | platform administrator: credit a tenant, creating a prepaid account when it has none |
 | `DebitOrganization` | `POST /api/v1/admin/billing/organizations/{org_id}/debit` | platform administrator: take credit back; a reason is required and the amount may not exceed the balance |
@@ -239,6 +239,7 @@ it is missing.
 | A debit carries a reason | `10510` transaction invalid |
 | A debit does not exceed the prepaid balance | `10502` insufficient funds |
 | A debit targets an account that exists | `10503` account not found |
+| A balance read carries a tenant scope (session organization, or the `X-Organization-Id` header for a platform administrator) | `10503` account not found |
 
 ## 8. Sequence: funding a tenant and spending the budget
 

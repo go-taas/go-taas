@@ -578,6 +578,7 @@ export const zh: Record<string, string> = {
   'bills.balance': '组织余额',
   'bills.quota': '组织配额',
   'bills.spentCycle': '本周期消费',
+  'bills.noAccount': '尚未开通账户',
   'bills.subtitle': '根据计费记录计算的月度账单。未定价的分组按 0 计费，直到应用价格。',
   'bills.empty': '还没有账单。首次计费用量后会出现账单。',
   'bills.colBill': '账单',
