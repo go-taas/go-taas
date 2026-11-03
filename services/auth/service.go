@@ -90,6 +90,11 @@ type Service struct {
 	// until wired: session RPCs return 10027; main.go and FVT wire it.
 	sessionStore *SessionStore
 
+	// sessionReaper revokes every session an account holds, so a role change
+	// takes effect at once instead of at token expiry. Nil until wired: the
+	// role still changes, and the next login reflects it.
+	sessionReaper SessionReaper
+
 	// membershipResolver derives session roles/accessible orgs from
 	// org_members (feature #10, AD2/AD11). Nil until wired: unit tests
 	// fall back to IdP claims; main.go and FVT wire it.

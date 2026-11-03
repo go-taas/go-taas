@@ -1043,6 +1043,13 @@ export const en: Record<string, string> = {
   'users.addToOrg': 'Add to organization',
   'users.addOrgFailed': 'Failed to add the user to the organization.',
   'users.deleteBody': 'Permanently delete user {username}? This cannot be undone and also removes its identity bindings.',
+  'users.platformAdmin': 'Platform admin',
+  'users.grantPlatformAdmin': 'Make platform admin',
+  'users.revokePlatformAdmin': 'Revoke platform admin',
+  'users.grantAdminTitle': 'Make platform administrator',
+  'users.grantAdminBody': 'Grant {username} the platform administrator role? It gives full access to every organization, user, API key and billing account, and cannot be limited from here. The account\'s sessions are signed out so the role takes effect immediately.',
+  'users.revokeAdminTitle': 'Revoke platform administrator',
+  'users.revokeAdminBody': 'Remove the platform administrator role from {username}? The account keeps its organization memberships and is signed out at once. You cannot revoke your own role, and the last administrator cannot be revoked at all.',
   'users.loadFailed': 'failed to load users',
 
   // ---- Billing Payments ----

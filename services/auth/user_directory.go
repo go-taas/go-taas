@@ -89,6 +89,10 @@ func (s *Service) EnableUser(ctx context.Context, req *authv1.EnableUserRequest)
 
 // setUserState applies a lifecycle transition and returns the updated
 // row. Unknown user → CodeUserNotFound.
+//
+// A disable also revokes the account's sessions. A disabled account that keeps
+// working until its token expires is not disabled, and the same session
+// revoker is already wired for role changes.
 func (s *Service) setUserState(ctx context.Context, userID, state string) (*authv1.UserSummary, error) {
 	repo, err := s.ssoRepository()
 	if err != nil {
@@ -100,6 +104,9 @@ func (s *Service) setUserState(ctx context.Context, userID, state string) (*auth
 	}
 	if err != nil {
 		return nil, err
+	}
+	if state == UserStateDisabled {
+		s.reapSessions(ctx, row.ID)
 	}
 	return s.summarizeUser(ctx, row), nil
 }
@@ -151,6 +158,7 @@ func (s *Service) summarizeUser(ctx context.Context, row *User) *authv1.UserSumm
 		OrganizationName: affiliation.OrganizationName,
 		ProjectId:        affiliation.ProjectID,
 		ProjectName:      affiliation.ProjectName,
+		PlatformAdmin:    row.PlatformAdmin,
 		CreatedAt:        row.CreatedAt.Unix(),
 		UpdatedAt:        row.UpdatedAt.Unix(),
 	}

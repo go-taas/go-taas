@@ -24,6 +24,8 @@ type fakeRedisServer struct {
 	entries map[string]string
 	ttls    map[string]time.Duration
 	hashes  map[string]map[string]string
+	// sets backs the per-user session index (SADD/SREM/SMEMBERS).
+	sets map[string]map[string]struct{}
 
 	ln net.Listener
 }
@@ -37,6 +39,7 @@ func newFakeRedisServer(t *testing.T) *fakeRedisServer {
 		entries: map[string]string{},
 		ttls:    map[string]time.Duration{},
 		hashes:  map[string]map[string]string{},
+		sets:    map[string]map[string]struct{}{},
 		ln:      ln,
 	}
 	go s.serve()
@@ -95,12 +98,15 @@ func (s *fakeRedisServer) handle(conn net.Conn) {
 			delete(s.entries, args[1])
 			delete(s.ttls, args[1])
 			delete(s.hashes, args[1])
+			delete(s.sets, args[1])
 			s.mu.Unlock()
 			_, _ = w.WriteString(":1\r\n")
 		case "EXISTS":
 			s.mu.Lock()
 			_, ok1 := s.entries[args[1]]
 			_, ok2 := s.hashes[args[1]]
+			_, ok3 := s.sets[args[1]]
+			ok2 = ok2 || ok3
 			s.mu.Unlock()
 			if ok1 || ok2 {
 				_, _ = w.WriteString(":1\r\n")
@@ -134,6 +140,51 @@ func (s *fakeRedisServer) handle(conn net.Conn) {
 			}
 			s.mu.Unlock()
 			_, _ = w.WriteString(":1\r\n")
+		case "HGET":
+			s.mu.Lock()
+			v, ok := s.hashes[args[1]][args[2]]
+			s.mu.Unlock()
+			if !ok {
+				_, _ = w.WriteString("$-1\r\n")
+			} else {
+				_, _ = fmt.Fprintf(w, "$%d\r\n%s\r\n", len(v), v)
+			}
+		case "SADD":
+			s.mu.Lock()
+			if s.sets[args[1]] == nil {
+				s.sets[args[1]] = map[string]struct{}{}
+			}
+			added := 0
+			for _, member := range args[2:] {
+				if _, ok := s.sets[args[1]][member]; !ok {
+					s.sets[args[1]][member] = struct{}{}
+					added++
+				}
+			}
+			s.mu.Unlock()
+			_, _ = fmt.Fprintf(w, ":%d\r\n", added)
+		case "SREM":
+			s.mu.Lock()
+			removed := 0
+			for _, member := range args[2:] {
+				if _, ok := s.sets[args[1]][member]; ok {
+					delete(s.sets[args[1]], member)
+					removed++
+				}
+			}
+			s.mu.Unlock()
+			_, _ = fmt.Fprintf(w, ":%d\r\n", removed)
+		case "SMEMBERS":
+			s.mu.Lock()
+			members := make([]string, 0, len(s.sets[args[1]]))
+			for member := range s.sets[args[1]] {
+				members = append(members, member)
+			}
+			s.mu.Unlock()
+			_, _ = fmt.Fprintf(w, "*%d\r\n", len(members))
+			for _, member := range members {
+				_, _ = fmt.Fprintf(w, "$%d\r\n%s\r\n", len(member), member)
+			}
 		case "HGETALL":
 			s.mu.Lock()
 			h := s.hashes[args[1]]

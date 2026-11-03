@@ -405,6 +405,27 @@ service AuthService {
       delete: "/api/v1/admin/auth/users/{user_id}"
     };
   }
+
+  // GrantPlatformAdmin makes another account a platform administrator
+  // (admin surface). Only a platform administrator may call it, the
+  // target must be active, and the target's sessions are revoked so the
+  // new role takes effect immediately.
+  rpc GrantPlatformAdmin(GrantPlatformAdminRequest) returns (GrantPlatformAdminResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/users/{user_id}:grant-platform-admin"
+      body: "*"
+    };
+  }
+
+  // RevokePlatformAdmin removes the role from another account (admin
+  // surface). A caller cannot revoke itself, and the last remaining
+  // platform administrator cannot be revoked by anyone.
+  rpc RevokePlatformAdmin(RevokePlatformAdminRequest) returns (RevokePlatformAdminResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/auth/users/{user_id}:revoke-platform-admin"
+      body: "*"
+    };
+  }
 }
 
 message CreateUserRequest {
@@ -898,6 +919,10 @@ message UserSummary {
   string organization_name = 10;
   string project_id = 11;
   string project_name = 12;
+  // platform_admin reports whether the account carries the platform
+  // administrator role. The directory shows it so an operator can see who
+  // holds the role before granting or revoking it.
+  bool platform_admin = 13;
 }
 
 message ListUsersRequest {
@@ -945,6 +970,25 @@ message DeleteUserRequest {
 
 message DeleteUserResponse {
   taas.common.v1.Response response = 1;
+}
+
+message GrantPlatformAdminRequest {
+  string user_id = 1;
+}
+
+message GrantPlatformAdminResponse {
+  taas.common.v1.Response response = 1;
+  // user is the updated directory row, with platform_admin set.
+  UserSummary user = 2;
+}
+
+message RevokePlatformAdminRequest {
+  string user_id = 1;
+}
+
+message RevokePlatformAdminResponse {
+  taas.common.v1.Response response = 1;
+  UserSummary user = 2;
 }
 
 // ---- Unified login & role-based routing (feature-22) ----

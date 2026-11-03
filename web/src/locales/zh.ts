@@ -1036,6 +1036,13 @@ export const zh: Record<string, string> = {
   'users.addToOrg': '加入组织',
   'users.addOrgFailed': '将用户加入组织失败。',
   'users.deleteBody': '确定要永久删除用户 {username} 吗？此操作不可撤销，将同时删除其身份绑定。',
+  'users.platformAdmin': '平台管理员',
+  'users.grantPlatformAdmin': '设为平台管理员',
+  'users.revokePlatformAdmin': '取消平台管理员',
+  'users.grantAdminTitle': '设为平台管理员',
+  'users.grantAdminBody': '确定将 {username} 设为平台管理员？该角色可访问全部组织、用户、API Key 与计费账户，且无法在此限制。该账号的会话将被注销，以便角色立即生效。',
+  'users.revokeAdminTitle': '取消平台管理员',
+  'users.revokeAdminBody': '确定取消 {username} 的平台管理员角色？该账号仍保留组织成员身份，并会立即被登出。你无法取消自己的角色，最后一名平台管理员也不能被取消。',
   'users.loadFailed': '加载用户失败',
 
   // ---- Billing Payments ----

@@ -415,3 +415,16 @@ func isUniqueViolation(err error) bool {
 	return strings.Contains(msg, "23505") ||
 		strings.Contains(msg, "UNIQUE constraint failed")
 }
+
+// CountPlatformAdmins returns how many accounts carry the platform
+// administrator role. It guards the last-administrator rule: demoting the only
+// one would leave the installation without anyone able to administer it.
+func (r *SSORepository) CountPlatformAdmins(ctx context.Context) (int64, error) {
+	var count int64
+	if err := r.db.DB(ctx).Model(&User{}).
+		Where("platform_admin = ?", true).
+		Count(&count).Error; err != nil {
+		return 0, err
+	}
+	return count, nil
+}

@@ -1,7 +1,10 @@
-// Users page: the platform-level user directory with state filter and
-// disable/enable lifecycle control. Users are created by SSO JIT
-// provisioning or invitations; this page gives operators a read-only
-// directory plus lifecycle control.
+// Users page: the platform-level user directory with state filter, lifecycle
+// control and platform-administrator role assignment.
+//
+// The role is shown as a badge on the row, and the action is a single
+// confirm-dialog button: the consequences ("full access to every organization,
+// user and billing account, and sessions are signed out") need to be read
+// before it happens, not discovered afterwards.
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta, type UserSummary } from '../api';
@@ -28,7 +31,7 @@ export default function UsersPage() {
   const [error, setError] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<{
     user: UserSummary;
-    action: 'disable' | 'enable' | 'delete';
+    action: 'disable' | 'enable' | 'delete' | 'grantAdmin' | 'revokeAdmin';
   } | null>(null);
   // orgTarget is the user whose organization placement is being edited.
   const [orgTarget, setOrgTarget] = useState<UserSummary | null>(null);
@@ -66,6 +69,9 @@ export default function UsersPage() {
       const { user, action } = confirmTarget;
       if (action === 'delete') {
         await api.del(`/api/v1/admin/auth/users/${user.userId}`, orgId);
+      } else if (action === 'grantAdmin' || action === 'revokeAdmin') {
+        const verb = action === 'grantAdmin' ? 'grant-platform-admin' : 'revoke-platform-admin';
+        await api.post(`/api/v1/admin/auth/users/${user.userId}:${verb}`, orgId, {});
       } else {
         await api.post(
           `/api/v1/admin/auth/users/${user.userId}:${action}`,
@@ -136,6 +142,11 @@ export default function UsersPage() {
                       {user.displayName ? '' : ''}
                     </div>
                     <div className="muted small mono">{user.userId}</div>
+                    {user.platformAdmin && (
+                      <span className="badge" data-testid={`user-platform-admin-badge-${user.userId}`}>
+                        {t('users.platformAdmin')}
+                      </span>
+                    )}
                   </td>
                   {/* A platform administrator places people into an
                       organization and a project from this page, so the row
@@ -184,6 +195,30 @@ export default function UsersPage() {
                     >
                       {t('users.manageOrg')}
                     </button>
+                    {/* Only an active account can hold the role, so a
+                        disabled one offers no grant. Revoking is always
+                        offered: the server refuses self-revocation and the
+                        last administrator, and the console must not hide the
+                        action that explains why. */}
+                    {user.platformAdmin ? (
+                      <button
+                        className="link danger"
+                        data-testid={`user-revoke-admin-${user.userId}`}
+                        onClick={() => setConfirmTarget({ user, action: 'revokeAdmin' })}
+                      >
+                        {t('users.revokePlatformAdmin')}
+                      </button>
+                    ) : (
+                      user.state === 'active' && (
+                        <button
+                          className="link"
+                          data-testid={`user-grant-admin-${user.userId}`}
+                          onClick={() => setConfirmTarget({ user, action: 'grantAdmin' })}
+                        >
+                          {t('users.grantPlatformAdmin')}
+                        </button>
+                      )
+                    )}
                     <button
                       className="link danger"
                       data-testid={`user-delete-${user.userId}`}
@@ -221,11 +256,25 @@ export default function UsersPage() {
 
       {confirmTarget && (
         <Dialog
-          title={t('users.stateTitle')}
+          title={t(
+            confirmTarget.action === 'grantAdmin'
+              ? 'users.grantAdminTitle'
+              : confirmTarget.action === 'revokeAdmin'
+                ? 'users.revokeAdminTitle'
+                : 'users.stateTitle',
+          )}
           onClose={() => setConfirmTarget(null)}
           testId="user-state-dialog"
         >
-          {confirmTarget.action === 'delete' ? (
+          {confirmTarget.action === 'grantAdmin' ? (
+            <p data-testid="user-grant-admin-body">
+              {t('users.grantAdminBody', { username: confirmTarget.user.username })}
+            </p>
+          ) : confirmTarget.action === 'revokeAdmin' ? (
+            <p data-testid="user-revoke-admin-body">
+              {t('users.revokeAdminBody', { username: confirmTarget.user.username })}
+            </p>
+          ) : confirmTarget.action === 'delete' ? (
             <p data-testid="user-delete-body">
               {t('users.deleteBody', { username: confirmTarget.user.username })}
             </p>
@@ -248,13 +297,22 @@ export default function UsersPage() {
               {t('common.cancel')}
             </button>
             <button
-              className={confirmTarget.action === 'enable' ? '' : 'danger'}
+              className={
+                confirmTarget.action === 'enable' ||
+                confirmTarget.action === 'grantAdmin'
+                  ? ''
+                  : 'danger'
+              }
               data-testid="user-state-ok"
               onClick={() => void setStateAction()}
             >
               {confirmTarget.action === 'delete'
                 ? t('common.delete')
-                : t(confirmTarget.action === 'disable' ? 'common.disable' : 'common.enable')}
+                : confirmTarget.action === 'grantAdmin'
+                  ? t('users.grantPlatformAdmin')
+                  : confirmTarget.action === 'revokeAdmin'
+                    ? t('users.revokePlatformAdmin')
+                    : t(confirmTarget.action === 'disable' ? 'common.disable' : 'common.enable')}
             </button>
           </div>
         </Dialog>

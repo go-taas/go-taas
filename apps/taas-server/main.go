@@ -803,7 +803,12 @@ func main() {
 	// sessions.
 	if redisComponent := srv.Components().Redis(); redisComponent != nil {
 		if client, ok := redisComponent.Client().(*goredis.Client); ok {
-			authSvc.SetSessionStore(auth.NewSessionStore(client, cfg.Auth.SessionTTL))
+			sessionStore := auth.NewSessionStore(client, cfg.Auth.SessionTTL)
+			authSvc.SetSessionStore(sessionStore)
+			// A role change (platform administrator granted or revoked) or a
+			// disable must not wait for the session TTL: the session caches
+			// the roles it was minted with.
+			authSvc.SetSessionReaper(sessionStore)
 		}
 	}
 	if runner := infer.NewStatusConsumerRunner(srv.Components()); runner != nil {

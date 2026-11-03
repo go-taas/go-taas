@@ -1005,6 +1005,9 @@ export interface UserSummary {
   organizationName: string;
   projectId: string;
   projectName: string;
+  // platformAdmin reports whether the account carries the platform
+  // administrator role.
+  platformAdmin?: boolean;
   createdAt: string;
   updatedAt: string;
 }
