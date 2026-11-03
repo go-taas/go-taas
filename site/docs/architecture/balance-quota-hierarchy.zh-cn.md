@@ -111,7 +111,7 @@
 | `UserQuota` | `spent_this_cycle_cents`、`remaining_cents` |
 | `GetMyQuotaResponse` | `personal_spent_this_cycle_cents`、`personal_remaining_cents`，以及每个项目的 `spent_this_cycle_cents` / `remaining_cents` |
 
-`remaining_cents` 等于「上限 − 已消费」，下限为 0；当上限为 0（不限）时它也返回 **0**，控制台通过对比上限来区分「已用完」与「无上限」。已消费额通过 billing 模块的 `SpendReader` 接缝读取已结算流水，且与消费闸门使用同一个 UTC 周期 —— 换一个时间窗口就会解释出错误的数字。流水读取失败时这些数值降级为 0，绝不让配额读取失败。
+`remaining_cents` 等于「上限 − 已消费」，下限为 0；当上限为 0（不限）时它也返回 **0**，控制台通过对比上限来区分「已用完」与「无上限」。若某一层自身没有设置上限，它继承梯形解析出的值，因此控制台以该解析值为准渲染剩余列（成员配额看 `effective`，`MyProjectQuota` 看 `effective` 上限），而不是把该层显示为「不限」—— 这一层的预算实际仍然被执行。已消费额通过 billing 模块的 `SpendReader` 接缝读取已结算流水，且与消费闸门使用同一个 UTC 周期 —— 换一个时间窗口就会解释出错误的数字。流水读取失败时这些数值降级为 0，绝不让配额读取失败。
 
 消费闸门检查三个范围，因为每个上限回答的是不同问题：
 

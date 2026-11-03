@@ -135,7 +135,11 @@ next to its usage rather than a bare number:
 
 `remaining_cents` is `cap - spent`, floored at 0; it is **0 when the cap is 0
 (unlimited)**, so a console compares it against the cap to tell "nothing left"
-from "no limit". The spend is read from the settled ledger through the billing
+from "no limit". A tier that sets no cap of its own inherits the value the
+ladder resolves, so a console renders the remaining column against that
+resolved cap (the `effective` tuple on a member quota, the `effective` limits on
+`MyProjectQuota`) instead of calling the tier unlimited — the budget is
+enforced even though this row did not set it. The spend is read from the settled ledger through the billing
 module's `SpendReader` seam over the same UTC cycle the gate uses — a second
 window would explain the wrong number. A ledger read failure degrades the
 figures to 0 and never fails the quota read.
