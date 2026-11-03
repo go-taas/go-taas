@@ -8,8 +8,8 @@ import { ErrorBanner } from '../../components';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
-import type { GetMyQuotaResponse } from '../../api';
-import { formatMoney } from '../../display';
+import type { GetMyQuotaResponse, MyProjectQuota } from '../../api';
+import { formatMoney, quotaRemaining } from '../../display';
 import QuotaDimensionCard, { type QuotaLimits as QuotaLimitsLike } from './quotas/QuotaDimensionCard';
 
 export default function UserQuotasPage() {
@@ -51,6 +51,20 @@ export default function UserQuotasPage() {
       parseInt(quota.maxBatchJobsPerDay, 10) === 0 &&
       parseInt(quota.maxOutputTokensPerRequest, 10) === 0);
   const allUnlimited = q && effectiveUnlimited(effective) && effectiveUnlimited(q);
+
+  // A project budget the member did not set themselves inherits the value the
+  // ladder resolves, so the remaining column reports what is still spendable
+  // there instead of "unlimited".
+  const projectRemaining = (row: MyProjectQuota) => {
+    const left = quotaRemaining(
+      row.quota.monthlySpendLimitCents,
+      row.effective.monthlySpendLimitCents,
+      row.spentThisCycleCents,
+    );
+    return left.limitCents > 0
+      ? formatMoney(left.remainingCents, data?.currency)
+      : t('common.unlimited');
+  };
 
   const mailto = data?.requestIncreaseEmail
     ? `mailto:${data.requestIncreaseEmail}?subject=${encodeURIComponent(t('quota.increaseSubject', { org: q?.organizationName || '' }))}&body=${encodeURIComponent(t('quota.increaseBody', { org: q?.organizationName || '' }))}`
@@ -146,9 +160,7 @@ export default function UserQuotasPage() {
                         {formatMoney(row.spentThisCycleCents, data.currency)}
                       </td>
                       <td data-testid={`project-remaining-${row.projectId}`}>
-                        {Number(row.quota.monthlySpendLimitCents || '0') > 0
-                          ? formatMoney(row.remainingCents, data.currency)
-                          : t('common.unlimited')}
+                        {projectRemaining(row)}
                       </td>
                       <td data-testid={`project-effective-${row.projectId}`}>
                         {t('quota.effectiveValue', {

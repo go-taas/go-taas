@@ -5,7 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type MemberCandidate } from '../api';
 import { useApi } from '../surface';
-import { formatMoney } from '../display';
+import { formatMoney, quotaRemaining } from '../display';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner } from '../components';
 import { useAdminScope } from '../admin-scope';
@@ -311,7 +311,6 @@ export function MemberQuotaDialog({
   // spent/remaining is the member's consumption in this project, so a budget
   // is edited next to what has already been used.
   const [spent, setSpent] = useState('0');
-  const [remaining, setRemaining] = useState('0');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -332,7 +331,6 @@ export function MemberQuotaDialog({
         setMaxTokens(String(row.maxOutputTokensPerRequest || '0'));
         setMaxSpend(String(row.monthlySpendLimitCents || '0'));
         setSpent(String(row.spentThisCycleCents || '0'));
-        setRemaining(String(row.remainingCents || '0'));
         const eff = row.effective as unknown as Record<string, string> | undefined;
         if (eff) setEffective(eff);
       })
@@ -368,6 +366,11 @@ export function MemberQuotaDialog({
     }
   };
 
+  // A member without a cap of their own is still bounded by the combined
+  // budget the ladder resolves, so the dialog reports what is left of that
+  // rather than calling the tier unlimited.
+  const memberRemaining = quotaRemaining(maxSpend, effective?.monthlySpendLimitCents, spent);
+
   return (
     <Dialog
       title={t('memberQuota.editTitle', { name: member.displayName || member.userId })}
@@ -400,7 +403,9 @@ export function MemberQuotaDialog({
         <p className="muted" data-testid="member-quota-spent">
           {t('memberQuota.spent', {
             spent: formatMoney(spent),
-            remaining: Number(maxSpend || '0') > 0 ? formatMoney(remaining) : t('common.unlimited'),
+            remaining: memberRemaining.limitCents > 0
+              ? formatMoney(memberRemaining.remainingCents)
+              : t('common.unlimited'),
           })}
         </p>
         {effective && (

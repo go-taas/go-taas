@@ -55,6 +55,32 @@ export function formatMoney(cents: number | string | undefined, currency?: strin
   return formatAmount(cents, 2, currency);
 }
 
+/** toCents parses a minor-unit value that may arrive as a string. */
+function toCents(value: number | string | undefined): number {
+  const parsed = typeof value === 'string' ? parseInt(value, 10) : value;
+  return Number.isFinite(parsed as number) ? (parsed as number) : 0;
+}
+
+/**
+ * quotaRemaining resolves a quota tier's budget and what is left of it: the
+ * tier's own cap when it sets one, otherwise the cap the ladder resolves to.
+ * A tier that inherits its budget therefore reports the money it can still
+ * spend instead of "unlimited". `limitCents` of 0 means the resolved cap is
+ * unlimited, which the caller renders as such.
+ */
+export function quotaRemaining(
+  ownLimitCents: number | string | undefined,
+  effectiveLimitCents: number | string | undefined,
+  spentCents: number | string | undefined,
+): { limitCents: number; remainingCents: number } {
+  const own = toCents(ownLimitCents);
+  const limitCents = own > 0 ? own : toCents(effectiveLimitCents);
+  return {
+    limitCents,
+    remainingCents: limitCents > 0 ? Math.max(limitCents - toCents(spentCents), 0) : 0,
+  };
+}
+
 /**
  * formatAmount renders a minor-unit amount with an explicit precision, for the
  * figures that need more than two decimals (a per-1k-token price).
