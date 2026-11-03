@@ -69,11 +69,11 @@ flowchart TD
 | 模块 | 文件 | 内容 |
 | --- | --- | --- |
 | `services/billing` | `account_model.go` | GORM 模型 `Account`、`Transaction` + `TableName` |
-| | `account_repository.go` | `AccountRepository`（`Repository` 模式）：`FindByOrg`（不存在时为 nil）、`FindByIDInOrg`（10503）、`CreateAccount`（单事务：INSERT 账户 — 组织唯一冲突 → 10509 — 外加可选的开户余额 `recharge` 交易，键 `opening:{account_id}`，引用 "opening balance"）、`UpdateAccount`（版本守卫）、`Recharge`（单事务：幂等键查找 → 收敛或 10510 → INSERT 交易 → 版本守卫的余额 UPDATE，有界重试）、`ApplyDeduction(txCtx, spec)`（加入计费事务：重读账户、INSERT 扣减行、版本守卫 UPDATE）、`ListTransactions`（过滤、最新在前、分页）、`ResetCycle(monthStart)`（AD6 的守卫 UPDATE）、`CheckFundsSnapshot(org)` |
+| | `account_repository.go` | `AccountRepository`（`Repository` 模式）：`FindByOrg`（不存在时为 nil）、`FindByIDInOrg`（10503）、`CreateAccount`（单事务：INSERT 账户 — 组织唯一冲突 → 10509 — 外加可选的开户余额 `recharge` 交易，键 `opening:{account_id}`，引用 "opening balance"）、`UpdateAccount`（版本守卫）、`Recharge`（单事务：幂等键查找 → 收敛或 10510 → INSERT 交易 → 版本守卫的余额 UPDATE，有界重试）、`ApplyDeduction(txCtx, spec)`（加入计费事务：重读账户、用 `cycleAccrual` 结算本周期已四舍五入的计费总额、INSERT 扣减行、版本守卫 UPDATE）、`cycleAccrual(tx, account)`（亚分进位：本周期 `ROUND(SUM(计费金额) * 100)` 减去已计提的分数）、`ListTransactions`（过滤、最新在前、分页）、`ResetCycle(monthStart)`（AD6 的守卫 UPDATE）、`CheckFundsSnapshot(org)` |
 | | `account_service.go` | `*Service` 上的 RPC 实现：`CreateAccount`、`GetAccount`、`UpdateAccount`、`ListAccounts`、`Recharge`、`Refund`、`ListTransactions`、`CheckFunds`、`GetBalance`（占位 → 实现）+ 第 5.1 节校验矩阵 |
 | | `cycle_reset_runner.go` | `CycleResetRunner`（server.Runner，ticker）+ 为测试提取的 `ResetOnce(ctx)`（`ReconcileOnce` 模式） |
 | | `billing_repository.go` | `ChargeGroup(ctx, group, record, deduction *DeductionSpec)` — 扩展：在既有事务内，**新**计费插入（`RowsAffected == 1`）且 `deduction != nil` 后调用 `accounts.ApplyDeduction(txCtx, spec)`；已存在的计费跳过扣减（幂等，AC4）。`Repository` 增加 `accounts *AccountRepository` 字段 |
-| | `pricing.go` | `chargeGroup` 每次 `PriceOnce` 轮次解析一次组织的账户（`FindByOrg`）并构造 `DeductionSpec{AccountID, ChargeID: record.ID, AmountCents: centsFromAmount(record.Amount)}` — 组织无账户时为 nil（AC12）；存在账户时 0 金额计费仍扣减 0（FR3.2） |
+| | `pricing.go` | `chargeGroup` 每次 `PriceOnce` 轮次解析一次组织的账户（`FindByOrg`）并构造 `DeductionSpec{AccountID, ChargeID: record.ID}` — 组织无账户时为 nil（AC12）。金额不放在 spec 上：由 `ApplyDeduction` 从账本计提，因此四舍五入后仍为 0 的计费扣减 0 并把零头留到下一笔（FR3.2） |
 | `proto/taas/billing/v1` | `billing.proto` | 增量：8 个 RPC、`Account`/`Transaction` 消息、`GetBalanceResponse` 分字段（第 5 节） |
 | `pkg/errors` + `pkg/config` | `codes.go`/`messages.go`；`api.go`/`configuration.go` | 10509/10510 常量 + 规范消息；`billing.cycleReset` 下的 `BillingCycleResetConfig{Enabled, Interval}` |
 | `apps/taas-server` + `web/src` + `test` | `main.go`；`pages/AccountsPage.tsx`/`App.tsx`/`api.ts`；`fvt/balance_quota_fvt_test.go`/`e2e/tests/balanceQuota.js` | `srv.Init()` 之后注册周期重置 runner；「账户」页面、路由 `/admin/billing/accounts`、int64 按字符串序列化的类型；第 8 节 |
@@ -227,6 +227,8 @@ sequenceDiagram
         R->>DB: 标记用量行已计费
     end
 ```
+
+**亚分进位。** 计费金额以微单位精度存储，单次请求的计费通常远低于一分，因此扣减行上的 `amount_cents` 是**已计提**金额，而不是对单笔计费的四舍五入：`cycleAccrual` 用本周期计费记录的 `ROUND(SUM(amount) * 100)` 与 `spent_this_cycle_cents` 比较，扣减两者之差。零头因此会累计到满一分才动账，预付费余额与后付费的 `used_this_cycle_cents` 始终等于消费闸门与预算报表读取的周期消费，不会因四舍五入丢钱。
 
 ### 6.1.1 谁给账户充值
 

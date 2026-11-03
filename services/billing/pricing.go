@@ -139,16 +139,15 @@ func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *Usag
 		record.PriceID = &priceID
 	}
 
-	// Feature #8: an org with an account deducts the charged cents
-	// inside the charge transaction (AD3); 0-amount charges still
-	// deduct 0 (FR3.2), orgs without an account skip the deduction
-	// (AC12).
+	// Feature #8: an org with an account deducts its share of the cycle
+	// spend inside the charge transaction (AD3); a charge whose rounded
+	// share is still 0 deducts 0 and keeps the fraction for the next one
+	// (FR3.2), orgs without an account skip the deduction (AC12).
 	var deduction *DeductionSpec
 	if account != nil {
 		deduction = &DeductionSpec{
-			AccountID:   account.ID,
-			ChargeID:    record.ID,
-			AmountCents: centsFromAmount(record.Amount),
+			AccountID: account.ID,
+			ChargeID:  record.ID,
 		}
 	}
 

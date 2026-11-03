@@ -508,8 +508,13 @@ func TestApplyDeductionSpendIncrement(t *testing.T) {
 	prepaidID := createTestAccount(t, svc, "org-pre", AccountModePrepaid, 10000, 0)
 	prepaid, err := accRepo.FindByID(ctx, prepaidID)
 	require.NoError(t, err)
+	svc.repo.DB(ctx).Create(&ChargeRecord{
+		ID: "chg-1", OrganizationID: "org-pre", APIKeyID: "key-1", ModelID: "model-1",
+		AcceleratorType: "nvidia-a100", PeriodStart: prepaid.CycleStartedAt + 3600,
+		PeriodEnd: prepaid.CycleStartedAt + 7200, Amount: 1, Currency: "USD", Priced: true,
+	})
 	require.NoError(t, accRepo.ApplyDeduction(ctx, DeductionSpec{
-		AccountID: prepaid.ID, ChargeID: "chg-1", AmountCents: 100,
+		AccountID: prepaid.ID, ChargeID: "chg-1",
 	}))
 	after, err := accRepo.FindByID(ctx, prepaidID)
 	require.NoError(t, err)
@@ -518,7 +523,7 @@ func TestApplyDeductionSpendIncrement(t *testing.T) {
 
 	// Redelivery converges (no double increment).
 	require.NoError(t, accRepo.ApplyDeduction(ctx, DeductionSpec{
-		AccountID: prepaid.ID, ChargeID: "chg-1", AmountCents: 100,
+		AccountID: prepaid.ID, ChargeID: "chg-1",
 	}))
 	after, err = accRepo.FindByID(ctx, prepaidID)
 	require.NoError(t, err)

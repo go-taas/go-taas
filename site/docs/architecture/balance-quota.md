@@ -69,11 +69,11 @@ flowchart TD
 | Module | File | Contents |
 | --- | --- | --- |
 | `services/billing` | `account_model.go` | GORM models `Account`, `Transaction` + `TableName` |
-| | `account_repository.go` | `AccountRepository` (the `Repository` pattern): `FindByOrg` (nil when absent), `FindByIDInOrg` (10503), `CreateAccount` (one tx: INSERT account — org unique violation → 10509 — plus the optional opening-balance `recharge` transaction, key `opening:{account_id}`, reference "opening balance"), `UpdateAccount` (version-guarded), `Recharge` (one tx: idempotency-key lookup → converge or 10510 → INSERT transaction → version-guarded balance UPDATE, bounded retry), `ApplyDeduction(txCtx, spec)` (joins the charge transaction: re-read account, INSERT deduction row, version-guarded UPDATE), `ListTransactions` (filters, newest first, paginated), `ResetCycle(monthStart)` (the AD6 guarded UPDATE), `CheckFundsSnapshot(org)` |
+| | `account_repository.go` | `AccountRepository` (the `Repository` pattern): `FindByOrg` (nil when absent), `FindByIDInOrg` (10503), `CreateAccount` (one tx: INSERT account — org unique violation → 10509 — plus the optional opening-balance `recharge` transaction, key `opening:{account_id}`, reference "opening balance"), `UpdateAccount` (version-guarded), `Recharge` (one tx: idempotency-key lookup → converge or 10510 → INSERT transaction → version-guarded balance UPDATE, bounded retry), `ApplyDeduction(txCtx, spec)` (joins the charge transaction: re-read account, accrue the cycle's rounded charge total with `cycleAccrual`, INSERT deduction row, version-guarded UPDATE), `cycleAccrual(tx, account)` (the sub-cent carry: `ROUND(SUM(charge amounts) * 100)` for the cycle minus the already accrued cents), `ListTransactions` (filters, newest first, paginated), `ResetCycle(monthStart)` (the AD6 guarded UPDATE), `CheckFundsSnapshot(org)` |
 | | `account_service.go` | RPC implementations on `*Service`: `CreateAccount`, `GetAccount`, `UpdateAccount`, `ListAccounts`, `Recharge`, `Refund`, `ListTransactions`, `CheckFunds`, `GetBalance` (stub → implemented) + the Section 5.1 validation matrices |
 | | `cycle_reset_runner.go` | `CycleResetRunner` (server.Runner, ticker) + `ResetOnce(ctx)` extracted for tests (the `ReconcileOnce` pattern) |
 | | `billing_repository.go` | `ChargeGroup(ctx, group, record, deduction *DeductionSpec)` — extended: inside the existing transaction, after a **new** charge insert (`RowsAffected == 1`) and `deduction != nil`, call `accounts.ApplyDeduction(txCtx, spec)`; an existing charge skips the deduction (idempotent, AC4). `Repository` gains an `accounts *AccountRepository` field |
-| | `pricing.go` | `chargeGroup` resolves the org's account once per `PriceOnce` pass (`FindByOrg`) and builds `DeductionSpec{AccountID, ChargeID: record.ID, AmountCents: centsFromAmount(record.Amount)}` — nil when the org has no account (AC12); 0-amount charges still deduct 0 when an account exists (FR3.2) |
+| | `pricing.go` | `chargeGroup` resolves the org's account once per `PriceOnce` pass (`FindByOrg`) and builds `DeductionSpec{AccountID, ChargeID: record.ID}` — nil when the org has no account (AC12). The amount is not carried on the spec: `ApplyDeduction` accrues it from the ledger, so a charge whose rounded share is still 0 deducts 0 and keeps the fraction for the next charge (FR3.2) |
 | `proto/taas/billing/v1` | `billing.proto` | Additive: 8 RPCs, `Account`/`Transaction` messages, `GetBalanceResponse` cents fields (Section 5) |
 | `pkg/errors` + `pkg/config` | `codes.go`/`messages.go`; `api.go`/`configuration.go` | 10509/10510 constants + canonical messages; `BillingCycleResetConfig{Enabled, Interval}` under `billing.cycleReset` |
 | `apps/taas-server` + `web/src` + `test` | `main.go`; `pages/AccountsPage.tsx`/`App.tsx`/`api.ts`; `fvt/balance_quota_fvt_test.go`/`e2e/tests/balanceQuota.js` | Cycle-reset runner registration after `srv.Init()`; Accounts pages, route `/admin/billing/accounts`, int64-as-string types; Section 8 |
@@ -227,6 +227,15 @@ sequenceDiagram
         R->>DB: mark usage lines charged
     end
 ```
+
+**Sub-cent accrual.** A charge amount is stored at micro-unit precision, and a
+single per-request charge is usually far below one cent, so `amount_cents` on a
+deduction row is the *accrued* amount, not a rounding of that one charge:
+`cycleAccrual` compares `ROUND(SUM(amount) * 100)` over the cycle's charge
+records with `spent_this_cycle_cents` and deducts the difference. The fraction
+therefore carries until it becomes a whole cent, the prepaid balance and the
+postpaid `used_this_cycle_cents` stay equal to the cycle spend the gate and the
+budget reports read, and no money is lost to rounding.
 
 ### 6.1.1 Who funds the account
 

@@ -235,11 +235,12 @@ func (r *AccountRepository) Recharge(ctx context.Context, account *Account, amou
 }
 
 // DeductionSpec describes one settlement deduction inside the charge
-// transaction (AD3).
+// transaction (AD3). The amount is not part of the spec: it is accrued from the
+// charge ledger by cycleAccrual so the sub-cent fraction of a single charge is
+// carried instead of being rounded away.
 type DeductionSpec struct {
-	AccountID   string
-	ChargeID    string
-	AmountCents int64
+	AccountID string
+	ChargeID  string
 }
 
 // ApplyDeduction joins the caller's open transaction: re-read the
@@ -268,22 +269,26 @@ func (r *AccountRepository) ApplyDeduction(ctx context.Context, spec DeductionSp
 	if err := tx.Where("id = ?", spec.AccountID).First(&account).Error; err != nil {
 		return err
 	}
+	accrued, err := cycleAccrual(tx, &account)
+	if err != nil {
+		return err
+	}
 	// Prepaid deducts from balance; postpaid leaves the balance
 	// untouched and only accrues cycle usage (AC5). Both modes accrue
 	// the cross-mode spend counter (feature #11, AD6).
 	newBalance := account.BalanceCents
 	newUsed := account.UsedThisCycleCents
-	newSpent := account.SpentThisCycleCents + spec.AmountCents
+	newSpent := account.SpentThisCycleCents + accrued
 	if account.Mode == AccountModePostpaid {
-		newUsed += spec.AmountCents
+		newUsed += accrued
 	} else {
-		newBalance -= spec.AmountCents
+		newBalance -= accrued
 	}
 	row := &Transaction{
 		ID:                uuid.NewString(),
 		AccountID:         account.ID,
 		Type:              TransactionTypeDeduction,
-		AmountCents:       spec.AmountCents,
+		AmountCents:       accrued,
 		BalanceAfterCents: newBalance,
 		IdempotencyKey:    "charge:" + spec.ChargeID,
 		Reference:         spec.ChargeID,
@@ -308,6 +313,31 @@ func (r *AccountRepository) ApplyDeduction(ctx context.Context, spec DeductionSp
 		return apierrors.Newf(apierrors.CodeInternal, "billing: deduction version conflict")
 	}
 	return nil
+}
+
+// cycleAccrual returns how many whole cents the account's current cycle still
+// owes for its settled charges. Charge amounts are stored at micro-unit
+// precision (a per-request charge is usually far below one cent), so rounding
+// each charge on its own would discard the fraction for good and the balance
+// would drift away from the ledger. Measuring the cycle's rounded total
+// against what has already been accrued carries the fraction until it becomes
+// a whole cent, and keeps spent_this_cycle_cents equal to the ledger total the
+// spend gate and the budget reports read.
+func cycleAccrual(tx *gorm.DB, account *Account) (int64, error) {
+	var chargedCents int64
+	err := tx.Model(&ChargeRecord{}).
+		Select("COALESCE(ROUND(SUM(amount) * 100), 0)").
+		Where("organization_id = ? AND period_start >= ?", account.OrganizationID, account.CycleStartedAt).
+		Scan(&chargedCents).Error
+	if err != nil {
+		return 0, err
+	}
+	// A counter ahead of the ledger (a legacy row, or a cycle reset that
+	// reclaimed cents) never moves money backwards.
+	if chargedCents <= account.SpentThisCycleCents {
+		return 0, nil
+	}
+	return chargedCents - account.SpentThisCycleCents, nil
 }
 
 // TransactionFilter is the ListTransactions query (FR6).

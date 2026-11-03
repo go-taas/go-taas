@@ -37,6 +37,26 @@ func seedAccount(t *testing.T, repo *AccountRepository, orgID, mode string, bala
 	return created
 }
 
+// seedCycleCharge inserts a settled charge row for the current cycle, which is
+// what a deduction accrues from.
+func seedCycleCharge(t *testing.T, db *gorm.DB, orgID, apiKeyID string, amount float64) {
+	t.Helper()
+	periodStart := monthStartOf(time.Now().UTC()) + 3600
+	row := &ChargeRecord{
+		ID:              apiKeyID + "-charge",
+		OrganizationID:  orgID,
+		APIKeyID:        apiKeyID,
+		ModelID:         "model-1",
+		AcceleratorType: "nvidia-a100",
+		PeriodStart:     periodStart,
+		PeriodEnd:       periodStart + 3600,
+		Amount:          amount,
+		Currency:        "USD",
+		Priced:          true,
+	}
+	require.NoError(t, db.Create(row).Error)
+}
+
 // AC1: one account per org — the unique index rejects a second insert
 // with 10509.
 func TestAccountRepositoryOnePerOrg(t *testing.T) {
@@ -130,32 +150,29 @@ func TestAccountRepositoryRefund(t *testing.T) {
 // account inside the caller's transaction; a replayed charge key
 // converges without a second write.
 func TestAccountRepositoryApplyDeduction(t *testing.T) {
-	repo, _ := newAccountRepo(t)
+	repo, db := newAccountRepo(t)
 	ctx := context.Background()
 	account := seedAccount(t, repo, "org-1", AccountModePrepaid, 10000, 0, 0)
 
-	err := repo.ApplyDeduction(ctx, DeductionSpec{
-		AccountID: account.ID, ChargeID: "charge-1", AmountCents: 1200,
-	})
+	seedCycleCharge(t, db, "org-1", "key-1", 12)
+	err := repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "charge-1"})
 	require.NoError(t, err)
 
 	stored, err := repo.FindByOrg(ctx, "org-1")
 	require.NoError(t, err)
 	assert.Equal(t, int64(8800), stored.BalanceCents)
+	assert.Equal(t, int64(1200), stored.SpentThisCycleCents)
 
 	// Replay the same charge: converges, no double deduction.
-	err = repo.ApplyDeduction(ctx, DeductionSpec{
-		AccountID: account.ID, ChargeID: "charge-1", AmountCents: 1200,
-	})
+	err = repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "charge-1"})
 	require.NoError(t, err)
 	stored, err = repo.FindByOrg(ctx, "org-1")
 	require.NoError(t, err)
 	assert.Equal(t, int64(8800), stored.BalanceCents)
 
 	// A different charge deducts again.
-	err = repo.ApplyDeduction(ctx, DeductionSpec{
-		AccountID: account.ID, ChargeID: "charge-2", AmountCents: 300,
-	})
+	seedCycleCharge(t, db, "org-1", "key-2", 3)
+	err = repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "charge-2"})
 	require.NoError(t, err)
 	stored, err = repo.FindByOrg(ctx, "org-1")
 	require.NoError(t, err)
@@ -168,16 +185,40 @@ func TestAccountRepositoryApplyDeduction(t *testing.T) {
 	assert.Len(t, rows, 2)
 }
 
+// A single charge is usually far below one cent, so its fraction must be
+// carried: the balance moves when the cycle's accrued total crosses a whole
+// cent instead of being rounded away charge by charge.
+func TestAccountRepositoryDeductionCarriesSubCent(t *testing.T) {
+	repo, db := newAccountRepo(t)
+	ctx := context.Background()
+	account := seedAccount(t, repo, "org-1", AccountModePrepaid, 1000, 0, 0)
+
+	// 0.004 + 0.004 = 0.8 cent: still nothing to move.
+	seedCycleCharge(t, db, "org-1", "key-1", 0.004)
+	require.NoError(t, repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "charge-1"}))
+	stored, err := repo.FindByOrg(ctx, "org-1")
+	require.NoError(t, err)
+	assert.Equal(t, int64(1000), stored.BalanceCents)
+	assert.Equal(t, int64(0), stored.SpentThisCycleCents)
+
+	// One more cent's worth of a fraction crosses the boundary.
+	seedCycleCharge(t, db, "org-1", "key-2", 0.004)
+	require.NoError(t, repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "charge-2"}))
+	stored, err = repo.FindByOrg(ctx, "org-1")
+	require.NoError(t, err)
+	assert.Equal(t, int64(999), stored.BalanceCents)
+	assert.Equal(t, int64(1), stored.SpentThisCycleCents)
+}
+
 // AC5: a postpaid deduction accumulates used_this_cycle_cents and
 // leaves the balance untouched.
 func TestAccountRepositoryPostpaidDeduction(t *testing.T) {
-	repo, _ := newAccountRepo(t)
+	repo, db := newAccountRepo(t)
 	ctx := context.Background()
 	account := seedAccount(t, repo, "org-1", AccountModePostpaid, 0, 10000, 0)
 
-	err := repo.ApplyDeduction(ctx, DeductionSpec{
-		AccountID: account.ID, ChargeID: "charge-1", AmountCents: 2500,
-	})
+	seedCycleCharge(t, db, "org-1", "key-1", 25)
+	err := repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "charge-1"})
 	require.NoError(t, err)
 
 	stored, err := repo.FindByOrg(ctx, "org-1")
@@ -224,7 +265,7 @@ func TestAccountRepositoryFindByOrgAbsent(t *testing.T) {
 
 // ListTransactions filters by type and time range, newest first.
 func TestAccountRepositoryListTransactionsFilters(t *testing.T) {
-	repo, _ := newAccountRepo(t)
+	repo, db := newAccountRepo(t)
 	ctx := context.Background()
 	account := seedAccount(t, repo, "org-1", AccountModePrepaid, 1000, 0, 0)
 
@@ -232,7 +273,8 @@ func TestAccountRepositoryListTransactionsFilters(t *testing.T) {
 	require.NoError(t, err)
 	_, _, err = repo.Recharge(ctx, account, 200, "k2", MoneyMovement{Source: SourceSystem}, TransactionTypeRecharge)
 	require.NoError(t, err)
-	err = repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "c1", AmountCents: 50})
+	seedCycleCharge(t, db, "org-1", "key-1", 0.5)
+	err = repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "c1"})
 	require.NoError(t, err)
 
 	all, total, err := repo.ListTransactions(ctx, TransactionFilter{AccountID: account.ID})
