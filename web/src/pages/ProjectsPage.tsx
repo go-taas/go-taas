@@ -16,6 +16,7 @@ import {
 import { candidateLabel } from '../candidates';
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { MemberQuotaDialog } from './ProjectMembersPage';
 import { useI18n } from '../i18n';
 import { useAdminScope } from '../admin-scope';
 
@@ -608,6 +609,8 @@ function ProjectMembersDialog({
   // an error the pick-list can prevent.
   const [candidates, setCandidates] = useState<MemberCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
+  // quotaTarget is the member whose budget inside this project is being edited.
+  const [quotaTarget, setQuotaTarget] = useState<ProjectMember | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -746,6 +749,13 @@ function ProjectMembersDialog({
                 </td>
                 <td>
                   <button
+                    className="link"
+                    data-testid={`project-member-quota-${m.userId}`}
+                    onClick={() => setQuotaTarget(m)}
+                  >
+                    {t('memberQuota.quota')}
+                  </button>
+                  <button
                     className="link danger"
                     data-testid={`project-member-remove-${m.userId}`}
                     onClick={() => void removeMember(m.userId)}
@@ -757,6 +767,13 @@ function ProjectMembersDialog({
             ))}
           </tbody>
         </table>
+      )}
+      {quotaTarget && (
+        <MemberQuotaDialog
+          projectId={project.projectId}
+          member={quotaTarget}
+          onClose={() => setQuotaTarget(null)}
+        />
       )}
       {addOpen && (
         <div className="form" style={{ marginTop: 12 }}>

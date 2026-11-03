@@ -291,7 +291,7 @@ export default function ProjectMembersPage() {
  * point — a member cap looser than the personal one changes nothing, and an
  * administrator should see that before saving.
  */
-function MemberQuotaDialog({
+export function MemberQuotaDialog({
   projectId,
   member,
   onClose,
