@@ -215,6 +215,25 @@ func (r *InferRepository) AcceleratorTypesByServiceIDs(ctx context.Context, ids 
 
 新消息：`PriceTier {up_to_tokens, input_price_per_million, output_price_per_million}`、`ChargeRecordSummary`（第 4.2 节约束 3）。
 
+### 4.1.1 用户模型目录携带的价目卡
+
+调用方在选择模型时需要知道一次调用要花多少钱，而列出模型的页面正是模型目录。与其再开一个用户端价格接口（还得重新实现「哪个版本当前生效」），不如让 billing 模块通过注入接缝回答 model 模块：
+
+```go
+// services/model —— 由消费方定义的接缝
+type PriceLookup interface {
+    CurrentModelRates(ctx context.Context, modelIDs []string) (map[string]Rate, error)
+}
+```
+
+`billing.Service.CurrentModelRates` 实现它，价格版本的选择逻辑因此只存在一处。用户端的投影是 `AvailableModel.pricing` —— 每百万词元的输入 / 输出 / 缓存命中价格、货币与卡型 —— 不携带价格 id、版本或任何运维字段。它遵循的规则：
+
+- 只取**当前生效**的版本（未来版本还不是价格，被取代的版本已不再是价格）；
+- 模型存在 `default` 行时优先取它，因为这是无法选择卡型的调用方实际支付的费率；
+- 否则取输入价格最低的卡型行，让只按卡型定价的模型也能显示费率；
+- 以模型**名称**存储的价格行会解析到目录列出的 id（与 `chargeGroup` 相同的别名回退）；
+- 读取失败时目录仍然可用，只是不带价格 —— 因为价目卡读不出来就隐藏整个模型列表，比显示未定价更糟。
+
 ### 4.2 线格式（既有惯例）
 
 - 分页绑定为 `?page.offset=0&page.limit=20`（点分形式）；默认 limit 20，上限 100。

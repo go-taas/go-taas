@@ -216,6 +216,38 @@ All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/bill
 
 New messages: `PriceTier {up_to_tokens, input_price_per_million, output_price_per_million}`, `ChargeRecordSummary` (Section 4.2 constraint 3).
 
+### 4.1.1 The rate card the user catalog carries
+
+A caller picking a model needs to know what a call costs, and the model catalog
+is the page that lists the models. Rather than a second user-surface price
+endpoint (which would have to re-implement "which version is current"), the
+billing module answers the model module through an injected seam:
+
+```go
+// services/model — consumer-defined seam
+type PriceLookup interface {
+    CurrentModelRates(ctx context.Context, modelIDs []string) (map[string]Rate, error)
+}
+```
+
+`billing.Service.CurrentModelRates` implements it, so price-version selection
+stays in one place. The projection on the user surface is
+`AvailableModel.pricing` — input / output / cache-hit rates per million tokens,
+the currency and the card type — and carries no price id, version or operator
+field. The rules it applies:
+
+- only versions in effect **now** (a scheduled version is not a price yet, and a
+  superseded one is no longer the rate);
+- a `default` row wins when the model has one, because that is the rate charged
+  to a caller who cannot pick a card;
+- otherwise the card-specific row with the lowest input rate is shown, so a
+  model priced only per card type still displays a rate;
+- a row keyed on the model's **name** is resolved for the id the catalog lists
+  (the same alias fallback `chargeGroup` uses);
+- a lookup failure leaves the catalog intact without prices — hiding the model
+  list because the rate card is unreadable would be worse than showing it
+  unpriced.
+
 ### 4.2 Wire Format (established conventions)
 
 - Pagination binds as `?page.offset=0&page.limit=20` (dotted form); default limit 20, cap 100.

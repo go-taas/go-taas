@@ -228,6 +228,20 @@ sequenceDiagram
     end
 ```
 
+### 6.2.1 Where the ladder sits relative to the account
+
+The account is the tenant's wallet and the ladder caps who may draw on it. The
+funds check walks both, in this order: the account rule (prepaid balance,
+postpaid quota, cross-mode spend cap) decides whether the tenant has money at
+all, then each quota tier decides whether **this** caller may spend it —
+organization, project, personal and project-member, each compared against its own
+scoped charge total.
+
+Members of an organization share the account and the balance; what differs per
+person is the budget they are allowed to consume and the amount they have
+consumed so far. See [Balance, Account and Quota Hierarchy](./balance-quota-hierarchy.md)
+for the full ladder, the per-tier spend scopes, and the console surfaces.
+
 ### 6.3 Inference Gating (data plane)
 
 ```mermaid

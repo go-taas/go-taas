@@ -60,24 +60,35 @@ Project rules:
 
 ## 3. Three-level quotas
 
-Every limit exists at three tiers; each tier is optional and `0` means
-unlimited. The effective value is the minimum of the non-zero values:
+Every limit exists at three tiers — organization, project and user — and each
+tier is optional; `0` means unlimited. The effective value is the minimum of the
+non-zero values:
 
 ```text
-effective(dim) = minNonZero(org[dim], project[dim], user[dim])
+effective(dim) = minNonZero(org[dim], project[dim], personal[dim], member[dim])
 ```
 
 A tier can therefore tighten the tenant budget but never loosen it.
 
-| Dimension | Organization | Project | Personal |
-| --- | --- | --- | --- |
-| `max_concurrent_requests` | `organizations` | `projects` | `user_quotas` |
-| `max_batch_jobs_per_day` | `organizations` | `projects` | `user_quotas` |
-| `max_output_tokens_per_request` | `organizations` | `projects` | `user_quotas` |
-| `monthly_spend_limit_cents` | `billing_accounts` | `projects` | `user_quotas` |
+The user tier has two sources, and both apply: the organization-wide personal
+budget (`user_quotas`, one per person per tenant) and the member budget inside
+the project the key belongs to (`project_members`). They are both
+administrator-set for one person, so the stricter one wins — a project
+administrator can tighten a member's budget for that project, and a membership
+never bypasses the person's organization-wide cap. See
+[Balance, Account and Quota Hierarchy](./balance-quota-hierarchy.md) for the
+full ladder and the console surfaces.
+
+| Dimension | Organization | Project | Personal (org-wide) | Member (in project) |
+| --- | --- | --- | --- | --- |
+| `max_concurrent_requests` | `organizations` | `projects` | `user_quotas` | `project_members` |
+| `max_batch_jobs_per_day` | `organizations` | `projects` | `user_quotas` | `project_members` |
+| `max_output_tokens_per_request` | `organizations` | `projects` | `user_quotas` | `project_members` |
+| `monthly_spend_limit_cents` | `billing_accounts` | `projects` | `user_quotas` | `project_members` |
 
 `user_quotas` is keyed by `(organization_id, user_id)`; a person carries one
-budget per tenant.
+budget per tenant. `project_members` is keyed by `(project_id, user_id)`, so the
+same person can carry a different budget in every project.
 
 ### 3.1 Enforcement points
 
@@ -99,13 +110,24 @@ them, so there is no organization, project or personal cap on their count.
 A quota read failure degrades that tier to unlimited and logs a warning: an
 authorization outage must not stop inference.
 
-### 3.2 Personal budgets replace per-project member budgets
+### 3.2 The member tier is enforced
 
-`project_members` used to carry per-member quota columns that nothing enforced.
-Those limits are folded into `user_quotas` at startup (idempotent: an existing
-row wins) using the strictest non-zero value per dimension, and the retired
-console page is removed. Project-level budgets live on `projects`; personal
-budgets live on `user_quotas`.
+`project_members` carries a monthly spend cap next to the three service limits,
+and the roster is the place a project administrator budgets a person. The tier
+is scoped to `(project, user)`, so:
+
+- the same person can carry different budgets in different projects;
+- losing the membership drops the budget with it, which is what "a budget in
+  this project" means;
+- the effective value is the minimum of it and the person's org-wide budget, so
+  raising a member cap above the personal one changes nothing (the console shows
+  both, so that is visible before saving).
+
+An earlier revision of this design folded the member columns into `user_quotas`
+at startup and stopped enforcing them. That fold is gone: it copied one
+project's cap to every project the person belongs to, and it made the roster
+columns dead storage. Existing `user_quotas` rows written by it remain valid as
+the org-wide personal tier.
 
 ## 4. Metering and billing attribution
 

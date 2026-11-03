@@ -159,6 +159,8 @@ flowchart TD
 | `AdminSSOAuthorize` / `AdminSSOCallback` | `GET /api/v1/admin/auth/sso/{provider_id}/authorize, callback` | 管理端 | 现有 | 管理端表面上的 SAML 重定向流程（复用） |
 | `GetSession` | `GET /api/v1/auth/session`、`/api/v1/admin/auth/session` | 两者 | 现有 | 外壳的会话校验；返回 realm（复用） |
 | `Logout` | `POST /api/v1/auth/logout`、`/api/v1/admin/auth/logout` | 两者 | 现有 | 吊销会话（复用） |
+| `GrantPlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:grant-platform-admin` | 管理端 | **新增** | 为活跃账号授予平台管理员角色，并吊销其会话（见 §12.5.1） |
+| `RevokePlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:revoke-platform-admin` | 管理端 | **新增** | 取消该角色；拒绝自我取消与取消最后一名管理员（见 §12.5.1） |
 
 ### 5.2 Proto 契约
 
@@ -526,6 +528,27 @@ PasswordGrant(ctx context.Context, p *SSOProvider, username, password string) (*
 ### 12.5 `auth` 模块 —— 管理角色集合
 
 `adminRoles()` 返回配置的 `auth.adminRoles` 列表（AD3），默认 `["platform-admin", "org-admin", "admin", "owner"]`。`isAdminRole(roles []string) bool` 在任一角色在集合中时返回 true。realm 派生（AD2）与切换校验（AD5）都使用它。
+
+### 12.5.1 平台管理员角色的分配
+
+该角色属于账号本身（`users.platform_admin`），而不属于组织成员关系：平台没有租户，成员关系行无法承载它。两个管理端 RPC 负责管理（见 §5.1）：
+
+| RPC | HTTP | 效果 |
+| --- | --- | --- |
+| `GrantPlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:grant-platform-admin` | 置位，并吊销目标账号的会话 |
+| `RevokePlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:revoke-platform-admin` | 清除，并吊销目标账号的会话 |
+
+两者都返回更新后的 `UserSummary`，其中新增 `platform_admin`，供目录页显示标记。规则与理由：
+
+| 规则 | 失败码 | 理由 |
+| --- | --- | --- |
+| 只有平台管理员可调用 | `10036` | 管理端前缀已拒绝用户端会话；再显式校验角色，让该权限来自角色而不是「路径推断」。 |
+| 目标必须处于活跃状态才能授予 | `10036` | 给已禁用账号授权，会在账号被重新启用时立即生效 —— 这是没有人做过的决定。 |
+| 不能取消自己的角色 | `10036` | 调用方眼前这个控制台是唯一的退路，误点会把自己锁在门外，产品内没有其他恢复手段。 |
+| 最后一名管理员不能被任何人取消 | `10036` | 零管理员的安装无法管理，连纠正这个错误都做不到。 |
+| 两个方向都幂等 | — | 重复授予已有管理员（或取消一个普通账号）成功但不改变任何东西，重试安全。 |
+
+角色变更会吊销目标账号的会话。会话会缓存签发时的角色：否则被降级的管理员在 token 过期前仍保有全部权限，被提升的人则要登录两次（一次拿到角色，一次拿到管理端会话）。为此会话按账号在 Redis 中建立索引（`taas:auth:user-sessions:{user_id}`）；同一个吊销器现在也用于 `DisableUser` —— 被禁用却仍能工作的账号不叫禁用。
 
 ### 12.6 前端
 

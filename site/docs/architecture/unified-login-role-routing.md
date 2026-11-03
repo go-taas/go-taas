@@ -159,6 +159,8 @@ All APIs belong to the existing **`taas.auth.v1.AuthService`** (proto: `proto/ta
 | `AdminSSOAuthorize` / `AdminSSOCallback` | `GET /api/v1/admin/auth/sso/{provider_id}/authorize, callback` | admin | existing | SAML redirect flow on the admin surface (reused) |
 | `GetSession` | `GET /api/v1/auth/session`, `/api/v1/admin/auth/session` | both | existing | The shell's session validation; returns the realm (reused) |
 | `Logout` | `POST /api/v1/auth/logout`, `/api/v1/admin/auth/logout` | both | existing | Revoke a session (reused) |
+| `GrantPlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:grant-platform-admin` | admin | **new** | Give an active account the platform administrator role; revokes its sessions (Section 12.5.1) |
+| `RevokePlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:revoke-platform-admin` | admin | **new** | Remove the role; refuses self-revocation and the last administrator (Section 12.5.1) |
 
 ### 5.2 Proto contract
 
@@ -526,6 +528,36 @@ Each step is existence-checked before insert, so the seed is idempotent (FR4.4).
 ### 12.5 The `auth` module — admin-role set
 
 `adminRoles()` returns the configured `auth.adminRoles` list (AD3), defaulting to `["platform-admin", "org-admin", "admin", "owner"]`. `isAdminRole(roles []string) bool` returns true iff any role is in the set. Both the realm derivation (AD2) and the switch validation (AD5) use it.
+
+### 12.5.1 Assigning the platform administrator role
+
+The role is a property of the account (`users.platform_admin`), not of an
+organization membership: the platform owns no tenant, so no membership row can
+carry it. Two admin-surface RPCs manage it (Section 5.1):
+
+| RPC | HTTP | Effect |
+| --- | --- | --- |
+| `GrantPlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:grant-platform-admin` | sets the flag, revokes the target's sessions |
+| `RevokePlatformAdmin` | `POST /api/v1/admin/auth/users/{user_id}:revoke-platform-admin` | clears the flag, revokes the target's sessions |
+
+Both return the updated `UserSummary`, which now carries `platform_admin` so the
+directory can show the badge. The rules, and why each exists:
+
+| Rule | Failure | Why |
+| --- | --- | --- |
+| Only a platform administrator may call either RPC | `10036` | The admin surface already rejects a user-realm session; the role check makes the privilege explicit instead of implied by the realm. |
+| The target must be active to be granted | `10036` | Granting it to a disabled account arms the role for whenever the account is re-enabled — a decision nobody made. |
+| A caller cannot revoke its own role | `10036` | The console in front of the caller is the only way back; a mis-click would lock them out with no in-product recovery. |
+| The last administrator cannot be revoked by anyone | `10036` | An installation with zero administrators cannot be administered at all, including fixing the mistake. |
+| Both directions are idempotent | — | Granting an existing administrator (or revoking a plain account) succeeds and changes nothing, so a retry is safe. |
+
+A role change revokes the target's sessions. A session caches the roles it was
+minted with, so without it a demoted administrator keeps full access until the
+token expires, and a promoted one would have to sign in twice (once to get the
+role, once to get an admin-realm session). Sessions are indexed per user in
+Redis (`taas:auth:user-sessions:{user_id}`) to make that possible; the same
+revoker now also runs on `DisableUser`, because a disabled account that keeps
+working is not disabled.
 
 ### 12.6 The frontend
 
