@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -205,3 +206,114 @@ func TestDashboardAggregateMergesChargeAndRawUsage(t *testing.T) {
 	assert.EqualValues(t, 200, byKey["key-2"].CostCents, "a charge without raw usage still counts")
 	assert.EqualValues(t, 1000, byKey["key-2"].PromptTokens, "and its own token count stands in")
 }
+
+// TestDashboardAggregateFiltersByModelAndKey covers the usage page's filters:
+// narrowing to a model or a key must narrow the token counts and the charges
+// together, or the two halves of one page would disagree.
+func TestDashboardAggregateFiltersByModelAndKey(t *testing.T) {
+	db := newDashboardTestDB(t)
+	ctx := context.Background()
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	h1 := day.Unix()
+
+	mustInsertCharge(t, db, "org-1", "key-1", "model-a", "A800", h1, 1.00, true)
+	mustInsertCharge(t, db, "org-1", "key-1", "model-b", "A800", h1, 2.00, true)
+	mustInsertCharge(t, db, "org-1", "key-2", "model-a", "A800", h1, 4.00, true)
+
+	repo := NewDashboardRepository(db)
+	base := DashboardFilter{OrganizationID: "org-1", Since: h1, Until: h1 + 86400, GroupBy: GroupByModel}
+
+	// Filtered by model: only model-a's two charges (key-1 + key-2).
+	byModel := base
+	byModel.ModelID = "model-a"
+	rows, err := repo.DashboardAggregateFiltered(ctx, byModel)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "model-a", rows[0].GroupKey)
+	assert.Equal(t, int64(500), rows[0].CostCents)
+	// Each seeded charge carries 3 requests, and neither key has a raw usage
+	// line, so the charge record supplies the count.
+	assert.Equal(t, int64(6), rows[0].RequestCount)
+
+	// Filtered by key: only key-1's two charges, both models present.
+	byKey := base
+	byKey.APIKeyID = "key-1"
+	rows, err = repo.DashboardAggregateFiltered(ctx, byKey)
+	require.NoError(t, err)
+	require.Len(t, rows, 2)
+	total := int64(0)
+	for _, r := range rows {
+		total += r.CostCents
+	}
+	assert.Equal(t, int64(300), total)
+
+	// Both filters: one row.
+	both := base
+	both.ModelID = "model-a"
+	both.APIKeyID = "key-1"
+	rows, err = repo.DashboardAggregateFiltered(ctx, both)
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, int64(100), rows[0].CostCents)
+}
+
+// TestDashboardAggregateGroupsByUser covers the two dimensions the console
+// offered but the repository silently mapped to the API key.
+func TestDashboardAggregateGroupsByUser(t *testing.T) {
+	db := newDashboardTestDB(t)
+	ctx := context.Background()
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+
+	owner := uuid.NewString()
+	require.NoError(t, db.Create(&chargeRecordRow{
+		OrganizationID: "org-1", APIKeyID: "key-1", ModelID: "model-a", AcceleratorType: "A800",
+		PeriodStart: day.Unix(), RequestCount: 1, Amount: 1.5, Priced: true,
+		OwnerUserID: &owner, ProjectID: ptr("proj-1"),
+	}).Error)
+
+	repo := NewDashboardRepository(db)
+	rows, err := repo.DashboardAggregateFiltered(ctx, DashboardFilter{
+		OrganizationID: "org-1", Since: day.Unix(), Until: day.Add(24 * time.Hour).Unix(), GroupBy: GroupByUser,
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, owner, rows[0].GroupKey)
+
+	rows, err = repo.DashboardAggregateFiltered(ctx, DashboardFilter{
+		OrganizationID: "org-1", Since: day.Unix(), Until: day.Add(24 * time.Hour).Unix(), GroupBy: GroupByProject,
+	})
+	require.NoError(t, err)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "proj-1", rows[0].GroupKey)
+}
+
+// TestDashboardLifetimeCostIgnoresTheRange covers the "total spent" figure: it
+// sums every charge of the scope, so an old charge outside the range still
+// counts, while the model filter still narrows it.
+func TestDashboardLifetimeCostIgnoresTheRange(t *testing.T) {
+	db := newDashboardTestDB(t)
+	ctx := context.Background()
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	old := day.Add(-60 * 24 * time.Hour).Unix()
+
+	mustInsertCharge(t, db, "org-1", "key-1", "model-a", "A800", day.Unix(), 1.25, true)
+	mustInsertCharge(t, db, "org-1", "key-1", "model-a", "A800", old, 10.00, true)
+	mustInsertCharge(t, db, "org-1", "key-1", "model-b", "A800", day.Unix(), 2.00, true)
+	mustInsertCharge(t, db, "org-2", "key-9", "model-a", "A800", day.Unix(), 99.00, true)
+
+	repo := NewDashboardRepository(db)
+	base := DashboardFilter{OrganizationID: "org-1", GroupBy: GroupByModel}
+
+	micros, err := repo.LifetimeCostMicros(ctx, base)
+	require.NoError(t, err)
+	assert.Equal(t, int64(13_250_000), micros, "11.00 + 2.00 = 13.00, plus the 0.25 of the current day")
+
+	filtered := base
+	filtered.ModelID = "model-a"
+	micros, err = repo.LifetimeCostMicros(ctx, filtered)
+	require.NoError(t, err)
+	assert.Equal(t, int64(11_250_000), micros, "the old 10.00 charge still counts for its model")
+}
+
+// ptr returns a pointer to v, for the nullable projection columns.
+func ptr(v string) *string { return &v }

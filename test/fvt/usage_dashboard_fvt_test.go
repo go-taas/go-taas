@@ -309,3 +309,100 @@ func TestFVTDashboardOrgIsolation(t *testing.T) {
 	cards := body["cards"].(map[string]any)
 	assert.Equal(t, "100", cards["totalCostCents"])
 }
+
+// TestFVTDashboardFilters covers the usage page's model and API-key filters:
+// the cards, the buckets and the lifetime total all narrow together, so a
+// filtered page never shows one model's cost next to every model's tokens.
+func TestFVTDashboardFilters(t *testing.T) {
+	env := newDashboardEnv(t)
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	old := day.Add(-45 * 24 * time.Hour).Unix()
+
+	env.seedCharge(t, "org-fvt", "key-1", "model-a", "A800", day.Unix(), 1.00, true)
+	env.seedCharge(t, "org-fvt", "key-1", "model-b", "A800", day.Unix(), 2.00, true)
+	env.seedCharge(t, "org-fvt", "key-2", "model-a", "A800", day.Unix(), 4.00, true)
+	// Outside the requested range, inside the lifetime total.
+	env.seedCharge(t, "org-fvt", "key-1", "model-a", "A800", old, 10.00, true)
+
+	path := func(query string) string {
+		return fmt.Sprintf("/api/v1/admin/metering/usage-dashboard?since=%d&until=%d&group_by=model%s",
+			day.Unix(), day.Add(24*time.Hour).Unix(), query)
+	}
+
+	// No filter: every model, both keys, range total 7.00, lifetime 17.00.
+	code, body := env.call(t, "GET", path(""), nil, "org-fvt")
+	require.Equal(t, 200, code)
+	cards := body["cards"].(map[string]any)
+	assert.Equal(t, "700", cards["totalCostCents"])
+	assert.Equal(t, "17000000", cards["lifetimeCostMicros"])
+	assert.Len(t, body["dailyBuckets"].([]any)[0].(map[string]any)["groups"].([]any), 2)
+
+	// By model: model-a only, 5.00 in range, 15.00 lifetime.
+	code, body = env.call(t, "GET", path("&model_id=model-a"), nil, "org-fvt")
+	require.Equal(t, 200, code)
+	cards = body["cards"].(map[string]any)
+	assert.Equal(t, "500", cards["totalCostCents"])
+	assert.Equal(t, "15000000", cards["lifetimeCostMicros"])
+	groups := body["dailyBuckets"].([]any)[0].(map[string]any)["groups"].([]any)
+	require.Len(t, groups, 1)
+	assert.Equal(t, "model-a", groups[0].(map[string]any)["groupKey"])
+
+	// By key: key-1 only, 3.00 in range, 13.00 lifetime.
+	code, body = env.call(t, "GET", path("&api_key_id=key-1"), nil, "org-fvt")
+	require.Equal(t, 200, code)
+	cards = body["cards"].(map[string]any)
+	assert.Equal(t, "300", cards["totalCostCents"])
+	assert.Equal(t, "13000000", cards["lifetimeCostMicros"])
+
+	// Both: key-1 on model-a, 1.00 in range, 11.00 lifetime.
+	code, body = env.call(t, "GET", path("&model_id=model-a&api_key_id=key-1"), nil, "org-fvt")
+	require.Equal(t, 200, code)
+	cards = body["cards"].(map[string]any)
+	assert.Equal(t, "100", cards["totalCostCents"])
+	assert.Equal(t, "11000000", cards["lifetimeCostMicros"])
+}
+
+// TestFVTDashboardGroupByUserAndProject covers the two dimensions the console
+// offered: filtering by them must regroup instead of silently falling back to
+// the API key.
+func TestFVTDashboardGroupByUserAndProject(t *testing.T) {
+	env := newDashboardEnv(t)
+	day := time.Date(2026, 9, 24, 0, 0, 0, 0, time.UTC)
+	owner := uuid.NewString()
+	other := uuid.NewString()
+
+	seed := func(keyID, modelID string, amount float64, ownerID, projectID string) {
+		require.NoError(t, env.db.Create(&billing.ChargeRecord{
+			ID: uuid.NewString(), OrganizationID: "org-fvt", APIKeyID: keyID, ModelID: modelID,
+			AcceleratorType: "A800", PeriodStart: day.Unix(), PeriodEnd: day.Unix() + 3600,
+			RequestCount: 1, Amount: amount, Currency: "USD", TierIndex: -1, Priced: true,
+			OwnerUserID: &ownerID, ProjectID: &projectID,
+		}).Error)
+	}
+	seed("key-1", "model-a", 1.00, owner, "proj-1")
+	seed("key-2", "model-a", 2.00, other, "proj-2")
+
+	code, body := env.call(t, "GET",
+		fmt.Sprintf("/api/v1/admin/metering/usage-dashboard?since=%d&until=%d&group_by=user",
+			day.Unix(), day.Add(24*time.Hour).Unix()), nil, "org-fvt")
+	require.Equal(t, 200, code)
+	groups := body["dailyBuckets"].([]any)[0].(map[string]any)["groups"].([]any)
+	require.Len(t, groups, 2)
+	keys := []string{}
+	for _, g := range groups {
+		keys = append(keys, g.(map[string]any)["groupKey"].(string))
+	}
+	assert.ElementsMatch(t, []string{owner, other}, keys)
+
+	code, body = env.call(t, "GET",
+		fmt.Sprintf("/api/v1/admin/metering/usage-dashboard?since=%d&until=%d&group_by=project",
+			day.Unix(), day.Add(24*time.Hour).Unix()), nil, "org-fvt")
+	require.Equal(t, 200, code)
+	groups = body["dailyBuckets"].([]any)[0].(map[string]any)["groups"].([]any)
+	require.Len(t, groups, 2)
+	keys = []string{}
+	for _, g := range groups {
+		keys = append(keys, g.(map[string]any)["groupKey"].(string))
+	}
+	assert.ElementsMatch(t, []string{"proj-1", "proj-2"}, keys)
+}

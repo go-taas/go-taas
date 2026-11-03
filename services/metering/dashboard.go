@@ -2,6 +2,7 @@ package metering
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
@@ -37,11 +38,23 @@ func (s *Service) GetUsageDashboard(ctx context.Context, req *meteringv1.GetUsag
 	if err != nil {
 		return nil, err
 	}
-	rows, err := repo.DashboardAggregate(ctx, orgID, since, until, groupBy)
+	filter := DashboardFilter{
+		OrganizationID: orgID,
+		Since:          since,
+		Until:          until,
+		GroupBy:        groupBy,
+		ModelID:        strings.TrimSpace(req.GetModelId()),
+		APIKeyID:       strings.TrimSpace(req.GetApiKeyId()),
+	}
+	rows, err := repo.DashboardAggregateFiltered(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
 	watermark, err := repo.ChargeWatermark(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	lifetime, err := repo.LifetimeCostMicros(ctx, filter)
 	if err != nil {
 		return nil, err
 	}
@@ -74,8 +87,9 @@ func (s *Service) GetUsageDashboard(ctx context.Context, req *meteringv1.GetUsag
 	// charges themselves: a price can be entered in any supported currency,
 	// and reporting the platform default would label CNY amounts as USD.
 	cards := &meteringv1.DashboardCard{
-		Currency:    dashboardCurrency(rows),
-		DataThrough: watermark,
+		Currency:           dashboardCurrency(rows),
+		DataThrough:        watermark,
+		LifetimeCostMicros: lifetime,
 	}
 	for _, row := range rows {
 		cards.TotalCostCents += row.CostCents
@@ -214,6 +228,10 @@ func dashboardGroupBy(g string) DashboardGroupBy {
 		return GroupByModel
 	case "accelerator_type":
 		return GroupByAcceleratorType
+	case "user":
+		return GroupByUser
+	case "project":
+		return GroupByProject
 	default:
 		return GroupByAPIKey
 	}

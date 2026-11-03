@@ -329,8 +329,13 @@ message GetUsageDashboardRequest {
   int64 since = 2;
   int64 until = 3;
   // group_by selects the aggregation dimension: "api_key" (default),
-  // "model" or "accelerator_type".
+  // "model", "accelerator_type", "user" or "project".
   string group_by = 4;
+  // model_id optionally narrows the cards and buckets to one catalog
+  // model, so a usage page can be filtered the way the group-by suggests.
+  string model_id = 5;
+  // api_key_id optionally narrows the cards and buckets to one API key.
+  string api_key_id = 6;
 }
 
 // DashboardCard is the headline summary of the dashboard range.
@@ -352,6 +357,11 @@ message DashboardCard {
   // data_through is the last complete hour covered by charging (the
   // charge watermark); hours past it are pending.
   int64 data_through = 9;
+  // lifetime_cost_micros is the scope's all-time charged cost at 1e-6
+  // currency precision. It ignores the requested range (that is what
+  // makes it lifetime) but honors the model/api-key filters, so a
+  // filtered view can still show how much that slice has cost overall.
+  int64 lifetime_cost_micros = 11;
 }
 
 // DashboardGroup is one group's aggregate within a daily bucket.

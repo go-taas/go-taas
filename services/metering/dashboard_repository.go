@@ -19,7 +19,34 @@ const (
 	GroupByAPIKey          DashboardGroupBy = "api_key"
 	GroupByModel           DashboardGroupBy = "model"
 	GroupByAcceleratorType DashboardGroupBy = "accelerator_type"
+	GroupByUser            DashboardGroupBy = "user"
+	GroupByProject         DashboardGroupBy = "project"
 )
+
+// DashboardFilter narrows the dashboard aggregate. Empty ModelID and
+// APIKeyID mean "no filter", so a caller that only wants a range keeps the
+// original behaviour.
+type DashboardFilter struct {
+	OrganizationID string
+	Since          int64
+	Until          int64
+	GroupBy        DashboardGroupBy
+	// ModelID narrows the aggregate to one catalog model.
+	ModelID string
+	// APIKeyID narrows the aggregate to one API key.
+	APIKeyID string
+}
+
+// apply adds the filter's optional predicates to a query builder.
+func (f DashboardFilter) apply(q *gorm.DB) *gorm.DB {
+	if f.ModelID != "" {
+		q = q.Where("model_id = ?", f.ModelID)
+	}
+	if f.APIKeyID != "" {
+		q = q.Where("api_key_id = ?", f.APIKeyID)
+	}
+	return q
+}
 
 // chargeRecordRow is the read-only projection of billing's
 // charge_records table that the dashboard aggregates over (AD1). It is
@@ -39,6 +66,11 @@ type chargeRecordRow struct {
 	Amount           float64
 	Currency         string
 	Priced           bool
+	// OwnerUserID and ProjectID are the key's attribution snapshot. They are
+	// nullable in the billing table (a shared key has no owner), so they are
+	// pointers rather than strings.
+	OwnerUserID *string
+	ProjectID   *string
 }
 
 // TableName overrides the default GORM table name to billing's table.
@@ -87,6 +119,13 @@ func groupColumn(g DashboardGroupBy) string {
 		return "model_id"
 	case GroupByAcceleratorType:
 		return "accelerator_type"
+	case GroupByUser:
+		// owner_user_id is a uuid column: it cannot be scanned into a string
+		// (Postgres refuses the conversion) and a shared key leaves it NULL,
+		// so it is cast and coalesced. Both are valid in sqlite and Postgres.
+		return "COALESCE(CAST(owner_user_id AS TEXT), '')"
+	case GroupByProject:
+		return "project_id"
 	default:
 		return "api_key_id"
 	}
@@ -105,6 +144,8 @@ type usageLineRow struct {
 	CachedTokens     int64
 	ReasoningTokens  int64
 	CompletedAt      time.Time
+	OwnerUserID      *string
+	ProjectID        *string
 }
 
 // TableName overrides the default GORM table name.
@@ -121,6 +162,16 @@ func (usageLineRow) TableName() string { return "usage_lines" }
 // reports their cost and is priced; one with only raw usage reports zero cost
 // and is not priced, which the card surfaces as unpriced requests.
 func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID string, since, until int64, groupBy DashboardGroupBy) ([]DashboardAggregateRow, error) {
+	return r.DashboardAggregateFiltered(ctx, DashboardFilter{
+		OrganizationID: orgID, Since: since, Until: until, GroupBy: groupBy,
+	})
+}
+
+// DashboardAggregateFiltered is DashboardAggregate with the optional model and
+// API-key filters applied: a usage page that narrows to one model must narrow
+// the tokens and charges together, or the two halves would disagree.
+func (r *DashboardRepository) DashboardAggregateFiltered(ctx context.Context, filter DashboardFilter) ([]DashboardAggregateRow, error) {
+	orgID, since, until, groupBy := filter.OrganizationID, filter.Since, filter.Until, filter.GroupBy
 	col := groupColumn(groupBy)
 	merged := make(map[string]*DashboardAggregateRow)
 
@@ -143,16 +194,16 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 		ReasoningTokens  int64
 		RequestCount     int64
 	}
-	err := r.db.DB(ctx).Model(&usageLineRow{}).
-		Select(dayExpr+" AS day, "+
-			col+" AS group_key, "+
-			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
-			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+
-			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, "+
-			"COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens, "+
-			"COUNT(*) AS request_count").
+	err := filter.apply(r.db.DB(ctx).Model(&usageLineRow{}).
 		Where("organization_id = ? AND completed_at >= "+lowerBound+" AND completed_at < "+upperBound,
-			orgID, since, until).
+			orgID, since, until)).
+		Select(dayExpr + " AS day, " +
+			col + " AS group_key, " +
+			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, " +
+			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, " +
+			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, " +
+			"COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens, " +
+			"COUNT(*) AS request_count").
 		Group("day, " + col).
 		Scan(&usage).Error
 	if err != nil {
@@ -173,20 +224,20 @@ func (r *DashboardRepository) DashboardAggregate(ctx context.Context, orgID stri
 
 	// Charges: the priced cost, when settlement has run.
 	var charges []DashboardAggregateRow
-	err = r.db.DB(ctx).Model(&chargeRecordRow{}).
-		Select("(period_start / 86400) * 86400 AS day, "+
-			col+" AS group_key, "+
-			"ROUND(SUM(amount) * 100) AS cost_cents, "+
-			"CAST(ROUND(SUM(amount) * 1000000) AS INTEGER) AS cost_micros, "+
-			"COALESCE(MAX(currency), '') AS currency, "+
-			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, "+
-			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, "+
-			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, "+
-			"COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens, "+
-			"COALESCE(SUM(request_count),0) AS request_count, "+
-			"MIN(CASE WHEN priced THEN 1 ELSE 0 END) AS priced_raw").
+	err = filter.apply(r.db.DB(ctx).Model(&chargeRecordRow{}).
 		Where("organization_id = ? AND period_start >= ? AND period_start < ?",
-			orgID, since, until).
+			orgID, since, until)).
+		Select("(period_start / 86400) * 86400 AS day, " +
+			col + " AS group_key, " +
+			"ROUND(SUM(amount) * 100) AS cost_cents, " +
+			"CAST(ROUND(SUM(amount) * 1000000) AS INTEGER) AS cost_micros, " +
+			"COALESCE(MAX(currency), '') AS currency, " +
+			"COALESCE(SUM(prompt_tokens),0) AS prompt_tokens, " +
+			"COALESCE(SUM(completion_tokens),0) AS completion_tokens, " +
+			"COALESCE(SUM(cached_tokens),0) AS cached_tokens, " +
+			"COALESCE(SUM(reasoning_tokens),0) AS reasoning_tokens, " +
+			"COALESCE(SUM(request_count),0) AS request_count, " +
+			"MIN(CASE WHEN priced THEN 1 ELSE 0 END) AS priced_raw").
 		Group("day, " + col).
 		Scan(&charges).Error
 	if err != nil {
@@ -268,4 +319,24 @@ func (r *DashboardRepository) ChargeWatermark(ctx context.Context, orgID string)
 		return 0, err
 	}
 	return raw.Max, nil
+}
+
+// LifetimeCostMicros returns the scope's all-time charged cost in micro-units.
+//
+// A usage page shows the current range next to "total spent", and the range is
+// capped at 92 days, so the total cannot be summed from the buckets the page
+// already has. The model and API-key filters still apply: a filtered page
+// reports what that slice has cost overall.
+func (r *DashboardRepository) LifetimeCostMicros(ctx context.Context, filter DashboardFilter) (int64, error) {
+	var agg struct {
+		Micros int64
+	}
+	err := filter.apply(r.db.DB(ctx).Model(&chargeRecordRow{}).
+		Where("organization_id = ?", filter.OrganizationID)).
+		Select("CAST(ROUND(COALESCE(SUM(amount), 0) * 1000000) AS INTEGER) AS micros").
+		Scan(&agg).Error
+	if err != nil {
+		return 0, err
+	}
+	return agg.Micros, nil
 }
