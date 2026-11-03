@@ -14,6 +14,7 @@ import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { navigate } from '../../router';
 import { formatRate } from '../../display';
+import { InlineCopyButton } from '../../components';
 import { type AvailableModel, type PageMeta } from '../../api';
 
 interface ListResponse {
@@ -52,7 +53,6 @@ export default function ModelsPage() {
           <thead>
             <tr>
               <th>{t('umodels.colModel')}</th>
-              <th>{t('umodels.colModelId')}</th>
               <th>{t('umodels.colInput')}</th>
               <th>{t('umodels.colOutput')}</th>
               <th>{t('umodels.colCached')}</th>
@@ -68,15 +68,25 @@ export default function ModelsPage() {
                 style={{ cursor: 'pointer' }}
                 onClick={() => navigate(`/models/${m.modelId}`)}
               >
-                <td>
-                  <strong>{m.name}</strong>
+                {/* The model name is the identifier a caller sends, so the
+                    cell offers one-click copying of it. The catalog id is an
+                    internal handle: it is not shown (the name is what the API
+                    accepts) and stays available in the row's tooltip. */}
+                <td data-testid={`model-name-cell-${m.name}`}>
+                  <span className="model-name" title={m.modelId}>
+                    <strong>{m.name}</strong>
+                    <InlineCopyButton
+                      text={m.name}
+                      label={t('umodels.copyName', { name: m.name })}
+                      testId={`model-copy-${m.name}`}
+                    />
+                  </span>
                   {m.virtual && (
                     <span className="badge" data-testid="models-auto-badge">
                       {t('umodels.auto')}
                     </span>
                   )}
                 </td>
-                <td className="mono muted" data-testid={`model-id-${m.name}`}>{m.modelId}</td>
                 <td data-testid={`model-price-input-${m.name}`}>
                   {priceCell(m, 'input')}
                 </td>

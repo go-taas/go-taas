@@ -1,6 +1,7 @@
 // Shared presentational components used across console pages.
 
-import { Component, useEffect, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { Check, Copy, DotsThreeVertical } from '@phosphor-icons/react';
 import { navigate } from './router';
 import { useI18n } from './i18n';
 
@@ -98,6 +99,158 @@ export function CopyButton({ text, label }: { text: string; label?: string }) {
     >
       {copied ? t('common.copied') : (label ?? t('common.copy'))}
     </button>
+  );
+}
+
+/**
+ * InlineCopyButton is the icon-sized sibling of CopyButton: a small copy
+ * affordance for a table cell, where a labelled button would dominate the
+ * column. It shows a check for a moment after copying and carries the label as
+ * both its tooltip and its accessible name.
+ */
+export function InlineCopyButton({
+  text,
+  label,
+  testId,
+}: {
+  text: string;
+  label: string;
+  testId?: string;
+}) {
+  const { t } = useI18n();
+  const [copied, setCopied] = useState(false);
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (timer.current) clearTimeout(timer.current);
+    },
+    [],
+  );
+  return (
+    <button
+      type="button"
+      className="icon-button"
+      data-testid={testId ?? 'inline-copy'}
+      title={copied ? t('common.copied') : label}
+      aria-label={copied ? t('common.copied') : label}
+      onClick={async (e) => {
+        // The row may itself be clickable (a model opens its detail page);
+        // copying must not navigate.
+        e.stopPropagation();
+        try {
+          await navigator.clipboard.writeText(text);
+        } catch {
+          // Clipboard API may be unavailable (insecure context); the text
+          // stays selectable, so the operation still has a manual fallback.
+        }
+        setCopied(true);
+        if (timer.current) clearTimeout(timer.current);
+        timer.current = setTimeout(() => setCopied(false), 1500);
+      }}
+    >
+      {copied ? <Check size={14} weight="bold" aria-hidden="true" /> : <Copy size={14} aria-hidden="true" />}
+    </button>
+  );
+}
+
+/** RowAction is one entry of a RowActionsMenu. */
+export interface RowAction {
+  /** key is the stable React key and the data-testid suffix. */
+  key: string;
+  label: string;
+  onClick: () => void;
+  /** danger marks a destructive action, rendered in the danger colour. */
+  danger?: boolean;
+  /**
+   * group separates the menu into blocks. Actions in the same group are drawn
+   * together, and a separator is inserted where the group changes — which is
+   * what keeps "who is this account" actions apart from "what may it do".
+   */
+  group?: string;
+}
+
+/**
+ * RowActionsMenu collapses a row's actions into one overflow menu.
+ *
+ * A directory row carries several unrelated actions — place the account in an
+ * organization, grant or revoke the administrator role, disable it, delete it —
+ * and rendering them all as inline links makes the last column the widest thing
+ * on the page and the destructive one indistinguishable from the rest. One
+ * button per row, with the actions grouped and the destructive ones marked,
+ * keeps the table scannable and puts a deliberate step in front of deletion.
+ */
+export function RowActionsMenu({
+  actions,
+  label,
+  testId,
+}: {
+  actions: RowAction[];
+  /** label is the trigger's accessible name ("Actions for alice"). */
+  label: string;
+  testId?: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  // Close on an outside click or Escape, like the language switcher; the menu
+  // therefore needs no "close" entry of its own.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
+  if (actions.length === 0) return null;
+
+  return (
+    <div className="row-actions" ref={ref}>
+      <button
+        type="button"
+        className="icon-button"
+        data-testid={testId ?? 'row-actions'}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-label={label}
+        title={label}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <DotsThreeVertical size={18} weight="bold" aria-hidden="true" />
+      </button>
+      {open && (
+        <ul className="row-actions-menu" role="menu" data-testid={testId ? `${testId}-menu` : 'row-actions-menu'}>
+          {actions.map((action, i) => {
+            const previous = i > 0 ? actions[i - 1].group : undefined;
+            const separator = i > 0 && action.group !== previous;
+            return (
+              <li key={action.key} role="none" className={separator ? 'row-actions-separator' : undefined}>
+                <button
+                  type="button"
+                  role="menuitem"
+                  className={action.danger ? 'row-actions-item danger' : 'row-actions-item'}
+                  data-testid={`${action.key}`}
+                  onClick={() => {
+                    setOpen(false);
+                    action.onClick();
+                  }}
+                >
+                  {action.label}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 

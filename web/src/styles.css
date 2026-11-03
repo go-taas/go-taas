@@ -3516,3 +3516,133 @@ button.primary:hover {
 .usage-model-charts .card {
   padding: 12px 14px;
 }
+
+/* ============================================================
+   Row actions
+   One overflow menu per table row instead of a row of inline
+   links: the trigger is a small icon button, the menu reuses the
+   language switcher's popover surface, and groups are separated
+   so a destructive action never neighbours a navigation one.
+   ============================================================ */
+
+.icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--muted-strong);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+}
+
+.icon-button:hover {
+  background: var(--primary-soft);
+  border-color: var(--border);
+  color: var(--primary-strong);
+  box-shadow: none;
+}
+
+.icon-button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
+.row-actions {
+  position: relative;
+  display: inline-flex;
+  justify-content: flex-end;
+}
+
+.row-actions-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: var(--panel-solid);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+  z-index: 60;
+  text-align: left;
+}
+
+/* The base `button` rules paint a filled primary button and `button.danger`
+   adds a red border, so every menu item resets both explicitly. The
+   `.row-actions-menu` prefix outranks `button.danger` instead of relying on
+   source order. */
+.row-actions-menu .row-actions-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: var(--font-body);
+  text-align: left;
+  border-radius: 6px;
+  box-shadow: none;
+  transform: none;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.row-actions-menu .row-actions-item:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: none;
+}
+
+.row-actions-menu .row-actions-item.danger {
+  color: var(--danger, #b91c34);
+}
+
+.row-actions-menu .row-actions-item.danger:hover {
+  background: var(--danger-soft);
+  color: var(--danger, #b91c34);
+}
+
+.row-actions-menu .row-actions-item.muted {
+  color: var(--muted);
+}
+
+/* A separator is the top border of the first item of a new group. */
+.row-actions-separator {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+/* The actions column is an icon plus a popover: it never needs to grow. */
+.col-actions {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
+
+/* The model cell pairs the name with its copy affordance: the name is the
+   string a caller sends, so copying it is the cell's main action. */
+.model-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.model-name .icon-button {
+  width: 22px;
+  height: 22px;
+  color: var(--muted);
+}
+
+.model-name .icon-button:hover {
+  color: var(--primary-strong);
+}

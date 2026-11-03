@@ -10,7 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta, type UserSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -124,12 +124,13 @@ export default function UsersPage() {
             <thead>
               <tr>
                 <th>{t('users.colUser')}</th>
+                <th>{t('users.colRole')}</th>
                 <th>{t('users.colOrganization')}</th>
                 <th>{t('users.colProject')}</th>
                 <th>{t('users.colEmail')}</th>
                 <th>{t('users.colState')}</th>
                 <th>{t('users.colCreated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -137,33 +138,36 @@ export default function UsersPage() {
                 <tr key={user.userId} data-testid={`user-row-${user.userId}`}>
                   <td>
                     <strong>{user.displayName || user.username || user.userId}</strong>
-                    <div className="muted small">
-                      {user.username}
-                      {user.displayName ? '' : ''}
+                    {user.username && (
+                      <div className="muted small">@{user.username}</div>
+                    )}
+                    {/* The account id is a support handle, not a scanning
+                        attribute: it stays available as a tooltip instead of
+                        a third line that repeats a UUID on every row. */}
+                    <div className="muted small mono" title={user.userId}>
+                      {shortId(user.userId)}
                     </div>
-                    <div className="muted small mono">{user.userId}</div>
-                    {user.platformAdmin && (
+                  </td>
+                  <td data-testid={`user-role-cell-${user.userId}`}>
+                    {user.platformAdmin ? (
                       <span className="badge" data-testid={`user-platform-admin-badge-${user.userId}`}>
                         {t('users.platformAdmin')}
                       </span>
+                    ) : (
+                      <span className="muted small">{t('users.roleUser')}</span>
                     )}
                   </td>
                   {/* A platform administrator places people into an
                       organization and a project from this page, so the row
-                      shows where each account currently sits. The API sends
-                      the display name next to the id; an account that joined
-                      nothing shows a dash rather than an empty cell. */}
-                  <td data-testid={`user-org-cell-${user.userId}`}>
+                      shows where each account currently sits. The name is what
+                      an operator scans; the id is a support handle, so it moves
+                      to the tooltip instead of a second line per cell. An
+                      account that joined nothing shows a dash. */}
+                  <td data-testid={`user-org-cell-${user.userId}`} title={user.organizationId || undefined}>
                     {user.organizationName || user.organizationId || '—'}
-                    {user.organizationName && user.organizationId && (
-                      <div className="muted small mono">{user.organizationId}</div>
-                    )}
                   </td>
-                  <td data-testid={`user-project-cell-${user.userId}`}>
+                  <td data-testid={`user-project-cell-${user.userId}`} title={user.projectId || undefined}>
                     {user.projectName || user.projectId || '—'}
-                    {user.projectName && user.projectId && (
-                      <div className="muted small mono">{user.projectId}</div>
-                    )}
                   </td>
                   <td>{user.email || '—'}</td>
                   <td>
@@ -171,61 +175,68 @@ export default function UsersPage() {
                   </td>
                   <td>{formatTime(user.createdAt)}</td>
                   <td>
-                    {user.state === 'active' ? (
-                      <button
-                        className="link danger"
-                        data-testid={`user-disable-${user.userId}`}
-                        onClick={() => setConfirmTarget({ user, action: 'disable' })}
-                      >
-                        {t('common.disable')}
-                      </button>
-                    ) : (
-                      <button
-                        className="link"
-                        data-testid={`user-enable-${user.userId}`}
-                        onClick={() => setConfirmTarget({ user, action: 'enable' })}
-                      >
-                        {t('common.enable')}
-                      </button>
-                    )}
-                    <button
-                      className="link"
-                      data-testid={`user-org-${user.userId}`}
-                      onClick={() => setOrgTarget(user)}
-                    >
-                      {t('users.manageOrg')}
-                    </button>
-                    {/* Only an active account can hold the role, so a
-                        disabled one offers no grant. Revoking is always
-                        offered: the server refuses self-revocation and the
-                        last administrator, and the console must not hide the
-                        action that explains why. */}
-                    {user.platformAdmin ? (
-                      <button
-                        className="link danger"
-                        data-testid={`user-revoke-admin-${user.userId}`}
-                        onClick={() => setConfirmTarget({ user, action: 'revokeAdmin' })}
-                      >
-                        {t('users.revokePlatformAdmin')}
-                      </button>
-                    ) : (
-                      user.state === 'active' && (
-                        <button
-                          className="link"
-                          data-testid={`user-grant-admin-${user.userId}`}
-                          onClick={() => setConfirmTarget({ user, action: 'grantAdmin' })}
-                        >
-                          {t('users.grantPlatformAdmin')}
-                        </button>
-                      )
-                    )}
-                    <button
-                      className="link danger"
-                      data-testid={`user-delete-${user.userId}`}
-                      onClick={() => setConfirmTarget({ user, action: 'delete' })}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    {/* One overflow menu instead of six inline links: the
+                        actions belong to three different concerns (placement,
+                        role, lifecycle), and grouping them keeps the column
+                        narrow and deletion deliberate. */}
+                    <RowActionsMenu
+                      label={t('users.actionsFor', { username: user.username || user.userId })}
+                      testId={`user-actions-${user.userId}`}
+                      actions={[
+                        {
+                          key: `user-org-${user.userId}`,
+                          label: t('users.manageOrg'),
+                          group: 'placement',
+                          onClick: () => setOrgTarget(user),
+                        },
+                        // Only an active account can hold the role, so a
+                        // disabled one offers no grant. Revoking is always
+                        // offered: the server refuses self-revocation and the
+                        // last administrator, and the console must not hide
+                        // the action that explains why.
+                        ...(user.platformAdmin
+                          ? [
+                              {
+                                key: `user-revoke-admin-${user.userId}`,
+                                label: t('users.revokePlatformAdmin'),
+                                group: 'role',
+                                danger: true,
+                                onClick: () => setConfirmTarget({ user, action: 'revokeAdmin' }),
+                              },
+                            ]
+                          : user.state === 'active'
+                            ? [
+                                {
+                                  key: `user-grant-admin-${user.userId}`,
+                                  label: t('users.grantPlatformAdmin'),
+                                  group: 'role',
+                                  onClick: () => setConfirmTarget({ user, action: 'grantAdmin' }),
+                                },
+                              ]
+                            : []),
+                        user.state === 'active'
+                          ? {
+                              key: `user-disable-${user.userId}`,
+                              label: t('common.disable'),
+                              group: 'lifecycle',
+                              danger: true,
+                              onClick: () => setConfirmTarget({ user, action: 'disable' }),
+                            }
+                          : {
+                              key: `user-enable-${user.userId}`,
+                              label: t('common.enable'),
+                              group: 'lifecycle',
+                              onClick: () => setConfirmTarget({ user, action: 'enable' }),
+                            },
+                        {
+                          key: `user-delete-${user.userId}`,
+                          label: t('common.delete'),
+                          group: 'lifecycle',
+                          danger: true,
+                          onClick: () => setConfirmTarget({ user, action: 'delete' }),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -320,6 +331,15 @@ export default function UsersPage() {
     </div>
   );
 }
+/**
+ * shortId renders the first segment of a UUID — enough to recognise an account
+ * in a screenshot or a log line, short enough not to crowd the row. The full id
+ * stays in the cell's tooltip.
+ */
+function shortId(id: string): string {
+  return id.split('-')[0] || id;
+}
+
 // ASSIGNABLE_ROLES are the organization roles a platform administrator can
 // grant. "owner" is protected: an organization has exactly one owner and
 // ownership is not handed over from this dialog.
