@@ -607,6 +607,16 @@ func (s *Service) GetBalance(ctx context.Context, _ *billingv1.GetBalanceRequest
 	if err != nil {
 		return nil, err
 	}
+	// A platform administrator owns no tenant, so the session resolves to an
+	// empty organization — but browsing a tenant's money page is exactly what
+	// the org header is for on the admin surface. The allowance is limited to
+	// that role: for anyone else an empty session organization is authoritative
+	// (feature-17 AD6).
+	if orgID == "" && authctx.IsPlatformAdmin(ctx) {
+		if fromHeader, headerErr := resolveOrganizationID(ctx); headerErr == nil {
+			orgID = fromHeader
+		}
+	}
 	if err := s.checkOrg(ctx, orgID, false); err != nil {
 		return nil, err
 	}

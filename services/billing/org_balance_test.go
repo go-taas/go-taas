@@ -8,6 +8,8 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"google.golang.org/grpc/metadata"
+
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
 
 	"github.com/go-taas/go-taas/pkg/authctx"
@@ -254,4 +256,34 @@ func TestListTransactionsNamesTheAdministrator(t *testing.T) {
 	require.Len(t, ledger.GetTransactions(), 1)
 	assert.Equal(t, "admin-1", ledger.GetTransactions()[0].GetActorUserId())
 	assert.Equal(t, "Operator One", ledger.GetTransactions()[0].GetActorDisplayName())
+}
+
+// TestGetBalanceForAPlatformAdminBrowsingATenant covers the org header on the
+// balance read: a platform administrator has no organization of their own, so
+// the header is the only scope when they open a tenant's money page. For anyone
+// else an empty session organization stays authoritative.
+func TestGetBalanceForAPlatformAdminBrowsingATenant(t *testing.T) {
+	svc := newOrgBalanceTestService(t)
+	adminCtx := billingPlatformAdminCtx()
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "admin-1"})
+	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: ""})
+
+	_, err := svc.RechargeOrganization(adminCtx, &billingv1.RechargeOrganizationRequest{
+		OrganizationId: "org-a", AmountCents: 4200, IdempotencyKey: "browse-1", Source: SourceAdminManual,
+	})
+	require.NoError(t, err)
+
+	headerCtx := metadata.NewIncomingContext(adminCtx, metadata.Pairs("x-organization-id", "org-a"))
+	resp, err := svc.GetBalance(headerCtx, &billingv1.GetBalanceRequest{})
+	require.NoError(t, err)
+	assert.EqualValues(t, 4200, resp.GetBalanceCents())
+	assert.True(t, resp.GetHasAccount())
+	assert.NotZero(t, resp.GetCycleStartedAt())
+
+	// An ordinary caller cannot reach another tenant's account: without a
+	// session organization and without the platform role, the scoped lookup
+	// finds nothing to report.
+	plainCtx := metadata.NewIncomingContext(context.Background(), metadata.Pairs("x-organization-id", "org-other"))
+	_, err = svc.GetBalance(plainCtx, &billingv1.GetBalanceRequest{})
+	assert.Equal(t, apierrors.CodeAccountNotFound, apierrors.CodeOf(err))
 }
