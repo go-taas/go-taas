@@ -159,15 +159,26 @@ function csvCell(value: string | number): string {
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
 }
 
-/** downloadCsv hands a generated file to the browser. */
+/**
+ * downloadCsv hands a generated file to the browser.
+ *
+ * The link is attached to the document and the object URL is released on the
+ * next tick: a detached link's click is ignored by some browsers, and revoking
+ * the URL in the same tick can cancel the download it just started.
+ */
 function downloadCsv(filename: string, rows: string[][]): void {
   const body = rows.map((row) => row.map(csvCell).join(',')).join('\n');
   const url = URL.createObjectURL(new Blob([body], { type: 'text/csv;charset=utf-8' }));
   const link = document.createElement('a');
   link.href = url;
   link.download = filename;
+  link.style.display = 'none';
+  document.body.appendChild(link);
   link.click();
-  URL.revokeObjectURL(url);
+  setTimeout(() => {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }, 0);
 }
 
 export default function UsagePage() {
@@ -325,7 +336,8 @@ export default function UsagePage() {
   // otherwise. The amount's precision comes from the axis maximum, not from
   // each tick: a sub-cent range would otherwise label every gridline "0.00".
   const axisCostMax = Math.max(0, ...chartPoints.map((point) => point.value));
-  const costDigits = axisCostMax >= 10 ? 0 : axisCostMax >= 1 ? 2 : axisCostMax >= 0.001 ? 4 : 6;
+  const costDigits =
+    axisCostMax === 0 ? 2 : axisCostMax >= 10 ? 0 : axisCostMax >= 1 ? 2 : axisCostMax >= 0.001 ? 4 : 6;
   const formatAxis: UsageBarValueFormatter = (value) =>
     metric === 'cost' ? formatMajor(value, costDigits, currency) : formatCompact(value);
 
