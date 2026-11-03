@@ -141,16 +141,47 @@ func TestServiceEffectiveQuotaCombinesTiers(t *testing.T) {
 		ID: "org-a", DisplayName: "A", State: StateActive, MaxConcurrentRequests: 10,
 	}).Error)
 	require.NoError(t, db.Create(&Project{
-		ID: "p1", OrganizationID: "org-a", DisplayName: "P", State: StateActive, MaxConcurrentRequests: 20,
+		ID: "p1", OrganizationID: "org-a", DisplayName: "P", State: StateActive,
+		MaxConcurrentRequests: 20, MonthlySpendLimitCents: 900,
 	}).Error)
 	require.NoError(t, db.Create(&UserQuota{
-		OrganizationID: "org-a", UserID: "u1", MaxConcurrentRequests: 5,
+		OrganizationID: "org-a", UserID: "u1", MaxConcurrentRequests: 5, MonthlySpendLimitCents: 800,
 	}).Error)
 
 	svc := NewForFVT(db)
 	got, err := svc.EffectiveQuota(ctx, "org-a", "p1", "u1")
 	require.NoError(t, err)
 	assert.EqualValues(t, 5, got.MaxConcurrentRequests)
+	assert.EqualValues(t, 800, got.MonthlySpendLimitCents)
+
+	// The member tier is the personal budget for that project: a member cap
+	// tightens further, and the smallest non-zero value wins per dimension.
+	require.NoError(t, db.Create(&ProjectMember{
+		ProjectID: "p1", UserID: "u1", Role: RoleMember, JoinedAt: time.Now().UTC(),
+		MaxConcurrentRequests: 3, MonthlySpendLimitCents: 700,
+	}).Error)
+	got, err = svc.EffectiveQuota(ctx, "org-a", "p1", "u1")
+	require.NoError(t, err)
+	assert.EqualValues(t, 3, got.MaxConcurrentRequests, "the project-member cap is the tightest")
+	assert.EqualValues(t, 700, got.MonthlySpendLimitCents)
+
+	// A project the user does not belong to has no member tier: the
+	// organization-wide personal budget still applies.
+	require.NoError(t, db.Create(&Project{
+		ID: "p2", OrganizationID: "org-a", DisplayName: "Q", State: StateActive,
+	}).Error)
+	got, err = svc.EffectiveQuota(ctx, "org-a", "p2", "u1")
+	require.NoError(t, err)
+	assert.EqualValues(t, 5, got.MaxConcurrentRequests)
+
+	// A member cap looser than the personal budget never loosens it.
+	require.NoError(t, db.Create(&ProjectMember{
+		ProjectID: "p2", UserID: "u1", Role: RoleMember, JoinedAt: time.Now().UTC(),
+		MaxConcurrentRequests: 40,
+	}).Error)
+	got, err = svc.EffectiveQuota(ctx, "org-a", "p2", "u1")
+	require.NoError(t, err)
+	assert.EqualValues(t, 5, got.MaxConcurrentRequests, "each tier can only tighten")
 
 	// Unknown scope reads as unlimited.
 	got, err = svc.EffectiveQuota(ctx, "org-missing", "", "")
@@ -158,28 +189,31 @@ func TestServiceEffectiveQuotaCombinesTiers(t *testing.T) {
 	assert.Equal(t, QuotaLimits{}, got)
 }
 
-func TestMigrateProjectMemberQuotasKeepsStrictest(t *testing.T) {
+// TestProjectMemberQuotaLimitsReadsTheMemberTier covers the storage read the
+// resolver depends on: a member's own limits, and unlimited for anything that
+// is not a membership.
+func TestProjectMemberQuotaLimitsReadsTheMemberTier(t *testing.T) {
 	db := newQuotaTestDB(t)
 	ctx := context.Background()
-	require.NoError(t, db.Create(&Project{ID: "p1", OrganizationID: "org-a", DisplayName: "P", State: StateActive}).Error)
-	require.NoError(t, db.Create(&Project{ID: "p2", OrganizationID: "org-a", DisplayName: "Q", State: StateActive}).Error)
-	require.NoError(t, db.Create(&ProjectMember{ProjectID: "p1", UserID: "u1", Role: RoleMember,
-		JoinedAt: time.Now().UTC(), MaxConcurrentRequests: 30}).Error)
-	require.NoError(t, db.Create(&ProjectMember{ProjectID: "p2", UserID: "u1", Role: RoleMember,
-		JoinedAt: time.Now().UTC(), MaxConcurrentRequests: 20}).Error)
-	// u2 already has a personal budget; it must not be overwritten.
-	require.NoError(t, db.Create(&UserQuota{OrganizationID: "org-a", UserID: "u2", MaxConcurrentRequests: 99}).Error)
-	require.NoError(t, db.Create(&ProjectMember{ProjectID: "p1", UserID: "u2", Role: RoleMember,
-		JoinedAt: time.Now().UTC(), MaxConcurrentRequests: 1}).Error)
-
+	require.NoError(t, db.Create(&ProjectMember{
+		ProjectID: "p1", UserID: "u1", Role: RoleMember, JoinedAt: time.Now().UTC(),
+		MaxConcurrentRequests: 7, MaxBatchJobsPerDay: 2,
+		MaxOutputTokensPerRequest: 512, MonthlySpendLimitCents: 2500,
+	}).Error)
 	repo := NewRepository(db)
-	require.NoError(t, repo.MigrateProjectMemberQuotas(ctx))
 
-	var u1 UserQuota
-	require.NoError(t, db.Where("organization_id = ? AND user_id = ?", "org-a", "u1").First(&u1).Error)
-	assert.EqualValues(t, 20, u1.MaxConcurrentRequests)
+	limits, err := repo.ProjectMemberQuotaLimits(ctx, "p1", "u1")
+	require.NoError(t, err)
+	assert.EqualValues(t, 7, limits.MaxConcurrentRequests)
+	assert.EqualValues(t, 2, limits.MaxBatchJobsPerDay)
+	assert.EqualValues(t, 512, limits.MaxOutputTokensPerRequest)
+	assert.EqualValues(t, 2500, limits.MonthlySpendLimitCents)
 
-	var u2 UserQuota
-	require.NoError(t, db.Where("organization_id = ? AND user_id = ?", "org-a", "u2").First(&u2).Error)
-	assert.EqualValues(t, 99, u2.MaxConcurrentRequests)
+	// Not a member of that project, unknown project, or an empty scope: the
+	// tier is unlimited, never an error.
+	for _, scope := range [][2]string{{"p1", "u2"}, {"p-missing", "u1"}, {"", ""}} {
+		limits, err = repo.ProjectMemberQuotaLimits(ctx, scope[0], scope[1])
+		require.NoError(t, err)
+		assert.Equal(t, QuotaLimits{}, limits, "scope %v", scope)
+	}
 }

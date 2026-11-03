@@ -72,11 +72,19 @@ type ProjectMember struct {
 	// Per-member quotas inside the project. A project administrator sets
 	// them per person, so the limits follow the human rather than the
 	// project as a whole. 0 means unlimited.
-	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
-	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
-	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
-	QuotaUpdatedBy            string    `gorm:"size:64;not null;default:''"`
-	QuotaUpdatedAt            time.Time `gorm:"default:null"`
+	//
+	// This is the member tier of the quota ladder: it tightens the project
+	// budget for one person's project-bound keys, and it is combined with the
+	// organization-wide personal budget (user_quotas) rather than replacing
+	// it — whichever is stricter wins per dimension.
+	MaxConcurrentRequests     int64 `gorm:"not null;default:0"`
+	MaxBatchJobsPerDay        int64 `gorm:"not null;default:0"`
+	MaxOutputTokensPerRequest int64 `gorm:"not null;default:0"`
+	// MonthlySpendLimitCents caps this member's spend inside the project per
+	// UTC month; 0 = unlimited.
+	MonthlySpendLimitCents int64     `gorm:"not null;default:0"`
+	QuotaUpdatedBy         string    `gorm:"size:64;not null;default:''"`
+	QuotaUpdatedAt         time.Time `gorm:"default:null"`
 }
 
 // TableName returns the project_members table name.

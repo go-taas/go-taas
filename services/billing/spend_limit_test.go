@@ -16,8 +16,10 @@ import (
 
 // fakeSpendLimits is the SpendLimitResolver seam for the funds tests.
 type fakeSpendLimits struct {
-	userLimit    int64
+	userLimit   int64
 	projectLimit int64
+	memberLimit int64
+	memberErr   error
 }
 
 func (f fakeSpendLimits) ProjectMonthlySpendLimitCents(context.Context, string) (int64, error) {
@@ -26,6 +28,10 @@ func (f fakeSpendLimits) ProjectMonthlySpendLimitCents(context.Context, string) 
 
 func (f fakeSpendLimits) UserMonthlySpendLimitCents(context.Context, string, string) (int64, error) {
 	return f.userLimit, nil
+}
+
+func (f fakeSpendLimits) ProjectMemberMonthlySpendLimitCents(context.Context, string, string) (int64, error) {
+	return f.memberLimit, f.memberErr
 }
 
 func TestMinNonZeroLimit(t *testing.T) {
@@ -170,4 +176,65 @@ func TestDeletePriceRemovesOnlyTheVersion(t *testing.T) {
 	// An empty id is a malformed request rather than a miss.
 	_, err = svc.DeletePrice(ctx, &billingv1.DeletePriceRequest{PriceId: "  "})
 	assert.Equal(t, apierrors.CodePriceInvalid, apierrors.CodeOf(err))
+}
+
+// TestCheckFundsAppliesTheProjectMemberLimit covers the member tier of the
+// spend ladder: a project administrator's cap on one member blocks that
+// member's project-bound keys, and it is measured against the same member's
+// spend in that project — not the whole project's.
+func TestCheckFundsAppliesTheProjectMemberLimit(t *testing.T) {
+	db := newBillingTestDB(t)
+	svc := NewForFVT(db, nil)
+	ctx := context.Background()
+	cycleStart := monthStartOf(time.Now().UTC())
+	require.NoError(t, db.Create(&Account{
+		ID: uuid.NewString(), OrganizationID: "org-a", Mode: AccountModePostpaid,
+		Currency: "USD", CycleStartedAt: cycleStart, MonthlySpendLimitCents: 100000,
+	}).Error)
+
+	owner, mate := "u1", "u2"
+	project := "p1"
+	// The member spent 20.00 in this project; another member spent 50.00 in it.
+	for _, rec := range []struct {
+		key   string
+		owner string
+		amt   float64
+	}{{"k1", owner, 20}, {"k2", mate, 50}} {
+		o := rec.owner
+		require.NoError(t, db.Create(&ChargeRecord{
+			ID: uuid.NewString(), OrganizationID: "org-a", APIKeyID: rec.key, ModelID: "m1",
+			AcceleratorType: "default", PeriodStart: cycleStart + 60, PeriodEnd: cycleStart + 3660,
+			Amount: rec.amt, Currency: "USD", TierIndex: -1,
+			OwnerUserID: &o, ProjectID: &project, ChargedAt: time.Now().UTC(),
+		}).Error)
+	}
+
+	// A 25.00 member cap: 20.00 spent → allowed, and the response reports the
+	// member's own scoped spend, not the project total.
+	svc.SetSpendLimitResolver(fakeSpendLimits{memberLimit: 2500})
+	resp, err := svc.CheckFunds(ctx, &billingv1.CheckFundsRequest{
+		OrganizationId: "org-a", OwnerUserId: owner, ProjectId: project,
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.GetAllowed())
+	assert.EqualValues(t, 2500, resp.GetEffectiveMonthlySpendLimitCents())
+	assert.EqualValues(t, 2000, resp.GetProjectMemberSpentThisCycleCents())
+	assert.EqualValues(t, 7000, resp.GetProjectSpentThisCycleCents(), "the project total includes the other member")
+
+	// The teammate is over the same cap in this project: blocked.
+	resp, err = svc.CheckFunds(ctx, &billingv1.CheckFundsRequest{
+		OrganizationId: "org-a", OwnerUserId: mate, ProjectId: project,
+	})
+	require.NoError(t, err)
+	assert.False(t, resp.GetAllowed(), "50.00 spent against a 25.00 member cap")
+	assert.EqualValues(t, 5000, resp.GetProjectMemberSpentThisCycleCents())
+
+	// A member cap read failure degrades to unlimited: an authorization
+	// outage must not stop inference.
+	svc.SetSpendLimitResolver(fakeSpendLimits{memberErr: apierrors.Newf(apierrors.CodeInternal, "db down")})
+	resp, err = svc.CheckFunds(ctx, &billingv1.CheckFundsRequest{
+		OrganizationId: "org-a", OwnerUserId: mate, ProjectId: project,
+	})
+	require.NoError(t, err)
+	assert.True(t, resp.GetAllowed())
 }

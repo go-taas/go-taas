@@ -123,55 +123,29 @@ func (r *Repository) ProjectQuotaLimits(ctx context.Context, projectID string) (
 	}, nil
 }
 
-// MigrateProjectMemberQuotas folds the retired project-member quota
-// columns into user_quotas. The personal tier is the single owner of
-// per-person budgets, so a member who carried different limits in
-// several projects keeps the strictest non-zero value of each
-// dimension. The migration is idempotent: it only inserts rows that do
-// not exist yet, so re-running it never overwrites an edited budget.
-func (r *Repository) MigrateProjectMemberQuotas(ctx context.Context) error {
-	type memberRow struct {
-		UserID                    string
-		OrganizationID            string
-		MaxConcurrentRequests     int64
-		MaxBatchJobsPerDay        int64
-		MaxOutputTokensPerRequest int64
+
+// ProjectMemberQuotaLimits reads one member's limits inside a project as a
+// tuple — the member tier of the quota ladder. A missing project, or a user
+// who is not a member of it, reads as unlimited: the tier is optional and
+// never an error.
+func (r *Repository) ProjectMemberQuotaLimits(ctx context.Context, projectID, userID string) (QuotaLimits, error) {
+	if projectID == "" || userID == "" {
+		return QuotaLimits{}, nil
 	}
-	var rows []memberRow
-	err := r.db.DB(ctx).Table("project_members").
-		Select(`project_members.user_id,
-			projects.organization_id,
-			COALESCE(MIN(CASE WHEN project_members.max_concurrent_requests > 0 THEN project_members.max_concurrent_requests END), 0) AS max_concurrent_requests,
-			COALESCE(MIN(CASE WHEN project_members.max_batch_jobs_per_day > 0 THEN project_members.max_batch_jobs_per_day END), 0) AS max_batch_jobs_per_day,
-			COALESCE(MIN(CASE WHEN project_members.max_output_tokens_per_request > 0 THEN project_members.max_output_tokens_per_request END), 0) AS max_output_tokens_per_request`).
-		Joins("JOIN projects ON projects.id = project_members.project_id").
-		Group("project_members.user_id, projects.organization_id").
-		Scan(&rows).Error
+	var row ProjectMember
+	err := r.db.DB(ctx).
+		Where("project_id = ? AND user_id = ?", projectID, userID).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return QuotaLimits{}, nil
+	}
 	if err != nil {
-		return err
+		return QuotaLimits{}, err
 	}
-	for _, m := range rows {
-		if m.OrganizationID == "" || m.UserID == "" {
-			continue
-		}
-		existing, err := r.FindUserQuota(ctx, m.OrganizationID, m.UserID)
-		if err != nil {
-			return err
-		}
-		if existing != nil {
-			continue
-		}
-		row := &UserQuota{
-			OrganizationID:            m.OrganizationID,
-			UserID:                    m.UserID,
-			MaxConcurrentRequests:     m.MaxConcurrentRequests,
-			MaxBatchJobsPerDay:        m.MaxBatchJobsPerDay,
-			MaxOutputTokensPerRequest: m.MaxOutputTokensPerRequest,
-			QuotaUpdatedAt:            time.Now().UTC(),
-		}
-		if err := r.UpsertUserQuota(ctx, row); err != nil {
-			return err
-		}
-	}
-	return nil
+	return QuotaLimits{
+		MaxConcurrentRequests:     row.MaxConcurrentRequests,
+		MaxBatchJobsPerDay:        row.MaxBatchJobsPerDay,
+		MaxOutputTokensPerRequest: row.MaxOutputTokensPerRequest,
+		MonthlySpendLimitCents:    row.MonthlySpendLimitCents,
+	}, nil
 }

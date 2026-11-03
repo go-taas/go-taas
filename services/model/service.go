@@ -133,6 +133,29 @@ func (f CompatibilityProviderFunc) ModelCompatibilitySummary(ctx context.Context
 	return f(ctx, modelID)
 }
 
+// Rate is the display form of one model's current price: the rates
+// charged per one million tokens. It carries no price id, version or
+// operator field, so it can travel on the user surface.
+type Rate struct {
+	InputPerMillion  float64
+	OutputPerMillion float64
+	CachedPerMillion float64
+	Currency         string
+	// AcceleratorType is the card type the rate applies to; "default" is
+	// the model-wide fallback.
+	AcceleratorType string
+}
+
+// PriceLookup resolves the current display rate of a set of models. It is
+// implemented by the billing module and injected at wiring time, keeping
+// pricing semantics (which version is current) in one place instead of
+// re-deriving them from the price table here.
+type PriceLookup interface {
+	// CurrentModelRates returns a rate per model id it has a price for;
+	// models without a price are absent from the map.
+	CurrentModelRates(ctx context.Context, modelIDs []string) (map[string]Rate, error)
+}
+
 // ProviderNameResolver resolves an external model's provider name for the
 // catalog projections (feature #48). It is implemented by the provider
 // module and injected at wiring time, keeping the model module free of a
@@ -230,6 +253,11 @@ type Service struct {
 	// module free of a provider dependency. Nil until wired: the provider
 	// name is omitted.
 	providerNameResolver ProviderNameResolver
+
+	// priceLookup resolves the display rate card of the listed models, so
+	// the user catalog can show what a token costs (and the console needs
+	// no second round trip). Nil until wired: prices are omitted.
+	priceLookup PriceLookup
 
 	// groupAuthorization routes group grants to the routing module
 	// (feature #49, AD12). Nil until wired: catalog-only grants.
@@ -349,6 +377,11 @@ func (s *Service) SetCompatibilityProvider(p CompatibilityProvider) { s.compatib
 // external-model catalog projections (feature #48). Production wires the
 // provider module; unit tests may inject a fake.
 func (s *Service) SetProviderNameResolver(r ProviderNameResolver) { s.providerNameResolver = r }
+
+// SetPriceLookup injects the rate-card resolver used by the user catalog
+// projection. Production wires the billing module; unit tests may inject a
+// fake. Nil until wired: the catalog lists models without prices.
+func (s *Service) SetPriceLookup(l PriceLookup) { s.priceLookup = l }
 
 // SetGroupAuthorization injects the routing-module group-grant seam
 // (feature #49, AD12). Production wires the routing module; unit tests
@@ -872,6 +905,10 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 	if err != nil {
 		return nil, err
 	}
+	// One lookup for the whole page: the rate card is display data, so a
+	// per-row call would multiply the query count by the page size.
+	rates := s.modelRates(ctx, rows)
+
 	models := make([]*modelv1.AvailableModel, 0, len(rows))
 	for _, row := range rows {
 		summary := &modelv1.AvailableModel{
@@ -883,6 +920,7 @@ func (s *Service) ListAvailableModels(ctx context.Context, req *modelv1.ListAvai
 			// upstream_model_id, base URL or the key).
 			External:     row.External,
 			ProviderName: s.providerName(ctx, row),
+			Pricing:      availableModelPricing(rates[row.ID]),
 		}
 		if latest, latestErr := repo.LatestVersion(ctx, row.ID); latestErr == nil && latest != nil {
 			summary.LatestVersion = latest.Version
@@ -1481,4 +1519,40 @@ func (s *Service) grantorLabels(ctx context.Context, rows []*Authorization) map[
 		return nil
 	}
 	return labels
+}
+
+// modelRates resolves the display rate card of a page of models. A lookup
+// failure (or no wired billing module) degrades to "no prices": the catalog
+// is the page's primary content, and a model without a price is still
+// usable — hiding the whole list because the rate card is unreadable would
+// be worse than showing it without amounts.
+func (s *Service) modelRates(ctx context.Context, rows []*Model) map[string]Rate {
+	if s.priceLookup == nil || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	rates, err := s.priceLookup.CurrentModelRates(ctx, ids)
+	if err != nil {
+		logger.S().Warnw("model: rate card read failed, listing models without prices", "err", err)
+		return nil
+	}
+	return rates
+}
+
+// availableModelPricing maps a rate onto the masked catalog projection.
+// A missing rate yields nil, which the console renders as "not priced".
+func availableModelPricing(rate Rate) *modelv1.AvailableModelPricing {
+	if rate.Currency == "" && rate.InputPerMillion == 0 && rate.OutputPerMillion == 0 && rate.CachedPerMillion == 0 {
+		return nil
+	}
+	return &modelv1.AvailableModelPricing{
+		InputPricePerMillion:  rate.InputPerMillion,
+		OutputPricePerMillion: rate.OutputPerMillion,
+		CachedPricePerMillion: rate.CachedPerMillion,
+		Currency:              rate.Currency,
+		AcceleratorType:       rate.AcceleratorType,
+	}
 }

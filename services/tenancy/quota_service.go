@@ -406,7 +406,53 @@ func (s *Service) GetMyQuota(ctx context.Context, _ *tenancyv1.GetMyQuotaRequest
 		RequestIncreaseEmail: requestIncreaseEmail,
 		PersonalQuota:        summarizeUserQuota(personal, org.ID, userID, "", labels),
 		EffectiveQuota:       effectiveQuotaProto(effective),
+		ProjectMemberQuotas:  s.myProjectQuotas(ctx, repo, org, userID, personal),
 	}, nil
+}
+
+// myProjectQuotas lists the caller's budget in each project they belong to,
+// with the effective value a key bound to that project is enforced with. It is
+// the member-facing side of the member tier: a person can see the cap their
+// project administrator set, next to the combined limit it produces.
+//
+// A read failure returns no rows: this is display data appended to a page that
+// already answered, and the ladder's organization and personal tiers still show.
+func (s *Service) myProjectQuotas(ctx context.Context, repo *Repository, org *Organization, userID string, personal *UserQuota) []*tenancyv1.MyProjectQuota {
+	if userID == "" || org == nil {
+		return nil
+	}
+	mrepo, err := s.membershipRepo()
+	if err != nil {
+		return nil
+	}
+	memberships, err := mrepo.ListMemberProjects(ctx, userID)
+	if err != nil || len(memberships) == 0 {
+		return nil
+	}
+	out := make([]*tenancyv1.MyProjectQuota, 0, len(memberships))
+	for _, m := range memberships {
+		project, projErr := repo.FindProject(ctx, m.ProjectID)
+		if projErr != nil || project == nil || project.OrganizationID != org.ID {
+			continue // another tenant's project, or deleted
+		}
+		projectLimits, limErr := repo.ProjectQuotaLimits(ctx, m.ProjectID)
+		if limErr != nil {
+			continue
+		}
+		memberLimits, memErr := repo.ProjectMemberQuotaLimits(ctx, m.ProjectID, userID)
+		if memErr != nil {
+			continue
+		}
+		out = append(out, &tenancyv1.MyProjectQuota{
+			ProjectId:   project.ID,
+			ProjectName: project.DisplayName,
+			Role:        m.Role,
+			Quota:       effectiveQuotaProto(memberLimits),
+			Effective: combineLimitsProto(
+				orgQuotaLimits(org), personal.Limits(), projectLimits, memberLimits),
+		})
+	}
+	return out
 }
 
 // orgQuotaLimits projects an organization row onto the limit tuple.
@@ -421,3 +467,8 @@ func orgQuotaLimits(org *Organization) QuotaLimits {
 	}
 }
 
+// combineLimitsProto is CombineLimits followed by the wire projection, for the
+// call sites that build several tuples in a row.
+func combineLimitsProto(limits ...QuotaLimits) *tenancyv1.EffectiveQuota {
+	return effectiveQuotaProto(CombineLimits(limits...))
+}

@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type MemberCandidate } from '../api';
+import { useApi } from '../surface';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner } from '../components';
 import { useAdminScope } from '../admin-scope';
@@ -38,6 +39,9 @@ export default function ProjectMembersPage() {
   // cannot join.
   const [candidates, setCandidates] = useState<MemberCandidate[]>([]);
   const [candidatesLoading, setCandidatesLoading] = useState(false);
+  // The quota dialog edits one member's budget inside this project: the
+  // member tier of the ladder.
+  const [quotaTarget, setQuotaTarget] = useState<ProjectMember | null>(null);
 
   const load = useCallback(async () => {
     if (!projectId) {
@@ -189,6 +193,13 @@ export default function ProjectMembersPage() {
                   </td>
                   <td>
                     <button
+                      className="secondary"
+                      data-testid={`project-member-quota-${m.userId}`}
+                      onClick={() => setQuotaTarget(m)}
+                    >
+                      {t('memberQuota.quota')}
+                    </button>
+                    <button
                       className="secondary danger"
                       data-testid={`project-member-remove-${m.userId}`}
                       onClick={() => void remove(m.userId)}
@@ -202,6 +213,14 @@ export default function ProjectMembersPage() {
           </table>
         )}
       </div>
+
+      {quotaTarget && (
+        <MemberQuotaDialog
+          projectId={projectId}
+          member={quotaTarget}
+          onClose={() => setQuotaTarget(null)}
+        />
+      )}
 
       {addOpen && (
         <Dialog title={t('projectMembers.add')} onClose={() => setAddOpen(false)} testId="project-member-add-dialog">
@@ -259,5 +278,133 @@ export default function ProjectMembersPage() {
         </Dialog>
       )}
     </div>
+  );
+}
+
+/**
+ * MemberQuotaDialog edits one member's budget inside this project and shows
+ * the combined limit that budget produces.
+ *
+ * The member tier sits between the project budget and the person: it tightens
+ * that person's own keys for this project only, and the effective value is the
+ * tighter of it and the organization-wide personal budget. Showing both is the
+ * point — a member cap looser than the personal one changes nothing, and an
+ * administrator should see that before saving.
+ */
+function MemberQuotaDialog({
+  projectId,
+  member,
+  onClose,
+}: {
+  projectId: string;
+  member: ProjectMember;
+  onClose: () => void;
+}) {
+  const api = useApi();
+  const { t } = useI18n();
+  const [maxConcurrent, setMaxConcurrent] = useState('0');
+  const [maxBatch, setMaxBatch] = useState('0');
+  const [maxTokens, setMaxTokens] = useState('0');
+  const [maxSpend, setMaxSpend] = useState('0');
+  const [effective, setEffective] = useState<Record<string, string> | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    let active = true;
+    api
+      .get<{ quotas?: Array<Record<string, string>> }>(
+        `/api/v1/admin/tenancy/projects/${projectId}/member-quotas`,
+        '',
+      )
+      .then((data) => {
+        if (!active) return;
+        const row = (data.quotas || []).find((q) => q.userId === member.userId);
+        if (!row) return;
+        setMaxConcurrent(String(row.maxConcurrentRequests || '0'));
+        setMaxBatch(String(row.maxBatchJobsPerDay || '0'));
+        setMaxTokens(String(row.maxOutputTokensPerRequest || '0'));
+        setMaxSpend(String(row.monthlySpendLimitCents || '0'));
+        const eff = row.effective as unknown as Record<string, string> | undefined;
+        if (eff) setEffective(eff);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : t('memberQuota.loadFailed')))
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [api, projectId, member.userId, t]);
+
+  const save = async () => {
+    setSaving(true);
+    setError('');
+    try {
+      const res = await api.patch<{ quota?: { effective?: Record<string, string> } }>(
+        `/api/v1/admin/tenancy/projects/${projectId}/member-quotas/${member.userId}`,
+        '',
+        {
+          maxConcurrentRequests: Number(maxConcurrent || 0),
+          maxBatchJobsPerDay: Number(maxBatch || 0),
+          maxOutputTokensPerRequest: Number(maxTokens || 0),
+          monthlySpendLimitCents: Number(maxSpend || 0),
+        },
+      );
+      if (res.quota?.effective) setEffective(res.quota.effective);
+      onClose();
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : t('memberQuota.saveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <Dialog
+      title={t('memberQuota.editTitle', { name: member.displayName || member.userId })}
+      onClose={onClose}
+      testId="project-member-quota-dialog"
+    >
+      {error && <ErrorBanner message={error} />}
+      <div className="form">
+        <label>
+          {t('memberQuota.concurrent')}
+          <input data-testid="member-quota-concurrent" value={maxConcurrent}
+            disabled={loading} onChange={(e) => setMaxConcurrent(e.target.value)} />
+        </label>
+        <label>
+          {t('memberQuota.batch')}
+          <input data-testid="member-quota-batch" value={maxBatch}
+            disabled={loading} onChange={(e) => setMaxBatch(e.target.value)} />
+        </label>
+        <label>
+          {t('memberQuota.tokens')}
+          <input data-testid="member-quota-tokens" value={maxTokens}
+            disabled={loading} onChange={(e) => setMaxTokens(e.target.value)} />
+        </label>
+        <label>
+          {t('memberQuota.spend')}
+          <input data-testid="member-quota-spend" value={maxSpend}
+            disabled={loading} onChange={(e) => setMaxSpend(e.target.value)} />
+          <span className="field-hint">{t('memberQuota.spendHint')}</span>
+        </label>
+        {effective && (
+          <p className="muted" data-testid="member-quota-effective">
+            {t('memberQuota.effective', {
+              concurrent: effective.maxConcurrentRequests || '0',
+              spend: effective.monthlySpendLimitCents || '0',
+            })}
+          </p>
+        )}
+      </div>
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
+        <button data-testid="member-quota-save" disabled={saving || loading} onClick={() => void save()}>
+          {t('common.save')}
+        </button>
+      </div>
+    </Dialog>
   );
 }

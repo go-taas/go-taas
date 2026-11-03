@@ -896,6 +896,22 @@ message GetMyQuotaResponse {
   // effective_quota is the value the data plane enforces: the minimum of
   // the non-zero organization, project and personal limits. 0 = unlimited.
   EffectiveQuota effective_quota = 6;
+  // project_member_quotas is the caller's budget in every project they
+  // belong to, with the effective value for that project's keys. It is the
+  // "quota for a user under a project" view of the ladder.
+  repeated MyProjectQuota project_member_quotas = 7;
+}
+
+// MyProjectQuota is one project membership's budget as its member sees it.
+message MyProjectQuota {
+  string project_id = 1;
+  string project_name = 2;
+  string role = 3;
+  // quota is the member budget inside this project; 0 = unlimited.
+  EffectiveQuota quota = 4;
+  // effective is the combined organization, personal, project and
+  // project-member value a key bound to this project is enforced with.
+  EffectiveQuota effective = 5;
 }
 
 // EffectiveQuota is the resolved limit the data plane enforces after
@@ -1205,6 +1221,15 @@ message ProjectMemberQuota {
   int64 updated_at = 10;
   string updated_by = 11;
   string updated_by_display_name = 12;
+  // monthly_spend_limit_cents caps this member's spend inside the project
+  // per UTC month; 0 = unlimited. It applies only to usage attributed to
+  // this project, and the data plane takes the smaller of it and the
+  // member's organization-wide personal limit.
+  int64 monthly_spend_limit_cents = 13;
+  // effective is the combined organization, project, personal and
+  // project-member limits the data plane enforces for this member's
+  // project-bound keys.
+  EffectiveQuota effective = 14;
 }
 
 message ListProjectMemberQuotasRequest {
@@ -1224,6 +1249,9 @@ message UpdateProjectMemberQuotaRequest {
   reserved "max_inference_services";
   optional int64 max_batch_jobs_per_day = 5;
   optional int64 max_output_tokens_per_request = 6;
+  // monthly_spend_limit_cents is the member's monthly cap inside the
+  // project; 0 = unlimited. Omitted leaves the stored value unchanged.
+  optional int64 monthly_spend_limit_cents = 7;
 }
 
 message UpdateProjectMemberQuotaResponse {

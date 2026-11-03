@@ -308,6 +308,18 @@ export interface AvailableModel {
   // Feature #49: the virtual (routing-group) marker. A virtual entry has
   // no version row; the platform selects the serving model per request.
   virtual?: boolean;
+  // pricing is the model's current rate card; absent when it is unpriced.
+  pricing?: AvailableModelPricing;
+}
+
+/** AvailableModelPricing is the masked rate card of one model. */
+export interface AvailableModelPricing {
+  inputPricePerMillion: number;
+  outputPricePerMillion: number;
+  cachedPricePerMillion: number;
+  currency: string;
+  /** acceleratorType is the card type the rate applies to; "default" is the model-wide fallback. */
+  acceleratorType?: string;
 }
 
 export interface InferenceServiceSummary {
@@ -1906,6 +1918,18 @@ export interface GetMyQuotaResponse {
   // effectiveQuota is the minimum of the non-zero organization, project
   // and personal limits.
   effectiveQuota?: EffectiveQuota;
+  // projectMemberQuotas is the caller's budget in every project they
+  // belong to, with the effective value for that project's keys.
+  projectMemberQuotas?: MyProjectQuota[];
+}
+
+/** MyProjectQuota is one project membership's budget as its member sees it. */
+export interface MyProjectQuota {
+  projectId: string;
+  projectName: string;
+  role: string;
+  quota: EffectiveQuota;
+  effective: EffectiveQuota;
 }
 
 // ---- vGPU slicing pool (feature #52) ----

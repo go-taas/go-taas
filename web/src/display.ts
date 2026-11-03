@@ -98,6 +98,19 @@ export function formatMajor(
 }
 
 /**
+ * formatRate renders a per-million-token rate, which the console's rate cards
+ * show. Rates are major-unit amounts (a price of 2 means 2 per million), so
+ * they are written with the currency symbol and up to four decimals: a cached
+ * rate of 0.04 must not print as 0.00.
+ */
+export function formatRate(rate: number | string | undefined, currency?: string): string {
+  const value = typeof rate === 'string' ? parseFloat(rate) : rate;
+  const safe = Number.isFinite(value as number) ? (value as number) : 0;
+  const digits = safe === 0 ? 2 : safe >= 1 ? 2 : 4;
+  return `${currencySymbol(currency)}${safe.toFixed(digits)}`;
+}
+
+/**
  * displayCurrencyLabel is the currency code every amount on the console is
  * printed in. It is used where a unit has to appear in text (a form label)
  * rather than next to a number.

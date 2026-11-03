@@ -91,6 +91,10 @@ type SpendLimitResolver interface {
 	// UserMonthlySpendLimitCents returns the user cap inside the
 	// organization (0 = unlimited).
 	UserMonthlySpendLimitCents(ctx context.Context, orgID, userID string) (int64, error)
+	// ProjectMemberMonthlySpendLimitCents returns one member's cap inside a
+	// project (0 = unlimited). It is the member tier of the spend ladder: the
+	// same person can carry a different cap in every project.
+	ProjectMemberMonthlySpendLimitCents(ctx context.Context, projectID, userID string) (int64, error)
 }
 
 // Service implements the billing gRPC service.

@@ -226,8 +226,16 @@ func (s *Service) UpdateUserQuota(ctx context.Context, req *tenancyv1.UpdateUser
 }
 
 // EffectiveQuota implements tenancy.QuotaResolver: it combines the
-// organization, project and personal limits into the tuple the data
-// plane enforces. A missing project or user row reads as unlimited.
+// organization, project, personal and project-member limits into the tuple the
+// data plane enforces. A missing project or user row reads as unlimited.
+//
+// The ladder is organization → project → user, and the user level has two
+// sources that are both applied: the organization-wide personal budget
+// (`user_quotas`, one per person per tenant) and the member budget inside this
+// project (`project_members`). Both are administrator-set for one person, and
+// the stricter one wins — a member cap can tighten the person's own budget for
+// that project but never loosen it, and a project membership never bypasses
+// the organization-wide cap.
 func (s *Service) EffectiveQuota(ctx context.Context, orgID, projectID, userID string) (EffectiveQuota, error) {
 	repo, err := s.repository()
 	if err != nil {
@@ -248,7 +256,11 @@ func (s *Service) EffectiveQuota(ctx context.Context, orgID, projectID, userID s
 			return EffectiveQuota{}, err
 		}
 	}
-	return CombineLimits(orgLimits.Limits(), projectLimits, userLimits), nil
+	memberLimits, err := repo.ProjectMemberQuotaLimits(ctx, projectID, userID)
+	if err != nil {
+		return EffectiveQuota{}, err
+	}
+	return CombineLimits(orgLimits.Limits(), projectLimits, userLimits, memberLimits), nil
 }
 
 // resolveQuotaOrg resolves the organization a quota RPC operates on:

@@ -429,6 +429,10 @@ func main() {
 			// The funds check applies the project and personal monthly
 			// spend caps on top of the account cap.
 			billingSvc.SetSpendLimitResolver(tenancySvc)
+			// The user catalog shows a model's current rate card, so the
+			// console needs no second round trip (and pricing semantics stay
+			// in the billing module).
+			modelSvc.SetPriceLookup(billingSvc)
 			// The per-request cost attributor reads billing's
 			// price_entries over the shared database (feature #9, AD3).
 			meteringSvc.SetCostAttributor(metering.NewCostAttributor(gormDB))

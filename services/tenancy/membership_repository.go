@@ -218,6 +218,7 @@ func (r *MembershipRepository) UpdateProjectMemberQuota(ctx context.Context, pro
 			"max_concurrent_requests":       quota.MaxConcurrentRequests,
 			"max_batch_jobs_per_day":        quota.MaxBatchJobsPerDay,
 			"max_output_tokens_per_request": quota.MaxOutputTokensPerRequest,
+			"monthly_spend_limit_cents":     quota.MonthlySpendLimitCents,
 			"quota_updated_by":              quota.QuotaUpdatedBy,
 			"quota_updated_at":              quota.QuotaUpdatedAt,
 			"updated_at":                    time.Now().UTC(),

@@ -280,6 +280,24 @@ message AvailableModel {
   // hub_model_id is the model's hub id ("<vendor>/<model>"), empty when
   // the model is not bound to a hub.
   string hub_model_id = 9;
+  // pricing is the model's current rate card, so the console can show what
+  // a token costs without a second round trip. Nil when no price is set.
+  AvailableModelPricing pricing = 10;
+}
+
+// AvailableModelPricing is the masked user-realm rate card of one model:
+// the rates a caller is charged per one million tokens. It carries no
+// price id, version or operator field.
+message AvailableModelPricing {
+  double input_price_per_million = 1;
+  double output_price_per_million = 2;
+  // cached_price_per_million is the cache-hit rate (0 = not discounted).
+  double cached_price_per_million = 3;
+  // currency is the price's ISO-4217 code.
+  string currency = 4;
+  // accelerator_type is the card type the rate applies to; "default" means
+  // the model-wide fallback.
+  string accelerator_type = 5;
 }
 message ListAvailableModelsResponse {
   taas.common.v1.Response response = 1;

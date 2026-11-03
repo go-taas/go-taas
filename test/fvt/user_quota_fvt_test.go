@@ -8,7 +8,6 @@ package fvt
 import (
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -82,8 +81,8 @@ func TestFVTUserQuotaEffectiveValue(t *testing.T) {
 
 	// Organization 10, project 20, person 5 -> effective 5.
 	_, err := env.ten.UpdateOrganizationQuota(ctx, &tenancyv1.UpdateOrganizationQuotaRequest{
-		OrganizationId:        "org-fvt",
-		MaxConcurrentRequests: ptrInt64(10),
+		OrganizationId:            "org-fvt",
+		MaxConcurrentRequests:     ptrInt64(10),
 		MaxOutputTokensPerRequest: ptrInt64(8192),
 	})
 	require.NoError(t, err)
@@ -150,46 +149,53 @@ func TestFVTGetMyQuotaShowsThreeTiers(t *testing.T) {
 // per-project member limits into the personal tier: the strictest
 // non-zero value of each dimension wins and an existing budget is never
 // overwritten.
-func TestFVTProjectMemberQuotaMigration(t *testing.T) {
+// TestFVTProjectMemberQuotaTier covers the member tier of the quota ladder: a
+// project administrator caps one member inside the project, the cap is stored
+// with its spend dimension, and the effective tuple the data plane receives is
+// the tighter of that cap and the person's organization-wide budget.
+func TestFVTProjectMemberQuotaTier(t *testing.T) {
 	env := newOwnershipFvtEnv(t)
-	ctx := env.sessionCtx("33333333-3333-4333-8333-333333333333")
 
-	second := &tenancy.Project{ID: "proj-b", OrganizationID: "org-fvt", DisplayName: "B", State: tenancy.StateActive}
-	require.NoError(t, env.db.Create(second).Error)
-	// Alice carries 30 in proj-a and 20 in proj-b: the strictest (20) wins.
-	require.NoError(t, env.db.Model(&tenancy.ProjectMember{}).
-		Where("project_id = ? AND user_id = ?", "proj-a", "11111111-1111-4111-8111-111111111111").
-		Update("max_concurrent_requests", 30).Error)
-	require.NoError(t, env.db.Create(&tenancy.ProjectMember{
-		ProjectID: "proj-b", UserID: "11111111-1111-4111-8111-111111111111", Role: tenancy.RoleMember, JoinedAt: time.Now().UTC(),
-		MaxConcurrentRequests: 20,
-	}).Error)
-	// Bob already has an edited personal budget: the migration keeps it.
+	const alice = "11111111-1111-4111-8111-111111111111"
+
+	// The person's organization-wide budget is looser than the member cap.
 	require.NoError(t, env.db.Create(&tenancy.UserQuota{
-		OrganizationID: "org-fvt", UserID: "22222222-2222-4222-8222-222222222222", MaxConcurrentRequests: 99,
+		OrganizationID: "org-fvt", UserID: alice, MaxConcurrentRequests: 9, MonthlySpendLimitCents: 9000,
 	}).Error)
-	require.NoError(t, env.db.Model(&tenancy.ProjectMember{}).
-		Where("project_id = ? AND user_id = ?", "proj-a", "22222222-2222-4222-8222-222222222222").
-		Update("max_concurrent_requests", 2).Error)
 
-	repo := tenancy.NewRepository(env.db)
-	require.NoError(t, repo.MigrateProjectMemberQuotas(ctx))
+	admin := "33333333-3333-4333-8333-333333333333"
+	code, body := env.call(t, admin, http.MethodPatch,
+		"/api/v1/admin/tenancy/projects/proj-a/member-quotas/"+alice,
+		map[string]any{"maxConcurrentRequests": 3, "monthlySpendLimitCents": 2500, "maxOutputTokensPerRequest": 512})
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	quota, _ := body["quota"].(map[string]any)
+	require.NotNil(t, quota)
+	assert.EqualValues(t, 3, numberOf(t, quota["maxConcurrentRequests"]))
+	assert.EqualValues(t, 2500, numberOf(t, quota["monthlySpendLimitCents"]))
 
-	var aliceRow tenancy.UserQuota
-	require.NoError(t, env.db.Where("organization_id = ? AND user_id = ?", "org-fvt", "11111111-1111-4111-8111-111111111111").
-		First(&aliceRow).Error)
-	assert.EqualValues(t, 20, aliceRow.MaxConcurrentRequests)
+	effective, _ := quota["effective"].(map[string]any)
+	require.NotNil(t, effective, "the response carries the combined limits: %v", quota)
+	assert.EqualValues(t, 3, numberOf(t, effective["maxConcurrentRequests"]), "the member cap tightens")
+	assert.EqualValues(t, 2500, numberOf(t, effective["monthlySpendLimitCents"]))
+	assert.EqualValues(t, 512, numberOf(t, effective["maxOutputTokensPerRequest"]))
 
-	var bobRow tenancy.UserQuota
-	require.NoError(t, env.db.Where("organization_id = ? AND user_id = ?", "org-fvt", "22222222-2222-4222-8222-222222222222").
-		First(&bobRow).Error)
-	assert.EqualValues(t, 99, bobRow.MaxConcurrentRequests, "an edited budget is never overwritten")
+	// Reading the roster shows the same numbers.
+	code, body = env.call(t, admin, http.MethodGet, "/api/v1/admin/tenancy/projects/proj-a/member-quotas", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	rows, _ := body["quotas"].([]any)
+	row := findQuotaRow(t, rows, alice)
+	assert.EqualValues(t, 2500, numberOf(t, row["monthlySpendLimitCents"]))
 
-	// Re-running is a no-op.
-	require.NoError(t, repo.MigrateProjectMemberQuotas(ctx))
-	require.NoError(t, env.db.Where("organization_id = ? AND user_id = ?", "org-fvt", "11111111-1111-4111-8111-111111111111").
-		First(&aliceRow).Error)
-	assert.EqualValues(t, 20, aliceRow.MaxConcurrentRequests)
+	// A member cap cannot loosen the organization-wide budget: raising it above
+	// the personal value leaves the effective limit at the personal one.
+	code, body = env.call(t, admin, http.MethodPatch,
+		"/api/v1/admin/tenancy/projects/proj-a/member-quotas/"+alice,
+		map[string]any{"maxConcurrentRequests": 40})
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	quota, _ = body["quota"].(map[string]any)
+	effective, _ = quota["effective"].(map[string]any)
+	assert.EqualValues(t, 40, numberOf(t, quota["maxConcurrentRequests"]), "the stored cap is what was set")
+	assert.EqualValues(t, 9, numberOf(t, effective["maxConcurrentRequests"]), "the effective cap stays at the stricter personal budget")
 }
 
 // findQuotaRow returns the row for one user id.
@@ -208,3 +214,37 @@ func findQuotaRow(t *testing.T, rows []any, userID string) map[string]any {
 // ensure the gateway interceptor import is used (the env wires the
 // production chain in the ownership suite).
 var _ = grpcmiddleware.UnaryServerInterceptor
+
+// TestFVTGetMyQuotaShowsProjectMemberTiers covers the member-facing ladder: the
+// caller sees their budget in each project they belong to, and the effective
+// value that budget produces for that project's keys.
+func TestFVTGetMyQuotaShowsProjectMemberTiers(t *testing.T) {
+	env := newOwnershipFvtEnv(t)
+	const alice = "11111111-1111-4111-8111-111111111111"
+
+	// The project administrator caps Alice inside proj-a.
+	require.NoError(t, env.db.Model(&tenancy.ProjectMember{}).
+		Where("project_id = ? AND user_id = ?", "proj-a", alice).
+		Updates(map[string]any{
+			"max_concurrent_requests": 3, "monthly_spend_limit_cents": 2500,
+		}).Error)
+
+	code, body := env.call(t, alice, http.MethodGet, "/api/v1/quotas", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+
+	rows, _ := body["projectMemberQuotas"].([]any)
+	require.Len(t, rows, 1, "Alice belongs to one project: %v", body)
+	row := rows[0].(map[string]any)
+	assert.Equal(t, "proj-a", row["projectId"])
+	require.NotEmpty(t, row["projectName"])
+
+	quota, _ := row["quota"].(map[string]any)
+	require.NotNil(t, quota)
+	assert.EqualValues(t, 3, numberOf(t, quota["maxConcurrentRequests"]))
+	assert.EqualValues(t, 2500, numberOf(t, quota["monthlySpendLimitCents"]))
+
+	effective, _ := row["effective"].(map[string]any)
+	require.NotNil(t, effective)
+	assert.EqualValues(t, 3, numberOf(t, effective["maxConcurrentRequests"]))
+	assert.EqualValues(t, 2500, numberOf(t, effective["monthlySpendLimitCents"]))
+}

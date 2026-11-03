@@ -397,6 +397,7 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 	scopedSpent := account.SpentThisCycleCents
 	ownerSpent := int64(0)
 	projectSpent := int64(0)
+	memberSpent := int64(0)
 	if s.spendLimitResolver != nil {
 		if ownerID := strings.TrimSpace(req.GetOwnerUserId()); ownerID != "" {
 			limit, err := s.spendLimitResolver.UserMonthlySpendLimitCents(ctx, orgID, ownerID)
@@ -436,6 +437,27 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 				}
 			}
 		}
+		// Member tier: the project administrator's cap on this person inside
+		// this project. It is measured against the same person's spend in the
+		// project, so a generous teammate never eats into this member's cap,
+		// and the effective limit takes the tighter of it and the other tiers.
+		if ownerID, projectID := strings.TrimSpace(req.GetOwnerUserId()), strings.TrimSpace(req.GetProjectId()); ownerID != "" && projectID != "" {
+			limit, limitErr := s.spendLimitResolver.ProjectMemberMonthlySpendLimitCents(ctx, projectID, ownerID)
+			if limitErr != nil {
+				logger.S().Warnw("billing: project member spend limit read failed, degrading to unlimited",
+					"org", orgID, "project", projectID, "owner", ownerID, "err", limitErr)
+			} else {
+				effectiveLimit = minNonZeroLimit(effectiveLimit, limit)
+				memberSpent, err = repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, ownerID, projectID)
+				if err != nil {
+					logger.S().Warnw("billing: project member spend read failed, degrading to unlimited",
+						"org", orgID, "project", projectID, "owner", ownerID, "err", err)
+					memberSpent = 0
+				} else if limit > 0 && memberSpent >= limit {
+					allowed, reason = false, "insufficient_funds"
+				}
+			}
+		}
 	}
 	// Feature #26 (AD9): publish the billing.spend_limit_breached
 	// notification event best-effort when the cross-mode spend limit is
@@ -460,10 +482,11 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 		MonthlySpendLimitCents: account.MonthlySpendLimitCents,
 		SpentThisCycleCents:    account.SpentThisCycleCents,
 
-		EffectiveMonthlySpendLimitCents: effectiveLimit,
-		OwnerSpentThisCycleCents:        ownerSpent,
-		ProjectSpentThisCycleCents:      projectSpent,
-		ScopedSpentThisCycleCents:       scopedSpent,
+		EffectiveMonthlySpendLimitCents:  effectiveLimit,
+		OwnerSpentThisCycleCents:         ownerSpent,
+		ProjectSpentThisCycleCents:       projectSpent,
+		ScopedSpentThisCycleCents:        scopedSpent,
+		ProjectMemberSpentThisCycleCents: memberSpent,
 	}, nil
 }
 

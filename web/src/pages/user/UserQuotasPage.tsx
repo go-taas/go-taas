@@ -108,6 +108,40 @@ export default function UserQuotasPage() {
               </div>
             </>
           )}
+          {data?.projectMemberQuotas && data.projectMemberQuotas.length > 0 && (
+            <>
+              <h2>{t('quota.projectTitle')}</h2>
+              <div className="subtitle">{t('quota.projectSubtitle')}</div>
+              <table className="data" data-testid="project-member-quota-table">
+                <thead>
+                  <tr>
+                    <th>{t('quota.colProject')}</th>
+                    <th>{t('quota.colConcurrent')}</th>
+                    <th>{t('quota.colSpend')}</th>
+                    <th>{t('quota.colEffective')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.projectMemberQuotas.map((row) => (
+                    <tr key={row.projectId} data-testid={`project-quota-row-${row.projectId}`}>
+                      <td>
+                        <strong>{row.projectName || row.projectId}</strong>
+                        <div className="muted mono">{row.role}</div>
+                      </td>
+                      <td>{t('quota.limitOrUnlimited', { n: row.quota.maxConcurrentRequests })}</td>
+                      <td>{t('quota.limitOrUnlimited', { n: row.quota.monthlySpendLimitCents })}</td>
+                      <td data-testid={`project-effective-${row.projectId}`}>
+                        {t('quota.effectiveValue', {
+                          concurrent: row.effective.maxConcurrentRequests,
+                          spend: row.effective.monthlySpendLimitCents,
+                        })}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </>
+          )}
           <p className="muted">{t('quota.operatorNote')}</p>
         </>
       )}

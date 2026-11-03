@@ -16,6 +16,13 @@ import (
 // project as a whole: each member carries their own limits, so a generous
 // cap for one person never silently applies to the next. A 0 limit is
 // unlimited, matching the organization and project quota conventions.
+//
+// This is the member tier of the quota ladder (organization → project →
+// user). It is stored on the membership row because the budget is scoped to
+// the project: the same person can carry a different cap in every project, and
+// losing the membership drops the budget with it. The effective value is the
+// tighter of this tier and the person's organization-wide budget, so a member
+// cap can only tighten what the tenant already allows.
 
 // ListProjectMemberQuotas returns the project's roster with each member's
 // quota. Requires project admin or org admin/owner.
@@ -54,7 +61,11 @@ func (s *Service) ListProjectMemberQuotas(ctx context.Context, req *tenancyv1.Li
 	labels := s.labelsForUsers(ctx, append(userIDs, editorIDs...))
 	quotas := make([]*tenancyv1.ProjectMemberQuota, 0, len(members))
 	for _, m := range members {
-		quotas = append(quotas, summarizeMemberQuota(m, project, labels))
+		quota := summarizeMemberQuota(m, project, labels)
+		if effective, effErr := s.EffectiveQuota(ctx, project.OrganizationID, projectID, m.UserID); effErr == nil {
+			quota.Effective = effectiveQuotaProto(effective)
+		}
+		quotas = append(quotas, quota)
 	}
 	return &tenancyv1.ListProjectMemberQuotasResponse{Response: okResponse(), Quotas: quotas}, nil
 }
@@ -104,6 +115,9 @@ func (s *Service) UpdateProjectMemberQuota(ctx context.Context, req *tenancyv1.U
 	if v, ok := optionalQuota(req.MaxOutputTokensPerRequest); ok {
 		member.MaxOutputTokensPerRequest = v
 	}
+	if v, ok := optionalQuota(req.MonthlySpendLimitCents); ok {
+		member.MonthlySpendLimitCents = v
+	}
 	actor, err := s.sessionUserID(ctx)
 	if err != nil {
 		return nil, err
@@ -128,9 +142,16 @@ func (s *Service) UpdateProjectMemberQuota(ctx context.Context, req *tenancyv1.U
 		Result:         "success",
 	})
 	labels := s.labelsForUsers(ctx, []string{userID, member.QuotaUpdatedBy})
+	quota := summarizeMemberQuota(member, project, labels)
+	// The response carries the combined ladder, so the console can show what
+	// the data plane will actually enforce next to the value that was just
+	// stored (a member cap looser than the personal budget is not the limit).
+	if effective, effErr := s.EffectiveQuota(ctx, project.OrganizationID, projectID, userID); effErr == nil {
+		quota.Effective = effectiveQuotaProto(effective)
+	}
 	return &tenancyv1.UpdateProjectMemberQuotaResponse{
 		Response: okResponse(),
-		Quota:    summarizeMemberQuota(member, project, labels),
+		Quota:    quota,
 	}, nil
 }
 
@@ -145,6 +166,7 @@ func summarizeMemberQuota(m *ProjectMember, p *Project, labels map[string]string
 		MaxConcurrentRequests:     m.MaxConcurrentRequests,
 		MaxBatchJobsPerDay:        m.MaxBatchJobsPerDay,
 		MaxOutputTokensPerRequest: m.MaxOutputTokensPerRequest,
+		MonthlySpendLimitCents:    m.MonthlySpendLimitCents,
 		UpdatedBy:                 m.QuotaUpdatedBy,
 		UpdatedByDisplayName:      labels[m.QuotaUpdatedBy],
 	}

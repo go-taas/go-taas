@@ -103,3 +103,65 @@ func TestServiceListAvailableModelsTenancyGuard(t *testing.T) {
 	assert.NotNil(t, resp)
 	_ = tenancy.StateActive
 }
+// fakePriceLookup is an injected PriceLookup double: it answers with the
+// rates it was given, keyed by model id.
+type fakePriceLookup struct {
+	rates map[string]Rate
+	err   error
+	asked []string
+}
+
+func (f *fakePriceLookup) CurrentModelRates(_ context.Context, modelIDs []string) (map[string]Rate, error) {
+	f.asked = append(f.asked, modelIDs...)
+	if f.err != nil {
+		return nil, f.err
+	}
+	out := map[string]Rate{}
+	for _, id := range modelIDs {
+		if rate, ok := f.rates[id]; ok {
+			out[id] = rate
+		}
+	}
+	return out, nil
+}
+
+// TestServiceListAvailableModelsCarriesPricing covers the rate card the
+// console shows next to each model: the projection carries the current
+// input/output/cache rates and nothing else of the internal price row, and a
+// lookup failure degrades to "no price" rather than failing the catalog.
+func TestServiceListAvailableModelsCarriesPricing(t *testing.T) {
+	svc := newAuthorizationTestService(t, "org-a")
+	ctx := context.Background()
+	id := registerOne(t, svc, "priced-model")
+
+	lookup := &fakePriceLookup{rates: map[string]Rate{
+		id: {
+			InputPerMillion:  2,
+			OutputPerMillion: 8,
+			CachedPerMillion: 0.4,
+			Currency:         "CNY",
+			AcceleratorType:  "default",
+		},
+	}}
+	svc.SetPriceLookup(lookup)
+	svc.SetSessionOrgResolver(fakeSessionOrgResolver{org: "org-a"})
+
+	resp, err := svc.ListAvailableModels(ctx, &modelv1.ListAvailableModelsRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.GetModels(), 1)
+	pricing := resp.GetModels()[0].GetPricing()
+	require.NotNil(t, pricing)
+	assert.Equal(t, 2.0, pricing.GetInputPricePerMillion())
+	assert.Equal(t, 8.0, pricing.GetOutputPricePerMillion())
+	assert.Equal(t, 0.4, pricing.GetCachedPricePerMillion())
+	assert.Equal(t, "CNY", pricing.GetCurrency())
+	assert.Contains(t, lookup.asked, id, "the catalog asks for every listed model in one call")
+
+	// A lookup failure leaves the catalog usable: the models still list,
+	// they just carry no price.
+	svc.SetPriceLookup(&fakePriceLookup{err: apierrors.Newf(apierrors.CodeInternal, "db down")})
+	resp, err = svc.ListAvailableModels(ctx, &modelv1.ListAvailableModelsRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.GetModels(), 1)
+	assert.Nil(t, resp.GetModels()[0].GetPricing())
+}

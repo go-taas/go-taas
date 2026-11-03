@@ -185,6 +185,7 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
     icon: House,
     items: [
       { path: '/quickstart', labelKey: 'nav.quickstart', testid: 'user-nav-quickstart', icon: Rocket },
+      { path: '/models', labelKey: 'nav.models', testid: 'user-nav-models', icon: Cube },
       { path: '/docs', labelKey: 'nav.apiDocs', testid: 'user-nav-api-docs', icon: BookOpen },
     ],
   },

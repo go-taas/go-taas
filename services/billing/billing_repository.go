@@ -422,3 +422,27 @@ func (r *Repository) DeletePrice(ctx context.Context, priceID string) (bool, err
 	}
 	return result.RowsAffected > 0, nil
 }
+
+// CurrentPricesByModel returns every price version in effect now for the given
+// models, across accelerator types. Callers pick one row per model; the query
+// stays a single round trip so a catalog page costs one read.
+func (r *Repository) CurrentPricesByModel(ctx context.Context, modelIDs []string) ([]*PriceEntry, error) {
+	if len(modelIDs) == 0 {
+		return nil, nil
+	}
+	now := time.Now().Unix()
+	// Latest version per (model, card) that is already effective: a scheduled
+	// version must not be picked, and an older one must not shadow the newer.
+	sub := r.DB(ctx).Model(&PriceEntry{}).
+		Select("model_id, accelerator_type, MAX(effective_from) AS effective_from").
+		Where("model_id IN ? AND effective_from <= ?", modelIDs, now).
+		Group("model_id, accelerator_type")
+	var rows []*PriceEntry
+	err := r.DB(ctx).
+		Where("(model_id, accelerator_type, effective_from) IN (?)", sub).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}

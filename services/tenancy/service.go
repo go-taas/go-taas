@@ -209,10 +209,7 @@ func (s *Service) recordAudit(ctx context.Context, ev *audit.AuditEvent) {
 // projects, org_members, project_members, invitations) onto a
 // caller-provided database for full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{}, &JoinRequest{}, &UserQuota{}); err != nil {
-		return err
-	}
-	return NewRepository(db).MigrateProjectMemberQuotas(context.Background())
+	return db.AutoMigrate(&Organization{}, &Project{}, &OrgMember{}, &ProjectMember{}, &Invitation{}, &JoinRequest{}, &UserQuota{})
 }
 
 // AttachToServer implements server.Service.
@@ -243,11 +240,6 @@ func (s *Service) Migrate(ctx context.Context) error {
 	repo, err := s.repository()
 	if err != nil {
 		return err
-	}
-	// Fold the retired per-project member limits into the personal tier
-	// before anything reads them. Idempotent: edited budgets win.
-	if err := repo.MigrateProjectMemberQuotas(ctx); err != nil {
-		return apierrors.Newf(apierrors.CodeInternal, "tenancy: project member quota migration failed: %v", err)
 	}
 	count, err := repo.CountOrganizations(ctx)
 	if err != nil {
