@@ -29,6 +29,7 @@
 // pages and the deploy form's shared-GPU mode.
 
 const api = require('../page-objects/api.js');
+const rowActions = require('../page-objects/rowActions.js');
 
 module.exports = {
   '@tags': ['vgpu-slicing-pool', 'feature-52'],
@@ -498,8 +499,7 @@ module.exports = {
         // Navigate to the models page and open the deploy dialog.
         browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${org}')`);
         browser.url(browser.globals.baseUrl + '/admin/models');
-        browser.waitForElementPresent(`[data-testid="deploy-${modelName}"]`, 15000, 'AC5: deploy button');
-        browser.click(`[data-testid="deploy-${modelName}"]`);
+        rowActions.click(browser, `model-actions-${modelName}`, `deploy-${modelName}`, 'AC5: deploy button');
         // The deploy button opens the inference-services page with the
         // inline create panel expanded and the model preselected.
         browser.waitForElementPresent('[data-testid="deploy-panel"]', 15000, 'AC5: deploy panel opens');

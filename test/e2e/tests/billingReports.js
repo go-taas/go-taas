@@ -518,7 +518,9 @@ module.exports = {
       browser.globals.ac10ScheduleId = scheduleId;
     });
 
-    // View runs opens the drawer.
+    // View runs opens the drawer (the schedule's actions live in its row
+    // overflow menu).
+    browser.click(`[data-testid="schedule-actions-${browser.globals.ac10ScheduleId}"]`);
     browser.click('[data-testid^="schedule-runs-"]');
     browser.waitForElementPresent('[data-testid="schedule-runs-drawer"]', 10000, 'AC10: runs drawer');
     browser.waitForElementPresent('[data-testid="runs-empty"]', 10000, 'AC10: runs empty state');
@@ -529,7 +531,8 @@ module.exports = {
     browser.moveToElement('.dialog-backdrop', 5, 5).mouseButtonClick(0);
     browser.waitForElementNotPresent('[data-testid="schedule-runs-drawer"]', 10000, 'AC10: runs drawer closed');
 
-    // Delete the schedule.
+    // Delete the schedule (again through the row's overflow menu).
+    browser.click(`[data-testid="schedule-actions-${browser.globals.ac10ScheduleId}"]`);
     browser.click('[data-testid^="schedule-delete-"]');
     browser.waitForElementPresent('[data-testid="delete-schedule-dialog"]', 10000, 'AC10: delete dialog');
     browser.click('[data-testid="confirm-delete-schedule"]');

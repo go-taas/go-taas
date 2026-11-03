@@ -46,6 +46,7 @@
 // filters on state !== 'terminated').
 
 const api = require('../page-objects/api.js');
+const rowActions = require('../page-objects/rowActions.js');
 
 module.exports = {
   '@tags': ['model-versioning', 'feature-32'],
@@ -444,7 +445,7 @@ module.exports = {
         browser.waitForElementPresent('[data-testid="no-active-version"]', 10000, 'AC6: no active version initially');
 
         // Activate v1 via the row action.
-        browser.click('[data-testid="activate-v1"]');
+        rowActions.click(browser, 'model-version-actions-v1', 'activate-v1', 'AC6: activate action');
         browser.waitForElementPresent('[data-testid="activate-dialog"]', 10000, 'AC6: activate dialog');
         browser.click('[data-testid="activate-confirm"]');
 
@@ -496,7 +497,7 @@ module.exports = {
           browser.waitForElementPresent('[data-testid="model-versions-title"]', 15000, 'AC7: page renders');
 
           // Open the rollback dialog on v2 (the service is on v1).
-          browser.click('[data-testid="rollback-v2"]');
+          rowActions.click(browser, 'model-version-actions-v2', 'rollback-v2', 'AC7: rollback action');
           browser.waitForElementPresent('[data-testid="rollback-dialog"]', 10000, 'AC7: rollback dialog');
           browser.waitForElementPresent('[data-testid="rollback-warning"]', 10000, 'AC7: rollback warning');
           // The service is on v1 (different from v2) and non-terminated, so

@@ -21,6 +21,7 @@
 // (AC12), the role gate (AC13), and the states (AC14).
 
 const api = require('../page-objects/api.js');
+const rowActions = require('../page-objects/rowActions.js');
 
 module.exports = {
   '@tags': ['service-quota-management', 'feature-51'],
@@ -284,9 +285,8 @@ module.exports = {
     // first page.
     browser.setValue('[data-testid="quota-search"]', org);
     browser.waitForElementPresent(`[data-testid="quota-row-${org}"]`, 15000, 'AC1: org row');
-    browser.waitForElementPresent(`[data-testid="quota-edit-${org}"]`, 10000, 'AC1: edit action');
     // Open the edit dialog and verify the presets and fields.
-    browser.click(`[data-testid="quota-edit-${org}"]`);
+    rowActions.click(browser, `quota-actions-${org}`, `quota-edit-${org}`, 'AC1: edit action');
     browser.waitForElementPresent('[data-testid="quota-edit-dialog"]', 10000, 'AC2: edit dialog');
     browser.waitForElementPresent('[data-testid="quota-preset-starter"]', 10000, 'AC2: preset');
     browser.waitForElementPresent('[data-testid="quota-field-maxConcurrentRequests"]', 10000, 'AC2: concurrency field');

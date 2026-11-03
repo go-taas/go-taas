@@ -600,8 +600,10 @@ module.exports = {
     browser.waitForElementPresent('[data-testid^="notification-row-"]', 15000, 'AC9: notification rows');
     browser.waitForElementPresent('[data-testid^="notification-unread-"]', 10000, 'AC9: unread dot present');
 
-    // Click the first unread notification's mark-read button. The seeded
-    // first unread is "Deployment failed" with link /admin/inference-services.
+    // Click the first unread notification's mark-read entry. The seeded
+    // first unread is "Deployment failed" with link /admin/inference-services,
+    // and its actions live in the notification's row menu.
+    browser.click('[data-testid^="notification-actions-"]');
     browser.click('[data-testid^="notification-mark-read-"]');
     // The page navigates to the link (the inference-services page).
     browser.waitForElementPresent('[data-testid="admin-shell"]', 15000, 'AC9: still in admin shell after navigation');
@@ -693,11 +695,15 @@ module.exports = {
       browser.globals.ac11ThresholdId = thresholdId;
     });
 
-    // Delete the threshold (window.confirm is auto-accepted by the
-    // headless browser). Use a prefix selector for the click; the captured
-    // id is only used for the final waitForElementNotPresent (the
-    // getAttribute callback completes before that assertion runs).
-    browser.click('[data-testid^="threshold-delete-"]');
+    // Delete the threshold through its row menu (window.confirm is
+    // auto-accepted by the headless browser).
+    browser.click(`[data-testid="threshold-actions-${browser.globals.ac11ThresholdId}"]`);
+    browser.waitForElementPresent(
+      `[data-testid="threshold-delete-${browser.globals.ac11ThresholdId}"]`,
+      5000,
+      'AC11: threshold delete entry'
+    );
+    browser.click(`[data-testid="threshold-delete-${browser.globals.ac11ThresholdId}"]`);
     browser.waitForElementNotPresent(`[data-testid="threshold-row-${browser.globals.ac11ThresholdId}"]`, 15000, 'AC11: threshold removed');
   },
 

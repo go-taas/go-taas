@@ -22,6 +22,7 @@
 // verify path has no HTTP binding in the compose stack.
 
 const api = require('../page-objects/api.js');
+const rowActions = require('../page-objects/rowActions.js');
 
 // Registers a model and grants it to orgA, then hands {modelId, name}
 // to the continuation. Admin-realm request (the model catalog is admin).
@@ -450,12 +451,12 @@ module.exports = {
 
           browser.execute(`localStorage.setItem('go-taas.org-id', '${org}')`);
           browser.url(browser.globals.baseUrl + '/api-keys');
-          browser.waitForElementPresent(
-            `[data-testid="edit-scope-${keyId}"]`,
-            10000,
+          rowActions.click(
+            browser,
+            `api-key-actions-${keyId}`,
+            `edit-scope-${keyId}`,
             'AC4-C: edit-scope action renders for the active key'
           );
-          browser.click(`[data-testid="edit-scope-${keyId}"]`);
           browser.waitForElementPresent('[data-testid="edit-scope-dialog"]', 5000, 'AC4-C: scope dialog opens');
           // The dialog opens in restricted mode (the key has a scope).
           browser.waitForElementPresent(

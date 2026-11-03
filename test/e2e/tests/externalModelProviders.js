@@ -60,6 +60,7 @@
 // coverage comes from mock-infer's /unauthorized variant.
 
 const api = require('../page-objects/api.js');
+const rowActions = require('../page-objects/rowActions.js');
 
 const ADMIN = 'admin';
 const USER = 'user';
@@ -812,7 +813,7 @@ module.exports = {
         browser.click('[data-testid="provider-model-form-cancel"]');
 
         // Edit the first row, then remove the second (non-published) row.
-        browser.click(`[data-testid="provider-model-edit-${m.modelId}"]`);
+        rowActions.click(browser, `provider-model-actions-${m.modelId}`, `provider-model-edit-${m.modelId}`, 'AC5: edit action');
         browser.waitForElementPresent('[data-testid="provider-model-form-display"]', 10000, 'AC5: edit dialog');
         browser.setValue('[data-testid="provider-model-form-display"]', 'E2E GPT-4o edited');
         browser.click('[data-testid="provider-model-form-submit"]');
@@ -822,7 +823,7 @@ module.exports = {
         apiGet(browser, org, `/api/v1/admin/providers/${p.providerId}/models?page.limit=100`, (body) => {
           const second = (body.models || []).find((x) => x.upstreamModelId === 'gpt-4o-mini');
           browser.assert.ok(second, 'AC5: second curated row exists');
-          browser.click(`[data-testid="provider-model-remove-${second.modelId}"]`);
+          rowActions.click(browser, `provider-model-actions-${second.modelId}`, `provider-model-remove-${second.modelId}`, 'AC5: remove action');
           browser.waitForElementPresent('[data-testid="provider-toast"]', 15000, 'AC5: removed toast');
           browser.assert.containsText('[data-testid="provider-toast"]', 'Model removed.', 'AC5: removed toast copy');
           deleteProviders(browser, org, [p.providerId], () => {});
@@ -869,15 +870,17 @@ module.exports = {
               tenantName,
               'AC6: catalog link shows the tenant-facing name'
             );
+            rowActions.open(browser, `provider-model-actions-${a.modelId}`, `provider-model-remove-${a.modelId}`, 'AC8: published row menu');
             browser.execute(function (sel) {
               const el = document.querySelector(sel);
               return el ? el.disabled : null;
             }, [`[data-testid="provider-model-remove-${a.modelId}"]`], (r) => {
               browser.assert.equal(r.value, true, 'AC8: a published row cannot be removed (disabled)');
             });
+            browser.keys(browser.Keys.ESCAPE);
 
             // Publishing row B with the conflicting name shows the copy.
-            browser.click(`[data-testid="provider-model-publish-${b.modelId}"]`);
+            rowActions.click(browser, `provider-model-actions-${b.modelId}`, `provider-model-publish-${b.modelId}`, 'AC6: publish action (B)');
             browser.waitForElementPresent('[data-testid="provider-publish-dialog"]', 10000, 'AC6: publish dialog');
             browser.setValue('[data-testid="provider-publish-name"]', tenantName);
             browser.click('[data-testid="provider-publish-confirm"]');
@@ -889,7 +892,7 @@ module.exports = {
             browser.click('[data-testid="provider-publish-dialog"] button.secondary');
 
             // Unpublish row A through the confirmation (AC7).
-            browser.click(`[data-testid="provider-model-unpublish-${a.modelId}"]`);
+            rowActions.click(browser, `provider-model-actions-${a.modelId}`, `provider-model-unpublish-${a.modelId}`, 'AC7: unpublish action');
             browser.waitForElementPresent('[data-testid="provider-unpublish-dialog"]', 10000, 'AC7: unpublish dialog');
             browser.click('[data-testid="provider-unpublish-confirm"]');
             browser.waitForElementPresent('[data-testid="provider-toast"]', 15000, 'AC7: unpublished toast');
@@ -918,7 +921,7 @@ module.exports = {
             });
 
             // The freed name can be published on row B through the dialog.
-            browser.click(`[data-testid="provider-model-publish-${b.modelId}"]`);
+            rowActions.click(browser, `provider-model-actions-${b.modelId}`, `provider-model-publish-${b.modelId}`, 'AC6: publish action (B, freed name)');
             browser.waitForElementPresent('[data-testid="provider-publish-dialog"]', 10000, 'AC6: publish dialog (B)');
             browser.setValue('[data-testid="provider-publish-name"]', tenantName);
             browser.click('[data-testid="provider-publish-confirm"]');
@@ -1159,13 +1162,19 @@ module.exports = {
           setInputValue(browser, 'provider-search', '');
 
           // Guarded Delete: disabled while any model is published.
-          browser.waitForElementPresent(`[data-testid="provider-delete-${p.providerId}"]`, 15000, 'AC15: delete action');
+          rowActions.open(
+            browser,
+            `provider-actions-${p.providerId}`,
+            `provider-delete-${p.providerId}`,
+            'AC15: delete action'
+          );
           browser.execute(function (sel) {
             const el = document.querySelector(sel);
             return el ? el.disabled : null;
           }, [`[data-testid="provider-delete-${p.providerId}"]`], (r) => {
             browser.assert.equal(r.value, true, 'AC8: Delete disabled while a model is published');
           });
+          browser.keys(browser.Keys.ESCAPE);
           // The API enforces the same guard (13016).
           api.request(browser, {
             method: 'DELETE',
