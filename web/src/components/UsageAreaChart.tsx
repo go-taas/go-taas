@@ -58,12 +58,19 @@ export default function UsageAreaChart({
     const max = niceMax(Math.max(0, ...points.map((p) => p.value)));
     const stepX = points.length > 1 ? plotWidth / (points.length - 1) : 0;
 
+    // A single bucket has no line to draw: duplicating it across the plot
+    // width shows the value as the flat level it is, instead of one dot in the
+    // corner of an otherwise empty card.
+    const xs = points.length === 1 ? [PADDING_LEFT, PADDING_LEFT + plotWidth] : points.map((_, i) => PADDING_LEFT + i * stepX);
     const coords = points.map((point, i) => ({
       key: point.dayStart,
-      x: PADDING_LEFT + i * stepX,
+      x: xs[Math.min(i, xs.length - 1)],
       y: PADDING_TOP + plotHeight - (point.value / max) * plotHeight,
       value: point.value,
     }));
+    if (points.length === 1 && coords.length === 1) {
+      coords.push({ ...coords[0], key: coords[0].key + 1, x: PADDING_LEFT + plotWidth });
+    }
 
     const line = coords.map((c, i) => `${i === 0 ? 'M' : 'L'}${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
     const baseline = PADDING_TOP + plotHeight;

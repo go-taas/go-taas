@@ -322,9 +322,12 @@ export default function UsagePage() {
     : 0;
 
   // The chart's axis follows the metric: an amount for cost, a compact count
-  // otherwise.
+  // otherwise. The amount's precision comes from the axis maximum, not from
+  // each tick: a sub-cent range would otherwise label every gridline "0.00".
+  const axisCostMax = Math.max(0, ...chartPoints.map((point) => point.value));
+  const costDigits = axisCostMax >= 10 ? 0 : axisCostMax >= 1 ? 2 : axisCostMax >= 0.001 ? 4 : 6;
   const formatAxis: UsageBarValueFormatter = (value) =>
-    metric === 'cost' ? formatMajor(value, value >= 10 ? 0 : 2, currency) : formatCompact(value);
+    metric === 'cost' ? formatMajor(value, costDigits, currency) : formatCompact(value);
 
   const chartTotal = () => {
     if (metric === 'cost') return formatMicros(cards?.totalCostMicros, currency);
