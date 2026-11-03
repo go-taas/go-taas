@@ -1,3 +1,26 @@
+# [1.103.0](https://github.com/go-taas/go-taas/compare/v1.102.0...v1.103.0) (2026-11-03)
+
+
+### Bug Fixes
+
+* **auth:** match an API key's model scope against the name the data plane sends ([8b278c4](https://github.com/go-taas/go-taas/commit/8b278c4f695de3fd1c86e507beb94b8df245342f))
+* **billing:** answer PRICE_NOT_FOUND when deleting an unknown price version ([ccf067d](https://github.com/go-taas/go-taas/commit/ccf067dac90af68503c616c13ab8a9f7541a3ce5))
+* **billing:** keep sub-cent amounts so metered cost is not rounded to zero ([bae3bd6](https://github.com/go-taas/go-taas/commit/bae3bd6b1388a7628fc23490cf4faa19d2532383))
+* **console,api:** isolate the no-org account, share only from the org console ([9aa71d4](https://github.com/go-taas/go-taas/commit/9aa71d4c10a75b80779f282c3e72e1b151f1c456))
+* **console:** keep the usage axis readable and a one-day chart visible ([a740523](https://github.com/go-taas/go-taas/commit/a740523f496c117ded71dc40bef15d300df8b486))
+* **console:** make the usage export actually download and the empty axis readable ([4a1b491](https://github.com/go-taas/go-taas/commit/4a1b491c9b6888bebce0609be9ab4d0e27730c54))
+* **dataplane:** present the internal API's own token header from the router ([72c2c07](https://github.com/go-taas/go-taas/commit/72c2c073992d72918422b1fa3eb222a8427f50d5))
+* **metering:** report the usage dashboard's currency from the charges ([c01612b](https://github.com/go-taas/go-taas/commit/c01612b651ba5f4173104b97f90c417419035c52))
+
+
+### Features
+
+* **console:** edit and delete model prices ([0831ca7](https://github.com/go-taas/go-taas/commit/0831ca7e4b21e99c558f67e12eca87c98a1d45be))
+* **console:** rebuild the user usage page as a usage report ([09a5fb9](https://github.com/go-taas/go-taas/commit/09a5fb915349f81029db9194d4767bdc38cf5e4f))
+* **dataplane:** serve provider-backed models on the chat endpoint ([e842cb4](https://github.com/go-taas/go-taas/commit/e842cb48b772b9e96136204ae9f805b20f953794))
+* **metering:** filter the usage dashboard by model and API key, add lifetime cost ([04f11f6](https://github.com/go-taas/go-taas/commit/04f11f6cc761928daa91625f223e0be506fbdf6c))
+* **quota,auth,billing,console:** drop the service-count quota, add key restore ([43f3783](https://github.com/go-taas/go-taas/commit/43f37833aea3fb97882f01e5a2d073899d6d9f81))
+
 # [1.102.0](https://github.com/go-taas/go-taas/compare/v1.101.0...v1.102.0) (2026-11-02)
 
 
