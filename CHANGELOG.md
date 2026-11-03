@@ -1,3 +1,24 @@
+# [1.105.0](https://github.com/go-taas/go-taas/compare/v1.104.0...v1.105.0) (2026-11-03)
+
+
+### Bug Fixes
+
+* **billing,console:** report an unfunded tenant instead of failing the balance read ([3996f0f](https://github.com/go-taas/go-taas/commit/3996f0f5cf00ad625639c06a7a7ac0b3a1990461))
+* **billing:** accrue sub-cent charges instead of rounding them away ([ee176d3](https://github.com/go-taas/go-taas/commit/ee176d3e3add66bce0317cc5703c06a0214667bd))
+* **billing:** let a platform administrator read the ledger they just wrote ([be40bc8](https://github.com/go-taas/go-taas/commit/be40bc894d1135b3b3706d377ec40d3d268f5d52))
+* **billing:** scope the balance read by header for a platform administrator ([13370d9](https://github.com/go-taas/go-taas/commit/13370d93b780d804eda5b3fbfbcdfebcb274f7bc))
+* **console:** read the tenant balance on the admin binding ([48a94d9](https://github.com/go-taas/go-taas/commit/48a94d9770db66cccc7f431eb69cea80ae4f8301))
+* **web:** report remaining budget on tiers that inherit their cap ([88c3872](https://github.com/go-taas/go-taas/commit/88c38726ce3f5f080a9fd9991e967029d538d6c7))
+
+
+### Features
+
+* **billing,tenancy,console:** close the prepaid and postpaid money loop ([a25fa1a](https://github.com/go-taas/go-taas/commit/a25fa1a9d5a5a0594ae18fcf2f1bcd2145eb9f6c))
+* **billing:** name the administrator in the ledger listing ([a420b88](https://github.com/go-taas/go-taas/commit/a420b887a43bb6af264aed83edfb873019aa01b6))
+* **console:** collapse every list page's row actions into one menu ([b954ea8](https://github.com/go-taas/go-taas/commit/b954ea851ee7cc3e780e425256e07e0252cd44fa))
+* **console:** collapse row actions into a menu and drop the model id column ([f540f14](https://github.com/go-taas/go-taas/commit/f540f14f2f45ec93ae07d9ed180855694a46968a))
+* **console:** show the shared balance on the member billing page ([e31b5f2](https://github.com/go-taas/go-taas/commit/e31b5f28d46ced27d0d9339c236c246d276b71b9))
+
 # [1.104.0](https://github.com/go-taas/go-taas/compare/v1.103.0...v1.104.0) (2026-11-03)
 
 
