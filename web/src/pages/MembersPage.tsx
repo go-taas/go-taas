@@ -176,7 +176,7 @@ export default function MembersPage() {
                 <th>{t('members.colUser')}</th>
                 <th>{t('members.colRole')}</th>
                 <th>{t('members.colJoined')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>

@@ -21,7 +21,7 @@ import {
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 import { formatMoney, displayCurrencyLabel } from '../display';
 
 const PAGE_SIZE = 20;
@@ -203,30 +203,35 @@ export default function OrganizationBalancesPage() {
                     )}
                   </td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`org-recharge-${row.organizationId}`}
-                      onClick={() => setFund({ balance: row, direction: 'credit' })}
-                    >
-                      {t('orgBalances.recharge')}
-                    </button>
-                    <button
-                      className="link danger"
-                      data-testid={`org-debit-${row.organizationId}`}
-                      disabled={!row.hasAccount || row.mode !== 'prepaid'}
-                      title={!row.hasAccount || row.mode !== 'prepaid' ? t('orgBalances.debitPrepaidOnly') : undefined}
-                      onClick={() => setFund({ balance: row, direction: 'debit' })}
-                    >
-                      {t('orgBalances.debit')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`org-ledger-${row.organizationId}`}
-                      disabled={!row.hasAccount}
-                      onClick={() => setLedger(row)}
-                    >
-                      {t('orgBalances.ledger')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', {
+                        name: row.organizationName || row.organizationId,
+                      })}
+                      testId={`org-actions-${row.organizationId}`}
+                      actions={[
+                        {
+                          key: `org-recharge-${row.organizationId}`,
+                          label: t('orgBalances.recharge'),
+                          onClick: () => setFund({ balance: row, direction: 'credit' }),
+                        },
+                        {
+                          key: `org-debit-${row.organizationId}`,
+                          label: t('orgBalances.debit'),
+                          danger: true,
+                          disabled: !row.hasAccount || row.mode !== 'prepaid',
+                          title: !row.hasAccount || row.mode !== 'prepaid'
+                            ? t('orgBalances.debitPrepaidOnly')
+                            : undefined,
+                          onClick: () => setFund({ balance: row, direction: 'debit' }),
+                        },
+                        {
+                          key: `org-ledger-${row.organizationId}`,
+                          label: t('orgBalances.ledger'),
+                          disabled: !row.hasAccount,
+                          onClick: () => setLedger(row),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

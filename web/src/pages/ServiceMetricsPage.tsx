@@ -305,7 +305,7 @@ export default function ServiceMetricsPage() {
                   <td>{formatTime(r.dataThrough)}</td>
                   <td>
                     <button
-                      className="secondary"
+                      className="link"
                       data-testid={`metrics-view-${r.replicaIndex}`}
                       onClick={() => setReplica(r.replicaIndex)}
                     >

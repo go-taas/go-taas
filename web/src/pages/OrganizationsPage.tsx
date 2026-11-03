@@ -6,7 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { navigate } from '../router';
 
 interface ListResponse {
@@ -110,7 +110,7 @@ export default function OrganizationsPage() {
                 <th>{t('orgs.colProjects')}</th>
                 <th>{t('orgs.colMembers')}</th>
                 <th>{t('orgs.colCreated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -127,54 +127,52 @@ export default function OrganizationsPage() {
                   <td>{org.memberCount}</td>
                   <td>{formatTime(org.createdAt)}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`org-members-${org.organizationId}`}
-                      onClick={() => navigate(`/admin/members?org=${encodeURIComponent(org.organizationId)}`)}
-                    >
-                      {t('orgs.members')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`org-edit-${org.organizationId}`}
-                      onClick={() => setEditTarget(org)}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    {org.state === 'active' ? (
-                      <button
-                        className="link danger"
-                        data-testid={`org-disable-${org.organizationId}`}
-                        onClick={() =>
-                          setConfirmTarget({ org, action: 'disable' })
-                        }
-                      >
-                        {t('common.disable')}
-                      </button>
-                    ) : (
-                      <button
-                        className="link"
-                        data-testid={`org-enable-${org.organizationId}`}
-                        onClick={() =>
-                          setConfirmTarget({ org, action: 'enable' })
-                        }
-                      >
-                        {t('common.enable')}
-                      </button>
-                    )}
-                    <button
-                      className="link danger"
-                      data-testid={`org-delete-${org.organizationId}`}
-                      disabled={org.organizationId === PLATFORM_ORG_ID}
-                      title={
-                        org.organizationId === PLATFORM_ORG_ID
-                          ? t('orgs.platformProtected')
-                          : undefined
-                      }
-                      onClick={() => setDeleteTarget(org)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', {
+                        name: org.displayName || org.organizationId,
+                      })}
+                      testId={`org-actions-${org.organizationId}`}
+                      actions={[
+                        {
+                          key: `org-members-${org.organizationId}`,
+                          label: t('orgs.members'),
+                          group: 'people',
+                          onClick: () => navigate(`/admin/members?org=${encodeURIComponent(org.organizationId)}`),
+                        },
+                        {
+                          key: `org-edit-${org.organizationId}`,
+                          label: t('common.edit'),
+                          group: 'edit',
+                          onClick: () => setEditTarget(org),
+                        },
+                        org.state === 'active'
+                          ? {
+                              key: `org-disable-${org.organizationId}`,
+                              label: t('common.disable'),
+                              group: 'lifecycle',
+                              danger: true,
+                              onClick: () => setConfirmTarget({ org, action: 'disable' }),
+                            }
+                          : {
+                              key: `org-enable-${org.organizationId}`,
+                              label: t('common.enable'),
+                              group: 'lifecycle',
+                              onClick: () => setConfirmTarget({ org, action: 'enable' }),
+                            },
+                        {
+                          key: `org-delete-${org.organizationId}`,
+                          label: t('common.delete'),
+                          group: 'lifecycle',
+                          danger: true,
+                          disabled: org.organizationId === PLATFORM_ORG_ID,
+                          title:
+                            org.organizationId === PLATFORM_ORG_ID
+                              ? t('orgs.platformProtected')
+                              : undefined,
+                          onClick: () => setDeleteTarget(org),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

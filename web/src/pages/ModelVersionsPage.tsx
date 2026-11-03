@@ -9,7 +9,7 @@ import { navigate } from '../router';
 import { api, formatTime, type InferenceServiceSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { BackLink, Dialog, ErrorBanner } from '../components';
+import { BackLink, Dialog, ErrorBanner, RowActionsMenu } from '../components';
 
 interface ModelVersion {
   version: string;
@@ -218,7 +218,7 @@ export default function ModelVersionsPage() {
                 <th>{t('modelversions.colWeightPath')}</th>
                 <th>{t('modelversions.colCreated')}</th>
                 <th>{t('modelversions.colDeployments')}</th>
-                <th>{t('modelversions.colActions')}</th>
+                <th className="col-actions">{t('modelversions.colActions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -241,31 +241,33 @@ export default function ModelVersionsPage() {
                   <td>{formatTime(v.createdAt)}</td>
                   <td data-testid={`deployments-${v.version}`}>{v.deploymentCount}</td>
                   <td>
-                    {!v.isActive && (
-                      <button
-                        className="link"
-                        data-testid={`activate-${v.version}`}
-                        disabled={mutating}
-                        onClick={() => setActivateVersion(v.version)}
-                      >
-                        {t('modelversions.activate')}
-                      </button>
-                    )}
-                    <button
-                      className="link"
-                      data-testid={`rollback-${v.version}`}
-                      disabled={mutating}
-                      onClick={() => openRollback(v.version)}
-                    >
-                      {t('modelversions.rollback')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`deploy-${v.version}`}
-                      onClick={() => navigate(`/admin/models/${modelId}`)}
-                    >
-                      {t('modelversions.deploy')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: v.version })}
+                      testId={`model-version-actions-${v.version}`}
+                      actions={[
+                        ...(v.isActive
+                          ? []
+                          : [
+                              {
+                                key: `activate-${v.version}`,
+                                label: t('modelversions.activate'),
+                                disabled: mutating,
+                                onClick: () => setActivateVersion(v.version),
+                              },
+                            ]),
+                        {
+                          key: `rollback-${v.version}`,
+                          label: t('modelversions.rollback'),
+                          disabled: mutating,
+                          onClick: () => openRollback(v.version),
+                        },
+                        {
+                          key: `deploy-${v.version}`,
+                          label: t('modelversions.deploy'),
+                          onClick: () => navigate(`/admin/models/${modelId}`),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

@@ -17,7 +17,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu } from '../components';
 import { engineParams } from '../components/engineParams';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
@@ -144,7 +144,7 @@ export default function EngineTemplatesPage() {
                 <th>{t('engineTemplates.colContext')}</th>
                 <th>{t('engineTemplates.colParams')}</th>
                 <th>{t('engineTemplates.colUpdated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -173,12 +173,23 @@ export default function EngineTemplatesPage() {
                   </td>
                   <td>{formatTime(tpl.updatedAt)}</td>
                   <td>
-                    <button className="link" data-testid={`engine-template-edit-${tpl.name}`} onClick={() => setEditTarget(tpl)}>
-                      {t('common.edit')}
-                    </button>
-                    <button className="link danger" data-testid={`engine-template-delete-${tpl.name}`} onClick={() => setDeleteTarget(tpl)}>
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: tpl.name })}
+                      testId={`engine-template-actions-${tpl.name}`}
+                      actions={[
+                        {
+                          key: `engine-template-edit-${tpl.name}`,
+                          label: t('common.edit'),
+                          onClick: () => setEditTarget(tpl),
+                        },
+                        {
+                          key: `engine-template-delete-${tpl.name}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => setDeleteTarget(tpl),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

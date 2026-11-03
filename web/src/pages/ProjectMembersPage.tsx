@@ -7,7 +7,7 @@ import { api, ApiError, type MemberCandidate } from '../api';
 import { useApi } from '../surface';
 import { formatMoney, quotaRemaining } from '../display';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu } from '../components';
 import { useAdminScope } from '../admin-scope';
 import { candidateLabel } from '../candidates';
 
@@ -160,7 +160,7 @@ export default function ProjectMembersPage() {
                 <th>{t('projectMembers.colMember')}</th>
                 <th>{t('projectMembers.colRole')}</th>
                 <th>{t('projectMembers.colJoined')}</th>
-                <th></th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -193,20 +193,23 @@ export default function ProjectMembersPage() {
                       : '—'}
                   </td>
                   <td>
-                    <button
-                      className="secondary"
-                      data-testid={`project-member-quota-${m.userId}`}
-                      onClick={() => setQuotaTarget(m)}
-                    >
-                      {t('memberQuota.quota')}
-                    </button>
-                    <button
-                      className="secondary danger"
-                      data-testid={`project-member-remove-${m.userId}`}
-                      onClick={() => void remove(m.userId)}
-                    >
-                      {t('common.remove')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: m.displayName || m.userId })}
+                      testId={`project-member-actions-${m.userId}`}
+                      actions={[
+                        {
+                          key: `project-member-quota-${m.userId}`,
+                          label: t('memberQuota.quota'),
+                          onClick: () => setQuotaTarget(m),
+                        },
+                        {
+                          key: `project-member-remove-${m.userId}`,
+                          label: t('common.remove'),
+                          danger: true,
+                          onClick: () => void remove(m.userId),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

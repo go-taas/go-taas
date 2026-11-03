@@ -292,7 +292,7 @@ export default function ObservabilityPage() {
                     <td>{m.dataThrough ? formatTime(m.dataThrough) : '—'}</td>
                     <td>
                       <button
-                        className="secondary"
+                        className="link"
                         data-testid={`observability-view-${m.modelId}`}
                         onClick={() => navigate(`/admin/observability/models/${m.modelId}`)}
                       >

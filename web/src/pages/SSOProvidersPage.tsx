@@ -5,7 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type PageMeta, type SSOProvider } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -86,7 +86,7 @@ export default function SSOProvidersPage() {
                 <th>{t('sso.colState')}</th>
                 <th>{t('sso.colDefaultOrg')}</th>
                 <th>{t('sso.colJit')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -105,37 +105,39 @@ export default function SSOProvidersPage() {
                   <td className="mono">{p.defaultOrg || '—'}</td>
                   <td>{p.allowAutoProvision ? 'yes' : 'no'}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`sso-provider-edit-${p.providerId}`}
-                      onClick={() => setEditTarget(p)}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    {p.enabled ? (
-                      <button
-                        className="link danger"
-                        data-testid={`sso-provider-disable-${p.providerId}`}
-                        onClick={() => setConfirmTarget({ provider: p, action: 'disable' })}
-                      >
-                        {t('common.disable')}
-                      </button>
-                    ) : (
-                      <button
-                        className="link"
-                        data-testid={`sso-provider-enable-${p.providerId}`}
-                        onClick={() => setConfirmTarget({ provider: p, action: 'enable' })}
-                      >
-                        {t('common.enable')}
-                      </button>
-                    )}
-                    <button
-                      className="link danger"
-                      data-testid={`sso-provider-delete-${p.providerId}`}
-                      onClick={() => setConfirmTarget({ provider: p, action: 'delete' })}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: p.displayName || p.providerId })}
+                      testId={`sso-provider-actions-${p.providerId}`}
+                      actions={[
+                        {
+                          key: `sso-provider-edit-${p.providerId}`,
+                          label: t('common.edit'),
+                          group: 'edit',
+                          onClick: () => setEditTarget(p),
+                        },
+                        p.enabled
+                          ? {
+                              key: `sso-provider-disable-${p.providerId}`,
+                              label: t('common.disable'),
+                              group: 'lifecycle',
+                              danger: true,
+                              onClick: () => setConfirmTarget({ provider: p, action: 'disable' }),
+                            }
+                          : {
+                              key: `sso-provider-enable-${p.providerId}`,
+                              label: t('common.enable'),
+                              group: 'lifecycle',
+                              onClick: () => setConfirmTarget({ provider: p, action: 'enable' }),
+                            },
+                        {
+                          key: `sso-provider-delete-${p.providerId}`,
+                          label: t('common.delete'),
+                          group: 'lifecycle',
+                          danger: true,
+                          onClick: () => setConfirmTarget({ provider: p, action: 'delete' }),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

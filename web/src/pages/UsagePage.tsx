@@ -16,7 +16,7 @@ import {
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { formatMoney } from '../display';
-import { Dialog, ErrorBanner, Pagination, StateBadge, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, usePolling } from '../components';
 import UsageChart, { type ChartMetric } from '../components/UsageChart';
 import BalanceWidget from '../components/BalanceWidget';
 
@@ -330,7 +330,7 @@ export default function UsagePage() {
                 <th>{t('usage.colCachedTokens')}</th>
                 <th>{t('usage.colRequests')}</th>
                 <th>{t('usage.colSettled')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -356,20 +356,22 @@ export default function UsagePage() {
                     </span>
                   </td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`by-model-${row.groupKey}`}
-                      onClick={() => setByModelKey(row.groupKey)}
-                    >
-                      {t('usage.byModel')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`vouchers-${row.groupKey}`}
-                      onClick={() => setVoucherKey(row.groupKey)}
-                    >
-                      {t('usage.vouchers')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: row.groupKey })}
+                      testId={`usage-actions-${row.groupKey}`}
+                      actions={[
+                        {
+                          key: `by-model-${row.groupKey}`,
+                          label: t('usage.byModel'),
+                          onClick: () => setByModelKey(row.groupKey),
+                        },
+                        {
+                          key: `vouchers-${row.groupKey}`,
+                          label: t('usage.vouchers'),
+                          onClick: () => setVoucherKey(row.groupKey),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

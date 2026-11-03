@@ -546,6 +546,21 @@ function UserSurface({ path }: { path: string }) {
 
 唯一按设计改变的 id 是 Playground 的服务选择器：用户页面提供的是**模型**选择器（`playground-model-select`），旧的 `playground-service-select` 不再存在（第 12 节风险 R1）。
 
+### 7.7 列表页的行操作
+
+两个控制台的每个列表页都通过同一个共享组件渲染每行操作：`web/src/components.tsx` 的 `RowActionsMenu` —— 一个图标按钮（`DotsThreeVertical`）打开弹出菜单。因此一行上并存多个操作（编辑、成员、预算、生命周期）时，操作列仍然只有一个按钮宽，而不是一格塞满内联链接；破坏性操作以 `danger` 标记并放在分隔线之后，删除因此需要刻意再点一次。操作按关注点分组（`group`：查看、编辑、成员、生命周期），分组变化处绘制分隔线。`RowActionsMenu` 在外部点击或按 `Escape` 时关闭，因此自身不需要「关闭」项。
+
+| 规则 | 原因 |
+| --- | --- |
+| 操作列表头使用 `className="col-actions"`（`width: 1%`，右对齐） | 该列只有一个图标宽，不应把表格撑宽 |
+| 一行只有一个操作时保留单个文本控件（`className="link"`），不使用菜单 | 唯一操作前再套一层菜单会多一次点击并把操作藏起来 |
+| 破坏性菜单项使用 `danger` 且排在最后 | 删除不应与日常操作相邻 |
+| 当前不可用的操作仍列出，标为 `disabled` 并用 `title` 说明原因 | 直接隐藏会让能力看起来不存在；提示气泡回答了操作者的下一个问题 |
+| 触发器无障碍名称为 `common.actionsFor`（`{{name}}`） | 读屏软件会播报该菜单属于哪一行 |
+| 菜单项沿用历史上既有的 `data-testid`（`delete-{id}`、`quota-{id}` 等） | e2e 用例定位的是菜单项而不是触发器；只有触发器新增 `*-actions-{id}` |
+
+草稿编辑器是例外：路由组编辑器中作用于未保存列表的 ↑/↓/移除 控件保持常显（`web/src/pages/RoutingGroupDetailPage.tsx`）。
+
 ---
 
 ## 8. 时序图

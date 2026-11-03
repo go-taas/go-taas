@@ -8,7 +8,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 import { navigate } from '../router';
 import { useI18n } from '../i18n';
 
@@ -465,7 +465,7 @@ export default function ProvidersPage() {
                 <th>{t('providers.colEnabled')}</th>
                 <th>{t('providers.colModels')}</th>
                 <th>{t('providers.colLastChecked')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -509,33 +509,40 @@ export default function ProvidersPage() {
                       {p.lastProbe?.checkedAt ? formatTime(p.lastProbe.checkedAt) : '—'}
                     </td>
                     <td className="actions">
-                      <button
-                        className="link"
-                        data-testid={`provider-view-${p.providerId}`}
-                        onClick={() => navigate(`/admin/providers/${encodeURIComponent(p.providerId)}`)}
-                      >
-                        {t('common.view')}
-                      </button>
-                      <button
-                        className="link"
-                        data-testid={`provider-test-${p.providerId}`}
-                        disabled={busyId === p.providerId}
-                        onClick={() => void runTest(p)}
-                      >
-                        {t('providers.test')}
-                      </button>
-                      <button className="link" data-testid={`provider-edit-${p.providerId}`} onClick={() => openEdit(p)}>
-                        {t('common.edit')}
-                      </button>
-                      <button
-                        className="link danger"
-                        data-testid={`provider-delete-${p.providerId}`}
-                        disabled={Number(p.publishedModelCount) > 0}
-                        title={Number(p.publishedModelCount) > 0 ? t('providers.deleteBlocked') : undefined}
-                        onClick={() => setDeleteTarget(p)}
-                      >
-                        {t('common.delete')}
-                      </button>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: p.name || p.providerId })}
+                        testId={`provider-actions-${p.providerId}`}
+                        actions={[
+                          {
+                            key: `provider-view-${p.providerId}`,
+                            label: t('common.view'),
+                            group: 'inspect',
+                            onClick: () => navigate(`/admin/providers/${encodeURIComponent(p.providerId)}`),
+                          },
+                          {
+                            key: `provider-test-${p.providerId}`,
+                            label: t('providers.test'),
+                            group: 'inspect',
+                            disabled: busyId === p.providerId,
+                            onClick: () => void runTest(p),
+                          },
+                          {
+                            key: `provider-edit-${p.providerId}`,
+                            label: t('common.edit'),
+                            group: 'edit',
+                            onClick: () => openEdit(p),
+                          },
+                          {
+                            key: `provider-delete-${p.providerId}`,
+                            label: t('common.delete'),
+                            group: 'lifecycle',
+                            danger: true,
+                            disabled: Number(p.publishedModelCount) > 0,
+                            title: Number(p.publishedModelCount) > 0 ? t('providers.deleteBlocked') : undefined,
+                            onClick: () => setDeleteTarget(p),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 );

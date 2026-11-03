@@ -215,7 +215,7 @@ export default function ClustersPage() {
                   <td>{c.lastCheckedAt ? new Date(parseInt(c.lastCheckedAt, 10) * 1000).toLocaleString() : '—'}</td>
                   <td>
                     <button
-                      className="secondary"
+                      className="link"
                       data-testid={`clusters-view-${c.clusterId}`}
                       onClick={() => navigate(`/admin/clusters/${c.clusterId}`)}
                     >

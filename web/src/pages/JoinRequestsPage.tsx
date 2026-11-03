@@ -4,7 +4,7 @@
 // project's requests.
 
 import { useCallback, useEffect, useState } from 'react';
-import { ErrorBanner, StateBadge } from '../components';
+import { ErrorBanner, RowActionsMenu, StateBadge } from '../components';
 import { api } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -137,7 +137,7 @@ export default function JoinRequestsPage() {
                 <th>{t('joinreq.colTarget')}</th>
                 <th>{t('joinreq.colStatus')}</th>
                 <th>{t('joinreq.colCreated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -157,22 +157,23 @@ export default function JoinRequestsPage() {
                   <td>{new Date(parseInt(r.createdAt, 10) * 1000).toLocaleString()}</td>
                   <td>
                     {r.status === 'pending' && (
-                      <>
-                        <button
-                          className="link"
-                          data-testid={`joinreq-approve-${r.requestId}`}
-                          onClick={() => void decide(r.requestId, 'approve')}
-                        >
-                          {t('joinreq.approve')}
-                        </button>
-                        <button
-                          className="link danger"
-                          data-testid={`joinreq-reject-${r.requestId}`}
-                          onClick={() => void decide(r.requestId, 'reject')}
-                        >
-                          {t('joinreq.reject')}
-                        </button>
-                      </>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: r.displayName || r.userId || r.requestId })}
+                        testId={`joinreq-actions-${r.requestId}`}
+                        actions={[
+                          {
+                            key: `joinreq-approve-${r.requestId}`,
+                            label: t('joinreq.approve'),
+                            onClick: () => void decide(r.requestId, 'approve'),
+                          },
+                          {
+                            key: `joinreq-reject-${r.requestId}`,
+                            label: t('joinreq.reject'),
+                            danger: true,
+                            onClick: () => void decide(r.requestId, 'reject'),
+                          },
+                        ]}
+                      />
                     )}
                   </td>
                 </tr>

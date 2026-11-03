@@ -21,7 +21,7 @@ import {
 } from '../../api';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
-import { Dialog, ErrorBanner, Pagination, StateBadge, usePolling } from '../../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, usePolling } from '../../components';
 
 const PAGE_SIZE = 20;
 const RANGE_PRESETS = [
@@ -514,7 +514,7 @@ export default function UserBillingReportsPage() {
                       <td>{formatTime(r.createdAt)}</td>
                       <td>
                         <button
-                          className="secondary"
+                          className="link"
                           data-testid={`report-download-${r.reportId}`}
                           disabled={r.status !== 'ready'}
                           onClick={() => void download(r.reportId)}
@@ -664,7 +664,7 @@ export default function UserBillingReportsPage() {
                     <th>{t('reports.scheduleColFrequency')}</th>
                     <th>{t('reports.scheduleColStatus')}</th>
                     <th>{t('reports.scheduleColLastRun')}</th>
-                    <th>{t('reports.scheduleColActions')}</th>
+                    <th className="col-actions">{t('reports.scheduleColActions')}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -679,15 +679,28 @@ export default function UserBillingReportsPage() {
                       </td>
                       <td>{formatTime(sc.lastRunAt)}</td>
                       <td>
-                        <button className="secondary" data-testid={`schedule-runs-${sc.scheduleId}`} onClick={() => void openRuns(sc)}>
-                          {t('reports.viewRuns')}
-                        </button>
-                        <button className="secondary" data-testid={`schedule-edit-${sc.scheduleId}`} onClick={() => editSchedule(sc)}>
-                          {t('reports.edit')}
-                        </button>
-                        <button className="secondary" data-testid={`schedule-delete-${sc.scheduleId}`} onClick={() => setDeleteTarget(sc)}>
-                          {t('reports.delete')}
-                        </button>
+                        <RowActionsMenu
+                          label={t('common.actionsFor', { name: sc.name || sc.scheduleId })}
+                          testId={`schedule-actions-${sc.scheduleId}`}
+                          actions={[
+                            {
+                              key: `schedule-runs-${sc.scheduleId}`,
+                              label: t('reports.viewRuns'),
+                              onClick: () => void openRuns(sc),
+                            },
+                            {
+                              key: `schedule-edit-${sc.scheduleId}`,
+                              label: t('reports.edit'),
+                              onClick: () => editSchedule(sc),
+                            },
+                            {
+                              key: `schedule-delete-${sc.scheduleId}`,
+                              label: t('reports.delete'),
+                              danger: true,
+                              onClick: () => setDeleteTarget(sc),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -749,7 +762,7 @@ export default function UserBillingReportsPage() {
                     <td>{r.rowCount}</td>
                     <td>
                       <button
-                        className="secondary"
+                        className="link"
                         data-testid={`run-download-${r.reportId}`}
                         disabled={r.status !== 'ready'}
                         onClick={() => void download(r.reportId)}

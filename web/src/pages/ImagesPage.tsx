@@ -13,7 +13,7 @@ import {
   type PageMeta,
 } from '../api';
 import { useOrg } from '../org';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { useI18n } from '../i18n';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 import UploadImageDialog from '../components/UploadImageDialog';
@@ -192,7 +192,7 @@ export default function ImagesPage() {
                 <th>{t('images.colInUse')}</th>
                 <th>{t('images.colLastWarmup')}</th>
                 <th>{t('images.colCreated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -219,27 +219,28 @@ export default function ImagesPage() {
                   </td>
                   <td>{formatTime(img.createdAt)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="link"
-                      data-testid={`warmup-${img.name}`}
-                      onClick={() => setWarmupTarget(img)}
-                    >
-                      {t('images.warmup')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`edit-${img.name}`}
-                      onClick={() => setEditTarget(img)}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    <button
-                      className="link danger"
-                      data-testid={`delete-${img.name}`}
-                      onClick={() => setDeleteTarget(img)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: img.name })}
+                      testId={`image-actions-${img.name}`}
+                      actions={[
+                        {
+                          key: `warmup-${img.name}`,
+                          label: t('images.warmup'),
+                          onClick: () => setWarmupTarget(img),
+                        },
+                        {
+                          key: `edit-${img.name}`,
+                          label: t('common.edit'),
+                          onClick: () => setEditTarget(img),
+                        },
+                        {
+                          key: `delete-${img.name}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => setDeleteTarget(img),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

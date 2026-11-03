@@ -7,7 +7,7 @@ import { navigate } from '../router';
 import { api, ApiError, formatTime, type ModelSummary, type PageMeta } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 import UploadModelDialog from '../components/UploadModelDialog';
 
@@ -150,7 +150,7 @@ export default function ModelsPage() {
                 <th>{t('models.colLatestVersion')}</th>
                 <th>{t('models.colWeightPath')}</th>
                 <th>{t('models.colCreated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -184,30 +184,30 @@ export default function ModelsPage() {
                         {t('models.externalManaged')}
                       </span>
                     ) : (
-                      <>
-                    <button
-                      className="link"
-                      data-testid={`deploy-${m.name}`}
-                      onClick={() =>
-                        navigate(
-                          `/admin/inference-services?create=1&modelId=${encodeURIComponent(m.modelId)}` +
-                            `&version=${encodeURIComponent(m.latestVersion)}`,
-                        )
-                      }
-                    >
-                      {t('models.deploy')}
-                    </button>
-                    <button
-                      className="link danger"
-                      data-testid={`delete-model-${m.name}`}
-                      onClick={() => {
-                        setDeleteError('');
-                        setDeleteTarget(m);
-                      }}
-                    >
-                      {t('common.delete')}
-                    </button>
-                      </>
+                      <RowActionsMenu
+                      label={t('common.actionsFor', { name: m.name })}
+                      testId={`model-actions-${m.name}`}
+                      actions={[
+                        {
+                          key: `deploy-${m.name}`,
+                          label: t('models.deploy'),
+                          onClick: () =>
+                            navigate(
+                              `/admin/inference-services?create=1&modelId=${encodeURIComponent(m.modelId)}` +
+                                `&version=${encodeURIComponent(m.latestVersion)}`,
+                            ),
+                        },
+                        {
+                          key: `delete-model-${m.name}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => {
+                            setDeleteError('');
+                            setDeleteTarget(m);
+                          },
+                        },
+                      ]}
+                    />
                     )}
                   </td>
                 </tr>

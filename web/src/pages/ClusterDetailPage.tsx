@@ -192,7 +192,7 @@ export default function ClusterDetailPage() {
                       <td>{new Date(parseInt(w.createdAt, 10) * 1000).toLocaleString()}</td>
                       <td>
                         <button
-                          className="secondary"
+                          className="link"
                           data-testid={`clusters-workload-view-${w.serviceId}`}
                           onClick={() => navigate(`/admin/inference-services/${w.serviceId}`)}
                         >

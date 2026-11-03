@@ -3615,6 +3615,18 @@ button.primary:hover {
   color: var(--muted);
 }
 
+/* A disabled entry stays listed (it explains that the action exists) but reads
+   as unavailable rather than as a click target. */
+.row-actions-menu .row-actions-item:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.row-actions-menu .row-actions-item:disabled:hover {
+  background: transparent;
+}
+
 /* A separator is the top border of the first item of a new group. */
 .row-actions-separator {
   margin-top: 4px;

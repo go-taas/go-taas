@@ -4,7 +4,7 @@
 // presets and inline validation, and a change-history drawer.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Dialog, ErrorBanner, Pagination } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -125,7 +125,7 @@ export default function QuotasPage() {
               <th>{t('quota.colTokenCap')}</th>
               <th>{t('quota.colUpdated')}</th>
               <th>{t('quota.colUpdatedBy')}</th>
-              <th>{t('common.actions')}</th>
+              <th className="col-actions">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -154,12 +154,24 @@ export default function QuotasPage() {
                     {q.updatedByDisplayName || q.updatedBy || '—'}
                   </td>
                   <td>
-                    <button className="link" data-testid={`quota-edit-${q.organizationId}`} onClick={() => setEditTarget(row)}>
-                      {t('quota.edit')}
-                    </button>
-                    <button className="link" data-testid={`quota-history-${q.organizationId}`} onClick={() => setHistoryTarget(row)}>
-                      {t('quota.history')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', {
+                        name: q.organizationName || q.organizationId,
+                      })}
+                      testId={`quota-actions-${q.organizationId}`}
+                      actions={[
+                        {
+                          key: `quota-edit-${q.organizationId}`,
+                          label: t('quota.edit'),
+                          onClick: () => setEditTarget(row),
+                        },
+                        {
+                          key: `quota-history-${q.organizationId}`,
+                          label: t('quota.history'),
+                          onClick: () => setHistoryTarget(row),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               );

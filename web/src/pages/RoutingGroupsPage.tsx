@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { formatTime, type ListRoutingGroupsResponse, type RoutingGroup } from '../api';
-import { Dialog, ErrorBanner, Pagination } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
 import { navigate } from '../router';
 import { useI18n } from '../i18n';
 
@@ -289,7 +289,7 @@ export default function RoutingGroupsPage() {
                   <th>{t('routingGroups.colRequests24h')}</th>
                   <th>{t('routingGroups.colEnabled')}</th>
                   <th>{t('routingGroups.colUpdated')}</th>
-                  <th>{t('common.actions')}</th>
+                  <th className="col-actions">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -323,22 +323,25 @@ export default function RoutingGroupsPage() {
                     </td>
                     <td>{g.updatedAt ? formatTime(String(g.updatedAt)) : '—'}</td>
                     <td>
-                      <button
-                        className="secondary"
-                        onClick={() => navigate(`/admin/routing-groups/${g.groupId}`)}
-                        data-testid={`routing-group-view-${g.groupId}`}
-                      >
-                        {t('routingGroups.view')}
-                      </button>{' '}
-                      <button
-                        className="secondary"
-                        onClick={() => setDeleteTarget(g)}
-                        disabled={toggling === g.groupId}
-                        title={t('routingGroups.deleteBlockedTooltip')}
-                        data-testid={`routing-group-delete-${g.groupId}`}
-                      >
-                        {t('routingGroups.delete')}
-                      </button>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: g.name || g.groupId })}
+                        testId={`routing-group-actions-${g.groupId}`}
+                        actions={[
+                          {
+                            key: `routing-group-view-${g.groupId}`,
+                            label: t('routingGroups.view'),
+                            onClick: () => navigate(`/admin/routing-groups/${g.groupId}`),
+                          },
+                          {
+                            key: `routing-group-delete-${g.groupId}`,
+                            label: t('routingGroups.delete'),
+                            danger: true,
+                            disabled: toggling === g.groupId,
+                            title: t('routingGroups.deleteBlockedTooltip'),
+                            onClick: () => setDeleteTarget(g),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

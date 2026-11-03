@@ -9,7 +9,7 @@ import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { navigate } from '../../router';
 import { formatTime, type PageMeta } from '../../api';
-import { Dialog, ErrorBanner, Pagination } from '../../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../../components';
 
 export interface Prompt {
   promptId: string;
@@ -264,7 +264,7 @@ export default function UserPromptsPage() {
                   <th>{t('prompts.colUsed')}</th>
                   <th>{t('prompts.colLastUsed')}</th>
                   <th>{t('prompts.colUpdated')}</th>
-                  <th>{t('common.actions')}</th>
+                  <th className="col-actions">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -288,31 +288,38 @@ export default function UserPromptsPage() {
                     <td>{formatTime(p.lastUsedAt)}</td>
                     <td>{formatTime(p.updatedAt)}</td>
                     <td>
-                      <button
-                        className="link"
-                        data-testid={`prompt-playground-${p.promptId}`}
-                        onClick={() => navigate(`/playground?prompt=${p.promptId}&version=${p.version}`)}
-                      >
-                        {t('prompts.openPlayground')}
-                      </button>
-                      <button className="link" data-testid={`prompt-copy-${p.promptId}`} onClick={() => void copyText(p)}>
-                        {copied === p.promptId ? t('prompts.copied') : t('prompts.copy')}
-                      </button>
-                      <button
-                        className="link"
-                        data-testid={`prompt-edit-${p.promptId}`}
-                        onClick={() => navigate(`/prompts/${p.promptId}`)}
-                      >
-                        {t('common.edit')}
-                      </button>
-                      <button
-                        className="link danger"
-                        disabled={busyId === p.promptId}
-                        data-testid={`prompt-delete-${p.promptId}`}
-                        onClick={() => setDeleteTarget(p)}
-                      >
-                        {t('common.delete')}
-                      </button>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: p.name || p.promptId })}
+                        testId={`prompt-actions-${p.promptId}`}
+                        actions={[
+                          {
+                            key: `prompt-playground-${p.promptId}`,
+                            label: t('prompts.openPlayground'),
+                            group: 'use',
+                            onClick: () => navigate(`/playground?prompt=${p.promptId}&version=${p.version}`),
+                          },
+                          {
+                            key: `prompt-copy-${p.promptId}`,
+                            label: copied === p.promptId ? t('prompts.copied') : t('prompts.copy'),
+                            group: 'use',
+                            onClick: () => void copyText(p),
+                          },
+                          {
+                            key: `prompt-edit-${p.promptId}`,
+                            label: t('common.edit'),
+                            group: 'edit',
+                            onClick: () => navigate(`/prompts/${p.promptId}`),
+                          },
+                          {
+                            key: `prompt-delete-${p.promptId}`,
+                            label: t('common.delete'),
+                            group: 'lifecycle',
+                            danger: true,
+                            disabled: busyId === p.promptId,
+                            onClick: () => setDeleteTarget(p),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

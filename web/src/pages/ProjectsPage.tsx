@@ -15,7 +15,7 @@ import {
 } from '../api';
 import { candidateLabel } from '../candidates';
 import { useOrg } from '../org';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { MemberQuotaDialog } from './ProjectMembersPage';
 import { useI18n } from '../i18n';
 import { useAdminScope } from '../admin-scope';
@@ -166,7 +166,7 @@ export default function ProjectsPage() {
                 <th>{t('projects.colOrganization')}</th>
                 <th>{t('projects.colState')}</th>
                 <th>{t('projects.colCreated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -182,55 +182,57 @@ export default function ProjectsPage() {
                   </td>
                   <td>{formatTime(project.createdAt)}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`project-edit-${project.projectId}`}
-                      onClick={() => setEditTarget(project)}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`project-members-${project.projectId}`}
-                      onClick={() => setMembersTarget(project)}
-                    >
-                      {t('projects.members')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`project-quota-${project.projectId}`}
-                      onClick={() => setQuotaTarget(project)}
-                    >
-                      {t('projects.quota')}
-                    </button>
-                    {project.state === 'active' ? (
-                      <button
-                        className="link danger"
-                        data-testid={`project-disable-${project.projectId}`}
-                        onClick={() =>
-                          setConfirmTarget({ project, action: 'disable' })
-                        }
-                      >
-                        {t('common.disable')}
-                      </button>
-                    ) : (
-                      <button
-                        className="link"
-                        data-testid={`project-enable-${project.projectId}`}
-                        onClick={() =>
-                          setConfirmTarget({ project, action: 'enable' })
-                        }
-                      >
-                        {t('common.enable')}
-                      </button>
-                    )}
-                    <button
-                      className="link danger"
-                      data-testid={`project-delete-${project.projectId}`}
-                      onClick={() => setDeleteTarget(project)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    {/* Editing, membership and the budget are three separate
+                        concerns; the lifecycle actions go last and the
+                        destructive one is marked, so the column stays one icon
+                        wide and disable/delete take a deliberate step. */}
+                    <RowActionsMenu
+                      label={t('common.actionsFor', {
+                        name: project.displayName || project.projectId,
+                      })}
+                      testId={`project-actions-${project.projectId}`}
+                      actions={[
+                        {
+                          key: `project-edit-${project.projectId}`,
+                          label: t('common.edit'),
+                          group: 'edit',
+                          onClick: () => setEditTarget(project),
+                        },
+                        {
+                          key: `project-members-${project.projectId}`,
+                          label: t('projects.members'),
+                          group: 'members',
+                          onClick: () => setMembersTarget(project),
+                        },
+                        {
+                          key: `project-quota-${project.projectId}`,
+                          label: t('projects.quota'),
+                          group: 'members',
+                          onClick: () => setQuotaTarget(project),
+                        },
+                        project.state === 'active'
+                          ? {
+                              key: `project-disable-${project.projectId}`,
+                              label: t('common.disable'),
+                              group: 'lifecycle',
+                              danger: true,
+                              onClick: () => setConfirmTarget({ project, action: 'disable' }),
+                            }
+                          : {
+                              key: `project-enable-${project.projectId}`,
+                              label: t('common.enable'),
+                              group: 'lifecycle',
+                              onClick: () => setConfirmTarget({ project, action: 'enable' }),
+                            },
+                        {
+                          key: `project-delete-${project.projectId}`,
+                          label: t('common.delete'),
+                          group: 'lifecycle',
+                          danger: true,
+                          onClick: () => setDeleteTarget(project),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -725,7 +727,7 @@ function ProjectMembersDialog({
             <tr>
               <th>{t('projects.membersColUser')}</th>
               <th>{t('projects.membersColRole')}</th>
-              <th>{t('common.actions')}</th>
+              <th className="col-actions">{t('common.actions')}</th>
             </tr>
           </thead>
           <tbody>
@@ -748,20 +750,23 @@ function ProjectMembersDialog({
                   </select>
                 </td>
                 <td>
-                  <button
-                    className="link"
-                    data-testid={`project-member-quota-${m.userId}`}
-                    onClick={() => setQuotaTarget(m)}
-                  >
-                    {t('memberQuota.quota')}
-                  </button>
-                  <button
-                    className="link danger"
-                    data-testid={`project-member-remove-${m.userId}`}
-                    onClick={() => void removeMember(m.userId)}
-                  >
-                    {t('common.remove')}
-                  </button>
+                  <RowActionsMenu
+                    label={t('common.actionsFor', { name: m.displayName || m.userId })}
+                    testId={`project-member-actions-${m.userId}`}
+                    actions={[
+                      {
+                        key: `project-member-quota-${m.userId}`,
+                        label: t('memberQuota.quota'),
+                        onClick: () => setQuotaTarget(m),
+                      },
+                      {
+                        key: `project-member-remove-${m.userId}`,
+                        label: t('common.remove'),
+                        danger: true,
+                        onClick: () => void removeMember(m.userId),
+                      },
+                    ]}
+                  />
                 </td>
               </tr>
             ))}

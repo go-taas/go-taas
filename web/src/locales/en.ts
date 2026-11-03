@@ -24,6 +24,7 @@ export const en: Record<string, string> = {
   'common.unlimited': 'unlimited',
   'common.flat': 'flat',
   'common.never': 'Never',
+  'common.actionsFor': 'Actions for {{name}}',
   'common.actions': 'Actions',
   'common.status': 'Status',
   'common.created': 'Created',

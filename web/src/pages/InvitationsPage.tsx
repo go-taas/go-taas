@@ -7,7 +7,7 @@ import { api, ApiError, type Invitation } from '../api';
 import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, StateBadge } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu, StateBadge } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
@@ -154,7 +154,7 @@ export default function InvitationsPage() {
                 <th>{t('invitations.colRole')}</th>
                 <th>{t('invitations.colStatus')}</th>
                 <th>{t('invitations.colExpires')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -170,22 +170,23 @@ export default function InvitationsPage() {
                   <td>{new Date(parseInt(inv.expiresAt, 10) * 1000).toLocaleString()}</td>
                   <td>
                     {inv.status === 'pending' && (
-                      <>
-                        <button
-                          className="link"
-                          data-testid={`invite-resend-${inv.invitationId}`}
-                          onClick={() => void resend(inv.invitationId)}
-                        >
-                          {t('invitations.resend')}
-                        </button>
-                        <button
-                          className="link danger"
-                          data-testid={`invite-revoke-${inv.invitationId}`}
-                          onClick={() => setRevokeTarget(inv)}
-                        >
-                          {t('invitations.revoke')}
-                        </button>
-                      </>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: inv.email || inv.invitationId })}
+                        testId={`invite-actions-${inv.invitationId}`}
+                        actions={[
+                          {
+                            key: `invite-resend-${inv.invitationId}`,
+                            label: t('invitations.resend'),
+                            onClick: () => void resend(inv.invitationId),
+                          },
+                          {
+                            key: `invite-revoke-${inv.invitationId}`,
+                            label: t('invitations.revoke'),
+                            danger: true,
+                            onClick: () => setRevokeTarget(inv),
+                          },
+                        ]}
+                      />
                     )}
                   </td>
                 </tr>

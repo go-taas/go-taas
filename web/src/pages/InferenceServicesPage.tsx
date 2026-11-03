@@ -17,6 +17,7 @@ import {
   Dialog,
   ErrorBanner,
   Pagination,
+  RowActionsMenu,
   StateBadge,
   usePolling,
 } from '../components';
@@ -144,7 +145,7 @@ export default function InferenceServicesPage() {
                 <th>{t('services.colState')}</th>
                 <th>{t('services.colAutoscaling')}</th>
                 <th>{t('services.colUpdated')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -181,27 +182,28 @@ export default function InferenceServicesPage() {
                   </td>
                   <td>{formatTime(s.updatedAt)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    <button
-                      className="link"
-                      data-testid={`autoscaling-${s.name}`}
-                      onClick={() => setAutoscalingTarget(s)}
-                    >
-                      {t('services.autoscaling')}
-                    </button>{' '}
-                    <button
-                      className="link"
-                      data-testid={`scale-${s.name}`}
-                      onClick={() => setScaleTarget(s)}
-                    >
-                      {t('services.scale')}
-                    </button>{' '}
-                    <button
-                      className="link danger"
-                      data-testid={`delete-${s.name}`}
-                      onClick={() => setDeleteTarget(s)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: s.name })}
+                      testId={`service-actions-${s.name}`}
+                      actions={[
+                        {
+                          key: `autoscaling-${s.name}`,
+                          label: t('services.autoscaling'),
+                          onClick: () => setAutoscalingTarget(s),
+                        },
+                        {
+                          key: `scale-${s.name}`,
+                          label: t('services.scale'),
+                          onClick: () => setScaleTarget(s),
+                        },
+                        {
+                          key: `delete-${s.name}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => setDeleteTarget(s),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

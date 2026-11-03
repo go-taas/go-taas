@@ -8,7 +8,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { navigate } from '../router';
 import { formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { formatMoney } from '../display';
 import type { BatchJob } from './user/UserBatchPage';
 
@@ -112,7 +112,7 @@ export default function AdminBatchPage() {
                 <th>{t('batch.colRequests')}</th>
                 <th>{t('batch.colCost')}</th>
                 <th>{t('common.created')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -145,21 +145,24 @@ export default function AdminBatchPage() {
                   </td>
                   <td>{formatTime(job.createdAt)}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`admin-batch-view-${job.batchId}`}
-                      onClick={() => navigate(`/admin/batch/${job.batchId}`)}
-                    >
-                      {t('common.view')}
-                    </button>
-                    <button
-                      className="link danger"
-                      disabled={!canCancel(job.status) || busyId === job.batchId}
-                      data-testid={`admin-batch-cancel-${job.batchId}`}
-                      onClick={() => setCancelTarget(job)}
-                    >
-                      {t('common.cancel')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: job.batchId })}
+                      testId={`admin-batch-actions-${job.batchId}`}
+                      actions={[
+                        {
+                          key: `admin-batch-view-${job.batchId}`,
+                          label: t('common.view'),
+                          onClick: () => navigate(`/admin/batch/${job.batchId}`),
+                        },
+                        {
+                          key: `admin-batch-cancel-${job.batchId}`,
+                          label: t('common.cancel'),
+                          danger: true,
+                          disabled: !canCancel(job.status) || busyId === job.batchId,
+                          onClick: () => setCancelTarget(job),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

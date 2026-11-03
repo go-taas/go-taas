@@ -282,7 +282,7 @@ export default function UserTracesPage() {
                     <td className="muted">{tr.error}</td>
                     <td>
                       <button
-                        className="secondary"
+                        className="link"
                         data-testid={`traces-view-${tr.traceId}`}
                         onClick={() => navigate(`/traces/${tr.traceId}`)}
                       >

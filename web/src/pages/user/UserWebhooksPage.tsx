@@ -8,7 +8,7 @@ import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { navigate } from '../../router';
 import { ApiError, formatTime, type PageMeta } from '../../api';
-import { Dialog, ErrorBanner, Pagination, StateBadge } from '../../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../../components';
 import SecretRevealDialog from '../../components/SecretRevealDialog';
 import type { Webhook } from '../WebhooksPage';
 
@@ -147,7 +147,7 @@ export default function UserWebhooksPage() {
                 <th>{t('common.status')}</th>
                 <th>{t('webhooks.colDeliveries')}</th>
                 <th>{t('common.created')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -174,29 +174,30 @@ export default function UserWebhooksPage() {
                   </td>
                   <td>{formatTime(wh.createdAt)}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`webhook-view-${wh.webhookId}`}
-                      onClick={() => navigate(`/webhooks/${wh.webhookId}`)}
-                    >
-                      {t('common.view')}
-                    </button>
-                    <button
-                      className="link"
-                      disabled={busyId === wh.webhookId}
-                      data-testid={`webhook-toggle-${wh.webhookId}`}
-                      onClick={() => void toggleEnabled(wh)}
-                    >
-                      {wh.enabled ? t('common.disable') : t('common.enable')}
-                    </button>
-                    <button
-                      className="link danger"
-                      disabled={busyId === wh.webhookId}
-                      data-testid={`webhook-delete-${wh.webhookId}`}
-                      onClick={() => void remove(wh)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: wh.url || wh.webhookId })}
+                      testId={`webhook-actions-${wh.webhookId}`}
+                      actions={[
+                        {
+                          key: `webhook-view-${wh.webhookId}`,
+                          label: t('common.view'),
+                          onClick: () => navigate(`/webhooks/${wh.webhookId}`),
+                        },
+                        {
+                          key: `webhook-toggle-${wh.webhookId}`,
+                          label: wh.enabled ? t('common.disable') : t('common.enable'),
+                          disabled: busyId === wh.webhookId,
+                          onClick: () => void toggleEnabled(wh),
+                        },
+                        {
+                          key: `webhook-delete-${wh.webhookId}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          disabled: busyId === wh.webhookId,
+                          onClick: () => void remove(wh),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

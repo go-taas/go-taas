@@ -9,7 +9,7 @@ import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { navigate } from '../../router';
 import { formatTime, type PageMeta } from '../../api';
-import { Dialog, ErrorBanner, Pagination } from '../../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../../components';
 import { notifyUnreadChanged } from '../../notificationsBus';
 import type { Notification, NotificationPreference, NotificationThreshold } from '../AdminNotificationsPage';
 
@@ -368,26 +368,29 @@ export default function UserNotificationsPage() {
                       <span>{formatTime(n.createdAt)}</span>
                     </div>
                   </div>
-                  <div className="row-actions">
-                    {!n.read && (
-                      <button
-                        className="secondary"
-                        data-testid={`notification-mark-read-${n.notificationId}`}
-                        disabled={busyId === n.notificationId}
-                        onClick={() => void markRead(n)}
-                      >
-                        {t('notifications.markRead')}
-                      </button>
-                    )}
-                    <button
-                      className="secondary danger"
-                      data-testid={`notification-delete-${n.notificationId}`}
-                      disabled={busyId === n.notificationId}
-                      onClick={() => void remove(n)}
-                    >
-                      {t('common.delete')}
-                    </button>
-                  </div>
+                  <RowActionsMenu
+                    label={t('common.actionsFor', { name: n.title || n.notificationId })}
+                    testId={`notification-actions-${n.notificationId}`}
+                    actions={[
+                      ...(n.read
+                        ? []
+                        : [
+                            {
+                              key: `notification-mark-read-${n.notificationId}`,
+                              label: t('notifications.markRead'),
+                              disabled: busyId === n.notificationId,
+                              onClick: () => void markRead(n),
+                            },
+                          ]),
+                      {
+                        key: `notification-delete-${n.notificationId}`,
+                        label: t('common.delete'),
+                        danger: true,
+                        disabled: busyId === n.notificationId,
+                        onClick: () => void remove(n),
+                      },
+                    ]}
+                  />
                 </li>
               ))}
             </ul>
@@ -470,30 +473,31 @@ export default function UserNotificationsPage() {
                       </span>
                     </td>
                     <td>{formatTime(th.updatedAt)}</td>
-                    <td className="row-actions">
-                      <button
-                        className="secondary"
-                        data-testid={`threshold-edit-${th.thresholdId}`}
-                        onClick={() => openEdit(th)}
-                      >
-                        {t('common.edit')}
-                      </button>
-                      <button
-                        className="secondary"
-                        data-testid={`threshold-toggle-${th.thresholdId}`}
-                        disabled={busyId === th.thresholdId}
-                        onClick={() => void toggleThreshold(th)}
-                      >
-                        {th.enabled ? t('common.disable') : t('common.enable')}
-                      </button>
-                      <button
-                        className="secondary danger"
-                        data-testid={`threshold-delete-${th.thresholdId}`}
-                        disabled={busyId === th.thresholdId}
-                        onClick={() => void deleteThreshold(th)}
-                      >
-                        {t('common.delete')}
-                      </button>
+                    <td className="col-actions">
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: th.metric || th.thresholdId })}
+                        testId={`threshold-actions-${th.thresholdId}`}
+                        actions={[
+                          {
+                            key: `threshold-edit-${th.thresholdId}`,
+                            label: t('common.edit'),
+                            onClick: () => openEdit(th),
+                          },
+                          {
+                            key: `threshold-toggle-${th.thresholdId}`,
+                            label: th.enabled ? t('common.disable') : t('common.enable'),
+                            disabled: busyId === th.thresholdId,
+                            onClick: () => void toggleThreshold(th),
+                          },
+                          {
+                            key: `threshold-delete-${th.thresholdId}`,
+                            label: t('common.delete'),
+                            danger: true,
+                            disabled: busyId === th.thresholdId,
+                            onClick: () => void deleteThreshold(th),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}

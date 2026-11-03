@@ -167,6 +167,14 @@ export interface RowAction {
    * what keeps "who is this account" actions apart from "what may it do".
    */
   group?: string;
+  /**
+   * disabled greys the item out. A menu entry that cannot run right now still
+   * belongs in the list: hiding it makes the row look like the capability does
+   * not exist, while a disabled entry plus `title` explains why.
+   */
+  disabled?: boolean;
+  /** title is the tooltip, typically the reason a disabled item is disabled. */
+  title?: string;
 }
 
 /**
@@ -238,6 +246,8 @@ export function RowActionsMenu({
                   role="menuitem"
                   className={action.danger ? 'row-actions-item danger' : 'row-actions-item'}
                   data-testid={`${action.key}`}
+                  disabled={action.disabled}
+                  title={action.title}
                   onClick={() => {
                     setOpen(false);
                     action.onClick();

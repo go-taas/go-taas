@@ -288,7 +288,7 @@ export default function UserUsageKeysPage() {
                     <td>{k.dataThrough ? formatTime(k.dataThrough) : '—'}</td>
                     <td>
                       <button
-                        className="secondary"
+                        className="link"
                         data-testid={`user-usage-keys-view-${k.apiKeyId}`}
                         onClick={() => navigate(`/usage/keys/${k.apiKeyId}`)}
                       >

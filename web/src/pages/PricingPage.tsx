@@ -15,7 +15,7 @@ import {
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { useFleetAccelerators } from '../hooks/useFleetAccelerators';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 
 interface PricesResponse {
   response: { code: number; message: string };
@@ -173,7 +173,7 @@ export default function PricingPage() {
                 <th>{t('pricing.colTiers')}</th>
                 <th>{t('pricing.colCurrency')}</th>
                 <th>{t('pricing.colEffective')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -204,20 +204,23 @@ export default function PricingPage() {
                   <td>{p.currency}</td>
                   <td>{formatTime(p.effectiveFrom)}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`pricing-edit-${p.priceId}`}
-                      onClick={() => setEditTarget(p)}
-                    >
-                      {t('common.edit')}
-                    </button>
-                    <button
-                      className="link danger"
-                      data-testid={`pricing-delete-${p.priceId}`}
-                      onClick={() => setDeleteTarget(p)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: p.modelId || p.priceId })}
+                      testId={`pricing-actions-${p.priceId}`}
+                      actions={[
+                        {
+                          key: `pricing-edit-${p.priceId}`,
+                          label: t('common.edit'),
+                          onClick: () => setEditTarget(p),
+                        },
+                        {
+                          key: `pricing-delete-${p.priceId}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => setDeleteTarget(p),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

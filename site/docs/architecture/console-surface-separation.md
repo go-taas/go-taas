@@ -546,6 +546,32 @@ Preserved from today (the tests and the admin pages depend on them): `models-tab
 
 The one id that changes by design is the playground's service selector: the user page offers a **model** selector (`playground-model-select`), the old `playground-service-select` no longer exists (Section 12, risk R1).
 
+### 7.7 Row actions on a list page
+
+Every list page in both consoles renders its per-row actions through one shared
+component, `web/src/components.tsx`'s `RowActionsMenu`: a single icon button
+(`DotsThreeVertical`) that opens a popover menu. A row with several actions —
+edit, membership, budget, lifecycle — therefore occupies one narrow action
+column instead of a cell full of inline links, and a destructive entry is marked
+(`danger`) and placed after a separator, so deletion is a deliberate second
+step. Actions are grouped (`group`) by concern — inspect, edit, people,
+lifecycle — and the separator is drawn where the group changes.
+`RowActionsMenu` closes on an outside click or `Escape`, so it carries no close
+entry of its own.
+
+| Rule | Reason |
+| --- | --- |
+| The action column header is `className="col-actions"` (`width: 1%`, right-aligned) | The column is one icon wide; it must not widen the table |
+| One action in a row keeps a single text control (`className="link"`), not a menu | A menu in front of the only action adds a click and hides it |
+| A destructive menu entry uses `danger` and comes last | Deletion must not sit next to a routine action |
+| An unavailable action stays listed with `disabled` plus a `title` explaining why | Hiding it makes the capability look absent; the tooltip answers the operator's next question |
+| The trigger's accessible name is `common.actionsFor` (`{{name}}`) | A screen reader announces which row the menu belongs to |
+| Menu items keep their historical `data-testid` (`delete-{id}`, `quota-{id}`, …) | The e2e suites address the entry, not the trigger; only the trigger gains a new id (`*-actions-{id}`) |
+
+Draft editors are the exception: the ↑/↓/remove controls in the routing-group
+builder operate on an unsaved list being reordered, so they stay visible
+(`web/src/pages/RoutingGroupDetailPage.tsx`).
+
 ---
 
 ## 8. Sequence Diagrams

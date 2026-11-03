@@ -8,7 +8,7 @@ import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import { ApiError, formatTime, type ApiKeySummary, type AvailableModel, type MyProject } from '../../api';
-import { CopyButton, Dialog, ErrorBanner, StateBadge } from '../../components';
+import { CopyButton, Dialog, ErrorBanner, RowActionsMenu, StateBadge } from '../../components';
 
 interface CreateResponse {
   keyId: string;
@@ -96,7 +96,7 @@ export default function ApiKeysPage() {
           <thead><tr>
             <th>{t('uapikeys.colName')}</th><th>{t('uapikeys.colPrefix')}</th><th>{t('uapikeys.colOwner')}</th><th>{t('uapikeys.colRateLimit')}</th>
             <th>{t('uapikeys.colScope')}</th>
-            <th>{t('uapikeys.colCreated')}</th><th>{t('uapikeys.colExpires')}</th><th>{t('uapikeys.colStatus')}</th><th>{t('uapikeys.actions')}</th>
+            <th>{t('uapikeys.colCreated')}</th><th>{t('uapikeys.colExpires')}</th><th>{t('uapikeys.colStatus')}</th><th className="col-actions">{t('uapikeys.actions')}</th>
           </tr></thead>
           <tbody>{keys.map((key) => (
             <tr key={key.keyId} data-testid={`api-key-row-${key.keyId}`}>
@@ -107,14 +107,51 @@ export default function ApiKeysPage() {
               <td>{formatTime(key.createdAt)}</td>
               <td>{key.expiresAt && key.expiresAt !== '0' ? formatTime(key.expiresAt) : t('common.never')}</td>
               <td><StateBadge state={key.revoked ? 'revoked' : 'active'} /></td>
-              <td>{!key.revoked ? <>
-                <button className="link" data-testid={`edit-rate-limit-${key.keyId}`} onClick={() => setEditTarget(key)}>{t('common.edit')}</button>
-                <button className="link" data-testid={`edit-scope-${key.keyId}`} onClick={() => setScopeTarget(key)}>{t('uapikeys.scopeEdit')}</button>
-                <button className="link danger" data-testid={`revoke-${key.keyId}`} onClick={() => setRevokeTarget(key)}>{t('uapikeys.revoke')}</button>
-              </> : (
-                <button className="link" data-testid={`restore-${key.keyId}`} disabled={busy === key.keyId} onClick={() => void restoreKey(key)}>{t('uapikeys.restore')}</button>
-              )}
-                <button className="link danger" data-testid={`delete-${key.keyId}`} onClick={() => setDeleteTarget(key)}>{t('common.delete')}</button>
+              <td><RowActionsMenu
+                label={t('common.actionsFor', { name: key.name || key.keyId })}
+                testId={`api-key-actions-${key.keyId}`}
+                actions={
+                  key.revoked
+                    ? [
+                        {
+                          key: `restore-${key.keyId}`,
+                          label: t('uapikeys.restore'),
+                          disabled: busy === key.keyId,
+                          onClick: () => void restoreKey(key),
+                        },
+                        {
+                          key: `delete-${key.keyId}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => setDeleteTarget(key),
+                        },
+                      ]
+                    : [
+                        {
+                          key: `edit-rate-limit-${key.keyId}`,
+                          label: t('common.edit'),
+                          onClick: () => setEditTarget(key),
+                        },
+                        {
+                          key: `edit-scope-${key.keyId}`,
+                          label: t('uapikeys.scopeEdit'),
+                          onClick: () => setScopeTarget(key),
+                        },
+                        {
+                          key: `revoke-${key.keyId}`,
+                          label: t('uapikeys.revoke'),
+                          danger: true,
+                          onClick: () => setRevokeTarget(key),
+                        },
+                        {
+                          key: `delete-${key.keyId}`,
+                          label: t('common.delete'),
+                          danger: true,
+                          onClick: () => setDeleteTarget(key),
+                        },
+                      ]
+                }
+              />
               </td>
             </tr>
           ))}</tbody>

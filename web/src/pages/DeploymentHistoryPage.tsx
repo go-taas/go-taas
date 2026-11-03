@@ -288,7 +288,7 @@ export default function DeploymentHistoryPage() {
                   <td className="mono">{diffSummary(ev.before, ev.after)}</td>
                   <td>
                     <button
-                      className="secondary"
+                      className="link danger"
                       data-testid={`deploy-history-rollback-${i}`}
                       disabled={!ev.before || ev.before === '{}'}
                       onClick={() => setRollbackEvent(ev)}

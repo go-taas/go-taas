@@ -9,7 +9,7 @@ import { useApi } from '../surface';
 import { useI18n } from '../i18n';
 import { useOrg } from '../org';
 import { formatTime } from '../api';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 import { useParams } from '../router';
 import {
   isNonHTTPS,
@@ -491,7 +491,7 @@ export default function ProviderDetailPage() {
                       <th>{t('providers.colEnabled')}</th>
                       <th>{t('providers.colPublished')}</th>
                       <th>{t('common.updated')}</th>
-                      <th>{t('common.actions')}</th>
+                      <th className="col-actions">{t('common.actions')}</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -520,37 +520,41 @@ export default function ProviderDetailPage() {
                         </td>
                         <td>{formatTime(m.updatedAt)}</td>
                         <td className="actions">
-                          <button className="link" onClick={() => openEditModel(m)} data-testid={`provider-model-edit-${m.modelId}`}>
-                            {t('common.edit')}
-                          </button>
-                          {m.published ? (
-                            <button
-                              className="link"
-                              data-testid={`provider-model-unpublish-${m.modelId}`}
-                              onClick={() => setUnpublishTarget(m)}
-                            >
-                              {t('providers.unpublish')}
-                            </button>
-                          ) : (
-                            <button
-                              className="link"
-                              data-testid={`provider-model-publish-${m.modelId}`}
-                              disabled={!m.enabled}
-                              title={!m.enabled ? t('providers.enableBeforePublish') : undefined}
-                              onClick={() => openPublish(m)}
-                            >
-                              {t('providers.publish')}
-                            </button>
-                          )}
-                          <button
-                            className="link danger"
-                            data-testid={`provider-model-remove-${m.modelId}`}
-                            disabled={m.published}
-                            title={m.published ? t('providers.unpublishBeforeRemove') : undefined}
-                            onClick={() => void removeModel(m)}
-                          >
-                            {t('common.remove')}
-                          </button>
+                          <RowActionsMenu
+                            label={t('common.actionsFor', { name: m.displayName || m.modelId })}
+                            testId={`provider-model-actions-${m.modelId}`}
+                            actions={[
+                              {
+                                key: `provider-model-edit-${m.modelId}`,
+                                label: t('common.edit'),
+                                onClick: () => openEditModel(m),
+                              },
+                              m.published
+                                ? {
+                                    key: `provider-model-unpublish-${m.modelId}`,
+                                    label: t('providers.unpublish'),
+                                    group: 'publish',
+                                    onClick: () => setUnpublishTarget(m),
+                                  }
+                                : {
+                                    key: `provider-model-publish-${m.modelId}`,
+                                    label: t('providers.publish'),
+                                    group: 'publish',
+                                    disabled: !m.enabled,
+                                    title: !m.enabled ? t('providers.enableBeforePublish') : undefined,
+                                    onClick: () => openPublish(m),
+                                  },
+                              {
+                                key: `provider-model-remove-${m.modelId}`,
+                                label: t('common.remove'),
+                                group: 'lifecycle',
+                                danger: true,
+                                disabled: m.published,
+                                title: m.published ? t('providers.unpublishBeforeRemove') : undefined,
+                                onClick: () => void removeModel(m),
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     ))}

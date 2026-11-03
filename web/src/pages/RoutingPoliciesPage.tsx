@@ -793,7 +793,7 @@ export default function RoutingPoliciesPage() {
                     <td>{p.updatedAt ? formatTime(p.updatedAt) : '—'}</td>
                     <td>
                       <button
-                        className="secondary"
+                        className="link"
                         onClick={() => setDrawerModel(p)}
                         data-testid={`configure-policy-${p.modelId}`}
                       >

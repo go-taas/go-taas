@@ -13,7 +13,7 @@ import {
 import { displayCurrencyLabel, formatMoney } from '../display';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 
 interface AccountsResponse {
   response: { code: number; message: string };
@@ -94,7 +94,7 @@ export default function AccountsPage() {
                 <th>{t('accounts.colBalance')}</th>
                 <th>{t('accounts.colSpendLimit')}</th>
                 <th>{t('accounts.colCycleStart')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -142,27 +142,29 @@ export default function AccountsPage() {
                   </td>
                   <td>{formatTime(a.cycleStartedAt)}</td>
                   <td>
-                    <button
-                      className="link"
-                      data-testid={`recharge-button-${a.accountId}`}
-                      onClick={() => setRechargeFor(a)}
-                    >
-                      {t('accounts.recharge')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`quota-button-${a.accountId}`}
-                      onClick={() => setQuotaFor(a)}
-                    >
-                      {t('accounts.setQuota')}
-                    </button>
-                    <button
-                      className="link"
-                      data-testid={`detail-button-${a.accountId}`}
-                      onClick={() => setDetail(a)}
-                    >
-                      {t('common.detail')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', {
+                        name: a.organizationId || a.accountId,
+                      })}
+                      testId={`account-actions-${a.accountId}`}
+                      actions={[
+                        {
+                          key: `recharge-button-${a.accountId}`,
+                          label: t('accounts.recharge'),
+                          onClick: () => setRechargeFor(a),
+                        },
+                        {
+                          key: `quota-button-${a.accountId}`,
+                          label: t('accounts.setQuota'),
+                          onClick: () => setQuotaFor(a),
+                        },
+                        {
+                          key: `detail-button-${a.accountId}`,
+                          label: t('common.detail'),
+                          onClick: () => setDetail(a),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

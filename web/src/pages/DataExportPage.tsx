@@ -154,7 +154,7 @@ export default function DataExportPage() {
                   <td>{new Date(parseInt(e.createdAt, 10) * 1000).toLocaleString()}</td>
                   <td>
                     <button
-                      className="secondary"
+                      className="link"
                       data-testid={`export-download-${e.exportId}`}
                       disabled={e.status !== 'ready'}
                       onClick={() => void download(e.exportId)}

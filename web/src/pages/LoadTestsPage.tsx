@@ -400,7 +400,7 @@ export default function LoadTestsPage() {
                   <td>{formatTime(r.startedAt)}</td>
                   <td>
                     <button
-                      className="secondary"
+                      className="link"
                       onClick={() => void stopRun(r.loadTestId)}
                       data-testid={`load-test-stop-${r.loadTestId}`}
                     >
@@ -490,7 +490,7 @@ export default function LoadTestsPage() {
                     <td>
                       {r.state === 'pending' || r.state === 'running' ? (
                         <button
-                          className="secondary"
+                          className="link"
                           onClick={() => void stopRun(r.loadTestId)}
                           data-testid={`load-test-stop-${r.loadTestId}`}
                         >
@@ -498,7 +498,7 @@ export default function LoadTestsPage() {
                         </button>
                       ) : (
                         <button
-                          className="secondary"
+                          className="link danger"
                           onClick={() => void deleteRun(r.loadTestId)}
                           data-testid={`load-test-delete-${r.loadTestId}`}
                         >

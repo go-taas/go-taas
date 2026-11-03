@@ -18,6 +18,7 @@ import {
   Dialog,
   ErrorBanner,
   Pagination,
+  RowActionsMenu,
   StateBadge,
 } from '../components';
 
@@ -154,7 +155,7 @@ export default function ApiKeysPage() {
                 <th>{t('apikeys.colRateLimit')}</th>
                 <th>{t('apikeys.colCreated')}</th>
                 <th>{t('apikeys.colExpires')}</th>
-                <th>{t('common.actions')}</th>
+                <th className="col-actions">{t('common.actions')}</th>
               </tr>
             </thead>
             <tbody>
@@ -179,47 +180,51 @@ export default function ApiKeysPage() {
                   <td>{formatTime(k.createdAt)}</td>
                   <td>{k.expiresAt && k.expiresAt !== '0' ? formatTime(k.expiresAt) : t('common.never')}</td>
                   <td>
-                    {!k.revoked ? (
-                      <>
-                        <button
-                          className="link"
-                          data-testid={`edit-rate-limit-${k.keyId}`}
-                          onClick={() => setEditTarget(k)}
-                        >
-                          {t('common.edit')}
-                        </button>
-                        <button
-                          className="link"
-                          data-testid={`transfer-${k.keyId}`}
-                          onClick={() => setTransferTarget(k)}
-                        >
-                          {t('apikeys.transfer')}
-                        </button>
-                        <button
-                          className="link danger"
-                          data-testid={`revoke-${k.keyId}`}
-                          onClick={() => setRevokeTarget(k)}
-                        >
-                          {t('apikeys.revoke')}
-                        </button>
-                      </>
-                    ) : (
-                      <button
-                        className="link"
-                        data-testid={`restore-${k.keyId}`}
-                        onClick={() => void restoreKey(k)}
-                        disabled={busy === k.keyId}
-                      >
-                        {t('apikeys.restore')}
-                      </button>
-                    )}
-                    <button
-                      className="link danger"
-                      data-testid={`delete-${k.keyId}`}
-                      onClick={() => setDeleteTarget(k)}
-                    >
-                      {t('common.delete')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: k.name || k.keyId })}
+                      testId={`api-key-actions-${k.keyId}`}
+                      actions={
+                        k.revoked
+                          ? [
+                              {
+                                key: `restore-${k.keyId}`,
+                                label: t('apikeys.restore'),
+                                disabled: busy === k.keyId,
+                                onClick: () => void restoreKey(k),
+                              },
+                              {
+                                key: `delete-${k.keyId}`,
+                                label: t('common.delete'),
+                                danger: true,
+                                onClick: () => setDeleteTarget(k),
+                              },
+                            ]
+                          : [
+                              {
+                                key: `edit-rate-limit-${k.keyId}`,
+                                label: t('common.edit'),
+                                onClick: () => setEditTarget(k),
+                              },
+                              {
+                                key: `transfer-${k.keyId}`,
+                                label: t('apikeys.transfer'),
+                                onClick: () => setTransferTarget(k),
+                              },
+                              {
+                                key: `revoke-${k.keyId}`,
+                                label: t('apikeys.revoke'),
+                                danger: true,
+                                onClick: () => setRevokeTarget(k),
+                              },
+                              {
+                                key: `delete-${k.keyId}`,
+                                label: t('common.delete'),
+                                danger: true,
+                                onClick: () => setDeleteTarget(k),
+                              },
+                            ]
+                      }
+                    />
                   </td>
                 </tr>
               ))}
