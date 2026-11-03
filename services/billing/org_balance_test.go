@@ -195,3 +195,33 @@ func TestDebitOrganizationTakesCreditBack(t *testing.T) {
 	})
 	assert.Equal(t, apierrors.CodeInsufficientFunds, apierrors.CodeOf(err))
 }
+
+// TestListTransactionsForAPlatformAdministrator covers the ledger an operator
+// reads right after funding a tenant: a platform administrator's session has no
+// active organization, so the account id itself has to scope the read — while an
+// ordinary caller without an organization still gets 10503 instead of a
+// cross-tenant ledger.
+func TestListTransactionsForAPlatformAdministrator(t *testing.T) {
+	svc := newOrgBalanceTestService(t)
+	adminCtx := billingPlatformAdminCtx()
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "admin-1"})
+
+	resp, err := svc.RechargeOrganization(adminCtx, &billingv1.RechargeOrganizationRequest{
+		OrganizationId: "org-a", AmountCents: 1000, IdempotencyKey: "ledger-1", Source: SourceAdminManual,
+	})
+	require.NoError(t, err)
+	accountID := resp.GetBalance().GetAccountId()
+	require.NotEmpty(t, accountID)
+
+	// The platform administrator resolves to an empty organization.
+	ledger, err := svc.ListTransactions(adminCtx, &billingv1.ListTransactionsRequest{AccountId: accountID})
+	require.NoError(t, err)
+	require.Len(t, ledger.GetTransactions(), 1)
+	assert.Equal(t, SourceAdminManual, ledger.GetTransactions()[0].GetSource())
+	assert.Equal(t, "admin-1", ledger.GetTransactions()[0].GetActorUserId())
+
+	// An ordinary caller with no organization cannot read it: the empty scope
+	// is refused before the account is even looked at.
+	_, err = svc.ListTransactions(context.Background(), &billingv1.ListTransactionsRequest{AccountId: accountID})
+	assert.Equal(t, apierrors.CodeUnauthorized, apierrors.CodeOf(err))
+}

@@ -142,12 +142,25 @@ func (s *Service) ListAccounts(ctx context.Context, req *billingv1.ListAccountsR
 
 // resolveAccountInOrg loads the account by id and enforces org scoping
 // (10503 on mismatch or absence, AC10).
+//
+// A platform administrator owns no tenant, so their session resolves to an
+// empty organization — and an account-scoped read (the ledger of the tenant they
+// are funding) would then match nothing. For them the account id is the scope:
+// the row they loaded is the tenant they asked about, and a non-empty
+// organization must still match it. An ordinary caller with no organization
+// still gets 10503 rather than a cross-tenant read.
 func (s *Service) resolveAccountInOrg(ctx context.Context, repo *AccountRepository, orgID, accountID string) (*Account, error) {
 	account, err := repo.FindByID(ctx, strings.TrimSpace(accountID))
 	if err != nil {
 		return nil, err
 	}
-	if account == nil || account.OrganizationID != orgID {
+	if account == nil {
+		return nil, apierrors.New(apierrors.CodeAccountNotFound)
+	}
+	if orgID != "" && account.OrganizationID != orgID {
+		return nil, apierrors.New(apierrors.CodeAccountNotFound)
+	}
+	if orgID == "" && !authctx.IsPlatformAdmin(ctx) {
 		return nil, apierrors.New(apierrors.CodeAccountNotFound)
 	}
 	return account, nil
