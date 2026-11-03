@@ -550,6 +550,10 @@ export interface DashboardCard {
   requestCount: string;
   unpricedRequestCount: string;
   dataThrough: string;
+  // lifetimeCostMicros is the scope's all-time charged cost in
+  // micro-units: it ignores the requested range but honors the model and
+  // API-key filters.
+  lifetimeCostMicros: string;
 }
 
 export interface DashboardGroup {

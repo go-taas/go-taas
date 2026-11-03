@@ -3362,3 +3362,157 @@ button.primary:hover {
   background: var(--surface-2);
   color: var(--primary-strong);
 }
+
+/* ============================================================
+   User usage report
+   The page reads top-down: what is left to spend, what the
+   selection cost, and where it went. Cards use the shared card
+   surface; only the arrangement and the chart geometry are new.
+   ============================================================ */
+
+.usage-summary-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.usage-summary-card .card-value {
+  font-size: 26px;
+  letter-spacing: -0.4px;
+}
+
+.usage-filter-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+.usage-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.usage-filter-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+  color: var(--muted);
+}
+
+.usage-filter select,
+.usage-filter-bar input[type='datetime-local'] {
+  padding: 7px 12px;
+  border-radius: 9px;
+  border: 1px solid var(--border);
+  background: #fff;
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  min-width: 150px;
+}
+
+.usage-filter-spacer {
+  flex: 1;
+}
+
+.usage-chart-panel {
+  padding: 16px 18px;
+}
+
+.usage-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.usage-chart-title {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.55px;
+  color: var(--muted);
+}
+
+.usage-chart-total {
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.4px;
+}
+
+.usage-bar-chart,
+.usage-area-chart {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.usage-chart-gridline {
+  stroke: var(--border);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+}
+
+.usage-chart-axis {
+  stroke: var(--border);
+  stroke-width: 1;
+}
+
+.usage-chart-axis-label {
+  fill: var(--muted);
+  font-size: 10px;
+}
+
+.usage-chart-bar {
+  fill: var(--primary);
+  opacity: 0.88;
+}
+
+.usage-chart-bar:hover {
+  opacity: 1;
+}
+
+.usage-chart-area {
+  fill: var(--primary-soft);
+  stroke: none;
+}
+
+.usage-chart-line {
+  fill: none;
+  stroke: var(--primary);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+}
+
+.usage-chart-dot {
+  fill: var(--primary);
+}
+
+.usage-per-model {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.usage-model-title {
+  font-size: 15px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+
+.usage-model-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 14px;
+}
+
+.usage-model-charts .card {
+  padding: 12px 14px;
+}
