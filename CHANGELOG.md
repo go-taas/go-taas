@@ -1,3 +1,12 @@
+# [1.104.0](https://github.com/go-taas/go-taas/compare/v1.103.0...v1.104.0) (2026-11-03)
+
+
+### Features
+
+* **auth:** let a platform administrator assign the role to another user ([0625e1a](https://github.com/go-taas/go-taas/commit/0625e1af4bc09808c1aab6e74d560caefc35df39))
+* **console:** budget a project member from the admin project roster ([3b90287](https://github.com/go-taas/go-taas/commit/3b90287a06423e6967e60598babe6e2df6e0693d))
+* **tenancy,billing:** enforce the project-member quota tier ([c429a75](https://github.com/go-taas/go-taas/commit/c429a7514056170433ff87f8a6462a0859426a30))
+
 # [1.103.0](https://github.com/go-taas/go-taas/compare/v1.102.0...v1.103.0) (2026-11-03)
 
 
