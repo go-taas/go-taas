@@ -108,3 +108,47 @@ func TestSessionStoreNilClient(t *testing.T) {
 	err = store.Create(ctx, &Session{SessionID: "s"}, "t")
 	assert.EqualValues(t, apierrors.CodeInternal, apierrors.CodeOf(err))
 }
+
+// TestSessionStoreRevokeUserSessions covers the per-user session index: every
+// session an account holds is revoked in one call, sessions of other accounts
+// are untouched, and a second call is a no-op. This is what makes a role change
+// or a disable take effect immediately instead of at token expiry.
+func TestSessionStoreRevokeUserSessions(t *testing.T) {
+	store, _ := newTestSessionStore(t)
+	ctx := context.Background()
+	mint := func(id, userID string) {
+		require.NoError(t, store.Create(ctx, &Session{
+			SessionID: id, UserID: userID, Username: userID,
+			ExpiresAt: time.Now().Add(time.Hour).Unix(), CreatedAt: time.Now().Unix(),
+		}, "token-"+id))
+	}
+	mint("a-1", "user-a")
+	mint("a-2", "user-a")
+	mint("b-1", "user-b")
+
+	revoked, err := store.RevokeUserSessions(ctx, "user-a")
+	require.NoError(t, err)
+	assert.Equal(t, 2, revoked)
+
+	// Both of user-a's sessions are gone.
+	for _, id := range []string{"a-1", "a-2"} {
+		_, err := store.Get(ctx, id)
+		assert.Equal(t, apierrors.CodeSessionInvalid, apierrors.CodeOf(err), "session %s", id)
+	}
+	// The other account keeps working.
+	got, err := store.Get(ctx, "b-1")
+	require.NoError(t, err)
+	assert.Equal(t, "user-b", got.UserID)
+
+	// Idempotent.
+	revoked, err = store.RevokeUserSessions(ctx, "user-a")
+	require.NoError(t, err)
+	assert.Zero(t, revoked)
+
+	// An empty account id is a no-op, never a wildcard revoke.
+	revoked, err = store.RevokeUserSessions(ctx, "")
+	require.NoError(t, err)
+	assert.Zero(t, revoked)
+	_, err = store.Get(ctx, "b-1")
+	require.NoError(t, err)
+}

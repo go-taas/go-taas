@@ -217,3 +217,57 @@ func TestProjectMemberQuotaLimitsReadsTheMemberTier(t *testing.T) {
 		assert.Equal(t, QuotaLimits{}, limits, "scope %v", scope)
 	}
 }
+
+// TestMyProjectQuotasListsTheCallersMemberships covers the member-facing ladder:
+// one row per project the caller belongs to, with the stored member budget and
+// the effective tuple for that project, and only for the caller's own tenant.
+func TestMyProjectQuotasListsTheCallersMemberships(t *testing.T) {
+	db := newQuotaTestDB(t)
+	ctx := context.Background()
+	require.NoError(t, db.Create(&Organization{
+		ID: "org-a", DisplayName: "A", State: StateActive, MaxConcurrentRequests: 10,
+	}).Error)
+	require.NoError(t, db.Create(&Organization{
+		ID: "org-b", DisplayName: "B", State: StateActive,
+	}).Error)
+	require.NoError(t, db.Create(&Project{
+		ID: "p1", OrganizationID: "org-a", DisplayName: "Project One", State: StateActive,
+		MaxConcurrentRequests: 8,
+	}).Error)
+	require.NoError(t, db.Create(&Project{
+		ID: "p2", OrganizationID: "org-b", DisplayName: "Other Tenant", State: StateActive,
+	}).Error)
+	require.NoError(t, db.Create(&ProjectMember{
+		ProjectID: "p1", UserID: "u1", Role: RoleMember, JoinedAt: time.Now().UTC(),
+		MaxConcurrentRequests: 3, MonthlySpendLimitCents: 2500,
+	}).Error)
+	// A membership in another tenant's project must not appear.
+	require.NoError(t, db.Create(&ProjectMember{
+		ProjectID: "p2", UserID: "u1", Role: RoleMember, JoinedAt: time.Now().UTC(),
+		MaxConcurrentRequests: 1,
+	}).Error)
+	require.NoError(t, db.Create(&UserQuota{
+		OrganizationID: "org-a", UserID: "u1", MaxConcurrentRequests: 5,
+	}).Error)
+
+	svc := NewForFVT(db)
+	org, err := NewRepository(db).FindOrganization(ctx, "org-a")
+	require.NoError(t, err)
+	personal, err := NewRepository(db).FindUserQuota(ctx, "org-a", "u1")
+	require.NoError(t, err)
+
+	rows := svc.myProjectQuotas(ctx, NewRepository(db), org, "u1", personal)
+	require.Len(t, rows, 1)
+	assert.Equal(t, "p1", rows[0].GetProjectId())
+	assert.Equal(t, "Project One", rows[0].GetProjectName())
+	assert.EqualValues(t, 3, rows[0].GetQuota().GetMaxConcurrentRequests(), "the stored member budget")
+	assert.EqualValues(t, 2500, rows[0].GetQuota().GetMonthlySpendLimitCents())
+	// Effective for that project: the project cap (8) and the personal cap (5)
+	// and the member cap (3) → 3.
+	assert.EqualValues(t, 3, rows[0].GetEffective().GetMaxConcurrentRequests())
+	assert.EqualValues(t, 2500, rows[0].GetEffective().GetMonthlySpendLimitCents())
+
+	// No memberships, or no caller: no rows, never an error.
+	assert.Empty(t, svc.myProjectQuotas(ctx, NewRepository(db), org, "", personal))
+	assert.Empty(t, svc.myProjectQuotas(ctx, NewRepository(db), org, "u-nobody", personal))
+}
