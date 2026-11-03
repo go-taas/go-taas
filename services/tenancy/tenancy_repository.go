@@ -164,12 +164,12 @@ func (r *Repository) ListProjects(ctx context.Context, filter ProjectFilter, off
 func (r *Repository) UpdateProjectQuotas(ctx context.Context, p *Project) error {
 	return r.db.DB(ctx).Model(&Project{}).Where("id = ?", p.ID).
 		Updates(map[string]any{
-			"max_concurrent_requests":      p.MaxConcurrentRequests,
-			"max_batch_jobs_per_day":       p.MaxBatchJobsPerDay,
+			"max_concurrent_requests":       p.MaxConcurrentRequests,
+			"max_batch_jobs_per_day":        p.MaxBatchJobsPerDay,
 			"max_output_tokens_per_request": p.MaxOutputTokensPerRequest,
-			"monthly_spend_limit_cents":    p.MonthlySpendLimitCents,
-			"quota_updated_by":             p.QuotaUpdatedBy,
-			"quota_updated_at":             p.QuotaUpdatedAt,
+			"monthly_spend_limit_cents":     p.MonthlySpendLimitCents,
+			"quota_updated_by":              p.QuotaUpdatedBy,
+			"quota_updated_at":              p.QuotaUpdatedAt,
 		}).Error
 }
 

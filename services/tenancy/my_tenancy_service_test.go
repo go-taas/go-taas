@@ -83,6 +83,7 @@ func TestMembershipListMemberProjects(t *testing.T) {
 	require.NoError(t, err)
 	assert.Len(t, rows, 0)
 }
+
 // TestServiceGetMyTenancyNames verifies the caller's own lists carry the
 // real display names and the owning organization, matching the admin
 // directory instead of showing bare ids.

@@ -228,6 +228,26 @@ sequenceDiagram
     end
 ```
 
+### 6.1.1 Who funds the account
+
+Recharging is a platform administrator action. `RechargeOrganization` credits a
+tenant's prepaid balance and creates the account when the tenant has none;
+`DebitOrganization` takes credit back as a correction (a reason is required, and
+the amount may not exceed the balance). Both require the platform administrator
+role, both are idempotent on the caller's key, and both write the movement with:
+
+- `source` — `admin_manual` or `admin_correction` for a manual movement, so the
+  ledger distinguishes an operator top-up from a payment, an automated
+  top-up, an opening balance and a settlement deduction;
+- `actor_user_id` — the administrator, taken from the session (never a request
+  field), which `ListTransactions` resolves to a display name;
+- an audit event carrying the amount, the source and the reason.
+
+`ListOrganizationBalances` is the read side of the same page: every tenant with
+its position in one list, including tenants that have no account yet
+(`has_account=false`), because funding one is exactly the case an operator is
+looking for.
+
 ### 6.2.1 Where the ladder sits relative to the account
 
 The account is the tenant's wallet and the ladder caps who may draw on it. The

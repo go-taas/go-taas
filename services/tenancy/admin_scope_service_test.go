@@ -254,7 +254,6 @@ func TestRequireOrgAdminWrite(t *testing.T) {
 	require.NoError(t, svc.requireOrgAdminWrite(ctx, "org-a"))
 }
 
-
 // ensureCountTables creates the minimal platform-asset tables the
 // organization summary counts. Real deployments get them from the
 // auth/infer modules; the tenancy-only fixture does not.

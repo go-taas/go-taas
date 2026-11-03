@@ -10,7 +10,6 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
-
 // fakeSessionRoles is a SessionRolesResolver returning a fixed role set.
 type fakeSessionRoles struct{ roles []string }
 

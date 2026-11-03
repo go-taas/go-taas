@@ -63,9 +63,9 @@ type Project struct {
 	// Service quotas at the project level. 0 = unlimited; when set they
 	// sit inside the documented ranges. Written only through
 	// UpdateProjectQuota.
-	MaxConcurrentRequests     int64     `gorm:"not null;default:0"`
-	MaxBatchJobsPerDay        int64     `gorm:"not null;default:0"`
-	MaxOutputTokensPerRequest int64     `gorm:"not null;default:0"`
+	MaxConcurrentRequests     int64 `gorm:"not null;default:0"`
+	MaxBatchJobsPerDay        int64 `gorm:"not null;default:0"`
+	MaxOutputTokensPerRequest int64 `gorm:"not null;default:0"`
 	// MonthlySpendLimitCents caps the project's monthly spend over its
 	// API keys; 0 = unlimited.
 	MonthlySpendLimitCents int64     `gorm:"not null;default:0"`

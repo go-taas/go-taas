@@ -56,6 +56,10 @@ type Service struct {
 	// module; nil until wired.
 	sessionOrgResolver SessionOrgResolver
 
+	// spendReader reports settled spend per scope, so a budget can be shown
+	// next to its consumption. Nil until wired.
+	spendReader SpendReader
+
 	// sessionRolesResolver resolves the caller's session roles for the
 	// platform-administrator gate. Nil until wired.
 	sessionRolesResolver SessionRolesResolver

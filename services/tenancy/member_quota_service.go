@@ -65,6 +65,7 @@ func (s *Service) ListProjectMemberQuotas(ctx context.Context, req *tenancyv1.Li
 		if effective, effErr := s.EffectiveQuota(ctx, project.OrganizationID, projectID, m.UserID); effErr == nil {
 			quota.Effective = effectiveQuotaProto(effective)
 		}
+		s.attachMemberSpend(ctx, quota, project.OrganizationID, projectID)
 		quotas = append(quotas, quota)
 	}
 	return &tenancyv1.ListProjectMemberQuotasResponse{Response: okResponse(), Quotas: quotas}, nil
@@ -149,6 +150,7 @@ func (s *Service) UpdateProjectMemberQuota(ctx context.Context, req *tenancyv1.U
 	if effective, effErr := s.EffectiveQuota(ctx, project.OrganizationID, projectID, userID); effErr == nil {
 		quota.Effective = effectiveQuotaProto(effective)
 	}
+	s.attachMemberSpend(ctx, quota, project.OrganizationID, projectID)
 	return &tenancyv1.UpdateProjectMemberQuotaResponse{
 		Response: okResponse(),
 		Quota:    quota,
@@ -191,4 +193,17 @@ func (s *Service) labelsForUsers(ctx context.Context, userIDs []string) map[stri
 		return nil
 	}
 	return labels
+}
+
+// attachMemberSpend fills a member quota with the member's settled spend in
+// this project and the budget left. The scope is (project, user): a teammate's
+// usage never appears against this member's budget, which is the same rule the
+// spend gate applies.
+func (s *Service) attachMemberSpend(ctx context.Context, q *tenancyv1.ProjectMemberQuota, orgID, projectID string) {
+	if q == nil {
+		return
+	}
+	spent := s.spentCents(ctx, orgID, projectID, q.GetUserId())
+	q.SpentThisCycleCents = spent
+	q.RemainingCents = remainingCents(q.GetMonthlySpendLimitCents(), spent)
 }

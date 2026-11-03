@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   api,
   formatTime,
+  type BalanceResponse,
   type BillSummary,
   type ChargeRecordSummary,
   type PageMeta,
@@ -12,7 +13,7 @@ import {
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, StateBadge, usePolling } from '../components';
-import { formatMajor } from '../display';
+import { formatMajor, formatMoney } from '../display';
 
 interface BillsResponse {
   response: { code: number; message: string };
@@ -43,6 +44,9 @@ export default function BillsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [drillMonth, setDrillMonth] = useState<BillSummary | null>(null);
+  // balance is the shared account of the caller's organization: members spend
+  // from one wallet, so the page shows it next to the bills it produced.
+  const [balance, setBalance] = useState<BalanceResponse | null>(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -71,6 +75,17 @@ export default function BillsPage() {
 
   usePolling(() => void load(), 60_000, true);
 
+  useEffect(() => {
+    if (!orgId) {
+      setBalance(null);
+      return;
+    }
+    api
+      .get<BalanceResponse>('/api/v1/billing/balance', orgId)
+      .then(setBalance)
+      .catch(() => setBalance(null));
+  }, [api, orgId]);
+
   return (
     <div>
       <div className="page-header">
@@ -79,6 +94,27 @@ export default function BillsPage() {
           <div className="subtitle">{t('bills.subtitle')}</div>
         </div>
       </div>
+
+      {balance && (
+        <div className="summary-strip" data-testid="bills-balance">
+          <span>
+            <span className="stat-label">
+              {balance.mode === 'postpaid' ? t('bills.quota') : t('bills.balance')}
+            </span>
+            <strong>
+              {balance.mode === 'postpaid'
+                ? formatMoney(balance.monthlyQuotaCents, balance.currency)
+                : formatMoney(balance.balanceCents, balance.currency)}
+            </strong>
+          </span>
+          <span>
+            <span className="stat-label">{t('bills.spentCycle')}</span>
+            <strong>
+              {formatMoney(balance.spentThisCycleCents ?? balance.usedThisCycleCents, balance.currency)}
+            </strong>
+          </span>
+        </div>
+      )}
 
       {error && <ErrorBanner message={error} />}
 

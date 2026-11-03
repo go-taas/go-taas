@@ -144,11 +144,21 @@ func (r *AccountRepository) UpdateAccount(ctx context.Context, account *Account,
 	return r.FindByID(ctx, account.ID)
 }
 
-// Recharge credits the prepaid balance in one transaction: idempotency
-// lookup (same account/type/amount converges, anything else is 10510),
-// INSERT the ledger row, then the version-guarded balance UPDATE with
-// bounded retry (AD11).
-func (r *AccountRepository) Recharge(ctx context.Context, account *Account, amountCents int64, idempotencyKey, note, txType string) (*Account, *Transaction, error) {
+// MoneyMovement is the operator-set part of a recharge or debit: the free-text
+// reason, the source that labels who moved the money, and the administrator who
+// did it.
+type MoneyMovement struct {
+	Note        string
+	Source      string
+	ActorUserID string
+}
+
+// Recharge credits or debits the prepaid balance in one transaction:
+// idempotency lookup (same account/type/amount converges, anything else is
+// 10510), INSERT the ledger row naming the source and actor, then the
+// version-guarded balance UPDATE with bounded retry (AD11). txType decides the
+// direction: recharge credits, refund debits.
+func (r *AccountRepository) Recharge(ctx context.Context, account *Account, amountCents int64, idempotencyKey string, movement MoneyMovement, txType string) (*Account, *Transaction, error) {
 	var out *Transaction
 	var updated *Account
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
@@ -174,8 +184,13 @@ func (r *AccountRepository) Recharge(ctx context.Context, account *Account, amou
 			AmountCents:       amountCents,
 			BalanceAfterCents: 0,
 			IdempotencyKey:    idempotencyKey,
-			Reference:         note,
+			Reference:         movement.Note,
+			Source:            movement.Source,
 			CreatedAt:         time.Now().UTC(),
+		}
+		if movement.ActorUserID != "" {
+			actor := movement.ActorUserID
+			row.ActorUserID = &actor
 		}
 		// Bounded optimistic retry on the balance write.
 		for attempt := 0; attempt < maxBalanceRetries; attempt++ {
@@ -401,4 +416,29 @@ func (r *AccountRepository) AutoRechargeCandidates(ctx context.Context) ([]*Acco
 		return nil, err
 	}
 	return rows, nil
+}
+
+// ListAllAccounts returns every billing account, newest first. It is the
+// platform administrator's fleet view: the tenant-scoped ListAccounts returns
+// at most one row, which cannot answer "which organizations are out of money".
+func (r *AccountRepository) ListAllAccounts(ctx context.Context) ([]*Account, error) {
+	var rows []*Account
+	if err := r.DB(ctx).Order("created_at DESC").Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// FindTransactionByKey returns the ledger row for an idempotency key, or nil
+// when the key is unused.
+func (r *AccountRepository) FindTransactionByKey(ctx context.Context, key string) (*Transaction, error) {
+	var row Transaction
+	err := r.DB(ctx).Where("idempotency_key = ?", key).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
 }

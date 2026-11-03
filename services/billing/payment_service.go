@@ -197,7 +197,9 @@ func (s *Service) PayPaymentIntent(ctx context.Context, req *billingv1.PayPaymen
 	}
 	// Credit the account via the recharge path with a payment-scoped key.
 	_, _, err = accountRepo.Recharge(ctx, account, intent.AmountCents,
-		"payment:"+intent.ID, "payment intent "+intent.ID, TransactionTypeRecharge)
+		"payment:"+intent.ID,
+		MoneyMovement{Note: "payment intent " + intent.ID, Source: SourcePayment},
+		TransactionTypeRecharge)
 	if err != nil {
 		return nil, err
 	}

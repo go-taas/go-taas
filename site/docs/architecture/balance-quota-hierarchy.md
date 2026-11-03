@@ -54,6 +54,34 @@ All four are organization-level. A member's `GetBalance` reads the same row as
 every other member of their tenant: what differs per person is the budget they
 are allowed to consume, never the wallet they consume it from.
 
+### 3.1.1 Who moved the money
+
+Every ledger row names its **source** and, for an operator-set movement, the
+**administrator** who performed it:
+
+| `source` | Written by | Meaning |
+| --- | --- | --- |
+| `admin_manual` | platform administrator | A recharge made by hand |
+| `admin_correction` | platform administrator | An accounting adjustment (also used for a debit) |
+| `payment` | payment intent | A paid invoice/checkout |
+| `auto_recharge` | auto-recharge rule | An automated top-up |
+| `opening` | account creation | The opening balance of a new account |
+| `settlement` | settlement | A usage deduction |
+| `system` | platform | Anything the rows above do not name |
+
+`transactions.actor_user_id` carries the administrator behind
+`admin_manual` / `admin_correction`; it is taken from the session, never from a
+request field, so a caller cannot attribute its own action to somebody else.
+`ListTransactions` resolves the actor to a display name, and each manual
+movement also writes an audit event with the amount, source and reason. That is
+what makes the ledger answer *who credited this tenant, when and why* without
+cross-reading the audit log.
+
+Only the two operator sources may be chosen by a caller
+(`RechargeRequest.source`, `RefundRequest.source`,
+`RechargeOrganizationRequest.source`, `DebitOrganizationRequest.source`): a
+caller cannot claim a movement was a payment or a settlement.
+
 ### 3.2 Quota ladder (limits)
 
 ```text
@@ -95,6 +123,23 @@ Resolution rules:
 | Batch jobs per day | Control plane | `CreateBatchJob` compares the effective daily cap |
 | Monthly spend | Control plane (`CheckFunds`) | Each tier's cap against that tier's scoped charge total |
 
+Each tier also *reports* what it has consumed, so a console can show a budget
+next to its usage rather than a bare number:
+
+| Surface | Fields |
+| --- | --- |
+| `ProjectQuota` | `spent_this_cycle_cents`, `remaining_cents` |
+| `ProjectMemberQuota` | `spent_this_cycle_cents`, `remaining_cents` |
+| `UserQuota` | `spent_this_cycle_cents`, `remaining_cents` |
+| `GetMyQuotaResponse` | `personal_spent_this_cycle_cents`, `personal_remaining_cents`, and per project `spent_this_cycle_cents` / `remaining_cents` |
+
+`remaining_cents` is `cap - spent`, floored at 0; it is **0 when the cap is 0
+(unlimited)**, so a console compares it against the cap to tell "nothing left"
+from "no limit". The spend is read from the settled ledger through the billing
+module's `SpendReader` seam over the same UTC cycle the gate uses — a second
+window would explain the wrong number. A ledger read failure degrades the
+figures to 0 and never fails the quota read.
+
 The spend gate checks three scopes, because each cap is about a different
 question:
 
@@ -113,12 +158,15 @@ total.
 
 | Page | Route | Who | What it edits |
 | --- | --- | --- | --- |
+| Organization balances | `/admin/billing/balances` | platform administrator | fund or debit a tenant; read every tenant's position and ledger |
+| Balance & budgets | `/admin/budgets` | org owner/admin | read the shared balance; set each project's monthly budget |
 | Organization quotas | `/admin/quotas` | platform administrator | the tenant defaults |
 | Project quotas | `/admin/projects` → Quota | org owner/admin, project admin | the project share |
 | User quotas | `/admin/user-quotas` | org owner/admin, platform administrator | the org-wide personal budget |
 | Project members | project console → Members → Quota | project admin, org owner/admin | the member budget in that project |
 | My quotas | `/quotas` | any member | read-only: the org quotas, the personal budget, the per-project budgets and the effective value for each |
-| Usage / Balance | `/usage`, `/billing` | any member | read-only: the shared balance, the cycle spend, the per-project spend |
+| Usage / Balance | `/usage`, `/billing` | any member | read-only: the shared balance, the cycle spend |
+| My quotas | `/quotas` | any member | read-only: budgets and what is left (personal and per project) |
 
 Every editor shows the stored value and, next to it, the effective value:
 "stored 40, effective 9" is the console telling the operator that the personal
@@ -141,8 +189,22 @@ budget is the binding limit.
 
 | RPC | HTTP | Notes |
 | --- | --- | --- |
-| `GetBalance` | `GET /api/v1/billing/balance` | the shared account of the caller's tenant |
+| `GetBalance` | `GET /api/v1/billing/balance` | the shared account of the caller's tenant, with cycle start and cycle spend |
+| `ListOrganizationBalances` | `GET /api/v1/admin/billing/organization-balances` | platform administrator: every tenant with its position; tenants without an account are listed with `has_account=false` |
+| `RechargeOrganization` | `POST /api/v1/admin/billing/organizations/{org_id}/recharge` | platform administrator: credit a tenant, creating a prepaid account when it has none |
+| `DebitOrganization` | `POST /api/v1/admin/billing/organizations/{org_id}/debit` | platform administrator: take credit back; a reason is required and the amount may not exceed the balance |
+| `ListTransactions` | `GET /api/v1/admin/billing/transactions` | the ledger, each row naming its source and acting administrator |
 | `CheckFunds` | internal | returns the effective spend cap, each tier's spent amount, and the allowed verdict |
+
+The organization-level funding RPCs require the **platform administrator** role:
+they are the one place in the money model with no tenant to scope by, so the role
+is the boundary. They also accept only an active organization (a disabled tenant
+is listed but cannot be funded), are idempotent on the caller's key, and record
+the actor from the session.
+
+A tenant that already runs postpaid is credited **in place**: switching modes is
+the account editor's decision, and flipping it as a side effect of a top-up would
+silently change how the tenant is billed.
 
 ## 6. Upgrade path
 
@@ -155,6 +217,12 @@ The retired fold that copied member budgets into `user_quotas` is removed. Rows
 it already wrote stay: they are valid org-wide personal budgets, and the two
 tiers now combine instead of one replacing the other.
 
+`transactions` gains `source` (`NOT NULL DEFAULT ''`) and `actor_user_id`
+(nullable). Rows written before this change carry an empty source, which the
+console renders as "—" rather than guessing: attribution cannot be
+reconstructed after the fact, and inventing one would be worse than admitting
+it is missing.
+
 ## 7. Validation
 
 | Rule | Failure |
@@ -164,8 +232,43 @@ tiers now combine instead of one replacing the other.
 | A member budget is set only for an existing membership | `10003` user not found |
 | Editing a quota needs the matching role (project admin for a member budget, org owner/admin or platform administrator above it) | `10036` forbidden |
 | The organization exists | `10005` organization not found |
+| A funding write is performed by a platform administrator | `10036` forbidden |
+| The funded organization is active | `10017` organization disabled |
+| The source of a manual movement is an operator source | `10510` transaction invalid |
+| A recharge/debit amount is positive and the idempotency key is present | `10510` transaction invalid |
+| A debit carries a reason | `10510` transaction invalid |
+| A debit does not exceed the prepaid balance | `10502` insufficient funds |
+| A debit targets an account that exists | `10503` account not found |
 
-## 8. Sequence: a member's key is verified
+## 8. Sequence: funding a tenant and spending the budget
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor PA as Platform admin
+    actor OA as Org admin
+    actor PJ as Project admin
+    actor U as Member
+    participant B as billing
+    participant T as tenancy
+    PA->>B: ListOrganizationBalances (platform admin)
+    B-->>PA: every tenant + position (has_account=false when unfunded)
+    PA->>B: RechargeOrganization(org, amount, source=admin_manual)
+    B->>B: create prepaid account if missing
+    B->>B: ledger row (source, actor_user_id) + audit event
+    B-->>PA: balance + transaction
+    OA->>B: GetBalance
+    B-->>OA: shared balance / quota + cycle spend
+    OA->>T: UpdateProjectQuota(monthly_spend_limit_cents)
+    T-->>OA: project budget + spent + remaining
+    PJ->>T: UpdateProjectMemberQuota(monthly_spend_limit_cents)
+    T-->>PJ: member budget + effective + spent + remaining
+    U->>T: GetMyQuota
+    T->>B: SpentCents(scope) per tier
+    T-->>U: budgets, spent, remaining, currency
+```
+
+## 9. Sequence: a member's key is verified
 
 ```mermaid
 sequenceDiagram
@@ -181,7 +284,7 @@ sequenceDiagram
     G->>G: reject if concurrent cap reached, clamp max_tokens
 ```
 
-## 9. Open questions
+## 10. Open questions
 
 - **Should the member tier replace the org-wide personal tier once every key is
   project-bound?** Not today: a tenant can run keys outside any project, and the

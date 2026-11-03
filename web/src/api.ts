@@ -205,6 +205,10 @@ export interface UserQuota {
   updatedAt: string;
   updatedBy: string;
   updatedByDisplayName: string;
+  // spentThisCycleCents / remainingCents are this person's settled spend
+  // this month and the budget left (0 when the budget is unlimited).
+  spentThisCycleCents?: string;
+  remainingCents?: string;
 }
 
 // EffectiveQuota is the limit the data plane enforces after combining
@@ -966,6 +970,11 @@ export interface BalanceResponse {
   balanceCents: string;
   monthlyQuotaCents: string;
   usedThisCycleCents: string;
+  // cycleStartedAt is the UTC month start the cycle covers.
+  cycleStartedAt?: string;
+  // spentThisCycleCents is the total spend this cycle in both modes.
+  spentThisCycleCents?: string;
+  hasAccount?: boolean;
 }
 
 // ---- tenancy ----
@@ -1249,6 +1258,44 @@ export interface BillingTransaction {
   idempotencyKey: string;
   reference: string;
   createdAt: string;
+  // source labels who moved the money: admin_manual, admin_correction,
+  // payment, auto_recharge, opening, settlement or system.
+  source?: string;
+  // actorUserId is the administrator behind an operator-set movement.
+  actorUserId?: string;
+  actorDisplayName?: string;
+}
+
+/** OrganizationBalance is one tenant's money position (platform admin view). */
+export interface OrganizationBalance {
+  organizationId: string;
+  organizationName: string;
+  hasAccount: boolean;
+  accountId: string;
+  mode: string;
+  balanceCents: string;
+  monthlyQuotaCents: string;
+  usedThisCycleCents: string;
+  monthlySpendLimitCents: string;
+  spentThisCycleCents: string;
+  remainingCents: string;
+  cycleStartedAt: string;
+  currency: string;
+  organizationState: string;
+}
+
+export interface ListOrganizationBalancesResponse {
+  response: ResponseEnvelope;
+  balances?: OrganizationBalance[];
+  pageMeta?: PageMeta;
+  currency?: string;
+}
+
+export interface RechargeOrganizationResponse {
+  response: ResponseEnvelope;
+  balance?: OrganizationBalance;
+  transaction?: BillingTransaction;
+  accountCreated?: boolean;
 }
 
 // formatCents renders an int64-cents string as a major-unit amount.
@@ -1924,6 +1971,12 @@ export interface GetMyQuotaResponse {
   // projectMemberQuotas is the caller's budget in every project they
   // belong to, with the effective value for that project's keys.
   projectMemberQuotas?: MyProjectQuota[];
+  // personalSpentThisCycleCents / personalRemainingCents are the caller's
+  // org-wide spend this month and the personal budget minus it.
+  personalSpentThisCycleCents?: string;
+  personalRemainingCents?: string;
+  // currency is the platform billing currency for budget amounts.
+  currency?: string;
 }
 
 /** MyProjectQuota is one project membership's budget as its member sees it. */
@@ -1933,6 +1986,8 @@ export interface MyProjectQuota {
   role: string;
   quota: EffectiveQuota;
   effective: EffectiveQuota;
+  spentThisCycleCents?: string;
+  remainingCents?: string;
 }
 
 // ---- vGPU slicing pool (feature #52) ----

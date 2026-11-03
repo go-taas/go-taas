@@ -429,6 +429,13 @@ func main() {
 			// The funds check applies the project and personal monthly
 			// spend caps on top of the account cap.
 			billingSvc.SetSpendLimitResolver(tenancySvc)
+			// The quota surfaces show a budget next to its settled spend, so
+			// tenancy reads the ledger through billing instead of owning a
+			// second copy of "how much has been charged".
+			tenancySvc.SetSpendReader(billingSvc)
+			// Ledger rows name the administrator who moved the money, not a
+			// UUID: the billing module resolves the display label here.
+			billingSvc.SetUserLabelResolver(authSvc)
 			// The user catalog shows a model's current rate card, so the
 			// console needs no second round trip (and pricing semantics stay
 			// in the billing module).

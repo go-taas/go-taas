@@ -9,6 +9,7 @@ import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
 import type { GetMyQuotaResponse } from '../../api';
+import { formatMoney } from '../../display';
 import QuotaDimensionCard, { type QuotaLimits as QuotaLimitsLike } from './quotas/QuotaDimensionCard';
 
 export default function UserQuotasPage() {
@@ -91,6 +92,15 @@ export default function UserQuotasPage() {
           {personal && (
             <>
               <h2>{t('quota.personalTitle')}</h2>
+              <div className="hint" data-testid="quota-personal-budget">
+                {t('quota.spentThisCycle', {
+                  spent: formatMoney(data?.personalSpentThisCycleCents, data?.currency),
+                  remaining:
+                    Number(personal.monthlySpendLimitCents || '0') > 0
+                      ? formatMoney(data?.personalRemainingCents, data?.currency)
+                      : t('common.unlimited'),
+                })}
+              </div>
               <div className="cards-row" data-testid="personal-quota-cards">
                 <QuotaDimensionCard dimension="concurrent_requests" quota={personal} label={t('quota.personalLabel')} />
                 <QuotaDimensionCard dimension="batch_jobs_today" quota={personal} label={t('quota.personalLabel')} />
@@ -118,6 +128,8 @@ export default function UserQuotasPage() {
                     <th>{t('quota.colProject')}</th>
                     <th>{t('quota.colConcurrent')}</th>
                     <th>{t('quota.colSpend')}</th>
+                    <th>{t('quota.colSpent')}</th>
+                    <th>{t('quota.colRemaining')}</th>
                     <th>{t('quota.colEffective')}</th>
                   </tr>
                 </thead>
@@ -130,6 +142,14 @@ export default function UserQuotasPage() {
                       </td>
                       <td>{t('quota.limitOrUnlimited', { n: row.quota.maxConcurrentRequests })}</td>
                       <td>{t('quota.limitOrUnlimited', { n: row.quota.monthlySpendLimitCents })}</td>
+                      <td data-testid={`project-spent-${row.projectId}`}>
+                        {formatMoney(row.spentThisCycleCents, data.currency)}
+                      </td>
+                      <td data-testid={`project-remaining-${row.projectId}`}>
+                        {Number(row.quota.monthlySpendLimitCents || '0') > 0
+                          ? formatMoney(row.remainingCents, data.currency)
+                          : t('common.unlimited')}
+                      </td>
                       <td data-testid={`project-effective-${row.projectId}`}>
                         {t('quota.effectiveValue', {
                           concurrent: row.effective.maxConcurrentRequests,

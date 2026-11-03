@@ -84,9 +84,48 @@ type Transaction struct {
 	IdempotencyKey string `gorm:"size:128;not null;uniqueIndex"`
 	// Reference is the charge_id for deductions, free text otherwise.
 	Reference string `gorm:"size:128;not null;default:''"`
+	// Source records where the movement came from: who or what moved the
+	// money. An operator-set movement (admin_manual / admin_correction) is
+	// distinguishable from a payment, an automated top-up, the opening
+	// balance and a usage deduction — which is what makes the ledger
+	// auditable without cross-reading the audit log.
+	Source string `gorm:"size:32;not null;default:''"`
+	// ActorUserID is the administrator who performed an operator-set
+	// movement; empty for automated ones.
+	ActorUserID *string `gorm:"type:uuid"`
 	// CreatedAt is the write time (UTC).
 	CreatedAt time.Time `gorm:"not null;index:idx_transactions_account_created,priority:2"`
 }
 
 // TableName overrides the default GORM table name.
 func (Transaction) TableName() string { return "transactions" }
+
+// Transaction sources. A movement's source answers "who moved the money":
+// the four operator-set values are the ones a platform administrator can
+// choose, the rest are written by the platform itself.
+const (
+	// SourceAdminManual is an operator crediting or debiting an account by
+	// hand.
+	SourceAdminManual = "admin_manual"
+	// SourceAdminCorrection is an accounting adjustment made by an
+	// operator.
+	SourceAdminCorrection = "admin_correction"
+	// SourcePayment is a paid payment intent.
+	SourcePayment = "payment"
+	// SourceAutoRecharge is an automated top-up.
+	SourceAutoRecharge = "auto_recharge"
+	// SourceOpening is the opening balance of a newly created account.
+	SourceOpening = "opening"
+	// SourceSettlement is a usage deduction.
+	SourceSettlement = "settlement"
+	// SourceSystem is anything the platform did that the rows above do not
+	// name.
+	SourceSystem = "system"
+)
+
+// OperatorSources are the sources an administrator may set explicitly. A
+// payment is written by the payment path, not chosen in a form.
+var OperatorSources = map[string]bool{
+	SourceAdminManual:     true,
+	SourceAdminCorrection: true,
+}

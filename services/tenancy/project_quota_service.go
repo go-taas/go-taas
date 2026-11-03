@@ -31,7 +31,9 @@ func (s *Service) GetProjectQuota(ctx context.Context, req *tenancyv1.GetProject
 	if err != nil {
 		return nil, err
 	}
-	return &tenancyv1.GetProjectQuotaResponse{Response: okResponse(), Quota: summarizeProjectQuota(p, s.userLabel(ctx, p.QuotaUpdatedBy))}, nil
+	quota := summarizeProjectQuota(p, s.userLabel(ctx, p.QuotaUpdatedBy))
+	s.attachProjectSpend(ctx, quota)
+	return &tenancyv1.GetProjectQuotaResponse{Response: okResponse(), Quota: quota}, nil
 }
 
 // UpdateProjectQuota updates a project's quotas. Requires project admin
@@ -85,7 +87,10 @@ func (s *Service) UpdateProjectQuota(ctx context.Context, req *tenancyv1.UpdateP
 		ResourceID:     p.ID,
 		Result:         "success",
 	})
-	return &tenancyv1.UpdateProjectQuotaResponse{Response: okResponse(), Quota: summarizeProjectQuota(p, s.userLabel(ctx, p.QuotaUpdatedBy))}, nil
+	return &tenancyv1.UpdateProjectQuotaResponse{
+		Response: okResponse(),
+		Quota:    s.projectQuotaWithSpend(ctx, p, s.userLabel(ctx, p.QuotaUpdatedBy)),
+	}, nil
 }
 
 // optionalQuota validates and unwraps an optional quota value.
@@ -120,5 +125,24 @@ func summarizeProjectQuota(p *Project, updatedByName string) *tenancyv1.ProjectQ
 	if !p.QuotaUpdatedAt.IsZero() {
 		q.UpdatedAt = p.QuotaUpdatedAt.Unix()
 	}
+	return q
+}
+
+// attachProjectSpend fills a project quota with its cycle spend and remaining
+// budget. A nil quota is a no-op.
+func (s *Service) attachProjectSpend(ctx context.Context, q *tenancyv1.ProjectQuota) {
+	if q == nil {
+		return
+	}
+	spent := s.spentCents(ctx, q.GetOrganizationId(), q.GetProjectId(), "")
+	q.SpentThisCycleCents = spent
+	q.RemainingCents = remainingCents(q.GetMonthlySpendLimitCents(), spent)
+}
+
+// projectQuotaWithSpend returns a project's quota with its spend attached. It
+// is the shared shape of every response that reports a project budget.
+func (s *Service) projectQuotaWithSpend(ctx context.Context, p *Project, updatedByName string) *tenancyv1.ProjectQuota {
+	q := summarizeProjectQuota(p, updatedByName)
+	s.attachProjectSpend(ctx, q)
 	return q
 }

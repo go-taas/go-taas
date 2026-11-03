@@ -55,6 +55,8 @@ import ImageDetailPage from './pages/ImageDetailPage';
 import UsagePage from './pages/UsagePage';
 import PricingPage from './pages/PricingPage';
 import BillsPage from './pages/BillsPage';
+import OrganizationBalancesPage from './pages/OrganizationBalancesPage';
+import OrganizationBudgetsPage from './pages/OrganizationBudgetsPage';
 import AccountsPage from './pages/AccountsPage';
 import BillingPaymentsPage from './pages/BillingPaymentsPage';
 import BillingInvoicesPage from './pages/BillingInvoicesPage';
@@ -274,10 +276,12 @@ function AdminSurface() {
               <Route path="/admin/usage" element={<UsagePage />} />
               <Route path="/admin/pricing" element={<PricingPage />} />
               <Route path="/admin/billing" element={<BillsPage />} />
+              <Route path="/admin/billing/balances" element={<OrganizationBalancesPage />} />
               <Route path="/admin/billing/accounts" element={<AccountsPage />} />
               <Route path="/admin/billing/payments" element={<BillingPaymentsPage />} />
               <Route path="/admin/billing/invoices" element={<BillingInvoicesPage />} />
               <Route path="/admin/billing/reports" element={<BillingReportsPage />} />
+              <Route path="/admin/budgets" element={<OrganizationBudgetsPage />} />
               <Route path="/admin/audit-logs" element={<AuditLogsPage />} />
               <Route path="/admin/autoscaling" element={<AutoscalingPage />} />
               <Route path="/admin/accelerators" element={<AcceleratorsPage />} />

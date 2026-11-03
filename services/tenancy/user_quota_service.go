@@ -69,7 +69,9 @@ func (s *Service) ListUserQuotas(ctx context.Context, req *tenancyv1.ListUserQuo
 	labels := s.labelsForUsers(ctx, userIDs)
 	quotas := make([]*tenancyv1.UserQuota, 0, len(roster))
 	for _, m := range roster {
-		quotas = append(quotas, summarizeUserQuota(stored[m.UserID], orgID, m.UserID, m.Role, labels))
+		quota := summarizeUserQuota(stored[m.UserID], orgID, m.UserID, m.Role, labels)
+		s.attachUserSpend(ctx, quota, orgID)
+		quotas = append(quotas, quota)
 	}
 	return &tenancyv1.ListUserQuotasResponse{
 		Response: okResponse(),
@@ -135,9 +137,11 @@ func (s *Service) GetUserQuota(ctx context.Context, req *tenancyv1.GetUserQuotaR
 		return nil, err
 	}
 	labels := s.labelsForUsers(ctx, []string{userID})
+	quota := summarizeUserQuota(row, orgID, userID, role, labels)
+	s.attachUserSpend(ctx, quota, orgID)
 	return &tenancyv1.GetUserQuotaResponse{
 		Response: okResponse(),
-		Quota:    summarizeUserQuota(row, orgID, userID, role, labels),
+		Quota:    quota,
 	}, nil
 }
 
@@ -218,9 +222,11 @@ func (s *Service) UpdateUserQuota(ctx context.Context, req *tenancyv1.UpdateUser
 		return nil, err
 	}
 	effective := CombineLimits(orgLimits.Limits(), row.Limits())
+	quota := summarizeUserQuota(row, orgID, userID, role, labels)
+	s.attachUserSpend(ctx, quota, orgID)
 	return &tenancyv1.UpdateUserQuotaResponse{
 		Response:       okResponse(),
-		Quota:          summarizeUserQuota(row, orgID, userID, role, labels),
+		Quota:          quota,
 		EffectiveQuota: effectiveQuotaProto(effective),
 	}, nil
 }
@@ -379,4 +385,17 @@ func effectiveQuotaProto(q EffectiveQuota) *tenancyv1.EffectiveQuota {
 		MaxOutputTokensPerRequest: q.MaxOutputTokensPerRequest,
 		MonthlySpendLimitCents:    q.MonthlySpendLimitCents,
 	}
+}
+
+// attachUserSpend fills a personal quota with the user's settled spend across
+// the organization and the budget left. The scope is the whole tenant: the
+// organization-wide personal budget is not bound to a project, which is exactly
+// why a second, per-project member budget exists.
+func (s *Service) attachUserSpend(ctx context.Context, q *tenancyv1.UserQuota, orgID string) {
+	if q == nil {
+		return
+	}
+	spent := s.spentCents(ctx, orgID, "", q.GetUserId())
+	q.SpentThisCycleCents = spent
+	q.RemainingCents = remainingCents(q.GetMonthlySpendLimitCents(), spent)
 }

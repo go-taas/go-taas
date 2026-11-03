@@ -68,9 +68,9 @@ func TestUpdateUserQuotaValidatesAndCombines(t *testing.T) {
 	svc := NewForFVT(db)
 
 	resp, err := svc.UpdateUserQuota(context.Background(), &tenancyv1.UpdateUserQuotaRequest{
-		UserId:                "11111111-1111-4111-8111-111111111111",
-		OrganizationId:        "org-a",
-		MaxConcurrentRequests: i64ptr(4),
+		UserId:                 "11111111-1111-4111-8111-111111111111",
+		OrganizationId:         "org-a",
+		MaxConcurrentRequests:  i64ptr(4),
 		MonthlySpendLimitCents: i64ptr(1500),
 	})
 	require.NoError(t, err)

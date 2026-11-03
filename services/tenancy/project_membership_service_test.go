@@ -170,6 +170,7 @@ func TestServiceAddProjectMemberResolvesUsername(t *testing.T) {
 	})
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
+
 // seedOrg adds an organization directly.
 func seedOrg(t *testing.T, svc *Service, orgID string) {
 	t.Helper()

@@ -124,6 +124,7 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
       { path: '/admin/forecast', labelKey: 'nav.forecast', testid: 'nav-forecast', icon: ChartLine },
       { path: '/admin/optimization', labelKey: 'nav.optimization', testid: 'nav-optimization', icon: TrendDown },
       { path: '/admin/pricing', labelKey: 'nav.pricing', testid: 'nav-pricing', icon: Tag },
+      { path: '/admin/billing/balances', labelKey: 'nav.orgBalances', testid: 'nav-org-balances', icon: Coins },
       { path: '/admin/billing', labelKey: 'nav.bills', testid: 'nav-bills', icon: Receipt },
       { path: '/admin/billing/accounts', labelKey: 'nav.accounts', testid: 'nav-accounts', icon: UserCircle },
       { path: '/admin/billing/payments', labelKey: 'nav.payments', testid: 'nav-payments', icon: CreditCard },
@@ -307,6 +308,7 @@ export function organizationNavCategories(): NavCategory[] {
       icon: Coins,
       items: [
         { path: '/admin/usage', labelKey: 'nav.usage', testid: 'nav-usage', icon: ChartLine },
+        { path: '/admin/budgets', labelKey: 'nav.budgets', testid: 'nav-budgets', icon: Coins },
         { path: '/admin/billing', labelKey: 'nav.bills', testid: 'nav-bills', icon: Receipt },
       ],
     },

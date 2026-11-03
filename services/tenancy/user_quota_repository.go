@@ -123,7 +123,6 @@ func (r *Repository) ProjectQuotaLimits(ctx context.Context, projectID string) (
 	}, nil
 }
 
-
 // ProjectMemberQuotaLimits reads one member's limits inside a project as a
 // tuple — the member tier of the quota ladder. A missing project, or a user
 // who is not a member of it, reads as unlimited: the tier is optional and

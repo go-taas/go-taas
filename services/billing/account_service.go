@@ -2,12 +2,18 @@ package billing
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"strings"
 	"time"
+
+	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 
+	"github.com/go-taas/go-taas/pkg/authctx"
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
@@ -232,12 +238,20 @@ func (s *Service) validateMoneyTx(ctx context.Context, repo *AccountRepository, 
 
 // Recharge credits a prepaid balance, idempotent on the key (AC2/AC3).
 func (s *Service) Recharge(ctx context.Context, req *billingv1.RechargeRequest) (*billingv1.RechargeResponse, error) {
-	return s.moneyTx(ctx, req.GetAccountId(), req.GetAmountCents(), req.GetIdempotencyKey(), req.GetNote(), TransactionTypeRecharge)
+	movement, err := s.operatorMovement(ctx, req.GetSource(), req.GetNote(), false)
+	if err != nil {
+		return nil, err
+	}
+	return s.moneyTx(ctx, req.GetAccountId(), req.GetAmountCents(), req.GetIdempotencyKey(), movement, TransactionTypeRecharge)
 }
 
 // Refund returns credit from a prepaid balance (D8).
 func (s *Service) Refund(ctx context.Context, req *billingv1.RefundRequest) (*billingv1.RefundResponse, error) {
-	resp, err := s.moneyTx(ctx, req.GetAccountId(), req.GetAmountCents(), req.GetIdempotencyKey(), req.GetNote(), TransactionTypeRefund)
+	movement, err := s.operatorMovement(ctx, req.GetSource(), req.GetNote(), false)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := s.moneyTx(ctx, req.GetAccountId(), req.GetAmountCents(), req.GetIdempotencyKey(), movement, TransactionTypeRefund)
 	if err != nil {
 		return nil, err
 	}
@@ -248,9 +262,36 @@ func (s *Service) Refund(ctx context.Context, req *billingv1.RefundRequest) (*bi
 	}, nil
 }
 
+// operatorMovement resolves the source, reason and acting administrator of a
+// manual money movement.
+//
+// The source is what the ledger shows next to the amount, so it is validated
+// rather than trusted: only the operator-set values are accepted from a
+// caller, and an empty value defaults to a plain manual movement. The actor is
+// the authenticated session user — never a field, so a caller cannot attribute
+// its own action to somebody else.
+func (s *Service) operatorMovement(ctx context.Context, source, note string, requireNote bool) (MoneyMovement, error) {
+	source = strings.TrimSpace(source)
+	if source == "" {
+		source = SourceAdminManual
+	}
+	if !OperatorSources[source] {
+		return MoneyMovement{}, apierrors.New(apierrors.CodeTransactionInvalid)
+	}
+	note = strings.TrimSpace(note)
+	if requireNote && note == "" {
+		return MoneyMovement{}, apierrors.New(apierrors.CodeTransactionInvalid)
+	}
+	actor, _, err := s.resolveSessionActor(ctx)
+	if err != nil {
+		return MoneyMovement{}, err
+	}
+	return MoneyMovement{Note: note, Source: source, ActorUserID: actor}, nil
+}
+
 // moneyTx implements Recharge and Refund: validation, the idempotent
 // ledger write, and the version-guarded balance update.
-func (s *Service) moneyTx(ctx context.Context, accountID string, amountCents int64, idempotencyKey, note, txType string) (*billingv1.RechargeResponse, error) {
+func (s *Service) moneyTx(ctx context.Context, accountID string, amountCents int64, idempotencyKey string, movement MoneyMovement, txType string) (*billingv1.RechargeResponse, error) {
 	orgID, err := s.resolveOrg(ctx)
 	if err != nil {
 		return nil, err
@@ -258,7 +299,7 @@ func (s *Service) moneyTx(ctx context.Context, accountID string, amountCents int
 	if err := s.checkOrg(ctx, orgID, true); err != nil {
 		return nil, err
 	}
-	if len(strings.TrimSpace(note)) > maxNoteLen {
+	if len(movement.Note) > maxNoteLen {
 		return nil, apierrors.New(apierrors.CodeTransactionInvalid)
 	}
 	repo, err := s.accountRepo()
@@ -269,7 +310,7 @@ func (s *Service) moneyTx(ctx context.Context, accountID string, amountCents int
 	if err != nil {
 		return nil, err
 	}
-	updated, tx, err := repo.Recharge(ctx, account, amountCents, strings.TrimSpace(idempotencyKey), strings.TrimSpace(note), txType)
+	updated, tx, err := repo.Recharge(ctx, account, amountCents, strings.TrimSpace(idempotencyKey), movement, txType)
 	if err != nil {
 		return nil, err
 	}
@@ -278,14 +319,21 @@ func (s *Service) moneyTx(ctx context.Context, accountID string, amountCents int
 	if txType == TransactionTypeRefund {
 		action = "billing.refund"
 	}
+	// The audit row names the acting administrator and the amount: a manual
+	// credit is exactly the kind of action an operator is asked about later.
 	s.recordAudit(ctx, &audit.AuditEvent{
 		OrganizationID: orgID,
-		ActorUserID:    orgID,
+		ActorUserID:    movement.ActorUserID,
 		ActorType:      "user",
 		Action:         action,
 		ResourceType:   "account",
 		ResourceID:     accountID,
 		Result:         "success",
+		Metadata: string(mustJSON(map[string]any{
+			"amount_cents": amountCents,
+			"source":       movement.Source,
+			"note":         movement.Note,
+		})),
 	})
 	// Feature #23 (AD10): publish the billing.balance_low webhook event
 	// best-effort when the balance is below a low threshold (e.g. one
@@ -549,13 +597,16 @@ func (s *Service) GetBalance(ctx context.Context, _ *billingv1.GetBalanceRequest
 		return nil, apierrors.New(apierrors.CodeAccountNotFound)
 	}
 	return &billingv1.GetBalanceResponse{
-		Response:           okResponse(),
-		Mode:               account.Mode,
-		Balance:            float64(account.BalanceCents) / 100,
-		Currency:           account.Currency,
-		BalanceCents:       account.BalanceCents,
-		MonthlyQuotaCents:  account.MonthlyQuotaCents,
-		UsedThisCycleCents: account.UsedThisCycleCents,
+		Response:            okResponse(),
+		Mode:                account.Mode,
+		Balance:             float64(account.BalanceCents) / 100,
+		Currency:            account.Currency,
+		BalanceCents:        account.BalanceCents,
+		MonthlyQuotaCents:   account.MonthlyQuotaCents,
+		UsedThisCycleCents:  account.UsedThisCycleCents,
+		CycleStartedAt:      account.CycleStartedAt,
+		SpentThisCycleCents: account.SpentThisCycleCents,
+		HasAccount:          true,
 	}, nil
 }
 
@@ -601,7 +652,7 @@ func summarizeAccount(a *Account) *billingv1.Account {
 
 // summarizeTransaction maps a ledger row to the proto message.
 func summarizeTransaction(t *Transaction) *billingv1.Transaction {
-	return &billingv1.Transaction{
+	out := &billingv1.Transaction{
 		TransactionId:     t.ID,
 		AccountId:         t.AccountID,
 		Type:              t.Type,
@@ -609,6 +660,367 @@ func summarizeTransaction(t *Transaction) *billingv1.Transaction {
 		BalanceAfterCents: t.BalanceAfterCents,
 		IdempotencyKey:    t.IdempotencyKey,
 		Reference:         t.Reference,
+		Source:            t.Source,
 		CreatedAt:         t.CreatedAt.Unix(),
 	}
+	if t.ActorUserID != nil {
+		out.ActorUserId = *t.ActorUserID
+	}
+	return out
+}
+
+// mustJSON marshals v, returning a JSON null on the (impossible) error. It is
+// used for the audit metadata, which is diagnostic: a marshal failure must not
+// fail the money movement it describes.
+func mustJSON(v any) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		return []byte("null")
+	}
+	return b
+}
+
+// ---- Organization balances (platform administrator) ----
+
+// organizationRow is the read-only projection of the tenancy module's
+// organizations table: the billing module needs a tenant's name and state to
+// present a balance, and importing tenancy for two columns would invert the
+// dependency. The same pattern reads charge_records from metering (AD1).
+type organizationRow struct {
+	ID          string
+	DisplayName string
+	State       string
+}
+
+// TableName overrides the default GORM table name to tenancy's table.
+func (organizationRow) TableName() string { return "organizations" }
+
+// organizations returns every tenant, ordered by id for a stable listing.
+func (s *Service) organizations(ctx context.Context) ([]organizationRow, error) {
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	var rows []organizationRow
+	if err := repo.DB(ctx).Order("id ASC").Find(&rows).Error; err != nil {
+		return nil, apierrors.Wrap(apierrors.CodeInternal, err, "billing: organization lookup failed")
+	}
+	return rows, nil
+}
+
+// findOrganization returns one tenant, or CodeOrganizationNotFound.
+func (s *Service) findOrganization(ctx context.Context, orgID string) (*organizationRow, error) {
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	var row organizationRow
+	err = repo.DB(ctx).Where("id = ?", orgID).First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+	}
+	if err != nil {
+		return nil, apierrors.Wrap(apierrors.CodeInternal, err, "billing: organization lookup failed")
+	}
+	return &row, nil
+}
+
+// requirePlatformAdmin gates the fleet-wide money operations. A tenant
+// administrator must never see or fund another tenant, and the fleet view has
+// no organization to scope by, so the role itself is the boundary.
+func requirePlatformAdmin(ctx context.Context) error {
+	if authctx.IsPlatformAdmin(ctx) {
+		return nil
+	}
+	return apierrors.Newf(apierrors.CodeForbidden,
+		"billing: only a platform administrator can manage organization balances")
+}
+
+// ListOrganizationBalances returns every organization with its money position.
+//
+// Organizations without an account are included with has_account=false: the
+// platform administrator's job here is to fund tenants, and an unfunded tenant
+// has no account yet — hiding it would force a two-step "create, then recharge"
+// ritual that the recharge endpoint already collapses into one.
+func (s *Service) ListOrganizationBalances(ctx context.Context, req *billingv1.ListOrganizationBalancesRequest) (*billingv1.ListOrganizationBalancesResponse, error) {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
+	orgs, err := s.organizations(ctx)
+	if err != nil {
+		return nil, err
+	}
+	accRepo, err := s.accountRepo()
+	if err != nil {
+		return nil, err
+	}
+	accounts, err := accRepo.ListAllAccounts(ctx)
+	if err != nil {
+		return nil, err
+	}
+	byOrg := make(map[string]*Account, len(accounts))
+	for _, a := range accounts {
+		byOrg[a.OrganizationID] = a
+	}
+
+	currency := config.GetConfig().Billing.Currency
+	mode := strings.TrimSpace(req.GetMode())
+	query := strings.ToLower(strings.TrimSpace(req.GetQuery()))
+
+	rows := make([]*billingv1.OrganizationBalance, 0, len(orgs))
+	for _, org := range orgs {
+		b := summarizeOrganizationBalance(org, byOrg[org.ID], currency)
+		if mode != "" && b.GetMode() != mode {
+			continue
+		}
+		if query != "" && !strings.Contains(strings.ToLower(org.DisplayName), query) &&
+			!strings.Contains(strings.ToLower(org.ID), query) {
+			continue
+		}
+		rows = append(rows, b)
+	}
+
+	offset, limit := normalizePagination(req.GetPage())
+	total := int64(len(rows))
+	var paged []*billingv1.OrganizationBalance
+	if offset >= len(rows) {
+		paged = nil
+	} else {
+		end := offset + limit
+		if end > len(rows) || limit <= 0 {
+			end = len(rows)
+		}
+		paged = rows[offset:end]
+	}
+	return &billingv1.ListOrganizationBalancesResponse{
+		Response: okResponse(),
+		Balances: paged,
+		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampInt32(limit)},
+		Currency: currency,
+	}, nil
+}
+
+// summarizeOrganizationBalance projects one tenant's money position. A tenant
+// without an account reports zeros and no mode, which the console renders as
+// "no account yet" next to the recharge action.
+func summarizeOrganizationBalance(org organizationRow, account *Account, currency string) *billingv1.OrganizationBalance {
+	out := &billingv1.OrganizationBalance{
+		OrganizationId:    org.ID,
+		OrganizationName:  org.DisplayName,
+		OrganizationState: org.State,
+		Currency:          currency,
+	}
+	if account == nil {
+		return out
+	}
+	out.HasAccount = true
+	out.AccountId = account.ID
+	out.Mode = account.Mode
+	out.BalanceCents = account.BalanceCents
+	out.MonthlyQuotaCents = account.MonthlyQuotaCents
+	out.UsedThisCycleCents = account.UsedThisCycleCents
+	out.MonthlySpendLimitCents = account.MonthlySpendLimitCents
+	out.SpentThisCycleCents = account.SpentThisCycleCents
+	out.CycleStartedAt = account.CycleStartedAt
+	out.Currency = account.Currency
+	out.RemainingCents = remainingCents(account)
+	return out
+}
+
+// remainingCents is the spendable amount now: the prepaid balance, or the
+// postpaid quota minus its usage (0 when the quota is unlimited). A prepaid
+// balance may be negative through settlement lag, and that is what it reports.
+func remainingCents(a *Account) int64 {
+	if a.Mode == AccountModePostpaid {
+		if a.MonthlyQuotaCents <= 0 {
+			return 0
+		}
+		remaining := a.MonthlyQuotaCents - a.UsedThisCycleCents
+		if remaining < 0 {
+			return 0
+		}
+		return remaining
+	}
+	return a.BalanceCents
+}
+
+// RechargeOrganization credits a tenant's prepaid balance, creating the account
+// when it has none.
+//
+// This is the platform administrator's funding action, and every part of it is
+// auditable: the transaction carries the source the administrator chose and the
+// administrator's own id, and an audit event records the amount, source and
+// reason. An organization that already runs postpaid is credited in place —
+// switching modes is a separate decision the account editor owns, and silently
+// flipping it here would change how the tenant is billed.
+func (s *Service) RechargeOrganization(ctx context.Context, req *billingv1.RechargeOrganizationRequest) (*billingv1.RechargeOrganizationResponse, error) {
+	return s.organizationMoneyTx(ctx, req.GetOrganizationId(), req.GetAmountCents(),
+		req.GetIdempotencyKey(), req.GetNote(), req.GetSource(), TransactionTypeRecharge)
+}
+
+// DebitOrganization takes credit back from a tenant's prepaid balance. It is a
+// correction, not a refund to the tenant, so a reason is required and the
+// amount may not exceed the balance: a negative balance is a settlement-lag
+// state, never something an operator creates on purpose.
+func (s *Service) DebitOrganization(ctx context.Context, req *billingv1.DebitOrganizationRequest) (*billingv1.DebitOrganizationResponse, error) {
+	resp, err := s.organizationMoneyTx(ctx, req.GetOrganizationId(), req.GetAmountCents(),
+		req.GetIdempotencyKey(), req.GetNote(), req.GetSource(), TransactionTypeRefund)
+	if err != nil {
+		return nil, err
+	}
+	return &billingv1.DebitOrganizationResponse{
+		Response:    resp.Response,
+		Balance:     resp.Balance,
+		Transaction: resp.Transaction,
+	}, nil
+}
+
+// organizationMoneyTx implements RechargeOrganization and DebitOrganization:
+// validation, the account (created on first credit), the idempotent ledger
+// write, the audit event, and the projected balance.
+func (s *Service) organizationMoneyTx(ctx context.Context, orgID string, amountCents int64, idempotencyKey, note, source, txType string) (*billingv1.RechargeOrganizationResponse, error) {
+	if err := requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
+	orgID = strings.TrimSpace(orgID)
+	if orgID == "" {
+		return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
+	}
+	if amountCents <= 0 {
+		return nil, apierrors.New(apierrors.CodeTransactionInvalid)
+	}
+	idempotencyKey = strings.TrimSpace(idempotencyKey)
+	if idempotencyKey == "" || len(idempotencyKey) > maxIdempotencyKeyLen {
+		return nil, apierrors.New(apierrors.CodeTransactionInvalid)
+	}
+	// A debit is a correction: it must say why.
+	movement, err := s.operatorMovement(ctx, source, note, txType == TransactionTypeRefund)
+	if err != nil {
+		return nil, err
+	}
+
+	org, err := s.findOrganization(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	if org.State != "active" {
+		return nil, apierrors.Newf(apierrors.CodeOrganizationDisabled,
+			"billing: organization %s is %s; it cannot be funded", orgID, org.State)
+	}
+
+	accRepo, err := s.accountRepo()
+	if err != nil {
+		return nil, err
+	}
+	account, err := accRepo.FindByOrg(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	created := false
+	if account == nil {
+		if txType == TransactionTypeRefund {
+			// Nothing to take back from: an organization without an account
+			// has no balance.
+			return nil, apierrors.New(apierrors.CodeAccountNotFound)
+		}
+		currency := config.GetConfig().Billing.Currency
+		account = &Account{
+			ID:             uuid.NewString(),
+			OrganizationID: orgID,
+			Mode:           AccountModePrepaid,
+			Currency:       currency,
+			CycleStartedAt: monthStartOf(time.Now().UTC()),
+			OverdrawPolicy: OverdrawBlock,
+		}
+		created = true
+		stored, _, createErr := accRepo.CreateAccount(ctx, account, 0)
+		if createErr != nil {
+			return nil, createErr
+		}
+		account = stored
+	}
+	if txType == TransactionTypeRefund && account.Mode == AccountModePrepaid && amountCents > account.BalanceCents {
+		return nil, apierrors.New(apierrors.CodeInsufficientFunds)
+	}
+
+	updated, tx, err := accRepo.Recharge(ctx, account, amountCents, idempotencyKey, movement, txType)
+	if err != nil {
+		return nil, err
+	}
+
+	action := "billing.organization_recharge"
+	if txType == TransactionTypeRefund {
+		action = "billing.organization_debit"
+	}
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    movement.ActorUserID,
+		ActorType:      "user",
+		Action:         action,
+		ResourceType:   "account",
+		ResourceID:     account.ID,
+		Result:         "success",
+		Metadata: string(mustJSON(map[string]any{
+			"amount_cents":     amountCents,
+			"source":           movement.Source,
+			"note":             movement.Note,
+			"account_created":  created,
+			"balance_after":    updated.BalanceCents,
+			"organization_id":  orgID,
+			"transaction_type": txType,
+		})),
+	})
+
+	return &billingv1.RechargeOrganizationResponse{
+		Response:       okResponse(),
+		Balance:        summarizeOrganizationBalance(*org, updated, updated.Currency),
+		Transaction:    s.summarizeTransactionWithActor(ctx, tx),
+		AccountCreated: created,
+	}, nil
+}
+
+// summarizeTransactionWithActor projects a ledger row and resolves the acting
+// administrator's display name, so the console can show a person instead of a
+// UUID without a second round trip.
+func (s *Service) summarizeTransactionWithActor(ctx context.Context, t *Transaction) *billingv1.Transaction {
+	out := summarizeTransaction(t)
+	if out.GetActorUserId() == "" || s.userLabelResolver == nil {
+		return out
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, []string{out.GetActorUserId()})
+	if err != nil {
+		return out
+	}
+	out.ActorDisplayName = labels[out.GetActorUserId()]
+	return out
+}
+
+// SpentCents implements the tenancy module's SpendReader seam: the settled
+// charge amount of one scope within the current UTC cycle, which is the window
+// the spend gate uses.
+//
+// It reads the cross-mode cycle total for the whole organization, and the
+// charge records for a narrower scope. Charge records carry the project and the
+// owner at settlement time (an attribution snapshot), so a project or member
+// figure never shifts when a key is later transferred.
+func (s *Service) SpentCents(ctx context.Context, orgID, projectID, ownerUserID string) (int64, error) {
+	if strings.TrimSpace(orgID) == "" {
+		return 0, nil
+	}
+	repo, err := s.accountRepo()
+	if err != nil {
+		return 0, err
+	}
+	if strings.TrimSpace(projectID) == "" && strings.TrimSpace(ownerUserID) == "" {
+		account, findErr := repo.FindByOrg(ctx, orgID)
+		if findErr != nil {
+			return 0, findErr
+		}
+		if account == nil {
+			return 0, nil
+		}
+		return account.SpentThisCycleCents, nil
+	}
+	cycleStart := monthStartOf(time.Now().UTC())
+	return repo.ScopedSpentCents(ctx, orgID, cycleStart, ownerUserID, projectID)
 }

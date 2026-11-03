@@ -399,14 +399,18 @@ func (s *Service) GetMyQuota(ctx context.Context, _ *tenancyv1.GetMyQuotaRequest
 	}
 	effective := CombineLimits(orgQuotaLimits(org), personal.Limits())
 	labels := s.labelsForUsers(ctx, []string{userID, org.QuotaUpdatedBy})
+	personalSpent := s.spentCents(ctx, org.ID, "", userID)
 	return &tenancyv1.GetMyQuotaResponse{
-		Response:             okResponse(),
-		Quota:                quotaProto(org, labels[org.QuotaUpdatedBy]),
-		Usage:                s.quotaUsage(ctx, repo, org.ID),
-		RequestIncreaseEmail: requestIncreaseEmail,
-		PersonalQuota:        summarizeUserQuota(personal, org.ID, userID, "", labels),
-		EffectiveQuota:       effectiveQuotaProto(effective),
-		ProjectMemberQuotas:  s.myProjectQuotas(ctx, repo, org, userID, personal),
+		Response:                    okResponse(),
+		Quota:                       quotaProto(org, labels[org.QuotaUpdatedBy]),
+		Usage:                       s.quotaUsage(ctx, repo, org.ID),
+		RequestIncreaseEmail:        requestIncreaseEmail,
+		PersonalQuota:               summarizeUserQuota(personal, org.ID, userID, "", labels),
+		EffectiveQuota:              effectiveQuotaProto(effective),
+		ProjectMemberQuotas:         s.myProjectQuotas(ctx, repo, org, userID, personal),
+		PersonalSpentThisCycleCents: personalSpent,
+		PersonalRemainingCents:      remainingCents(personal.Limits().MonthlySpendLimitCents, personalSpent),
+		Currency:                    billingCurrency(),
 	}, nil
 }
 
@@ -443,6 +447,7 @@ func (s *Service) myProjectQuotas(ctx context.Context, repo *Repository, org *Or
 		if memErr != nil {
 			continue
 		}
+		spent := s.spentCents(ctx, org.ID, project.ID, userID)
 		out = append(out, &tenancyv1.MyProjectQuota{
 			ProjectId:   project.ID,
 			ProjectName: project.DisplayName,
@@ -450,6 +455,8 @@ func (s *Service) myProjectQuotas(ctx context.Context, repo *Repository, org *Or
 			Quota:       effectiveQuotaProto(memberLimits),
 			Effective: combineLimitsProto(
 				orgQuotaLimits(org), personal.Limits(), projectLimits, memberLimits),
+			SpentThisCycleCents: spent,
+			RemainingCents:      remainingCents(memberLimits.MonthlySpendLimitCents, spent),
 		})
 	}
 	return out

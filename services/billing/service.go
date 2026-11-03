@@ -80,6 +80,17 @@ type RoleGuard interface {
 // (feature-25 AD6): the fleet view is operator-scoped.
 const roleAdmin = "admin"
 
+// UserLabelResolver resolves user ids to display labels. It is implemented by
+// the auth module and injected at wiring time, so the billing module keeps no
+// dependency on the user directory.
+type UserLabelResolver interface {
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
+// SetUserLabelResolver injects the user-label resolver used when a ledger row
+// names the administrator who performed it. Nil until wired.
+func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolver = r }
+
 // SpendLimitResolver resolves the project and personal monthly spend
 // caps consumed by CheckFunds. It is implemented by the tenancy
 // service; nil until wired, in which case only the account's own limit
@@ -124,6 +135,11 @@ type Service struct {
 	// sessionUserResolver resolves the caller's user id for the admin
 	// role check (feature #10). Nil until wired: no role check.
 	sessionUserResolver SessionUserResolver
+
+	// userLabelResolver resolves a user id to a display label, so a ledger
+	// row names the administrator who moved the money instead of a UUID.
+	// Nil until wired (tests): rows carry the id only.
+	userLabelResolver UserLabelResolver
 
 	// spendLimitResolver resolves the project and personal monthly spend
 	// caps. Nil until wired: only the account limit applies.

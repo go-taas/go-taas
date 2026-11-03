@@ -89,19 +89,19 @@ func TestAccountRepositoryRechargeIdempotency(t *testing.T) {
 	ctx := context.Background()
 	account := seedAccount(t, repo, "org-1", AccountModePrepaid, 1000, 0, 0)
 
-	updated, tx, err := repo.Recharge(ctx, account, 2500, "key-1", "first", TransactionTypeRecharge)
+	updated, tx, err := repo.Recharge(ctx, account, 2500, "key-1", MoneyMovement{Note: "first", Source: SourceAdminManual}, TransactionTypeRecharge)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3500), updated.BalanceCents)
 	assert.Equal(t, int64(3500), tx.BalanceAfterCents)
 
 	// Replay with the same amount converges: no double credit.
-	again, txAgain, err := repo.Recharge(ctx, account, 2500, "key-1", "first", TransactionTypeRecharge)
+	again, txAgain, err := repo.Recharge(ctx, account, 2500, "key-1", MoneyMovement{Note: "first", Source: SourceAdminManual}, TransactionTypeRecharge)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3500), again.BalanceCents)
 	assert.Equal(t, tx.ID, txAgain.ID)
 
 	// Same key, different amount: 10510.
-	_, _, err = repo.Recharge(ctx, account, 9999, "key-1", "other", TransactionTypeRecharge)
+	_, _, err = repo.Recharge(ctx, account, 9999, "key-1", MoneyMovement{Note: "other", Source: SourceAdminManual}, TransactionTypeRecharge)
 	assert.Equal(t, apierrors.CodeTransactionInvalid, apierrors.CodeOf(err))
 
 	// The balance is unchanged after the rejection.
@@ -116,12 +116,12 @@ func TestAccountRepositoryRefund(t *testing.T) {
 	ctx := context.Background()
 	account := seedAccount(t, repo, "org-1", AccountModePrepaid, 5000, 0, 0)
 
-	updated, _, err := repo.Recharge(ctx, account, 1500, "refund-1", "partial refund", TransactionTypeRefund)
+	updated, _, err := repo.Recharge(ctx, account, 1500, "refund-1", MoneyMovement{Note: "partial refund", Source: SourceAdminManual}, TransactionTypeRefund)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3500), updated.BalanceCents)
 
 	// Replay converges.
-	again, _, err := repo.Recharge(ctx, account, 1500, "refund-1", "partial refund", TransactionTypeRefund)
+	again, _, err := repo.Recharge(ctx, account, 1500, "refund-1", MoneyMovement{Note: "partial refund", Source: SourceAdminManual}, TransactionTypeRefund)
 	require.NoError(t, err)
 	assert.Equal(t, int64(3500), again.BalanceCents)
 }
@@ -228,9 +228,9 @@ func TestAccountRepositoryListTransactionsFilters(t *testing.T) {
 	ctx := context.Background()
 	account := seedAccount(t, repo, "org-1", AccountModePrepaid, 1000, 0, 0)
 
-	_, _, err := repo.Recharge(ctx, account, 100, "k1", "", TransactionTypeRecharge)
+	_, _, err := repo.Recharge(ctx, account, 100, "k1", MoneyMovement{Source: SourceSystem}, TransactionTypeRecharge)
 	require.NoError(t, err)
-	_, _, err = repo.Recharge(ctx, account, 200, "k2", "", TransactionTypeRecharge)
+	_, _, err = repo.Recharge(ctx, account, 200, "k2", MoneyMovement{Source: SourceSystem}, TransactionTypeRecharge)
 	require.NoError(t, err)
 	err = repo.ApplyDeduction(ctx, DeductionSpec{AccountID: account.ID, ChargeID: "c1", AmountCents: 50})
 	require.NoError(t, err)

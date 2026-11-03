@@ -900,6 +900,14 @@ message GetMyQuotaResponse {
   // belong to, with the effective value for that project's keys. It is the
   // "quota for a user under a project" view of the ladder.
   repeated MyProjectQuota project_member_quotas = 7;
+  // personal_spent_this_cycle_cents is the caller's org-wide spend this
+  // month, and personal_remaining_cents is the personal budget minus it
+  // (0 when the budget is unlimited).
+  int64 personal_spent_this_cycle_cents = 8;
+  int64 personal_remaining_cents = 9;
+  // currency is the platform billing currency, so the console can label a
+  // budget amount without guessing.
+  string currency = 10;
 }
 
 // MyProjectQuota is one project membership's budget as its member sees it.
@@ -912,6 +920,10 @@ message MyProjectQuota {
   // effective is the combined organization, personal, project and
   // project-member value a key bound to this project is enforced with.
   EffectiveQuota effective = 5;
+  // spent_this_cycle_cents is what the caller spent in this project this
+  // month, and remaining_cents is the member budget minus that spend.
+  int64 spent_this_cycle_cents = 6;
+  int64 remaining_cents = 7;
 }
 
 // EffectiveQuota is the resolved limit the data plane enforces after
@@ -949,6 +961,12 @@ message UserQuota {
   int64 updated_at = 10;
   string updated_by = 11;
   string updated_by_display_name = 12;
+  // spent_this_cycle_cents is what the user spent across the organization
+  // in the current UTC month, settled charges only.
+  int64 spent_this_cycle_cents = 13;
+  // remaining_cents is the personal budget left: the cap minus the spend;
+  // 0 when the cap is unlimited.
+  int64 remaining_cents = 14;
 }
 
 message ListUserQuotasRequest {
@@ -1168,6 +1186,13 @@ message ProjectQuota {
   // monthly_spend_limit_cents is the project's monthly spend cap;
   // 0 = unlimited.
   int64 monthly_spend_limit_cents = 11;
+  // spent_this_cycle_cents is what the project has spent in the current
+  // UTC month, settled charges only.
+  int64 spent_this_cycle_cents = 12;
+  // remaining_cents is the budget left this cycle: the cap minus the
+  // spend; 0 when the cap is unlimited (compare against
+  // monthly_spend_limit_cents to tell the two apart).
+  int64 remaining_cents = 13;
 }
 
 message GetProjectQuotaRequest {
@@ -1230,6 +1255,12 @@ message ProjectMemberQuota {
   // project-member limits the data plane enforces for this member's
   // project-bound keys.
   EffectiveQuota effective = 14;
+  // spent_this_cycle_cents is what this member spent inside this project
+  // in the current UTC month, settled charges only.
+  int64 spent_this_cycle_cents = 15;
+  // remaining_cents is the member's budget left in this project: the cap
+  // minus the spend; 0 when the cap is unlimited.
+  int64 remaining_cents = 16;
 }
 
 message ListProjectMemberQuotasRequest {

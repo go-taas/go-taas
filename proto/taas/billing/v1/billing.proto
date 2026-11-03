@@ -138,6 +138,39 @@ service BillingService {
     option (google.api.http) = {get: "/api/v1/admin/billing/transactions"};
   }
 
+  // ListOrganizationBalances is the platform administrator's money view:
+  // every organization with its billing account (balance or quota), the
+  // cycle spend and whether it has an account at all. Organizations
+  // without an account are listed with has_account=false so an operator can
+  // fund one without first creating it.
+  // Admin-surface API: platform administrators only.
+  rpc ListOrganizationBalances(ListOrganizationBalancesRequest) returns (ListOrganizationBalancesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/billing/organization-balances"};
+  }
+
+  // RechargeOrganization credits an organization's prepaid balance,
+  // creating the account when the organization has none. The movement is
+  // recorded with the administrator's id and the chosen source, so the
+  // ledger answers "who credited this tenant, when and why".
+  // Admin-surface API: platform administrators only.
+  rpc RechargeOrganization(RechargeOrganizationRequest) returns (RechargeOrganizationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/billing/organizations/{organization_id}/recharge"
+      body: "*"
+    };
+  }
+
+  // DebitOrganization takes credit back from an organization's prepaid
+  // balance (a correction, not a refund to the tenant). The amount may not
+  // exceed the balance, and a reason is required.
+  // Admin-surface API: platform administrators only.
+  rpc DebitOrganization(DebitOrganizationRequest) returns (DebitOrganizationResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/billing/organizations/{organization_id}/debit"
+      body: "*"
+    };
+  }
+
   // CheckFunds is the internal gateway gating check: may the
   // organization's requests proceed (AD4). No HTTP binding.
   rpc CheckFunds(CheckFundsRequest) returns (CheckFundsResponse);
@@ -467,6 +500,15 @@ message GetBalanceResponse {
   int64 monthly_quota_cents = 6;
   // used_this_cycle_cents is the postpaid usage within the cycle.
   int64 used_this_cycle_cents = 7;
+  // cycle_started_at is the UTC month start the cycle covers, unix
+  // seconds; 0 when the organization has no account.
+  int64 cycle_started_at = 8;
+  // spent_this_cycle_cents is the total spend within the cycle in both
+  // modes, so a member can see what the shared account consumed.
+  int64 spent_this_cycle_cents = 9;
+  // has_account is false when the organization has no billing account: the
+  // console then says so instead of showing zeros as a balance.
+  bool has_account = 10;
 }
 
 message ListBillsRequest {
@@ -611,6 +653,10 @@ message RechargeRequest {
   string idempotency_key = 3;
   // note is a free-text reference stored on the transaction.
   string note = 4;
+  // source labels where the credit came from. Empty defaults to
+  // "admin_manual"; only an operator-set source ("admin_manual",
+  // "admin_correction", "payment") is accepted here.
+  string source = 5;
 }
 
 message RechargeResponse {
@@ -627,6 +673,8 @@ message RefundRequest {
   string idempotency_key = 3;
   // note is a free-text reference stored on the transaction.
   string note = 4;
+  // source labels why the credit was returned; see RechargeRequest.
+  string source = 5;
 }
 
 message RefundResponse {
@@ -700,6 +748,19 @@ message Transaction {
   // reference is the charge_id for deductions, free text otherwise.
   string reference = 7;
   int64 created_at = 8;
+  // source is where the movement came from: "admin_manual" (an operator
+  // credited or debited the account), "admin_correction" (an accounting
+  // adjustment), "payment" (a paid payment intent), "auto_recharge",
+  // "opening" (the opening balance of a new account), "settlement" (a
+  // usage deduction) or "system". Empty on rows written before the field
+  // existed.
+  string source = 9;
+  // actor_user_id is the administrator who performed an operator-set
+  // movement; empty for automated ones.
+  string actor_user_id = 10;
+  // actor_display_name is that administrator's display name (else
+  // username), resolved for display.
+  string actor_display_name = 11;
 }
 
 message CheckFundsRequest {
@@ -743,6 +804,89 @@ message CheckFundsResponse {
   // supplied project, the amount the project-member limit is compared
   // against. 0 when no project-member scope was supplied.
   int64 project_member_spent_this_cycle_cents = 14;
+}
+
+// ---- Organization balances (platform administrator) ----
+
+message ListOrganizationBalancesRequest {
+  taas.common.v1.PageRequest page = 1;
+  // mode filters by "prepaid" or "postpaid"; empty lists both, plus the
+  // organizations that have no account yet.
+  string mode = 2;
+  // query narrows to organizations whose name or id contains the text.
+  string query = 3;
+}
+
+message ListOrganizationBalancesResponse {
+  taas.common.v1.Response response = 1;
+  repeated OrganizationBalance balances = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+  // currency is the platform billing currency, so the console can label a
+  // tenant that has no account yet.
+  string currency = 4;
+}
+
+// OrganizationBalance is one organization's money position.
+message OrganizationBalance {
+  string organization_id = 1;
+  string organization_name = 2;
+  // has_account is false when the organization has no billing account yet:
+  // a recharge then creates a prepaid one.
+  bool has_account = 3;
+  string account_id = 4;
+  // mode is "prepaid", "postpaid" or "" (no account).
+  string mode = 5;
+  int64 balance_cents = 6;
+  int64 monthly_quota_cents = 7;
+  int64 used_this_cycle_cents = 8;
+  int64 monthly_spend_limit_cents = 9;
+  int64 spent_this_cycle_cents = 10;
+  // remaining_cents is the spendable amount now: the prepaid balance, or
+  // the postpaid quota minus its usage (0 when unlimited).
+  int64 remaining_cents = 11;
+  int64 cycle_started_at = 12;
+  string currency = 13;
+  // organization_state is "active" or "disabled": a disabled tenant is
+  // listed but cannot be funded.
+  string organization_state = 14;
+}
+
+message RechargeOrganizationRequest {
+  string organization_id = 1;
+  // amount_cents is the credit, positive.
+  int64 amount_cents = 2;
+  // idempotency_key deduplicates retries; required, <= 128 chars.
+  string idempotency_key = 3;
+  // note is the free-text reason stored on the transaction.
+  string note = 4;
+  // source is "admin_manual" (default) or "admin_correction".
+  string source = 5;
+}
+
+message RechargeOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationBalance balance = 2;
+  Transaction transaction = 3;
+  // account_created reports that the recharge also created the account.
+  bool account_created = 4;
+}
+
+message DebitOrganizationRequest {
+  string organization_id = 1;
+  // amount_cents is the amount to take back, positive; it may not exceed
+  // the current balance.
+  int64 amount_cents = 2;
+  string idempotency_key = 3;
+  // note is required: a debit is a correction, so it must say why.
+  string note = 4;
+  // source is "admin_manual" (default) or "admin_correction".
+  string source = 5;
+}
+
+message DebitOrganizationResponse {
+  taas.common.v1.Response response = 1;
+  OrganizationBalance balance = 2;
+  Transaction transaction = 3;
 }
 
 // ---- Payments, invoices & auto-recharge (feature-14) ----
