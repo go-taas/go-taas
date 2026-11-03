@@ -419,9 +419,21 @@ func (s *Service) ListTransactions(ctx context.Context, req *billingv1.ListTrans
 	if err != nil {
 		return nil, err
 	}
+	// One label lookup for the whole page: a ledger names the administrators
+	// who moved the money, and a per-row resolution would multiply the query
+	// count by the page size.
+	actors := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.ActorUserID != nil && *row.ActorUserID != "" {
+			actors = append(actors, *row.ActorUserID)
+		}
+	}
+	labels := s.userLabels(ctx, actors)
 	txs := make([]*billingv1.Transaction, 0, len(rows))
 	for _, row := range rows {
-		txs = append(txs, summarizeTransaction(row))
+		tx := summarizeTransaction(row)
+		tx.ActorDisplayName = labels[tx.GetActorUserId()]
+		txs = append(txs, tx)
 	}
 	return &billingv1.ListTransactionsResponse{
 		Response:     okResponse(),
@@ -1036,4 +1048,18 @@ func (s *Service) SpentCents(ctx context.Context, orgID, projectID, ownerUserID 
 	}
 	cycleStart := monthStartOf(time.Now().UTC())
 	return repo.ScopedSpentCents(ctx, orgID, cycleStart, ownerUserID, projectID)
+}
+
+// userLabels resolves administrator ids to display labels in one call. A
+// failure (or an unwired resolver) yields no labels: the ledger still shows the
+// ids, which is diagnostic data, not something to fail a page over.
+func (s *Service) userLabels(ctx context.Context, userIDs []string) map[string]string {
+	if s.userLabelResolver == nil || len(userIDs) == 0 {
+		return nil
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, userIDs)
+	if err != nil {
+		return nil
+	}
+	return labels
 }

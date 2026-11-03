@@ -225,3 +225,33 @@ func TestListTransactionsForAPlatformAdministrator(t *testing.T) {
 	_, err = svc.ListTransactions(context.Background(), &billingv1.ListTransactionsRequest{AccountId: accountID})
 	assert.Equal(t, apierrors.CodeUnauthorized, apierrors.CodeOf(err))
 }
+
+// fakeLabelResolver is the UserLabelResolver seam for the ledger test.
+type fakeLabelResolver struct{ labels map[string]string }
+
+func (f fakeLabelResolver) ResolveUserLabels(context.Context, []string) (map[string]string, error) {
+	return f.labels, nil
+}
+
+// TestListTransactionsNamesTheAdministrator covers the ledger's readability
+// rule: the operator who moved the money is shown by name, resolved once for
+// the page rather than once per row.
+func TestListTransactionsNamesTheAdministrator(t *testing.T) {
+	svc := newOrgBalanceTestService(t)
+	adminCtx := billingPlatformAdminCtx()
+	svc.SetSessionUserResolver(fakeSessionUserResolver{user: "admin-1"})
+	svc.SetUserLabelResolver(fakeLabelResolver{labels: map[string]string{"admin-1": "Operator One"}})
+
+	resp, err := svc.RechargeOrganization(adminCtx, &billingv1.RechargeOrganizationRequest{
+		OrganizationId: "org-a", AmountCents: 1000, IdempotencyKey: "labels-1", Source: SourceAdminManual,
+	})
+	require.NoError(t, err)
+
+	ledger, err := svc.ListTransactions(adminCtx, &billingv1.ListTransactionsRequest{
+		AccountId: resp.GetBalance().GetAccountId(),
+	})
+	require.NoError(t, err)
+	require.Len(t, ledger.GetTransactions(), 1)
+	assert.Equal(t, "admin-1", ledger.GetTransactions()[0].GetActorUserId())
+	assert.Equal(t, "Operator One", ledger.GetTransactions()[0].GetActorDisplayName())
+}
