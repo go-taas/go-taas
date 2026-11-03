@@ -54,7 +54,7 @@ export default function OrganizationBudgetsPage() {
       return;
     }
     try {
-      setBalance(await api.get<BalanceResponse>('/api/v1/billing/balance', orgId));
+      setBalance(await api.get<BalanceResponse>('/api/v1/admin/billing/balance', orgId));
     } catch {
       // A tenant without an account is not an error: the page then says
       // "no account yet" and the projects still list their budgets.
