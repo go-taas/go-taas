@@ -150,3 +150,32 @@ func TestClientMetadataAnnotator(t *testing.T) {
 }
 
 var _ = auditv1.AuditEvent{}
+
+// A membership event stores "project/user"; the user name is resolved and
+// an account is labelled by its organization.
+func TestResourceLabelsCompositeAndLinked(t *testing.T) {
+	db := displayTestDB(t)
+	require.NoError(t, db.Exec(
+		`INSERT INTO organizations (id, display_name) VALUES ('org-1', 'Acme Labs')`).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO users (id, username, display_name) VALUES ('u-9', 'alice', 'Alice Chen')`).Error)
+	require.NoError(t, db.Exec(
+		`CREATE TABLE accounts (id TEXT PRIMARY KEY, organization_id TEXT)`).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO accounts (id, organization_id) VALUES ('acc-1', 'org-1')`).Error)
+
+	svc := NewForFVT(db)
+	repo, err := svc.repository()
+	require.NoError(t, err)
+
+	rows := []*AuditEvent{
+		{ID: "e1", OrganizationID: "org-1", ResourceType: "project_member",
+			ResourceID: "proj-1/u-9", Result: "success"},
+		{ID: "e2", OrganizationID: "org-1", ResourceType: "account",
+			ResourceID: "acc-1", Result: "success"},
+	}
+	events := svc.decorateEvents(context.Background(), repo, rows)
+	require.Len(t, events, 2)
+	assert.Equal(t, "Alice Chen", events[0].GetResourceDisplayName())
+	assert.Equal(t, "Acme Labs", events[1].GetResourceDisplayName())
+}

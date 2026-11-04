@@ -3,6 +3,7 @@ package audit
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	auditv1 "github.com/go-taas/go-taas/proto/taas/audit/v1"
 )
@@ -19,13 +20,16 @@ type displaySource struct {
 	// Every candidate is a human-readable label (a name, title or display
 	// name), never an id.
 	nameColumns []string
+	// linkColumn, when set, names a column on the resource row that points
+	// at an organization: the label is that organization's display name
+	// (an account is best identified by its tenant).
+	linkColumn string
 }
 
 // resourceDisplaySources maps an audit resource_type to the table that
 // owns it. Types without a human-readable label (session, runtime
-// setting, notification preferences, account, batch job, policy rows
-// keyed by a serial) are absent on purpose: the console then shows the
-// friendly type label plus the id.
+// setting, notification preferences, singleton policy rows) are absent on
+// purpose: the console then shows the friendly type label plus the id.
 var resourceDisplaySources = map[string]displaySource{
 	"organization":      {table: "organizations", idColumn: "id", nameColumns: []string{"display_name"}},
 	"user":              {table: "users", idColumn: "id", nameColumns: []string{"display_name", "username"}},
@@ -46,6 +50,8 @@ var resourceDisplaySources = map[string]displaySource{
 	"report":                 {table: "billing_reports", idColumn: "id", nameColumns: []string{"name"}},
 	"schedule":               {table: "billing_report_schedules", idColumn: "id", nameColumns: []string{"name"}},
 	"incident":               {table: "incidents", idColumn: "id", nameColumns: []string{"target_name"}},
+	"batch_job":              {table: "batch_jobs", idColumn: "batch_id", nameColumns: []string{"model"}},
+	"account":                {table: "accounts", idColumn: "id", linkColumn: "organization_id"},
 	"notification_threshold": {table: "notification_thresholds", idColumn: "threshold_id", nameColumns: []string{"name"}},
 	// A membership row's resource id is the member's user id.
 	"member":         {table: "users", idColumn: "id", nameColumns: []string{"display_name", "username"}},
@@ -95,31 +101,98 @@ func (r *Repository) resolveResourceLabels(ctx context.Context, rows []*AuditEve
 		return nil
 	}
 	out := map[string]string{}
-	for resourceType, ids := range idsByType {
+	for resourceType, originalIDs := range idsByType {
 		src := resourceDisplaySources[resourceType]
-		selects := make([]string, 0, len(src.nameColumns)+1)
-		selects = append(selects, src.idColumn+" AS row_id")
-		for i, col := range src.nameColumns {
-			selects = append(selects, fmt.Sprintf("%s AS name_%d", col, i))
+		// One event id may map to several lookup candidates (a membership
+		// row stores "project/user"), so keep the reverse mapping to put
+		// the resolved label back under the stored id.
+		originalsByCandidate := map[string][]string{}
+		for _, id := range originalIDs {
+			for _, candidate := range candidateIDs(resourceType, id) {
+				originalsByCandidate[candidate] = append(originalsByCandidate[candidate], id)
+			}
 		}
-		var scanned []map[string]any
+		candidates := make([]string, 0, len(originalsByCandidate))
+		for candidate := range originalsByCandidate {
+			candidates = append(candidates, candidate)
+		}
+		labels := r.labelsForSource(ctx, src, candidates)
+		for candidate, label := range labels {
+			for _, original := range originalsByCandidate[candidate] {
+				out[labelKey(resourceType, original)] = label
+			}
+		}
+	}
+	return out
+}
+
+// candidateIDs returns the ids to look up for one event's resource id.
+// A membership event stores "project/user", so the trailing user id is a
+// second candidate.
+func candidateIDs(resourceType, id string) []string {
+	if resourceType != "member" && resourceType != "project_member" {
+		return []string{id}
+	}
+	if _, rest, ok := strings.Cut(id, "/"); ok && rest != "" {
+		return []string{id, rest}
+	}
+	return []string{id}
+}
+
+// labelsForSource resolves the label of each id from one display source.
+func (r *Repository) labelsForSource(ctx context.Context, src displaySource, ids []string) map[string]string {
+	ids = uniqueNonEmpty(ids)
+	if len(ids) == 0 {
+		return nil
+	}
+	if src.linkColumn != "" {
+		// The label belongs to the linked row (an account's organization),
+		// so resolve the link first and the organization labels second.
+		var links []struct {
+			RowID string
+			Link  string
+		}
 		if err := r.db.DB(ctx).Table(src.table).
-			Select(selects).
-			Where(src.idColumn+" IN ?", uniqueNonEmpty(ids)).
-			Find(&scanned).Error; err != nil {
+			Select(src.idColumn+" AS row_id, "+src.linkColumn+" AS link").
+			Where(src.idColumn+" IN ?", ids).Find(&links).Error; err != nil {
+			return nil
+		}
+		linkValues := make([]string, 0, len(links))
+		for _, link := range links {
+			linkValues = append(linkValues, link.Link)
+		}
+		orgLabels := r.resolveOrgLabels(ctx, linkValues)
+		out := make(map[string]string, len(links))
+		for _, link := range links {
+			if label := orgLabels[link.Link]; label != "" {
+				out[link.RowID] = label
+			}
+		}
+		return out
+	}
+	selects := make([]string, 0, len(src.nameColumns)+1)
+	selects = append(selects, src.idColumn+" AS row_id")
+	for i, col := range src.nameColumns {
+		selects = append(selects, fmt.Sprintf("%s AS name_%d", col, i))
+	}
+	var scanned []map[string]any
+	if err := r.db.DB(ctx).Table(src.table).
+		Select(selects).
+		Where(src.idColumn+" IN ?", ids).
+		Find(&scanned).Error; err != nil {
+		return nil
+	}
+	out := make(map[string]string, len(scanned))
+	for _, row := range scanned {
+		id, _ := row["row_id"].(string)
+		if id == "" {
 			continue
 		}
-		for _, row := range scanned {
-			id, _ := row["row_id"].(string)
-			if id == "" {
-				continue
-			}
-			for i := range src.nameColumns {
-				name, ok := row[fmt.Sprintf("name_%d", i)].(string)
-				if ok && name != "" {
-					out[labelKey(resourceType, id)] = name
-					break
-				}
+		for i := range src.nameColumns {
+			name, ok := row[fmt.Sprintf("name_%d", i)].(string)
+			if ok && name != "" {
+				out[id] = name
+				break
 			}
 		}
 	}
