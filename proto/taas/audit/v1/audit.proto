@@ -85,6 +85,13 @@ message AuditEvent {
   string user_agent = 10;
   string metadata = 11; // JSON string of the metadata object
   int64 created_at = 12; // unix seconds
+  // organization_display_name is the organization's display name,
+  // resolved for display; empty for platform-level events.
+  string organization_display_name = 14;
+  // resource_display_name is the resource's display name (e.g. the
+  // model or webhook name), resolved for display when the resource type
+  // is known; empty otherwise.
+  string resource_display_name = 15;
 }
 
 message RecordAuditEventRequest {

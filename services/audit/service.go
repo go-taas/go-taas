@@ -369,6 +369,7 @@ func (s *Service) RecordAuditEvent(ctx context.Context, req *auditv1.RecordAudit
 		UserAgent:      req.GetUserAgent(),
 		Metadata:       req.GetMetadata(),
 	}
+	enrichClientInfo(ctx, ev)
 	id, err := repo.InsertAuditEvent(ctx, ev)
 	if err != nil {
 		return nil, err
@@ -426,13 +427,7 @@ func (s *Service) ListAuditEvents(ctx context.Context, req *auditv1.ListAuditEve
 	if err != nil {
 		return nil, err
 	}
-	labels := s.actorLabels(ctx, rows)
-	events := make([]*auditv1.AuditEvent, 0, len(rows))
-	for _, row := range rows {
-		ev := summarizeEvent(row)
-		ev.ActorDisplayName = labels[row.ActorUserID]
-		events = append(events, ev)
-	}
+	events := s.decorateEvents(ctx, repo, rows)
 	return &auditv1.ListAuditEventsResponse{
 		Response:    okResponse(),
 		AuditEvents: events,
@@ -458,9 +453,10 @@ func (s *Service) GetAuditEvent(ctx context.Context, req *auditv1.GetAuditEventR
 	if err != nil {
 		return nil, err
 	}
+	decorated := s.decorateEvents(ctx, repo, []*AuditEvent{row})
 	return &auditv1.GetAuditEventResponse{
 		Response:   okResponse(),
-		AuditEvent: summarizeEvent(row),
+		AuditEvent: decorated[0],
 	}, nil
 }
 
@@ -550,13 +546,7 @@ func (s *Service) ListMyActivity(ctx context.Context, req *auditv1.ListMyActivit
 	if err != nil {
 		return nil, err
 	}
-	labels := s.actorLabels(ctx, rows)
-	events := make([]*auditv1.AuditEvent, 0, len(rows))
-	for _, row := range rows {
-		ev := summarizeEvent(row)
-		ev.ActorDisplayName = labels[row.ActorUserID]
-		events = append(events, ev)
-	}
+	events := s.decorateEvents(ctx, repo, rows)
 	return &auditv1.ListMyActivityResponse{
 		Response:    okResponse(),
 		AuditEvents: events,

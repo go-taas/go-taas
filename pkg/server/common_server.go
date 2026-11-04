@@ -217,6 +217,7 @@ func (s *commonServer) Init() {
 			runtime.WithErrorHandler(gatewayErrorHandler),
 			runtime.WithIncomingHeaderMatcher(incomingHeaderMatcher),
 			runtime.WithMetadata(PathMetadataAnnotator),
+			runtime.WithMetadata(ClientMetadataAnnotator),
 		)
 		s.initGateway()
 		s.registerUploadRoute()

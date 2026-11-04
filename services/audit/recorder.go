@@ -23,9 +23,10 @@ func NewRecorder(repo *Repository) *Recorder {
 // a write failure is logged and skipped (AC2). The caller invokes it
 // after the mutation succeeds and ignores the result.
 func (r *Recorder) Record(ctx context.Context, ev *AuditEvent) {
-	if r == nil || r.repo == nil {
+	if r == nil || r.repo == nil || ev == nil {
 		return
 	}
+	enrichClientInfo(ctx, ev)
 	if _, err := r.repo.InsertAuditEvent(ctx, ev); err != nil {
 		logger.S().Warnw("audit: recorder write failed (best-effort, mutation already committed)",
 			"action", ev.Action, "resource_type", ev.ResourceType, "resource_id", ev.ResourceID, "err", err)
@@ -38,9 +39,10 @@ func (r *Recorder) Record(ctx context.Context, ev *AuditEvent) {
 // the mutation it accompanies. Unlike Record, a failure is returned so
 // the caller can roll the whole unit of work back.
 func (r *Recorder) RecordInTx(ctx context.Context, ev *AuditEvent) error {
-	if r == nil || r.repo == nil {
+	if r == nil || r.repo == nil || ev == nil {
 		return nil
 	}
+	enrichClientInfo(ctx, ev)
 	_, err := r.repo.InsertAuditEvent(ctx, ev)
 	return err
 }

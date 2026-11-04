@@ -18,6 +18,7 @@ import (
 	"github.com/stretchr/testify/require"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/metadata"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
@@ -216,6 +217,47 @@ func TestFVTAuditLogging(t *testing.T) {
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeAuditExportInvalid, ae.Code)
+}
+
+// TestFVTAuditDisplayLabels verifies the console-facing enrichment: the
+// organization shows its display name, the resource shows its name, and
+// the caller IP arrives from the gateway metadata even when the recorder
+// was not given one.
+func TestFVTAuditDisplayLabels(t *testing.T) {
+	env := newAuditEnv(t)
+	require.NoError(t, env.db.Exec(
+		`UPDATE organizations SET display_name = 'Acme Labs' WHERE id = 'org-fvt'`).Error)
+	require.NoError(t, env.db.Exec(
+		`CREATE TABLE IF NOT EXISTS api_keys (id TEXT PRIMARY KEY, name TEXT)`).Error)
+	require.NoError(t, env.db.Exec(
+		`INSERT INTO api_keys (id, name) VALUES ('key-9', 'CI pipeline')`).Error)
+
+	// The recorder stamps the IP and user agent from the gateway
+	// annotation, which is what the console was missing.
+	ctx := metadata.NewIncomingContext(context.Background(), metadata.Pairs(
+		server.ClientIPMetadataKey, "198.51.100.7",
+		server.ClientUserAgentMetadataKey, "fvt-browser",
+	))
+	rec := audit.NewRecorder(audit.NewRepository(env.db))
+	rec.Record(ctx, &audit.AuditEvent{
+		OrganizationID: "org-fvt",
+		ActorUserID:    "u-1",
+		ActorType:      "user",
+		Action:         "api_key.revoke",
+		ResourceType:   "api_key",
+		ResourceID:     "key-9",
+		Result:         "success",
+	})
+
+	code, body := env.call(t, http.MethodGet, "/api/v1/admin/audit/events", nil, "org-fvt")
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	events, _ := body["auditEvents"].([]any)
+	require.NotEmpty(t, events)
+	first, _ := events[0].(map[string]any)
+	assert.Equal(t, "Acme Labs", first["organizationDisplayName"])
+	assert.Equal(t, "CI pipeline", first["resourceDisplayName"])
+	assert.Equal(t, "198.51.100.7", first["ipAddress"])
+	assert.Equal(t, "fvt-browser", first["userAgent"])
 }
 
 // TestFVTAuditEndUserScoping walks AC7: ListMyActivity/ExportMyActivity
