@@ -1,3 +1,10 @@
+# [1.106.0](https://github.com/go-taas/go-taas/compare/v1.105.1...v1.106.0) (2026-11-04)
+
+
+### Features
+
+* **auth:** challenge platform-admin logins with an image CAPTCHA ([f5cca6c](https://github.com/go-taas/go-taas/commit/f5cca6ca93381df87943007077076e17828bc881))
+
 ## [1.105.1](https://github.com/go-taas/go-taas/compare/v1.105.0...v1.105.1) (2026-11-04)
 
 
