@@ -1,3 +1,11 @@
+## [1.107.1](https://github.com/go-taas/go-taas/compare/v1.107.0...v1.107.1) (2026-11-04)
+
+
+### Bug Fixes
+
+* **audit:** resolve membership and account resource labels ([03fbea9](https://github.com/go-taas/go-taas/commit/03fbea91df82a5e1df4f96c0f07e19813216d0a2))
+* **audit:** stop sending composite membership ids to the uuid lookup ([93dfbf0](https://github.com/go-taas/go-taas/commit/93dfbf08460e0b5f11bf932ac03751b19b3d97f7))
+
 # [1.107.0](https://github.com/go-taas/go-taas/compare/v1.106.0...v1.107.0) (2026-11-04)
 
 
