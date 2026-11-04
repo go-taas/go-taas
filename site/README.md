@@ -9,10 +9,11 @@ deployed to [GitHub Pages](https://pages.github.com/).
 site/
 ├── index.html       # landing page (English is the default inline content)
 ├── docs.html        # documentation browser
-├── styles.css       # landing page styling, brand palette from assets/brand/README.md
+├── styles.css       # landing page styling: brand palette, animated aurora/grid background,
+│                    #   glass surfaces and motion (disabled under prefers-reduced-motion)
 ├── docs.css         # documentation browser styling (reuses the tokens above)
 ├── i18n.js          # en / zh-CN translation dictionary
-├── main.js          # language detection, switching, persistence
+├── main.js          # language detection/switching/persistence, scroll reveal, card spotlight
 ├── docs.js          # documentation browser (routing, search, Markdown/Mermaid rendering)
 ├── scripts/
 │   ├── build-docs-manifest.mjs   # indexes site/docs/** into site/docs/manifest.json

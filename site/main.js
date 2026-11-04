@@ -111,12 +111,74 @@
     applyLang(state.lang === "zh-CN" ? "en" : "zh-CN");
   }
 
+  // Scroll-in reveal: elements marked data-reveal fade/slide in once, with a
+  // small stagger between siblings so grids cascade instead of popping.
+  function initReveal() {
+    var nodes = document.querySelectorAll("[data-reveal]");
+    if (!nodes.length) return;
+
+    if (!("IntersectionObserver" in global)) {
+      for (var i = 0; i < nodes.length; i++) nodes[i].classList.add("is-visible");
+      return;
+    }
+
+    var observer = new IntersectionObserver(
+      function (entries) {
+        for (var i = 0; i < entries.length; i++) {
+          var entry = entries[i];
+          if (!entry.isIntersecting) continue;
+
+          var el = entry.target;
+          var delay = 0;
+          var parent = el.parentElement;
+          if (parent) {
+            var index = 0;
+            for (var c = 0; c < parent.children.length; c++) {
+              var sib = parent.children[c];
+              if (sib === el) break;
+              if (sib.hasAttribute && sib.hasAttribute("data-reveal")) index++;
+            }
+            // Cap the stagger so a long grid never feels sluggish.
+            delay = Math.min(index * 55, 320);
+          }
+
+          el.style.transitionDelay = delay + "ms";
+          el.classList.add("is-visible");
+          observer.unobserve(el);
+        }
+      },
+      { rootMargin: "0px 0px -8% 0px", threshold: 0.08 }
+    );
+
+    for (var j = 0; j < nodes.length; j++) observer.observe(nodes[j]);
+  }
+
+  // Cursor spotlight on feature cards (CSS reads --mx/--my). Only pointer
+  // devices: touch has no hover, so the listener would add nothing.
+  function initSpotlight() {
+    if (global.matchMedia && !global.matchMedia("(hover: hover)").matches) return;
+
+    var cards = document.querySelectorAll(".card");
+    for (var i = 0; i < cards.length; i++) {
+      (function (card) {
+        card.addEventListener("pointermove", function (event) {
+          var rect = card.getBoundingClientRect();
+          card.style.setProperty("--mx", event.clientX - rect.left + "px");
+          card.style.setProperty("--my", event.clientY - rect.top + "px");
+        });
+      })(cards[i]);
+    }
+  }
+
   function init() {
     applyLang(detectLang());
 
     if (toggleBtn) {
       toggleBtn.addEventListener("click", toggleLang);
     }
+
+    initReveal();
+    initSpotlight();
 
     // Keep the language in sync when the URL hash changes (e.g. back navigation).
     global.addEventListener("hashchange", function () {

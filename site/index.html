@@ -18,6 +18,25 @@
   <meta name="twitter:image" content="https://go-taas.com/assets/avatar-512.png" />
   <link rel="icon" type="image/svg+xml" href="assets/logo.svg" />
   <link rel="stylesheet" href="styles.css" />
+  <script>
+    // Mark the document as script-enabled so the reveal styles apply (no
+    // flash of hidden content). A load-time failsafe un-hides anything the
+    // reveal observer never reached, so content is never lost if the script
+    // fails to initialize.
+    document.documentElement.classList.add("js");
+    window.addEventListener("load", function () {
+      setTimeout(function () {
+        var nodes = document.querySelectorAll("[data-reveal]");
+        for (var i = 0; i < nodes.length; i++) {
+          var r = nodes[i].getBoundingClientRect();
+          if (r.top < window.innerHeight && r.bottom > 0 &&
+              !nodes[i].classList.contains("is-visible")) {
+            nodes[i].classList.add("is-visible");
+          }
+        }
+      }, 1500);
+    });
+  </script>
 </head>
 <body>
   <div class="bg-decor" aria-hidden="true"></div>
@@ -67,6 +86,27 @@
           <a class="btn btn-primary" href="#quickstart" data-i18n="hero.cta1">Get Started</a>
           <a class="btn btn-ghost" href="https://github.com/go-taas/go-taas" target="_blank" rel="noopener" data-i18n="hero.cta2">View on GitHub</a>
         </div>
+
+        <!-- Live-looking API exchange: the platform's core loop in one card. -->
+        <div class="hero-visual" aria-hidden="true">
+          <div class="terminal">
+            <div class="terminal-bar">
+              <span class="t-dot t-red"></span>
+              <span class="t-dot t-amber"></span>
+              <span class="t-dot t-green"></span>
+              <span class="terminal-title">openai-compatible · POST /v1/chat/completions</span>
+            </div>
+            <div class="terminal-body">
+              <div class="t-line"><span class="t-prompt">$</span> curl https://api.go-taas.com/v1/chat/completions \</div>
+              <div class="t-line t-indent">-H <span class="t-str">"Authorization: Bearer sk-…"</span> \</div>
+              <div class="t-line t-indent">-d <span class="t-str">'{"model":"qwen2.5-7b","stream":true}'</span></div>
+              <div class="t-line t-gap t-ok">200 OK · streamed 128 tokens</div>
+              <div class="t-line t-ok">metered 1,204 tokens · settled per API key</div>
+              <div class="t-line"><span class="t-prompt">$</span> <span class="t-caret"></span></div>
+            </div>
+          </div>
+        </div>
+
         <div class="hero-meta">
           <a href="https://github.com/go-taas/go-taas/stargazers" target="_blank" rel="noopener"><img alt="GitHub stars" src="https://img.shields.io/github/stars/go-taas/go-taas?style=flat-square&color=%23007F86" /></a>
           <a href="https://github.com/go-taas/go-taas/releases" target="_blank" rel="noopener"><img alt="Latest release" src="https://img.shields.io/github/v/release/go-taas/go-taas?style=flat-square&color=%23F06445" /></a>
@@ -78,173 +118,173 @@
     <!-- Features -->
     <section id="features" class="section">
       <div class="container">
-        <div class="section-head">
+        <div class="section-head" data-reveal>
           <h2 data-i18n="features.title">Features</h2>
           <p data-i18n="features.subtitle">Everything an AI platform team needs to serve, meter, and bill LLM traffic.</p>
         </div>
         <div class="grid features-grid">
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 9h6v6H9z"/><path d="M9 1v3M15 1v3M9 20v3M15 20v3M1 9h3M1 15h3M20 9h3M20 15h3"/></svg>
             </div>
             <h3 data-i18n="features.f1.t">Heterogeneous Compute</h3>
             <p data-i18n="features.f1.d">Unified management of multiple heterogeneous accelerator cards (vendor-agnostic). Node labeling, Device Plugins, and driver deployment are handled by each vendor's GPU Operator, with a live accelerator inventory and a model × engine × card-type compatibility matrix.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>
             </div>
             <h3 data-i18n="features.f2.t">Control / Data Plane Split</h3>
             <p data-i18n="features.f2.d">Management APIs and inference APIs are served by separate gateways, so platform operations stay available while the inference path scales, upgrades, or degrades.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h7l-1 8 10-12h-7l1-8Z"/></svg>
             </div>
             <h3 data-i18n="features.f3.t">One-click Model Deployment</h3>
             <p data-i18n="features.f3.d">Deploy models from the console or API. The platform provisions inference workloads through a message queue and a Kubernetes controller — no hand-written YAML.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
             </div>
             <h3 data-i18n="features.f4.t">Inference Image Management</h3>
             <p data-i18n="features.f4.d">Register, version, and map engine images across the supported accelerator cards, with node-level pre-pulling to shorten cold starts.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 18h6"/><path d="M8 18h6"/><path d="M16 12h6"/><path d="M8 12h6"/><path d="M16 6h6"/><path d="M8 6h6"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
             </div>
             <h3 data-i18n="features.f5.t">OpenAI-compatible API</h3>
             <p data-i18n="features.f5.d">/v1/chat/completions, /v1/completions, and /v1/embeddings served by an Envoy-based gateway. Auth, metering, and routing run in Wasm plugins — inference traffic never passes through business processes.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m7 15 4-6 4 3 5-8"/></svg>
             </div>
             <h3 data-i18n="features.f6.t">Token Metering &amp; Billing</h3>
             <p data-i18n="features.f6.d">Token usage (prompt / completion / cached / reasoning) is metered at the gateway, recorded as tamper-proof vouchers, and settled asynchronously per API Key.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0l-7.2-7.2A2 2 0 0 1 3 12V5a2 2 0 0 1 2-2h7a2 2 0 0 1 1.4.6l7.2 7.2a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
             </div>
             <h3 data-i18n="features.f7.t">Flexible Pricing</h3>
             <p data-i18n="features.f7.d">A model × card-type price matrix with separate input/output token rates, tiered pricing, and packages; balance (prepaid) and quota (postpaid) account modes.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M24 0v24H0V0Z" fill="none" stroke="none"/><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
             </div>
             <h3 data-i18n="features.f8.t">Multi-tenancy</h3>
             <p data-i18n="features.f8.d">Organization/project isolation with full API Key lifecycle management. Keys are stored only as salted hashes.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             </div>
             <h3 data-i18n="features.f9.t">SSO Federation</h3>
             <p data-i18n="features.f9.d">Pluggable identity providers — LDAP/LDAPS, OIDC/OAuth 2.0 (GitHub, Google, GitLab), SAML 2.0, and WeChat — with account binding, JIT provisioning, and attribute-to-role mapping.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 3v12"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="6" r="3"/><path d="M18 9v3a3 3 0 0 1-3 3H9"/></svg>
             </div>
             <h3 data-i18n="features.f10.t">Routing &amp; Failover</h3>
             <p data-i18n="features.f10.d">Ordered routing policies over healthy deployments with bounded same-model failover and retryable-failure categories — no silent model or version substitution.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14v4M12 10v8M17 6v12"/></svg>
             </div>
             <h3 data-i18n="features.f11.t">Autoscaling</h3>
             <p data-i18n="features.f11.d">Inference autoscaling with scale-to-zero, driven by live load signals so idle models cost nothing and busy ones scale out.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
             </div>
             <h3 data-i18n="features.f12.t">Observability &amp; Tracing</h3>
             <p data-i18n="features.f12.d">Per-model latency / throughput / error dashboards, per-service CPU / memory / GPU metrics, and end-to-end request tracing with a TTFT / generation / total breakdown.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
             </div>
             <h3 data-i18n="features.f13.t">Prompt Tooling</h3>
             <p data-i18n="features.f13.d">A versioned prompt library, an interactive playground with side-by-side model comparison, and deterministic prompt evaluation for regression testing.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
             </div>
             <h3 data-i18n="features.f14.t">Batch Inference</h3>
             <p data-i18n="features.f14.d">Submit a JSONL batch of requests, process it asynchronously at a discounted rate, monitor progress, and download result / error files.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="7.5" cy="15.5" r="4.5"/><path d="m11 12 9-9M17 6l3 3M14 9l2 2"/></svg>
             </div>
             <h3 data-i18n="features.f15.t">API Key Scoping &amp; Limits</h3>
             <p data-i18n="features.f15.d">Per-key model scoping, request-rate limits, and org spend limits, so a leaked or over-broad key can never reach models it was not granted.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>
             </div>
             <h3 data-i18n="features.f16.t">Data Governance</h3>
             <p data-i18n="features.f16.d">Audit logging and activity export, deployment history &amp; audit, and GDPR-style data export of usage, billing, and request logs as JSON / CSV.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="4"/></svg>
             </div>
             <h3 data-i18n="features.f17.t">Distributed Inference Runtime</h3>
             <p data-i18n="features.f17.d">Choose the platform serving scheme — plain Kubernetes Deployments (default) or an AIBrix-managed distributed runtime — and inspect runtime component health and the models registered with the runtime.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M4 12h16M4 17h16"/><circle cx="8" cy="7" r="1.6"/><circle cx="16" cy="12" r="1.6"/><circle cx="10" cy="17" r="1.6"/></svg>
             </div>
             <h3 data-i18n="features.f18.t">External Model Providers</h3>
             <p data-i18n="features.f18.d">Register third-party providers (DeepSeek / OpenAI / OpenAI-compatible), probe connectivity with five states (ok / unauthorized / unreachable / error / unknown), curate upstream models, and publish them into the catalog — consumed through the same metered gateway.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h6l3 6 3-6h6"/><path d="M3 18h6l3-6 3 6h6"/></svg>
             </div>
             <h3 data-i18n="features.f19.t">Intelligent Model Routing</h3>
             <p data-i18n="features.f19.d">Routing groups expose virtual model names (e.g. auto-chat) over an ordered candidate list of real models, with weighted, cost-priority, and latency-priority strategies plus keyword intent rules — and a logged decision trail.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v20"/><path d="M17 6.5a4 4 0 0 0-4-2.5h-2a3.5 3.5 0 0 0 0 7h3a3.5 3.5 0 0 1 0 7H10a4 4 0 0 1-4-2.6"/></svg>
             </div>
             <h3 data-i18n="features.f20.t">Cost Optimization</h3>
             <p data-i18n="features.f20.d">A deterministic, rule-based engine turns settled usage, price, and deployment data into ranked, quantified, dismissible savings recommendations, each linking straight to the page where the operator can act.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V8M10 20V4M16 20v-8M22 20V10"/></svg>
             </div>
             <h3 data-i18n="features.f21.t">Service Quotas</h3>
             <p data-i18n="features.f21.d">Per-organization quotas on concurrent requests, inference services, batch jobs per day, and max output tokens per request — with tier presets, fail-closed enforcement, and an audited change history.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><path d="M10 6.5h4M6.5 10v4M17.5 10v4M10 17.5h4"/></svg>
             </div>
             <h3 data-i18n="features.f22.t">Multi-cluster Management</h3>
             <p data-i18n="features.f22.d">Register and manage inference clusters, view cluster health and workload placement, and route model deployments across clusters.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 17v3M8 20h8"/><path d="M7.5 10.5h3M13.5 10.5h3M7.5 13.5h9"/></svg>
             </div>
             <h3 data-i18n="features.f23.t">vGPU Slicing Pools</h3>
             <p data-i18n="features.f23.d">HAMI-based vGPU slicing: label nodes into slicing pools, define slice templates, and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement.</p>
           </article>
-          <article class="card">
+          <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0-6 6c0 2.5 1.5 4 2.5 5.5.6.9.5 1.5.5 2.5h6c0-1-.1-1.6.5-2.5C16.5 13 18 11.5 18 9a6 6 0 0 0-6-6z"/><path d="M9.5 21h5"/><path d="M12 17v4"/></svg>
             </div>
@@ -258,12 +298,12 @@
     <!-- Architecture -->
     <section id="architecture" class="section section-alt">
       <div class="container">
-        <div class="section-head">
+        <div class="section-head" data-reveal>
           <h2 data-i18n="arch.title">Architecture</h2>
           <p data-i18n="arch.subtitle">Control plane and data plane, separated by audience and network.</p>
         </div>
         <div class="arch-layout">
-          <div class="arch mid">
+          <div class="arch mid" data-reveal>
             <div class="alayer">
               <div class="alabel"><span class="ln">LAYER 01</span><strong data-i18n="arch.l1.name">Access layer</strong></div>
               <div class="abody"><div class="arow">
@@ -320,7 +360,7 @@
               </div>
             </div>
           </div>
-          <ul class="arch-points">
+          <ul class="arch-points" data-reveal>
             <li data-i18n="arch.p1">Traffic is split by audience: administrators enter through the Control Gateway (HTTP, generated from the Protobuf contract by grpc-gateway), while agents and SDKs call the Inference Gateway (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS).</li>
             <li data-i18n="arch.p2">The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.</li>
             <li data-i18n="arch.p3">All 26 microservice gRPC servers run in a single Deployment — auth, tenancy, account, model, image, infer, runtime, routing, provider, metering, billing, batch, audit, webhook, notification, observability, tracing, resourcemetrics, accelerator, cluster, optimization, prompt, evaluation, fault, vgpu, and docs — handing work to the Controller through a message queue (RabbitMQ).</li>
@@ -336,11 +376,11 @@
     <!-- Quick Start -->
     <section id="quickstart" class="section">
       <div class="container">
-        <div class="section-head">
+        <div class="section-head" data-reveal>
           <h2 data-i18n="qs.title">Quick Start</h2>
           <p data-i18n="qs.subtitle">One Helm chart deploys the whole stack on Kubernetes — control plane, consoles, and dependencies.</p>
         </div>
-        <div class="qs-grid">
+        <div class="qs-grid" data-reveal>
           <div class="qs-steps">
             <div class="qs-step">
               <div class="qs-num">1</div>
@@ -392,11 +432,11 @@ helm uninstall taas # remove the release</code></pre>
     <!-- Usage -->
     <section id="usage" class="section section-alt">
       <div class="container">
-        <div class="section-head">
+        <div class="section-head" data-reveal>
           <h2 data-i18n="usage.title">Usage</h2>
           <p data-i18n="usage.subtitle">Any OpenAI SDK works out of the box — just point it at your TaaS host.</p>
         </div>
-        <div class="usage-grid">
+        <div class="usage-grid" data-reveal>
           <div>
             <h3 class="usage-lang">Python · OpenAI SDK</h3>
             <pre class="code-block"><code>from openai import OpenAI
@@ -428,7 +468,7 @@ print(resp.choices[0].message.content)</code></pre>
 
     <!-- CTA -->
     <section class="section cta-section">
-      <div class="container cta-inner">
+      <div class="container cta-inner" data-reveal>
         <h2 data-i18n="cta.title">Build the open token infrastructure with us</h2>
         <p data-i18n="cta.subtitle">Contributions of all kinds are welcome — code, documentation, bug reports, and feature ideas.</p>
         <div class="hero-cta">
@@ -440,7 +480,7 @@ print(resp.choices[0].message.content)</code></pre>
 
     <!-- Built with & Acknowledgements -->
     <section class="section built-section">
-      <div class="container built-inner">
+      <div class="container built-inner" data-reveal>
         <p class="built-line" data-i18n="footer.made">Built with Go and Kubernetes</p>
         <p class="built-ack" data-i18n-html="footer.ack">Standing on the shoulders of the <a href="https://kubernetes.io" target="_blank" rel="noopener">Kubernetes</a>, <a href="https://github.com/vllm-project/aibrix" target="_blank" rel="noopener">AIBrix</a>, <a href="https://github.com/volcano-sh/volcano" target="_blank" rel="noopener">Volcano</a>, and <a href="https://github.com/Project-HAMi/HAMi" target="_blank" rel="noopener">HAMi</a> communities.</p>
       </div>
