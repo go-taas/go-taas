@@ -1,3 +1,10 @@
+# [1.108.0](https://github.com/go-taas/go-taas/compare/v1.107.1...v1.108.0) (2026-11-04)
+
+
+### Features
+
+* **site:** dynamic, tech-forward landing page ([fa49c74](https://github.com/go-taas/go-taas/commit/fa49c74351da688a09a5045c72b1cde0272eaa5d))
+
 ## [1.107.1](https://github.com/go-taas/go-taas/compare/v1.107.0...v1.107.1) (2026-11-04)
 
 
