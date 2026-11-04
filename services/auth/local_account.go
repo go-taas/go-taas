@@ -89,6 +89,16 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 	if username == "" || password == "" {
 		return nil, apierrors.New(apierrors.CodeInvalidCredentials)
 	}
+	// The CAPTCHA is checked before the credential comparison, and only
+	// for platform administrators: a brute-force attempt against the
+	// admin account must solve a fresh puzzle each time, and the answer
+	// is burned on any attempt (right or wrong). Ordinary accounts are
+	// protected by the email verification code instead.
+	if s.captchaRequiredForUsername(ctx, username) {
+		if err := s.verifyCaptcha(ctx, req.GetCaptchaId(), req.GetCaptchaCode()); err != nil {
+			return nil, err
+		}
+	}
 	repo, err := s.ssoRepository()
 	if err != nil {
 		return nil, err

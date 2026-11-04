@@ -444,6 +444,9 @@ export const zh: Record<string, string> = {
   'login.errorBadCredentials': '用户名或密码错误。',
   'login.errorNoAccount': '此身份未关联 go-taas 账户，请联系组织管理员获取邀请。',
   'login.errorIncomplete': '登录未完成，请重试。',
+  'login.captcha': '图片验证码',
+  'login.refreshCaptcha': '换一张',
+  'login.errorCaptcha': '图片验证码错误或已过期，请重试。',
 
   // ---- Register ----
   'register.title': '注册本地账号',

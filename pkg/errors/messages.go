@@ -53,6 +53,7 @@ var messages = map[Code]string{
 	CodeAPIKeyModelNotAllowed: "model not allowed for this api key",
 	CodeOrganizationInUse:     "organization still has api keys or inference services",
 	CodeOrganizationProtected: "the platform organization cannot be deleted",
+	CodeCaptchaInvalid:        "captcha invalid or expired",
 
 	// model
 	CodeModelNotFound:        "model not found",

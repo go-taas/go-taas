@@ -28,6 +28,12 @@ interface SendCodeResponse {
   resendAfterSeconds?: string;
 }
 
+interface CaptchaResponse {
+  captchaId?: string;
+  image?: string;
+  expiresAt?: string;
+}
+
 // The localStorage key for the login resend cooldown deadline.
 const COOLDOWN_KEY = 'go-taas.login.cooldown-until';
 
@@ -44,8 +50,32 @@ export default function UserLoginPage() {
   const [submitting, setSubmitting] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [captchaId, setCaptchaId] = useState('');
+  const [captchaImage, setCaptchaImage] = useState('');
+  const [captchaCode, setCaptchaCode] = useState('');
   // 1-minute resend countdown, persisted to localStorage.
   const cooldown = useResendCooldown(COOLDOWN_KEY);
+
+  // loadCaptcha asks the server whether a CAPTCHA is needed for the typed
+  // account and fetches a fresh puzzle. Only platform administrators are
+  // challenged; an empty image means the field stays hidden.
+  const loadCaptcha = async (account: string) => {
+    try {
+      const data = await api.get<CaptchaResponse>(
+        `/api/v1/auth/captcha?username=${encodeURIComponent(account.trim())}`,
+        '',
+      );
+      setCaptchaId(data.captchaId || '');
+      setCaptchaImage(data.image || '');
+      setCaptchaCode('');
+    } catch {
+      setCaptchaId('');
+      setCaptchaImage('');
+    }
+  };
+
+  // refreshCaptcha reloads the puzzle for the account already typed.
+  const refreshCaptcha = () => loadCaptcha(username);
 
   useEffect(() => {
     api
@@ -54,6 +84,17 @@ export default function UserLoginPage() {
       .catch((e) => setError(e instanceof Error ? e.message : 'failed to load providers'))
       .finally(() => setLoading(false));
   }, [api]);
+
+  // The challenge depends on the account: switching between an ordinary
+  // user and an administrator adds or removes the CAPTCHA field. The
+  // debounce keeps a typed username from issuing one request per keystroke.
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      void loadCaptcha(username);
+    }, 350);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [username, api]);
 
   const signIn = async (providerId: string, type: string, passwordLogin: boolean) => {
     // OIDC/LDAP providers that support the password grant → the TaaS
@@ -99,7 +140,10 @@ export default function UserLoginPage() {
   // the email and code fields and skip their validation for it.
   const requiresEmailCode = username.trim().toLowerCase() !== 'admin';
   const canLogin =
-    !!username.trim() && !!password && (requiresEmailCode ? !!email.trim() && !!emailCode.trim() : true);
+    !!username.trim() &&
+    !!password &&
+    (requiresEmailCode ? !!email.trim() && !!emailCode.trim() : true) &&
+    (!captchaImage || !!captchaCode.trim());
 
   const localLogin = async () => {
     if (!canLogin || submitting) return;
@@ -110,6 +154,8 @@ export default function UserLoginPage() {
         username: username.trim(),
         password,
         emailCode: requiresEmailCode ? emailCode.trim() : '',
+        captchaId,
+        captchaCode: captchaCode.trim(),
       });
       const token = data.sessionToken;
       const realm = (data.realm as Realm) || 'user';
@@ -121,7 +167,14 @@ export default function UserLoginPage() {
       navigate(realmHome(realm));
     } catch (e) {
       const code = (e as { code?: number }).code;
-      setError(code === 10002 ? t('login.errorBadCredentials') : t('login.errorIncomplete'));
+      if (code === 10043) {
+        setError(t('login.errorCaptcha'));
+      } else {
+        setError(code === 10002 ? t('login.errorBadCredentials') : t('login.errorIncomplete'));
+      }
+      // Every attempt consumes the puzzle (right or wrong), so a retry
+      // always needs a fresh image.
+      void refreshCaptcha();
     } finally {
       setSubmitting(false);
     }
@@ -216,6 +269,36 @@ export default function UserLoginPage() {
             </button>
           </div>
         </div>
+        {captchaImage && (
+          <div className="field">
+            <label htmlFor="login-captcha">{t('login.captcha')}</label>
+            <div className="captcha-row">
+              <input
+                id="login-captcha"
+                data-testid="login-captcha"
+                value={captchaCode}
+                onChange={(e) => setCaptchaCode(e.target.value)}
+                autoComplete="off"
+                inputMode="text"
+              />
+              <img
+                src={captchaImage}
+                alt={t('login.captcha')}
+                className="captcha-image"
+                data-testid="login-captcha-image"
+                onClick={() => void refreshCaptcha()}
+              />
+              <button
+                type="button"
+                className="secondary"
+                data-testid="login-captcha-refresh"
+                onClick={() => void refreshCaptcha()}
+              >
+                {t('login.refreshCaptcha')}
+              </button>
+            </div>
+          </div>
+        )}
         <button
           type="submit"
           data-testid="login-local-submit"

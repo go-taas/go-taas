@@ -45,6 +45,13 @@ auth:
     parallelism: 1
   localPasswordLogin: true
   autoRegister: true
+  # captcha challenges platform-administrator logins with an image
+  # CAPTCHA. They are exempt from email verification, so it is the sole
+  # brake on password guessing against the admin account. Ordinary
+  # accounts keep the email verification code and see no CAPTCHA.
+  # Requires Redis, like email verification codes.
+  captcha:
+    enabled: true
   # emailVerification enables email verification codes for local
   # registration and login. When enabled, registration and login require
   # a code sent to the user's email. Disabled when SMTP is not

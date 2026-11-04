@@ -26,6 +26,19 @@ service AuthService {
     };
   }
 
+  // GetCaptcha issues an image CAPTCHA for the local login form. The
+  // returned id is single-use and must accompany the next Login call.
+  // Only platform administrators solve the CAPTCHA (ordinary accounts
+  // are covered by the email verification code), so the caller sends the
+  // username it is about to sign in with: when that account needs no
+  // CAPTCHA the response carries neither an id nor an image and the
+  // console hides the field.
+  rpc GetCaptcha(GetCaptchaRequest) returns (GetCaptchaResponse) {
+    option (google.api.http) = {
+      get: "/api/v1/auth/captcha"
+    };
+  }
+
   // SendEmailCode sends a verification code to the given email for
   // local registration or login. The code expires after a short window.
   rpc SendEmailCode(SendEmailCodeRequest) returns (SendEmailCodeResponse) {
@@ -447,6 +460,29 @@ message LoginRequest {
   string password = 2;
   // email_code is required when email verification is enabled.
   string email_code = 3;
+  // captcha_id is the id returned by GetCaptcha.
+  string captcha_id = 4;
+  // captcha_code is the answer typed from the CAPTCHA image. Both
+  // fields are required when the account is a platform administrator
+  // and the login CAPTCHA is enabled.
+  string captcha_code = 5;
+}
+
+message GetCaptchaRequest {
+  // username is the account about to sign in. It decides whether a
+  // CAPTCHA is needed: only platform administrators are challenged.
+  string username = 1;
+}
+
+message GetCaptchaResponse {
+  taas.common.v1.Response response = 1;
+  // captcha_id identifies the stored answer for the following Login.
+  string captcha_id = 2;
+  // image is a data URL (data:image/png;base64,...) ready for an <img>
+  // element. It is empty when the CAPTCHA is disabled.
+  string image = 3;
+  // expires_at is the Unix time the CAPTCHA stops being accepted.
+  int64 expires_at = 4;
 }
 
 message LoginResponse {

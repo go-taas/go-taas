@@ -447,6 +447,9 @@ export const en: Record<string, string> = {
   'login.errorBadCredentials': 'The username or password is incorrect.',
   'login.errorNoAccount': 'This identity is not linked to a go-taas account. Ask your organization administrator for an invitation.',
   'login.errorIncomplete': 'Sign-in did not complete. Try again.',
+  'login.captcha': 'Image code',
+  'login.refreshCaptcha': 'Refresh',
+  'login.errorCaptcha': 'The image code is incorrect or expired. Try again.',
 
   // ---- Register ----
   'register.title': 'Register a local account',

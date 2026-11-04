@@ -121,6 +121,12 @@ type AuthConfig struct {
 	// SMTP configures the outbound mail transport for verification
 	// codes. When empty, verification codes are logged instead of sent.
 	SMTP SMTPConfig `mapstructure:"smtp"`
+	// Captcha enables the image CAPTCHA on the local password login
+	// form. Only platform administrators are challenged: they are exempt
+	// from email verification, so the CAPTCHA is the sole brake on
+	// password guessing against the admin account. Ordinary accounts are
+	// covered by the email verification code. Requires Redis.
+	Captcha CaptchaConfig `mapstructure:"captcha"`
 	// AdminRoles is the set of session roles that make a user an
 	// administrator (feature-22 AD3). A user is an admin iff any session
 	// role is in the set. Defaults to platform-admin, org-admin, admin,
@@ -174,6 +180,14 @@ type SMTPConfig struct {
 	Password string `mapstructure:"password"`
 	// From is the sender address.
 	From string `mapstructure:"from"`
+}
+
+// CaptchaConfig configures the login CAPTCHA.
+type CaptchaConfig struct {
+	// Enabled challenges platform-administrator logins with an image
+	// CAPTCHA. Ordinary accounts keep the email verification code and
+	// are never asked for a CAPTCHA. Fresh installs ship with it on.
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // MeteringConfig holds metering-module specific settings.

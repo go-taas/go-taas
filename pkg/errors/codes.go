@@ -84,6 +84,11 @@ const (
 	// organization: it carries the platform-admin membership and is a
 	// system artifact, not a tenant.
 	CodeOrganizationProtected Code = 10042 // ORGANIZATION_PROTECTED
+	// CodeCaptchaInvalid is returned by Login when the image CAPTCHA is
+	// missing, expired, already used, or the answer is wrong. It is
+	// distinct from invalid credentials so the console can refresh the
+	// image instead of claiming the password was wrong.
+	CodeCaptchaInvalid Code = 10043 // CAPTCHA_INVALID
 )
 
 // model module error codes.
