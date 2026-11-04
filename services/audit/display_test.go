@@ -179,3 +179,16 @@ func TestResourceLabelsCompositeAndLinked(t *testing.T) {
 	assert.Equal(t, "Alice Chen", events[0].GetResourceDisplayName())
 	assert.Equal(t, "Acme Labs", events[1].GetResourceDisplayName())
 }
+
+// A composite membership id must never reach the lookup: id columns are a
+// mix of uuid and text, and PostgreSQL rejects a whole IN list when one
+// value cannot cast to uuid.
+func TestCandidateIDsAndPlausibility(t *testing.T) {
+	got := candidateIDs("project_member", "proj-1/u-9")
+	assert.Equal(t, []string{"u-9"}, got)
+	assert.Equal(t, []string{"u-9"}, plausibleIDs(got))
+
+	assert.Equal(t, []string{"proj-1/u-9"}, candidateIDs("model", "proj-1/u-9"))
+	assert.Empty(t, plausibleIDs([]string{"proj-1/u-9"}))
+	assert.Equal(t, []string{"id-1"}, plausibleIDs([]string{"id-1", "with space"}))
+}

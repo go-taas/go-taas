@@ -127,21 +127,36 @@ func (r *Repository) resolveResourceLabels(ctx context.Context, rows []*AuditEve
 }
 
 // candidateIDs returns the ids to look up for one event's resource id.
-// A membership event stores "project/user", so the trailing user id is a
-// second candidate.
+// A membership event stores "project/user", and the stored composite is
+// not a valid key: query with the trailing user id only.
 func candidateIDs(resourceType, id string) []string {
 	if resourceType != "member" && resourceType != "project_member" {
 		return []string{id}
 	}
 	if _, rest, ok := strings.Cut(id, "/"); ok && rest != "" {
-		return []string{id, rest}
+		return []string{rest}
 	}
 	return []string{id}
 }
 
+// plausibleIDs drops values that cannot be a primary key. The id columns
+// are a mix of uuid and text, and PostgreSQL rejects the whole IN list
+// when one value cannot cast to uuid, so a malformed resource id must
+// never reach the query.
+func plausibleIDs(ids []string) []string {
+	out := ids[:0]
+	for _, id := range ids {
+		if strings.ContainsAny(id, "/ \t\n") {
+			continue
+		}
+		out = append(out, id)
+	}
+	return out
+}
+
 // labelsForSource resolves the label of each id from one display source.
 func (r *Repository) labelsForSource(ctx context.Context, src displaySource, ids []string) map[string]string {
-	ids = uniqueNonEmpty(ids)
+	ids = plausibleIDs(uniqueNonEmpty(ids))
 	if len(ids) == 0 {
 		return nil
 	}
