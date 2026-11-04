@@ -24,7 +24,7 @@ export const zh: Record<string, string> = {
   'common.unlimited': '不限',
   'common.flat': '固定',
   'common.never': '永不过期',
-  'common.actionsFor': '{{name}} 的操作',
+  'common.actionsFor': '{name} 的操作',
   'common.actions': '操作',
   'common.status': '状态',
   'common.created': '创建时间',
