@@ -119,7 +119,7 @@ Chart 刻意不再渲染这条路由：此前 Chart 与服务端同时写 `spec.
 ### 1.2 服务形态与通信机制
 
 - **统一 gRPC 服务进程**：**全部 26 个微服务**（`auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`fault`、`vgpu`、`docs`）的 gRPC server 合并部署于同一个 Deployment，模块间在进程内直接调用，无需为每个模块单独部署进程；
-- **消息队列解耦 gRPC server 与 Controller**：消息队列（Kafka / RabbitMQ）承担**微服务 gRPC server 与 Controller 之间的消息传递**。gRPC server 只负责对外接口与期望状态写入并投递消息，Controller 消费消息后驱动 Kubernetes 资源，二者可独立扩缩容与重启；
+- **消息队列解耦 gRPC server 与 Controller**：消息队列（RabbitMQ）承担**微服务 gRPC server 与 Controller 之间的消息传递**。gRPC server 只负责对外接口与期望状态写入并投递消息，Controller 消费消息后驱动 Kubernetes 资源，二者可独立扩缩容与重启；
 - **RESTful API 自动生成**：控制面 HTTP/JSON 接口与 OpenAPI 文档由 `grpc-gateway` 从 Protobuf 契约自动生成；
 - **数据面不经过业务进程**：推理请求由 Envoy 直接代理至推理实例，鉴权与计量在 Wasm 插件内完成，避免业务进程成为转发瓶颈，也避免流式响应的二次拷贝。
 
@@ -192,7 +192,7 @@ flowchart TD
     CGW --> mods
     DGW --> RT["推理服务"]
     DGW -.->|gRPC 校验 API Key| AUTH
-    DGW -.->|计量事件| MQ["消息队列（Kafka / RabbitMQ）"]
+    DGW -.->|计量事件| MQ["消息队列（RabbitMQ）"]
 
     AUTH --> PG[(PostgreSQL)]
     AUTH --> RD[(Redis)]
@@ -295,14 +295,14 @@ flowchart TD
 **核心职责：**
 
 - **本地账号认证**：用户注册、登录与密码策略，凭据仅以加盐哈希落库；
-- **第三方 SSO 联邦认证**：内置**插件化身份提供方（IdP）框架**，可直接对接企业既有账号体系，无需为每种协议重复实现登录链路（OIDC 与内置本地账号体系已实现，其余企业级协议建设中）：
+- **第三方 SSO 联邦认证**：内置**插件化身份提供方（IdP）框架**，可直接对接企业既有账号体系，无需为每种协议重复实现登录链路（OIDC、SAML 2.0、LDAP/LDAPS 与内置本地账号体系已实现，微信提供方建设中）：
   - **OIDC / OAuth 2.0**：GitHub、Google、GitLab 以及企业自建 IdP；
-  - **SAML 2.0**（建设中）：企业级单点登录；
-  - **LDAP / LDAPS**（建设中）：对接企业目录服务（Active Directory、OpenLDAP 等），支持基于用户 DN 绑定与按组过滤；
+  - **SAML 2.0**：企业级单点登录；
+  - **LDAP / LDAPS**：对接企业目录服务（Active Directory、OpenLDAP 等），支持基于用户 DN 绑定与按组过滤；
   - **微信**（建设中）：微信开放平台与企业微信扫码登录；
 - **多 IdP 并存与可插拔配置**：管理员可同时启用多个 IdP，并分别配置协议参数、可见范围、默认组织与是否允许自动注册；新增提供方以独立插件接入，不侵入核心登录逻辑；
 - **账号绑定与 JIT 预置**：以 `issuer + subject`（OIDC / SAML）或 `DN`（LDAP）等稳定标识作为外部身份主键，与平台账号绑定；首次登录可自动创建账号（Just-In-Time Provisioning），亦可关闭自动创建，改由管理员预先分配；
-- **属性与角色映射**（建设中）：把 IdP 返回的用户名、邮箱、组与角色声明映射为平台的组织、项目与角色，实现基于企业组织架构的权限下发；
+- **属性与角色映射**：把 IdP 返回的用户名、邮箱、组与角色声明映射为平台的组织、项目与角色，实现基于企业组织架构的权限下发；
 - **会话与令牌**：SSO 登录成功后签发平台会话与访问令牌，支持令牌轮换与统一登出（Single Logout）；本地密码登录可独立开关，与 SSO 并存或完全禁用；
 - 组织 / 项目两级多租户体系的管理与隔离；
 - API Key 全生命周期管理（创建、鉴权、吊销、过期控制），明文仅在创建时展示一次，系统只保存加盐哈希摘要；
@@ -351,7 +351,7 @@ flowchart TD
 - 生成防篡改的计量凭单；
 - 通过消息队列异步投递给计费链路，解耦推理链路与账务链路。
 
-**外部依赖：** Redis（计量缓冲）、消息队列（Kafka / RabbitMQ）
+**外部依赖：** Redis（计量缓冲）、消息队列（RabbitMQ）
 
 ### 2.6 `billing` —— 计费与账务
 
@@ -652,7 +652,7 @@ sequenceDiagram
 | MinIO | model · image | 对象存储：模型权重与推理引擎镜像 |
 | JuiceFS | model · infer · Controller | 权重与镜像的多副本共享挂载 |
 | Kubernetes | Controller | 推理负载、镜像预热、加速器快照与资源指标采样的创建与调谐 |
-| Kafka / RabbitMQ | 微服务 gRPC server · Controller | gRPC server 与 Controller 之间的消息传递（部署、镜像预热、运行时形态、加速器/集群快照、计量事件） |
+| RabbitMQ | 微服务 gRPC server · Controller | gRPC server 与 Controller 之间的消息传递（部署、镜像预热、运行时形态、加速器/集群快照、计量事件） |
 | Envoy | 推理 Gateway（数据面） | 推理请求的鉴权、计量与代理转发 |
 | Envoy Gateway / CNI / CoreDNS | 集群内全部工作负载 | 南北向入口与 TLS 终结、Pod 网络与服务发现（见 §5.2） |
 | 镜像仓库（Harbor） | image | 推理引擎镜像导入的源与目标仓库 |

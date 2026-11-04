@@ -7,7 +7,7 @@
 | 归属模块 | `services/auth`（密码授权登录、基于角色的 realm、切换表面的会话铸造、提供商/绑定预置）、`pkg/server`（网关 realm 守卫——不变）、`deploy/compose`（Keycloak realm-export.json 预置、提供商预置）、`web/`（自定义登录页、基于角色的落地、切换按钮）、`pkg/config`（管理角色集合）、`pkg/errors`（复用码） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/unified-login-role-routing.md) · [架构设计](../design/architecture.md) §2.1 `auth` 与 §3.1 管理端/用户表面分离 · [SSO 联邦与账号绑定](./sso-federation.md)（IdP 框架、`SSOAuthorize`/`SSOCallback`、身份绑定、属性到角色映射、会话）· [控制台表面分离](./console-surface-separation.md)（两个表面、realm 固定的会话、realm 守卫、本功能替换的登录页、`10038 REALM_MISMATCH` 规则）· [组织成员、角色与邀请](./org-members-rbac.md)（会话携带的、本功能据此路由的角色） |
 | 状态 | 架构完成，已移交给开发者智能体 |
-| 实现状态 | **建设中**：LDAP/LDAPS 与 SAML 部分；OIDC/OAuth 2.0 密码模式与内置本地账号登录已实现。 |
+| 实现状态 | **建设中**：微信提供方部分；OIDC/OAuth 2.0 密码模式、SAML、LDAP/LDAPS 与内置本地账号登录已实现。 |
 
 ---
 
@@ -29,7 +29,7 @@
 - compose 启动时预置 Keycloak 提供商与 `admin`/`admin` 用户（设计 D5）：realm-export.json 新增 admin 用户、Direct Access Grants 与角色协议映射器；预置机制幂等地创建提供商行与 admin 用户的身份绑定。
 - 带精确前缀的页面 → API 表面映射表；逐页交互状态；可在 Nightwatch 中针对 compose 栈验证的编号验收标准，含负向用例。
 
-**非目标**（按设计重述）：SAML 密码授权（SAML 无此类流程；SAML 提供商保留重定向流程）；自助注册或密码重置；跨管理 API 的完整 RBAC 强制；token 轮换与单点登出；在管理端前缀上强制要求会话（过渡访问保留，功能 #17 D6）；第一方本地用户名/密码账号库（`Login`/`CreateUser` 仍是桩——自定义登录页针对所选 IdP 认证，而非本地库）；改变任何数据面（推理网关）行为。
+**非目标**（按设计重述）：SAML 密码授权（SAML 无此类流程；SAML 提供商保留重定向流程）；自助注册或密码重置；跨管理 API 的完整 RBAC 强制；token 轮换与单点登出；在管理端前缀上强制要求会话（过渡访问保留，功能 #17 D6）；第一方本地用户名/密码账号库（自定义登录页针对所选 IdP 认证，而非本地库——本地 `Login`/`CreateUser` 账号体系是独立功能）；改变任何数据面（推理网关）行为。
 
 ### 1.1 阅读顺序
 

@@ -13,7 +13,7 @@
 
 **Go TaaS** 是一个在 Kubernetes 上提供大模型推理与计费服务的开源平台。管理员在多种异构加速卡上部署开源模型（Qwen、DeepSeek、LLaMA 等），并按「模型 × 卡型」灵活定价；智能体与 SDK 通过 OpenAI 兼容 API 消费模型，按 API Key 隔离，按 token 计量并异步结算。
 
-> **状态**：企业级（建设中：企业级 SSO 协议 —— SAML 2.0、LDAP/LDAPS、微信、属性/角色映射 —— 尚未实现） · 生产可用。全部 50 个特性点（编号 1–51，其中微调管理已由产品负责人裁剪，即第 39 行）均已在两套控制台实现，单元测试与 FVT 套件通过，50 个 Nightwatch 端到端套件在 Docker Compose 环境全绿。各阶段交付内容见[路线图](#路线图)。
+> **状态**：企业级（建设中：微信 SSO 提供方尚未实现） · 生产可用。全部 50 个特性点（编号 1–51，其中微调管理已由产品负责人裁剪，即第 39 行）均已在两套控制台实现，单元测试与 FVT 套件通过，50 个 Nightwatch 端到端套件在 Docker Compose 环境全绿。各阶段交付内容见[路线图](#路线图)。
 
 **English | [简体中文](./README.zh-cn.md)**
 
@@ -79,7 +79,7 @@
 | 服务配额管理 | 按组织的四维资源配额 —— 并发推理请求数（429 + `Retry-After`）、推理服务数、每日批量作业数与单请求最大输出 token 数 —— 支持档位预设、fail-closed 强制与可审计的变更历史。 |
 | 租户级模型授权 | 限定每个租户可消费的目录模型。 |
 | API Key | 全生命周期（创建 / 列出 / 吊销），加盐哈希存储，支持每 Key 限流、组织支出上限，以及每 Key **模型范围限定**，让泄露或过权的 Key 无法访问未授权模型。 |
-| SSO 联邦认证 | 插件化身份提供方 —— LDAP/LDAPS、OIDC/OAuth 2.0（GitHub、Google、GitLab）、SAML 2.0 与微信 —— 支持账号绑定、JIT 预置与属性到角色的映射。 |
+| SSO 联邦认证 | 插件化身份提供方 —— OIDC/OAuth 2.0、SAML 2.0 与 LDAP/LDAPS —— 支持账号绑定、JIT 预置与属性到角色的映射。 |
 | 审计与数据治理 | 审计日志与活动导出、部署历史审计，以及符合 GDPR 的数据导出（用量、账单、请求日志，JSON/CSV）。 |
 
 **可观测与自动化**
@@ -174,7 +174,7 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 - 流量按受众分流：管理员经**控制面 Gateway**（HTTP，由 `grpc-gateway` 从 Protobuf 契约生成）进入，智能体与 SDK 调用**推理 Gateway**（Envoy + Wasm）；两者都通过集群的南北向入口（Envoy Gateway + TLS 终结）对外暴露。
 - 两个网关作为独立工作负载部署，控制面 API 与推理 API 的扩缩容、升级与故障域完全隔离。
 - API 按受众分区：普通用户控制台及其租户调用 `/api/v1/*`，`/api/v1/admin/*` 专供 admin 控制台；携带错误面会话的请求会在进入任何 handler 之前被拒绝。
-- **gRPC Server 以单个 Deployment 承载全部 26 个微服务** —— `auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`fault`、`vgpu`、`docs` —— 模块间进程内调用，并经**消息队列**（Kafka / RabbitMQ）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
+- **gRPC Server 以单个 Deployment 承载全部 26 个微服务** —— `auth`、`tenancy`、`account`、`model`、`image`、`infer`、`runtime`、`routing`、`provider`、`metering`、`billing`、`batch`、`audit`、`webhook`、`notification`、`observability`、`tracing`、`resourcemetrics`、`accelerator`、`cluster`、`optimization`、`prompt`、`evaluation`、`fault`、`vgpu`、`docs` —— 模块间进程内调用，并经**消息队列**（RabbitMQ）把工作交给 Controller，API 服务与 Kubernetes 调谐解耦。
 - 鉴权、计量与路由运行在推理 Gateway 的 **Wasm 插件**中，推理流量不经过业务进程。
 - 推理 Gateway 通过 **gRPC 调用 `auth` 模块**校验每个 API Key，两级缓存（Wasm 本地 TTL 缓存 → Redis）支撑；超时或 `auth` 不可用时按 fail-closed 拒绝。
 - **集群网络**：Pod 之间经集群 CNI 网络通信并使用 ClusterIP Service 与 CoreDNS 服务发现；南北向流量经 Envoy Gateway + TLS 终结进入；NetworkPolicy 隔离控制面、数据面与租户命名空间；推理数据链路可选走 **RDMA 网络**（RoCE / InfiniBand），控制面保持常规以太网。
@@ -187,7 +187,7 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 | 层次 | 选型 |
 | --- | --- |
 | 后端 | Go、gRPC + grpc-gateway、GORM |
-| 数据 | PostgreSQL、Redis（兼容 Valkey）、Kafka / RabbitMQ |
+| 数据 | PostgreSQL、Redis（兼容 Valkey）、RabbitMQ |
 | 控制面网关 | grpc-gateway —— 从 Protobuf 生成 HTTP/JSON 与 OpenAPI |
 | 数据面网关 | Envoy + Wasm |
 | 存储 | Longhorn 承载集群状态；MinIO + JuiceFS 承载推理权重与镜像 |

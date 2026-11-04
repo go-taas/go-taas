@@ -23,7 +23,7 @@ go-taas 目前只有一个 Web 控制台：`web/src/App.tsx` 把每条路由都�
 
 **目标**：单个 bundle 内两棵路由树与两个外壳；按 realm 绑定的会话与彼此独立的浏览器存储；把「在另一 realm 前缀上出示的会话」判为新错误码 **10038 `REALM_MISMATCH`**；按 realm 绑定的登录绑定；租户自助 RPC 增加用户前缀绑定（管理前缀绑定保留但标记为弃用）；provider 列表与模型清单提供用户 realm 的掩码投影；以模型为维度的用户 Playground；管理侧 Usage 与 Bills 的「全组织」变体；三个被迁移页面及其旧管理 URL 的客户端重定向；各面的守卫把跨 realm 或过期会话变成跳转到正确登录页；并保留过渡期（无会话、`X-Organization-Id`）访问，使 CLI、FVT 与十二个在跑的 e2e 套件继续工作。
 
-**非目标**：自建用户名密码账号（`Login` / `CreateUser` 仍是 stub）；管理 realm 的平台管理员资格；在 `/api/v1/admin/*` 上强制要求会话（过渡路径保留，加固为后续行）；退役弃用的管理前缀绑定（迁移窗口）；面向租户的模型清单页与价格页；自助支付（#14）；两侧控制台之间的切换器；改动数据面（推理 Gateway）行为；以及任何 Postgres schema 变更（见第 6 节）。
+**非目标**：自建用户名密码账号（本地 `Login`/`CreateUser` 账号体系是独立功能，不由本次面分离工作构建）；管理 realm 的平台管理员资格；在 `/api/v1/admin/*` 上强制要求会话（过渡路径保留，加固为后续行）；退役弃用的管理前缀绑定（迁移窗口）；面向租户的模型清单页与价格页；自助支付（#14）；两侧控制台之间的切换器；改动数据面（推理 Gateway）行为；以及任何 Postgres schema 变更（见第 6 节）。
 
 ### 1.1 本文档的阅读顺序
 
@@ -334,7 +334,7 @@ flowchart LR
 | `AdminSSOAuthorize` | `GET /api/v1/admin/auth/sso/{provider_id}/authorize` | **新 RPC** |
 | `AdminSSOCallback` | `GET /api/v1/admin/auth/sso/{provider_id}/callback` | **新 RPC**，铸造 realm `admin` |
 | `ListSSOProviders`、`GetSSOProvider`、`Create/Update/Enable/Disable/DeleteSSOProvider`、身份绑定 | `/api/v1/admin/auth/...` | 不变（管理面） |
-| `CreateUser`、`Login` | `/api/v1/auth/users`、`/api/v1/auth/login` | 不变（仍是 stub） |
+| `CreateUser`、`Login` | `/api/v1/auth/users`、`/api/v1/auth/login` | 不变（本地账号体系） |
 
 两种写法的精确语法：
 

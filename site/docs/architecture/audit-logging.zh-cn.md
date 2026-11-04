@@ -114,7 +114,7 @@ flowchart TD
 审计 RPC 复用既有的身份链（控制台表面分离 §3.3）：
 
 1. `RealmGuard`（HTTP，`pkg/server/realm.go`）— 路径前缀决定期望领域。`/api/v1/admin/audit/*` 期望 `admin`；`/api/v1/audit/*` 期望 `user`。无 `Authorization` 头：透传（过渡性，特性 #17 的 AD4）。带头：从 Redis 解析会话领域；不匹配 → 10038，未知/过期/无领域 → 10027。
-2. grpc-gateway mux — 按注解路径路由，透传 `authorization` 与 `x-organization-id`。
+2. grpc-gateway mux — 按注解路径路由，透传 `authorization` 与 `x-organization-id`；元数据注解器还会把调用方源 IP（`x-client-ip`，依次取 `X-Forwarded-For`、`X-Real-IP`、传输对端）与用户代理（`x-client-user-agent`）转发给 gRPC，recorder 会将其写入缺失这些字段的事件。
 3. 服务处理器 — 对带会话的调用，`SessionActiveOrg` 使会话的活动组织权威并忽略 `X-Organization-Id`；无会话时，`resolveOrganizationID` 读取过渡性头，缺失或为空时返回 10001。
 4. `tenancy.RoleGuard` — 按调用方在已解析组织上下文中的角色把关管理端审计 RPC（10036）。终端用户 RPC 硬性限定到调用方，无需角色检查。
 
@@ -134,7 +134,7 @@ flowchart TD
 | `resource_type` | `varchar(32)` | 非空，索引 | 资源类别，如 `api_key`、`model`、`member`、`price` |
 | `resource_id` | `varchar(128)` | 非空 | 资源实例 id |
 | `result` | `varchar(16)` | 非空，索引 | `success` / `failure`（AD5） |
-| `ip_address` | `varchar(64)` | 非空默认 '' | 调用方源 IP（已知时） |
+| `ip_address` | `varchar(64)` | 非空默认 '' | 调用方源 IP（已知时）。网关为每个请求注解调用方 IP（依次取 `X-Forwarded-For`、`X-Real-IP`、传输对端），recorder 会将其写入缺失该字段的事件 |
 | `user_agent` | `varchar(512)` | 非空默认 '' | 调用方用户代理（已知时） |
 | `metadata` | `jsonb` | 非空默认 '{}' | 额外上下文（如被改字段的旧/新值） |
 | `created_at` | `timestamptz` | 非空，索引（复合） | 事件时间（UTC） |
@@ -251,6 +251,9 @@ message AuditEvent {
   string user_agent = 10;
   string metadata = 11;         // metadata 对象的 JSON 字符串
   int64 created_at = 12;        // unix 秒
+  string actor_display_name = 13;        // 展示用解析名；非用户主体为空
+  string organization_display_name = 14; // 展示用解析名；平台级事件为空
+  string resource_display_name = 15;     // 展示用解析名；资源类型有名称时填充
 }
 
 message RecordAuditEventRequest {
@@ -401,7 +404,7 @@ message ExportMyActivityResponse {
 
 ### 6.5 控制台契约（为开发代理固定）
 
-**审计日志页面**（`/admin/audit-logs`）：过滤栏（组织、主体、操作、资源类型、结果、带 24 小时/7 天/30 天/90 天/自定义预设的时间范围）与表格 — 时间、主体、操作徽标、资源、组织、结果徽标、IP。行操作「详情」打开下钻对话框（`GetAuditEvent`）展示完整元数据：主体、主体类型、操作、资源类型/id、结果、IP、用户代理、组织、metadata JSON、created_at。「导出」按钮（`audit-export`）提供 CSV 与 JSON；它导出当前应用的过滤条件。导出超过 10,000 行上限时出现「已截断」提示。页面显示数据新鲜度提示（「审计事件在摄取窗口内出现」）并在可见时每 60 秒轮询刷新。空状态：「没有匹配这些过滤条件的审计事件」。Testid：`audit-table`、`audit-row-{id}`、`audit-filter-action`、`audit-filter-result`、`audit-filter-range`、`audit-detail-{id}`、`audit-export`。
+**审计日志页面**（`/admin/audit-logs`）：过滤栏（组织、主体、操作、资源类型、结果、带 24 小时/7 天/30 天/90 天/自定义预设的时间范围）与表格 — 时间、操作（渲染为自然语言句子）、组织（显示名）、主体（显示名）、资源（类型标签 + 资源名）、结果徽标、IP。后端会解析主体、组织与资源（模型、推理服务、API 密钥、Webhook、用户、项目、镜像等）的显示名，因此页面在存在名称时绝不显示原始 UUID；原始 id 以灰色小字显示在名称下方。行操作「详情」打开下钻对话框（`GetAuditEvent`）展示完整元数据：主体、主体类型、操作、资源类型/id、结果、IP、用户代理、组织、metadata JSON、created_at。「导出」按钮（`audit-export`）提供 CSV 与 JSON；它导出当前应用的过滤条件。导出超过 10,000 行上限时出现「已截断」提示。页面显示数据新鲜度提示（「审计事件在摄取窗口内出现」）并在可见时每 60 秒轮询刷新。空状态：「没有匹配这些过滤条件的审计事件」。Testid：`audit-table`、`audit-row-{id}`、`audit-filter-action`、`audit-filter-result`、`audit-filter-range`、`audit-detail-{id}`、`audit-export`。
 
 **我的活动页面**（`/activity`）：过滤栏（操作、结果、带 24 小时/7 天/30 天/自定义预设的时间范围）与表格 — 时间、操作徽标、资源、结果徽标、IP。「导出」按钮（`activity-export`）提供 CSV 与 JSON；它导出调用方自身的过滤事件。导出超过 10,000 行上限时出现「已截断」提示。页面硬性限定到调用方；没有组织选择器，也没有下钻到其他用户。空状态：「暂无活动 — 你的账户操作将出现在这里」。Testid：`activity-table`、`activity-row-{id}`、`activity-filter-action`、`activity-filter-result`、`activity-export`。
 

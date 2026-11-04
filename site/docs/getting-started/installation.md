@@ -501,7 +501,7 @@ Then point DNS at the external address and terminate TLS in front of it (or use 
 2. The console redirects to the login page; sign in with user **`admin`** and the password you set in `auth.seedSso.adminLocalPassword`.
 3. The admin console opens on the user directory. The end-user console is at `/`.
 
-The seeded account is flagged as the platform administrator, so it needs no organization and is exempt from login email verification. If the login is rejected:
+The seeded account is flagged as the platform administrator, so it needs no organization and is exempt from login email verification. Because it is exempt from email verification, the login form asks it for an image CAPTCHA instead (see `auth.captcha.enabled`); ordinary accounts are covered by the email verification code and see no CAPTCHA. If the login is rejected:
 
 ```bash
 # was the seed applied to this release?

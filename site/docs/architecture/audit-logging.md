@@ -114,7 +114,7 @@ flowchart TD
 The audit RPCs reuse the established identity chain (console-surface-separation §3.3):
 
 1. `RealmGuard` (HTTP, `pkg/server/realm.go`) — path prefix decides the expected realm. `/api/v1/admin/audit/*` expects `admin`; `/api/v1/audit/*` expects `user`. With no `Authorization` header: pass through (transitional, AD4 of feature #17). With a header: resolve the session realm from Redis; mismatch → 10038, unknown/expired/realm-less → 10027.
-2. grpc-gateway mux — routes by the annotated path and forwards `authorization` and `x-organization-id`.
+2. grpc-gateway mux — routes by the annotated path and forwards `authorization` and `x-organization-id`; a metadata annotator also forwards the caller's source IP (`x-client-ip`, from `X-Forwarded-For` then `X-Real-IP` then the transport peer) and user agent (`x-client-user-agent`), which the recorder stamps onto events that lack them.
 3. Service handler — for a session-bearing call, `SessionActiveOrg` makes the session's active organization authoritative and ignores `X-Organization-Id`; without a session, `resolveOrganizationID` reads the transitional header and returns 10001 when it is absent or empty.
 4. `tenancy.RoleGuard` — gates the admin audit RPCs by the caller's role in the resolved org context (10036). The end-user RPCs are hard-scoped to the caller and need no role check.
 
@@ -134,7 +134,7 @@ The audit RPCs reuse the established identity chain (console-surface-separation 
 | `resource_type` | `varchar(32)` | NOT NULL, index | The resource class, e.g. `api_key`, `model`, `member`, `price` |
 | `resource_id` | `varchar(128)` | NOT NULL | The resource instance id |
 | `result` | `varchar(16)` | NOT NULL, index | `success` / `failure` (AD5) |
-| `ip_address` | `varchar(64)` | NOT NULL DEFAULT '' | The caller's source IP, when known |
+| `ip_address` | `varchar(64)` | NOT NULL DEFAULT '' | The caller's source IP, when known. The gateway annotates every request with the caller IP (from `X-Forwarded-For`, then `X-Real-IP`, then the transport peer) and the recorder stamps it onto events that lack one |
 | `user_agent` | `varchar(512)` | NOT NULL DEFAULT '' | The caller's user agent, when known |
 | `metadata` | `jsonb` | NOT NULL DEFAULT '{}' | Extra context (e.g. the old/new value of a changed field) |
 | `created_at` | `timestamptz` | NOT NULL, index (composite) | Event time (UTC) |
@@ -254,6 +254,9 @@ message AuditEvent {
   string user_agent = 10;
   string metadata = 11;         // JSON string of the metadata object
   int64 created_at = 12;        // unix seconds
+  string actor_display_name = 13;        // resolved for display; empty for non-user actors
+  string organization_display_name = 14; // resolved for display; empty for platform-level events
+  string resource_display_name = 15;     // resolved for display when the resource type has a name
 }
 
 message RecordAuditEventRequest {
@@ -404,7 +407,7 @@ All errors are `pkg/errors` business codes in the unified envelope. Three new co
 
 ### 6.5 Console contract (pinned for the Developer agent)
 
-**Audit Logs page** (`/admin/audit-logs`): a filter bar (organization, actor, action, resource type, result, time range with presets 24 h / 7 d / 30 d / 90 d / custom) and a table — time, actor, action badge, resource, org, result badge, IP. A row action "Detail" opens a drill-down dialog (`GetAuditEvent`) showing the full metadata: actor, actor type, action, resource type/id, result, IP, user agent, org, metadata JSON, created_at. An "Export" button (`audit-export`) offers CSV and JSON; it exports the currently applied filters. A "truncated" notice appears when the export exceeds the 10,000-row cap. The page shows a data-freshness note ("audit events appear within the ingestion window") and refreshes on a 60-second poll while visible. Empty state: "No audit events match these filters". Testids: `audit-table`, `audit-row-{id}`, `audit-filter-action`, `audit-filter-result`, `audit-filter-range`, `audit-detail-{id}`, `audit-export`.
+**Audit Logs page** (`/admin/audit-logs`): a filter bar (organization, actor, action, resource type, result, time range with presets 24 h / 7 d / 30 d / 90 d / custom) and a table — time, action (rendered as a natural-language sentence), organization (display name), actor (display name), resource (type label + resource name), result badge, IP. The backend resolves display names for the actor, the organization and the resource (model, inference service, API key, webhook, user, project, image, ...), so the page never shows a raw UUID where a name exists; the raw id is shown in small muted text under the name. A row action "Detail" opens a drill-down dialog (`GetAuditEvent`) showing the full metadata: actor, actor type, action, resource type/id, result, IP, user agent, org, metadata JSON, created_at. An "Export" button (`audit-export`) offers CSV and JSON; it exports the currently applied filters. A "truncated" notice appears when the export exceeds the 10,000-row cap. The page shows a data-freshness note ("audit events appear within the ingestion window") and refreshes on a 60-second poll while visible. Empty state: "No audit events match these filters". Testids: `audit-table`, `audit-row-{id}`, `audit-filter-action`, `audit-filter-result`, `audit-filter-range`, `audit-detail-{id}`, `audit-export`.
 
 **My Activity page** (`/activity`): a filter bar (action, result, time range with presets 24 h / 7 d / 30 d / custom) and a table — time, action badge, resource, result badge, IP. An "Export" button (`activity-export`) offers CSV and JSON; it exports the caller's own filtered events. A "truncated" notice appears when the export exceeds the 10,000-row cap. The page is hard-scoped to the caller; there is no org selector and no drill-down to other users. Empty state: "No activity yet — your account actions will appear here". Testids: `activity-table`, `activity-row-{id}`, `activity-filter-action`, `activity-filter-result`, `activity-export`.
 

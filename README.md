@@ -13,7 +13,7 @@
 
 **Go TaaS** is an open-source platform for serving and billing large language models on Kubernetes. Administrators deploy open-source models (Qwen, DeepSeek, LLaMA, etc.) on a range of heterogeneous accelerators and price them per model and card type. Agents and SDKs consume the models through an OpenAI-compatible API, with per-API-Key isolation, token metering, and settlement.
 
-> **Status**: Enterprise-ready (under construction: the enterprise SSO protocols — SAML 2.0, LDAP/LDAPS, WeChat, attribute/role mapping — are not implemented yet) and production-proven. All 50 backlog feature points (rows 1–51; model fine-tuning, row 39, was descoped by the product owner) are implemented across both consoles, with unit + FVT suites and 50 Nightwatch end-to-end suites green on the Docker Compose stack. See the [roadmap](#roadmap) for what shipped in each phase.
+> **Status**: Enterprise-ready (under construction: the WeChat SSO provider is not implemented yet) and production-proven. All 50 backlog feature points (rows 1–51; model fine-tuning, row 39, was descoped by the product owner) are implemented across both consoles, with unit + FVT suites and 50 Nightwatch end-to-end suites green on the Docker Compose stack. See the [roadmap](#roadmap) for what shipped in each phase.
 
 **English | [简体中文](./README.zh-cn.md)**
 
@@ -80,7 +80,7 @@ console and is covered by an end-to-end test suite.
 | Service quota management | Per-organization quotas on four dimensions — concurrent inference requests (429 + `Retry-After`), number of inference services, batch jobs per day, and maximum output tokens per request — with tier presets, fail-closed enforcement, and an audited change history. |
 | Per-tenant model authorization | Restrict which catalog models each tenant may consume. |
 | API Keys | Full lifecycle (create / list / revoke), salted-hash storage, per-key rate limits, org spend limits, and per-key **model scoping** so a leaked or over-broad key cannot reach unauthorized models. |
-| SSO federation | Pluggable identity providers — LDAP/LDAPS, OIDC/OAuth 2.0 (GitHub, Google, GitLab), SAML 2.0, and WeChat — with account binding, JIT provisioning, and attribute-to-role mapping. |
+| SSO federation | Pluggable identity providers — OIDC/OAuth 2.0, SAML 2.0, and LDAP/LDAPS — with account binding, JIT provisioning, and attribute-to-role mapping. |
 | Audit & data governance | Audit logging and activity export, deployment history & audit, and GDPR-style data export (usage, billing, request logs) as JSON/CSV. |
 
 **Observability and automation**
@@ -175,7 +175,7 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 - Traffic is split by audience: administrators enter through the **Control Gateway** (HTTP, generated from the Protobuf contract by `grpc-gateway`), while agents and SDKs call the **Inference Gateway** (Envoy + Wasm). Both are exposed through the cluster's north-south entry point (Envoy Gateway with TLS termination).
 - The two gateways are deployed as separate workloads, so control plane APIs and inference APIs scale, upgrade, and fail independently.
 - APIs are partitioned by audience: the end-user console and its tenants call `/api/v1/*`, while `/api/v1/admin/*` is reserved for the admin console. A request that carries a session from the wrong surface is rejected before any handler runs.
-- The **gRPC Server's single Deployment hosts all 26 microservices** — `auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `fault`, `vgpu`, and `docs` — which call each other in-process and hand work to the Controller through a **message queue** (Kafka / RabbitMQ), decoupling API serving from Kubernetes reconciliation.
+- The **gRPC Server's single Deployment hosts all 26 microservices** — `auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `fault`, `vgpu`, and `docs` — which call each other in-process and hand work to the Controller through a **message queue** (RabbitMQ), decoupling API serving from Kubernetes reconciliation.
 - Authentication, metering, and routing run in **Wasm plugins** at the Inference Gateway, so inference traffic never passes through business processes.
 - The Inference Gateway verifies every API Key by **calling the `auth` module over gRPC**, backed by a two-level cache (Wasm-local TTL cache, then Redis); on timeout or `auth` unavailability it fails closed.
 - **Cluster networking**: pods communicate over the cluster CNI network with ClusterIP Services and CoreDNS-based service discovery; north-south traffic enters through an Envoy Gateway with TLS termination; NetworkPolicies isolate the control plane, data plane, and tenant namespaces; and the inference data path can be placed on an optional **RDMA fabric** (RoCE / InfiniBand) while the control plane stays on standard Ethernet.
@@ -188,7 +188,7 @@ See the [Architecture Design](./site/docs/design/architecture.md) for component 
 | Layer | Choice |
 | --- | --- |
 | Backend | Go, gRPC + grpc-gateway, GORM |
-| Data | PostgreSQL, Redis (Valkey-compatible), Kafka / RabbitMQ |
+| Data | PostgreSQL, Redis (Valkey-compatible), RabbitMQ |
 | Control plane gateway | grpc-gateway — HTTP/JSON and OpenAPI generated from Protobuf |
 | Data plane gateway | Envoy + Wasm |
 | Storage | Longhorn for cluster state; MinIO + JuiceFS for inference weights and images |

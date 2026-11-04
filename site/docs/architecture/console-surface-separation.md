@@ -334,7 +334,7 @@ Status legend: **new** = a new RPC, **dual** = the existing binding stays, the o
 | `AdminSSOAuthorize` | `GET /api/v1/admin/auth/sso/{provider_id}/authorize` | **new RPC** |
 | `AdminSSOCallback` | `GET /api/v1/admin/auth/sso/{provider_id}/callback` | **new RPC**, mints realm `admin` |
 | `ListSSOProviders`, `GetSSOProvider`, `Create/Update/Enable/Disable/DeleteSSOProvider`, identity bindings | `/api/v1/admin/auth/...` | unchanged (admin surface) |
-| `CreateUser`, `Login` | `/api/v1/auth/users`, `/api/v1/auth/login` | unchanged (still stubs) |
+| `CreateUser`, `Login` | `/api/v1/auth/users`, `/api/v1/auth/login` | unchanged (local account system) |
 
 Exact syntax for the two shapes used:
 

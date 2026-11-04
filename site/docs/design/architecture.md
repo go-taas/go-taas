@@ -138,7 +138,7 @@ cluster cannot resolve the public name.
 ### 1.2 Service Topology and Communication Mechanisms
 
 - **Unified gRPC service process**: the gRPC servers of **all 26 microservices** (`auth`, `tenancy`, `account`, `model`, `image`, `infer`, `runtime`, `routing`, `provider`, `metering`, `billing`, `batch`, `audit`, `webhook`, `notification`, `observability`, `tracing`, `resourcemetrics`, `accelerator`, `cluster`, `optimization`, `prompt`, `evaluation`, `fault`, `vgpu`, `docs`) are deployed together in a single Deployment; modules call each other in-process, with no separate process per module;
-- **Message queue decouples gRPC servers from the Controller**: the message queue (Kafka / RabbitMQ) carries **message passing between the microservice gRPC servers and the Controller**. gRPC servers only expose APIs, write desired state, and publish messages; the Controller consumes messages and drives Kubernetes resources, so the two can scale and restart independently;
+- **Message queue decouples gRPC servers from the Controller**: the message queue (RabbitMQ) carries **message passing between the microservice gRPC servers and the Controller**. gRPC servers only expose APIs, write desired state, and publish messages; the Controller consumes messages and drives Kubernetes resources, so the two can scale and restart independently;
 - **Auto-generated RESTful APIs**: control plane HTTP/JSON APIs and OpenAPI documents are auto-generated from the Protobuf contract by `grpc-gateway`;
 - **The data plane bypasses business processes**: inference requests are proxied by Envoy directly to inference instances; authentication and metering happen inside Wasm plugins, so business processes never become a forwarding bottleneck and streaming responses are not copied twice.
 
@@ -211,7 +211,7 @@ flowchart TD
     CGW --> mods
     DGW --> RT["Inference services"]
     DGW -.->|gRPC verify API key| AUTH
-    DGW -.->|metering events| MQ["Message queue (Kafka / RabbitMQ)"]
+    DGW -.->|metering events| MQ["Message queue (RabbitMQ)"]
 
     AUTH --> PG[(PostgreSQL)]
     AUTH --> RD[(Redis)]
@@ -316,14 +316,14 @@ below with its responsibility boundary and the feature points it implements
 **Core responsibilities:**
 
 - **Local account authentication**: user registration, login, and password policies; credentials are stored only as salted hashes;
-- **Third-party SSO federated authentication**: a built-in **pluggable identity provider (IdP) framework** connects directly to existing enterprise account systems, without re-implementing the login chain for every protocol (OIDC and the built-in local account system are implemented; the remaining enterprise protocols are under construction):
+- **Third-party SSO federated authentication**: a built-in **pluggable identity provider (IdP) framework** connects directly to existing enterprise account systems, without re-implementing the login chain for every protocol (OIDC, SAML 2.0, LDAP/LDAPS, and the built-in local account system are implemented; the WeChat provider is under construction):
   - **OIDC / OAuth 2.0**: GitHub, Google, GitLab, and self-hosted enterprise IdPs;
-  - **SAML 2.0** (under construction): enterprise-grade single sign-on;
-  - **LDAP / LDAPS** (under construction): connects to enterprise directory services (Active Directory, OpenLDAP, etc.), supporting user-DN bind and group-based filtering;
+  - **SAML 2.0**: enterprise-grade single sign-on;
+  - **LDAP / LDAPS**: connects to enterprise directory services (Active Directory, OpenLDAP, etc.), supporting user-DN bind and group-based filtering;
   - **WeChat** (under construction): QR-code login via WeChat Open Platform and WeCom (Enterprise WeChat);
 - **Multiple coexisting IdPs with pluggable configuration**: administrators can enable multiple IdPs at the same time, configuring protocol parameters, visibility scope, default organization, and whether auto-registration is allowed for each one; new providers plug in as independent extensions without touching the core login logic;
 - **Account binding and JIT provisioning**: stable identifiers such as `issuer + subject` (OIDC / SAML) or `DN` (LDAP) serve as the primary key of the external identity and are bound to platform accounts; the first login can auto-create an account (Just-In-Time Provisioning), or auto-creation can be disabled so that administrators pre-assign accounts;
-- **Attribute and role mapping** (under construction): maps the username, email, group, and role claims returned by the IdP to platform organizations, projects, and roles, delivering permissions based on the enterprise organizational structure;
+- **Attribute and role mapping**: maps the username, email, group, and role claims returned by the IdP to platform organizations, projects, and roles, delivering permissions based on the enterprise organizational structure;
 - **Sessions and tokens**: after a successful SSO login, the platform issues a session and an access token, supporting token rotation and Single Logout; local password login can be toggled independently, coexisting with SSO or disabled entirely;
 - Management and isolation of the two-level (organization / project) multi-tenancy model;
 - Full API Key lifecycle management (creation, verification, revocation, expiry control); the plaintext is shown only once at creation, and the system stores only the salted hash digest;
@@ -372,7 +372,7 @@ below with its responsibility boundary and the feature points it implements
 - Generates tamper-proof metering vouchers;
 - Delivers them asynchronously to the billing chain through the message queue, decoupling the inference chain from the accounting chain.
 
-**External dependencies:** Redis (metering buffer), message queue (Kafka / RabbitMQ)
+**External dependencies:** Redis (metering buffer), message queue (RabbitMQ)
 
 ### 2.6 `billing` — Billing and Accounting
 
@@ -698,7 +698,7 @@ topology diagram. It has four concerns:
 | MinIO | model · image | Object storage: model weights and inference engine images |
 | JuiceFS | model · infer · Controller | Shared multi-replica mounting of weights and images |
 | Kubernetes | Controller | Creation and reconciliation of inference workloads, image pre-pulling, accelerator snapshots and resource-metric samples |
-| Kafka / RabbitMQ | Microservice gRPC servers · Controller | Message passing between the gRPC servers and the Controller (deployments, image pre-pulls, runtime scheme, accelerator/cluster snapshots, metering events) |
+| RabbitMQ | Microservice gRPC servers · Controller | Message passing between the gRPC servers and the Controller (deployments, image pre-pulls, runtime scheme, accelerator/cluster snapshots, metering events) |
 | Envoy | Inference Gateway (data plane) | Authentication, metering, and proxying of inference requests |
 | Envoy Gateway / CNI / CoreDNS | All in-cluster workloads | North-south entry with TLS, pod networking and service discovery (see §5.2) |
 | Image registry (Harbor) | image | Source and destination of imported inference engine images |

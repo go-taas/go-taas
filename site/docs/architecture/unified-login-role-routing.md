@@ -7,7 +7,7 @@
 | Owning modules | `services/auth` (password-grant login, role-derived realm, switch-surface session minting, provider/binding seeding), `pkg/server` (gateway realm guard — unchanged), `deploy/compose` (Keycloak realm-export.json seeding, provider seeding), `web/` (custom login pages, role-based landing, switch buttons), `pkg/config` (admin-role set), `pkg/errors` (reused codes) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/unified-login-role-routing.md) · [Architecture Design](../design/architecture.md) §2.1 `auth` and §3.1 admin/user surface separation · [SSO Federation & Account Binding](./sso-federation.md) (the IdP framework, `SSOAuthorize`/`SSOCallback`, identity binding, attribute-to-role mapping, sessions) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, realm-pinned sessions, the realm guard, the login pages this feature replaces, the `10038 REALM_MISMATCH` rule) · [Organization Members, Roles & Invitations](./org-members-rbac.md) (the roles the session carries and this feature routes on) |
 | Status | Architecture complete, handed to the Developer agent |
-| Implementation status | **Under construction** for the LDAP/LDAPS and SAML parts; the OIDC/OAuth 2.0 password grant and the built-in local account login are implemented. |
+| Implementation status | **Under construction** for the WeChat provider; the OIDC/OAuth 2.0 password grant, SAML, LDAP/LDAPS, and the built-in local account login are implemented. |
 
 ---
 
@@ -29,7 +29,7 @@ This feature adds: a **TaaS custom login page** (username/password against the s
 - Keycloak provider + `admin`/`admin` user seeded on compose startup (design D5): the realm-export.json gains the admin user, Direct Access Grants, and a role protocol mapper; a seed mechanism creates the provider row and the admin user's identity binding idempotently.
 - The page → API surface table with exact prefixes; per-page interactive states; numbered acceptance criteria testable in Nightwatch against the compose stack, including negative ones.
 
-**Non-goals** (from the design, restated): SAML password grant (SAML has no such flow; SAML providers keep the redirect flow); self-service registration or password reset; full RBAC enforcement across admin APIs; token rotation and Single Logout; requiring a session on the admin prefix (transitional access stays, feature #17 D6); a first-party local username/password account store (`Login`/`CreateUser` remain stubs — the custom login page authenticates against the selected IdP, not a local store); changing any data-plane (inference gateway) behaviour.
+**Non-goals** (from the design, restated): SAML password grant (SAML has no such flow; SAML providers keep the redirect flow); self-service registration or password reset; full RBAC enforcement across admin APIs; token rotation and Single Logout; requiring a session on the admin prefix (transitional access stays, feature #17 D6); a first-party local username/password account store (the custom login page authenticates against the selected IdP, not the local store — the local `Login`/`CreateUser` account system is a separate feature); changing any data-plane (inference gateway) behaviour.
 
 ### 1.1 Reading order
 

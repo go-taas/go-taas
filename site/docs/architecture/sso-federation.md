@@ -7,7 +7,7 @@
 | Owning modules | `auth` (IdP framework, identity bindings, sessions, and the session-derived org context every module consumes), with `tenancy` (org membership resolution for the session) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/sso-federation.md) · [Architecture Design](../design/architecture.md) Section 2.1 `auth` · [Multi-Tenancy](./multi-tenancy.md) — the validated org context this feature replaces with a session (its D4/FR3.3), the org directory and switcher this feature grounds in session membership (its D10/FR4.3) · [API Key Management](./api-key-management.md) — the data-plane key verification this feature leaves unchanged |
 | Status | Architecture complete, handed to the Developer agent |
-| Implementation status | **Under construction.** Implemented: the built-in local account system and the OIDC/OAuth 2.0 provider flow. Under construction: SAML 2.0, LDAP/LDAPS, the WeChat provider, attribute/role mapping, SCIM directory sync, and Single Logout. |
+| Implementation status | **Under construction.** Implemented: the built-in local account system (registration, login, password policy, email-code verification, and an image CAPTCHA for platform-administrator logins) and the OIDC/OAuth 2.0, SAML 2.0, and LDAP/LDAPS provider flows with attribute-to-role mapping. Under construction: the WeChat provider, SCIM directory sync, and Single Logout. |
 
 ---
 
@@ -504,6 +504,7 @@ The existing `auth` config section gains session settings (the design's D5):
 | `auth.sessionTTL` | `24h` | The TTL of issued sessions and access tokens (already present; now actually used) |
 | `auth.localPasswordLogin` | `true` | Enables/disables local password login alongside SSO (already present; the `users` table now exists) |
 | `auth.autoRegister` | `true` | Global JIT provisioning default; per-provider `allow_auto_provision` overrides it |
+| `auth.captcha.enabled` | `true` | Require an image CAPTCHA on platform-administrator local logins (they are exempt from email verification); ordinary accounts keep the email code and see no CAPTCHA |
 
 Rules:
 

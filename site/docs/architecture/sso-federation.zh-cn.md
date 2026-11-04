@@ -7,7 +7,7 @@
 | 归属模块 | `auth`（IdP 框架、身份绑定、会话，及各模块消费的会话派生组织上下文），配合 `tenancy`（会话的组织成员解析） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/sso-federation.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.1 节 `auth` · [多租户](./multi-tenancy.zh-cn.md) — 本特性以会话替换的经校验组织上下文（其 D4/FR3.3）、本特性以会话成员资格落地的组织目录与切换器（其 D10/FR4.3） · [API Key 管理](./api-key-management.zh-cn.md) — 本特性保持不变的数据面 Key 校验 |
 | 状态 | 架构完成，已移交研发代理 |
-| 实现状态 | **建设中。** 已实现：内置本地账号体系与 OIDC/OAuth 2.0 提供方流程。建设中：SAML 2.0、LDAP/LDAPS、微信提供方、属性/角色映射、SCIM 目录同步与统一登出。 |
+| 实现状态 | **建设中。** 已实现：内置本地账号体系（注册、登录、密码策略、邮箱验证码，以及面向平台管理员登录的图片验证码）与 OIDC/OAuth 2.0、SAML 2.0、LDAP/LDAPS 提供方流程及属性到角色的映射。建设中：微信提供方、SCIM 目录同步与统一登出。 |
 
 ---
 
@@ -504,6 +504,7 @@ sequenceDiagram
 | `auth.sessionTTL` | `24h` | 签发的会话与访问令牌的 TTL（已存在；现在实际使用） |
 | `auth.localPasswordLogin` | `true` | 启用/禁用与 SSO 并存的本地密码登录（已存在；`users` 表现在存在） |
 | `auth.autoRegister` | `true` | 全局 JIT 开通默认值；按提供方的 `allow_auto_provision` 覆盖它 |
+| `auth.captcha.enabled` | `true` | 平台管理员本地登录要求图片验证码（他们豁免邮箱验证码）；普通账号保留邮箱验证码，不显示图片验证码 |
 
 规则：
 

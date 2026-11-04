@@ -870,6 +870,8 @@ controller:
 #     auth:
 #       adminRoles: ["platform-admin", "org-admin", "admin", "owner"]
 #       emailVerification: true
+#       captcha:
+#         enabled: true
 #       smtp:
 #         host: "smtp.example.com"
 #         port: 587
