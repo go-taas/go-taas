@@ -1,3 +1,10 @@
+# [1.107.0](https://github.com/go-taas/go-taas/compare/v1.106.0...v1.107.0) (2026-11-04)
+
+
+### Features
+
+* **audit:** readable audit rows and a populated source IP ([1d32a0f](https://github.com/go-taas/go-taas/commit/1d32a0fa611beb25dfce93da5ea409cda905ab68))
+
 # [1.106.0](https://github.com/go-taas/go-taas/compare/v1.105.1...v1.106.0) (2026-11-04)
 
 
