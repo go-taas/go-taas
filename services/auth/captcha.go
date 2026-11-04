@@ -1,9 +1,11 @@
 // Image CAPTCHA for the local login form.
 //
-// The bootstrap admin account is exempt from email verification, so a
-// password-only login would otherwise be open to brute force. When
-// auth.captcha.enabled is on, GetCaptcha issues a short-lived, single-use
-// puzzle and Login refuses to check the password until it is solved.
+// Platform administrators are exempt from email verification, so their
+// password would otherwise be the one credential open to brute force.
+// When auth.captcha.enabled is on, GetCaptcha issues a short-lived,
+// single-use puzzle for such an account and Login refuses to compare the
+// password until it is solved. Ordinary accounts keep the email
+// verification code and are never challenged.
 //
 // The answer is stored in Redis under auth:captcha:{id} with a short TTL
 // (the same component the email codes use). The image is rendered as a
