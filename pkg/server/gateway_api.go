@@ -105,6 +105,15 @@ type GatewayVerifyRequest struct {
 	KeyDigest string `json:"key_digest"`
 	Model     string `json:"model"`
 	SourceIP  string `json:"source_ip"`
+	// RequestID is the id the gateway already propagated to the engine and
+	// will report usage under. It lets admission reserve this request's
+	// cost and metering release it, so a concurrent burst cannot spend the
+	// same balance twice.
+	RequestID string `json:"request_id,omitempty"`
+	// MaxTokens is the caller's requested output size (after the gateway's
+	// clamp). It sizes that reservation; 0 means the body did not say or
+	// could not be read.
+	MaxTokens int64 `json:"max_tokens,omitempty"`
 }
 
 // GatewayVerifyResponse is the verdict plus the limits the gateway
@@ -123,6 +132,10 @@ type GatewayVerifyResponse struct {
 	MaxOutputTokensPerRequest int64  `json:"max_output_tokens_per_request,omitempty"`
 	OwnerUserID               string `json:"owner_user_id,omitempty"`
 	ProjectID                 string `json:"project_id,omitempty"`
+	// Reserve tells the gateway this verdict reserved the request's cost,
+	// so it must not be reused for another request: a cached copy would
+	// skip the reservation that makes the admission atomic.
+	Reserve bool `json:"reserve,omitempty"`
 }
 
 // GatewayUsageRequest is one inference request's token usage, emitted by

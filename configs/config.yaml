@@ -312,6 +312,18 @@ billing:
   settlementsConsumer:
     enabled: true
     workers: 2
+  # funds is the data plane's admission gate. The accrual gate already
+  # charges the open hour against the balance; reservation additionally
+  # holds each request's worst-case cost in Redis until metering records
+  # it, which closes the race where concurrent callers all pass the same
+  # balance check. One hold is taken per binding scope (organization,
+  # person, project, project member), so a burst cannot overshoot a
+  # project or personal cap either. It degrades to accrual-only when
+  # Redis is unavailable.
+  funds:
+    reservation: true
+    holdTTL: 10m
+    defaultOutputTokens: 1024
   # reconciliation is the charging safety net: it prices uncharged
   # hours even when settlement events are lost.
   reconciliation:

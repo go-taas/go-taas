@@ -51,7 +51,7 @@ spec:
         verify_path: /internal/gateway/verify
         usage_path: /internal/gateway/usage
         token: {{ include "go-taas.gatewayPluginToken" . | quote }}
-        cache_ttl_ms: {{ include "go-taas.gatewayPluginMillis" (dict "value" (.Values.gatewayPlugin.cacheTTL | default "30s") "fallback" 30000) | int64 }}
+        cache_ttl_ms: {{ include "go-taas.gatewayPluginMillis" (dict "value" (.Values.gatewayPlugin.cacheTTL | default "5s") "fallback" 5000) | int64 }}
         verify_timeout_ms: {{ include "go-taas.gatewayPluginMillis" (dict "value" (.Values.gatewayPlugin.verifyTimeout | default "500ms") "fallback" 500) | int64 }}
         max_body_bytes: {{ .Values.gatewayPlugin.maxBodyBytes | default 1048576 | int64 }}
         protected_prefixes:

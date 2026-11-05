@@ -54,6 +54,37 @@ func (s *Service) PriceOnce(ctx context.Context, apiKeyID string, periodStart in
 	return nil
 }
 
+// resolvePriceEntry applies the D6 resolution chain for one
+// (model, card, time) cell: (model, card) → (model, default) → the model's
+// name with each card. Charging and accrual estimation share it so the
+// in-flight figure always prices the same row the ledger will.
+func (s *Service) resolvePriceEntry(ctx context.Context, repo *Repository, modelID, cardType string, at int64) (*PriceEntry, error) {
+	entry, err := repo.ApplicablePrice(ctx, modelID, cardType, at)
+	if err != nil || entry != nil {
+		return entry, err
+	}
+	if cardType != defaultCardType {
+		entry, err = repo.ApplicablePrice(ctx, modelID, defaultCardType, at)
+		if err != nil || entry != nil {
+			return entry, err
+		}
+	}
+	// A price row may key on the model's name (the deployment name an
+	// older console sent) while metering records the catalog id. Retrying
+	// with the name keeps that price effective instead of charging zero.
+	name, nameErr := repo.ModelName(ctx, modelID)
+	if nameErr != nil || name == "" || name == modelID {
+		return nil, nil
+	}
+	for _, card := range []string{cardType, defaultCardType} {
+		entry, err = repo.ApplicablePrice(ctx, name, card, at)
+		if err != nil || entry != nil {
+			return entry, err
+		}
+	}
+	return nil, nil
+}
+
 // chargeGroup prices and commits one usage group: price lookup with the
 // D6 fallback chain, month-to-date volume, tier selection, the D2
 // amount formula, and the ChargeGroup transaction (FR4, AC6-AC11).
@@ -63,31 +94,9 @@ func (s *Service) chargeGroup(ctx context.Context, repo *Repository, group *Usag
 	currency := config.GetConfig().Billing.Currency
 
 	// D6 resolution chain: (model, card) → (model, default) → unpriced.
-	entry, err := repo.ApplicablePrice(ctx, group.ModelID, group.AcceleratorType, group.PeriodStart)
+	entry, err := s.resolvePriceEntry(ctx, repo, group.ModelID, group.AcceleratorType, group.PeriodStart)
 	if err != nil {
 		return err
-	}
-	if entry == nil && group.AcceleratorType != defaultCardType {
-		entry, err = repo.ApplicablePrice(ctx, group.ModelID, defaultCardType, group.PeriodStart)
-		if err != nil {
-			return err
-		}
-	}
-	// A price row may key on the model's name (the deployment name an
-	// older console sent) while metering records the catalog id. Retrying
-	// with the name keeps that price effective instead of charging zero.
-	if entry == nil {
-		if name, nameErr := repo.ModelName(ctx, group.ModelID); nameErr == nil && name != "" && name != group.ModelID {
-			for _, card := range []string{group.AcceleratorType, defaultCardType} {
-				entry, err = repo.ApplicablePrice(ctx, name, card, group.PeriodStart)
-				if err != nil {
-					return err
-				}
-				if entry != nil {
-					break
-				}
-			}
-		}
 	}
 
 	record := &ChargeRecord{
@@ -185,6 +194,48 @@ func computeAmount(group *UsageGroup, entry *PriceEntry, tierInputRate, tierOutp
 // the exact companion of computeAmount's rounding.
 func AmountMicros(amount float64) int64 {
 	return int64(math.Round(amount * amountScale))
+}
+
+// MicrosPerCent is the scale between integer minor units (cents) and the
+// ledger's micro-unit precision: 1 cent = 1e4 micros.
+const MicrosPerCent = int64(10_000)
+
+// CentsToMicros converts integer minor units into ledger micro-units.
+func CentsToMicros(cents int64) int64 { return cents * MicrosPerCent }
+
+// EstimateAccrualMicros prices a usage line at ingestion time so the funds
+// gate can see money that is spent but not yet settled.
+//
+// It deliberately mirrors computeAmount (same token fields, same micro-unit
+// rounding) so the in-flight figure is comparable with the eventual charge.
+// Two differences are intentional:
+//
+//   - Tier selection needs the org's month-to-date volume, which is a
+//     charging-time question; here the highest tier rate is used instead, so
+//     the estimate is an upper bound rather than a lower one.
+//   - A nil entry (no price yet) accrues nothing: an unpriceable request
+//     cannot be turned into money, and inventing a number would block a
+//     tenant for a configuration gap.
+func EstimateAccrualMicros(entry *PriceEntry, promptTokens, completionTokens, cachedTokens int64) int64 {
+	if entry == nil {
+		return 0
+	}
+	inputRate := entry.InputPricePerMillion
+	outputRate := entry.OutputPricePerMillion
+	if tiers, err := decodeTiers(entry.TiersJSON); err == nil {
+		for _, tier := range tiers {
+			if tier.InputPricePerMillion > inputRate {
+				inputRate = tier.InputPricePerMillion
+			}
+			if tier.OutputPricePerMillion > outputRate {
+				outputRate = tier.OutputPricePerMillion
+			}
+		}
+	}
+	amount := float64(promptTokens)*inputRate/1_000_000 +
+		float64(completionTokens)*outputRate/1_000_000 +
+		float64(cachedTokens)*entry.CachedPricePerMillion/1_000_000
+	return AmountMicros(amount)
 }
 
 // selectTier picks the volume tier for the month-to-date volume: the

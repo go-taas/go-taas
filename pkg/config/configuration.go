@@ -270,6 +270,14 @@ func (c *Configuration) applyDefaults() {
 	if c.Billing.Forecast.RangeMaxDays == 0 {
 		c.Billing.Forecast.RangeMaxDays = 92
 	}
+	// Funds gate: the reservation is opt-in like every other runner switch,
+	// and degrades on its own when Redis is unavailable.
+	if c.Billing.Funds.HoldTTL == 0 {
+		c.Billing.Funds.HoldTTL = 10 * time.Minute
+	}
+	if c.Billing.Funds.DefaultOutputTokens == 0 {
+		c.Billing.Funds.DefaultOutputTokens = 1024
+	}
 	if c.Audit.Retention.EventTTL == 0 {
 		c.Audit.Retention.EventTTL = 365 * 24 * time.Hour
 	}

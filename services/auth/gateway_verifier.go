@@ -48,6 +48,11 @@ func (s *Service) VerifyGatewayKey(ctx context.Context, req *server.GatewayVerif
 		return rejectWith(apierrors.CodeAPIKeyInvalid), nil
 	}
 
+	// The request identity only exists on this path: the public
+	// VerifyAPIKey contract has no field for it. Attaching it lets the
+	// funds gate reserve this request's cost and lets metering release the
+	// reservation when the usage arrives.
+	ctx = WithFundsHint(ctx, req.RequestID, req.MaxTokens)
 	verdict, err := s.VerifyAPIKey(ctx, &authv1.VerifyAPIKeyRequest{
 		KeyDigest: req.KeyDigest,
 		Model:     req.Model,
@@ -79,6 +84,9 @@ func (s *Service) VerifyGatewayKey(ctx context.Context, req *server.GatewayVerif
 		MaxOutputTokensPerRequest: verdict.GetMaxOutputTokensPerRequest(),
 		OwnerUserID:               verdict.GetOwnerUserId(),
 		ProjectID:                 verdict.GetProjectId(),
+		// A reserved admission is per-request: tell the plugin so it does
+		// not answer the next request from its local cache.
+		Reserve: s.fundsGate != nil && s.fundsGate.ReservationActive(),
 	}, nil
 }
 
@@ -105,7 +113,12 @@ func isVerdictCode(code apierrors.Code) bool {
 		apierrors.CodeAPIKeyExpired,
 		apierrors.CodeAPIKeyModelNotAllowed,
 		apierrors.CodeModelNotFound,
-		apierrors.CodeModelUnauthorized:
+		apierrors.CodeModelUnauthorized,
+		// The credential is valid; the account behind it cannot pay for
+		// the call. That is a verdict about the caller, not a platform
+		// fault, so the gateway must return 402 instead of failing closed
+		// with a 503 that invites a retry.
+		apierrors.CodeInsufficientFunds:
 		return true
 	default:
 		// CodeForbidden (10036) is deliberately absent: on this path it

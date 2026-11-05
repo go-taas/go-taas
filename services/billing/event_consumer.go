@@ -167,11 +167,34 @@ func (s *Service) handleMeteringEvent(ctx context.Context, ev *meteringEvent) (s
 		sid := ev.ServiceID
 		line.ServiceID = &sid
 	}
+	// Price the line now so the funds gate can see this request as money
+	// already spent, even though charging only runs on closed hours. A
+	// lookup failure is not fatal: the line is still written and the gate
+	// falls back to whatever accrual already exists.
+	line.AccrualMicros = s.accrualFor(ctx, repo, line)
 	stored, err := repo.IngestUsageLine(ctx, line)
 	if err != nil {
 		return "", err
 	}
+	// The line now carries the request's cost, so the reservation taken at
+	// admission has done its job and must stop counting against the
+	// balance: the accrual above is the more accurate figure, and holding
+	// both would charge the tenant twice.
+	s.releaseHold(ctx, stored.OrganizationID, stored.RequestID)
 	return stored.ID, nil
+}
+
+// accrualFor prices one usage line for the in-flight (accrual) ledger.
+// An unpriced or unreadable line accrues 0 rather than blocking a tenant
+// over a pricing gap; the charge engine still records it as unpriced.
+func (s *Service) accrualFor(ctx context.Context, repo *Repository, line *UsageLine) int64 {
+	entry, err := s.resolvePriceEntry(ctx, repo, line.ModelID, line.AcceleratorType, line.CompletedAt.Unix())
+	if err != nil {
+		logger.S().Warnw("billing: accrual price lookup failed, line accrues 0",
+			"request_id", line.RequestID, "model_id", line.ModelID, "err", err)
+		return 0
+	}
+	return EstimateAccrualMicros(entry, line.PromptTokens, line.CompletionTokens, line.CachedTokens)
 }
 
 // resolveCardFromService looks the service's accelerator type up in the

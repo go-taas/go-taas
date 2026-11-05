@@ -99,6 +99,7 @@ const (
 	codeAPIKeyModelNotAllowed  = 10039
 	codeModelNotFound          = 10101
 	codeModelUnauthorized      = 10105
+	codeInsufficientFunds      = 10502
 	codeQuotaOutputTokensLimit = 13304
 )
 
@@ -122,6 +123,11 @@ func rejection(code int, message string) (status int, errType, errCode string) {
 		return 403, "permission_error", "model_not_allowed"
 	case codeQuotaOutputTokensLimit:
 		return 400, "invalid_request_error", "max_tokens_exceeded"
+	case codeInsufficientFunds:
+		// Payment required: the credential is valid, the account is not.
+		// 402 is deliberately distinct from 401/403 so an SDK does not
+		// retry with the same key or treat it as a permission problem.
+		return 402, "insufficient_quota", "insufficient_funds"
 	default:
 		// Anything unmapped is a platform-side condition the gateway should
 		// have failed closed on; 503 tells the caller to retry later instead
@@ -164,6 +170,11 @@ type verdict struct {
 	// fetchedAtSeconds is the coarse clock when the answer arrived, for the
 	// local cache TTL.
 	fetchedAtSeconds int64
+	// reserve marks a verdict that reserved this request's cost on the
+	// platform. Such a verdict belongs to one request and must not be
+	// reused: a cached copy would skip the reservation and let a burst
+	// spend the same balance twice.
+	reserve bool
 }
 
 // parseVerdict decodes the /internal/gateway/verify response.
@@ -185,6 +196,7 @@ func parseVerdict(body []byte) (*verdict, bool) {
 		maxOutputTokensPerRequest: root.intOr("max_output_tokens_per_request"),
 		ownerUserID:               root.stringOr("owner_user_id"),
 		projectID:                 root.stringOr("project_id"),
+		reserve:                   root.boolOr("reserve"),
 	}
 	return v, true
 }

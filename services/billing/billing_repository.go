@@ -93,6 +93,30 @@ func (r *Repository) ApplicablePrice(ctx context.Context, modelID, cardType stri
 	return &row, nil
 }
 
+// WorstCasePrice returns the most expensive priced cell of a model that is
+// in effect at a time, or nil when the model has no price at all.
+//
+// It exists for the funds reservation: admission happens before the serving
+// card is known, so the hold has to assume the worst rate the model can be
+// billed at. An over-estimate only makes the gate more conservative, which is
+// the safe direction for money.
+func (r *Repository) WorstCasePrice(ctx context.Context, modelID string, at int64) (*PriceEntry, error) {
+	var row PriceEntry
+	err := r.DB(ctx).
+		Where("model_id = ? AND effective_from <= ?", modelID, at).
+		Order("input_price_per_million DESC").
+		Order("output_price_per_million DESC").
+		Order("effective_from DESC").
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return &row, nil
+}
+
 // ListPrices returns one page of price entries and the total count.
 // The current view (default) returns, for each (model, card), the max
 // effective_from <= now plus any scheduled versions (effective_from >
@@ -245,12 +269,49 @@ func (r *Repository) ChargeGroup(ctx context.Context, group UsageGroup, record *
 				return err
 			}
 		}
+		// Marking the lines charged also retires their accrual: the
+		// charge record now owns the amount, and leaving the accrual in
+		// place would subtract it from the balance twice.
 		return r.DB(txCtx).Model(&UsageLine{}).
 			Where("api_key_id = ? AND model_id = ? AND accelerator_type = ? AND completed_at >= ? AND completed_at < ? AND charged_charge_id IS NULL",
 				group.APIKeyID, group.ModelID, group.AcceleratorType,
 				time.Unix(group.PeriodStart, 0).UTC(), time.Unix(group.PeriodEnd, 0).UTC()).
-			Update("charged_charge_id", record.ID).Error
+			Updates(map[string]interface{}{
+				"charged_charge_id": record.ID,
+				"accrual_micros":    0,
+			}).Error
 	})
+}
+
+// ReleaseStaleAccrual zeroes the in-flight accrual of uncharged usage lines
+// completed before the cutoff, returning how many rows and how many micros
+// were released.
+//
+// Charging normally retires an hour's accrual within one grace period. A line
+// that is still uncharged long after its hour closed means the charge path is
+// failing, and a stuck accrual would otherwise hold the tenant's money hostage
+// for good: the gate keeps subtracting a figure nothing will ever retire. The
+// line stays uncharged, so reconciliation still bills it once the charge path
+// recovers — releasing here only stops the double count in the meanwhile.
+func (r *Repository) ReleaseStaleAccrual(ctx context.Context, before time.Time) (int64, int64, error) {
+	var released int64
+	err := r.DB(ctx).Model(&UsageLine{}).
+		Where("charged_charge_id IS NULL AND accrual_micros <> 0 AND completed_at < ?", before.UTC()).
+		Select("COALESCE(SUM(accrual_micros), 0)").
+		Scan(&released).Error
+	if err != nil {
+		return 0, 0, err
+	}
+	if released == 0 {
+		return 0, 0, nil
+	}
+	result := r.DB(ctx).Model(&UsageLine{}).
+		Where("charged_charge_id IS NULL AND accrual_micros <> 0 AND completed_at < ?", before.UTC()).
+		Update("accrual_micros", 0)
+	if result.Error != nil {
+		return 0, 0, result.Error
+	}
+	return result.RowsAffected, released, nil
 }
 
 // MonthToDateTokens returns the organization's cumulative charged token

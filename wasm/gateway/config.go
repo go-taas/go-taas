@@ -34,7 +34,8 @@ type config struct {
 	// Token is the shared secret presented as X-Gateway-Token.
 	Token string `json:"token"`
 	// CacheTTLMs bounds how long a verdict is reused locally. A
-	// revocation becomes effective within this window.
+	// revocation — or a balance running out — becomes effective within
+	// this window, so it is deliberately short.
 	CacheTTLMs int `json:"cache_ttl_ms"`
 	// VerifyTimeoutMs bounds one verification call; exceeding it fails
 	// closed.
@@ -53,10 +54,14 @@ type config struct {
 // configuration does not say otherwise.
 var defaultProtectedPrefixes = []string{"/v1/"}
 
+// defaultCacheTTLMs matches the platform's own funds-decision cache (5s).
+// A cached verdict skips re-verification entirely, so a longer window is a
+// window in which a drained balance keeps being served.
+const defaultCacheTTLMs = 5_000
+
 const (
 	defaultVerifyPath          = "/internal/gateway/verify"
 	defaultUsagePath           = "/internal/gateway/usage"
-	defaultCacheTTLMs          = 30_000
 	defaultVerifyTimeoutMs     = 500
 	defaultMaxBodyBytes        = 1 << 20
 	defaultRateLimitStateTTLMs = 600_000

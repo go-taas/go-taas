@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"math"
 	"strings"
 	"time"
 
@@ -442,14 +443,275 @@ func (s *Service) ListTransactions(ctx context.Context, req *billingv1.ListTrans
 	}, nil
 }
 
+// FundsQuery is one admission decision's input.
+//
+// It is exported so the data plane's gating seam can be described without
+// this package's protobuf types, and so a caller can say *which* request is
+// being admitted: the reservation that closes the concurrency race is keyed
+// by it.
+type FundsQuery struct {
+	// OrganizationID is the tenant whose money is being spent. An empty
+	// organization is ungated: a platform-level caller owns no account.
+	OrganizationID string
+	// OwnerUserID and ProjectID select the spend-cap tiers that apply
+	// (the personal, project and project-member caps).
+	OwnerUserID string
+	ProjectID   string
+	// RequestID identifies the admission. When set and reservation is
+	// enabled, the request holds its worst-case cost until metering
+	// records it, so a concurrent burst cannot spend the same balance
+	// twice.
+	RequestID string
+	// Model and MaxOutputTokens size that reservation: the output is the
+	// only part of a request whose size is known before it runs.
+	Model           string
+	MaxOutputTokens int64
+}
+
+// fundsEvaluation is what one gate evaluation found.
+type fundsEvaluation struct {
+	account *Account
+	allowed bool
+	reason  string
+
+	// accruedMicros is recorded but uncharged spend of the organization
+	// scope (the open hour). The other scopes' figures are folded into
+	// bounds as they are read.
+	accruedMicros int64
+	// holdsMicros is spend reserved by requests in flight, counted only when
+	// the caller asked for it: an admission leaves holds to the reserve
+	// script, which reads them itself.
+	holdsMicros int64
+
+	effectiveLimit int64
+	ownerSpent     int64
+	projectSpent   int64
+	scopedSpent    int64
+	memberSpent    int64
+
+	// bounds are the ceilings an admission must fit, one per scope that
+	// constrains this request, with the recorded accrual already netted out.
+	// Admission holds against all of them at once; a request denied by any one
+	// of them leaves no hold behind.
+	bounds []FundsBound
+}
+
+// scopeBound builds one scope's ceiling, or reports that the scope is
+// unlimited and therefore constrains nothing.
+func scopeBound(scope string, limitCents, spentCents, accruedMicros int64) (FundsBound, bool) {
+	if limitCents <= 0 {
+		return FundsBound{}, false
+	}
+	return FundsBound{
+		Scope:           scope,
+		AvailableMicros: CentsToMicros(limitCents-spentCents) - accruedMicros,
+	}, true
+}
+
+// CheckInferenceAllowed answers the data plane's per-request funds gate.
+//
+// It is the primitive-argument face of CheckFunds so the auth module can
+// depend on a narrow seam instead of this package's protobuf types. An
+// empty organization is ungated (nothing to charge); a missing account is
+// ungated too, matching the transitional open mode (AC12).
+//
+// When the request names itself and reservation is enabled, the answer also
+// reserves the request's worst-case cost in every scope that constrains it:
+// the evaluation is a read, and two concurrent reads of the same balance would
+// both say yes.
+func (s *Service) CheckInferenceAllowed(ctx context.Context, orgID, ownerUserID, projectID, requestID, model string, maxOutputTokens int64) (bool, string, error) {
+	return s.evaluateAdmission(ctx, FundsQuery{
+		OrganizationID:  orgID,
+		OwnerUserID:     ownerUserID,
+		ProjectID:       projectID,
+		RequestID:       requestID,
+		Model:           model,
+		MaxOutputTokens: maxOutputTokens,
+	})
+}
+
+// ReservationActive reports whether admissions reserve their cost. The data
+// plane needs to know: a reserved verdict is per-request and must not be
+// cached, or the next request would be admitted without a reservation.
+func (s *Service) ReservationActive() bool { return s.fundsReservationEnabled() }
+
+// evaluateAdmission is the struct-shaped core of CheckInferenceAllowed.
+func (s *Service) evaluateAdmission(ctx context.Context, q FundsQuery) (bool, string, error) {
+	// Nothing to charge: a platform-level caller owns no tenant account.
+	if strings.TrimSpace(q.OrganizationID) == "" {
+		return true, "", nil
+	}
+	eval, err := s.evaluateFunds(ctx, q, false)
+	if err != nil {
+		return false, "", err
+	}
+	if !eval.allowed {
+		return false, eval.reason, nil
+	}
+	// No account means nothing to hold against (AC12), and a request with no
+	// known size holds nothing either.
+	if eval.account == nil || strings.TrimSpace(q.RequestID) == "" || !s.fundsReservationEnabled() {
+		return true, "", nil
+	}
+	need := s.reserveMicros(ctx, q.Model, q.MaxOutputTokens)
+	if need <= 0 {
+		return true, "", nil
+	}
+	bounds := eval.reservableBounds()
+	if len(bounds) == 0 {
+		// The account rule admitted this request with nothing left — the
+		// postpaid "warn" policy — so there is no ceiling to hold against and
+		// holding would silently turn the policy into a block.
+		return true, "", nil
+	}
+	admitted, err := s.reserver().Reserve(ctx, q.OrganizationID, q.RequestID, need, bounds)
+	if err != nil {
+		// Reservation is an optimisation over the accrual gate: a Redis
+		// failure degrades to "checked, not held" instead of stopping
+		// inference for a cache outage.
+		logger.S().Warnw("billing: funds reservation failed, admitting on accrual only",
+			"org", q.OrganizationID, "request_id", q.RequestID, "err", err)
+		return true, "", nil
+	}
+	if !admitted {
+		return false, "insufficient_funds", nil
+	}
+	return true, "", nil
+}
+
+// reservableBounds keeps the scopes a hold can still be taken against. A
+// scope whose ceiling is already consumed cannot be reserved into — the
+// account rule either denied the request or the policy is "warn" — and
+// passing it to the script would turn that policy into a block.
+func (e *fundsEvaluation) reservableBounds() []FundsBound {
+	bounds := make([]FundsBound, 0, len(e.bounds))
+	for _, b := range e.bounds {
+		if b.AvailableMicros > 0 {
+			bounds = append(bounds, b)
+		}
+	}
+	return bounds
+}
+
+// reserveMicros sizes one request's hold: its output at the highest rate the
+// model can be billed at, since neither the serving card nor the prompt size
+// is known before the request runs. An unpriced model reserves nothing — the
+// accrual gate still accounts the usage once metering records it.
+func (s *Service) reserveMicros(ctx context.Context, model string, maxOutputTokens int64) int64 {
+	model = strings.TrimSpace(model)
+	if model == "" {
+		return 0
+	}
+	tokens := maxOutputTokens
+	if tokens <= 0 {
+		tokens = config.GetConfig().Billing.Funds.DefaultOutputTokens
+	}
+	if tokens <= 0 {
+		return 0
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return 0
+	}
+	now := time.Now().Unix()
+	entry, err := s.resolvePriceEntry(ctx, repo, model, defaultCardType, now)
+	if err != nil {
+		return 0
+	}
+	if entry == nil {
+		entry, err = repo.WorstCasePrice(ctx, model, now)
+		if err != nil {
+			return 0
+		}
+	}
+	return EstimateAccrualMicros(entry, 0, tokens, 0)
+}
+
+// outstandingHolds returns the micros reserved by in-flight requests in one
+// scope, or 0 when reservation is off or Redis cannot answer.
+func (s *Service) outstandingHolds(ctx context.Context, orgID, scope string) int64 {
+	if !s.fundsReservationEnabled() {
+		return 0
+	}
+	micros, err := s.reserver().Outstanding(ctx, orgID, scope)
+	if err != nil {
+		logger.S().Warnw("billing: funds hold read failed, gating on accrual only",
+			"org", orgID, "scope", scope, "err", err)
+		return 0
+	}
+	return micros
+}
+
+// releaseHold frees the reservation of one admitted request once metering
+// recorded it: the line's own accrual takes over from there. Releasing a
+// request that never held anything (a redelivery, or a request admitted
+// before reservation existed) is a no-op.
+func (s *Service) releaseHold(ctx context.Context, orgID, requestID string) {
+	if strings.TrimSpace(orgID) == "" || strings.TrimSpace(requestID) == "" || !s.fundsReservationEnabled() {
+		return
+	}
+	freed, err := s.reserver().Release(ctx, orgID, requestID)
+	if err != nil {
+		logger.S().Warnw("billing: funds hold release failed, the hold will expire",
+			"org", orgID, "request_id", requestID, "err", err)
+		return
+	}
+	if freed > 0 {
+		logger.S().Debugw("billing: released funds hold",
+			"org", orgID, "request_id", requestID, "micros", freed)
+	}
+}
+
 // CheckFunds is the internal gateway gating check (AD4): prepaid is
-// allowed while balance > 0; postpaid is allowed under the quota
-// unless the overdraw policy blocks; no account is ungated (AC12).
+// allowed while the balance covers the recorded and reserved spend; postpaid
+// is allowed under the quota unless the overdraw policy blocks; no account is
+// ungated (AC12). It never reserves: the console and legacy callers want the
+// current position, not an admission.
 func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsRequest) (*billingv1.CheckFundsResponse, error) {
 	orgID := strings.TrimSpace(req.GetOrganizationId())
 	if orgID == "" {
 		return nil, apierrors.New(apierrors.CodeUnauthorized)
 	}
+	eval, err := s.evaluateFunds(ctx, FundsQuery{
+		OrganizationID: orgID,
+		OwnerUserID:    strings.TrimSpace(req.GetOwnerUserId()),
+		ProjectID:      strings.TrimSpace(req.GetProjectId()),
+	}, true)
+	if err != nil {
+		return nil, err
+	}
+	if eval.account == nil {
+		return &billingv1.CheckFundsResponse{Response: okResponse(), Allowed: true, Mode: ""}, nil
+	}
+	return &billingv1.CheckFundsResponse{
+		Response:               okResponse(),
+		Allowed:                eval.allowed,
+		Reason:                 eval.reason,
+		Mode:                   eval.account.Mode,
+		BalanceCents:           eval.account.BalanceCents,
+		MonthlyQuotaCents:      eval.account.MonthlyQuotaCents,
+		UsedThisCycleCents:     eval.account.UsedThisCycleCents,
+		MonthlySpendLimitCents: eval.account.MonthlySpendLimitCents,
+		SpentThisCycleCents:    eval.account.SpentThisCycleCents,
+
+		EffectiveMonthlySpendLimitCents:  eval.effectiveLimit,
+		OwnerSpentThisCycleCents:         eval.ownerSpent,
+		ProjectSpentThisCycleCents:       eval.projectSpent,
+		ScopedSpentThisCycleCents:        eval.scopedSpent,
+		ProjectMemberSpentThisCycleCents: eval.memberSpent,
+	}, nil
+}
+
+// evaluateFunds runs the gating truth table: the account rule first, then the
+// three-level spend caps that tighten it, and collects the ceiling of every
+// scope so an admission can hold against all of them. A resolver read failure
+// degrades that tier to unlimited and never blocks traffic.
+//
+// includeHolds is false on the admission path — the reserve script counts the
+// holds atomically, and counting them here as well would refuse requests the
+// tenant can still afford — and true for a read-only position report.
+func (s *Service) evaluateFunds(ctx context.Context, q FundsQuery, includeHolds bool) (*fundsEvaluation, error) {
+	orgID := strings.TrimSpace(q.OrganizationID)
 	repo, err := s.accountRepo()
 	if err != nil {
 		return nil, err
@@ -459,83 +721,110 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 		return nil, err
 	}
 	if account == nil {
-		return &billingv1.CheckFundsResponse{Response: okResponse(), Allowed: true, Mode: ""}, nil
+		return &fundsEvaluation{account: nil, allowed: true}, nil
 	}
-	allowed, reason := fundsAllowed(account)
-	// Three-level spend gate: the project and personal caps tighten the
-	// account cap (the minimum of the non-zero values). A resolver read
-	// failure degrades that tier to unlimited and never blocks traffic:
-	// the account rule above already ran.
-	effectiveLimit := account.MonthlySpendLimitCents
-	scopedSpent := account.SpentThisCycleCents
-	ownerSpent := int64(0)
-	projectSpent := int64(0)
-	memberSpent := int64(0)
-	if s.spendLimitResolver != nil {
-		if ownerID := strings.TrimSpace(req.GetOwnerUserId()); ownerID != "" {
-			limit, err := s.spendLimitResolver.UserMonthlySpendLimitCents(ctx, orgID, ownerID)
-			if err != nil {
-				logger.S().Warnw("billing: user spend limit read failed, degrading to unlimited",
-					"org", orgID, "owner", ownerID, "err", err)
-			} else {
-				effectiveLimit = minNonZeroLimit(effectiveLimit, limit)
-				ownerSpent, err = repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, ownerID, "")
-				if err != nil {
-					logger.S().Warnw("billing: user spend read failed, degrading to unlimited",
-						"org", orgID, "owner", ownerID, "err", err)
-					ownerSpent = 0
-				} else if limit > 0 && ownerSpent >= limit {
-					allowed, reason = false, "insufficient_funds"
-				}
-				scopedSpent = ownerSpent
+
+	// In-flight spend: usage written but not charged yet. Counting it is what
+	// makes the open hour cost real money instead of becoming a free — and
+	// later negative — hour.
+	eval := &fundsEvaluation{account: account}
+	eval.accruedMicros = s.scopedAccrual(ctx, repo, orgID, account.CycleStartedAt, "", "")
+	if includeHolds {
+		eval.holdsMicros = s.outstandingHolds(ctx, orgID, scopeOrganization)
+	}
+	inFlight := eval.accruedMicros + eval.holdsMicros
+	eval.allowed, eval.reason = fundsAllowed(account, inFlight)
+
+	// The account's own ceiling always constrains an admission: it is the
+	// balance (prepaid) or the quota headroom (postpaid), tightened by the
+	// cross-mode spend limit.
+	eval.bounds = append(eval.bounds, FundsBound{
+		Scope:           scopeOrganization,
+		AvailableMicros: accountCeilingMicros(account) - eval.accruedMicros - eval.holdsMicros,
+	})
+
+	eval.effectiveLimit = account.MonthlySpendLimitCents
+	eval.scopedSpent = account.SpentThisCycleCents
+	if s.spendLimitResolver == nil {
+		return eval, nil
+	}
+	ownerID := strings.TrimSpace(q.OwnerUserID)
+	projectID := strings.TrimSpace(q.ProjectID)
+	if ownerID != "" {
+		limit, err := s.spendLimitResolver.UserMonthlySpendLimitCents(ctx, orgID, ownerID)
+		if err != nil {
+			logger.S().Warnw("billing: user spend limit read failed, degrading to unlimited",
+				"org", orgID, "owner", ownerID, "err", err)
+		} else {
+			eval.effectiveLimit = minNonZeroLimit(eval.effectiveLimit, limit)
+			spent, spentErr := repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, ownerID, "")
+			accrued := s.scopedAccrual(ctx, repo, orgID, account.CycleStartedAt, ownerID, "")
+			if spentErr != nil {
+				logger.S().Warnw("billing: user spend read failed, degrading to unlimited",
+					"org", orgID, "owner", ownerID, "err", spentErr)
+				spent = 0
+			} else if scopedSpendReached(spent, accrued, limit) {
+				eval.allowed, eval.reason = false, "insufficient_funds"
+			} else if bound, ok := scopeBound(userScope(ownerID), limit, spent, accrued); ok {
+				eval.bounds = append(eval.bounds, bound)
+			}
+			eval.ownerSpent = spent
+			eval.scopedSpent = spent
+		}
+	}
+	if projectID != "" {
+		limit, err := s.spendLimitResolver.ProjectMonthlySpendLimitCents(ctx, projectID)
+		if err != nil {
+			logger.S().Warnw("billing: project spend limit read failed, degrading to unlimited",
+				"org", orgID, "project", projectID, "err", err)
+		} else {
+			eval.effectiveLimit = minNonZeroLimit(eval.effectiveLimit, limit)
+			spent, spentErr := repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, "", projectID)
+			accrued := s.scopedAccrual(ctx, repo, orgID, account.CycleStartedAt, "", projectID)
+			if spentErr != nil {
+				logger.S().Warnw("billing: project spend read failed, degrading to unlimited",
+					"org", orgID, "project", projectID, "err", spentErr)
+				spent = 0
+			} else if scopedSpendReached(spent, accrued, limit) {
+				eval.allowed, eval.reason = false, "insufficient_funds"
+			} else if bound, ok := scopeBound(projectScope(projectID), limit, spent, accrued); ok {
+				eval.bounds = append(eval.bounds, bound)
+			}
+			eval.projectSpent = spent
+			if ownerID == "" {
+				eval.scopedSpent = spent
 			}
 		}
-		if projectID := strings.TrimSpace(req.GetProjectId()); projectID != "" {
-			limit, err := s.spendLimitResolver.ProjectMonthlySpendLimitCents(ctx, projectID)
-			if err != nil {
-				logger.S().Warnw("billing: project spend limit read failed, degrading to unlimited",
-					"org", orgID, "project", projectID, "err", err)
-			} else {
-				effectiveLimit = minNonZeroLimit(effectiveLimit, limit)
-				projectSpent, err = repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, "", projectID)
-				if err != nil {
-					logger.S().Warnw("billing: project spend read failed, degrading to unlimited",
-						"org", orgID, "project", projectID, "err", err)
-					projectSpent = 0
-				} else if limit > 0 && projectSpent >= limit {
-					allowed, reason = false, "insufficient_funds"
-				}
-				if strings.TrimSpace(req.GetOwnerUserId()) == "" {
-					scopedSpent = projectSpent
-				}
+	}
+	// Member tier: the project administrator's cap on this person inside this
+	// project. It is measured against the same person's spend in the project,
+	// so a generous teammate never eats into this member's cap.
+	if ownerID != "" && projectID != "" {
+		limit, limitErr := s.spendLimitResolver.ProjectMemberMonthlySpendLimitCents(ctx, projectID, ownerID)
+		if limitErr != nil {
+			logger.S().Warnw("billing: project member spend limit read failed, degrading to unlimited",
+				"org", orgID, "project", projectID, "owner", ownerID, "err", limitErr)
+		} else {
+			eval.effectiveLimit = minNonZeroLimit(eval.effectiveLimit, limit)
+			spent, spentErr := repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, ownerID, projectID)
+			accrued := s.scopedAccrual(ctx, repo, orgID, account.CycleStartedAt, ownerID, projectID)
+			if spentErr != nil {
+				logger.S().Warnw("billing: project member spend read failed, degrading to unlimited",
+					"org", orgID, "project", projectID, "owner", ownerID, "err", spentErr)
+				spent = 0
+			} else if scopedSpendReached(spent, accrued, limit) {
+				eval.allowed, eval.reason = false, "insufficient_funds"
+			} else if bound, ok := scopeBound(projectMemberScope(projectID, ownerID), limit, spent, accrued); ok {
+				eval.bounds = append(eval.bounds, bound)
 			}
-		}
-		// Member tier: the project administrator's cap on this person inside
-		// this project. It is measured against the same person's spend in the
-		// project, so a generous teammate never eats into this member's cap,
-		// and the effective limit takes the tighter of it and the other tiers.
-		if ownerID, projectID := strings.TrimSpace(req.GetOwnerUserId()), strings.TrimSpace(req.GetProjectId()); ownerID != "" && projectID != "" {
-			limit, limitErr := s.spendLimitResolver.ProjectMemberMonthlySpendLimitCents(ctx, projectID, ownerID)
-			if limitErr != nil {
-				logger.S().Warnw("billing: project member spend limit read failed, degrading to unlimited",
-					"org", orgID, "project", projectID, "owner", ownerID, "err", limitErr)
-			} else {
-				effectiveLimit = minNonZeroLimit(effectiveLimit, limit)
-				memberSpent, err = repo.ScopedSpentCents(ctx, orgID, account.CycleStartedAt, ownerID, projectID)
-				if err != nil {
-					logger.S().Warnw("billing: project member spend read failed, degrading to unlimited",
-						"org", orgID, "project", projectID, "owner", ownerID, "err", err)
-					memberSpent = 0
-				} else if limit > 0 && memberSpent >= limit {
-					allowed, reason = false, "insufficient_funds"
-				}
-			}
+			eval.memberSpent = spent
 		}
 	}
 	// Feature #26 (AD9): publish the billing.spend_limit_breached
 	// notification event best-effort when the cross-mode spend limit is
 	// reached. A publish failure is logged and never fails the check.
-	if !allowed && account.MonthlySpendLimitCents > 0 && account.SpentThisCycleCents >= account.MonthlySpendLimitCents {
+	if !eval.allowed && account.MonthlySpendLimitCents > 0 &&
+		scopedSpendReached(account.SpentThisCycleCents, inFlight, account.MonthlySpendLimitCents) {
 		s.publishNotificationEvent(ctx, orgID, webhook.EventSpendLimitBreached, "spend-"+account.ID,
 			map[string]any{
 				"account_id":      account.ID,
@@ -544,23 +833,28 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 				"limit_cents":     account.MonthlySpendLimitCents,
 			})
 	}
-	return &billingv1.CheckFundsResponse{
-		Response:               okResponse(),
-		Allowed:                allowed,
-		Reason:                 reason,
-		Mode:                   account.Mode,
-		BalanceCents:           account.BalanceCents,
-		MonthlyQuotaCents:      account.MonthlyQuotaCents,
-		UsedThisCycleCents:     account.UsedThisCycleCents,
-		MonthlySpendLimitCents: account.MonthlySpendLimitCents,
-		SpentThisCycleCents:    account.SpentThisCycleCents,
+	return eval, nil
+}
 
-		EffectiveMonthlySpendLimitCents:  effectiveLimit,
-		OwnerSpentThisCycleCents:         ownerSpent,
-		ProjectSpentThisCycleCents:       projectSpent,
-		ScopedSpentThisCycleCents:        scopedSpent,
-		ProjectMemberSpentThisCycleCents: memberSpent,
-	}, nil
+// accountCeilingMicros is the settled-spend headroom of the account itself,
+// in micros, before the open hour's accrual is subtracted: the prepaid
+// balance, or the postpaid quota headroom, tightened by the cross-mode cap.
+func accountCeilingMicros(a *Account) int64 {
+	if a == nil {
+		return 0
+	}
+	ceiling := int64(math.MaxInt64)
+	if a.Mode == AccountModePrepaid {
+		ceiling = CentsToMicros(a.BalanceCents)
+	} else if a.MonthlyQuotaCents > 0 {
+		ceiling = CentsToMicros(a.MonthlyQuotaCents - a.UsedThisCycleCents)
+	}
+	if a.MonthlySpendLimitCents > 0 {
+		if remaining := CentsToMicros(a.MonthlySpendLimitCents - a.SpentThisCycleCents); remaining < ceiling {
+			ceiling = remaining
+		}
+	}
+	return ceiling
 }
 
 // minNonZeroLimit returns the smaller of two limits, treating 0 as
@@ -578,21 +872,50 @@ func minNonZeroLimit(a, b int64) int64 {
 	}
 }
 
+// scopedSpendReached reports whether one scope's settled spend plus its
+// in-flight accrual has reached the cap. A non-positive cap means unlimited.
+func scopedSpendReached(spentCents, accruedMicros, limitCents int64) bool {
+	if limitCents <= 0 {
+		return false
+	}
+	return CentsToMicros(spentCents)+accruedMicros >= CentsToMicros(limitCents)
+}
+
+// scopedAccrual reads the in-flight spend of one attribution scope. A read
+// failure degrades to the settled-only answer with a log line: an accounting
+// hiccup must not turn into a billing outage.
+func (s *Service) scopedAccrual(ctx context.Context, repo *AccountRepository, orgID string, since int64, ownerUserID, projectID string) int64 {
+	micros, err := repo.AccrualMicros(ctx, orgID, since, ownerUserID, projectID)
+	if err != nil {
+		logger.S().Warnw("billing: accrual read failed, gating on settled spend only",
+			"org", orgID, "owner", ownerUserID, "project", projectID, "err", err)
+		return 0
+	}
+	return micros
+}
+
 // fundsAllowed evaluates the gating truth table (AC6/AC7): prepaid
-// blocked at balance <= 0; postpaid blocked at quota exceeded only
-// under the "block" policy; the cross-mode spend limit blocks when
+// blocked once the balance is drained; postpaid blocked at quota exceeded
+// only under the "block" policy; the cross-mode spend limit blocks when
 // reached (feature #11, AD5/AD7).
-func fundsAllowed(a *Account) (bool, string) {
-	if a.MonthlySpendLimitCents > 0 && a.SpentThisCycleCents >= a.MonthlySpendLimitCents {
+//
+// accruedMicros is money already spent on usage that has not been settled
+// yet (the current hour). Counting it is what stops a caller from running a
+// drained balance negative before the next settlement pass: available funds
+// are "what the ledger says" minus "what is already in flight".
+func fundsAllowed(a *Account, accruedMicros int64) (bool, string) {
+	if a.MonthlySpendLimitCents > 0 &&
+		CentsToMicros(a.SpentThisCycleCents)+accruedMicros >= CentsToMicros(a.MonthlySpendLimitCents) {
 		return false, "insufficient_funds"
 	}
 	if a.Mode == AccountModePrepaid {
-		if a.BalanceCents <= 0 {
+		if CentsToMicros(a.BalanceCents)-accruedMicros <= 0 {
 			return false, "insufficient_funds"
 		}
 		return true, ""
 	}
-	if a.MonthlyQuotaCents > 0 && a.UsedThisCycleCents >= a.MonthlyQuotaCents {
+	if a.MonthlyQuotaCents > 0 &&
+		CentsToMicros(a.UsedThisCycleCents)+accruedMicros >= CentsToMicros(a.MonthlyQuotaCents) {
 		if a.OverdrawPolicy == OverdrawBlock {
 			return false, "insufficient_funds"
 		}

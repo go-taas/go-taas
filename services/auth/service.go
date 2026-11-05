@@ -137,6 +137,15 @@ type Service struct {
 	// is seeded by Migrate and never persisted; empty means "not
 	// seeded" and GetSystemCredential fails closed.
 	systemCredential string
+
+	// fundsGate is the billing-side balance and spend-cap check the data
+	// plane asks after a key verifies (feature #8's CheckFunds). Nil
+	// until wired: verification then runs ungated.
+	fundsGate FundsGate
+
+	// fundsCache short-circuits the gate for a few seconds so a burst of
+	// requests costs one account read, not one per request.
+	fundsCache fundsGateCache
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -994,6 +1003,7 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 			Models:         decodeModelIDs(row.Models),
 			OwnerUserID:    derefString(row.OwnerUserID),
 			ProjectID:      derefString(row.ProjectID),
+			IsSystem:       row.IsSystem,
 		}
 		// The effective hot-path caps (the minimum of the non-zero
 		// organization, project and personal limits) ride the verdict. A
@@ -1041,6 +1051,14 @@ func (s *Service) VerifyAPIKey(ctx context.Context, req *authv1.VerifyAPIKeyRequ
 	// organization is not granted is rejected here. source_ip stays
 	// accepted-but-ignored in v1.
 	if err := s.checkModelAuthorization(ctx, req.GetModel(), verdict.OrganizationID); err != nil {
+		return nil, err
+	}
+
+	// Funds gate: a verified key still needs an account that can pay for
+	// the call. Metering settles closed hours, so without this check a
+	// drained prepaid balance would keep serving inference until the next
+	// settlement pass (and then overdraw). Denial is 10502 → HTTP 402.
+	if err := s.checkInferenceFunds(ctx, verdict, req.GetModel()); err != nil {
 		return nil, err
 	}
 

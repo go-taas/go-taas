@@ -16,7 +16,7 @@
 
 **目标**：带管理员 CRUD（`CreateAccount`/`GetAccount`/`UpdateAccount`/`ListAccounts`）的账户字段集、带调用方幂等键的 `Recharge`/`Refund`、特性 #5 计费事务内的结算时扣减、经内部 `CheckFunds` RPC 的网关执行（10502 → HTTP 402）、UTC 月度周期重置、`ListTransactions` 账本查询、`GetBalance` 落地实现、控制台「账户」页面，以及预留计费错误码的激活（AC1–AC12）。
 
-**非目标**（延后）：支付渠道、发票、回执、催缴；自动充值阈值；按请求冻结（10506 保持预留）；多币种与汇率；套餐/捆绑包；租户自助余额可见性（#6/#7）；负余额催收；账户删除（账户是财务记录）。
+**非目标**（延后）：支付渠道、发票、回执、催缴；自动充值阈值；进程内的作用域按请求冻结（10506 保持预留）；多币种与汇率；套餐/捆绑包；租户自助余额可见性（#6/#7）；负余额催收；账户删除（账户是财务记录）。
 
 ## 2. 架构决策
 
@@ -24,8 +24,8 @@
 | --- | --- | --- |
 | AD1 | **每个组织一个计费账户**，归 `billing` 模块所有（`organization_id` 唯一）。字段依设计 D1：`mode`、`balance_cents`、`monthly_quota_cents`（0 = 无上限）、`used_this_cycle_cents`、`cycle_started_at`、`overdraw_policy`（`block`/`warn`）、`currency` | 组织是所有权边界（#6）；一个对象同时回答「还剩多少」与「本月用了多少」 |
 | AD2 | **全程整数分**；单一平台币种取自 `billing.currency`。计费边界处换算：`cents = int64(math.Round(amount × 100))` — 精确，因为计费金额已四舍五入到 2 位小数 | 浮点金额是经典的计费 bug；分与计费记录金额精确匹配（设计 D2） |
-| AD3 | **扣减发生在结算时、计费事务内**：`ChargeGroup` 扩展为在与计费记录相同的数据库事务内写一条 `deduction` 交易（幂等键 `charge:{charge_id}`）并更新账户 — 预付费递减 `balance_cents`，后付费递增 `used_this_cycle_cents`。无按请求冻结 | 行业默认（设计 D3）；计费唯一索引加幂等键让重投不可能重复扣减（AC4）。结算延迟可能在最后一小时内超额 — 已接受的风险 |
-| AD4 | **经内部 `CheckFunds` RPC 准入**（无 HTTP 绑定），推理网关在转发前调用，按组织缓存 ≤ 5 秒（网关侧 TTL）。预付费：`balance_cents ≤ 0` → 阻断。后付费：配额 > 0 且 `used ≥ quota` → `block` 下阻断、`warn` 下放行。**无账户 → 不管控**（过渡性开放模式）。billing 不可用时网关**失败放行（fail open）**（记录日志并放行） | 与定价 D8 呼应 — 运营缺口绝不拖垮推理；资金仍被记账，因为扣减发生在结算时（设计 D4、AC12） |
+| AD3 | **扣减发生在结算时、计费事务内**：`ChargeGroup` 扩展为在与计费记录相同的数据库事务内写一条 `deduction` 交易（幂等键 `charge:{charge_id}`）并更新账户 — 预付费递减 `balance_cents`，后付费递增 `used_this_cycle_cents`。不做按请求的账本冻结；改为每行 `usage_lines` 在摄入时计价并写入 `accrual_micros`，计费事务在同一次更新中把它归零 | 行业默认（设计 D3）；计费唯一索引加幂等键让重投不可能重复扣减（AC4）。结算延迟不再让余额在闸门看不见的情况下被耗尽：未结算的在途金额对闸门可见（AD4） |
+| AD4 | **经内部 `CheckFunds` RPC 准入**（无 HTTP 绑定），推理网关在转发前调用，按组织缓存 ≤ 5 秒（网关侧 TTL；插件自身的结论缓存默认同为 5 秒），但在预留路径上不缓存：每个请求持有自己的冻结，因此需要自己的结论。预付费：`balance_cents − 在途计提 ≤ 0` → 阻断。后付费：配额 > 0 且 `used + 在途计提 ≥ quota` → `block` 下阻断、`warn` 下放行。同一套 `已消费 + 在途计提` 规则也用于账户、项目、个人与项目成员四层消费上限。**无账户 → 不管控**（过渡性开放模式）。billing 不可用时网关**失败放行（fail open）**（记录日志并放行） | 与定价 D8 呼应 — 运营缺口绝不拖垮推理；资金仍被记账，因为扣减发生在结算时（设计 D4、AC12） |
 | AD5 | **被阻断的请求返回 10502 `CodeInsufficientFunds`，即 HTTP 402**，稳定消息 "insufficient funds"，由数据面网关渲染。没有控制网关路由返回 10502 — 余额不足不是管理路径条件 | 业界可识别的错误（SiliconFlow 402、OpenAI `insufficient_quota`）；设计 D5 |
 | AD6 | **周期为 UTC 自然月**（与账单对齐，定价 D9）。基于条件判定的 runner 在边界重置后付费账户，一条带守卫的 `UPDATE ... WHERE mode = 'postpaid' AND cycle_started_at < monthStart` — 重试幂等，无账本行（无资金移动） | 配额周期与账单必须对账到同一窗口（设计 D6、AC8） |
 | AD7 | **只追加账本**：`type`（`recharge`/`deduction`/`refund`；`adjustment` 预留，v1 无写入方）、**正数 `amount_cents`，方向由类型隐含**、`balance_after_cents`（写入后账户的 `balance_cents` — 后付费扣减时不变，证明余额未被触碰，AC5），以及**全局唯一的 `idempotency_key`** | 每一分钱可追溯；重放无害（设计 D7）。带符号金额被否决：类型已携带方向，控制台渲染保持简单 |
@@ -84,6 +84,9 @@ flowchart TD
 | --- | --- | --- |
 | `billing.cycleReset.enabled` | `true` | 周期重置 runner 的开关 |
 | `billing.cycleReset.interval` | `1m` | 重置检查之间的 ticker 周期（重置本身基于条件判定，短间隔代价很低） |
+| `billing.funds.reservation` | `false`（随包配置为 `true`） | 按请求冻结最坏成本；依赖 Redis，不可用时降级为纯计提 |
+| `billing.funds.holdTTL` | `10m` | 单次冻结的最长存活时间，超时被清理 |
+| `billing.funds.defaultOutputTokens` | `1024` | 请求与组织都未限制输出时假定的输出量；0 表示此类请求不冻结 |
 
 5 秒的 `CheckFunds` 缓存 TTL 是数据面网关参数，不是仓库配置（AD4）。`applyDefaults`/`Validate` 沿用 `billing.reconciliation` 模式。
 
@@ -230,6 +233,50 @@ sequenceDiagram
 
 **亚分进位。** 计费金额以微单位精度存储，单次请求的计费通常远低于一分，因此扣减行上的 `amount_cents` 是**已计提**金额，而不是对单笔计费的四舍五入：`cycleAccrual` 用本周期计费记录的 `ROUND(SUM(amount) * 100)` 与 `spent_this_cycle_cents` 比较，扣减两者之差。零头因此会累计到满一分才动账，预付费余额与后付费的 `used_this_cycle_cents` 始终等于消费闸门与预算报表读取的周期消费，不会因四舍五入丢钱。
 
+**在途计提。** 结算只给已关闭的小时定价，因此计费记录无法代表当前这一小时。若闸门仅看余额，它就对「最近一小时已花掉的钱」视而不见，余额耗尽的租户会一直放行到窗口关闭为止。为补上这个缺口，摄入时立即给每条用量行计价并写入 `accrual_micros`（同一套 D2 公式，微单位精度；有阶梯价时取最高档费率，因此是上界），闸门在周期内对所有**未计费**行的 `SUM(accrual_micros)` 求和后从可支配资金中扣除。`ChargeGroup` 在写入 `charged_charge_id` 的同一次更新里把该行的计提归零，因此「已结算」与「在途」永不重叠，这个数字恰好等于「已计费 + 尚未计费」。
+
+选择「计提」而不是「冻结」带来两个性质：
+
+- 它只是准入判断，绝不进账本：计价入口仍只有 `PriceOnce` 一处，幂等性与档位正确性不受影响。
+- 残余暴露从「一整小时无上限消费」收紧为「同一瞬间并发请求的竞争窗口」。按请求预留可以消除它，见下文「在途预留」。
+
+无法定价的用量行计提为 0，而不是因为定价配置缺口阻断租户；计费引擎仍会把它记为未定价。
+
+**在途预留。** 计提闸门对每个请求只做一次「读」：两个并发调用者会读到同一个剩余余额，于是都被放行。为消除这个竞争，准入还会**冻结**本次请求的最坏成本，直到计量记录下该请求。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant DGW as 数据面网关
+    participant AUTH as auth
+    participant BILL as billing
+    participant RD as Redis
+    participant MQ as 计量流水线
+    DGW->>AUTH: verify {digest, model, request_id, max_tokens}
+    AUTH->>BILL: CheckInferenceAllowed(org, owner, project, request_id, model, max_tokens)
+    BILL->>BILL: 计算 计提 + 在途冻结，按 max_tokens 计价
+    BILL->>RD: Reserve(org, request_id, need, 余额 − 计提)
+    alt 冻结额已超出剩余
+        RD-->>BILL: 0
+        BILL-->>DGW: 402 insufficient_funds
+    else 准入
+        RD-->>BILL: 1
+        BILL-->>DGW: allowed，reserve = true
+    end
+    MQ->>BILL: usage {request_id, tokens}
+    BILL->>RD: Release(org, request_id)
+    Note over RD: 未上报用量的冻结在 holdTTL 后过期
+```
+
+- **冻结多少。** 按该模型可能被计费的最高费率乘以输出 token 数 —— 请求运行时既不知道服务卡型，也不知道 prompt 长度。`max_tokens` 缺失时退到组织的输出上限，再退到 `billing.funds.defaultOutputTokens`。它是上界，因此闸门偏保守，方向是安全的。
+- **每个起作用的作用域都冻结。** 账户不是唯一的上限：个人、项目与项目成员上限同样约束这个请求。因此一次准入会为每个适用的作用域各冻结一份，脚本只在**全部**都放得下时才准入 —— 全有或全无，被项目上限拒绝的请求不会留下组织级冻结。并发爆发无法再让某个项目在自己的上限之外继续消费，而组织却还有余额。
+- **原子性。** 判断与全部冻结在同一个 Lua 脚本里，由服务端串行化：第二个准入能看到第一个的所有冻结。一个组织的全部冻结共享同一对 key（field = `scope\x01request_id`），因此多作用域脚本仍落在同一个 hash slot 内，对集群安全。脚本使用 Redis `TIME`，因此各副本对「何时过期」的判断一致。
+- **释放。** 写入用量行的同一个处理器顺带释放该请求的**全部**冻结；此后以该行的计提为准。若用量始终不来（引擎崩溃、事件丢失），冻结在 `billing.funds.holdTTL` 后过期 —— 泄漏的代价是有限延迟，而不是资金被永久占用。
+- **不复用。** 带预留的结论属于单次请求：平台返回 `reserve: true`，网关就不再缓存该结论 —— 缓存的副本会跳过预留。auth 侧的资金缓存同样在这条路径上被绕过。关闭预留时，两层缓存的行为与从前一致。
+- **降级。** Redis 不可用，或 `billing.funds.reservation` 关闭时，闸门回落到纯计提规则：预留是同一规则的一种优化，而不是新的依赖。无法定价的模型同样不冻结。
+
+**滞留计提。** 正常情况下计费会在一个宽限期内退掉该小时的计提。若计费链路本身故障，这笔计提就会永远从租户的可支配资金里被扣着 —— 因为没有任何东西会来退它。因此 `ReconciliationRunner` 在每一轮的第一步清零「所在小时已关闭超过 2 小时」的计提（`ReleaseStaleAccrual`，并记录释放总额）。用量行仍保持未计费状态，计费恢复后照样会收这笔钱 —— 释放只是先止住重复计算。
+
 ### 6.1.1 谁给账户充值
 
 充值是平台管理员的动作。`RechargeOrganization` 为租户的预付费余额充值，租户尚无账户时一并创建；`DebitOrganization` 以「冲正」方式扣回资金（必须填写原因，且金额不得超过余额）。两者都要求平台管理员角色，都以调用方提供的幂等键去重，并把这次变动写成一条流水：
@@ -259,6 +306,8 @@ sequenceDiagram
     DGW->>DGW: 资金缓存查找（org，TTL 5 秒）
     alt 缓存未命中
         DGW->>BILL: CheckFunds(organization_id)
+        BILL->>BILL: 可支配 = 余额 − 计提 − 在途冻结<br/>（配额/各层上限：已消费 + 计提）
+        BILL->>BILL: 冻结 max_tokens 对应的成本（Redis，原子）
         alt 被阻断（余额耗尽或配额 + block）
             BILL-->>DGW: allowed = false
             DGW-->>Agent: 402 INSUFFICIENT_FUNDS (10502)
@@ -298,7 +347,7 @@ sequenceDiagram
 | 畸形时间范围 | 10508 | `CodeBillingRangeInvalid` | 既有 |
 | 数据库 / MQ 基础设施故障 | 500 | `CodeInternal` | 经错误归一化 |
 
-Runner 侧失败不是 RPC 错误：扣减版本冲突回滚整个计费事务并在下一轮收敛（AD11）；周期重置失败记录日志并在下一 tick 重试；10504–10506 保持预留（v1 无按请求冻结）。
+Runner 侧失败不是 RPC 错误：扣减版本冲突回滚整个计费事务并在下一轮收敛（AD11）；周期重置失败记录日志并在下一 tick 重试；10504–10506 保持预留（AD3 的预留不构成错误路径）。
 
 ## 8. 测试策略
 
@@ -313,6 +362,6 @@ Runner 侧失败不是 RPC 错误：扣减版本冲突回滚整个计费事务�
 | --- | --- |
 | 无账户的组织最终是否默认阻断？ | 是，置于 `billing.enforceDefault` 之后，待租户存在（#6/#7） |
 | 自动充值阈值与支付渠道集成 | 未来特性；充值幂等设计是挂接点 |
-| 按请求冻结以关闭结算延迟超额窗口（AD3） | 延后；冻结设计前 10506 保持预留 |
+| 以按请求预留消除计提闸门残留的并发竞争（AD3） | 已落地为 Redis 预留（准入时按每个起作用的作用域各冻结一份、计量写入时释放、TTL 清理）。只读的位置查询（`CheckFunds`）仍只计入组织级冻结：它回答的是「这个租户还能不能花钱」，而不是「哪一层的额度紧张」 |
 | 所有组织账户的平台级运营视图 | 随真实多租户（#6/#7 会话上下文）；今天 AC10 要求组织范围界定 |
 | 配额编辑本周期内生效还是下周期生效？ | v1 本周期内（立即）；`used_this_cycle_cents` 让两者皆可计算 |

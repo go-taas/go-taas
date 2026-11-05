@@ -7,8 +7,10 @@ import (
 	"context"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
+	goredis "github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 	"gorm.io/gorm"
@@ -19,6 +21,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/authctx"
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
 	"github.com/go-taas/go-taas/services/audit"
@@ -160,6 +163,14 @@ type Service struct {
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
+
+	// fundsReserver tracks in-flight admissions in Redis so concurrent
+	// callers cannot all spend the last of a balance. Nil until wired, or
+	// when Redis is unavailable: the gate then runs on the accrued spend
+	// alone, which is the pre-reservation behaviour.
+	fundsReserver FundsReserver
+	// reserverOnce guards the lazy wiring from the shared components.
+	reserverOnce sync.Once
 }
 
 // AuditRecorder is the best-effort, non-fatal audit recorder seam
@@ -203,6 +214,39 @@ func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// SetFundsReserver injects the in-flight funds reserver. Production wires it
+// from the shared Redis component; nil disables reservation. It must be called
+// before the first admission, which is how tests and FVT use it.
+func (s *Service) SetFundsReserver(r FundsReserver) { s.fundsReserver = r }
+
+// fundsReservationEnabled reports whether admission should reserve. It needs
+// both the configuration switch and a live reserver; a missing Redis is a
+// degradation, not an error.
+func (s *Service) fundsReservationEnabled() bool {
+	if !config.GetConfig().Billing.Funds.Reservation {
+		return false
+	}
+	return s.reserver() != nil
+}
+
+// reserver resolves the funds reserver lazily from the shared Redis
+// component. A build without Redis, or a failed type assertion, yields nil:
+// the gate keeps working on accrual alone.
+func (s *Service) reserver() FundsReserver {
+	s.reserverOnce.Do(func() {
+		if s.fundsReserver != nil || s.components == nil || s.components.Redis() == nil {
+			return
+		}
+		client, ok := s.components.Redis().Client().(*goredis.Client)
+		if !ok {
+			logger.S().Warn("billing: funds reservation disabled, unexpected redis handle type")
+			return
+		}
+		s.fundsReserver = newRedisFundsReserver(client, config.GetConfig().Billing.Funds.HoldTTL)
+	})
+	return s.fundsReserver
+}
 
 // recordAudit writes one audit event best-effort (feature #15, AD3). A
 // recorder failure is logged and never fails or rolls back the mutation.

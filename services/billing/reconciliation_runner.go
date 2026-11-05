@@ -91,12 +91,22 @@ func (r *ReconciliationRunner) Run(ctx context.Context) error {
 	}
 }
 
+// staleAccrualAfter is how long past an hour's close an accrual may linger
+// before it is released. Charging retires it within one grace period, so this
+// is a wide margin: reaching it means the charge path is broken, and the gate
+// must not keep subtracting a figure that nothing will retire.
+const staleAccrualAfter = 2 * time.Hour
+
 // ReconcileOnce runs one reconciliation pass: fetch the uncharged hour
 // buckets whose hours closed at least gracePeriod ago, and price each
 // bucket with bounded concurrency. A bucket error is logged and
 // retried on the next pass (FR4.5, AC11).
 func (r *ReconciliationRunner) ReconcileOnce(ctx context.Context) error {
 	now := time.Now().UTC()
+	// Release accruals that outlived their hour by a wide margin first: this
+	// is the safety valve for a charge path that cannot converge, and it keeps
+	// the gate from counting the same usage forever.
+	r.releaseStaleAccrual(ctx, now)
 	// Only lines completed before the eligibility cutoff can be in
 	// eligible buckets: hour closed + grace.
 	eligibleBefore := now.Add(-r.gracePeriod)
@@ -138,4 +148,20 @@ func (r *ReconciliationRunner) ReconcileOnce(ctx context.Context) error {
 	}
 	wg.Wait()
 	return nil
+}
+
+// releaseStaleAccrual applies the stale-accrual safety valve. It never fails
+// the pass: the money question is bounded (a released accrual is still billed
+// when charging catches up), so a read error is logged rather than retried.
+func (r *ReconciliationRunner) releaseStaleAccrual(ctx context.Context, now time.Time) {
+	cutoff := now.Add(-staleAccrualAfter)
+	rows, micros, err := r.repo.ReleaseStaleAccrual(ctx, cutoff)
+	if err != nil {
+		logger.S().Warnw("billing: stale accrual release failed", "err", err)
+		return
+	}
+	if rows > 0 {
+		logger.S().Warnw("billing: released stale in-flight accrual; charging is falling behind",
+			"rows", rows, "micros", micros, "completed_before", cutoff)
+	}
 }

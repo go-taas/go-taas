@@ -79,6 +79,9 @@ type httpContext struct {
 	// model is what the caller asked for; it is both the authorization
 	// subject and what the usage report names.
 	model string
+	// maxTokens is the caller's requested output size, carried to
+	// verification so admission can reserve its cost. 0 when unknown.
+	maxTokens int64
 	// protected reports whether this path needs a verified key.
 	protected bool
 	// lastDigest is the SHA-256 of the presented key. The plaintext is
@@ -256,8 +259,14 @@ func (h *httpContext) OnHttpRequestBody(bodySize int, endOfStream bool) types.Ac
 		h.requestBody = body
 	}
 	if !h.bodyTooLarge {
-		if model, _, ok := requestIdentity(string(h.requestBody)); ok {
+		if model, maxTokens, ok := requestIdentity(string(h.requestBody)); ok {
 			h.model = model
+			// The cap is what the platform reserves against at admission:
+			// the output is the only part of the request whose size is
+			// known before it runs.
+			if maxTokens > 0 {
+				h.maxTokens = maxTokens
+			}
 		}
 	}
 	h.dispatchVerify()
@@ -301,6 +310,10 @@ func (h *httpContext) OnHttpCallResponse(calloutID uint32, _ int, bodySize int, 
 		return
 	}
 	v.fetchedAtSeconds = h.plugin.nowSeconds()
+	// Cache the verdict before applying it: the next request in the window can
+	// reuse it. storeVerdict itself refuses a reserved verdict, which belongs
+	// to this request only.
+	h.storeVerdict(v)
 	h.applyVerdict(v)
 }
 
@@ -410,7 +423,9 @@ func (h *httpContext) dispatchVerify() {
 		return
 	}
 	payload := []byte(`{"key_digest":"` + jsonEscape(h.lastDigest) +
-		`","model":"` + jsonEscape(h.model) + `"}`)
+		`","model":"` + jsonEscape(h.model) +
+		`","request_id":"` + jsonEscape(h.requestID) +
+		`","max_tokens":` + formatInt(h.maxTokens) + `}`)
 	headers := h.plugin.callHeaders(h.plugin.cfg.VerifyPath)
 	// A local verdict cache (below) already served the common case; reaching
 	// here means the platform must be asked.
@@ -546,6 +561,13 @@ func (h *httpContext) loadRateState(key string) *rateLimitState {
 // makes each of those cheap.
 func (h *httpContext) storeVerdict(v *verdict) {
 	if h.plugin.cfg.CacheTTLMs <= 0 || v == nil {
+		return
+	}
+	// A reserved verdict is bound to one request: reusing it would admit the
+	// next request without reserving anything, which is exactly the race
+	// reservations exist to close. Such a verdict is answered fresh every
+	// time; the platform's own key cache keeps that cheap.
+	if v.reserve {
 		return
 	}
 	key := sharedPrefixVerdict + cacheKey(h.lastDigest, h.model)

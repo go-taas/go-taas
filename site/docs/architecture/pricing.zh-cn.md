@@ -146,6 +146,7 @@ flowchart TD
 | `completed_at` | `timestamptz` | NOT NULL，复合索引 | 请求完成时间 |
 | `created_at` | `timestamptz` | NOT NULL | 明细写入时间 |
 | `charged_charge_id` | `varchar(64)` | NULL，索引 | 由计费设置；NULL 表示未计费（FR4.2） |
+| `accrual_micros` | `bigint` | NOT NULL DEFAULT 0 | 摄入时计价出的、该请求已消耗的金额（微单位）；未计费期间供资金闸门读取，计费时归零（AD3） |
 
 设计说明：
 
@@ -153,6 +154,7 @@ flowchart TD
 - 复合索引：`idx_usage_lines_key_completed (api_key_id, completed_at)` 服务计费扫描与按 key 查询；`idx_usage_lines_org_completed (organization_id, completed_at)` 服务账单聚合。
 - `usage_lines` 刻意复制凭证的 token 计数（D5）：billing 不得 join `metering` 的表 — 模块间只共享 MQ 契约，这样 metering 的表结构变更绝不会破坏计费。存储成本是每请求一行，与凭证同量级。
 - 无外键（凭证表推理：财务凭证比 key/模型/服务活得久）。
+- `accrual_micros` 只是准入参考，不是第二本账：它让资金闸门看见「尚未结算的那一小时」已花掉的钱；`ChargeGroup` 在标记该行已计费的同一次更新里把它归零，因此 `SUM(accrual_micros) + 已计费金额` 恰好等于周期消费。
 
 ### 3.3 `charge_records` 表
 

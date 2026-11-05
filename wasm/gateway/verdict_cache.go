@@ -26,7 +26,7 @@ package main
 
 import "strings"
 
-const verdictFieldCount = 11
+const verdictFieldCount = 12
 
 // encodeVerdict serializes a verdict for shared data.
 func encodeVerdict(v *verdict) []byte {
@@ -45,6 +45,7 @@ func encodeVerdict(v *verdict) []byte {
 		sanitizeField(v.keyID),
 		sanitizeField(v.ownerUserID),
 		sanitizeField(v.projectID),
+		boolField(v.reserve),
 	}
 	return []byte(strings.Join(parts, "|"))
 }
@@ -59,7 +60,7 @@ func decodeVerdict(raw []byte) (*verdict, bool) {
 	}
 	nums := make([]int64, verdictFieldCount)
 	for i, part := range parts {
-		if i == 0 || i == 7 || i == 8 || i == 9 || i == 10 {
+		if i == 0 || i == 7 || i == 8 || i == 9 || i == 10 || i == 11 {
 			continue
 		}
 		n, ok := parseFloat(part)
@@ -72,6 +73,10 @@ func decodeVerdict(raw []byte) (*verdict, bool) {
 	if parts[0] != "true" && parts[0] != "1" && parts[0] != "false" && parts[0] != "0" {
 		return nil, false
 	}
+	if parts[11] != "true" && parts[11] != "1" && parts[11] != "false" && parts[11] != "0" {
+		return nil, false
+	}
+	reserve := parts[11] == "true" || parts[11] == "1"
 	return &verdict{
 		allowed:                   allowed,
 		code:                      int(nums[1]),
@@ -84,6 +89,7 @@ func decodeVerdict(raw []byte) (*verdict, bool) {
 		projectID:                 parts[10],
 		organizationID:            parts[7],
 		keyID:                     parts[8],
+		reserve:                   reserve,
 	}, true
 }
 

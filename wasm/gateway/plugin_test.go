@@ -235,6 +235,7 @@ func TestMapsBusinessCodesToStatuses(t *testing.T) {
 		{codeModelUnauthorized, 403, "model_not_allowed"},
 		{codeRateLimitExceeded, 429, "rate_limit_exceeded"},
 		{codeQuotaOutputTokensLimit, 400, "max_tokens_exceeded"},
+		{codeInsufficientFunds, 402, "insufficient_funds"},
 	}
 	for _, tc := range cases {
 		host, reset := newHost(t, pluginConfigJSON(""))
@@ -669,4 +670,62 @@ func TestKeepsContentLengthOnAnUnprotectedPath(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "an unprotected path must pass through untouched")
+}
+
+// TestVerifyCarriesTheRequestIdentity lets the platform reserve this request's
+// cost: admission needs the id metering will report under, and the output size
+// the caller asked for.
+func TestVerifyCarriesTheRequestIdentity(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+	id := host.InitializeHttpContext()
+
+	headers := append(requestHeaders("/v1/chat/completions", "Bearer "+testKey),
+		[2]string{headerRequestID, "req-identity"})
+	host.CallOnRequestHeaders(id, headers, false)
+	host.CallOnRequestBody(id, []byte(`{"model":"qwen-2.5-0.5b","max_tokens":640}`), true)
+	host.CallOnHttpCallResponse(0, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+
+	callout := host.GetCalloutAttributesFromContext(id)
+	require.Len(t, callout, 1)
+	body := string(callout[0].Body)
+	assert.Contains(t, body, `"request_id":"req-identity"`)
+	assert.Contains(t, body, `"max_tokens":640`)
+}
+
+// TestDoesNotCacheAReservedVerdict: a verdict that took a reservation belongs
+// to one request. Reusing it would admit the next request without reserving
+// anything, which is the race reservations exist to close.
+func TestDoesNotCacheAReservedVerdict(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+
+	for i := 0; i < 2; i++ {
+		id := host.InitializeHttpContext()
+		host.CallOnRequestHeaders(id, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+		host.CallOnRequestBody(id, []byte(`{"model":"m"}`), true)
+		host.CallOnHttpCallResponse(0, [][2]string{{":status", "200"}}, nil, verifyOK(`"reserve":true`))
+
+		callout := host.GetCalloutAttributesFromContext(id)
+		require.Len(t, callout, 1, "a reserved verdict must be re-verified, not reused")
+	}
+}
+
+// TestCachesAnUnreservedVerdict keeps the fast path: without a reservation the
+// verdict is still true for the next request in the window.
+func TestCachesAnUnreservedVerdict(t *testing.T) {
+	host, reset := newHost(t, pluginConfigJSON(""))
+	defer reset()
+
+	first := host.InitializeHttpContext()
+	host.CallOnRequestHeaders(first, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+	host.CallOnRequestBody(first, []byte(`{"model":"m"}`), true)
+	host.CallOnHttpCallResponse(0, [][2]string{{":status", "200"}}, nil, verifyOK(""))
+
+	// The second request is answered from the cache: it produces no callout,
+	// so it needs no response either.
+	second := host.InitializeHttpContext()
+	host.CallOnRequestHeaders(second, requestHeaders("/v1/chat/completions", "Bearer "+testKey), false)
+	host.CallOnRequestBody(second, []byte(`{"model":"m"}`), true)
+	assert.Empty(t, host.GetCalloutAttributesFromContext(second))
 }

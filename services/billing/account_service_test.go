@@ -549,3 +549,34 @@ func TestResetCycleSpendReset(t *testing.T) {
 	assert.Equal(t, int64(0), after.SpentThisCycleCents)
 	assert.Equal(t, int64(1000000), after.CycleStartedAt)
 }
+
+// CheckInferenceAllowed is the primitive-argument face the auth module's
+// data-plane funds gate depends on.
+func TestCheckInferenceAllowedAdapter(t *testing.T) {
+	svc := newBillingTestService(t)
+
+	// No account: ungated, so a tenant without billing keeps working.
+	allowed, _, err := svc.evaluateAdmission(context.Background(), FundsQuery{OrganizationID: "org-none"})
+	require.NoError(t, err)
+	assert.True(t, allowed)
+
+	// Prepaid with funds, then drained.
+	accountID := createTestAccount(t, svc, "org-adapter", AccountModePrepaid, 100, 0)
+	allowed, _, err = svc.evaluateAdmission(context.Background(), FundsQuery{OrganizationID: "org-adapter"})
+	require.NoError(t, err)
+	assert.True(t, allowed)
+
+	_, err = svc.Refund(withOrg("org-adapter"), &billingv1.RefundRequest{
+		AccountId: accountID, AmountCents: 100, IdempotencyKey: "drain-adapter",
+	})
+	require.NoError(t, err)
+	allowed, reason, err := svc.evaluateAdmission(context.Background(), FundsQuery{OrganizationID: "org-adapter"})
+	require.NoError(t, err)
+	assert.False(t, allowed, "a drained prepaid balance must deny the call")
+	assert.Equal(t, "insufficient_funds", reason)
+
+	// An empty organization has nothing to charge: ungated.
+	allowed, _, err = svc.evaluateAdmission(context.Background(), FundsQuery{})
+	require.NoError(t, err)
+	assert.True(t, allowed)
+}

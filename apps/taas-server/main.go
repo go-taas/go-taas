@@ -476,6 +476,11 @@ func main() {
 			// infer and batch check them at create time.
 			tenancySvc.SetSessionOrgResolver(authSvc)
 			authSvc.SetOrgQuotaReader(tenancySvc)
+			// The data plane's funds gate: a key that verifies still needs
+			// an account that can pay for the call. Billing owns the truth
+			// table (prepaid balance, postpaid quota, the spend caps); auth
+			// asks it per request with its own few-second cache.
+			authSvc.SetFundsGate(billingSvc)
 			batchSvc.SetOrgQuotaReader(tenancySvc)
 			// The daily-jobs check applies the personal tier on top of the
 			// organization budget.

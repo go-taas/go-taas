@@ -146,6 +146,7 @@ Design notes:
 | `completed_at` | `timestamptz` | NOT NULL, index (composite) | Request completion time |
 | `created_at` | `timestamptz` | NOT NULL | Line write time |
 | `charged_charge_id` | `varchar(64)` | NULL, index | Set by charging; NULL means uncharged (FR4.2) |
+| `accrual_micros` | `bigint` | NOT NULL DEFAULT 0 | Money the request already consumed, priced at ingestion (micro-units); read by the funds gate while the line is uncharged and reset to 0 by charging (AD3) |
 
 Design notes:
 
@@ -153,6 +154,7 @@ Design notes:
 - Composite indexes: `idx_usage_lines_key_completed (api_key_id, completed_at)` for the charging scan and per-key queries; `idx_usage_lines_org_completed (organization_id, completed_at)` for bill aggregation.
 - `usage_lines` duplicates the voucher's token counts deliberately (D5): billing must not join `metering`'s tables — the modules share only the MQ contract, so a metering schema change can never break charging. The storage cost is one row per request, the same order as vouchers.
 - No foreign keys (the voucher-table reasoning: financial evidence outlives keys/models/services).
+- `accrual_micros` is advisory, not a second ledger: it only lets the funds gate see money spent in the not-yet-settled hour, and `ChargeGroup` zeroes it in the same update that marks the line charged, so `SUM(accrual_micros) + charged amount` is exactly the cycle spend.
 
 ### 3.3 The `charge_records` Table
 

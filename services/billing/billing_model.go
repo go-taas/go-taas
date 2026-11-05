@@ -44,7 +44,7 @@ func (PriceEntry) TableName() string { return "price_entries" }
 // UsageLine is one inference request's billable usage record — the
 // charging atom, written by billing's own metering.events consumer (D5).
 // Rows are immutable after ingestion except for the charging engine's
-// charged_charge_id marking.
+// charged_charge_id and accrual_micros marking.
 type UsageLine struct {
 	// ID is the server-generated UUID v4, exposed as line_id.
 	ID string `gorm:"primaryKey;type:uuid"`
@@ -82,6 +82,13 @@ type UsageLine struct {
 	// ChargedChargeID links the charge record; NULL means uncharged
 	// (FR4.2).
 	ChargedChargeID *string `gorm:"size:64;index"`
+	// AccrualMicros is the money this request has already consumed at
+	// ingestion time, in micro-units (1e-6 currency units). While the
+	// line is uncharged it is "in flight": the funds gate subtracts it
+	// from the spendable balance so the current, not-yet-settled hour
+	// cannot be spent for free. Charging resets it to 0 because the
+	// charge record then owns the amount.
+	AccrualMicros int64 `gorm:"not null;default:0"`
 }
 
 // TableName overrides the default GORM table name.

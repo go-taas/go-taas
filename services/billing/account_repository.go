@@ -434,6 +434,32 @@ func (r *AccountRepository) ScopedSpentCents(ctx context.Context, orgID string, 
 	return cents, nil
 }
 
+// AccrualMicros returns the money already spent by uncharged usage lines
+// since the cycle start, in micro-units — the "in flight" figure the funds
+// gate subtracts from what a tenant may still spend.
+//
+// Charging an hour resets each line's accrual inside the same transaction
+// that marks it charged, so settled and in-flight spend never overlap: the
+// sum is exactly the current hour's (plus any not-yet-settled) usage. An
+// empty owner/project scope returns the organization-wide total.
+func (r *AccountRepository) AccrualMicros(ctx context.Context, orgID string, since int64, ownerUserID, projectID string) (int64, error) {
+	query := r.DB(ctx).Model(&UsageLine{}).
+		Select("COALESCE(SUM(accrual_micros), 0)").
+		Where("organization_id = ? AND charged_charge_id IS NULL AND completed_at >= ?",
+			orgID, time.Unix(since, 0).UTC())
+	if ownerUserID != "" {
+		query = query.Where("owner_user_id = ?", ownerUserID)
+	}
+	if projectID != "" {
+		query = query.Where("project_id = ?", projectID)
+	}
+	var micros int64
+	if err := query.Scan(&micros).Error; err != nil {
+		return 0, err
+	}
+	return micros, nil
+}
+
 // AutoRechargeCandidates returns prepaid accounts with auto-recharge
 // enabled and balance below the threshold (feature-14 AD4).
 func (r *AccountRepository) AutoRechargeCandidates(ctx context.Context) ([]*Account, error) {

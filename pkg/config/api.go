@@ -276,6 +276,28 @@ type BillingConfig struct {
 	Reports BillingReportsConfig `mapstructure:"reports"`
 	// Forecast configures the feature-36 usage & cost forecasting.
 	Forecast BillingForecastConfig `mapstructure:"forecast"`
+	// Funds configures the data plane's funds gate: the in-flight accrual
+	// and the Redis request reservation that closes its concurrency race.
+	Funds BillingFundsConfig `mapstructure:"funds"`
+}
+
+// BillingFundsConfig holds the funds-gate settings (data plane admission).
+type BillingFundsConfig struct {
+	// Reservation enables the Redis in-flight reservation. Requests
+	// reserve their worst-case output cost at admission and release it
+	// when metering records the request, so two concurrent callers cannot
+	// both spend the last of a balance. Disabled or Redis-unavailable
+	// degrades to the accrual-only gate.
+	Reservation bool `mapstructure:"reservation"`
+	// HoldTTL bounds one reservation's life. A request that never reports
+	// usage (a crashed engine, a dropped event) is swept after this
+	// window instead of holding the tenant's money forever.
+	HoldTTL time.Duration `mapstructure:"holdTTL"`
+	// DefaultOutputTokens is the output-token estimate used when neither
+	// the request nor the organization caps the output. 0 disables
+	// reserving for such requests, which leaves them on the accrual-only
+	// gate.
+	DefaultOutputTokens int64 `mapstructure:"defaultOutputTokens"`
 }
 
 // BillingForecastConfig holds the feature-36 usage & cost forecasting
@@ -1550,6 +1572,12 @@ func (c *Configuration) Validate() error {
 	}
 	if c.Billing.CycleReset.Interval < 0 {
 		return &FieldError{Field: "billing.cycleReset.interval", Reason: "must be non-negative"}
+	}
+	if c.Billing.Funds.HoldTTL < 0 {
+		return &FieldError{Field: "billing.funds.holdTTL", Reason: "must be non-negative"}
+	}
+	if c.Billing.Funds.DefaultOutputTokens < 0 {
+		return &FieldError{Field: "billing.funds.defaultOutputTokens", Reason: "must be non-negative"}
 	}
 	if c.Audit.Retention.EventTTL < 0 {
 		return &FieldError{Field: "audit.retention.eventTTL", Reason: "must not be negative"}

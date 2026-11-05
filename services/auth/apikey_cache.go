@@ -40,13 +40,18 @@ type keyVerdict struct {
 	OwnerUserID string `json:"owner_user_id,omitempty"`
 	// ProjectID is the key's project ("" when unassigned).
 	ProjectID string `json:"project_id,omitempty"`
+	// IsSystem marks the synthetic load-test credential, which skips the
+	// funds gate: it exists to generate traffic, not to spend a tenant's
+	// balance (feature #20, AD11).
+	IsSystem bool `json:"is_system,omitempty"`
 }
 
 // cacheKeyPrefix namespaces the API-key verdict entries in Redis. The
-// version suffix was bumped when the verdict gained the ownership
-// fields: an older entry cannot be decoded into the new shape, and a
-// fresh prefix makes the upgrade a cold cache instead of a misread.
-const cacheKeyPrefix = "taas:auth:apikey:v2:"
+// version suffix is bumped whenever the verdict gains a field a decision
+// depends on: an entry written by an older build would otherwise decode
+// with a zero value (e.g. is_system=false) and change behaviour. A fresh
+// prefix makes the upgrade a cold cache instead of a misread.
+const cacheKeyPrefix = "taas:auth:apikey:v3:"
 
 // cacheKey returns the Redis key of a digest's verdict entry.
 func cacheKey(digest string) string { return cacheKeyPrefix + digest }

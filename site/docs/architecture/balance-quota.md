@@ -16,7 +16,7 @@ Features #1–#7 shipped the accounting spine: keys identify callers, usage mete
 
 **Goals**: the account field set with admin CRUD (`CreateAccount`/`GetAccount`/`UpdateAccount`/`ListAccounts`), `Recharge`/`Refund` with caller-supplied idempotency keys, settlement-time deduction inside the feature-#5 charge transaction, gateway enforcement via the internal `CheckFunds` RPC (10502 → HTTP 402), monthly UTC cycle reset, `ListTransactions` ledger queries, `GetBalance` implemented, console Accounts pages, and activation of the reserved billing error codes (AC1–AC12).
 
-**Non-goals** (deferred): payment channels, invoices, receipts, dunning; auto-recharge thresholds; per-request holds (10506 stays reserved); multi-currency and FX; packages/bundles; tenant self-service balance visibility (#6/#7); negative-balance collections; account deletion (accounts are financial records).
+**Non-goals** (deferred): payment channels, invoices, receipts, dunning; auto-recharge thresholds; scoped per-request holds inside a single process (10506 stays reserved); multi-currency and FX; packages/bundles; tenant self-service balance visibility (#6/#7); negative-balance collections; account deletion (accounts are financial records).
 
 ## 2. Architecture Decisions
 
@@ -24,8 +24,8 @@ Features #1–#7 shipped the accounting spine: keys identify callers, usage mete
 | --- | --- | --- |
 | AD1 | **One billing account per organization**, owned by the `billing` module (`organization_id` unique). Fields per design D1: `mode`, `balance_cents`, `monthly_quota_cents` (0 = unlimited), `used_this_cycle_cents`, `cycle_started_at`, `overdraw_policy` (`block`/`warn`), `currency` | The org is the ownership boundary (#6); one object answers both "what is left" and "how much this month" |
 | AD2 | **Integer cents everywhere**; the single platform currency comes from `billing.currency`. Conversion at the charge boundary: `cents = int64(math.Round(amount × 100))` — exact because charge amounts are already rounded to 2 decimals | Float money is the classic billing bug; cents match charge-record amounts exactly (design D2) |
-| AD3 | **Deduction at settlement, inside the charge transaction**: `ChargeGroup` extends to write one `deduction` transaction (idempotency key `charge:{charge_id}`) and update the account in the same DB transaction as the charge record — prepaid decrements `balance_cents`, postpaid increments `used_this_cycle_cents`. No per-request holds | The industry default (design D3); the charge unique index plus the key make redelivery double-deduction impossible (AC4). Settlement lag can overdraw within the final hour — accepted risk |
-| AD4 | **Gating via an internal `CheckFunds` RPC** (no HTTP binding) called by the Inference Gateway before forwarding, cached ≤ 5 s per org (gateway-side TTL). Prepaid: `balance_cents ≤ 0` → block. Postpaid: quota > 0 and `used ≥ quota` → block under `block`, allow under `warn`. **No account → not gated** (transitional open mode). On billing unavailability the gateway **fails open** (log + allow) | Mirrors pricing D8 — an operator gap never takes down inference; money is still accounted because deduction happens at settlement (design D4, AC12) |
+| AD3 | **Deduction at settlement, inside the charge transaction**: `ChargeGroup` extends to write one `deduction` transaction (idempotency key `charge:{charge_id}`) and update the account in the same DB transaction as the charge record — prepaid decrements `balance_cents`, postpaid increments `used_this_cycle_cents`. No per-request ledger holds; instead each `usage_lines` row carries `accrual_micros`, priced at ingestion, and the charge transaction resets it to 0 | The industry default (design D3); the charge unique index plus the key make redelivery double-deduction impossible (AC4). Settlement lag can no longer drain a balance unseen: the uncharged accrual is visible to the gate (AD4) |
+| AD4 | **Gating via an internal `CheckFunds` RPC** (no HTTP binding) called by the Inference Gateway before forwarding, cached ≤ 5 s per org (gateway-side TTL; the plugin's own verdict cache defaults to the same 5 s), except on the reservation path, where each request takes its own hold and therefore its own verdict. Prepaid: `balance_cents − in-flight accrual ≤ 0` → block. Postpaid: quota > 0 and `used + in-flight accrual ≥ quota` → block under `block`, allow under `warn`. The same `spent + accrual` rule applies to the account, project, personal and project-member spend caps. **No account → not gated** (transitional open mode). On billing unavailability the gateway **fails open** (log + allow) | Mirrors pricing D8 — an operator gap never takes down inference; money is still accounted because deduction happens at settlement (design D4, AC12) |
 | AD5 | **Blocked requests return 10502 `CodeInsufficientFunds` as HTTP 402** with the stable message "insufficient funds", rendered by the data-plane gateway. No control-gateway route returns 10502 — insufficient funds is not an admin-path condition | The recognizable industry error (SiliconFlow 402, OpenAI `insufficient_quota`); design D5 |
 | AD6 | **The cycle is the UTC calendar month** (aligned with bills, pricing D9). A condition-based runner resets postpaid accounts at the boundary with one guarded `UPDATE ... WHERE mode = 'postpaid' AND cycle_started_at < monthStart` — idempotent under retries, no ledger row (no money moves) | Quota cycles and bills must reconcile to the same window (design D6, AC8) |
 | AD7 | **Append-only ledger**: `type` (`recharge`/`deduction`/`refund`; `adjustment` reserved, no v1 writer), **positive `amount_cents` with direction implied by type**, `balance_after_cents` (the account's `balance_cents` after the write — unchanged for postpaid deductions, evidence the balance was untouched, AC5), and a **globally unique `idempotency_key`** | Every cent traceable; replays harmless (design D7). Signed amounts were rejected: the type already carries direction and console rendering stays simple |
@@ -84,6 +84,9 @@ flowchart TD
 | --- | --- | --- |
 | `billing.cycleReset.enabled` | `true` | Kill switch for the cycle-reset runner |
 | `billing.cycleReset.interval` | `1m` | Ticker period between reset checks (the reset itself is condition-based, so short intervals are cheap) |
+| `billing.funds.reservation` | `false` (shipped config: `true`) | Per-request reservation of the worst-case cost; requires Redis, degrades to accrual-only |
+| `billing.funds.holdTTL` | `10m` | How long one reservation may live before it is swept |
+| `billing.funds.defaultOutputTokens` | `1024` | Output size assumed when neither the request nor the org caps it; 0 disables reserving for such requests |
 
 The 5 s `CheckFunds` cache TTL is a data-plane gateway parameter, not a repo config (AD4). `applyDefaults`/`Validate` follow the `billing.reconciliation` pattern.
 
@@ -237,6 +240,96 @@ therefore carries until it becomes a whole cent, the prepaid balance and the
 postpaid `used_this_cycle_cents` stay equal to the cycle spend the gate and the
 budget reports read, and no money is lost to rounding.
 
+**In-flight accrual.** Settlement only prices closed hours, so a charge record
+cannot represent the current one. The funds gate would therefore be blind to
+money spent in the last hour and a drained balance would keep serving until the
+window closed. To close that gap, ingestion prices each usage line immediately
+(`accrual_micros`, the same D2 formula at micro-unit precision, using the
+highest tier rate so the figure is an upper bound) and the gate subtracts
+`SUM(accrual_micros)` over uncharged lines of the cycle. `ChargeGroup` resets a
+line's accrual to 0 in the same transaction that assigns `charged_charge_id`,
+so settled and in-flight spend never overlap and the metric is exactly "charged
++ not yet charged". Two properties follow from doing this as an accrual rather
+than a hold:
+
+- The figure is advisory: it gates requests but never enters the ledger, so the
+  charge path keeps its single pricing entry point and its idempotency.
+- The residual exposure is a concurrency race (requests in flight at the same
+  instant), not an hour of unbounded spend. A per-request reservation closes
+  it; see "In-flight reservation" below.
+
+An unpriceable line accrues 0 rather than blocking a tenant over a pricing gap;
+the charge engine still records it as unpriced.
+
+**In-flight reservation.** The accrual gate answers one question per request
+and the answer is a read: two concurrent callers both see the same remaining
+balance and both are admitted. To close that, admission also *holds* its own
+worst-case cost until metering records the request.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant DGW as Data-plane gateway
+    participant AUTH as auth
+    participant BILL as billing
+    participant RD as Redis
+    participant MQ as metering pipeline
+    DGW->>AUTH: verify {digest, model, request_id, max_tokens}
+    AUTH->>BILL: CheckInferenceAllowed(org, owner, project, request_id, model, max_tokens)
+    BILL->>BILL: evaluate accrual + holds, price max_tokens
+    BILL->>RD: Reserve(org, request_id, need, balance − accrual)
+    alt the holds no longer fit
+        RD-->>BILL: 0
+        BILL-->>DGW: 402 insufficient_funds
+    else admitted
+        RD-->>BILL: 1
+        BILL-->>DGW: allowed, reserve = true
+    end
+    MQ->>BILL: usage {request_id, tokens}
+    BILL->>RD: Release(org, request_id)
+    Note over RD: a hold whose request never reports expires after holdTTL
+```
+
+- **What is held.** The request's output at the highest rate the model can be
+  billed at, because neither the serving card nor the prompt size is known
+  before it runs (`max_tokens`, falling back to the organization's output cap
+  and then to `billing.funds.defaultOutputTokens`). It is an upper bound, so
+  the gate is conservative in the safe direction.
+- **Every scope that binds.** An account is not the only ceiling: the personal,
+  project and project-member caps constrain the same request. One admission
+  therefore takes one hold per applicable scope, and the script admits only
+  when *all* of them fit — all-or-nothing, so a request refused by its project
+  cap leaves no organization hold behind. A burst can no longer push a project
+  past its own cap while the organization is still rich.
+- **Atomicity.** The check and every hold are one Lua script, so the server
+  serializes them: a second admission sees the first one's holds. All of an
+  organization's holds share one key pair (field = `scope\x01request_id`),
+  which keeps a multi-scope script inside one hash slot and so cluster-safe.
+  The script also uses Redis `TIME`, so every replica agrees on when a hold
+  dies.
+- **Release.** Recording the usage releases every hold of the request in the
+  same handler that writes the line; from then on the line's own accrual is the
+  figure. A hold
+  whose usage never arrives (a crashed engine, a lost event) expires after
+  `billing.funds.holdTTL`, so a leak costs a bounded delay, not locked funds.
+- **No reuse.** A reserved verdict belongs to one request, so the platform
+  answers `reserve: true` and the gateway stops caching that verdict — a
+  cached copy would skip the reservation. The auth-side funds cache is
+  bypassed on this path for the same reason. With reservation off, both caches
+  keep working as before.
+- **Degradation.** Redis unavailable, or `billing.funds.reservation` off,
+  leaves the accrual gate exactly as it was: reservation is an optimisation of
+  the same rule, never a new dependency. An unpriceable model reserves nothing
+  for the same reason it accrues nothing.
+
+**Stale accrual.** Charging normally retires an hour's accrual within one grace
+period. If the charge path is broken, the accrual would otherwise be subtracted
+from the tenant's spendable funds forever, because nothing will ever retire it.
+`ReconciliationRunner` therefore zeroes accruals whose hour closed more than
+2 h ago as the first step of every pass (`ReleaseStaleAccrual`, logged with the
+released total). The lines stay uncharged, so the amount is still billed once
+charging recovers — the release only stops the double count in the meantime.
+
 ### 6.1.1 Who funds the account
 
 Recharging is a platform administrator action. `RechargeOrganization` credits a
@@ -284,6 +377,8 @@ sequenceDiagram
     DGW->>DGW: funds cache lookup (org, TTL 5 s)
     alt cache miss
         DGW->>BILL: CheckFunds(organization_id)
+        BILL->>BILL: available = balance − accrual − holds<br/>(quota / spend caps: used + accrual)
+        BILL->>BILL: reserve max_tokens cost (Redis, atomic)
         alt blocked (balance exhausted or quota + block)
             BILL-->>DGW: allowed = false
             DGW-->>Agent: 402 INSUFFICIENT_FUNDS (10502)
@@ -323,7 +418,7 @@ All errors are `pkg/errors` business codes in the unified envelope.
 | Malformed time range | 10508 | `CodeBillingRangeInvalid` | Existing |
 | Database / MQ infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
-Runner-side failures are not RPC errors: a deduction version conflict rolls back the whole charge transaction and converges on the next pass (AD11); a cycle-reset failure is logged and retried on the next tick; 10504–10506 stay reserved (no per-request holds in v1).
+Runner-side failures are not RPC errors: a deduction version conflict rolls back the whole charge transaction and converges on the next pass (AD11); a cycle-reset failure is logged and retried on the next tick; 10504–10506 stay reserved (the reservation of AD3 is not an error path).
 
 ## 8. Testing Strategy
 
@@ -338,6 +433,6 @@ Runner-side failures are not RPC errors: a deduction version conflict rolls back
 | --- | --- |
 | Should orgs without an account eventually be blocked by default? | Yes, behind `billing.enforceDefault`, once tenants exist (#6/#7) |
 | Auto-recharge thresholds and payment-channel integration | Future feature; the recharge idempotency design is the hook |
-| Per-request holds to close the settlement-lag overdraw window (AD3) | Defer; 10506 stays reserved until holds are designed |
+| Per-request holds to eliminate the concurrency race the accrual gate leaves (AD3) | Shipped as a Redis reservation (reserve on admit, one hold per binding scope, release when metering records the request, TTL sweep). The read-only position report (`CheckFunds`) still counts only the organization's holds: it answers "may the tenant spend", not "which cap is tight" |
 | Platform-wide operator view of all orgs' accounts | With real tenancy (#6/#7 session context); today AC10 mandates org scoping |
 | Quota edits mid-cycle vs next cycle | Mid-cycle (immediate) in v1; `used_this_cycle_cents` keeps both computable |
