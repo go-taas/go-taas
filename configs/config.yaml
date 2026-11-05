@@ -324,6 +324,7 @@ billing:
     reservation: true
     holdTTL: 10m
     defaultOutputTokens: 1024
+    enforceDefault: false
   # reconciliation is the charging safety net: it prices uncharged
   # hours even when settlement events are lost.
   reconciliation:

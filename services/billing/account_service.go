@@ -681,7 +681,11 @@ func (s *Service) CheckFunds(ctx context.Context, req *billingv1.CheckFundsReque
 		return nil, err
 	}
 	if eval.account == nil {
-		return &billingv1.CheckFundsResponse{Response: okResponse(), Allowed: true, Mode: ""}, nil
+		return &billingv1.CheckFundsResponse{
+			Response: okResponse(),
+			Allowed:  eval.allowed,
+			Reason:   eval.reason,
+		}, nil
 	}
 	return &billingv1.CheckFundsResponse{
 		Response:               okResponse(),
@@ -721,6 +725,12 @@ func (s *Service) evaluateFunds(ctx context.Context, q FundsQuery, includeHolds 
 		return nil, err
 	}
 	if account == nil {
+		// The transitional open mode: an onboarded tenant is ungated until
+		// someone opens its account. An operator who has finished onboarding
+		// every tenant can close that door (AC12).
+		if config.GetConfig().Billing.Funds.EnforceDefault {
+			return &fundsEvaluation{account: nil, reason: reasonNoBillingAccount}, nil
+		}
 		return &fundsEvaluation{account: nil, allowed: true}, nil
 	}
 
@@ -871,6 +881,12 @@ func minNonZeroLimit(a, b int64) int64 {
 		return b
 	}
 }
+
+// reasonNoBillingAccount is the denial an unfunded tenant gets once
+// billing.funds.enforceDefault is on. It is distinct from insufficient_funds
+// so an operator reading a gateway log can tell "nobody opened an account"
+// from "the balance ran out".
+const reasonNoBillingAccount = "no_billing_account"
 
 // scopedSpendReached reports whether one scope's settled spend plus its
 // in-flight accrual has reached the cap. A non-positive cap means unlimited.

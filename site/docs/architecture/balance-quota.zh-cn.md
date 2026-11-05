@@ -87,6 +87,7 @@ flowchart TD
 | `billing.funds.reservation` | `false`（随包配置为 `true`） | 按请求冻结最坏成本；依赖 Redis，不可用时降级为纯计提 |
 | `billing.funds.holdTTL` | `10m` | 单次冻结的最长存活时间，超时被清理 |
 | `billing.funds.defaultOutputTokens` | `1024` | 请求与组织都未限制输出时假定的输出量；0 表示此类请求不冻结 |
+| `billing.funds.enforceDefault` | `false` | 阻断没有计费账户的租户（10502，原因 `no_billing_account`），取代过渡性开放模式 |
 
 5 秒的 `CheckFunds` 缓存 TTL 是数据面网关参数，不是仓库配置（AD4）。`applyDefaults`/`Validate` 沿用 `billing.reconciliation` 模式。
 
@@ -356,12 +357,14 @@ Runner 侧失败不是 RPC 错误：扣减版本冲突回滚整个计费事务�
 - **E2E**（`test/e2e/tests/balanceQuota.js`，`pricingBills.js` 模式）：对 compose 栈 — 账户页渲染 `account-row-{id}`、充值对话框入账并内联刷新余额、设置配额对话框更新、10509/10510 内联浮出（AC11）。准入管控经 FVT 验证（数据面网关不在仓库范围内 — 既定模式）。
 - **回归**：既有 e2e 套件保持绿色；计费路径变更纯增量（nil 扣减 spec 让无账户的组织与旧行为逐字节一致）。
 
-## 9. 开放问题
+## 9. 已决问题
+
+下表中每个问题都已在代码中落地；本表记录决定及其所在位置，后续改动应当针对理由本身讨论，而不是重新发现它。
 
 | 问题 | 倾向 |
 | --- | --- |
-| 无账户的组织最终是否默认阻断？ | 是，置于 `billing.enforceDefault` 之后，待租户存在（#6/#7） |
-| 自动充值阈值与支付渠道集成 | 未来特性；充值幂等设计是挂接点 |
+| 无账户的组织最终是否默认阻断？ | 已落地为 `billing.funds.enforceDefault`（默认关闭，因此开户前的接入流程不受影响）。所有租户都已计费后由运营开启 |
+| 自动充值阈值与支付渠道集成 | 已作为后续特性落地：`AutoRechargeRunner` 在预付费余额低于阈值时自动充值，支付渠道/支付意图 RPC 走同一条幂等充值路径入账 |
 | 以按请求预留消除计提闸门残留的并发竞争（AD3） | 已落地为 Redis 预留（准入时按每个起作用的作用域各冻结一份、计量写入时释放、TTL 清理）。只读的位置查询（`CheckFunds`）仍只计入组织级冻结：它回答的是「这个租户还能不能花钱」，而不是「哪一层的额度紧张」 |
-| 所有组织账户的平台级运营视图 | 随真实多租户（#6/#7 会话上下文）；今天 AC10 要求组织范围界定 |
-| 配额编辑本周期内生效还是下周期生效？ | v1 本周期内（立即）；`used_this_cycle_cents` 让两者皆可计算 |
+| 所有组织账户的平台级运营视图 | 已落地：`ListOrganizationBalances`（仅平台管理员）与控制台的「组织余额」页面列出全部租户，包括尚未开户的（`has_account=false`） |
+| 配额编辑本周期内生效还是下周期生效？ | 已决定：本周期内（立即）；`used_this_cycle_cents` 让两者皆可计算 |

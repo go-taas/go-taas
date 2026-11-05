@@ -10,6 +10,8 @@ import (
 	"github.com/stretchr/testify/require"
 
 	billingv1 "github.com/go-taas/go-taas/proto/taas/billing/v1"
+
+	"github.com/go-taas/go-taas/pkg/config"
 )
 
 // seedAccrualLine writes an uncharged usage line carrying `micros` of
@@ -248,4 +250,38 @@ func TestReconcileKeepsFreshAccrual(t *testing.T) {
 	var stored UsageLine
 	require.NoError(t, svc.repo.DB(ctx).Where("id = ?", fresh.ID).First(&stored).Error)
 	assert.Equal(t, int64(7500), stored.AccrualMicros)
+}
+
+// An unfunded tenant keeps working until the operator closes the door with
+// billing.funds.enforceDefault; then it is denied for the honest reason.
+func TestEnforceDefaultBlocksAnUnbilledOrg(t *testing.T) {
+	svc := newBillingTestService(t)
+	ctx := context.Background()
+
+	allowed, _, err := svc.evaluateAdmission(ctx, FundsQuery{OrganizationID: "org-none"})
+	require.NoError(t, err)
+	assert.True(t, allowed, "the transitional open mode is the default")
+
+	cfg := &config.Configuration{}
+	cfg.Billing.Currency = "USD"
+	cfg.Billing.Funds.EnforceDefault = true
+	config.SetConfigForTest(cfg)
+	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
+
+	allowed, reason, err := svc.evaluateAdmission(ctx, FundsQuery{OrganizationID: "org-none"})
+	require.NoError(t, err)
+	assert.False(t, allowed)
+	assert.Equal(t, reasonNoBillingAccount, reason,
+		"'nobody opened an account' must be distinguishable from 'the balance ran out'")
+
+	// The read-only position reports the same verdict.
+	resp, err := svc.CheckFunds(ctx, &billingv1.CheckFundsRequest{OrganizationId: "org-none"})
+	require.NoError(t, err)
+	assert.False(t, resp.GetAllowed())
+	assert.Equal(t, reasonNoBillingAccount, resp.GetReason())
+
+	// A platform-level caller owns no tenant and stays ungated.
+	allowed, _, err = svc.evaluateAdmission(ctx, FundsQuery{})
+	require.NoError(t, err)
+	assert.True(t, allowed)
 }

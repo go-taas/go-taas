@@ -298,6 +298,11 @@ type BillingFundsConfig struct {
 	// reserving for such requests, which leaves them on the accrual-only
 	// gate.
 	DefaultOutputTokens int64 `mapstructure:"defaultOutputTokens"`
+	// EnforceDefault blocks an organization that has no billing account
+	// instead of leaving it ungated. It is off by default: the transitional
+	// open mode is what lets a newly onboarded tenant call inference before
+	// anyone opens its account. Turn it on once every tenant is billed.
+	EnforceDefault bool `mapstructure:"enforceDefault"`
 }
 
 // BillingForecastConfig holds the feature-36 usage & cost forecasting

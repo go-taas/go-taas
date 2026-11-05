@@ -87,6 +87,7 @@ flowchart TD
 | `billing.funds.reservation` | `false` (shipped config: `true`) | Per-request reservation of the worst-case cost; requires Redis, degrades to accrual-only |
 | `billing.funds.holdTTL` | `10m` | How long one reservation may live before it is swept |
 | `billing.funds.defaultOutputTokens` | `1024` | Output size assumed when neither the request nor the org caps it; 0 disables reserving for such requests |
+| `billing.funds.enforceDefault` | `false` | Block a tenant that has no billing account (10502, reason `no_billing_account`) instead of the transitional open mode |
 
 The 5 s `CheckFunds` cache TTL is a data-plane gateway parameter, not a repo config (AD4). `applyDefaults`/`Validate` follow the `billing.reconciliation` pattern.
 
@@ -427,12 +428,16 @@ Runner-side failures are not RPC errors: a deduction version conflict rolls back
 - **E2E** (`test/e2e/tests/balanceQuota.js`, the `pricingBills.js` pattern): against the compose stack — the Accounts page renders `account-row-{id}`, the recharge dialog credits and refreshes the balance inline, the set-quota dialog updates, 10509/10510 surface inline (AC11). Gating is FVT-verified (the data-plane gateway is out of repository scope — the established pattern).
 - **Regression**: the existing e2e suites stay green; the charge path changes only additively (a nil deduction spec leaves orgs without accounts byte-for-byte on the old behavior).
 
-## 9. Open Questions
+## 9. Resolved Questions
+
+Every question below has an answer in the code; the table records the decision
+and where it lives, so a later change argues with the reasoning rather than
+rediscovering it.
 
 | Question | Leaning |
 | --- | --- |
-| Should orgs without an account eventually be blocked by default? | Yes, behind `billing.enforceDefault`, once tenants exist (#6/#7) |
-| Auto-recharge thresholds and payment-channel integration | Future feature; the recharge idempotency design is the hook |
+| Should orgs without an account eventually be blocked by default? | Shipped behind `billing.funds.enforceDefault` (off by default, so onboarding still works). An operator turns it on once every tenant is billed |
+| Auto-recharge thresholds and payment-channel integration | Shipped as later features: `AutoRechargeRunner` tops a prepaid account up when it drops below its threshold, and the payment-channel/intent RPCs credit the balance through the same idempotent recharge path |
 | Per-request holds to eliminate the concurrency race the accrual gate leaves (AD3) | Shipped as a Redis reservation (reserve on admit, one hold per binding scope, release when metering records the request, TTL sweep). The read-only position report (`CheckFunds`) still counts only the organization's holds: it answers "may the tenant spend", not "which cap is tight" |
-| Platform-wide operator view of all orgs' accounts | With real tenancy (#6/#7 session context); today AC10 mandates org scoping |
-| Quota edits mid-cycle vs next cycle | Mid-cycle (immediate) in v1; `used_this_cycle_cents` keeps both computable |
+| Platform-wide operator view of all orgs' accounts | Shipped: `ListOrganizationBalances` (platform-administrator only) and the console's organization-balances page list every tenant, including ones with no account yet (`has_account=false`) |
+| Quota edits mid-cycle vs next cycle | Decided: mid-cycle (immediate); `used_this_cycle_cents` keeps both computable |
