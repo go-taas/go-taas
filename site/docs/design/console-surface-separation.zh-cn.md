@@ -54,7 +54,7 @@ go-taas 目前只有**一个** Web 控制台。`web/src/App.tsx` 把所有路由
 | D8 | **每个页面的 API 调用可按前缀审计。** 用户页面不得包含 `/api/v1/admin/` 字符串，管理页面不得包含 `/api/v1/*` 字符串 | 这条检查让分离可以被测试强制，而不是靠评审 |
 | D9 | **用户控制台的主页是 `/usage`**，`/` 重定向到那里 | 租户最关心的问题是自己的调用花了多少钱、是否还在流动；该页上的余额/配额挂件同时回答了「我的智能体为什么停了」 |
 | D10 | **管理控制台的主页仍是 `/admin/models`**，`/admin` 重定向到那里 | 与拆分前行为一致 —— 运维的第一件事是模型目录 |
-| D11 | **三个页面离开管理导航**（API Key、请求日志、Playground —— 它们是租户自助能力），管理控制台不新增任何导航项；用量与账单在两个面都保留，管理侧是组织维度变体 | 一个页面一个面：同时服务两类受众的能力就做成两个页面（面规则）；运维侧的用量/账单是跨组织的，这正是「全部组织的账单与账户」的含义 |
+| D11 | **三个页面离开管理导航**（API Key、请求日志、Playground —— 它们是租户自助能力），管理控制台不新增任何导航项；用量与计费账户在两个面都保留，而按组织维度的账单页从平台治理面隐藏 | 一个页面一个面：同时服务两类受众的能力就做成两个页面（面规则）；用量、计费账户与定价属运维关注点，而账单归属单一组织，因此平台隐藏该入口，由组织控制台保留 |
 | D12 | **被迁移的页面保留旧管理 URL 作为客户端重定向**（`/admin/api-keys` → `/api-keys`、`/admin/request-logs` → `/request-logs`、`/admin/playground` → `/playground`）。重定向不传递任何令牌 | 书签、运维手册与既有 e2e 套件继续可用；又因为目标页面强制自己的 realm，重定向永远不可能把凭证搬过面 |
 | D13 | **API Key 不引入新的角色门。** 写操作不按角色禁用，因为今天根本不存在 Key 级别的角色规则（特性 #10 只对成员与邀请 API 设门） | 一条 API 并不强制的纯前端角色门是虚假安全。本设计规定的权限拒绝状态都是后端真实会产出的：10036（角色）、10105（模型未授权）、10017（组织已禁用）、10005（组织不存在）、10038/10027（realm/会话）。Key 管理的角色门记录为待定问题 |
 | D14 | **用户控制台的 Playground 以模型为维度** —— 租户选择*模型*，永远看不到推理服务：`POST /api/v1/models/{model_id}:playground`（新增）。运维侧以服务为维度的 Playground 保留在管理前缀上，但不再有控制台页面 | 推理服务属于运维内部的编排产物（副本数、镜像、卡型）。租户是通过 OpenAI 兼容端点消费模型的，因此租户 Playground 必须建模同一个契约 |
@@ -75,7 +75,7 @@ go-taas 目前只有**一个** Web 控制台。`web/src/App.tsx` 把所有路由
 | **租户开发者**（用智能体消费模型） | 用户 | 在 `/login` 登录 → 在 `/api-keys` 创建 API Key 并复制一次性密钥 → 在 `/playground` 用自己的 Key 试模型 → 在 `/usage` 观察 token 与成本 → 在 `/request-logs` 排查失败调用 |
 | **租户计费负责人**（为用量付费） | 用户 | 登录 → `/usage` 显示预付费余额或后付费已用额度与配额 → `/billing` 显示本月账单及其扣费明细 |
 | **租户管理员**（加人、授权） | 管理 | 在 `/admin/login` 登录 → `/admin/members` 与 `/admin/invitations` 管理人员 → `/admin/organizations` 与 `/admin/projects` 管理资源 → `/admin/models` 为组织授予模型 |
-| **平台运维** | 管理 | 目录与部署（`/admin/models`、`/admin/images`、`/admin/inference-services`）→ 联邦（`/admin/sso`、`/admin/identity-bindings`）→ 钱（`/admin/pricing`、`/admin/billing`、`/admin/billing/accounts`）→ 组织维度用量 `/admin/usage` |
+| **平台运维** | 管理 | 目录与部署（`/admin/models`、`/admin/images`、`/admin/inference-services`）→ 联邦（`/admin/sso`、`/admin/identity-bindings`）→ 钱（`/admin/pricing`、`/admin/billing/accounts`）→ 组织维度用量 `/admin/usage` |
 | **智能体 / SDK** | 两者皆非 | 用 API Key 调用推理端点，不触碰任何控制面页面。它产生两个控制台都展示的用量、日志与成本 |
 | **支持工程师** | 用户 | 通过请租户自读 `/request-logs` 与 `/usage` 来复现租户视角 —— 这正是这两个页面属于租户面的原因 |
 
@@ -155,7 +155,7 @@ go-taas 目前只有**一个** Web 控制台。`web/src/App.tsx` 把所有路由
 | --- | --- | --- | --- | --- | --- |
 | 1 | `AccountsPage` | **管理** | `/admin/billing/accounts` | `/api/v1/admin/billing/*` | 计费账户（预付费/配额模式、消费上限、充值、退款、交易流水）是面向全部租户的资金操作。自助支付属于特性 #14，因此充值是运维动作 |
 | 2 | `ApiKeysPage` | **用户** | `/api-keys` | `/api/v1/auth/api-keys*` | Key 是租户自己给智能体用的凭证。运维不代租户签发密钥。运维依然可在 `/admin/organizations` 看到按组织的 Key **数量** |
-| 3 | `BillsPage` | **两者**（两个页面） | 用户 `/billing`，管理 `/admin/billing` | 用户 `/api/v1/billing/*`，管理 `/api/v1/admin/billing/*` | 租户读自己的月账单与扣费明细。运维跨组织读账单（组织列 + 过滤器，FR5.4） |
+| 3 | `BillsPage` | **两者**（两个页面） | 用户 `/billing`，管理 `/admin/billing` | 用户 `/api/v1/billing/*`，管理 `/api/v1/admin/billing/*` | 租户读自己的月账单与扣费明细。管理路由保留（组织列 + 过滤器，FR5.4），但平台治理面隐藏该入口：账单按组织维度，属于组织控制台 |
 | 4 | `IdentityBindingsPage` | **管理** | `/admin/identity-bindings` | `/api/v1/admin/auth/identity-bindings*` | 预先把外部身份绑定到平台账号属于联邦管理 |
 | 5 | `ImageDetailPage` | **管理** | `/admin/images/:id` | `/api/v1/admin/images/*` | 仓库 digest、占用中的服务与节点级预拉取结果都是集群运维 |
 | 6 | `ImagesPage` | **管理** | `/admin/images` | `/api/v1/admin/images*` | 推理镜像仓库与预拉取映射 —— 哪个二进制跑在哪个节点由运维决定 |
@@ -175,7 +175,7 @@ go-taas 目前只有**一个** Web 控制台。`web/src/App.tsx` 把所有路由
 | 20 | `UsagePage` | **两者**（两个页面） | 用户 `/usage`，管理 `/admin/usage` | 用户 `/api/v1/metering/*` + `/api/v1/billing/balance`，管理 `/api/v1/admin/metering/*` + `/api/v1/admin/billing/balance` | 租户关注自己的花费与余额/配额；运维关注跨组织的用量（组织过滤器与 `organization` group-by，FR5.4） |
 | 21 | `NotFoundPage` | **外壳级**（自身无面） | 任意未匹配路径 | **无**（不发起任何 API 调用） | 唯一没有面的页面：它在拥有该前缀的外壳内渲染（D17），因此用户永远看不到管理侧外壳。它是「一个页面一个面」的唯一、已记录的例外 |
 
-**运维关注点 → 管理控制台**：组织、项目、成员、邀请、SSO Providers、身份绑定、定价、镜像仓库、模型目录、推理服务编排、全部组织的账单与计费账户。
+**运维关注点 → 管理控制台**：组织、项目、成员、邀请、SSO Providers、身份绑定、定价、镜像仓库、模型目录、推理服务编排与计费账户。账单按组织维度，因此平台治理面隐藏账单入口；路由保留给组织控制台。
 
 **租户自助关注点 → 用户控制台**：自己的 API Key、自己的用量、自己的请求日志、Playground、自己的账单、自己的余额/配额快照。
 

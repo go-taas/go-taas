@@ -482,7 +482,7 @@ Shell auxiliaries: `GET /api/v1/auth/session` on boot (only when the user token 
 | `/admin/images`, `/admin/images/:id` | `pages/ImagesPage.tsx`, `pages/ImageDetailPage.tsx` | `/api/v1/admin/images...` |
 | `/admin/inference-services`, `/admin/inference-services/:id` | `pages/InferenceServicesPage.tsx`, `pages/ServiceDetailPage.tsx` | `/api/v1/admin/inference-services...` |
 | `/admin/usage` | `pages/UsagePage.tsx` (admin variant: `admin-org-filter` with All organizations, four group-by dimensions) | `/api/v1/admin/metering/*`, `/api/v1/admin/billing/balance` |
-| `/admin/billing` | `pages/BillsPage.tsx` (admin variant: Organization column + filter) | `/api/v1/admin/billing/bills`, `/api/v1/admin/billing/charges` |
+| `/admin/billing` | `pages/BillsPage.tsx` (admin variant: Organization column + filter; hidden from the platform navigation — bills are per-organization) | `/api/v1/admin/billing/bills`, `/api/v1/admin/billing/charges` |
 | `/admin/billing/accounts` | `pages/AccountsPage.tsx` | `/api/v1/admin/billing/accounts...` |
 | `/admin/pricing` | `pages/PricingPage.tsx` | `/api/v1/admin/billing/prices` |
 | `/admin/api-keys` | redirect → `/api-keys` | — |

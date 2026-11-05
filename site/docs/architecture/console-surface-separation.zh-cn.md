@@ -482,7 +482,7 @@ metering 与 billing 都**不需要消息变更**：组织参数已经作为 `or
 | `/admin/images`、`/admin/images/:id` | `pages/ImagesPage.tsx`、`pages/ImageDetailPage.tsx` | `/api/v1/admin/images...` |
 | `/admin/inference-services`、`/admin/inference-services/:id` | `pages/InferenceServicesPage.tsx`、`pages/ServiceDetailPage.tsx` | `/api/v1/admin/inference-services...` |
 | `/admin/usage` | `pages/UsagePage.tsx`（管理侧变体：`admin-org-filter` 含 All organizations、四种 group-by） | `/api/v1/admin/metering/*`、`/api/v1/admin/billing/balance` |
-| `/admin/billing` | `pages/BillsPage.tsx`（管理侧变体：Organization 列 + 过滤） | `/api/v1/admin/billing/bills`、`/api/v1/admin/billing/charges` |
+| `/admin/billing` | `pages/BillsPage.tsx`（管理侧变体：Organization 列 + 过滤；从平台导航隐藏 —— 账单按组织维度） | `/api/v1/admin/billing/bills`、`/api/v1/admin/billing/charges` |
 | `/admin/billing/accounts` | `pages/AccountsPage.tsx` | `/api/v1/admin/billing/accounts...` |
 | `/admin/pricing` | `pages/PricingPage.tsx` | `/api/v1/admin/billing/prices` |
 | `/admin/api-keys` | 重定向 → `/api-keys` | — |

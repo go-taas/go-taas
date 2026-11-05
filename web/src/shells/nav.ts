@@ -265,12 +265,14 @@ export const USER_NAV_CATEGORIES: NavCategory[] = [
 // per-organization member/invitation/join-request pipelines, which
 // organization administrators own. The platform keeps the user directory:
 // a platform administrator manages users and places them into any
-// organization.
+// organization. Bills are scoped to one organization, so they belong to the
+// organization console, not the platform governance surface.
 const platformHiddenItems = new Set([
   '/admin/projects',
   '/admin/members',
   '/admin/invitations',
   '/admin/join-requests',
+  '/admin/billing',
 ]);
 
 /** Platform console navigation: the operator surface minus project
