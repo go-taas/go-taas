@@ -1,3 +1,10 @@
+# [1.109.0](https://github.com/go-taas/go-taas/compare/v1.108.0...v1.109.0) (2026-11-05)
+
+
+### Features
+
+* **console,site:** drop bills from the platform nav and the site claim ([08ba377](https://github.com/go-taas/go-taas/commit/08ba37769d125ddb849b919cd4be7af0d8a8e8f1))
+
 # [1.108.0](https://github.com/go-taas/go-taas/compare/v1.107.1...v1.108.0) (2026-11-04)
 
 
