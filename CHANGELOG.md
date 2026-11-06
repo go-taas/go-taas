@@ -1,3 +1,10 @@
+## [1.110.1](https://github.com/go-taas/go-taas/compare/v1.110.0...v1.110.1) (2026-11-06)
+
+
+### Bug Fixes
+
+* **config:** ship the documented retention, upload, cycle-reset and invitation keys ([a2064a7](https://github.com/go-taas/go-taas/commit/a2064a7da6ad522277935136c0cec308d74fa60b))
+
 # [1.110.0](https://github.com/go-taas/go-taas/compare/v1.109.0...v1.110.0) (2026-11-06)
 
 
