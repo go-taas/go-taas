@@ -110,6 +110,9 @@ metering:
   retention:
     enabled: true
     voucherTTL: 2160h
+    # requestLogTTL is how long request logs are kept before the
+    # request-log retention runner deletes them (feature #27).
+    requestLogTTL: 720h
     batchSize: 1000
     interval: 1h
   # eventConsumer consumes metering.events from the data-plane
@@ -332,6 +335,12 @@ billing:
     interval: 60s
     gracePeriod: 5m
     workers: 2
+  # cycleReset resets the postpaid monthly usage counters when an org's
+  # billing cycle rolls over (feature-18). The reset is condition-based,
+  # so a short interval is cheap.
+  cycleReset:
+    enabled: true
+    interval: 1m
   # autoRecharge configures the feature-14 auto-recharge runner: it tops
   # up prepaid accounts whose balance falls below their threshold.
   autoRecharge:
@@ -410,6 +419,8 @@ tenancy:
   # is empty at startup, insert-only, never re-seeded).
   defaultOrgId: "org-default"
   defaultOrgDisplayName: "Default Organization"
+  # invitationTTL is the default invitation expiry window (7 days).
+  invitationTTL: 168h
 
 audit:
   # retention deletes audit events older than eventTTL, in batches
@@ -434,8 +445,21 @@ model:
   # model-download feature. In the compose stack this is the JuiceFS
   # mount shared with the inference pods.
   weightsDir: ""
+  # upload configures the local model-upload flow (a model archive the
+  # platform extracts into the weights directory).
+  upload:
+    # maxArchiveBytes caps one uploaded archive (200 GiB).
+    maxArchiveBytes: 214748364800
+    # tempDir is where an archive is staged before extraction. Empty
+    # uses the OS temp directory.
+    tempDir: ""
 
 image:
+  # upload configures the image-upload flow (a docker-save archive).
+  upload:
+    # maxArchiveBytes caps one uploaded image archive (8 GiB).
+    maxArchiveBytes: 8589934592
+    tempDir: ""
   # registry is the first-boot seed of the images table (feature #3:
   # the table is the source of truth; this seed is read only when the
   # table is empty at startup, insert-only, preserving imageId values).

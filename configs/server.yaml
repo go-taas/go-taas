@@ -90,6 +90,8 @@ metering:
   retention:
     enabled: true
     voucherTTL: 2160h
+    # requestLogTTL is how long request logs are kept (feature #27).
+    requestLogTTL: 720h
     batchSize: 1000
     interval: 1h
   # eventConsumer consumes metering.events from the data-plane
@@ -136,6 +138,12 @@ billing:
     interval: 60s
     gracePeriod: 5m
     workers: 2
+  # cycleReset resets the postpaid monthly usage counters when an org's
+  # billing cycle rolls over (feature-18). The reset is condition-based,
+  # so a short interval is cheap.
+  cycleReset:
+    enabled: true
+    interval: 1m
   # reports (feature-25): the billing-reports runners. The generator
   # picks up pending reports and renders their CSV; the schedule runner
   # materializes due schedules into pending report runs.
@@ -167,6 +175,8 @@ tenancy:
   # is empty). Must match ^[a-z0-9][a-z0-9-]{2,63}$.
   defaultOrgId: "org-default"
   defaultOrgDisplayName: "Default Organization"
+  # invitationTTL is the default invitation expiry window (7 days).
+  invitationTTL: 168h
 
 audit:
   # retention deletes audit events older than eventTTL, in batches
@@ -197,6 +207,10 @@ webhook:
   secretEncryptionKey: ""
 
 image:
+  # upload configures the image-upload flow (a docker-save archive).
+  upload:
+    maxArchiveBytes: 8589934592
+    tempDir: ""
   registry:
     - imageId: "img-vllm-nvidia-v063"
       name: "ghcr.io/go-taas/vllm"
@@ -232,6 +246,10 @@ model:
   # weights downloaded from a model hub are written. Empty disables the
   # model-download feature.
   weightsDir: ""
+  # upload configures the local model-upload flow.
+  upload:
+    maxArchiveBytes: 214748364800
+    tempDir: ""
 
 # Feature #20: inference load testing. The runner persists a live
 # progress snapshot every progressInterval, keeps terminal runs for
