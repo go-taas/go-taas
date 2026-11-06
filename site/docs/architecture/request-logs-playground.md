@@ -100,7 +100,7 @@ flowchart TD
 | | `service.go` | `handleEvent` extended: after the voucher write, build and write the request log best-effort (AD2); new RPCs `ListRequestLogs`, `GetRequestLog`; `Migrate`/`MigrateSchemaForFVT` gain `RequestLog` |
 | | `event_consumer.go` | `meteringEvent` struct gains `LatencyMs`, `Status`, `Error`; JSON tags `latency_ms`/`status`/`error` |
 | | `request_log_retention_runner.go` | `RequestLogRetentionRunner` (server.Runner, separate ticker) + `RetainOnce(ctx)` extracted for tests (the `RetentionRunner`/`ReconcileOnce` pattern) |
-| `services/infer` | `service.go` | New RPC `PlaygroundInfer`: resolve org, resolve service (`FindByIDAndOrganization`), resolve key identity, forward to the service endpoint with the key id, return completion + token usage + latency (Section 6.3) |
+| `services/infer` | `service.go` | New RPC `PlaygroundInfer`: resolve org, resolve service (`FindByID`), resolve key identity, forward to the service endpoint with the key id, return completion + token usage + latency (Section 6.3) |
 | | `playground.go` | The forwarding client: builds the OpenAI-compatible request to the service endpoint, carries the key id, parses the completion/usage/latency (AD8) |
 | `pkg/errors` | `codes.go`/`messages.go` | `CodeRequestLogNotFound` (10405) constant + canonical message "request log not found" |
 | `pkg/config` | `api.go`/`configuration.go` | `metering.retention.requestLogTTL` (default 720h = 30 d) + `applyDefaults`/`Validate` (Section 3.2) |
@@ -327,7 +327,7 @@ sequenceDiagram
     Admin->>Console: select service, model, org key, prompt
     Console->>CGW: POST inference-services/{service_id}:playground
     CGW->>S: PlaygroundInfer (org from X-Organization-Id)
-    S->>R: FindByIDAndOrganization(org, service_id)
+    S->>R: FindByID(service_id)
     alt unknown service
         S-->>Console: 10301 inline
     else running service

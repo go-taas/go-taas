@@ -745,7 +745,7 @@ type AutoscalingPolicy struct {
 
 - `GetAutoscalingPolicy`: `GetDefault` → respond the policy.
 - `UpdateAutoscalingPolicy`: validate (§5.3); `UpsertDefault`; respond the saved policy. Synchronous (FR1.4).
-- `UpdateInferenceServiceAutoscaling`: scoped fetch (10301); terminated → 10303; validate (§5.3); if `enabled = false`, resolve the current desired count as the fixed count; `UpdateAutoscaling`; publish an `upsert` change with the effective policy; respond `{fixed_replicas}` when disabling (FR2.5).
+- `UpdateInferenceServiceAutoscaling`: platform fetch (10301); terminated → 10303; validate (§5.3); if `enabled = false`, resolve the current desired count as the fixed count; `UpdateAutoscaling`; publish an `upsert` change with the effective policy; respond `{fixed_replicas}` when disabling (FR2.5).
 
 `change_publisher.go`: `buildChangeEvent` gains the `autoscaling` object (the effective policy, §6.1).
 

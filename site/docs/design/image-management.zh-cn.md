@@ -6,7 +6,7 @@
 | 文档范围 | `image` 模块推理引擎镜像管理能力的需求分析与 UI/UX 设计：控制台页面、用户流程、API 面、从配置驱动注册表到数据库注册表的迁移，以及验收标准 |
 | 归属模块 | `image`（注册表 CRUD 与预热任务），以及 `infer`（部署表单的镜像消费与校验）和 `controller`（预拉取执行） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) —— 第 2.3 节 `image`、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) —— 部署表单镜像下拉（D4）与过渡期配置驱动注册表 |
-| 状态 | 设计完成，已移交 Architect agent |
+| 状态 | 已实现 |
 
 ---
 
@@ -176,7 +176,7 @@ flowchart TD
     B --> C["表单：名称、tag、摘要、加速器、引擎、描述"]
     C --> D{提交}
     D -->|校验错误| C
-    D -->|通过| E["POST /api/v1/images"]
+    D -->|通过| E["POST /api/v1/admin/images"]
     E --> F{name + tag + accelerator 已存在?}
     F -->|是| G["内联冲突错误，附既有镜像链接"]
     G --> C
@@ -210,7 +210,7 @@ sequenceDiagram
     participant K8s as Kubernetes 节点
 
     Admin->>Console: 预热对话框（镜像，可选节点选择器）
-    Console->>CGW: POST /api/v1/images/{image_id}:warmup
+    Console->>CGW: POST /api/v1/admin/images/{image_id}:warmup
     CGW->>Img: TriggerWarmup
     Img->>Img: 校验镜像、无活跃任务、写入任务行（state=pending）
     Img->>MQ: 发布预热任务
@@ -236,7 +236,7 @@ flowchart TD
     C -->|否| E["确认：仅移除注册表条目"]
     E --> F{"确认"}
     F -->|取消| A
-    F -->|确认| G["DELETE /api/v1/images/{image_id}"]
+    F -->|确认| G["DELETE /api/v1/admin/images/{image_id}"]
     G --> H{"服务端引用检查"}
     H -->|仍被引用| I["错误 10206 点名阻塞服务"]
     H -->|未被引用| J["行离开列表 - GetImage 返回不存在"]
@@ -250,13 +250,13 @@ flowchart TD
 
 | RPC | HTTP | 状态 | 用途 | 备注 |
 | --- | --- | --- | --- | --- |
-| `RegisterImage` | `POST /api/v1/images` | 已存在，本特性实现 | 注册镜像 | 请求新增 `description`（字段 6）；返回 `image_id` |
-| `ListImages` | `GET /api/v1/images` | 已存在，改为数据库支撑 | 带过滤的目录列表 | `accelerator` / `engine` 过滤（既有）；`ImageSummary` 新增 `description`、`in_use_count`、`last_warmup_state`、`last_warmup_at` |
-| `GetImage` | `GET /api/v1/images/{image_id}` | **新增** | 含使用中服务的详情 | 响应携带镜像及 `in_use_services`（service_id、name、state） |
-| `UpdateImage` | `PATCH /api/v1/images/{image_id}` | **新增** | 仅描述编辑 | 请求仅携带 `image_id` + `description`（D6） |
-| `DeleteImage` | `DELETE /api/v1/images/{image_id}` | **新增** | 移除目录条目 | 对非 terminated 推理服务做引用检查 |
-| `TriggerWarmup` | `POST /api/v1/images/{image_id}:warmup` | 已存在，本特性实现 | 入队预拉取任务 | 立即返回 `task_id` 与 `state=pending`；`node_selector` 可选 |
-| `ListWarmupTasks` | `GET /api/v1/images/{image_id}/warmup-tasks` | **新增** | 按镜像的预热历史 | 分页，最新在前 |
+| `RegisterImage` | `POST /api/v1/admin/images` | 已存在，本特性实现 | 注册镜像 | 请求新增 `description`（字段 6）；返回 `image_id` |
+| `ListImages` | `GET /api/v1/admin/images` | 已存在，改为数据库支撑 | 带过滤的目录列表 | `accelerator` / `engine` 过滤（既有）；`ImageSummary` 新增 `description`、`in_use_count`、`last_warmup_state`、`last_warmup_at` |
+| `GetImage` | `GET /api/v1/admin/images/{image_id}` | **新增** | 含使用中服务的详情 | 响应携带镜像及 `in_use_services`（service_id、name、state） |
+| `UpdateImage` | `PATCH /api/v1/admin/images/{image_id}` | **新增** | 仅描述编辑 | 请求仅携带 `image_id` + `description`（D6） |
+| `DeleteImage` | `DELETE /api/v1/admin/images/{image_id}` | **新增** | 移除目录条目 | 对非 terminated 推理服务做引用检查 |
+| `TriggerWarmup` | `POST /api/v1/admin/images/{image_id}:warmup` | 已存在，本特性实现 | 入队预拉取任务 | 立即返回 `task_id` 与 `state=pending`；`node_selector` 可选 |
+| `ListWarmupTasks` | `GET /api/v1/admin/images/{image_id}/warmup-tasks` | **新增** | 按镜像的预热历史 | 分页，最新在前 |
 | `GetWarmupTask` | `GET /api/v1/warmup-tasks/{task_id}` | **新增** | 含逐节点结果的任务详情 | 平铺路径 —— 任务 id 全局唯一，控制台可脱离镜像上下文打开任务 |
 
 契约约束：

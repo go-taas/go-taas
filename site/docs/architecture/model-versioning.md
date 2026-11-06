@@ -480,7 +480,7 @@ No new configuration is required for this feature. The version-change event reus
 | --- | --- | --- |
 | `service.go` | `UpdateInferenceServiceVersion(ctx, req)` | Validate `service_id` (10301), state not `terminated` (10303), target `model_version` registered for the service's model (10103, via the model repository); update the service row's `model_version` and set `state=deploying`; publish a version-change event (`change_type=update_version`) on `infer.services.changes`; return `service_id` + `state=deploying` |
 | `change_publisher.go` | `PublishVersionChange(ctx, svc, newVersion)` | Build and publish the version-change event envelope (AD6) |
-| `status_consumer.go` | (existing) | On the status report for a version-change reconcile, update `model_version` and `state` |
+| `status_consumer.go` | (existing) | On the status report for a version-change reconcile, update `state`, endpoints and failure reason; `model_version` was already written by the RPC before publish |
 
 ### 13.3 `controller` (`internal/controller`)
 

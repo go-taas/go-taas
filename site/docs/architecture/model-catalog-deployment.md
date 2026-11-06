@@ -561,7 +561,7 @@ Cross-module dependency: `model` exposes `FindVersion` through a narrow interfac
 
 ### 10.3 `infer` Module
 
-GORM model:
+GORM model (the original lifecycle columns; later features add the columns listed in Section 3.3):
 
 ```go
 type InferenceService struct {
@@ -606,9 +606,9 @@ Service RPCs (`service.go`):
 
 - `CreateInferenceService`: resolve the organization from the session (header fallback); run the validation matrix (Section 4.3) — model/version via `model.FindVersion`, authorization, image via the image repository, compatibility, engine arguments, topology, scheduling and vGPU slice; insert with `state=pending`; publish the change event; respond `{service_id}` (AC4, AC5).
 - `ListInferenceServices`: platform-wide paginated list with an optional `organization_id` filter; map to `InferenceServiceSummary` (state, updated_at as unix).
-- `GetInferenceService`: scoped fetch; `endpoints` only when `state=running` (contract constraint 3).
-- `ScaleInferenceService`: scoped fetch; terminated → 10303; validate replicas (10305); `UpdateReplicas`; publish `upsert` with the new spec (AC8).
-- `DeleteInferenceService`: scoped fetch; miss → 10301; already terminated → success; else `MarkTerminated` + publish `delete` (AC9).
+- `GetInferenceService`: platform fetch; `endpoints` only when `state=running` (contract constraint 3).
+- `ScaleInferenceService`: platform fetch; terminated → 10303; validate replicas (10305); `UpdateReplicas`; publish `upsert` with the new spec (AC8).
+- `DeleteInferenceService`: platform fetch; miss → 10301; already terminated → success; else `MarkTerminated` + publish `delete` (AC9).
 
 ### 10.4 Framework Touch Points
 
@@ -649,7 +649,7 @@ The console is a separate deliverable; this design pins its contract: the seven-
 | AC6 — pending → queued → starting → running with endpoints | Sections 4.5.2, 10.5 | FVT with fake controller + E2E |
 | AC7 — failed with reason | Sections 5.2, 10.5 step 3 | FVT fault injection |
 | AC8 — scale changes replicas only | Section 10.3 `ScaleInferenceService` | Unit + FVT |
-| AC9 — idempotent delete, terminated hidden | Section 10.3 `DeleteInferenceService`, `ListByOrganization` filter | Unit + FVT |
+| AC9 — idempotent delete, terminated hidden | Section 10.3 `DeleteInferenceService`, `ListAll` filter | Unit + FVT |
 | AC10 — image dropdown filtered | Section 10.6 console contract, `ListImages` accelerator field | E2E |
 | AC11 — seven-state badge set | Section 4.4 closed state set | Manual / E2E |
 | AC12 — 10-second polling | Section 10.6 console contract | Manual / E2E |

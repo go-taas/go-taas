@@ -4,7 +4,7 @@
 | --- | --- |
 | 功能点 | 服务配额管理 — 按组织配置的**资源配额**（最大并发推理请求数、每日最大批量任务数、单请求最大输出 token 数），由运营者配置，在网关与控制面失败即拒（fail-closed）执行，租户面展示配额条，管理面提供配额管理页面（backlog 第 51 行） |
 | 文档范围 | 需求分析、竞品调研与配额模型决策（三个配额维度、0 = 不限、失败即拒执行）、管理面页面 `/admin/quotas`（按组织配额配置，含预设与变更历史）、终端用户面配额条与 `/quotas` 详情页、页面 → API 表面映射表，以及编号验收标准 |
-| 负责模块 | `tenancy`（组织配额字段、`UpdateOrganizationQuotas`）、`auth`（配额字段搭载 `VerifyAPIKey` verdict — 网关执行契约）、`infer`（并发执行点、单请求 token 上限）、`batch`（每日批量任务配额检查）、`metering`（不变 — 仅用量观测）、`audit`（配额变更）、`pkg/server` 网关（管理 + 用户前缀绑定）、`web` 管理控制台 + 终端用户控制台 |
+| 负责模块 | `tenancy`（组织配额字段、`UpdateOrganizationQuotas`）、`auth`（配额字段搭载 `VerifyAPIKey` verdict — 网关执行契约）、`batch`（每日批量任务配额检查）、`metering`（不变 — 仅用量观测）、`audit`（配额变更）、`pkg/server` 网关（管理 + 用户前缀绑定）、`web` 管理控制台 + 终端用户控制台 |
 | 相关文档 | [架构设计](./architecture.md) — §2.4 `auth`/`infer`、§3.1 控制网关、§3.2 数据面 · [速率与支出限额](./rate-limits-spend-limits.zh-cn.md) — 本功能与之组合的按 Key RPM/TPM 与组织支出上限；其 non-goals 明确将按服务并发与 QPS 限额推迟至此 · [多租户](./multi-tenancy.zh-cn.md) — 组织/项目模型配额由此延迟而来 · [余额与配额账户模式](./balance-quota.zh-cn.md) — 资金侧（402），配额绝不触碰 · [批量推理](./batch-inference.zh-cn.md) — 每日批量任务维度 · [推理弹性伸缩](./inference-autoscaling.zh-cn.md) — 为什么并发在网关封顶而不是靠伸缩 · [API Key 管理](./api-key-management.zh-cn.md) — 配额字段搭载的 verdict 缓存路径 · [控制台表面分离](./console-surface-separation.zh-cn.md) — 两个表面、脱敏投影规则 |
 | 状态 | 已实现；推理服务数维度已退役 |
 
@@ -192,7 +192,7 @@
 
 ## 6. API 表面影响
 
-配额 RPC 扩展 **`tenancy`**（组织配额字段，管理面）并新增一个小的**用户前缀读取**（`GetMyQuota`）；执行契约扩展 `auth` 的 `VerifyAPIKey` verdict 与 `infer`/`batch` 创建路径。网关组件在仓库范围外 — 契约钉在此处（FR5.4）。
+配额 RPC 扩展 **`tenancy`**（组织配额字段，管理面）并新增一个小的**用户前缀读取**（`GetMyQuota`）；执行契约扩展 `auth` 的 `VerifyAPIKey` verdict 与 `batch` 创建路径。网关组件在仓库范围外 — 契约钉在此处（FR5.4）。
 
 | RPC | 路由 | 前缀 | 状态 | 用途 |
 | --- | --- | --- | --- | --- |

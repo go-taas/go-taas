@@ -561,7 +561,7 @@ type Version struct {
 
 ### 10.3 `infer` 模块
 
-GORM 模型：
+GORM 模型（初始生命周期列；后续特性新增的列见第 3.3 节）：
 
 ```go
 type InferenceService struct {
@@ -606,9 +606,9 @@ type InferenceService struct {
 
 - `CreateInferenceService`：从会话解析组织（头作为回退）；执行校验矩阵（第 4.3 节）—— 模型/版本经 `model.FindVersion`，授权、镜像仓储、兼容性、引擎参数、拓扑、调度与 vGPU 切片；以 `state=pending` 插入；发布变更事件；响应 `{service_id}`（AC4、AC5）。
 - `ListInferenceServices`：平台级分页列表，`organization_id` 为可选过滤；映射为 `InferenceServiceSummary`（state、updated_at 为 unix）。
-- `GetInferenceService`：隔离取数；仅 `state=running` 时返回 `endpoints`（契约约束 3）。
-- `ScaleInferenceService`：隔离取数；terminated → 10303；校验 replicas（10305）；`UpdateReplicas`；以新规格发布 `upsert`（AC8）。
-- `DeleteInferenceService`：隔离取数；未命中 → 10301；已 terminated → 成功；否则 `MarkTerminated` + 发布 `delete`（AC9）。
+- `GetInferenceService`：平台取数；仅 `state=running` 时返回 `endpoints`（契约约束 3）。
+- `ScaleInferenceService`：平台取数；terminated → 10303；校验 replicas（10305）；`UpdateReplicas`；以新规格发布 `upsert`（AC8）。
+- `DeleteInferenceService`：平台取数；未命中 → 10301；已 terminated → 成功；否则 `MarkTerminated` + 发布 `delete`（AC9）。
 
 ### 10.4 框架触点
 
@@ -649,7 +649,7 @@ type InferenceService struct {
 | AC6 — pending → queued → starting → running 及端点 | 第 4.5.2、10.5 节 | fake controller 的 FVT + E2E |
 | AC7 — 带原因的 failed | 第 5.2、10.5 节第 3 步 | FVT 故障注入 |
 | AC8 — 扩缩容仅改副本数 | 第 10.3 节 `ScaleInferenceService` | 单元 + FVT |
-| AC9 — 幂等删除、terminated 隐藏 | 第 10.3 节 `DeleteInferenceService`、`ListByOrganization` 过滤 | 单元 + FVT |
+| AC9 — 幂等删除、terminated 隐藏 | 第 10.3 节 `DeleteInferenceService`、`ListAll` 过滤 | 单元 + FVT |
 | AC10 — 镜像下拉过滤 | 第 10.6 节控制台契约、`ListImages` accelerator 字段 | E2E |
 | AC11 — 七状态徽标集 | 第 4.4 节封闭状态集 | 手动 / E2E |
 | AC12 — 10 秒轮询 | 第 10.6 节控制台契约 | 手动 / E2E |

@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the inference engine image management capability of the `image` module: console pages, user flows, API surface, migration from the config-driven registry to the DB-backed registry, and acceptance criteria |
 | Owning modules | `image` (registry CRUD and warmup tasks), with `infer` (deploy-form image consumption and validation) and `controller` (pre-pull execution) |
 | Related documents | [Architecture Design](./architecture.md) — Section 2.3 `image`, Section 2.7 Controller, Section 4.2 the one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — deploy-form image dropdown (D4) and the transitional config-driven registry |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -176,7 +176,7 @@ flowchart TD
     B --> C["Form: name, tag, digest, accelerator, engine, description"]
     C --> D{Submit}
     D -->|Validation error| C
-    D -->|OK| E["POST /api/v1/images"]
+    D -->|OK| E["POST /api/v1/admin/images"]
     E --> F{name + tag + accelerator exists?}
     F -->|Yes| G["Inline conflict error with link to existing image"]
     G --> C
@@ -210,7 +210,7 @@ sequenceDiagram
     participant K8s as Kubernetes nodes
 
     Admin->>Console: Warmup dialog (image, optional node selector)
-    Console->>CGW: POST /api/v1/images/{image_id}:warmup
+    Console->>CGW: POST /api/v1/admin/images/{image_id}:warmup
     CGW->>Img: TriggerWarmup
     Img->>Img: Validate image, no active task, write task row (state=pending)
     Img->>MQ: Publish warmup task
@@ -236,7 +236,7 @@ flowchart TD
     C -->|No| E["Confirmation: only the registry entry is removed"]
     E --> F{"Confirm"}
     F -->|Cancel| A
-    F -->|Confirm| G["DELETE /api/v1/images/{image_id}"]
+    F -->|Confirm| G["DELETE /api/v1/admin/images/{image_id}"]
     G --> H{"Server-side reference check"}
     H -->|Still referenced| I["Error 10206 names the blocking services"]
     H -->|Not referenced| J["Row leaves the list - GetImage returns not-found"]
@@ -250,13 +250,13 @@ All APIs belong to **`taas.image.v1.ImageService`** (proto: `proto/taas/image/v1
 
 | RPC | HTTP | Status | Purpose | Notes |
 | --- | --- | --- | --- | --- |
-| `RegisterImage` | `POST /api/v1/images` | exists, now implemented | Register an image | Request gains `description` (field 6); returns `image_id` |
-| `ListImages` | `GET /api/v1/images` | exists, now DB-backed | Catalog list with filters | `accelerator` / `engine` filters (existing); `ImageSummary` gains `description`, `in_use_count`, `last_warmup_state`, `last_warmup_at` |
-| `GetImage` | `GET /api/v1/images/{image_id}` | **new** | Detail with in-use services | Response carries the image plus `in_use_services` (service_id, name, state) |
-| `UpdateImage` | `PATCH /api/v1/images/{image_id}` | **new** | Description-only edit | Request carries `image_id` + `description` only (D6) |
-| `DeleteImage` | `DELETE /api/v1/images/{image_id}` | **new** | Remove a catalog entry | Reference-checked against non-terminated inference services |
-| `TriggerWarmup` | `POST /api/v1/images/{image_id}:warmup` | exists, now implemented | Enqueue a pre-pull task | Returns `task_id` with `state=pending` immediately; `node_selector` optional |
-| `ListWarmupTasks` | `GET /api/v1/images/{image_id}/warmup-tasks` | **new** | Warmup history per image | Paginated, newest first |
+| `RegisterImage` | `POST /api/v1/admin/images` | exists, now implemented | Register an image | Request gains `description` (field 6); returns `image_id` |
+| `ListImages` | `GET /api/v1/admin/images` | exists, now DB-backed | Catalog list with filters | `accelerator` / `engine` filters (existing); `ImageSummary` gains `description`, `in_use_count`, `last_warmup_state`, `last_warmup_at` |
+| `GetImage` | `GET /api/v1/admin/images/{image_id}` | **new** | Detail with in-use services | Response carries the image plus `in_use_services` (service_id, name, state) |
+| `UpdateImage` | `PATCH /api/v1/admin/images/{image_id}` | **new** | Description-only edit | Request carries `image_id` + `description` only (D6) |
+| `DeleteImage` | `DELETE /api/v1/admin/images/{image_id}` | **new** | Remove a catalog entry | Reference-checked against non-terminated inference services |
+| `TriggerWarmup` | `POST /api/v1/admin/images/{image_id}:warmup` | exists, now implemented | Enqueue a pre-pull task | Returns `task_id` with `state=pending` immediately; `node_selector` optional |
+| `ListWarmupTasks` | `GET /api/v1/admin/images/{image_id}/warmup-tasks` | **new** | Warmup history per image | Paginated, newest first |
 | `GetWarmupTask` | `GET /api/v1/warmup-tasks/{task_id}` | **new** | Task detail with per-node results | Flat path — task ids are globally unique and the console may open a task without image context |
 
 Constraints on the contract:

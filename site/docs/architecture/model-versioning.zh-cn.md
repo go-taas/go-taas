@@ -474,7 +474,7 @@ sequenceDiagram
 | --- | --- | --- |
 | `service.go` | `UpdateInferenceServiceVersion(ctx, req)` | 校验 `service_id`（10301）、状态非 `terminated`（10303）、目标 `model_version` 是服务模型的已注册版本（10103，通过 model 仓库）；更新服务行的 `model_version` 并设 `state=deploying`；在 `infer.services.changes` 上发布版本变更事件（`change_type=update_version`）；返回 `service_id` + `state=deploying` |
 | `change_publisher.go` | `PublishVersionChange(ctx, svc, newVersion)` | 构建并发布版本变更事件信封（AD6） |
-| `status_consumer.go` | （现有） | 在版本变更协调的状态报告上，更新 `model_version` 与 `state` |
+| `status_consumer.go` | （现有） | 在版本变更调和的状态报告上更新 `state`、端点与失败原因；`model_version` 已由 RPC 在发布前写入 |
 
 ### 13.3 `controller`（`internal/controller`）
 

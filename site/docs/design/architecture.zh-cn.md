@@ -530,11 +530,11 @@ sequenceDiagram
     participant CTRL as Controller
     participant K8s as Kubernetes
 
-    Admin->>CGW: POST /api/v1/models/{id}/deploy（指定卡型、镜像与副本数）
+    Admin->>CGW: POST /api/v1/admin/inference-services（模型、版本、镜像、加速器、副本数）
     CGW->>GRPC: 校验参数、写入期望状态、登记部署任务
     GRPC->>MQ: 投递「部署推理服务」消息
     MQ->>CTRL: 消费部署消息
-    CTRL->>K8s: 创建推理 Deployment 与 Service（挂载权重共享卷）
+    CTRL->>K8s: 创建 AIBrix StormService 与 Service（挂载权重共享卷）
     K8s-->>CTRL: 推理 Pod 就绪
     CTRL->>K8s: 登记服务端点，标记推理服务可用
     CTRL-->>GRPC: 回报部署结果

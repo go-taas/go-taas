@@ -4,7 +4,7 @@
 | --- | --- |
 | Feature point | Service quota management — per-organization **resource quotas** (max concurrent inference requests, max batch jobs per day, per-request max output tokens) configured by the operator, enforced fail-closed at the gateway and the control plane, with a quota bar on the tenant surface and a quota management page on the admin surface (backlog row 51) |
 | Document scope | Requirement analysis, competitive research and the quota-model decision (three quota dimensions, 0 = unlimited, fail-closed enforcement), the admin-surface page `/admin/quotas` (per-org quota configuration with presets and history), the end-user-surface quota bar and `/quotas` detail page, the page → API surface table, and numbered acceptance criteria |
-| Owning modules | `tenancy` (org quota fields, `UpdateOrganizationQuotas`), `auth` (quota fields ride the `VerifyAPIKey` verdict — the gateway enforcement contract), `infer` (concurrency enforcement point and per-request token cap), `batch` (daily batch-job quota check), `metering` (unchanged — usage observation only), `audit` (quota changes), `pkg/server` gateway (admin + user prefix bindings), `web` admin + end-user console |
+| Owning modules | `tenancy` (org quota fields, `UpdateOrganizationQuotas`), `auth` (quota fields ride the `VerifyAPIKey` verdict — the gateway enforcement contract), `batch` (daily batch-job quota check), `metering` (unchanged — usage observation only), `audit` (quota changes), `pkg/server` gateway (admin + user prefix bindings), `web` admin + end-user console |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `auth`/`infer`, §3.1 Control Gateway, §3.2 data plane · [Rate Limits & Spend Limits](./rate-limits-spend-limits.md) — the per-key RPM/TPM and org spend cap this feature composes with; its non-goals explicitly deferred per-service concurrency and QPS limits here · [Multi-Tenancy](./multi-tenancy.md) — the org/project model quotas were deferred from · [Balance & Quota Account Modes](./balance-quota.md) — the funds side (402) quotas never touch · [Batch Inference](./batch-inference.md) — the daily batch-job dimension · [Inference Autoscaling](./inference-autoscaling.md) — why concurrency is capped at the gateway, not by scaling · [API Key Management](./api-key-management.md) — the verdict-cache path quota fields ride · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the masked-projection rule |
 | Status | Implemented; the inference-service count dimension was retired |
 
@@ -91,7 +91,7 @@ The core product rule:
 | # | As a… | I want to… | So that… |
 | --- | --- | --- | --- |
 | US1 | Platform administrator | set a max concurrent requests quota per organization | one tenant's streaming burst cannot hold the fleet's GPUs hostage |
-| US2 | Platform administrator | cap the number of inference services and daily batch jobs per org | idle-service sprawl and batch floods are stopped at create time |
+| US2 | Platform administrator | cap the daily batch jobs per org | batch floods are stopped at create time |
 | US3 | Platform administrator | cap per-request output tokens per org | a runaway Agent loop cannot generate max-length completions forever |
 | US4 | Platform administrator | apply a preset then fine-tune fields before saving | configuring dozens of orgs is fast without freezing the values |
 | US5 | Platform administrator | see every quota change with old → new values and the acting operator | fleet-protection decisions are reviewable |
@@ -192,7 +192,7 @@ The core product rule:
 
 ## 6. API Surface Implications
 
-The quota RPCs extend **`tenancy`** (org quota fields, admin surface) and add a small **user-prefix read** (`GetMyQuota`); the enforcement contract extends `auth`'s `VerifyAPIKey` verdict and the `infer`/`batch` create paths. The gateway component is out of repository scope — its contract is pinned here (FR5.4).
+The quota RPCs extend **`tenancy`** (org quota fields, admin surface) and add a small **user-prefix read** (`GetMyQuota`); the enforcement contract extends `auth`'s `VerifyAPIKey` verdict and the `batch` create path. The gateway component is out of repository scope — its contract is pinned here (FR5.4).
 
 | RPC | Route | Prefix | Status | Purpose |
 | --- | --- | --- | --- | --- |

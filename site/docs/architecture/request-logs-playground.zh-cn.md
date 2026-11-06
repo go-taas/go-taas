@@ -100,7 +100,7 @@ flowchart TD
 | | `service.go` | `handleEvent` 扩展：凭证写入后，以尽力而为的方式构建并写入请求日志（AD2）；新 RPC `ListRequestLogs`、`GetRequestLog`；`Migrate`/`MigrateSchemaForFVT` 新增 `RequestLog` |
 | | `event_consumer.go` | `meteringEvent` 结构体新增 `LatencyMs`、`Status`、`Error`；JSON 标签 `latency_ms`/`status`/`error` |
 | | `request_log_retention_runner.go` | `RequestLogRetentionRunner`（server.Runner，独立 ticker）+ 为测试提取的 `RetainOnce(ctx)`（`RetentionRunner`/`ReconcileOnce` 模式） |
-| `services/infer` | `service.go` | 新 RPC `PlaygroundInfer`：解析组织、解析服务（`FindByIDAndOrganization`）、解析键身份、携带键 id 转发到服务端点，返回补全 + token 用量 + 延迟（第 6.3 节） |
+| `services/infer` | `service.go` | 新 RPC `PlaygroundInfer`：解析组织、解析服务（`FindByID`）、解析键身份、携带键 id 转发到服务端点，返回补全 + token 用量 + 延迟（第 6.3 节） |
 | | `playground.go` | 转发客户端：向服务端点构建 OpenAI 兼容请求，携带键 id，解析补全/用量/延迟（AD8） |
 | `pkg/errors` | `codes.go`/`messages.go` | `CodeRequestLogNotFound`（10405）常量 + 规范消息 "request log not found" |
 | `pkg/config` | `api.go`/`configuration.go` | `metering.retention.requestLogTTL`（默认 720h = 30 天）+ `applyDefaults`/`Validate`（第 3.2 节） |
@@ -327,7 +327,7 @@ sequenceDiagram
     Admin->>Console: 选择服务、模型、组织键、提示词
     Console->>CGW: POST inference-services/{service_id}:playground
     CGW->>S: PlaygroundInfer（组织来自 X-Organization-Id）
-    S->>R: FindByIDAndOrganization(org, service_id)
+    S->>R: FindByID(service_id)
     alt 未知服务
         S-->>Console: 10301 内联
     else 运行中的服务

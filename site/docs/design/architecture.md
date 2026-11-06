@@ -566,11 +566,11 @@ sequenceDiagram
     participant CTRL as Controller
     participant K8s as Kubernetes
 
-    Admin->>CGW: POST /api/v1/models/{id}/deploy (card type, image, and replica count)
+    Admin->>CGW: POST /api/v1/admin/inference-services (model, version, image, accelerator, replicas)
     CGW->>GRPC: Validate parameters, write desired state, register deployment task
     GRPC->>MQ: Publish "deploy inference service" message
     MQ->>CTRL: Consume deployment message
-    CTRL->>K8s: Create inference Deployment and Service (mount shared weight volume)
+    CTRL->>K8s: Create AIBrix StormService and Service (mount shared weight volume)
     K8s-->>CTRL: Inference Pods ready
     CTRL->>K8s: Register service endpoints, mark inference service available
     CTRL-->>GRPC: Report deployment result
