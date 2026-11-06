@@ -715,7 +715,7 @@ type RuntimeAIBrixConfig struct {
 }
 ```
 
-Defaults: `collectInterval` 30 s, `schemeBroadcastInterval` 30 s, all consumers enabled, `healthConsumer.workers` 1, `aibrix.namespace` `aibrix-system`, `aibrix.gateway` `envoy-aibrix-system-aibrix-eg`. Negative intervals fail validation (`FieldError`), mirroring `accelerator.collectInterval`. All values are overridable by the platform's `CONFIG_` environment override (the existing viper path), so the compose stack can set e.g. `CONFIG_RUNTIME_AIBRIX__NAMESPACE`. The compose `docker-compose.yaml` needs no new environment variable for the default path; operators who run a differently-named AIBrix namespace set it explicitly.
+Defaults: `collectInterval` 30 s, `schemeBroadcastInterval` 30 s, all consumers enabled, `healthConsumer.workers` 1, `aibrix.namespace` `aibrix-system`, `aibrix.gateway` `envoy-aibrix-system-aibrix-eg`. Negative intervals fail validation (`FieldError`), mirroring `accelerator.collectInterval`. All values are overridable by the platform's `CONFIG_` environment override (the existing viper path), so the compose stack can set e.g. `CONFIG_RUNTIME_AIBRIX_NAMESPACE`. The compose `docker-compose.yaml` needs no new environment variable for the default path; operators who run a differently-named AIBrix namespace set it explicitly.
 
 ---
 

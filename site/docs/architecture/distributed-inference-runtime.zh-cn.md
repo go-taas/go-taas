@@ -715,7 +715,7 @@ type RuntimeAIBrixConfig struct {
 }
 ```
 
-默认值：`collectInterval` 30 秒，`schemeBroadcastInterval` 30 秒，所有消费者启用，`healthConsumer.workers` 1，`aibrix.namespace` `aibrix-system`，`aibrix.gateway` `envoy-aibrix-system-aibrix-eg`。负间隔校验失败（`FieldError`），镜像 `accelerator.collectInterval`。所有值均可由平台 `CONFIG_` 环境覆盖（既有 viper 路径）覆盖，使 compose 栈可设置如 `CONFIG_RUNTIME_AIBRIX__NAMESPACE`。compose `docker-compose.yaml` 对默认路径无需新环境变量；运行不同名 AIBrix 命名空间的运营者显式设置它。
+默认值：`collectInterval` 30 秒，`schemeBroadcastInterval` 30 秒，所有消费者启用，`healthConsumer.workers` 1，`aibrix.namespace` `aibrix-system`，`aibrix.gateway` `envoy-aibrix-system-aibrix-eg`。负间隔校验失败（`FieldError`），镜像 `accelerator.collectInterval`。所有值均可由平台 `CONFIG_` 环境覆盖（既有 viper 路径）覆盖，使 compose 栈可设置如 `CONFIG_RUNTIME_AIBRIX_NAMESPACE`。compose `docker-compose.yaml` 对默认路径无需新环境变量；运行不同名 AIBrix 命名空间的运营者显式设置它。
 
 ---
 
