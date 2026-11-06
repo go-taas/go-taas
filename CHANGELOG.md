@@ -1,3 +1,11 @@
+# [1.110.0](https://github.com/go-taas/go-taas/compare/v1.109.0...v1.110.0) (2026-11-06)
+
+
+### Features
+
+* **billing:** close the settlement-lag funds window ([49dc19e](https://github.com/go-taas/go-taas/commit/49dc19e5164ee8e91cfeda10f69fc01849192380))
+* **billing:** enforce funds per scope and close the open questions ([882376f](https://github.com/go-taas/go-taas/commit/882376f0e794ba089e29d4ac7e553ee6d0c39623))
+
 # [1.109.0](https://github.com/go-taas/go-taas/compare/v1.108.0...v1.109.0) (2026-11-05)
 
 
