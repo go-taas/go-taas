@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/cost` 管理面成本分析页面（集群级按维度成本归因 + 趋势 + 每 token 成本），`/cost` 终端用户面成本分析页面（租户作用域按维度成本归因 + 趋势 + 每 token 成本），页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `billing`（对 `charge_records` 的只读聚合，用于成本归因），`metering`（只读：来自 `usage_records` 的 token 总数，用于每 token 成本），`web` 管理控制台（`CostAnalyticsPage`）与终端用户控制台（`UserCostAnalyticsPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.6 节 `billing` · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 姊妹只读仪表盘及其内联 SVG 图表、新鲜度、范围与 group-by 约定 · [API Key 用量分析](./api-key-usage-analytics.zh-cn.md) — 姊妹按 Key 分析及其 Top Keys 排名 · [模型 × 卡型价格矩阵与阶梯定价](./pricing.zh-cn.md) — 每个成本数字背后的计费公式与生效日期价格 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -230,7 +230,7 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | 不支持的 `dimension` | 11301 | `CodeCostDimensionInvalid` | **新增**（D9） |
 | 未知维度值 | 11302 | `CodeCostDimensionValueNotFound` | **新增**（D9） |
-| 畸形或超长范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用（D5）— 计量范围契约 |
+| 畸形或超长范围 | 10404 | `CodeMeteringRangeInvalid` | 复用（D5）— 计量范围契约 |
 | 数据库 / 基础设施失败 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准

@@ -6,7 +6,7 @@
 | 文档范围 | 功能 17 的架构与详细设计：两棵路由树与两个外壳、按 realm 绑定的会话模型、网关 realm 守卫、每一条新增／改前缀／双绑定路由的精确 `google.api.http` 注解、浏览器存储模型与遗留键迁移、两侧控制台的「页面 → 路由 → API 前缀」映射、错误处理、配置、安全、发布，以及逐层的函数级任务清单 |
 | 归属模块 | `pkg/server`（网关组装、realm 守卫、SPA 回退）、`services/auth`（会话 realm、按 realm 绑定的登录绑定、公开 provider 投影、管理员会话绑定）、`services/model`（用户 realm 的掩码模型清单）、`services/infer`（以模型为维度的 Playground）、`services/metering` + `services/billing`（用户前缀绑定、显式组织过滤）、`web/`（两侧控制台）、`pkg/errors`（10038） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/console-surface-separation.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §3.1（控制面 Gateway）与「管理／用户面分离」 · [SSO 联邦与账号绑定](./sso-federation.zh-cn.md)（会话签发、`GetSession`、provider 目录） · [多租户与组织隔离](./multi-tenancy.zh-cn.md)（过渡期的 `X-Organization-Id` 身份） · [组织成员、角色与邀请](./org-members-rbac.zh-cn.md)（`SessionResolver`、10036） · [API Key 管理](./api-key-management.zh-cn.md) · [请求日志与 API Playground](./request-logs-playground.zh-cn.md)（迁往端用户控制台的两个页面） · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) · [余额（预付）与额度（后付）](./balance-quota.zh-cn.md) · [按租户的模型授权](./model-authorization.zh-cn.md)（掩码用户模型清单复用的默认放行规则） |
-| 状态 | 架构完成，已交付开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/usage/keys` 管理面分析页面（集群级按 Key 拆解 + Top Keys + 按 Key 趋势），`/usage/keys` 终端用户面分析页面（租户作用域按 Key 拆解 + Top Keys + 按 Key 趋势），页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `metering`（对 `request_logs` 与 `usage_records` 的只读聚合，用于按 Key 指标），`billing`（只读：来自 `charge_records` 的按 Key 成本），`web` 管理控制台（`UsageKeysPage`）与终端用户控制台（`UserUsageKeysPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.5 节 `metering`、第 2.6 节 `billing` · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 姊妹只读仪表盘及其内联 SVG 图表、新鲜度、范围与 group-by 约定 · [模型可观测性仪表盘](./model-observability.zh-cn.md) — 对 `request_logs` 的姊妹只读聚合及其按 Key 拆分 · [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md) — 本特性聚合的 `request_logs` 表及其 `api_key_id` / `status` / `error` / token 字段 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -230,7 +230,7 @@ sequenceDiagram
 | 条件 | 码 | 常量 | 说明 |
 | --- | --- | --- | --- |
 | 未知 `api_key_id` | 11201 | `CodeUsageKeyNotFound` | **新增**（D8） |
-| 畸形或超长范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用（D4）— 计量范围契约 |
+| 畸形或超长范围 | 10404 | `CodeMeteringRangeInvalid` | 复用（D4）— 计量范围契约 |
 | 数据库 / 基础设施失败 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准

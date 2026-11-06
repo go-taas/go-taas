@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/compatibility` 管理面矩阵页面设计、`/models/:modelId` 终端用户面兼容性展示、页面 → API 面对照表，以及编号可测的验收标准 |
 | 归属模块 | `image`（按架构第 2.3 节拥有适配矩阵），消费加速器清单投影（特性 #18）的卡型清单与镜像目录（特性 #3）的引擎集合；`web` 管理控制台（`CompatibilityPage`）与终端用户控制台（`ModelDetailPage`）；`pkg/server` 网关（admin 前缀与 user 前缀绑定） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.3 节镜像模块拥有镜像 × 卡型 × 引擎 × 模型格式适配矩阵 · [加速器清单与健康](./accelerator-inventory.zh-cn.md) — 本矩阵播种所用的卡型清单 · [镜像管理](./image-management.zh-cn.md) — 引擎集合与延后的卡型级矩阵单元 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 模型维度与必须查询矩阵的部署表单 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面 |
-| 状态 | 设计完成，已交付架构师智能体 |
+| 状态 | 已实现 |
 
 ---
 

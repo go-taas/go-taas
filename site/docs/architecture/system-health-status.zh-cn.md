@@ -6,7 +6,7 @@
 | 文档范围 | 功能 30 的架构与详细设计：`observability` 模块中新的 `GetSystemStatus` RPC，将现有组件健康信号聚合为单个仅 admin 的端点；admin 系统状态页面（`/admin/status`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 拥有模块 | `observability`（对现有组件健康信号的新只读健康聚合，以及 `GetSystemStatus` RPC）、`pkg/server` 网关（admin 前缀绑定）、`controller`（只读：控制器健康）、`web` admin 控制台（`SystemStatusPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/system-health-status.md) · [架构设计](../design/architecture.md) §2.5（`metering`）、§3.1（admin/user 表面分离）· [模型可观测性仪表盘](./model-observability.md)（同类只读聚合及其新鲜度约定）· [加速器清单与健康](./accelerator-inventory.md)（GPU 节点的同类健康表面）· [控制台表面分离](./console-surface-separation.md)（本功能跨越的两个表面、`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

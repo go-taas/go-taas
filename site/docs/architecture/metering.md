@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the metering pipeline: event ingestion (MQ consumer + direct RPC), voucher persistence, the hourly settlement runner, settlement-event publication, usage/voucher query APIs, retention cleanup, error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `metering` (ingestion, vouchers, settlement, queries, retention), with `auth` (API Key identity, read-only) and `billing` (settlement-event consumer, feature #5) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/metering.md) · [Architecture Design](../design/architecture.md) Section 2.5 (`metering`), Section 2.6 (`billing`), Section 4.3 (the inference request and billing loop) · [API Key Management](./api-key-management.md) (the key identity vouchers attach to) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Goals
 
-- Implement the full `taas.metering.v1.MeteringService` surface: the two existing RPCs (`IngestMeteringEvent`, `ListVouchers` — currently stubs) plus three new RPCs (`GetVoucher`, `GetUsageSummary`, `ListUsageRecords`), all additive proto changes.
+- Implement the full `taas.metering.v1.MeteringService` surface: the two existing RPCs (`IngestMeteringEvent`, `ListVouchers` — implemented by this features) plus three new RPCs (`GetVoucher`, `GetUsageSummary`, `ListUsageRecords`), all additive proto changes.
 - **Ingestion** from two paths converging on one handler: the MQ consumer on `metering.events` (the production path — the data-plane gateway's Wasm plugin publishes there) and the `IngestMeteringEvent` gRPC RPC (the direct path for tests and future non-Envoy gateways) (D2, FR1).
 - **Idempotent voucher writes**: one `vouchers` row per inference request, keyed by UUID v4 `voucher_id`, unique on `request_id`; a duplicate delivery returns the existing voucher id and writes nothing (D1, FR1.3, AC1).
 - **Full token breakdown** on every voucher — prompt / completion / cached / reasoning tokens — plus `api_key_id`, `organization_id`, `model_id`, `service_id`, `request_id`, `completed_at`; no pre-aggregation at capture time (D3, FR2).

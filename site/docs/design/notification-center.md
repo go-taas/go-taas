@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface notification center for `/admin/notifications`, the end-user-surface notification center for `/notifications`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `notification` (new — owns notification persistence, per-user preferences, threshold-alert evaluation, and read/unread state; subscribes to the message queue for the event catalog), `web` admin console (`AdminNotificationsPage`) and end-user console (`UserNotificationsPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §1.2 message queue, §2 module responsibilities · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule · [Webhook Notifications & Event Subscriptions](./webhook-notifications.md) — the event catalog this feature consumes in-console (feature #23) · [Inference Autoscaling](./inference-autoscaling.md) — the autoscaling events · [Balance & Quota](./balance-quota.md) — the balance-low and spend-limit events · [Payments, Invoices & Auto-Recharge](./payments-invoices-auto-recharge.md) — the billing/invoice events · [Audit Logging](./audit-logging.md) — the audit trail notification mutations must produce |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

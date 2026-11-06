@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for automatic horizontal scaling of inference services and scale-to-zero: the autoscaling policy data model (global default + per-service), the admin `/api/v1/admin/*` API surface (policy CRUD, per-service autoscaling config, extended service create/list/get), the user `/api/v1/*` read-only surface, the Controller's AIBrix PodAutoscaler/scale-to-zero reconciliation loop, the frontend pages for both consoles, surface/auth mapping, error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `infer` (autoscaling policy on inference services, policy RPCs, status projection), `model` (user-surface autoscaling projection), `internal/controller` (AIBrix PodAutoscaler reconciliation, scale-to-zero scheduling, autoscaling status reporting), `pkg/errors` (10307), `web/` (both consoles) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/inference-autoscaling.md) · [Architecture Design](../design/architecture.md) §2.4 (`infer`), §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle this feature extends · [Console Surface Separation](./console-surface-separation.md) — the two-surface rule and realm guard this feature follows · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the user-surface model list pattern |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

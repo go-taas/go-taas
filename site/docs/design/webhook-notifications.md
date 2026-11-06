@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface webhook management pages for `/admin/webhooks` (list, create, detail with delivery log), the end-user-surface webhook management pages for `/webhooks`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `webhook` (new — owns webhook endpoint CRUD, event subscription, signing, retry and delivery log; subscribes to the message queue for the event catalog), `web` admin console (`WebhooksPage`, `WebhookDetailPage`) and end-user console (`UserWebhooksPage`, `UserWebhookDetailPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §1.2 message queue, §2 module responsibilities · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule · [Inference Autoscaling](./inference-autoscaling.md) — the autoscaling events this feature subscribes to · [Payments, Invoices & Auto-Recharge](./payments-invoices-auto-recharge.md) — the billing/invoice events · [Balance & Quota](./balance-quota.md) — the balance-low and spend-limit events · [Audit Logging](./audit-logging.md) — the audit trail webhook mutations must produce |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -44,7 +44,7 @@ Pitfalls to avoid: making the signing secret optional (GitHub) — go-taas requi
 | D6 | **The delivery log lists every delivery** with its event type, status (`delivered` / `failed` / `pending`), HTTP status code, attempt count, and timestamps. A failed delivery can be **resent** manually; the log is retained for 90 days | The delivery log is the debugging surface (D1's pattern 5); manual resend recovers a lost event without waiting for the retry policy; 90-day retention matches the request-log retention (feature #12) |
 | D7 | **The signing secret can be rolled** (regenerated) at any time; the old secret is invalidated immediately and the new secret is shown once | Secret roll is a Stripe best practice for a suspected compromise; immediate invalidation is the simplest safe default for v1 |
 | D8 | **The `webhook` module owns the feature.** It exposes the CRUD/query RPCs, subscribes to the message queue for the event catalog, signs and delivers payloads, applies the retry policy, and records the delivery log. It is a new module in the unified gRPC server (architecture §1.2) | Webhooks consume events from `infer`, `billing`, and `metering`; a dedicated module keeps the delivery concern out of the producing modules and gives it one home, mirroring how `metering` owns settlement |
-| D9 | **New error codes in a webhook block (10601–10699)**: **10601 `CodeWebhookNotFound`**, **10602 `CodeWebhookConfigInvalid`**, **10603 `CodeWebhookStateInvalid`**, **10604 `CodeWebhookDeliveryNotFound`**, **10605 `CodeWebhookEventTypeInvalid`** | Webhooks are a new module (D8), so their codes live in a fresh block after the billing block (105xx); distinct codes keep "not found" vs "bad config" vs "bad state" vs "bad delivery" vs "bad event type" actionable |
+| D9 | **New error codes in a webhook block (10701–10799)**: **10701 `CodeWebhookNotFound`**, **10702 `CodeWebhookConfigInvalid`**, **10703 `CodeWebhookStateInvalid`**, **10704 `CodeWebhookDeliveryNotFound`**, **10705 `CodeWebhookEventTypeInvalid`** | Webhooks are a new module (D8), so their codes live in a fresh block after the billing block (105xx); distinct codes keep "not found" vs "bad config" vs "bad state" vs "bad delivery" vs "bad event type" actionable |
 | D10 | **Webhook mutations are audited** (feature #15): create, update, enable/disable, delete, roll-secret, test, and resend each write an audit event | Webhook endpoints are a security-sensitive surface (they can trigger external actions); the audit trail must record who changed what, matching the audit-logging feature's mutation coverage |
 
 ## 2. Goals and Non-goals
@@ -70,9 +70,9 @@ Pitfalls to avoid: making the signing secret optional (GitHub) — go-taas requi
 
 - **FR1.1** `CreateWebhook` (`POST /api/v1/admin/webhooks` and `POST /api/v1/webhooks`) takes `name`, `url`, `enabled_event_types` (non-empty subset of the surface's catalog), `max_attempts` (1–10, default 5), and `backoff_seconds` (1–3600, default 60). It validates synchronously, generates a signing secret, and returns the webhook with the **plaintext secret shown once** (D2, D3).
 - **FR1.2** `ListWebhooks` (`GET /api/v1/admin/webhooks` and `GET /api/v1/webhooks`) returns the surface's webhooks, searchable by name, filterable by `enabled` state, and paginated (`offset`/`limit`, default 20, max 100). Each row carries `webhook_id`, `name`, `url`, `enabled`, `enabled_event_types`, `created_at`, and a delivery summary (total / delivered / failed).
-- **FR1.3** `GetWebhook` (`GET /api/v1/admin/webhooks/{webhook_id}` and `GET /api/v1/webhooks/{webhook_id}`) returns the full config including the retry policy and the enabled event types. A missing id returns **10601 `CodeWebhookNotFound`**.
-- **FR1.4** `UpdateWebhook` (`PATCH /api/v1/admin/webhooks/{webhook_id}` and `PATCH /api/v1/webhooks/{webhook_id}`) updates `name`, `url`, `enabled_event_types`, `max_attempts`, and `backoff_seconds`. An invalid config returns **10602 `CodeWebhookConfigInvalid`**; an unknown event type returns **10605 `CodeWebhookEventTypeInvalid`**.
-- **FR1.5** `DeleteWebhook` (`DELETE /api/v1/admin/webhooks/{webhook_id}` and `DELETE /api/v1/webhooks/{webhook_id}`) deletes the webhook and its delivery log. A missing id returns **10601**.
+- **FR1.3** `GetWebhook` (`GET /api/v1/admin/webhooks/{webhook_id}` and `GET /api/v1/webhooks/{webhook_id}`) returns the full config including the retry policy and the enabled event types. A missing id returns **10701 `CodeWebhookNotFound`**.
+- **FR1.4** `UpdateWebhook` (`PATCH /api/v1/admin/webhooks/{webhook_id}` and `PATCH /api/v1/webhooks/{webhook_id}`) updates `name`, `url`, `enabled_event_types`, `max_attempts`, and `backoff_seconds`. An invalid config returns **10702 `CodeWebhookConfigInvalid`**; an unknown event type returns **10705 `CodeWebhookEventTypeInvalid`**.
+- **FR1.5** `DeleteWebhook` (`DELETE /api/v1/admin/webhooks/{webhook_id}` and `DELETE /api/v1/webhooks/{webhook_id}`) deletes the webhook and its delivery log. A missing id returns **10701**.
 
 ### FR2 — Enable / disable and secret roll
 
@@ -81,9 +81,9 @@ Pitfalls to avoid: making the signing secret optional (GitHub) — go-taas requi
 
 ### FR3 — Test and delivery log
 
-- **FR3.1** `TestWebhook` (`POST /api/v1/admin/webhooks/{webhook_id}:test` and `POST /api/v1/webhooks/{webhook_id}:test`) sends a synthetic `webhook.ping` event to the endpoint and records it in the delivery log (D5). A disabled webhook returns **10603 `CodeWebhookStateInvalid`** (enable it first).
-- **FR3.2** `ListWebhookDeliveries` (`GET /api/v1/admin/webhooks/{webhook_id}/deliveries` and `GET /api/v1/webhooks/{webhook_id}/deliveries`) returns the delivery log, filterable by `status` and `event_type`, and paginated. Each row carries `delivery_id`, `event_type`, `status` (`delivered` / `failed` / `pending`), `http_status_code`, `attempt_count`, `created_at`, and `last_attempt_at`. A missing webhook returns **10601**.
-- **FR3.3** `ResendWebhookDelivery` (`POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` and `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend`) resends a `failed` (or `delivered`) delivery manually (D6). A missing delivery returns **10604 `CodeWebhookDeliveryNotFound`**; resending a `pending` delivery returns **10603**.
+- **FR3.1** `TestWebhook` (`POST /api/v1/admin/webhooks/{webhook_id}:test` and `POST /api/v1/webhooks/{webhook_id}:test`) sends a synthetic `webhook.ping` event to the endpoint and records it in the delivery log (D5). A disabled webhook returns **10703 `CodeWebhookStateInvalid`** (enable it first).
+- **FR3.2** `ListWebhookDeliveries` (`GET /api/v1/admin/webhooks/{webhook_id}/deliveries` and `GET /api/v1/webhooks/{webhook_id}/deliveries`) returns the delivery log, filterable by `status` and `event_type`, and paginated. Each row carries `delivery_id`, `event_type`, `status` (`delivered` / `failed` / `pending`), `http_status_code`, `attempt_count`, `created_at`, and `last_attempt_at`. A missing webhook returns **10701**.
+- **FR3.3** `ResendWebhookDelivery` (`POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` and `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend`) resends a `failed` (or `delivered`) delivery manually (D6). A missing delivery returns **10704 `CodeWebhookDeliveryNotFound`**; resending a `pending` delivery returns **10703**.
 
 ### FR4 — Event catalog and delivery
 
@@ -140,7 +140,7 @@ Pitfalls to avoid: making the signing secret optional (GitHub) — go-taas requi
 | Max attempts | yes | integer 1–10 | "Max attempts must be between 1 and 10." |
 | Backoff (seconds) | yes | integer 1–3600 | "Backoff must be between 1 and 3600 seconds." |
 
-On submit → `CreateWebhook`; success shows a **secret-reveal dialog** ("Your signing secret — shown once") with the plaintext secret, a **Copy** action, and a **Done** action. An error (10602 config invalid / 10605 event type invalid) shows inline in the dialog.
+On submit → `CreateWebhook`; success shows a **secret-reveal dialog** ("Your signing secret — shown once") with the plaintext secret, a **Copy** action, and a **Done** action. An error (10702 config invalid / 10705 event type invalid) shows inline in the dialog.
 
 ### 5.3 Page: `/admin/webhooks/:webhookId` — Webhook Detail (admin)
 
@@ -163,7 +163,7 @@ On submit → `CreateWebhook`; success shows a **secret-reveal dialog** ("Your s
 | Error | An error banner with the message and a Retry button; the page keeps its last good data with a "Showing stale data" banner |
 | Disabled | **Resend** is disabled while a resend is in flight; **Roll secret** is disabled while a roll is in flight; **Test** is disabled while a test is in flight; **Delete** is disabled while a delete is in flight |
 | Permission-denied | A session without the required role receives 10036 and the page shows the standard permission-denied state (feature #17) |
-| Not-found | An unknown `webhook_id` returns 10601 and the page shows the standard not-found state with a link back to the list |
+| Not-found | An unknown `webhook_id` returns 10701 and the page shows the standard not-found state with a link back to the list |
 
 **Delivery-log table columns**: Event type, Status (badge), HTTP status, Attempts, Created (relative time). Sortable by Created. Filterable by Status (all / delivered / failed / pending) and by Event type; paginated.
 
@@ -248,18 +248,18 @@ All webhook RPCs belong to the **`webhook` module** (D8), served as HTTP via the
 | --- | --- | --- | --- | --- |
 | `CreateWebhook` | `POST /api/v1/admin/webhooks` · `POST /api/v1/webhooks` | admin · user | **new** | Register an endpoint + event subscription; returns `webhook_id` + plaintext secret once |
 | `ListWebhooks` | `GET /api/v1/admin/webhooks` · `GET /api/v1/webhooks` | admin · user | **new** | List with name search, enabled filter, pagination, delivery summary |
-| `GetWebhook` | `GET /api/v1/admin/webhooks/{webhook_id}` · `GET /api/v1/webhooks/{webhook_id}` | admin · user | **new** | Full config; missing → 10601 |
-| `UpdateWebhook` | `PATCH /api/v1/admin/webhooks/{webhook_id}` · `PATCH /api/v1/webhooks/{webhook_id}` | admin · user | **new** | Update name/URL/events/retry; bad config → 10602, bad event → 10605 |
-| `DeleteWebhook` | `DELETE /api/v1/admin/webhooks/{webhook_id}` · `DELETE /api/v1/webhooks/{webhook_id}` | admin · user | **new** | Delete webhook + delivery log; missing → 10601 |
+| `GetWebhook` | `GET /api/v1/admin/webhooks/{webhook_id}` · `GET /api/v1/webhooks/{webhook_id}` | admin · user | **new** | Full config; missing → 10701 |
+| `UpdateWebhook` | `PATCH /api/v1/admin/webhooks/{webhook_id}` · `PATCH /api/v1/webhooks/{webhook_id}` | admin · user | **new** | Update name/URL/events/retry; bad config → 10702, bad event → 10705 |
+| `DeleteWebhook` | `DELETE /api/v1/admin/webhooks/{webhook_id}` · `DELETE /api/v1/webhooks/{webhook_id}` | admin · user | **new** | Delete webhook + delivery log; missing → 10701 |
 | `SetWebhookEnabled` | `POST /api/v1/admin/webhooks/{webhook_id}:set-enabled` · `POST /api/v1/webhooks/{webhook_id}:set-enabled` | admin · user | **new** | Enable/disable (pause) a webhook |
 | `RollWebhookSecret` | `POST /api/v1/admin/webhooks/{webhook_id}:roll-secret` · `POST /api/v1/webhooks/{webhook_id}:roll-secret` | admin · user | **new** | Regenerate signing secret; returns new plaintext once |
-| `TestWebhook` | `POST /api/v1/admin/webhooks/{webhook_id}:test` · `POST /api/v1/webhooks/{webhook_id}:test` | admin · user | **new** | Send `webhook.ping`; disabled → 10603 |
+| `TestWebhook` | `POST /api/v1/admin/webhooks/{webhook_id}:test` · `POST /api/v1/webhooks/{webhook_id}:test` | admin · user | **new** | Send `webhook.ping`; disabled → 10703 |
 | `ListWebhookDeliveries` | `GET /api/v1/admin/webhooks/{webhook_id}/deliveries` · `GET /api/v1/webhooks/{webhook_id}/deliveries` | admin · user | **new** | Delivery log with status/event filters, pagination |
-| `ResendWebhookDelivery` | `POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` · `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` | admin · user | **new** | Resend a failed/delivered delivery; missing → 10604, pending → 10603 |
+| `ResendWebhookDelivery` | `POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` · `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` | admin · user | **new** | Resend a failed/delivered delivery; missing → 10704, pending → 10703 |
 
 **Contract notes for the Architect agent**:
 
-1. `CreateWebhook` validates `name` (non-empty, ≤ 64 chars), `url` (valid `https://` or `http://`, ≤ 2048 chars), `enabled_event_types` (non-empty subset of the surface's catalog, else 10605), `max_attempts` (1–10), and `backoff_seconds` (1–3600); an invalid config returns 10602. It generates a signing secret, stores only its hash (D3), and returns the plaintext secret once.
+1. `CreateWebhook` validates `name` (non-empty, ≤ 64 chars), `url` (valid `https://` or `http://`, ≤ 2048 chars), `enabled_event_types` (non-empty subset of the surface's catalog, else 10705), `max_attempts` (1–10), and `backoff_seconds` (1–3600); an invalid config returns 10702. It generates a signing secret, stores only its hash (D3), and returns the plaintext secret once.
 2. `Webhook` carries `webhook_id`, `name`, `url`, `enabled` (bool), `enabled_event_types` (list), `max_attempts`, `backoff_seconds`, `created_at`, and a delivery summary (`total_deliveries`, `delivered_count`, `failed_count`). The plaintext secret is returned only by `CreateWebhook` and `RollWebhookSecret`.
 3. `ListWebhookDeliveries` returns `delivery_id`, `event_type`, `status` (a closed enum: `delivered`, `failed`, `pending`), `http_status_code`, `attempt_count`, `created_at`, `last_attempt_at`. A `failed` delivery carries a `failure_reason`.
 4. Delivery (FR4.2): the payload is `{"id", "type", "created_at", "data"}`; the signature is HMAC-SHA256 over the raw JSON body with the endpoint secret, sent in the `X-Go-Taas-Signature` header as `t=<ts>,v1=<sig>`. The retry policy applies up to `max_attempts` with `backoff_seconds` between attempts; a non-`2xx` response or a network error is a failed attempt (FR4.3).
@@ -267,15 +267,15 @@ All webhook RPCs belong to the **`webhook` module** (D8), served as HTTP via the
 6. Webhook mutations are audited (D10, feature #15): create, update, enable/disable, delete, roll-secret, test, and resend each write an audit event.
 7. Wire conventions unchanged: dotted pagination where lists apply, HTTP 200 on success, business errors as `{"code": <int>, "message": "..."}`.
 
-Error codes (webhook block 10601–10699, `pkg/errors/codes.go`):
+Error codes (webhook block 10701–10799, `pkg/errors/codes.go`):
 
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
-| An unknown `webhook_id` | 10601 | `CodeWebhookNotFound` | **New** (D9) |
-| An invalid webhook config (bad name/URL/retry) | 10602 | `CodeWebhookConfigInvalid` | **New** (D9) |
-| An invalid state transition (test/resend on a disabled/pending webhook) | 10603 | `CodeWebhookStateInvalid` | **New** (D9) |
-| An unknown `delivery_id` | 10604 | `CodeWebhookDeliveryNotFound` | **New** (D9) |
-| An event type not in the surface's catalog | 10605 | `CodeWebhookEventTypeInvalid` | **New** (D9) |
+| An unknown `webhook_id` | 10701 | `CodeWebhookNotFound` | **New** (D9) |
+| An invalid webhook config (bad name/URL/retry) | 10702 | `CodeWebhookConfigInvalid` | **New** (D9) |
+| An invalid state transition (test/resend on a disabled/pending webhook) | 10703 | `CodeWebhookStateInvalid` | **New** (D9) |
+| An unknown `delivery_id` | 10704 | `CodeWebhookDeliveryNotFound` | **New** (D9) |
+| An event type not in the surface's catalog | 10705 | `CodeWebhookEventTypeInvalid` | **New** (D9) |
 | Database / MQ infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria
@@ -283,12 +283,12 @@ Error codes (webhook block 10601–10699, `pkg/errors/codes.go`):
 | # | Criterion | Level |
 | --- | --- | --- |
 | AC1 | `CreateWebhook` with a valid config returns `webhook_id` and a plaintext signing secret shown once; the secret is not returned by any later `GetWebhook` | FVT |
-| AC2 | `CreateWebhook` with an invalid URL/name/retry returns 10602; with an event type outside the surface's catalog returns 10605 | FVT |
+| AC2 | `CreateWebhook` with an invalid URL/name/retry returns 10702; with an event type outside the surface's catalog returns 10705 | FVT |
 | AC3 | `ListWebhooks` returns the surface's webhooks with name search, enabled filter, pagination, and a delivery summary | FVT |
 | AC4 | `UpdateWebhook` updates name/URL/events/retry; `SetWebhookEnabled` pauses and resumes delivery; `DeleteWebhook` removes the webhook and its delivery log | FVT |
 | AC5 | `RollWebhookSecret` regenerates the secret, invalidates the old one, and returns the new plaintext once | FVT |
-| AC6 | `TestWebhook` sends a `webhook.ping` and records a `delivered` delivery; testing a disabled webhook returns 10603 | FVT |
-| AC7 | `ListWebhookDeliveries` returns the delivery log with status/event filters and pagination; `ResendWebhookDelivery` resends a failed delivery and returns 10604 for an unknown delivery | FVT |
+| AC6 | `TestWebhook` sends a `webhook.ping` and records a `delivered` delivery; testing a disabled webhook returns 10703 | FVT |
+| AC7 | `ListWebhookDeliveries` returns the delivery log with status/event filters and pagination; `ResendWebhookDelivery` resends a failed delivery and returns 10704 for an unknown delivery | FVT |
 | AC8 | A subscribed event (e.g. `deployment.status_changed` on the admin surface) produces a signed delivery to the endpoint with the `X-Go-Taas-Signature` header; a non-`2xx` response retries per the policy and then marks the delivery `failed` | FVT |
 | AC9 | The `/admin/webhooks` page renders the event-catalog card and the webhooks table from the first successful load, with a last-updated timestamp | E2E |
 | AC10 | The New Webhook dialog validates each field with the specified rules and error copy; a valid submit shows the secret-reveal dialog and navigates to the detail page | E2E |

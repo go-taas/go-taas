@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研与事件生命周期决策（检测 → 诊断 → 恢复 → 解决、根因分类器、带运营者覆盖的自动恢复动作）、管理面页面 `/admin/faults` 与 `/admin/faults/:incidentId`（事件列表、诊断详情、自动恢复策略、事件时间线）、终端用户面服务状态 / 事件横幅、页面 → API 表面映射表，以及编号验收标准 |
 | 负责模块 | `fault`（新模块 — 事件生命周期、根因分类器、恢复动作、自动恢复策略）、`infer`（服务状态扩展、事件横幅数据）、`Controller`（检测信号、恢复执行）、`k8s`（Pod/节点/加速器状态读取、重启/重调度/排空动作）、`audit`（恢复动作）、`pkg/server` 网关（管理 + 用户前缀绑定）、`web` 管理控制台 + 终端用户控制台 |
 | 相关文档 | [架构设计](./architecture.md) — §2.4 `infer`、§2.7 Controller · [系统健康与服务状态](./system-health-status.zh-cn.md) — 本功能事件管理扩展的组件健康表面；其 non-goals 明确将事件管理与事件时间线推迟至此 · [错误分析](./error-analysis.zh-cn.md) — 本功能按事件诊断补充的聚合错误表面 · [加速器清单与健康](./accelerator-inventory.zh-cn.md) — 本功能消费的加速器故障信号 · [部署历史与审计](./deployment-history-audit.zh-cn.md) — 恢复动作记录其中的变更事件轨迹 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 重启/重调度目标的服务生命周期 · [推理弹性伸缩](./inference-autoscaling.zh-cn.md) — 为什么恢复重调度而非伸缩 · [控制台表面分离](./console-surface-separation.zh-cn.md) — 两个表面、脱敏投影规则 |
-| 状态 | 设计完成，已移交架构师 agent |
+| 状态 | 已实现 |
 
 ---
 

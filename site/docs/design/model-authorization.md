@@ -200,7 +200,7 @@ sequenceDiagram
     participant DB as PostgreSQL
 
     Admin->>Console: Grant org-a access to model M
-    Console->>CGW: POST /api/v1/admin/models/M:grant
+    Console->>CGW: POST /api/v1/admin/models/{model_id}:grant
     CGW->>Model: GrantModelAccess(M, org-a)
     Model->>DB: INSERT model_authorizations (M, org-a)
     Model-->>CGW: ok

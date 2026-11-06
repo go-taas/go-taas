@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`web/src/pages/` 中每一个页面的逐页面归属判定、用户控制台的完整 UI 设计、管理控制台的信息架构变更、路由与重定向迁移方案、页面 → API 面对照表，以及编号可测的验收标准 |
 | 归属模块 | `web` 控制台（路由树、外壳、会话存储、全部页面）、`pkg/server` 网关（realm 校验、公开 provider 投影）、`auth`（会话 realm、按 realm 固定的登录路由绑定）、`metering`/`billing`（用户前缀绑定、管理侧可选组织过滤）、`tenancy`（不变） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 3.1 节控制面 Gateway、「管理员/用户面分离」 · [SSO 联邦登录与账号绑定](./sso-federation.zh-cn.md) — 登录入口、会话签发、`GetSession` · [请求日志与 API Playground](./request-logs-playground.zh-cn.md) — 迁移到用户控制台的两个页面 · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 两个面都存在的页面 · [余额（预付费）与配额（后付费）账户模式](./balance-quota.zh-cn.md) — 账户与余额快照 · [组织成员、角色与邀请（RBAC）](./org-members-rbac.zh-cn.md) — 控制台渲染的角色 · [按租户的模型授权](./model-authorization.zh-cn.md) — 用户面模型列表所依赖的特性 |
-| 状态 | 设计完成，已交付架构师智能体 |
+| 状态 | 已实现 |
 
 ---
 
@@ -361,13 +361,13 @@ sequenceDiagram
     UC->>CGW: GET /api/v1/auth/sso/providers
     CGW-->>UC: 仅返回已启用 provider 的 id、type、display_name
     Tenant->>UC: 点击「使用某 provider 登录」
-    UC->>CGW: GET /api/v1/auth/sso/provider/authorize
+    UC->>CGW: GET /api/v1/auth/sso/{provider_id}/authorize
     CGW->>Auth: SSOAuthorize
     Auth-->>UC: 指向 IdP 的跳转地址
     UC->>UC: 在 sessionStorage 记下 provider id，前往 IdP
     Tenant->>Auth: 在 IdP 完成认证
     Auth-->>UC: 浏览器带 code 与 state 回到 /login
-    UC->>CGW: GET /api/v1/auth/sso/provider/callback
+    UC->>CGW: GET /api/v1/auth/sso/{provider_id}/callback
     CGW->>Auth: SSOCallback
     Auth->>Auth: 解析身份，签发 realm 为 user 的会话
     Auth-->>UC: 会话令牌与过期时间

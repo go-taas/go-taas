@@ -222,7 +222,7 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 | Unknown `service_id` | 10301 | `CodeInferServiceNotFound` | `ListDeploymentEvents`, `RollbackDeployment` |
 | Service state not updatable | 10303 | `CodeInferServiceStateInvalid` | `RollbackDeployment` on e.g. `terminated` (FR2.2) |
 | Unknown `event_id` | 10304 | `CodeInferEndpointNotFound` | Reused for an unknown deployment event (FR2.2) |
-| Invalid time range | 10404 | `CodeRequestLogRangeInvalid` | Reused — the metering range contract (FR1.2) |
+| Invalid time range | 10404 | `CodeMeteringRangeInvalid` | Reused — the metering range contract (FR1.2) |
 
 ---
 

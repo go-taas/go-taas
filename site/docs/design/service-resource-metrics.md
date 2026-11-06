@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface service-metrics page for `/admin/services/:serviceId/metrics`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `resourcemetrics` (new — owns the read-only aggregation over the new `service_resource_metrics` table), `internal/controller` (read-only: per-service CPU/memory/GPU sampling from the Kubernetes metrics-server and the accelerator signals), `pkg/server` gateway (admin-prefix bindings), `web` admin console (`ServiceMetricsPage`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §2.7 Controller, §4.2 one-click deployment flow · [Model Observability Dashboard](./model-observability.md) — the sibling read-only time-series aggregation and its bucket/freshness/range conventions · [Accelerator Inventory & Health](./accelerator-inventory.md) — the sibling GPU health surface whose accelerator signals feed GPU utilization · [Inference Service Logs Viewer](./service-logs-viewer.md) — the sibling per-service diagnostic surface and the Controller read pattern this feature reuses · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Why the Resource Metrics Page Comes Now
 
-go-taas runs inference services as Kubernetes Deployments (model-catalog-deployment §4.2): the Controller creates the Deployment and Service, and the inference engine (vLLM, etc.) runs in the container. The model-observability feature (row 24) explains *how the model performs* (latency, throughput, error rate, tokens/sec) from `request_logs`, and the service-logs viewer (row 33) shows *what the engine printed*. What the operator still cannot answer is the infrastructure question: *is this service actually using the resources it was given?* When a service is slow, the operator cannot tell whether it is CPU-bound, memory-constrained, or GPU-starved without leaving the console and running `kubectl top` against the pods or querying a metrics endpoint.
+go-taas runs inference services as AIBrix StormServices (model-catalog-deployment §4.2): the Controller creates the StormService and Service, and the inference engine (vLLM, etc.) runs in the container. The model-observability feature (row 24) explains *how the model performs* (latency, throughput, error rate, tokens/sec) from `request_logs`, and the service-logs viewer (row 33) shows *what the engine printed*. What the operator still cannot answer is the infrastructure question: *is this service actually using the resources it was given?* When a service is slow, the operator cannot tell whether it is CPU-bound, memory-constrained, or GPU-starved without leaving the console and running `kubectl top` against the pods or querying a metrics endpoint.
 
 This feature adds an **inference service resource metrics** page: per-service CPU / memory / GPU utilization over time, with time-range filters and resource-usage charts. It is the smallest independently valuable increment of Phase 4's operations surface: it turns "the service is slow" into "the service is CPU-saturated at 95% for the last hour while GPU sits at 20% — the bottleneck is compute, not the accelerator". It is a **read-only** aggregation layer — nothing in the inference, metering, or billing pipelines changes.
 

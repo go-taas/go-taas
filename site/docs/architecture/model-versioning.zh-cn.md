@@ -6,7 +6,7 @@
 | 文档范围 | 功能点 32 的架构与详细设计：`model_versions` 上的 `is_active` 列、`ModelService` 上的 `ListModelVersions` 与 `ActivateModelVersion` RPC、`InferServiceService` 上的 `UpdateInferenceServiceVersion` RPC、管理端模型版本页面（`/admin/models/:modelId/versions`），以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | `model`（版本历史、激活、注册）、`infer`（推理服务的原地版本变更/回滚）、`controller`（协调版本变更事件）、`web` 管理端控制台（`ModelVersionsPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/model-versioning.md) · [架构设计](../design/architecture.md) §2.2（`model`）、§2.4（`infer`）、§3.1（管理端/用户端分离）· [模型目录与一键部署](./model-catalog-deployment.md)（目录、`model_versions` 表、部署表单、删除+重建规则）· [控制台表面分离](./console-surface-separation.md)（两个表面、`AdminShell` 约定、掩码投影规则）· [部署历史与审计](./deployment-history-audit.md)（同级的部署级回滚表面） |
-| 状态 | 架构完成，已移交给开发智能体 |
+| 状态 | 已实现 |
 
 ---
 

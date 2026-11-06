@@ -6,7 +6,7 @@
 | 文档范围 | 定价核心的架构与详细设计：按生效时间版本化的价格矩阵、billing 用量明细摄取消费者、计费引擎（结算事件消费者 + 对账 runner）、计费与账单查询、错误处理、配置、发布说明，以及各层的函数级设计 |
 | 归属模块 | `billing`（价格矩阵、用量明细、计费、计费/账单查询），配合 `metering`（仅事件契约增量扩展）与 `infer`（服务卡型只读接口） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/pricing.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.6 节（`billing`） · [Token 计量凭证与异步结算](./metering.zh-cn.md)（上游管道与 `billing.settlements` 契约） |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -205,7 +205,7 @@ func (r *InferRepository) AcceleratorTypesByServiceIDs(ctx context.Context, ids 
 
 ### 4.1 RPC 接口面
 
-所有 API 属于 **`taas.billing.v1.BillingService`**（proto：`proto/taas/billing/v1/billing.proto`），经控制网关以 HTTP 提供。四个既有 RPC 为占位；新增一个。proto 变更仅增量。
+所有 API 属于 **`taas.billing.v1.BillingService`**（proto：`proto/taas/billing/v1/billing.proto`），经控制网关以 HTTP 提供。四个既有 RPC 原为占位，现均已实现（`GetBalance` 由后续账户模式特性实现）；新增一个 RPC。proto 变更仅增量。
 
 | RPC | HTTP | 状态 | 用途 |
 | --- | --- | --- | --- |
@@ -213,7 +213,7 @@ func (r *InferRepository) AcceleratorTypesByServiceIDs(ctx context.Context, ids 
 | `ListPrices` | `GET /api/v1/admin/billing/prices` | 占位 → 实现 | 矩阵视图 / 历史；请求增 `accelerator_type`（3）、`include_history`（4）；`PriceEntry` 增 `price_id`、`cached_price_per_million`、`effective_from`、`tiers` |
 | `ListCharges` | `GET /api/v1/admin/billing/charges` | **新增** | 计费记录下钻：过滤 `api_key_id`、`model_id`、`since`/`until` |
 | `ListBills` | `GET /api/v1/admin/billing/bills` | 占位 → 实现 | 月度账单汇总；`BillSummary` 增已计价/未计价计数 |
-| `GetBalance` | `GET /api/v1/admin/billing/balance` | 保持占位 | 特性 #8；返回 10503 |
+| `GetBalance` | `GET /api/v1/admin/billing/balance` | 已实现（特性 #8） | 返回组织账户快照；未入金组织渲染 `has_account=false` 而非报错 |
 
 新消息：`PriceTier {up_to_tokens, input_price_per_million, output_price_per_million}`、`ChargeRecordSummary`（第 4.2 节约束 3）。
 
@@ -449,7 +449,7 @@ sequenceDiagram
 | 畸形价格（校验矩阵） | 10507 | `CodePriceInvalid` | **新增**；规范消息 "price invalid" |
 | 畸形时间范围（`since > until`、跨度 > 366 天） | 10508 | `CodeBillingRangeInvalid` | **新增**；规范消息 "billing range invalid" |
 | 查询 API 缺 `X-Organization-Id` | 10001 | `CodeUnauthorized` | 既有；`resolveOrganizationID` 模式 |
-| 余额查询（占位） | 10503 | `CodeAccountNotFound` | 既有；特性 #8 替换 |
+| 无组织作用域的余额查询 | 10503 | `CodeAccountNotFound` | 空作用域仍视为错误；未入金组织返回 `has_account=false` |
 | 数据库 / MQ 基础设施故障 | 500 | `CodeInternal` | 经错误归一化 |
 
 Runner/消费者侧的失败不是 RPC 错误：计费执行遇到瞬时数据库错误时中止该分组并在下一轮重试（一切仍处于未计费）；畸形计量事件记日志并永久跳过（FR3.3）；未定价分组根本不是错误 — 以 `priced = false` 计 0（D8、AC9）。结算消费者把重投事件当作空操作（唯一索引吸收，AC10）。
@@ -611,7 +611,7 @@ type ChargeRecord struct {
 - `ListPrices` — 规范化分页、`ListPrices`、映射为 `PriceEntry` proto（档位从 JSON 解码）。
 - `ListCharges` — 解析组织（10001）、校验范围（10508）、规范化分页、映射为 `ChargeRecordSummary`。
 - `ListBills` — 解析组织、校验范围、`BillSummaries`、映射为 `BillSummary` proto（`bill_id`、金额、周期、已计价/未计价计数）。
-- `GetBalance` — 占位不变（10503）。
+- `GetBalance` — 由 billing 账户服务实现（特性 #8）：返回账户快照，未入金组织返回 `has_account=false`。
 
 `event_consumer.go`：
 

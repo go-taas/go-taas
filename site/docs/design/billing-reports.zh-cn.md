@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/billing/reports` 管理面计费报表页面，`/billing/reports` 终端用户面计费报表页面，页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `billing`（扩展 — 拥有对 `usage_records` 与 `request_logs` 的报表生成、CSV 渲染与定时执行），`web` 管理控制台（`AdminBillingReportsPage`）与终端用户控制台（`UserBillingReportsPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.5 节 `metering`、第 2.6 节 `billing` · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 姊妹只读仪表盘及其范围、新鲜度与内联 SVG 约定 · [支付、发票与自动充值](./payments-invoices-auto-recharge.zh-cn.md) — 本特性报告的发票与成本货币模型 · [计量凭证与异步结算](./metering.zh-cn.md) — 本特性聚合的 `usage_records` · [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md) — 本特性可按请求聚合的 `request_logs` 表 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -44,7 +44,7 @@ go-taas 对每个推理请求进行计量与计费（特性 #4、#5、#8、#14�
 | D4 | **定时报表复用相同的报表定义加频率。** 定时持有报表定义（维度、粒度与**相对**范围，如「最近 7 天」或「上月」）与频率（`daily` / `weekly` / `monthly`）。每次定时运行在相同的历史列表中产生一份报表，带自己的状态与下载 | 定时只是按节奏运行的报表定义；复用定义使构建器与定时保持一致，运行历史就是用户已知的同一报表历史 |
 | D5 | **CSV 对 Excel 友好且时区显式。** CSV 为带 BOM 的 UTF-8、带引号字段、有表头行，并有 `timezone` 列或文件名中的时区说明；报表时区在构建时选择并应用于每个桶 | Excel 是计费导出最常见的消费者；BOM 与带引号字段防止乱码与逗号拆分。显式时区避免对账陷阱（阿里云） |
 | D6 | **终端用户面是租户作用域且掩码。** 用户前缀的 `CreateReport` 只接受调用者自己的组织与自己的 API 密钥；用户前缀的 `organization` 维度为调用者组织产生单行。用户报表中绝不出现其他租户数据 | 遵循特性 #17 的掩码投影规则：租户报表绝不能泄露另一租户的用量。管理面是唯一可构建跨租户报表之处 |
-| D7 | **计费报表块（10801–10899）中的新错误码。** **10801 `CodeReportNotFound`**（未知 `report_id`）、**10802 `CodeScheduleNotFound`**（未知 `schedule_id`）、**10803 `CodeReportInvalidDimension`**、**10804 `CodeReportInvalidGranularity`**、**10805 `CodeReportInvalidFrequency`**、**10806 `CodeReportNameConflict`**（定时名称重复）、**10807 `CodeReportNotReady`**（就绪前下载）。范围校验复用 **10404**（计量范围契约），报表上限为 366 天 | 计费报表是新能力，因此其错误码位于可观测性块（107xx）之后的新块；不同错误码使每个失败可操作，而范围契约与计量保持一致（D3） |
+| D7 | **计费报表块（10901–10999）中的新错误码。** **10901 `CodeReportNotFound`**（未知 `report_id`）、**10902 `CodeScheduleNotFound`**（未知 `schedule_id`）、**10903 `CodeReportInvalidDimension`**、**10904 `CodeReportInvalidGranularity`**、**10905 `CodeReportInvalidFrequency`**、**10906 `CodeReportNameConflict`**（定时名称重复）、**10907 `CodeReportNotReady`**（就绪前下载）。范围校验复用 **10404**（计量范围契约），报表上限为 366 天 | 计费报表是新能力，因此其错误码位于可观测性块（108xx）之后的新块；不同错误码使每个失败可操作，而范围契约与计量保持一致（D3） |
 | D8 | **计费报表只读，且对访问与生成审计。** 报表生成与定时变更被审计（特性 #15）为 `report.generated` / `schedule.created` / `schedule.updated` / `schedule.deleted`；底层用量已由计量写入审计。计费流水线无变化 | 该特性聚合现有数据，仅写入报表产物与定时；审计追踪（特性 #15）已覆盖底层用量写入，因此只需为新的报表/定时动作新增审计事件 |
 
 ## 2. 目标与非目标
@@ -69,23 +69,23 @@ go-taas 对每个推理请求进行计量与计费（特性 #4、#5、#8、#14�
 ### FR1 — 报表构建器（两个面）
 
 - **FR1.1** `CreateReport`（用户 `POST /api/v1/billing/reports` · 管理 `POST /api/v1/admin/billing/reports`）从报表定义创建按需报表：`dimension`（`organization` / `api_key` / `model`）、`since`/`until`（unix 秒；默认 `until = now`、`since = until − 30d`）、`granularity`（`daily` / `hourly`）与 `timezone`（IANA 名称，默认 `UTC`）。返回 `status = pending` 的报表（D2、D3）。
-- **FR1.2** `since > until` 或范围 > 366 天返回 **10404**（D7）。无效 `dimension` 返回 **10803**，无效 `granularity` 返回 **10804**（D7）。
+- **FR1.2** `since > until` 或范围 > 366 天返回 **10404**（D7）。无效 `dimension` 返回 **10903**，无效 `granularity` 返回 **10904**（D7）。
 - **FR1.3** 在用户前缀上，`CreateReport` 是租户作用域（D6）：`organization` 维度为调用者组织产生单行，报表只聚合调用者自己的 API 密钥与用量。不接受 `organization_id` 过滤（调用者组织是隐式的）。
 - **FR1.4** 在管理前缀上，`CreateReport` 接受可选的 `organization_id` 过滤（通过 `X-Organization-Id` 或请求体字段）将集群报表限定到一个组织；无过滤时报表跨所有组织。
 
 ### FR2 — 报表生命周期与下载（两个面）
 
-- **FR2.1** `GetReport`（用户 `GET /api/v1/billing/reports/{report_id}` · 管理 `GET /api/v1/admin/billing/reports/{report_id}`）返回报表状态（`pending` / `ready` / `failed`）、定义、行数与 `data_through`。未知 `report_id` 返回 **10801**（D7）。
+- **FR2.1** `GetReport`（用户 `GET /api/v1/billing/reports/{report_id}` · 管理 `GET /api/v1/admin/billing/reports/{report_id}`）返回报表状态（`pending` / `ready` / `failed`）、定义、行数与 `data_through`。未知 `report_id` 返回 **10901**（D7）。
 - **FR2.2** `ListReports`（用户 `GET /api/v1/billing/reports` · 管理 `GET /api/v1/admin/billing/reports`）返回报表历史，最新在前，带点分页。每行携带 `report_id`、`name`、`dimension`、`since`/`until`、`granularity`、`status`、`created_at` 与 `row_count`。
-- **FR2.3** `DownloadReport`（用户 `GET /api/v1/billing/reports/{report_id}/download` · 管理 `GET /api/v1/admin/billing/reports/{report_id}/download`）在 `status = ready` 时返回 CSV。就绪前下载返回 **10807**（D7）。响应为带 UTF-8 BOM 的 `text/csv`，`Content-Disposition` 文件名如 `billing-report-<report_id>.csv`（D5）。
+- **FR2.3** `DownloadReport`（用户 `GET /api/v1/billing/reports/{report_id}/download` · 管理 `GET /api/v1/admin/billing/reports/{report_id}/download`）在 `status = ready` 时返回 CSV。就绪前下载返回 **10907**（D7）。响应为带 UTF-8 BOM 的 `text/csv`，`Content-Disposition` 文件名如 `billing-report-<report_id>.csv`（D5）。
 - **FR2.4** CSV 有表头行，每（桶 × 维度值）一行：`bucket`、`timezone`、`organization_id`、`organization_name`、`api_key_id`、`api_key_name`、`model_id`、`model_name`、`request_count`、`input_tokens`、`output_tokens`、`total_tokens`、`cost`、`currency`。与所选维度无关的列为空（D3、D5）。
 
 ### FR3 — 定时报表（两个面）
 
-- **FR3.1** `CreateSchedule`（用户 `POST /api/v1/billing/reports/schedules` · 管理 `POST /api/v1/admin/billing/reports/schedules`）从报表定义加 `frequency`（`daily` / `weekly` / `monthly`）与**相对**范围（`last_7_days` / `last_30_days` / `last_month`）创建定时。返回 `status = active` 的定时。重复 `name` 返回 **10806**，无效 `frequency` 返回 **10805**（D7）。
+- **FR3.1** `CreateSchedule`（用户 `POST /api/v1/billing/reports/schedules` · 管理 `POST /api/v1/admin/billing/reports/schedules`）从报表定义加 `frequency`（`daily` / `weekly` / `monthly`）与**相对**范围（`last_7_days` / `last_30_days` / `last_month`）创建定时。返回 `status = active` 的定时。重复 `name` 返回 **10906**，无效 `frequency` 返回 **10905**（D7）。
 - **FR3.2** `ListSchedules`（用户 `GET /api/v1/billing/reports/schedules` · 管理 `GET /api/v1/admin/billing/reports/schedules`）返回调用者的定时（用户：租户自己的；管理：所有定时，可选按 `organization_id` 过滤）。
-- **FR3.3** `UpdateSchedule`（用户 `PATCH /api/v1/billing/reports/schedules/{schedule_id}` · 管理 `PATCH /api/v1/admin/billing/reports/schedules/{schedule_id}`）更新定时的 `name`、`frequency` 或相对范围。未知 `schedule_id` 返回 **10802**（D7）。
-- **FR3.4** `DeleteSchedule`（用户 `DELETE /api/v1/billing/reports/schedules/{schedule_id}` · 管理 `DELETE /api/v1/admin/billing/reports/schedules/{schedule_id}`）删除定时。未知 `schedule_id` 返回 **10802**（D7）。
+- **FR3.3** `UpdateSchedule`（用户 `PATCH /api/v1/billing/reports/schedules/{schedule_id}` · 管理 `PATCH /api/v1/admin/billing/reports/schedules/{schedule_id}`）更新定时的 `name`、`frequency` 或相对范围。未知 `schedule_id` 返回 **10902**（D7）。
+- **FR3.4** `DeleteSchedule`（用户 `DELETE /api/v1/billing/reports/schedules/{schedule_id}` · 管理 `DELETE /api/v1/admin/billing/reports/schedules/{schedule_id}`）删除定时。未知 `schedule_id` 返回 **10902**（D7）。
 - **FR3.5** `ListScheduleRuns`（用户 `GET /api/v1/billing/reports/schedules/{schedule_id}/runs` · 管理 `GET /api/v1/admin/billing/reports/schedules/{schedule_id}/runs`）返回定时产生的运行，最新在前，带点分页。每次运行是相同历史列表中的一份报表，带自己的 `status`、`created_at` 与 `row_count`（D4）。
 
 ### FR4 — 面与 API 绑定
@@ -242,36 +242,36 @@ sequenceDiagram
 
 **给架构师代理的契约说明**：
 
-1. `CreateReport` 校验 `since`/`until`（int64 unix 秒；默认 `until = now`、`since = until − 30d`）；`since > until` 或范围 > 366 天返回 10404（D7）。`dimension` 必须为 `organization` / `api_key` / `model`（否则 10803）；`granularity` 必须为 `daily` / `hourly`（否则 10804）。`timezone` 为 IANA 名称，默认 `UTC`。
+1. `CreateReport` 校验 `since`/`until`（int64 unix 秒；默认 `until = now`、`since = until − 30d`）；`since > until` 或范围 > 366 天返回 10404（D7）。`dimension` 必须为 `organization` / `api_key` / `model`（否则 10903）；`granularity` 必须为 `daily` / `hourly`（否则 10904）。`timezone` 为 IANA 名称，默认 `UTC`。
 2. 在用户前缀上，`CreateReport` 是租户作用域（D6）：不接受 `organization_id` 过滤，报表只聚合调用者自己的组织与自己的 API 密钥。在管理前缀上，可选的 `organization_id` 将集群报表限定到一个组织。
-3. 报表是异步的（D2）：`CreateReport` 返回 `status = pending`；报表变为 `ready`（带可下载 CSV）或 `failed`。就绪前 `DownloadReport` 返回 10807（D7）。
+3. 报表是异步的（D2）：`CreateReport` 返回 `status = pending`；报表变为 `ready`（带可下载 CSV）或 `failed`。就绪前 `DownloadReport` 返回 10907（D7）。
 4. CSV 为带 BOM 的 UTF-8、带引号字段、有表头行，每（桶 × 维度值）一行，含 `bucket`、`timezone`、`organization_id`、`organization_name`、`api_key_id`、`api_key_name`、`model_id`、`model_name`、`request_count`、`input_tokens`、`output_tokens`、`total_tokens`、`cost`、`currency`（D3、D5）。与所选维度无关的列为空。
-5. 定时持有报表定义加 `frequency`（`daily` / `weekly` / `monthly`，否则 10805）与相对范围（`last_7_days` / `last_30_days` / `last_month`）。重复定时 `name` 返回 10806（D7）。每次定时运行在相同的历史列表中产生一份报表（D4）。
+5. 定时持有报表定义加 `frequency`（`daily` / `weekly` / `monthly`，否则 10905）与相对范围（`last_7_days` / `last_30_days` / `last_month`）。重复定时 `name` 返回 10906（D7）。每次定时运行在相同的历史列表中产生一份报表（D4）。
 6. 聚合读取 `usage_records`（特性 #4）与 `request_logs`（特性 #12）的 token 与成本总计；仅写入报表产物与定时（D8）。报表生成与定时变更被审计（特性 #15）为 `report.generated` / `schedule.created` / `schedule.updated` / `schedule.deleted`。
 7. 线上约定不变：列表用点分页，成功 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`，int64 字段序列化为 JSON 字符串。
 
-错误码（计费报表块 10801–10899，`pkg/errors/codes.go`）：
+错误码（计费报表块 10901–10999，`pkg/errors/codes.go`）：
 
 | 条件 | 码 | 常量 | 说明 |
 | --- | --- | --- | --- |
-| 未知 `report_id` | 10801 | `CodeReportNotFound` | **新增**（D7） |
-| 未知 `schedule_id` | 10802 | `CodeScheduleNotFound` | **新增**（D7） |
-| 无效 `dimension` | 10803 | `CodeReportInvalidDimension` | **新增**（D7） |
-| 无效 `granularity` | 10804 | `CodeReportInvalidGranularity` | **新增**（D7） |
-| 无效 `frequency` | 10805 | `CodeReportInvalidFrequency` | **新增**（D7） |
-| 定时 `name` 重复 | 10806 | `CodeReportNameConflict` | **新增**（D7） |
-| 就绪前下载 | 10807 | `CodeReportNotReady` | **新增**（D7） |
-| 格式错误或超长范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用（D7）— 计量范围契约，报表上限 366 天 |
+| 未知 `report_id` | 10901 | `CodeReportNotFound` | **新增**（D7） |
+| 未知 `schedule_id` | 10902 | `CodeScheduleNotFound` | **新增**（D7） |
+| 无效 `dimension` | 10903 | `CodeReportInvalidDimension` | **新增**（D7） |
+| 无效 `granularity` | 10904 | `CodeReportInvalidGranularity` | **新增**（D7） |
+| 无效 `frequency` | 10905 | `CodeReportInvalidFrequency` | **新增**（D7） |
+| 定时 `name` 重复 | 10906 | `CodeReportNameConflict` | **新增**（D7） |
+| 就绪前下载 | 10907 | `CodeReportNotReady` | **新增**（D7） |
+| 格式错误或超长范围 | 10404 | `CodeMeteringRangeInvalid` | 复用（D7）— 计量范围契约，报表上限 366 天 |
 | 数据库 / 基础设施故障 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准
 
 | # | 标准 | 级别 |
 | --- | --- | --- |
-| AC1 | `CreateReport` 带有效定义返回 `status = pending` 的报表；范围 > 366 天或 `since > until` 返回 10404；无效 `dimension` 返回 10803，无效 `granularity` 返回 10804 | FVT |
-| AC2 | `GetReport` 返回报表状态、定义、行数与 `data_through`；未知 `report_id` 返回 10801 | FVT |
-| AC3 | `DownloadReport` 在 `status = ready` 时返回带 UTF-8 BOM 的 CSV，含表头行与每（桶 × 维度值）一行；就绪前下载返回 10807 | FVT |
-| AC4 | `CreateSchedule` 带有效定义与频率返回 active 定时；重复 `name` 返回 10806，无效 `frequency` 返回 10805；`UpdateSchedule` 与 `DeleteSchedule` 生效，未知 `schedule_id` 返回 10802 | FVT |
+| AC1 | `CreateReport` 带有效定义返回 `status = pending` 的报表；范围 > 366 天或 `since > until` 返回 10404；无效 `dimension` 返回 10903，无效 `granularity` 返回 10904 | FVT |
+| AC2 | `GetReport` 返回报表状态、定义、行数与 `data_through`；未知 `report_id` 返回 10901 | FVT |
+| AC3 | `DownloadReport` 在 `status = ready` 时返回带 UTF-8 BOM 的 CSV，含表头行与每（桶 × 维度值）一行；就绪前下载返回 10907 | FVT |
+| AC4 | `CreateSchedule` 带有效定义与频率返回 active 定时；重复 `name` 返回 10906，无效 `frequency` 返回 10905；`UpdateSchedule` 与 `DeleteSchedule` 生效，未知 `schedule_id` 返回 10902 | FVT |
 | AC5 | `ListScheduleRuns` 返回定时产生的运行，每次运行是相同历史列表中的一份报表 | FVT |
 | AC6 | 用户前缀的 `CreateReport` 是租户作用域：不接受 `organization_id` 过滤，只聚合调用者自己的组织与自己的 API 密钥 | FVT |
 | AC7 | `/admin/billing/reports` 页面从首次成功加载渲染构建器、报表历史与定时列表，带 last-updated 时间戳 | E2E |

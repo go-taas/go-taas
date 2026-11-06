@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface billing reports page for `/admin/billing/reports`, the end-user-surface billing reports page for `/billing/reports`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `billing` (extended — owns report generation, CSV rendering, and schedule execution over `usage_records` and `request_logs`), `web` admin console (`AdminBillingReportsPage`) and end-user console (`UserBillingReportsPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing` · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the sibling read-only dashboard and its range, freshness, and inline-SVG conventions · [Payments, Invoices & Auto-Recharge](./payments-invoices-auto-recharge.md) — the invoice and cost-currency model this feature reports on · [Metering Vouchers & Async Settlement](./metering.md) — the `usage_records` this feature aggregates · [Request Logs & API Playground](./request-logs-playground.md) — the `request_logs` table this feature can aggregate per request · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -44,7 +44,7 @@ Pitfalls to avoid: a single flat export with no builder (Together, SiliconFlow) 
 | D4 | **Scheduled reports reuse the same report definition plus a frequency.** A schedule holds a report definition (dimension, granularity, and a **relative** range such as "last 7 days" or "last month") and a frequency (`daily` / `weekly` / `monthly`). Each scheduled run produces a report in the same history list, with its own status and download | A schedule is just a report definition that runs on a cadence; reusing the definition keeps the builder and the schedule consistent, and the run history is the same report history the user already knows |
 | D5 | **The CSV is Excel-friendly and timezone-explicit.** The CSV is UTF-8 with a BOM, quoted fields, a header row, and a `timezone` column or a timezone note in the filename; the report's timezone is chosen at build time and applied to every bucket | Excel is the most common consumer of a billing export; a BOM and quoted fields prevent mojibake and comma-splitting. An explicit timezone avoids the reconciliation pitfall (Aliyun) |
 | D6 | **The end-user surface is tenant-scoped and masked.** `CreateReport` on the user prefix accepts only the caller's own organization and own API keys; the `organization` dimension on the user prefix yields a single row for the caller's org. No other tenants' data ever appears in a user report | Follows feature #17's masked-projection rule: a tenant's report must never leak another tenant's usage. The admin surface is the only place a cross-tenant report can be built |
-| D7 | **New error codes in a billing-reports block (10801–10899).** **10801 `CodeReportNotFound`** (unknown `report_id`), **10802 `CodeScheduleNotFound`** (unknown `schedule_id`), **10803 `CodeReportInvalidDimension`**, **10804 `CodeReportInvalidGranularity`**, **10805 `CodeReportInvalidFrequency`**, **10806 `CodeReportNameConflict`** (duplicate schedule name), **10807 `CodeReportNotReady`** (download before ready). Range validation reuses **10404** (the metering range contract) with a report-specific cap of 366 days | Billing reports is a new capability, so its codes live in a fresh block after the observability block (107xx); distinct codes keep each failure actionable, while the range contract stays uniform with metering (D3) |
+| D7 | **New error codes in a billing-reports block (10901–10999).** **10901 `CodeReportNotFound`** (unknown `report_id`), **10902 `CodeScheduleNotFound`** (unknown `schedule_id`), **10903 `CodeReportInvalidDimension`**, **10904 `CodeReportInvalidGranularity`**, **10905 `CodeReportInvalidFrequency`**, **10906 `CodeReportNameConflict`** (duplicate schedule name), **10907 `CodeReportNotReady`** (download before ready). Range validation reuses **10404** (the metering range contract) with a report-specific cap of 366 days | Billing reports is a new capability, so its codes live in a fresh block after the observability block (108xx); distinct codes keep each failure actionable, while the range contract stays uniform with metering (D3) |
 | D8 | **Billing reports are read-only and audited for access and generation.** Report generation and schedule changes are audited (feature #15) as `report.generated` / `schedule.created` / `schedule.updated` / `schedule.deleted`; the underlying usage is already audited by the metering writes. No billing pipeline changes | The feature aggregates existing data and writes only report artifacts and schedules; the audit trail (feature #15) already covers the underlying usage writes, so only the new report/schedule actions need new audit events |
 
 ## 2. Goals and Non-goals
@@ -69,23 +69,23 @@ Pitfalls to avoid: a single flat export with no builder (Together, SiliconFlow) 
 ### FR1 — Report builder (both surfaces)
 
 - **FR1.1** `CreateReport` (`POST /api/v1/billing/reports` user · `POST /api/v1/admin/billing/reports` admin) creates an on-demand report from a report definition: `dimension` (`organization` / `api_key` / `model`), `since`/`until` (unix seconds; defaults `until = now`, `since = until − 30d`), `granularity` (`daily` / `hourly`), and `timezone` (IANA name, default `UTC`). It returns a report with `status = pending` (D2, D3).
-- **FR1.2** `since > until` or a range > 366 days returns **10404** (D7). An invalid `dimension` returns **10803**, an invalid `granularity` returns **10804** (D7).
+- **FR1.2** `since > until` or a range > 366 days returns **10404** (D7). An invalid `dimension` returns **10903**, an invalid `granularity` returns **10904** (D7).
 - **FR1.3** On the user prefix, `CreateReport` is tenant-scoped (D6): the `organization` dimension yields a single row for the caller's org, and the report aggregates only the caller's own API keys and usage. It accepts no `organization_id` filter (the caller's org is implicit).
 - **FR1.4** On the admin prefix, `CreateReport` accepts an optional `organization_id` filter (via `X-Organization-Id` or a body field) to scope a fleet report to one org; without it the report spans all orgs.
 
 ### FR2 — Report lifecycle & download (both surfaces)
 
-- **FR2.1** `GetReport` (`GET /api/v1/billing/reports/{report_id}` user · `GET /api/v1/admin/billing/reports/{report_id}` admin) returns the report's status (`pending` / `ready` / `failed`), definition, row count, and `data_through`. An unknown `report_id` returns **10801** (D7).
+- **FR2.1** `GetReport` (`GET /api/v1/billing/reports/{report_id}` user · `GET /api/v1/admin/billing/reports/{report_id}` admin) returns the report's status (`pending` / `ready` / `failed`), definition, row count, and `data_through`. An unknown `report_id` returns **10901** (D7).
 - **FR2.2** `ListReports` (`GET /api/v1/billing/reports` user · `GET /api/v1/admin/billing/reports` admin) returns the report history, newest first, with dotted pagination. Each row carries `report_id`, `name`, `dimension`, `since`/`until`, `granularity`, `status`, `created_at`, and `row_count`.
-- **FR2.3** `DownloadReport` (`GET /api/v1/billing/reports/{report_id}/download` user · `GET /api/v1/admin/billing/reports/{report_id}/download` admin) returns the CSV when `status = ready`. A download before `ready` returns **10807** (D7). The response is `text/csv` with a UTF-8 BOM and a `Content-Disposition` filename like `billing-report-<report_id>.csv` (D5).
+- **FR2.3** `DownloadReport` (`GET /api/v1/billing/reports/{report_id}/download` user · `GET /api/v1/admin/billing/reports/{report_id}/download` admin) returns the CSV when `status = ready`. A download before `ready` returns **10907** (D7). The response is `text/csv` with a UTF-8 BOM and a `Content-Disposition` filename like `billing-report-<report_id>.csv` (D5).
 - **FR2.4** The CSV has a header row and one row per (bucket × dimension-value): `bucket`, `timezone`, `organization_id`, `organization_name`, `api_key_id`, `api_key_name`, `model_id`, `model_name`, `request_count`, `input_tokens`, `output_tokens`, `total_tokens`, `cost`, `currency`. Columns not relevant to the chosen dimension are empty (D3, D5).
 
 ### FR3 — Scheduled reports (both surfaces)
 
-- **FR3.1** `CreateSchedule` (`POST /api/v1/billing/reports/schedules` user · `POST /api/v1/admin/billing/reports/schedules` admin) creates a schedule from a report definition plus a `frequency` (`daily` / `weekly` / `monthly`) and a **relative** range (`last_7_days` / `last_30_days` / `last_month`). It returns the schedule with `status = active`. A duplicate `name` returns **10806**, an invalid `frequency` returns **10805** (D7).
+- **FR3.1** `CreateSchedule` (`POST /api/v1/billing/reports/schedules` user · `POST /api/v1/admin/billing/reports/schedules` admin) creates a schedule from a report definition plus a `frequency` (`daily` / `weekly` / `monthly`) and a **relative** range (`last_7_days` / `last_30_days` / `last_month`). It returns the schedule with `status = active`. A duplicate `name` returns **10906**, an invalid `frequency` returns **10905** (D7).
 - **FR3.2** `ListSchedules` (`GET /api/v1/billing/reports/schedules` user · `GET /api/v1/admin/billing/reports/schedules` admin) returns the caller's schedules (user: the tenant's own; admin: all schedules, optionally filtered by `organization_id`).
-- **FR3.3** `UpdateSchedule` (`PATCH /api/v1/billing/reports/schedules/{schedule_id}` user · `PATCH /api/v1/admin/billing/reports/schedules/{schedule_id}` admin) updates the schedule's `name`, `frequency`, or relative range. An unknown `schedule_id` returns **10802** (D7).
-- **FR3.4** `DeleteSchedule` (`DELETE /api/v1/billing/reports/schedules/{schedule_id}` user · `DELETE /api/v1/admin/billing/reports/schedules/{schedule_id}` admin) deletes the schedule. An unknown `schedule_id` returns **10802** (D7).
+- **FR3.3** `UpdateSchedule` (`PATCH /api/v1/billing/reports/schedules/{schedule_id}` user · `PATCH /api/v1/admin/billing/reports/schedules/{schedule_id}` admin) updates the schedule's `name`, `frequency`, or relative range. An unknown `schedule_id` returns **10902** (D7).
+- **FR3.4** `DeleteSchedule` (`DELETE /api/v1/billing/reports/schedules/{schedule_id}` user · `DELETE /api/v1/admin/billing/reports/schedules/{schedule_id}` admin) deletes the schedule. An unknown `schedule_id` returns **10902** (D7).
 - **FR3.5** `ListScheduleRuns` (`GET /api/v1/billing/reports/schedules/{schedule_id}/runs` user · `GET /api/v1/admin/billing/reports/schedules/{schedule_id}/runs` admin) returns the runs a schedule has produced, newest first, with dotted pagination. Each run is a report in the same history list with its own `status`, `created_at`, and `row_count` (D4).
 
 ### FR4 — Surface and API binding
@@ -242,36 +242,36 @@ All billing-report RPCs belong to the **`billing` module** (extended, D1), serve
 
 **Contract notes for the Architect agent**:
 
-1. `CreateReport` validates `since`/`until` (int64 unix seconds; defaults `until = now`, `since = until − 30d`); `since > until` or a range > 366 days returns 10404 (D7). `dimension` must be `organization` / `api_key` / `model` (else 10803); `granularity` must be `daily` / `hourly` (else 10804). `timezone` is an IANA name, default `UTC`.
+1. `CreateReport` validates `since`/`until` (int64 unix seconds; defaults `until = now`, `since = until − 30d`); `since > until` or a range > 366 days returns 10404 (D7). `dimension` must be `organization` / `api_key` / `model` (else 10903); `granularity` must be `daily` / `hourly` (else 10904). `timezone` is an IANA name, default `UTC`.
 2. On the user prefix, `CreateReport` is tenant-scoped (D6): no `organization_id` filter is accepted, and the report aggregates only the caller's org and own API keys. On the admin prefix, an optional `organization_id` scopes a fleet report to one org.
-3. Reports are async (D2): `CreateReport` returns `status = pending`; the report becomes `ready` (with a downloadable CSV) or `failed`. `DownloadReport` before `ready` returns 10807 (D7).
+3. Reports are async (D2): `CreateReport` returns `status = pending`; the report becomes `ready` (with a downloadable CSV) or `failed`. `DownloadReport` before `ready` returns 10907 (D7).
 4. The CSV is UTF-8 with a BOM, quoted fields, a header row, and one row per (bucket × dimension-value) with `bucket`, `timezone`, `organization_id`, `organization_name`, `api_key_id`, `api_key_name`, `model_id`, `model_name`, `request_count`, `input_tokens`, `output_tokens`, `total_tokens`, `cost`, `currency` (D3, D5). Columns not relevant to the chosen dimension are empty.
-5. Schedules hold a report definition plus `frequency` (`daily` / `weekly` / `monthly`, else 10805) and a relative range (`last_7_days` / `last_30_days` / `last_month`). A duplicate schedule `name` returns 10806 (D7). Each scheduled run produces a report in the same history list (D4).
+5. Schedules hold a report definition plus `frequency` (`daily` / `weekly` / `monthly`, else 10905) and a relative range (`last_7_days` / `last_30_days` / `last_month`). A duplicate schedule `name` returns 10906 (D7). Each scheduled run produces a report in the same history list (D4).
 6. Aggregation reads `usage_records` (feature #4) and `request_logs` (feature #12) for token and cost totals; it writes only report artifacts and schedules (D8). Report generation and schedule changes are audited (feature #15) as `report.generated` / `schedule.created` / `schedule.updated` / `schedule.deleted`.
 7. Wire conventions unchanged: dotted pagination where lists apply, HTTP 200 on success, business errors as `{"code": <int>, "message": "..."}`, int64 fields serialized as JSON strings.
 
-Error codes (billing-reports block 10801–10899, `pkg/errors/codes.go`):
+Error codes (billing-reports block 10901–10999, `pkg/errors/codes.go`):
 
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
-| An unknown `report_id` | 10801 | `CodeReportNotFound` | **New** (D7) |
-| An unknown `schedule_id` | 10802 | `CodeScheduleNotFound` | **New** (D7) |
-| An invalid `dimension` | 10803 | `CodeReportInvalidDimension` | **New** (D7) |
-| An invalid `granularity` | 10804 | `CodeReportInvalidGranularity` | **New** (D7) |
-| An invalid `frequency` | 10805 | `CodeReportInvalidFrequency` | **New** (D7) |
-| A duplicate schedule `name` | 10806 | `CodeReportNameConflict` | **New** (D7) |
-| A download before `ready` | 10807 | `CodeReportNotReady` | **New** (D7) |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused (D7) — the metering range contract, capped at 366 days for reports |
+| An unknown `report_id` | 10901 | `CodeReportNotFound` | **New** (D7) |
+| An unknown `schedule_id` | 10902 | `CodeScheduleNotFound` | **New** (D7) |
+| An invalid `dimension` | 10903 | `CodeReportInvalidDimension` | **New** (D7) |
+| An invalid `granularity` | 10904 | `CodeReportInvalidGranularity` | **New** (D7) |
+| An invalid `frequency` | 10905 | `CodeReportInvalidFrequency` | **New** (D7) |
+| A duplicate schedule `name` | 10906 | `CodeReportNameConflict` | **New** (D7) |
+| A download before `ready` | 10907 | `CodeReportNotReady` | **New** (D7) |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused (D7) — the metering range contract, capped at 366 days for reports |
 | Database / infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria
 
 | # | Criterion | Level |
 | --- | --- | --- |
-| AC1 | `CreateReport` with a valid definition returns a report with `status = pending`; a range > 366 days or `since > until` returns 10404; an invalid `dimension` returns 10803 and an invalid `granularity` returns 10804 | FVT |
-| AC2 | `GetReport` returns the report's status, definition, row count, and `data_through`; an unknown `report_id` returns 10801 | FVT |
-| AC3 | `DownloadReport` returns a UTF-8-BOM CSV with the header row and one row per (bucket × dimension-value) when `status = ready`; a download before `ready` returns 10807 | FVT |
-| AC4 | `CreateSchedule` with a valid definition and frequency returns an active schedule; a duplicate `name` returns 10806 and an invalid `frequency` returns 10805; `UpdateSchedule` and `DeleteSchedule` work and an unknown `schedule_id` returns 10802 | FVT |
+| AC1 | `CreateReport` with a valid definition returns a report with `status = pending`; a range > 366 days or `since > until` returns 10404; an invalid `dimension` returns 10903 and an invalid `granularity` returns 10904 | FVT |
+| AC2 | `GetReport` returns the report's status, definition, row count, and `data_through`; an unknown `report_id` returns 10901 | FVT |
+| AC3 | `DownloadReport` returns a UTF-8-BOM CSV with the header row and one row per (bucket × dimension-value) when `status = ready`; a download before `ready` returns 10907 | FVT |
+| AC4 | `CreateSchedule` with a valid definition and frequency returns an active schedule; a duplicate `name` returns 10906 and an invalid `frequency` returns 10905; `UpdateSchedule` and `DeleteSchedule` work and an unknown `schedule_id` returns 10902 | FVT |
 | AC5 | `ListScheduleRuns` returns the runs a schedule has produced, each a report in the same history list | FVT |
 | AC6 | `CreateReport` on the user prefix is tenant-scoped: it accepts no `organization_id` filter and aggregates only the caller's org and own API keys | FVT |
 | AC7 | The `/admin/billing/reports` page renders the builder, the report history, and the schedule list from the first successful load, with a last-updated timestamp | E2E |

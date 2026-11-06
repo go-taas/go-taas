@@ -6,7 +6,7 @@
 | 文档范围 | 功能 50 的架构与详细设计：新 `optimization` 模块（规则引擎、建议存储、忽略/恢复生命周期、刷新运行器）；`taas.optimization.v1.OptimizationService` proto，十一个 RPC 绑定在 `/api/v1/admin/optimization/*` 与 `/api/v1/optimization/*` 之下；`optimization_recommendations`、`optimization_dismissals`、`optimization_runs` 三张表；R1–R4 的精确规则算法（阈值与算式）；对 billing、metering、infer、batch、model、image、accelerator 数据的只读接缝；错误处理（13201–13205 加 10038/10036）；配置、安全、发布升级，以及逐层的函数级任务清单 |
 | 负责模块 | 新 `optimization` 模块（`services/optimization`）：规则引擎、建议存储、忽略/恢复生命周期、刷新运行器；对 `billing`（计费记录、价格矩阵）、`metering`（请求日志）、`infer`（服务、自动伸缩）、`model`（目录、授权）、`image`（引擎名）、`accelerator`（卡型列表）、`tenancy`（组织名）的只读接缝；`audit`（`optimization.*` 事件）；`pkg/errors`（132xx 块）；`pkg/config`（`optimization` 节）；`pkg/server`（管理 + 用户前缀绑定，Realm 守卫不变）；`web` 管理台（`OptimizationPage`）与用户台（`UserOptimizationPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/cost-optimization-recommendations.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.2 `model`、§2.4 `infer`、§3.1 控制网关、§4.3 推理请求与计费闭环 · [定价](./pricing.zh-cn.md)（R1/R2/R4 读取的价格矩阵与计费记录） · [批量推理](./batch-inference.zh-cn.md)（R2 应用的五折批量折扣） · [推理自动伸缩](./inference-autoscaling.zh-cn.md)（R3 检查的每服务策略） · [加速器库存](./accelerator-inventory.zh-cn.md)（R3 校验的集群卡型列表） · [按租户模型授权](./model-authorization.zh-cn.md)（R1 遵循的授权规则） · [成本分析看板](./cost-analytics-dashboard.zh-cn.md)（本功能构建其上的只读分析输入） · [控制台双面分离](./console-surface-separation.zh-cn.md)（两个控制台、脱敏投影规则） |
-| 状态 | 架构完成，已移交开发智能体 |
+| 状态 | 已实现 |
 
 ---
 

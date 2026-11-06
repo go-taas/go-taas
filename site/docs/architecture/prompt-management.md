@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-43: a new `prompt` module owning the prompt lifecycle, versioning, folders, usage counters, and the shared template library; the `prompts`, `prompt_versions`, `prompt_folders`, and `prompt_templates` tables; the `taas.prompt.v1.PromptService` proto with dual admin/user HTTP bindings; the end-user Prompts pages (`/prompts`, `/prompts/:promptId`) and the admin Prompts page (`/admin/prompts`); plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | New `prompt` module (`services/prompt`): `prompts` + `prompt_versions` + `prompt_folders` + `prompt_templates` tables, CRUD/query RPCs, the versioning logic, the usage counters, the shared template library; `infer` (read-only: the model catalog a prompt references); `audit` (read-only: prompt action audit events); `pkg/server` gateway (admin-prefix and user-prefix bindings); console web app (end-user `PromptsPage`/`PromptDetailPage`, admin `AdminPromptsPage`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/prompt-management.md) · [Architecture Design](../design/architecture.md) §2.5 (metering), §3.1 (admin/user surface separation) · [Console Surface Separation](./console-surface-separation.md) (the two-console split this feature spans; realm guard, 10038) · [Request Logs & API Playground](./request-logs-playground.md) (the sibling playground surface a prompt opens into) · [Model Catalog & Deployment](./model-catalog-deployment.md) (the model catalog a prompt references) · [Audit Logging](./audit-logging.md) (the audit events prompt actions emit) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -824,7 +824,7 @@ sequenceDiagram
     UI->>PL: Navigates to /playground?prompt=id&version=1
     PL-->>U: Prompt editor pre-filled
     U->>UI: Runs the prompt in the playground
-    UI->>CGW: POST /api/v1/playground/run
+    UI->>CGW: POST /api/v1/models/{model_id}:playground
     CGW->>P: RecordPromptUsage
     P-->>UI: times_used incremented
     U->>UI: Opens /prompts/:promptId

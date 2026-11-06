@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/playground/compare` 终端用户游乐场对比页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `infer`（对多个模型运行同一提示词并返回每模型延迟/token/成本的对比 RPC）、`model`（只读：对比页模型选择器所依据的掩码用户面目录）、`auth`（只读：对比页提供的活跃 API Key）、`web` 终端用户控制台（`PlaygroundComparePage`） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.4 节 `infer`、第 3.1 节（管理面/用户面分离）· [控制台面分离](./console-surface-separation.md) — 终端用户游乐场（`/playground`、`POST /api/v1/models/{model_id}:playground`、D14）、`UserShell` 约定、掩码投影规则 · [请求日志与 API 游乐场](./request-logs-playground.md) — 本特性扩展为多模型对比的既有基于模型的游乐场 · [用量仪表盘与按请求成本归属](./usage-dashboard.md) — 本特性每模型成本列所依据的成本归属模型 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -221,7 +221,7 @@ sequenceDiagram
 | 未知 `model_id` | 10101 | `CodeModelNotFound` | `CompareModels`（FR1.3） |
 | 未知 `api_key_id` | 10007 | `CodeAPIKeyNotFound` | `CompareModels`（FR1.3） |
 | 推理被资金/配额阻止 | 10502 | `CodeInsufficientFunds` | `CompareModels`（FR1.3） |
-| 少于 2 个或多于 5 个模型 | 10404 | `CodeRequestLogRangeInvalid` | 复用于模型数校验（FR1.3） |
+| 少于 2 个或多于 5 个模型 | 10404 | `CodeMeteringRangeInvalid` | 复用于模型数校验（FR1.3） |
 
 ---
 

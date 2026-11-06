@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the end-user-surface data export page for `/account/export`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `account` (new — owns the data-export job lifecycle and the account-data bundle), `metering` (read-only: usage and request-log export), `billing` (read-only: billing export), `auth` (read-only: account profile export), `pkg/server` gateway (user-prefix bindings), `web` end-user console (`DataExportPage` in `UserShell`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing`, §3.1 (admin/user surface separation) · [Billing Reports & CSV Export](./billing-reports.md) — the sibling CSV-export feature and its async-job, Excel-friendly-CSV, and tenant-scoping conventions · [Audit Logging & Activity Export](./audit-logging.md) — the sibling export feature and its audit-event conventions · [Console Surface Separation](./console-surface-separation.md) — the end-user surface this page lives on, the `UserShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

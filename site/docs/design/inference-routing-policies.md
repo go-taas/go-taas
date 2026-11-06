@@ -6,7 +6,7 @@
 | Document scope | Configure ordered healthy inference-service targets and retryable failures for one model; inspect target health and validate routing policy behavior |
 | Owning modules | `infer` (policy and service eligibility), Inference Gateway routing (apply policy before response commitment), `audit` (policy changes), `web` admin console |
 | Related documents | [Architecture Design](./architecture.md) — inference gateway routing and `infer` endpoint registration · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — inference services and model identity · [Multi-Cluster Management](./multi-cluster-management.md) — cluster placement · [Request Tracing](./request-tracing.md) — request path visibility · [Console Surface Separation](./console-surface-separation.md) |
-| Status | Design complete; handoff pending |
+| Status | Implemented |
 
 ## 1. Background and Competitive Research
 

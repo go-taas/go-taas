@@ -6,7 +6,7 @@
 | Document scope | End-user evaluation suites, test cases, execution results, run comparison, exact page/API mapping, and acceptance criteria |
 | Owning modules | `prompt` (read-only source of saved prompts and immutable versions), `evaluation` (new: suites, cases, runs, deterministic checks and results), `infer` (metered model execution), `web` end-user console |
 | Related documents | [Prompt Management](./prompt-management.md), [Request Logs & API Playground](./request-logs-playground.md), [Model Playground Comparison](./playground-comparison.md), [Console Surface Separation](./console-surface-separation.md) |
-| Status | Design complete, pending Architect handoff |
+| Status | Implemented |
 
 ---
 

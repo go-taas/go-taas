@@ -6,7 +6,7 @@
 | 文档范围 | 只读管理面加速器清单的架构与详细设计：发现与上报机制（Controller → MQ → accelerator 服务）、内存投影缓存数据模型、三个管理面 RPC 及其精确的 `google.api.http` 绑定、健康复合语义、预热任务上下文读取、前端页面及其路由 → API 前缀映射、错误处理（10208）、配置、安全、上线，以及按层的函数级任务清单 |
 | 归属模块 | `services/accelerator`（新增：投影缓存 + 三个管理面 RPC）、`internal/controller`（节点/GPU 采集 + 快照发布）、`pkg/k8s`（节点、设备插件、扩展资源读取）、`pkg/mq`（新增 `accelerator.inventory` subject）、`pkg/errors`（10208）、`pkg/config`（accelerator 配置段）、`web/` 管理控制台（`AcceleratorsPage`、`AcceleratorNodeDetailPage`）、`services/image`（预热任务窄接口读取） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/accelerator-inventory.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.3 节（异构计算）、第 2.7 节 Controller · [控制台面分离](./console-surface-separation.zh-cn.md)（管理面、realm 守卫、`AdminShell`）· [镜像管理](./image-management.zh-cn.md)（预热任务、按节点结果、本特性提供的「节点清单」）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（卡型 `accelerator_type`）· [推理自动扩缩容](./inference-autoscaling.zh-cn.md)（节点级容量上下文） |
-| 状态 | 架构完成，已交付开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

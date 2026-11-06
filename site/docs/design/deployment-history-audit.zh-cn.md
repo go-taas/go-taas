@@ -222,7 +222,7 @@ sequenceDiagram
 | 未知 `service_id` | 10301 | `CodeInferServiceNotFound` | `ListDeploymentEvents`、`RollbackDeployment` |
 | 服务状态不可更新 | 10303 | `CodeInferServiceStateInvalid` | `RollbackDeployment` 对如 `terminated`（FR2.2） |
 | 未知 `event_id` | 10304 | `CodeInferEndpointNotFound` | 复用于未知部署事件（FR2.2） |
-| 非法时间范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用 — metering 范围契约（FR1.2） |
+| 非法时间范围 | 10404 | `CodeMeteringRangeInvalid` | 复用 — metering 范围契约（FR1.2） |
 
 ---
 

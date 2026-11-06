@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the `billing` module's pricing core: the price matrix (model × accelerator type) with effective dating, tiered volume pricing, the charging engine that turns settled usage into amounts, charge/bill queries, the console Pricing and Bills pages, and acceptance criteria |
 | Owning modules | `billing` (price matrix, usage-line ingestion, charging engine, charges and bills), with `metering` (additive event-contract extension) and `infer` (service card-type lookup) |
 | Related documents | [Architecture Design](./architecture.md) — Section 2.6 `billing`, Section 4.3 the metering/settlement sequence · [Token Metering Vouchers & Async Settlement](./metering.md) — the upstream usage pipeline and the `billing.settlements` contract (its D6) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the model identity dimension of the matrix |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -136,7 +136,7 @@ Pitfalls to avoid:
 - **FR5.1** `ListCharges` (`GET /api/v1/admin/billing/charges`) returns charge records filtered by `api_key_id`, `model_id`, and time range (`since`/`until`), paginated (default 20, cap 100), newest period first, each row carrying the full token sums, amount, currency, `priced` flag, and tier index.
 - **FR5.2** `ListBills` (`GET /api/v1/admin/billing/bills`) returns monthly bill summaries per organization: `bill_id` (`{org}-{YYYYMM}`), `organization_id`, summed `amount`, `currency`, `period_start`/`period_end` (calendar month, UTC), filtered by `organization_id` and time range, paginated newest month first — computed from charge records on read (D9).
 - **FR5.3** Both queries require the `X-Organization-Id` header and scope to it (the transitional identity model, consistent with Usage); a time range with `since > until` or spanning > 366 days returns 10508.
-- **FR5.4** `GetBalance` remains a stub returning 10503 — the account modes are feature #8's contract.
+- **FR5.4** `GetBalance` is implemented by the billing account service (feature #8): it returns the account snapshot, and an unfunded org renders `has_account=false`.
 
 ### FR6 — Console Pricing and Bills pages
 
@@ -211,7 +211,7 @@ flowchart TD
 
 ## 6. API Surface Implications
 
-All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/billing/v1/billing.proto`), served as HTTP via the Control Gateway. Two RPCs exist as stubs and are implemented; one is added; one stays a stub for #8. Proto changes are additive only.
+All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/billing/v1/billing.proto`), served as HTTP via the Control Gateway. Two existing RPCs move from stub to implemented; one is added; `GetBalance` is implemented by the later account-mode feature (#8). Proto changes are additive only.
 
 | RPC | HTTP | Status | Purpose | Notes |
 | --- | --- | --- | --- | --- |
@@ -219,7 +219,7 @@ All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/bill
 | `ListPrices` | `GET /api/v1/admin/billing/prices` | stub → implemented | Matrix view / history | Gains `accelerator_type` filter and `include_history`; `PriceEntry` gains `price_id`, cache rate, `effective_from`, `tiers` |
 | `ListCharges` | `GET /api/v1/admin/billing/charges` | **new** | Charge-record drill-down | Filters: `api_key_id`, `model_id`, `since`/`until`; org-scoped |
 | `ListBills` | `GET /api/v1/admin/billing/bills` | stub → implemented | Monthly bill summaries | Computed from charge records (D9); org filter + range |
-| `GetBalance` | `GET /api/v1/admin/billing/balance` | stays stub | Account modes | Feature #8; returns 10503 |
+| `GetBalance` | `GET /api/v1/admin/billing/balance` | implemented (feature #8) | Account modes | Returns the account snapshot; unfunded org has `has_account=false` |
 
 Constraints on the contract:
 

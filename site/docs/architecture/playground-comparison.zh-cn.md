@@ -6,7 +6,7 @@
 | 文档范围 | 功能点 35 的架构与详细设计：`InferServiceService` 上的 `CompareModels` RPC、用户端游乐场对比页面（`/playground/compare`），以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | `infer`（在同一提示词上对多个模型运行并返回每模型延迟/令牌/成本的对比 RPC）、`model`（只读：对比页面模型选择器所依据的掩码用户端目录）、`auth`（只读：对比页面提供的活动 API 密钥）、`web` 用户端控制台（`PlaygroundComparePage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/playground-comparison.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§3.1（管理端/用户端分离）· [控制台表面分离](./console-surface-separation.md)（用户端游乐场、`UserShell` 约定、掩码投影规则）· [请求日志与 API 游乐场](./request-logs-playground.md)（本功能扩展为多模型对比的现有基于模型的游乐场）· [使用仪表盘与每请求成本归属](./usage-dashboard.md)（本功能每模型成本列所依据的成本归属模型） |
-| 状态 | 架构完成，已移交给开发智能体 |
+| 状态 | 已实现 |
 
 ---
 

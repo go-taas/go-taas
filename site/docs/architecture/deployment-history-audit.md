@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-34: the `deployment_events` table, the `ListDeploymentEvents` and `RollbackDeployment` RPCs on `InferServiceService`, the admin Deployment History page (`/admin/deployments`), plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `infer` (deployment-event trail over the inference-service lifecycle, the diff computation, and the rollback-from-history RPC), `audit` (read-only: the general audit spine this feature's deployment trail complements), `web` admin console (`DeploymentHistoryPage`), `controller` (read-only: reconcile a rollback event) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/deployment-history-audit.md) · [Architecture Design](../design/architecture.md) §2.4 (`infer`), §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the inference-service lifecycle and the change-event structure) · [Audit Logging & Activity Export](./audit-logging.md) (the general control-plane audit spine this feature's deployment trail complements) · [Model Versioning & Rollback](./model-versioning.md) (the sibling rollback surface this feature extends to the deployment level) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the `AdminShell` conventions, the masked-projection rule) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

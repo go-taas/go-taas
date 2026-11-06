@@ -6,7 +6,7 @@
 | 文档范围 | 两个增量的架构与详细设计：**增量 A** — `api_keys` 上的按 Key `rate_limit_rpm` / `rate_limit_tpm`，经 `VerifyAPIKey` 响应在数据面网关执行；**增量 B** — 计费账户上的跨模式 `monthly_spend_limit_cents`，在 `CheckFunds` 中执行。覆盖控制台 API Keys 与 Accounts 页面、API 面、错误处理，以及各层的函数级设计 |
 | 归属模块 | `auth`（Key 限流字段、`UpdateAPIKey`）、`billing`（消费上限字段、`CheckFunds` 执行、结算增量、周期重置）、`infer`（网关执行点）、`metering`（不变）；控制台 Web 应用 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/rate-limits-spend-limits.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.1 节（`auth`）、第 2.6 节（`billing`）、第 3.3 节（推理网关的 API Key 认证链） · [API Key 生命周期管理](./api-key-management.zh-cn.md) — 被扩展的 `api_keys` 表与 `VerifyAPIKey` · [余额（预付费）与配额（后付费）账户模式](./balance-quota.zh-cn.md) — 被扩展的计费账户、`CheckFunds` 与 10502 · [用量仪表盘与按请求成本归属](./usage-dashboard.zh-cn.md) — 将展示消费上限进度的余额/配额组件 |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 

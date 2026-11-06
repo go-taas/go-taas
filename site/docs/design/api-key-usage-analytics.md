@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface analytics page for `/admin/usage/keys` (fleet-wide per-key breakdown + top keys + per-key trend), the end-user-surface analytics page for `/usage/keys` (tenant-scoped per-key breakdown + top keys + per-key trend), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `metering` (read-only aggregation over `request_logs` and `usage_records` for per-key metrics), `billing` (read-only: per-key cost from `charge_records`), `web` admin console (`UsageKeysPage`) and end-user console (`UserUsageKeysPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing` · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the sibling read-only dashboard and its inline-SVG chart, freshness, range, and group-by conventions · [Model Observability Dashboard](./model-observability.md) — the sibling read-only aggregation over `request_logs` and its per-key breakdown · [Request Logs & API Playground](./request-logs-playground.md) — the `request_logs` table and its `api_key_id` / `status` / `error` / token fields this feature aggregates · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -230,7 +230,7 @@ Error codes (usage-keys block 11201–11299, `pkg/errors/codes.go`):
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
 | An unknown `api_key_id` | 11201 | `CodeUsageKeyNotFound` | **New** (D8) |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused (D4) — the metering range contract |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused (D4) — the metering range contract |
 | Database / infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria

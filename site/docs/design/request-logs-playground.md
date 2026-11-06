@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for feature-12: the per-request `request_logs` table and its query APIs (Increment A), and the console API playground that sends a test inference through a control-gateway proxy RPC (Increment B), plus acceptance criteria |
 | Owning modules | `metering` (request-log capture, list/detail queries), `infer` (playground proxy RPC), console web app; `auth` (API key identity) read-only |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing`, §4.3 the metering/settlement sequence · [Token Metering Vouchers & Async Settlement](./metering.md) — the voucher pipeline this feature extends with request metadata · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the dashboard that attributes cost; its non-goal names feature-12 as the owner of full request context · [API Key Management](./api-key-management.md) — the key identity on every log row |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -40,7 +40,7 @@ Pitfalls to avoid: opt-in logging (Bedrock); capturing bodies in v1 (privacy/sto
 | D3 | **No request/response bodies in v1** — the log captures metadata only (identity, model, service, token counts, latency, status, error) | Bodies are a privacy and storage liability and are not needed to answer "what happened on this request"; metadata-only keeps the row small and the 30-day retention cheap. Body capture is deferred (Open Questions) |
 | D4 | **30-day retention** for request logs, enforced by a periodic cleanup runner; vouchers keep their 90-day window | Request logs are diagnostic and lose value fast; 30 days bounds storage while covering the debugging window. Retention is configuration, not code |
 | D5 | **The playground routes through a control-gateway proxy RPC `PlaygroundInfer`** in the `infer` service, using a selected org API key, and produces a real request log through the normal metered path | The playground must exercise the real inference path so test calls are visible in usage and request logs (the Chinese-platform pitfall); the control gateway keeps the data-plane gateway untouched |
-| D6 | **New error codes 10404 `CodeRequestLogRangeInvalid` reuse and 10405 `CodeRequestLogNotFound`** — 10404 is reused for malformed ranges on request-log queries; 10405 is new for unknown `request_log_id` | The 104xx block is reserved for metering; distinct not-found vs invalid-range codes keep API consumers' handling precise, mirroring the metering D9 pattern |
+| D6 | **New error codes 10404 `CodeMeteringRangeInvalid` reuse and 10405 `CodeRequestLogNotFound`** — 10404 is reused for malformed ranges on request-log queries; 10405 is new for unknown `request_log_id` | The 104xx block is reserved for metering; distinct not-found vs invalid-range codes keep API consumers' handling precise, mirroring the metering D9 pattern |
 | D7 | **The console gains a Request Logs page and an API Playground page** — the logs page is a filterable table with drill-down; the playground is a three-pane form (service/model selector, prompt editor, response pane) | Both are operator-facing debugging surfaces; they are separate pages because their tasks are distinct (retrospective inspection vs live experimentation) |
 
 ### 1.3 Scope Boundary

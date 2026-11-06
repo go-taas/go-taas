@@ -247,7 +247,7 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 | --- | --- | --- | --- |
 | Unknown `service_id` | 10301 | `CodeInferServiceNotFound` | `ListServiceLogPods`, `GetServiceLogs` |
 | Unknown pod/container | 10304 | `CodeInferEndpointNotFound` | Reused for an unknown replica/container (FR2.3) |
-| Invalid `tail` (0 or > 5000) or malformed `since` | 10404 | `CodeRequestLogRangeInvalid` | Reused — the metering range contract (FR2.3) |
+| Invalid `tail` (0 or > 5000) or malformed `since` | 10404 | `CodeMeteringRangeInvalid` | Reused — the metering range contract (FR2.3) |
 
 ---
 

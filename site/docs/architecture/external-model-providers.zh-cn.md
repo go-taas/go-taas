@@ -6,7 +6,7 @@
 | 文档范围 | 特性 48 的架构与详细设计：新增 `provider` 模块，拥有提供方注册表、AES-256-GCM 只写密钥、上游模型整理、发布到 `model` 目录的绑定、连通性探测 worker 与外部模型代理；`taas.provider.v1.ProviderService` proto 含十二个仅在 `/api/v1/admin/providers/*` 下绑定的 RPC 外加一个内部 `ResolveExternalModel` RPC；`providers` 与 `provider_models` 表以及 `models` 表的增量列；五态连通性探测及其精确状态映射；在计量路径上代理已发布外部模型的执行接缝；错误处理（13001–13016 及 10038/10036）；配置、安全、发布，以及按层级的函数级任务清单 |
 | 归属模块 | 新增 `provider` 模块（`services/provider`）：注册表、加密密钥、上游整理、发布、探测 worker 与外部对话代理；`model`（增量的外部列以及管理面与掩码用户面投影中的外部标记）；`infer`（模型化 playground 中 compose 可验证的外部模型代理接缝）；`audit`（提供方与发布事件）；`pkg/errors`（130xx 块）；`pkg/config`（provider 配置段）；`pkg/server`（管理面前缀绑定，realm 守卫不变）；`web` 管理控制台（`ProvidersPage`、`ProviderDetailPage`）以及既有目录/详情页上的外部标记 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/external-model-providers.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.2 `model`、§2.4 `infer`、§3.1 控制网关、§3.2 数据面（Envoy + Wasm）、§4.3 推理请求与计费闭环 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（本特性发布进入的目录）· [按租户模型授权](./model-authorization.zh-cn.md)（外部模型原样复用的授权路径）· [Webhook 通知](./webhook-notifications.zh-cn.md)（本特性复用的 AES-256-GCM 静态加密模式）· [控制台面分离](./console-surface-separation.zh-cn.md)（两个面、`AdminShell`、掩码投影规则）· [分布式推理运行时](./distributed-inference-runtime.zh-cn.md)（本特性镜像的同族管理面专属注册表模块） |
-| 状态 | 架构完成，已交付开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

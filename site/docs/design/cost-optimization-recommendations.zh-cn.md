@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研与建议引擎决策（确定性规则、无 ML）、管理面页面 `/admin/optimization`（全平台建议，组织/模型过滤，建议抽屉）、终端用户面页面 `/optimization`（租户自己的建议）、页面 → API 表面映射表，以及编号验收标准 |
 | 负责模块 | `optimization`（新增 — 负责建议引擎、建议存储与忽略/恢复生命周期）、`billing`（价格矩阵与扣费记录 — 只读）、`metering`（已结算用量记录 — 只读）、`infer`（推理服务状态与弹性伸缩策略 — 只读）、`model`（目录查询）、`batch`（批量任务历史 — 只读）、`audit`（忽略/恢复事件）、`pkg/server` 网关（管理 + 用户前缀绑定）、`web` 管理控制台 + 终端用户控制台 |
 | 相关文档 | [架构设计](./architecture.md) — §2.4 `billing`/`metering`、§3.1 控制网关 · [成本分析看板](./cost-analytics-dashboard.zh-cn.md) — 本功能将其成本归因转化为行动 · [用量与成本预测](./usage-cost-forecasting.zh-cn.md) — 前瞻视图；建议是其*行动*互补 · [定价](./pricing.zh-cn.md) — 廉价模型规则读取的价格矩阵 · [批量推理](./batch-inference.zh-cn.md) — 批量迁移规则量化的 50% 折扣 · [推理弹性伸缩](./inference-autoscaling.zh-cn.md) — 空闲服务规则链接的缩容至零策略 · [模型授权](./model-authorization.zh-cn.md) — 替换建议必须遵守的授权检查 · [智能模型路由](./intelligent-model-routing.zh-cn.md) — 路由分组是替换的*实现*手段，不是建议来源 · [控制台表面分离](./console-surface-separation.zh-cn.md) — 两个表面、脱敏投影规则 |
-| 状态 | 设计完成，已移交架构师 agent |
+| 状态 | 已实现 |
 
 ---
 

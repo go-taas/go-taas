@@ -54,7 +54,7 @@ This feature adds a **vGPU slicing pool**: the operator designates a set of node
 | D5 | **The pool's placement policy is a pool-level setting** (binpack / spread / mutex), surfaced as a dropdown on the pool page and passed to HAMI as a scheduling hint. | HAMI's scheduling vocabulary maps directly; the operator chooses consolidation (binpack) vs isolation (spread/mutex) per pool. |
 | D6 | **No performance-isolation guarantee.** The pool page and the deploy form state that a shared GPU is a shared resource; memory/compute isolation is best-effort per HAMI backend. | Honest about the shared-resource trade-off; avoids over-promising to tenants. |
 | D7 | **Slice allocation is capacity telemetry, not metering.** The pool's allocation view shows how many slices of each template are allocated/free; billing stays per-request token-based (#4). | Keeps the metering chain untouched; the pool view is an operations surface. |
-| D8 | **Slice count as a quota dimension is deferred.** The service-quota feature (#51) ships four dimensions; a per-org slice-count quota is future work. | Keeps this feature focused on the sharing mechanism; quota integration is a clean follow-up. |
+| D8 | **Slice count as a quota dimension is deferred.** The service-quota feature (#51) ships three dimensions; a per-org slice-count quota is future work. | Keeps this feature focused on the sharing mechanism; quota integration is a clean follow-up. |
 
 ---
 
@@ -293,7 +293,7 @@ Error codes (`pkg/errors/codes.go`):
 | MIG partitioning as the platform mechanism | Deliberately excluded (D4) — HAMI abstracts MIG and other backends |
 | Per-tenant GPU performance-isolation guarantees | Deliberately excluded (D6) — shared GPU is shared; best-effort isolation |
 | Slice-level metering / billing | Deliberately excluded (D7) — metering stays per-request token-based (#4) |
-| Per-org slice-count quota | Deferred — the service-quota feature (#51) ships four dimensions; slice quota is a clean follow-up (D8) |
+| Per-org slice-count quota | Deferred — the service-quota feature (#51) ships three dimensions; slice quota is a clean follow-up (D8) |
 | Raw HAMI annotations in the deploy form | Deliberately excluded (D3) — slice templates are the bounded vocabulary |
 | Automatic slicing of every GPU | Deliberately excluded (D2) — sharing is opt-in per service |
 | A separate HAMI WebUI | Deliberately excluded — the admin console is the surface |

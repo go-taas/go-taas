@@ -146,7 +146,7 @@
 
 | RPC | HTTP | 说明 |
 | --- | --- | --- |
-| `GetOrganizationQuota` / `UpdateOrganizationQuota` | `/api/v1/admin/tenancy/quota` | 租户默认值 |
+| `ListOrganizationQuotas` / `GetOrganizationQuota` / `UpdateOrganizationQuota` | `/api/v1/admin/quotas[/{organization_id}]` | 租户默认值 |
 | `GetProjectQuota` / `UpdateProjectQuota` | `/api/v1/admin/tenancy/projects/{id}/quota` | 项目份额（含消费上限） |
 | `ListUserQuotas` / `GetUserQuota` / `UpdateUserQuota` | `/api/v1/admin/tenancy/user-quotas[/{user_id}]` | 组织级个人预算 |
 | `ListProjectMemberQuotas` | `/api/v1/admin/tenancy/projects/{id}/member-quotas` | 成员名册，含各自预算与生效值 |

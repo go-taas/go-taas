@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the tenancy module's membership core: the `org_members` and `invitations` tables, member CRUD, the invitation lifecycle (create/list/resend/revoke/accept/reject), the fixed role set (owner/admin/member/viewer), the RoleGuard that gates org-scoped admin APIs by the caller's role, session `AccessibleOrgs`/roles derived from `org_members` (authoritative over IdP claims), the console Members and Invitations pages, the invitation accept flow, error handling, and function-level design per layer |
 | Owning modules | `tenancy` (org_members, invitations, RoleGuard, membership resolution), with `auth` (session roles/accessible orgs now derived from `org_members` instead of IdP claims) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/org-members-rbac.md) · [Architecture Design](../design/architecture.md) §2.1 `auth` (RBAC, roles, invitations) · [Multi-Tenancy Isolation](./multi-tenancy.md) — the `organizations` table and `OrgGuard` this feature's membership rows attach to (its D12 defers members/roles here) · [SSO Federation](./sso-federation.md) — the User model, `identity_bindings`, sessions, and attribute-to-role mapping this feature supersedes for membership (its D7 defers RBAC enforcement here) · [Balance & Quota](./balance-quota.md) — the established doc format and the org-scoped admin surface this feature gates |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

@@ -6,7 +6,7 @@
 | Document scope | Scope column and migration, key-management API surface, verdict-cache propagation, data-plane enforcement order, end-user console scope editing, admin read-only visibility, audit, errors, security, rollout, and implementation responsibilities |
 | Owning modules | `auth` (scope storage, verdict cache, VerifyAPIKey enforcement, scope-edit RPC, audit); `model` (catalog existence check for write-time validation); `web/` (end-user keys page) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/api-key-model-scoping.md) · [Architecture Design](../design/architecture.md) §2.2 (`auth`) and §3.2 (Inference Gateway) · [API Key Management](./api-key-management.md) — key lifecycle, salted-hash storage, revocation · [Per-tenant Model Authorization](./model-authorization.md) — the org-level gate this feature layers under · [Per-key Rate Limits & Org Spend Limits](./rate-limits-spend-limits.md) · [Console Surface Separation](./console-surface-separation.md) |
-| Status | Architecture complete; handoff issued to Developer |
+| Status | Implemented |
 
 ## 1. Goals and Non-Goals
 
@@ -213,7 +213,7 @@ Management failure semantics: wrong-realm session 10038; missing/expired session
 
 ## 9. Configuration
 
-No new configuration. The verdict-cache TTL (`auth.apikey.cacheTTL`, default 30s) and the model-auth cache TTL (5s default) bound propagation exactly as they do for revocation and org grants today. No new MQ subject, runner, or environment variable.
+No new configuration. The verdict-cache TTL (`auth.apiKeyCacheTTL`, default 30s) and the model-auth cache TTL (5s default) bound propagation exactly as they do for revocation and org grants today. No new MQ subject, runner, or environment variable.
 
 ## 10. Security and Privacy
 

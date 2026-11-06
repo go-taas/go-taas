@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the end-user-surface quickstart page design for `/quickstart` (create/select an API key, pick a model, show the inference base URL, copy a pre-filled OpenAI-compatible snippet, run a test request), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `web` end-user console (`QuickstartPage` in `UserShell`), `pkg/server` gateway (user-prefix bindings), `auth` (API-key create/list, reused), `model` (masked model list, reused), `infer` (model-based playground proxy, reused), plus a new config-driven inference-endpoint read |
 | Related documents | [Architecture Design](./architecture.md) — §3.2 data-plane gateway, §3.3 API-key authentication chain · [Console Surface Separation](./console-surface-separation.md) — the end-user surface this page lives on, the masked `GET /api/v1/models` projection (D15), the model-based playground (D14) · [API Key Lifecycle Management](./api-key-management.md) — the create/list/revoke surface this page reuses · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the model list this page consumes · [Request Logs & API Playground](./request-logs-playground.md) — the playground proxy this page reuses for the test request |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

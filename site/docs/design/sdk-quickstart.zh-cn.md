@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、终端用户面快速开始页面 `/quickstart` 的设计（创建/选择 API Key、选择模型、展示推理 base URL、复制预填充的 OpenAI 兼容代码片段、运行测试请求）、页面 → API 面映射表、编号验收标准 |
 | 归属模块 | `web` 终端用户控制台（`UserShell` 中的 `QuickstartPage`）、`pkg/server` 网关（用户前缀绑定）、`auth`（API Key 创建/列表，复用）、`model`（掩码模型列表，复用）、`infer`（基于模型的 playground 代理，复用），以及一个新的配置驱动的推理端点读取 |
 | 相关文档 | [架构设计](./architecture.md) —— §3.2 数据面网关、§3.3 API Key 认证链 · [控制台面分离](./console-surface-separation.md) —— 本页面所在的终端用户面、掩码 `GET /api/v1/models` 投影（D15）、基于模型的 playground（D14）· [API Key 生命周期管理](./api-key-management.md) —— 本页面复用的创建/列表/吊销面 · [模型目录与一键部署](./model-catalog-deployment.md) —— 本页面消费的模型列表 · [请求日志与 API Playground](./request-logs-playground.md) —— 本页面测试请求复用的 playground 代理 |
-| 状态 | 设计完成，已交接给架构师智能体 |
+| 状态 | 已实现 |
 
 ---
 

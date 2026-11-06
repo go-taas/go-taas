@@ -6,7 +6,7 @@
 | 文档范围 | 快速开始功能的架构与详细设计：配置驱动的用户面 `GET /api/v1/inference-endpoint` 读取、四个复用的 RPC 及其按面的精确 `google.api.http` 绑定、终端用户控制台中的 `QuickstartPage` 及其路由 → API 前缀映射、`UserShell` 导航的第六项、错误处理、配置、安全、上线，以及按层的函数级任务清单 |
 | 归属模块 | `infer`（拥有新的 `GetInferenceEndpoint` 读取）、`web/` 终端用户控制台（`UserShell` 中的 `QuickstartPage`）、`pkg/server` 网关（用户前缀绑定）、`auth`（API Key 创建/列表，复用）、`model`（掩码模型列表，复用）、`infer`（基于模型的 playground，复用） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/sdk-quickstart.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §3.2（数据面网关）与 §3.3（API Key 认证链）· [控制台面分离](./console-surface-separation.zh-cn.md)（本页面所在的终端用户面、掩码 `GET /api/v1/models` 投影、基于模型的 playground）· [API Key 生命周期管理](./api-key-management.zh-cn.md)（本页面复用的创建/列表面）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（本页面消费的模型列表）· [请求日志与 API Playground](./request-logs-playground.zh-cn.md)（本页面测试请求复用的 playground 代理） |
-| 状态 | 架构完成，已交接给开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

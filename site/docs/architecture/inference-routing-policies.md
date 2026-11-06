@@ -6,7 +6,7 @@
 | Document scope | Persisted routing policies and immutable revisions, admin-only APIs and UI, gateway snapshot distribution and request-time selection, audit, errors, security, rollout, and implementation responsibilities |
 | Owning modules | `infer` (policy, eligibility, revisions, audit, publication); Inference Gateway Envoy/Wasm routing adapter (snapshot application and attempt selection); `model` (catalog identity); `tenancy` (admin role); `web/` (admin page) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/inference-routing-policies.md) · [Architecture Design](../design/architecture.md) §2.4 (`infer`) and §3.2 (Inference Gateway) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) · [Inference Autoscaling](./inference-autoscaling.md) · [Request Tracing](./request-tracing.md) · [Console Surface Separation](./console-surface-separation.md) |
-| Status | Architecture complete; handoff issued to Developer |
+| Status | Implemented |
 
 ## 1. Goals and Non-Goals
 

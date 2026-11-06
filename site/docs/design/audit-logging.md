@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for feature-15: the `audit_events` table and its write path (a best-effort, non-fatal audit recorder invoked by every control-plane mutation), the admin Audit Logs page with filterable table, drill-down detail, and CSV/JSON export, the end-user My Activity page with its own scoped export, and acceptance criteria |
 | Owning modules | New `audit` module (audit_events table, recorder, list/detail/export RPCs), with `auth` (actor identity, session) and `tenancy` (org scoping) read-only; console web app |
 | Related documents | [Architecture Design](./architecture.md) — §2.1 `auth`, §2.6 `billing`, §3.1 admin/user surface separation · [Console Surface Separation](./console-surface-separation.md) — the two-console split this feature's two pages must respect · [Request Logs & API Playground](./request-logs-playground.md) — the diagnostic log this feature complements (request logs are per-inference diagnostics; audit events are control-plane actions) · [Organization Members, Roles & Invitations](./org-members-rbac.md) — the RBAC roles that gate who may view and export audit data |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

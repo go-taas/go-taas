@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、面向 `/prompts` 的终端用户提示词页面、面向 `/admin/prompts` 的管理端提示词页面、页面 → API 面映射表，以及编号的验收标准 |
 | 所属模块 | `prompt`（新增——负责提示词生命周期、版本化、文件夹、使用计数器和共享模板库）、`infer`（只读：提示词引用的模型目录）、`audit`（只读：提示词操作的审计事件）、`pkg/server` 网关（用户面与管理面前缀绑定）、`web` 终端用户控制台（`UserShell` 中的 `PromptsPage`）与管理端控制台（`AdminShell` 中的 `AdminPromptsPage`） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — §2.5 `metering`、§3.1（管理端/用户面分离）· [请求日志与 API Playground](./request-logs-playground.zh-cn.md) — 提示词打开的兄弟 Playground 面 · [模型目录与部署](./model-catalog-deployment.zh-cn.md) — 提示词引用的模型目录 · [审计日志](./audit-logging.zh-cn.md) — 提示词操作发出的审计事件 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本功能所在的两个面、`UserShell`/`AdminShell` 约定、脱敏投影规则 |
-| 状态 | 设计完成，已移交给架构师智能体 |
+| 状态 | 已实现 |
 
 ---
 
@@ -313,7 +313,7 @@ sequenceDiagram
     UI->>PL: 导航到 /playground?prompt=id&version=1
     PL-->>U: 提示词编辑器已预填充
     U->>UI: 在 Playground 中运行提示词
-    UI->>CGW: POST /api/v1/playground/run
+    UI->>CGW: POST /api/v1/models/{model_id}:playground
     CGW->>P: RecordPromptUsage
     P-->>UI: times_used 已递增
     U->>UI: 打开 /prompts/:promptId

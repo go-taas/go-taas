@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/load-tests` 管理面负载测试页面（配置、运行、实时进度、结果、历史），`/models/:modelId` 终端用户面只读性能展示，页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `infer`（拥有推理服务与驱动它们的负载测试运行器），`web` 管理控制台（`LoadTestsPage`、`LoadTestDetailPage`）与终端用户控制台（`ModelDetailPage` 性能区块），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.4 节 `infer`、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本特性所针对的推理服务 · [请求日志与 API Playground](./request-logs-playground.zh-cn.md) — 本特性放大为多请求的单请求测试面 · [推理自动扩缩](./inference-autoscaling.zh-cn.md) — 负载测试所支撑的容量语境 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

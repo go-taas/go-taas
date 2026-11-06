@@ -6,7 +6,7 @@
 | 文档范围 | 特性 47 的架构与详细设计：新增 `runtime` 模块拥有服务方案设置以及运行时健康与已注册模型投影；`taas.runtime.v1.RuntimeService` proto 含七个仅绑定于 `/api/v1/admin/runtime/*` 的 RPC；`runtime_settings` 表与内存投影缓存；Controller 的方案消费、`ModelClaim` 调和、组件健康采集与快照发布；管理控制台 `RuntimePage`；错误处理（129xx 加上 10038/10036/10027）；配置、安全、发布，以及每层的函数级任务清单 |
 | 归属模块 | 新增 `runtime` 模块（`services/runtime`）：服务方案设置、组件投影与已注册模型投影；`internal/controller`（方案消费者、`ModelClaim` 写入器、组件采集器、模型投影器）；`infer`（只读：方案所选择的调和路径）；`audit`（方案变更与模型注册事件）；`pkg/k8s`（既有 clientset 加 dynamic client 接缝）；`pkg/mq`（新增 subject）；`pkg/errors`（129xx 块）；`pkg/config`（runtime 段）；`web` 管理控制台（`RuntimePage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/distributed-inference-runtime.md) · [架构设计](../design/architecture.md) 第 1.1 节控制/数据面分离、第 1.2 节 MQ 解耦、第 2.4 节 `infer`、第 2.7 节 Controller、第 3.2 节数据面（Envoy + Wasm） · [加速器清单与健康](./accelerator-inventory.md)（本特性复用的 Controller → MQ → 服务投影模式与内存缓存） · [多集群管理](./multi-cluster-management.md)（本特性镜像的注册表加投影模块形态与 `cluster.health` 快照） · [推理自动扩缩容](./inference-autoscaling.md)（朴素方案保留的 HPA 路径） · [模型目录与一键部署](./model-catalog-deployment.md)（方案所选择的推理服务调和路径） · [控制台面分离](./console-surface-separation.md)（两个面、`AdminShell`、掩码投影规则） |
-| 状态 | 架构完成，已移交开发者代理 |
+| 状态 | 已实现 |
 
 ---
 

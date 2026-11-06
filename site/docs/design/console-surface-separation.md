@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the page-by-page surface assignment for every page in `web/src/pages/`, the full UI design of the end-user console, the admin console's information-architecture changes, the routing/redirect migration plan, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `web` console (route trees, shells, session storage, all pages), `pkg/server` gateway (realm gate, public provider projection), `auth` (session realm, realm-pinned login bindings), `metering`/`billing` (user-prefix bindings, optional admin organization filter), `tenancy` (unchanged) |
 | Related documents | [Architecture Design](./architecture.md) — §3.1 Control Gateway, "Admin/user surface separation" · [SSO Federation & Account Binding](./sso-federation.md) — login entry, session issuance, `GetSession` · [Request Logs & API Playground](./request-logs-playground.md) — the two pages that move to the end-user console · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the page that exists on both surfaces · [Balance (Prepaid) & Quota (Postpaid) Account Modes](./balance-quota.md) — accounts and the balance snapshot · [Organization Members, Roles & Invitations](./org-members-rbac.md) — the roles the console renders · [Per-Tenant Model Authorization](./model-authorization.md) — the dependency behind the user-realm model list |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -361,13 +361,13 @@ sequenceDiagram
     UC->>CGW: GET /api/v1/auth/sso/providers
     CGW-->>UC: enabled providers, id type display_name only
     Tenant->>UC: clicks Sign in with provider
-    UC->>CGW: GET /api/v1/auth/sso/provider/authorize
+    UC->>CGW: GET /api/v1/auth/sso/{provider_id}/authorize
     CGW->>Auth: SSOAuthorize
     Auth-->>UC: redirect url to the IdP
     UC->>UC: remember provider id in sessionStorage, leave for the IdP
     Tenant->>Auth: authenticates at the IdP
     Auth-->>UC: browser returns to /login with code and state
-    UC->>CGW: GET /api/v1/auth/sso/provider/callback
+    UC->>CGW: GET /api/v1/auth/sso/{provider_id}/callback
     CGW->>Auth: SSOCallback
     Auth->>Auth: resolve identity, issue session with realm user
     Auth-->>UC: session token and expiry

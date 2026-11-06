@@ -6,7 +6,7 @@
 | 文档范围 | 特性-42 的架构与详细设计：新增 `batch` 模块，拥有批量任务生命周期、JSONL 输入/输出文件存储、JSONL 校验器、批量 worker 与保留运行器；`batch_jobs` 表与对象存储文件布局；`taas.batch.v1.BatchService` proto，带管理面/用户面双 HTTP 绑定；编排现有 `infer` 与 `metering` 流水线的批量 worker；终端用户面批量页面（`/batch`、`/batch/:batchId`）与管理面批量页面（`/admin/batch`、`/admin/batch/:batchId`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 归属模块 | 新增 `batch` 模块（`services/batch`）：`batch_jobs` 表、CRUD/查询 RPC、JSONL 校验器、批量 worker、文件存储、保留运行器；`infer`（只读：批量 worker 调用的推理端点）；`metering`（只读：批量任务的按请求 token/成本归因）；`pkg/server` 网关（管理前缀与用户前缀绑定）；控制台 web 应用（终端用户面 `BatchPage`/`BatchDetailPage`，管理面 `AdminBatchPage`/`AdminBatchDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/batch-inference.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 1.2 节（消息队列）、第 2 节（模块职责）、第 3.1 节（管理面/用户面分离）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面；realm 守卫，10038）· [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md)（同源的推理面及其请求日志约定）· [账单报表与 CSV 导出](./billing-reports.zh-cn.md)（同源的异步任务与 Excel 友好 CSV 约定）· [数据导出与隐私](./data-export-privacy.zh-cn.md)（同源的异步任务生命周期与租户隔离约定）· [审计日志](./audit-logging.zh-cn.md)（批量操作必须调用的审计记录器） |
-| 状态 | 架构完成，已移交开发者代理 |
+| 状态 | 已实现 |
 
 ---
 

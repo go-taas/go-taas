@@ -6,7 +6,7 @@
 | 文档范围 | 认证核心的架构与详细设计：可插拔身份提供方（IdP）框架（OIDC、SAML 2.0、LDAP/LDAPS）、提供方配置管理、SSO 登录流程（authorize + callback）、账号绑定与即时开通（JIT Provisioning）、会话与访问令牌、属性到角色映射、控制台登录页与会话处理、组织上下文从过渡期 `X-Organization-Id` 头演进为会话派生上下文，以及各层的函数级设计 |
 | 归属模块 | `auth`（IdP 框架、身份绑定、会话，及各模块消费的会话派生组织上下文），配合 `tenancy`（会话的组织成员解析） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/sso-federation.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.1 节 `auth` · [多租户](./multi-tenancy.zh-cn.md) — 本特性以会话替换的经校验组织上下文（其 D4/FR3.3）、本特性以会话成员资格落地的组织目录与切换器（其 D10/FR4.3） · [API Key 管理](./api-key-management.zh-cn.md) — 本特性保持不变的数据面 Key 校验 |
-| 状态 | 架构完成，已移交研发代理 |
+| 状态 | 已实现 |
 | 实现状态 | **建设中。** 已实现：内置本地账号体系（注册、登录、密码策略、邮箱验证码，以及面向平台管理员登录的图片验证码）与 OIDC/OAuth 2.0、SAML 2.0、LDAP/LDAPS 提供方流程及属性到角色的映射。建设中：微信提供方、SCIM 目录同步与统一登出。 |
 
 ---

@@ -6,7 +6,7 @@
 | 文档范围 | 特性-13 的架构与详细设计：`model_authorizations` 表与默认放行规则、四个 `ModelService` RPC（授权、撤销、列出授权、按组织过滤的模型列表）、`CreateInferenceService` 中的控制面强制、`VerifyAPIKey` 中的数据面强制（激活休眠的 `model` 字段）、激活死代码 10105 `CodeModelUnauthorized`、控制台「已授权组织」面板、「受限」徽标与组织感知部署过滤，外加错误处理、配置、发布，以及各层的函数级设计 |
 | 归属模块 | `model`（`model_authorizations` 表、四个授权 RPC、共享的 `IsModelAuthorized` 检查）、`infer`（`CreateInferenceService` 中的控制面强制）、`auth`（`VerifyAPIKey` 中的数据面强制，激活休眠的 `model` 字段，按 (org, model) 的授权缓存）；控制台 Web 应用 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/model-authorization.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.2 节（`model`）、第 2.4 节（`infer`）、第 2.1 节（`auth`） · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本特性所门控的目录与 `CreateInferenceService`（其第 1.4 节把租户级模型授权延后至此） · [多租户隔离](./multi-tenancy.zh-cn.md) — 本特性所授予的组织实体 · [组织成员、角色与邀请（RBAC）](./org-members-rbac.zh-cn.md) — 本特性记录为 `granted_by` 的会话身份 |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -242,7 +242,7 @@ sequenceDiagram
     participant R as 仓库
     participant DB as PostgreSQL
     Admin->>Console: 授权 org-a 访问模型 M
-    Console->>CGW: POST /api/v1/admin/models/M:grant
+    Console->>CGW: POST /api/v1/admin/models/{model_id}:grant
     CGW->>S: GrantModelAccess(M, org-a)
     S->>S: 从会话解析 granted_by（AD8）
     S->>R: GrantAccess(M, org-a, grantedBy)

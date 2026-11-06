@@ -627,7 +627,7 @@ Service RPCs (`service.go`):
 3. `upsert` / `update_version` / `rollback` → publish status `queued`; build the AIBrix `StormService` from the topology (single: one worker role; multinode: one worker per TP×PP shard; PD: prefill + decode roles), the Kubernetes Service, the `PodAutoscaler` when autoscaling is enabled, the AIBrix `ModelClaim`/`ModelRoute` when the AIBrix scheme is active, and the Volcano `PodGroup` when gang scheduling is enabled; create-or-update through the dynamic client; on error → publish status `failed` with the reason (AC7) and return `mq.Permanent` for non-retryable errors (e.g. weight path missing) or a plain error for transient ones (broker-level retry). A controller without a dynamic client falls back to a plain Deployment.
 4. Watch pod readiness: publish `starting` when a pod is scheduled and `running` only when the engine answers its health endpoint; compose endpoints from `infer.endpointBaseURL` (or the in-cluster Service DNS name).
 
-`ApplyImageWarmup` stays a stub (feature #3).
+`ApplyImageWarmup` is implemented by the image module's warmup publisher/consumer pair (feature #3): the controller decodes a warmup task, runs the pre-pull and reports status.
 
 Reconcile idempotency: every Kubernetes operation is create-or-update; re-delivery of the same change converges to the same desired state.
 

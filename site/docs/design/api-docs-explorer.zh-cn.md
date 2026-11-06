@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/docs` 终端用户面 API 文档页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `docs`（新增 — 提供精选的用户面 API 目录）、`pkg/server` 网关（用户前缀绑定）、`web` 终端用户控制台（`UserShell` 中的 `ApiDocsPage`）、`infer`（复用：试用用的基于模型的 playground 代理）、`auth`（复用：试用用的 API Key 列表）、`model`（复用：试用用的掩码模型列表） |
 | 相关文档 | [架构设计](./architecture.md) — 第 3.2 节数据面网关、第 3.3 节 API Key 认证链 · [控制台面分离](./console-surface-separation.md) — 本页面所在的终端用户面、`UserShell` 约定、掩码投影规则 · [SDK / 快速开始](./sdk-quickstart.md) — 姊妹引导页及其语言标签 / 基础 URL / playground 代理约定 · [请求日志与 API Playground](./request-logs-playground.md) — 本特性试用复用的 `PlaygroundInfer` 代理 · [模型目录与一键部署](./model-catalog-deployment.md) — 本页面消费的模型列表 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

@@ -6,7 +6,7 @@
 | 文档范围 | 功能 41 的架构与详细设计：新的 `account` 模块，负责数据导出任务生命周期与账户数据包；`taas.account.v1.AccountService` proto 及四个 RPC；`data_exports` 表；异步导出生成 runner；用户端数据导出页面（`/account/export`）；以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | 新 `account` 模块（`services/account`）：数据导出任务生命周期与账户数据包；`metering`（只读：用量与请求日志导出）；`billing`（只读：计费导出）；`auth`（只读：账户资料导出）；`pkg/server` 网关（用户前缀绑定）；`web` 用户端控制台（`UserShell` 中的 `DataExportPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/data-export-privacy.md) · [架构设计](../design/architecture.md) §2.5（`metering`）、§2.6（`billing`）、§3.1（管理端/用户端面分离）· [计费报表与 CSV 导出](./billing-reports.md)（同类 CSV 导出功能及其异步任务、Excel 友好 CSV、租户作用域约定）· [审计日志与活动导出](./audit-logging.md)（同类导出功能及其审计事件约定）· [控制台面分离](./console-surface-separation.md)（本页面所在的用户端面、`UserShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

@@ -6,13 +6,13 @@
 | 文档范围 | 功能 37 的架构与详细设计：新的 `resourcemetrics` 模块，负责对新的 `service_resource_metrics` 表的只读聚合；Controller 的按服务 CPU/内存/GPU 采样器；`taas.resourcemetrics.v1.ResourceMetricsService` proto 及 `GetServiceResourceMetrics` RPC；管理端服务指标页面（`/admin/services/:serviceId/metrics`）；以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | 新 `resourcemetrics` 模块（`services/resourcemetrics`）：对 `service_resource_metrics` 的只读聚合；`internal/controller`（只读：从 Kubernetes metrics-server 与加速器信号采样按服务 CPU/内存/GPU）；`pkg/server` 网关（管理端前缀绑定）；`web` 管理端控制台（`ServiceMetricsPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/service-resource-metrics.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§2.7 Controller、§4.2 一键部署流程 · [模型可观测性仪表盘](./model-observability.md)（同类的只读时序聚合及其分桶/新鲜度/范围约定）· [加速器清单与健康](./accelerator-inventory.md)（其加速器信号为 GPU 利用率提供数据的同类 GPU 健康面）· [推理服务日志查看器](./service-logs-viewer.md)（同类的按服务诊断面及本功能复用的 Controller 读取模式）· [控制台面分离](./console-surface-separation.md)（两个面、`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 
 ## 1. 概述与目标
 
-go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2）：Controller 创建 Deployment 与 Service，推理引擎（vLLM 等）在容器内运行。模型可观测性功能（第 24 行）从 `request_logs` 解释*模型表现如何*（延迟、吞吐、错误率、token/秒），服务日志查看器（第 33 行）展示*引擎打印了什么*。而运维人员仍无法回答的基础设施问题是：*这个服务是否真的用到了分配给它的资源？* 当服务变慢时，运维人员无法判断它是 CPU 受限、内存受限还是 GPU 饥饿，除非离开控制台对 Pod 运行 `kubectl top` 或查询指标端点。
+go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，推理引擎（vLLM 等）在容器内运行。模型可观测性功能（第 24 行）从 `request_logs` 解释*模型表现如何*（延迟、吞吐、错误率、token/秒），服务日志查看器（第 33 行）展示*引擎打印了什么*。而运维人员仍无法回答的基础设施问题是：*这个服务是否真的用到了分配给它的资源？* 当服务变慢时，运维人员无法判断它是 CPU 受限、内存受限还是 GPU 饥饿，除非离开控制台对 Pod 运行 `kubectl top` 或查询指标端点。
 
 本功能新增一个**推理服务资源指标**页面：按服务查看 CPU / 内存 / GPU 利用率随时间变化，支持时间范围筛选与资源使用图表。它是 Phase 4 运维面最小且有独立价值的增量：把"服务很慢"变成"服务在过去一小时 CPU 饱和 95% 而 GPU 只有 20% —— 瓶颈在计算而非加速器"。这是一个**只读**聚合层 —— 推理、计量或计费管线均无改动。
 
@@ -403,7 +403,7 @@ sequenceDiagram
 | | `prometheus_source.go` | Prometheus HTTP 客户端：`queryRangeByPod`（每指标一次范围查询，按 Pod 分组）与用于 gauge 和 `histogram_quantile` 的 `queryScalarOK`/`queryRange`；`rateWindow` 将窗口渲染为秒（PromQL 不接受 Go 的 `5m0s`）；`podSelector` 对精确 Pod 名做 RE2 转义；`decodePromPoint` 拒绝非有限采样（5.2 第 5 条） |
 | | `prometheus_metrics.go` | 基于该客户端的读取路径：`prometheusRead`（CPU 从核归一化为毫核、内存、GPU 利用率）、`readEngineTelemetry`（显存、TTFT/TPOT P95、KV 缓存、队列深度、吞吐 —— 各面板独立降级，AD12）、`mergeEngineSeries`（就近桶对齐，采集周期偏移不会丢值）、`applyEngineCards`、`cardMemoryCapacityMiB`（total gauge，缺失时 used + free） |
 | `internal/controller` | `resource_metrics.go` | 新采样循环：按 `sampleInterval`，列出推理服务，从 Kubernetes metrics-server 读取每容器 CPU/内存、从加速器信号读取 GPU 利用率，将 Pod 名掩码为副本索引，向 `service_resource_metrics` 写入每（服务、副本、采样）一行（AD2）。配置了 Prometheus 时整体跳过（AD11） |
-| | `pod_lister.go` | `NewPodLister` —— 推理服务与 Prometheus 之间的连接键：解析带 `go-taas.com/service-id` 标签的 Pod，并由 Pod 名推导 `replica-N`（Deployment 无法为每个副本单独设标签），同时给出用于利用率分母的 CPU/内存配额 |
+| | `pod_lister.go` | `NewPodLister` —— 推理服务与 Prometheus 之间的连接键：解析带 `go-taas.com/service-id` 标签的 Pod，并由 Pod 名推导 `replica-N`（服务工作负载不为每个副本单独设标签），同时给出用于利用率分母的 CPU/内存配额 |
 | `pkg/errors` | `codes.go`/`messages.go` | `CodeServiceMetricsInvalid`（12101）常量 + 规范消息 "invalid service metric or replica filter"（AD9） |
 | `pkg/config` | `api.go`/`configuration.go` | `ResourceMetricsConfig` + `maxRangeSeconds`（第 9 节）+ `applyDefaults`/`Validate`；`ControllerResourceMetricsConfig` + `sampleInterval` |
 | `apps/taas-server` | `main.go` | 注册新 `ResourceMetricsService`；将 `tenancy` RoleGuard 接入 resourcemetrics 服务 |

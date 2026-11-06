@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、端用户批量页面 `/batch`、管理员批量页面 `/admin/batch`、页面 → API 面映射表、编号验收标准 |
 | 所属模块 | `batch`（新增——拥有批量任务生命周期、JSONL 输入/输出文件存储、异步批量 worker）、`infer`（只读：批量 worker 调用的推理端点）、`metering`（只读：批量任务的按请求 token/成本归因）、`pkg/server` 网关（用户面与管理面绑定）、`web` 端用户控制台（`UserShell` 中的 `BatchPage`）与管理控制台（`AdminShell` 中的 `AdminBatchPage`） |
 | 相关文档 | [架构设计](./architecture.md) —— §2.5 `metering`、§2.6 `billing`、§3.1（管理面/用户面分离）· [请求日志与 API 游乐场](./request-logs-playground.md) —— 同源的推理面及其请求日志约定 · [账单报表与 CSV 导出](./billing-reports.md) —— 同源的异步任务与 Excel 友好 CSV 约定 · [数据导出与隐私](./data-export-privacy.md) —— 同源的异步任务生命周期与租户隔离约定 · [控制台面分离](./console-surface-separation.md) —— 本功能所在的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交给架构师智能体 |
+| 状态 | 已实现 |
 
 ---
 

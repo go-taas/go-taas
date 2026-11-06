@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-32: the `is_active` column on `model_versions`, the `ListModelVersions` and `ActivateModelVersion` RPCs on `ModelService`, the `UpdateInferenceServiceVersion` RPC on `InferServiceService`, the admin Model Versions page (`/admin/models/:modelId/versions`), plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `model` (version history, activation, registration), `infer` (in-place version change / rollback of an inference service), `controller` (reconcile a version-change event), `web` admin console (`ModelVersionsPage`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/model-versioning.md) · [Architecture Design](../design/architecture.md) §2.2 (`model`), §2.4 (`infer`), §3.1 (admin/user surface separation) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the catalog, the `model_versions` table, the deploy form, and the delete+recreate rule) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the `AdminShell` conventions, the masked-projection rule) · [Deployment History & Audit](./deployment-history-audit.md) (the sibling deployment-level rollback surface) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

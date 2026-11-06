@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-14: the payment channel registry with a mock channel, the idempotent payment-intent flow, invoice generation and download from settled bills, and per-account auto-recharge threshold rules with a daily cap, building on the balance-quota account core (feature #8) |
 | Owning modules | `billing` (payment channels, payment intents, invoices, auto-recharge runner), `web` (admin console payment/invoice pages) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/payments-invoices-auto-recharge.md) · [Balance (Prepaid) & Quota (Postpaid)](./balance-quota.md) — the account core this feature builds on (its non-goals defer payments, invoices and auto-recharge here) · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) — the charge engine and bills this feature invoices |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

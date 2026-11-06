@@ -6,7 +6,7 @@
 | 文档范围 | 特性-12 的架构与详细设计：按请求的 `request_logs` 表及其查询 API（增量 A），以及经控制网关代理 RPC 发送测试推理的控制台 API 调试台（增量 B），外加错误处理、配置、发布，以及各层的函数级设计 |
 | 归属模块 | `metering`（请求日志采集、列表/详情查询、保留）、`infer`（调试台代理 RPC）、控制台 Web 应用；`auth`（API Key 身份）只读 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/request-logs-playground.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.5 节（`metering`）、第 2.6 节（`billing`）、第 4.3 节（计量/结算时序） · [Token 计量凭证与异步结算](./metering.zh-cn.md)（本特性以请求元数据扩展的凭证管道） · [用量看板与按请求成本归因](./usage-dashboard.zh-cn.md)（归因成本的看板；其非目标将完整请求上下文的所有权命名为特性-12） · [API Key 管理](./api-key-management.zh-cn.md)（每条日志行上的键身份） |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 

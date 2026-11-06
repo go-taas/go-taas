@@ -6,7 +6,7 @@
 | 文档范围 | 特性-23 的架构与详细设计：新增 `webhook` 模块，拥有 webhook 端点 CRUD、事件订阅、HMAC 签名、重试与投递日志；`webhooks` 与 `webhook_deliveries` 表；`taas.webhook.v1.WebhookService` proto，带管理面/用户面双 HTTP 绑定；`webhook.events` MQ 主题与产生模块的发布点；管理面 Webhooks 页面（`/admin/webhooks`、`/admin/webhooks/:webhookId`）与终端用户面 Webhooks 页面（`/webhooks`、`/webhooks/:webhookId`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 归属模块 | 新增 `webhook` 模块（`services/webhook`）：`webhooks` + `webhook_deliveries` 表、CRUD/查询 RPC、事件订阅、签名器、投递器、投递运行器、保留运行器；`infer` 与 `billing`（向 `webhook.events` 发布事件目录）；`audit`（webhook 变更被审计）；`pkg/mq`（新增 `WebhookEvents` 主题）；`pkg/server` 网关（管理前缀与用户前缀绑定）；控制台 web 应用（管理面 `WebhooksPage`/`WebhookDetailPage`，终端用户面 `UserWebhooksPage`/`UserWebhookDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/webhook-notifications.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 1.2 节（消息队列）、第 2 节（模块职责）、第 3.1 节（管理面/用户面分离）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面；realm 守卫，10038）· [审计日志](./audit-logging.zh-cn.md)（webhook 变更必须调用的审计记录器）· [推理自动扩缩](./inference-autoscaling.zh-cn.md)（本特性订阅的自动扩缩事件）· [支付、发票与自动充值](./payments-invoices-auto-recharge.zh-cn.md)（账单/发票事件）· [余额与配额](./balance-quota.zh-cn.md)（余额不足与消费限额事件） |
-| 状态 | 架构完成，已移交开发者代理 |
+| 状态 | 已实现 |
 
 ---
 

@@ -6,7 +6,7 @@
 | 文档范围 | 两个增量的需求分析与 UI/UX 设计：**增量 A** — API Key 上的按 Key `rate_limit_rpm` / `rate_limit_tpm`，在数据面网关经 `VerifyAPIKey` 响应执行；**增量 B** — 计费账户上的跨模式 `monthly_spend_limit_cents`，在 `CheckFunds` 中执行。覆盖控制台 API Keys 与 Accounts 页面、API 面与验收标准 |
 | 归属模块 | `auth`（Key 限流字段、`UpdateAPIKey`）、`billing`（消费上限字段、`CheckFunds` 执行、结算增量、周期重置）、`infer`（网关执行点）、`metering`（不变）；控制台 Web 应用 |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.1 节 `auth`、第 2.6 节 `billing`、第 3.3 节推理网关的 API Key 认证链 · [API Key 生命周期管理](./api-key-management.zh-cn.md) — 被扩展的 `api_keys` 表与 `VerifyAPIKey` · [余额（预付费）与配额（后付费）账户模式](./balance-quota.zh-cn.md) — 被扩展的计费账户、`CheckFunds` 与 10502 · [用量看板与按请求成本归因](./usage-dashboard.zh-cn.md) — 将呈现消费上限进度的余额/配额组件 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -37,7 +37,7 @@
 | --- | --- | --- |
 | D1 | **限流位于 API Key 上**，为 `rate_limit_rpm` 与 `rate_limit_tpm`（int64，**0 = 无上限**），存于 `api_keys` 并由 `VerifyAPIKey` 返回，使网关**无需任何新增数据面往返**即可执行 | Key 是智能体每次请求呈现的单位；网关已调用 `VerifyAPIKey`，因此裁决搭该响应返回（OpenAI/Together 模式） |
 | D2 | **执行在数据面网关**（每 Key 一个 token bucket，以 `key_id` 为键），而非控制面；`VerifyAPIKey` 响应携带限制，网关本地应用 | 控制面执行看不到热路径；网关本地 bucket 不增加按请求 RPC，保持数据路径快速（D1） |
-| D3 | **限流拒绝为 HTTP 429 带 `Retry-After`**，映射自新错误码 **10015 `CodeRateLimitExceeded`** — 区别于 10502/402 资金 | 行业可识别的错误（OpenAI `rate_limit_exceeded`）；SDK 已遵循 `Retry-After`；绝不与资金混淆 |
+| D3 | **限流拒绝为 HTTP 429 带 `Retry-After`**，映射自新错误码 **10037 `CodeRateLimitExceeded`** — 区别于 10502/402 资金 | 行业可识别的错误（OpenAI `rate_limit_exceeded`）；SDK 已遵循 `Retry-After`；绝不与资金混淆 |
 | D4 | **新增 `UpdateAPIKey` RPC**（`PUT /api/v1/admin/auth/api-keys/{key_id}`）在创建后编辑 `name`、`expires_at`、`rate_limit_rpm`、`rate_limit_tpm`；它绝不返回明文，也绝不改动密钥 | 竞品不提供就地密钥轮换（api-key D5），但限流与过期必须无需重建 Key 即可调整；明文保持一次性（api-key D2） |
 | D5 | **组织消费上限是跨模式月度封顶** — 计费账户上的 `monthly_spend_limit_cents`（int64，**0 = 无上限**），在 `CheckFunds` 中执行，与 `mode` 无关；它**区别于后付费 `monthly_quota_cents`** | 消费上限是覆盖既有资金之上的安全网（Anthropic/OpenAI 模式）；后付费配额是模式专属的记账字段，消费上限是跨模式护栏 — 两个概念、两个字段 |
 | D6 | **`spent_this_cycle_cents` 与模式无关** — 结算对预付费与后付费一视同仁地递增它（与模式专属的 `balance_cents` 递减 / `used_this_cycle_cents` 递增并列），既有周期 runner 在 UTC 月度边界重置它 | 消费上限必须封顶总消费，无论其如何被出资；复用既有周期 runner（balance-quota D6）保持单一重置节奏 |
@@ -46,7 +46,7 @@
 
 ## 2. 目标与非目标
 
-**目标**：`api_keys` 上的按 Key `rate_limit_rpm` / `rate_limit_tpm`，由 `VerifyAPIKey` 返回并在网关以 429 + `Retry-After`（10015）执行；新增 `UpdateAPIKey` RPC 以在创建后编辑限流/名称/过期；计费账户上的跨模式 `monthly_spend_limit_cents` 与 `spent_this_cycle_cents`，在 `CheckFunds`（10502/402）中执行并在结算时递增；控制台 API Keys 创建/编辑对话框带 RPM/TPM 字段与限流列，以及 Accounts 消费上限字段带进度条。
+**目标**：`api_keys` 上的按 Key `rate_limit_rpm` / `rate_limit_tpm`，由 `VerifyAPIKey` 返回并在网关以 429 + `Retry-After`（10037）执行；新增 `UpdateAPIKey` RPC 以在创建后编辑限流/名称/过期；计费账户上的跨模式 `monthly_spend_limit_cents` 与 `spent_this_cycle_cents`，在 `CheckFunds`（10502/402）中执行并在结算时递增；控制台 API Keys 创建/编辑对话框带 RPM/TPM 字段与限流列，以及 Accounts 消费上限字段带进度条。
 
 **非目标**：按 Key QPS 或并发限制（仅 RPM/TPM）；突发/补充调优或 token-bucket 配置 UI；限流档位或套餐；按模型或按端点的限流；消费上限告警/通知；触顶自动上调或自动充值；按请求冻结（10506 保持预留）；租户自助限制管理（#6/#7 范围）；对结算、计费或计量管道的任何改动，超出消费上限增量之外。
 
@@ -87,7 +87,7 @@
 
 #### FR-A3 — 网关执行
 
-- **FR-A3.1** 网关为每个 `key_id` 维护一个 token bucket（RPM 与 TPM 相互独立）。每次请求它检查 `VerifyAPIKey` 响应中的限制；超出任一即返回 **HTTP 429 带 `Retry-After`**（到 bucket 补充为止的秒数），映射自 **10015 `CodeRateLimitExceeded`**（D3）。
+- **FR-A3.1** 网关为每个 `key_id` 维护一个 token bucket（RPM 与 TPM 相互独立）。每次请求它检查 `VerifyAPIKey` 响应中的限制；超出任一即返回 **HTTP 429 带 `Retry-After`**（到 bucket 补充为止的秒数），映射自 **10037 `CodeRateLimitExceeded`**（D3）。
 - **FR-A3.2** 两个限制都为 0（无上限）的 Key 永不被限流；对它的 bucket 检查完全跳过（无热路径成本）。
 - **FR-A3.3** 限流检查在资金检查**之前**运行，因此被限流的 Key 到不了 `CheckFunds`（D8）。
 
@@ -165,7 +165,7 @@ sequenceDiagram
     DGW->>Auth: VerifyAPIKey（key digest）
     Auth-->>DGW: org / KeyID / rate_limit_rpm / rate_limit_tpm
     alt Key 被限流（RPM 或 TPM bucket 耗尽）
-        DGW-->>Agent: 429 RATE_LIMIT_EXCEEDED (10015) + Retry-After
+        DGW-->>Agent: 429 RATE_LIMIT_EXCEEDED (10037) + Retry-After
     else 在限制内
         DGW->>Bill: CheckFunds（组织，缓存 5 秒）
         alt 消费上限触顶或资金耗尽
@@ -186,7 +186,7 @@ sequenceDiagram
 | --- | --- | --- |
 | AC-A1 | **带限制创建** — 给定管理员以 `rate_limit_rpm = 100` 与 `rate_limit_tpm = 50000` 创建 Key，当 `CreateAPIKey` 成功时，则存储的 Key 携带两个字段且 `ListAPIKeys`/`VerifyAPIKey` 返回它们；负值被拒绝 | 单元 + FVT |
 | AC-A2 | **更新 Key** — 给定既有 Key，当 `UpdateAPIKey`（`PUT .../api-keys/{key_id}`）变更其 RPM/TPM/名称/过期时，则字段持久化且响应不含明文；更新另一组织的 Key 返回「未找到」 | 单元 + FVT |
-| AC-A3 | **网关 429** — 给定 `rate_limit_rpm = 1` 的 Key，当同一分钟内到达两个请求时，则第二个返回 HTTP 429 带 `Retry-After` 与码 10015；两个限制都为 0 的 Key 永不被限流 | FVT + E2E |
+| AC-A3 | **网关 429** — 给定 `rate_limit_rpm = 1` 的 Key，当同一分钟内到达两个请求时，则第二个返回 HTTP 429 带 `Retry-After` 与码 10037；两个限制都为 0 的 Key 永不被限流 | FVT + E2E |
 | AC-A4 | **429 先于 402** — 给定被消费封顶组织上的被限流 Key，当请求到达时，则网关返回 429（限流）且到不了资金检查 | FVT |
 | AC-B1 | **设置消费上限** — 给定管理员经 `CreateAccount`/`UpdateAccount` 设置 `monthly_spend_limit_cents = 100000`，当读取账户时，则 `GetAccount`/`ListAccounts` 返回该限制与 `spent_this_cycle_cents`；负值被拒绝 | 单元 + FVT |
 | AC-B2 | **在 CheckFunds 执行** — 给定 `spent_this_cycle_cents ≥ monthly_spend_limit_cents` 的组织，当 `CheckFunds` 运行时，则它对预付费与后付费一视同仁地以 10502/402 拒绝；限制为 0 的组织永不被消费封顶 | FVT + E2E |
@@ -238,7 +238,7 @@ auth 段 10001–10099 与 billing 段 10501–10599（`pkg/errors/codes.go`）�
 
 | 条件 | 码 | 常量 | 备注 |
 | --- | --- | --- | --- |
-| Key 限流超限（RPM 或 TPM） | 10015 | `CodeRateLimitExceeded` | **新增**（D3）；HTTP 429 + `Retry-After` |
+| Key 限流超限（RPM 或 TPM） | 10037 | `CodeRateLimitExceeded` | **新增**（D3）；HTTP 429 + `Retry-After` |
 | 推理被阻断 — 消费上限触顶、余额耗尽，或 `block` 下配额超限 | 10502 | `CodeInsufficientFunds` | **复用**（D7）；HTTP 402 |
 | Key 未找到 / `UpdateAPIKey` 上另一组织的 Key | 10004 | `CodeKeyNotFound` | 既有所有权检查 |
 | 畸形账户 — 负消费上限 | 10509 | `CodeAccountInvalid` | 既有（balance-quota D10） |

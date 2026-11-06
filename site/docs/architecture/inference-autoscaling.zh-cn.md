@@ -6,7 +6,7 @@
 | 文档范围 | 推理服务自动水平扩缩容与缩容到零的架构与详细设计：自动扩缩容策略数据模型（全局默认 + 按服务）、admin `/api/v1/admin/*` API 面（策略 CRUD、按服务自动扩缩容配置、扩展的服务创建/列表/详情）、用户 `/api/v1/*` 只读面、Controller 的 AIBrix PodAutoscaler/缩容到零调和循环、两个控制台的前端页面、面/认证映射、错误处理、配置、安全、发布说明与分层函数级设计 |
 | 归属模块 | `infer`（推理服务上的自动扩缩容策略、策略 RPC、状态投影）、`model`（用户面自动扩缩容投影）、`internal/controller`（AIBrix PodAutoscaler 调和、缩容到零调度、自动扩缩容状态回报）、`pkg/errors`（10307）、`web/`（两个控制台） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/inference-autoscaling.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.4 节（`infer`）、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本特性点所扩展的推理服务生命周期 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性点遵循的双面规则与 realm 守卫 · [用量看板与按请求成本归因](./usage-dashboard.zh-cn.md) — 用户面模型列表模式 |
-| 状态 | 架构完成，已移交 Developer agent |
+| 状态 | 已实现 |
 
 ---
 

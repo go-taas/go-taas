@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface error analysis page for `/admin/errors` (fleet-wide error aggregation + top causes + error-rate trend + per-error drill-down), the end-user-surface error analysis page for `/errors` (tenant-scoped error aggregation + top causes + error-rate trend + per-error drill-down), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `metering` (read-only aggregation over `request_logs` for error metrics), `web` admin console (`ErrorAnalysisPage`) and end-user console (`UserErrorAnalysisPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering` · [Request Logs & API Playground](./request-logs-playground.md) — the `request_logs` table and its `status` / `error` fields this feature aggregates · [Model Observability Dashboard](./model-observability.md) — the sibling read-only aggregation over `request_logs` and its error-rate metric · [Request Tracing & Latency Breakdown](./request-tracing.md) — the sibling per-request drill-down this feature complements with error aggregation · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -224,7 +224,7 @@ Error codes (error-analysis block 11501–11599, `pkg/errors/codes.go`):
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
 | An unknown `error_code` | 11501 | `CodeErrorCauseNotFound` | **New** (D8) |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused (D4) — the metering range contract |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused (D4) — the metering range contract |
 | Database / infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria

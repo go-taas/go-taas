@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface matrix page design for `/admin/compatibility`, the end-user-surface compatibility display on `/models/:modelId`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `image` (owns the adaptation matrix per architecture §2.3), consuming the card-type inventory from the accelerator-inventory projection (feature #18) and the engine set from the image catalog (feature #3); `web` admin console (`CompatibilityPage`) and end-user console (`ModelDetailPage`); `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.3 image module owns the image × card-type × engine × model-format adaptation matrix · [Accelerator Inventory & Health](./accelerator-inventory.md) — the card-type inventory this matrix is seeded from · [Image Management](./image-management.md) — the engine set and the deferred card-type-level matrix cells · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the model dimension and the deploy form that must consult the matrix · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

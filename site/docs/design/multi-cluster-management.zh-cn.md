@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/clusters`（集群列表）与 `/admin/clusters/:clusterId`（集群详情）管理面集群页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `cluster`（新增 — 拥有集群注册表与集群健康投影）、`infer`（只读：工作负载放置与跨集群路由）、`controller`（只读：每集群健康采集与快照发布）、`pkg/server` 网关（管理前缀绑定）、`web` 管理控制台（`ClustersPage`、`ClusterDetailPage`） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.4 节 `infer`、第 2.7 节 Controller、第 4.2 节一键部署流程 · [加速器清单与健康](./accelerator-inventory.md) — 本特性复用的 Controller → MQ → 服务投影模式与内存缓存 · [系统健康与服务状态](./system-health-status.md) — 本特性扩展到集群的组件健康约定 · [模型目录与一键部署](./model-catalog-deployment.md) — 本特性路由扩展的推理服务生命周期与部署表单 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做多集群管理
 
-go-taas 在单集群上把推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2）：Controller 创建 Deployment 与 Service，加速器清单（特性 #18）上报每节点 GPU 健康。控制台仍无法做的是*跨多个集群运行推理*：拥有第二个集群（不同区域、不同加速器集群或突发容量池）的运营者无法注册它、查看其健康、查看哪些服务运行其上、或选择新部署落在哪里。运营者必须分别管理每个集群的 Kubernetes API 并手工路由部署 — 这是控制台应当拥有的运营者编排逃生通道。
+go-taas 在单集群上把推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，加速器清单（特性 #18）上报每节点 GPU 健康。控制台仍无法做的是*跨多个集群运行推理*：拥有第二个集群（不同区域、不同加速器集群或突发容量池）的运营者无法注册它、查看其健康、查看哪些服务运行其上、或选择新部署落在哪里。运营者必须分别管理每个集群的 Kubernetes API 并手工路由部署 — 这是控制台应当拥有的运营者编排逃生通道。
 
 本特性新增**多集群管理**：注册与管理推理集群、查看集群健康与工作负载放置、并跨集群路由部署。这是 Phase 4 生产化路线图项中最小可独立交付的增量：它把「我有第二个集群」变成「注册它，查看其健康与运行内容，并选择每个部署落在哪里」。
 

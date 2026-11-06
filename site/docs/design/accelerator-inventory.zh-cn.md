@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/accelerators` 管理面页面设计、页面 → API 面对照表，以及编号可测的验收标准 |
 | 归属模块 | `web` 管理控制台（`AcceleratorsPage`）、`pkg/server` 网关（admin 前缀绑定）、新增的加速器清单服务或对 `infer`/`image` 的扩展（节点 + GPU 清单投影）、`Controller`（节点/GPU 状态采集）、`k8s`（节点、设备插件与扩展资源读取） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.3 节异构计算、第 2.4 节镜像模块、第 2.7 节 Controller · [镜像管理](./image-management.zh-cn.md) — 本特性提供的「节点清单」、预热任务按节点结果 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 卡型（`accelerator_type`）与加速器选择 · [推理自动扩缩容](./inference-autoscaling.zh-cn.md) — 节点级容量上下文 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本页面所在的管理面 |
-| 状态 | 设计完成，已交付架构师智能体 |
+| 状态 | 已实现 |
 
 ---
 
@@ -136,7 +136,7 @@ go-taas 在**异构加速器**上提供推理服务 —— NVIDIA GPU、Iluvatar
 
 **目的**：展示单个节点的一切 —— 逐 GPU 明细、驱动/设备插件健康信号、标签/污点、预热任务上下文 —— 让运维能诊断失败或确认容量。
 
-**面**：admin —— 路由 `/admin/accelerators/:nodeId`，API `/api/v1/admin/accelerators/{node_id}`。
+**面**：admin —— 路由 `/admin/accelerators/:nodeId`，API `/api/v1/admin/accelerators/nodes/{node_id}`。
 
 **布局**：`AdminShell` 下的详情页，带返回列表的返回链接。头部为节点名与复合健康徽章。下方堆叠卡片：
 

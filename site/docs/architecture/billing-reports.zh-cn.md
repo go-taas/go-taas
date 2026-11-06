@@ -6,7 +6,7 @@
 | 文档范围 | 特性-25 的架构与详细设计：异步报表生成任务模型、报表/定时数据模型、CSV 渲染契约、带运行历史的定时报表运行器、管理面与终端用户面计费报表页面、页面 → 路由 → API 前缀映射表、面与鉴权映射 |
 | 归属模块 | `billing`（扩展 — 拥有对 `charge_records` 的报表生成、CSV 渲染与定时执行），`web`（管理控制台 `AdminBillingReportsPage` 与终端用户控制台 `UserBillingReportsPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/billing-reports.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) — 第 2.5 节 `metering`、第 2.6 节 `billing` · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 姊妹只读仪表盘及其 `charge_records` 聚合 · [支付、发票与自动充值](./payments-invoices-auto-recharge.zh-cn.md) — 本特性报告的发票与成本货币模型 · [计量凭证与异步结算](./metering.zh-cn.md) — 本特性可聚合的 `usage_records` · [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md) — `request_logs` 表 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 · [模型可观测性](./model-observability.zh-cn.md) — 姊妹只读聚合及其 service/repository/runner 约定 |
-| 状态 | 架构完成，已移交开发者代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -28,7 +28,7 @@
 | AD4 | **定时报表复用相同的报表定义加频率。** 定时持有报表定义（维度、粒度与**相对**范围，如「最近 7 天」或「上月」）与频率（`daily` / `weekly` / `monthly`）。每次定时运行在相同的历史列表中产生一份报表，带自己的状态与下载 | 定时只是按节奏运行的报表定义；复用定义使构建器与定时保持一致，运行历史就是用户已知的同一报表历史（设计 D4） |
 | AD5 | **CSV 对 Excel 友好且时区显式。** CSV 为带 BOM 的 UTF-8、带引号字段、有表头行，并有 `timezone` 列；报表时区在构建时选择并应用于每个桶。CSV 存储在报表行的 `csv` 文本列中 | Excel 是计费导出最常见的消费者；BOM 与带引号字段防止乱码与逗号拆分。显式时区避免对账陷阱。将 CSV 存储在报表行上使下载成为单行读取，并符合「仅写入报表产物」（设计 D5、D8） |
 | AD6 | **终端用户面是租户作用域且掩码。** 用户前缀的 `CreateReport` 只接受调用者自己的组织与自己的 API 密钥；用户前缀的 `organization` 维度为调用者组织产生单行。用户报表中绝不出现其他租户数据 | 遵循特性 #17 的掩码投影规则：租户报表绝不能泄露另一租户的用量。管理面是唯一可构建跨租户报表之处（设计 D6） |
-| AD7 | **计费报表块（10901–10999）中的新错误码。** **10901 `CodeReportNotFound`**、**10902 `CodeScheduleNotFound`**、**10903 `CodeReportInvalidDimension`**、**10904 `CodeReportInvalidGranularity`**、**10905 `CodeReportInvalidFrequency`**、**10906 `CodeReportNameConflict`**、**10907 `CodeReportNotReady`**。范围校验复用 **10404**（计量范围契约），报表上限为 366 天 | 设计文档「可观测性块（107xx）之后的新块」的意图通过取**可观测性 108xx 之后的下一个空闲块**来兑现 — 可观测性已拥有 10801（特性 #24，e2e 通过）。每个模块有自己的错误块（`pkg/errors/codes.go`）；计费报表取 109xx。这是与现有架构最一致的解读（设计 D7，细化） |
+| AD7 | **计费报表块（10901–10999）中的新错误码。** **10901 `CodeReportNotFound`**、**10902 `CodeScheduleNotFound`**、**10903 `CodeReportInvalidDimension`**、**10904 `CodeReportInvalidGranularity`**、**10905 `CodeReportInvalidFrequency`**、**10906 `CodeReportNameConflict`**、**10907 `CodeReportNotReady`**。范围校验复用 **10404**（计量范围契约），报表上限为 366 天 | 设计文档「可观测性块（108xx）之后的新块」的意图通过取**可观测性 108xx 之后的下一个空闲块**来兑现 — 可观测性已拥有 10801（特性 #24，e2e 通过）。每个模块有自己的错误块（`pkg/errors/codes.go`）；计费报表取 109xx。这是与现有架构最一致的解读（设计 D7，细化） |
 | AD8 | **计费报表只读，且对访问与生成审计。** 报表生成与定时变更被审计（特性 #15）为 `billing.report.generate` / `billing.schedule.create` / `billing.schedule.update` / `billing.schedule.delete`；底层用量已由计量写入审计。计费流水线无变化 | 该特性聚合现有数据，仅写入报表产物与定时；审计追踪（特性 #15）已覆盖底层用量写入，因此只需为新的报表/定时动作新增审计事件（设计 D8）。动作名遵循仓库约定 `<module>.<resource>.<verb>`（如 `billing.account.create`、`webhook.create`），细化了设计的 `report.generated`/`schedule.created` 措辞 |
 
 ## 3. 组件设计

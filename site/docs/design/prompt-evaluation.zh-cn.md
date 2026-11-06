@@ -6,7 +6,7 @@
 | 文档范围 | 终端用户评测套件、测试用例、运行执行结果、运行比较、精确的页面/API 映射和验收标准 |
 | 所属模块 | `prompt`（只读来源：已保存的提示词及不可变版本）、`evaluation`（新增：套件、用例、运行、确定性检查和结果）、`infer`（计量后的模型执行）、`web` 终端用户控制台 |
 | 相关文档 | [提示词管理](./prompt-management.zh-cn.md)、[请求日志与 API Playground](./request-logs-playground.zh-cn.md)、[Playground 模型比较](./playground-comparison.zh-cn.md)、[控制台面分离](./console-surface-separation.zh-cn.md) |
-| 状态 | 设计完成，待移交给架构师 |
+| 状态 | 已实现 |
 
 ---
 

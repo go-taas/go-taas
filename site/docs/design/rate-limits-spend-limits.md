@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for two increments: **Increment A** — per-key `rate_limit_rpm` / `rate_limit_tpm` on API keys, enforced at the data-plane gateway via the `VerifyAPIKey` response; **Increment B** — a cross-mode `monthly_spend_limit_cents` on the billing account, enforced in `CheckFunds`. Covers the console API Keys and Accounts pages, the API surface, and acceptance criteria |
 | Owning modules | `auth` (key rate-limit fields, `UpdateAPIKey`), `billing` (spend-limit fields, `CheckFunds` enforcement, settlement increment, cycle reset), `infer` (gateway enforcement point), `metering` (unchanged); console web app |
 | Related documents | [Architecture Design](./architecture.md) — §2.1 `auth`, §2.6 `billing`, §3.3 the Inference Gateway's API Key authentication chain · [API Key Lifecycle Management](./api-key-management.md) — the `api_keys` table and `VerifyAPIKey` being extended · [Balance (Prepaid) & Quota (Postpaid) Account Modes](./balance-quota.md) — the billing account, `CheckFunds`, and 10502 being extended · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the balance/quota widget that will surface spend-limit progress |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -37,7 +37,7 @@ Pitfalls to avoid: conflating rate-limit (429) with funds (402) errors; enforcin
 | --- | --- | --- |
 | D1 | **Rate limits live on the API key** as `rate_limit_rpm` and `rate_limit_tpm` (int64, **0 = unlimited**), stored on `api_keys` and returned by `VerifyAPIKey` so the gateway enforces them **without any new data-plane round trip** | The key is the unit the agent presents on every request; the gateway already calls `VerifyAPIKey`, so the verdict rides that response (the OpenAI/Together pattern) |
 | D2 | **Enforcement is at the data-plane gateway** (a token bucket per key, keyed by `key_id`), not the control plane; the `VerifyAPIKey` response carries the limits and the gateway applies them locally | Control-plane enforcement cannot see the hot path; gateway-local buckets add no per-request RPC and keep the data path fast (D1) |
-| D3 | **Rate-limit rejection is HTTP 429 with `Retry-After`**, mapped from new error code **10015 `CodeRateLimitExceeded`** — distinct from 10502/402 funds | The recognizable industry error (OpenAI `rate_limit_exceeded`); SDKs already honor `Retry-After`; never conflated with funds |
+| D3 | **Rate-limit rejection is HTTP 429 with `Retry-After`**, mapped from new error code **10037 `CodeRateLimitExceeded`** — distinct from 10502/402 funds | The recognizable industry error (OpenAI `rate_limit_exceeded`); SDKs already honor `Retry-After`; never conflated with funds |
 | D4 | **A new `UpdateAPIKey` RPC** (`PUT /api/v1/admin/auth/api-keys/{key_id}`) edits `name`, `expires_at`, `rate_limit_rpm`, `rate_limit_tpm` post-creation; it never returns the plaintext and never changes the secret | Comparable products offer no in-place secret rotation (api-key D5), but rate limits and expiry must be adjustable without recreating a key; the plaintext stays one-time (api-key D2) |
 | D5 | **The org spend limit is a cross-mode monthly cap** — `monthly_spend_limit_cents` (int64, **0 = unlimited**) on the billing account, enforced in `CheckFunds` regardless of `mode`; it is **distinct from the postpaid `monthly_quota_cents`** | A spend cap is a safety net over whatever funds exist (Anthropic/OpenAI pattern); the postpaid quota is a mode-specific accounting field, the spend limit is a cross-mode guardrail — two concepts, two fields |
 | D6 | **`spent_this_cycle_cents` is mode-agnostic** — settlement increments it for prepaid and postpaid alike (alongside the mode-specific `balance_cents` decrement / `used_this_cycle_cents` increment), and the existing cycle runner resets it at the UTC month boundary | The spend limit must cap total spend regardless of how it was funded; reusing the existing cycle runner (balance-quota D6) keeps one reset cadence |
@@ -46,7 +46,7 @@ Pitfalls to avoid: conflating rate-limit (429) with funds (402) errors; enforcin
 
 ## 2. Goals and Non-goals
 
-**Goals**: per-key `rate_limit_rpm` / `rate_limit_tpm` on `api_keys`, returned by `VerifyAPIKey` and enforced at the gateway with 429 + `Retry-After` (10015); a new `UpdateAPIKey` RPC to edit rate limits/name/expiry post-creation; a cross-mode `monthly_spend_limit_cents` and `spent_this_cycle_cents` on the billing account, enforced in `CheckFunds` (10502/402) and incremented at settlement; console API Keys create/edit dialogs with RPM/TPM fields and a rate-limit column, and an Accounts spend-limit field with a progress bar.
+**Goals**: per-key `rate_limit_rpm` / `rate_limit_tpm` on `api_keys`, returned by `VerifyAPIKey` and enforced at the gateway with 429 + `Retry-After` (10037); a new `UpdateAPIKey` RPC to edit rate limits/name/expiry post-creation; a cross-mode `monthly_spend_limit_cents` and `spent_this_cycle_cents` on the billing account, enforced in `CheckFunds` (10502/402) and incremented at settlement; console API Keys create/edit dialogs with RPM/TPM fields and a rate-limit column, and an Accounts spend-limit field with a progress bar.
 
 **Non-goals**: per-key QPS or concurrency limits (RPM/TPM only); burst/refill tuning or token-bucket configuration UI; rate-limit tiers or plans; per-model or per-endpoint rate limits; spend-limit alerts/notifications; auto-raise or auto-recharge on limit; per-request holds (10506 stays reserved); tenant self-service limit management (#6/#7 scoping); any change to the settlement, charging, or metering pipelines beyond the spend-limit increment.
 
@@ -87,7 +87,7 @@ Pitfalls to avoid: conflating rate-limit (429) with funds (402) errors; enforcin
 
 #### FR-A3 — Gateway enforcement
 
-- **FR-A3.1** The gateway maintains a token bucket per `key_id` (RPM and TPM independently). On each request it checks the limits from the `VerifyAPIKey` response; exceeding either returns **HTTP 429 with `Retry-After`** (seconds until the bucket refills), mapped from **10015 `CodeRateLimitExceeded`** (D3).
+- **FR-A3.1** The gateway maintains a token bucket per `key_id` (RPM and TPM independently). On each request it checks the limits from the `VerifyAPIKey` response; exceeding either returns **HTTP 429 with `Retry-After`** (seconds until the bucket refills), mapped from **10037 `CodeRateLimitExceeded`** (D3).
 - **FR-A3.2** A key with both limits 0 (unlimited) is never rate-limited; the bucket check is skipped entirely for it (no hot-path cost).
 - **FR-A3.3** Rate-limit checks run **before** the funds check, so a throttled key never reaches `CheckFunds` (D8).
 
@@ -165,7 +165,7 @@ sequenceDiagram
     DGW->>Auth: VerifyAPIKey (key digest)
     Auth-->>DGW: org / KeyID / rate_limit_rpm / rate_limit_tpm
     alt key rate-limited (RPM or TPM bucket exhausted)
-        DGW-->>Agent: 429 RATE_LIMIT_EXCEEDED (10015) + Retry-After
+        DGW-->>Agent: 429 RATE_LIMIT_EXCEEDED (10037) + Retry-After
     else within limits
         DGW->>Bill: CheckFunds (org, cached 5s)
         alt spend limit reached or funds exhausted
@@ -186,7 +186,7 @@ sequenceDiagram
 | --- | --- | --- |
 | AC-A1 | **Create with limits** — Given an admin creating a key with `rate_limit_rpm = 100` and `rate_limit_tpm = 50000`, When `CreateAPIKey` succeeds, Then the stored key carries both fields and `ListAPIKeys`/`VerifyAPIKey` return them; a negative value is rejected | Unit + FVT |
 | AC-A2 | **Update key** — Given an existing key, When `UpdateAPIKey` (`PUT .../api-keys/{key_id}`) changes its RPM/TPM/name/expiry, Then the fields persist and the response contains no plaintext; updating a key of another org returns "not found" | Unit + FVT |
-| AC-A3 | **Gateway 429** — Given a key with `rate_limit_rpm = 1`, When two requests arrive within the same minute, Then the second returns HTTP 429 with `Retry-After` and code 10015; a key with both limits 0 is never rate-limited | FVT + E2E |
+| AC-A3 | **Gateway 429** — Given a key with `rate_limit_rpm = 1`, When two requests arrive within the same minute, Then the second returns HTTP 429 with `Retry-After` and code 10037; a key with both limits 0 is never rate-limited | FVT + E2E |
 | AC-A4 | **429 before 402** — Given a rate-limited key on a spend-capped org, When a request arrives, Then the gateway returns 429 (rate limit) and never reaches the funds check | FVT |
 | AC-B1 | **Set spend limit** — Given an admin setting `monthly_spend_limit_cents = 100000` via `CreateAccount`/`UpdateAccount`, When the account is read, Then `GetAccount`/`ListAccounts` return the limit and `spent_this_cycle_cents`; a negative value is rejected | Unit + FVT |
 | AC-B2 | **Enforce at CheckFunds** — Given an org with `spent_this_cycle_cents ≥ monthly_spend_limit_cents`, When `CheckFunds` runs, Then it denies with 10502/402 for prepaid and postpaid alike; an org with limit 0 is never spend-capped | FVT + E2E |
@@ -238,7 +238,7 @@ Auth range 10001–10099 and billing range 10501–10599 (`pkg/errors/codes.go`)
 
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
-| Key rate limit exceeded (RPM or TPM) | 10015 | `CodeRateLimitExceeded` | **New** (D3); HTTP 429 + `Retry-After` |
+| Key rate limit exceeded (RPM or TPM) | 10037 | `CodeRateLimitExceeded` | **New** (D3); HTTP 429 + `Retry-After` |
 | Inference blocked — spend limit reached, balance exhausted, or quota exceeded under `block` | 10502 | `CodeInsufficientFunds` | **Reused** (D7); HTTP 402 |
 | Key not found / another org's key on `UpdateAPIKey` | 10004 | `CodeKeyNotFound` | Existing ownership check |
 | Malformed account — negative spend limit | 10509 | `CodeAccountInvalid` | Existing (balance-quota D10) |

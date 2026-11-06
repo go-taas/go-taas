@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface forecast page for `/admin/forecast`, the end-user-surface forecast page for `/forecast`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `billing` (read-only forecast aggregation over `charge_records`/`usage_records` historical trends, plus the two RPCs), `metering` (read-only: token totals from `usage_records`), `model` (read-only: `model_name` resolution), `auth` (read-only: `api_key_name` resolution, session realm, session active org), `tenancy` (RoleGuard, read-only), `pkg/server` gateway (admin-prefix and user-prefix bindings), console web app (admin `ForecastPage`, end-user `UserForecastPage`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing`, §3.1 (admin/user surface separation) · [Cost Analytics Dashboard](./cost-analytics-dashboard.md) — the sibling read-only aggregation this feature extends with a forecast, and its range/bucket/freshness conventions · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the sibling dashboard and its inline-SVG chart, freshness, range, and group-by conventions · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell`/`UserShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -227,10 +227,10 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused — the metering range contract (FR1.3) |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused — the metering range contract (FR1.3) |
 | Unsupported `dimension` | 11301 | `CodeCostDimensionInvalid` | Reused from cost analytics (FR1.3) |
 | Unknown dimension value | 11302 | `CodeCostDimensionValueNotFound` | Reused from cost analytics (FR1.3) |
-| `horizon_days` > 90 | 10404 | `CodeRequestLogRangeInvalid` | Reused for the horizon validation (FR1.3) |
+| `horizon_days` > 90 | 10404 | `CodeMeteringRangeInvalid` | Reused for the horizon validation (FR1.3) |
 
 ---
 

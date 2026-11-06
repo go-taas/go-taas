@@ -54,7 +54,7 @@ subgraph L3["LAYER 03 · K8s cluster"]
         direction LR
         B1["Aibrix<br/>Distributed runtime, KV cache"]:::dp
         B2["HAMI<br/>Heterogeneous accelerator management, device plugin, scheduling"]:::dp
-        B3["Volcano<br/>Gang scheduling, queues and fair sharing"]:::dp
+        B3["Volcano<br/>Gang scheduling and priority preemption"]:::dp
         B4["GPU / NPU Operator<br/>Drivers, device plugin, topology and health"]:::cell
         B5["Observability stack<br/>Prometheus / OTel / Loki"]:::cell
         B1 ~~~ B2 ~~~ B3 ~~~ B4 ~~~ B5
@@ -360,7 +360,7 @@ below with its responsibility boundary and the feature points it implements
 - Lifecycle management of inference services: desired-state maintenance and change delivery for deployment, scaling, upgrade, and decommissioning;
 - Inference engine adaptation: presents a unified OpenAI-compatible surface that hides engine differences;
 - Health status and available endpoint registration of inference instances, used by the data plane gateway for routing;
-- Quota-aware admission: inference services are created with the administrator-specified replica count and card types, bounded by the organization's service quota (feature #51) and the cluster's available resources.
+- Quota-aware admission: inference services are created with the administrator-specified replica count and card types, bounded by the cluster's available resources. Organization quotas (feature #51) cap concurrent requests, batch jobs per day and output tokens per request; the inference-service count is not a quota dimension.
 
 **External dependencies:** message queue (change delivery), MinIO and JuiceFS (shared mounting of weights and images)
 
@@ -420,7 +420,7 @@ The Inference Gateway is built on **Envoy** and implements the following capabil
 | **Streaming pass-through** | Keeps SSE pass-through with per-event flush, avoiding buffering-induced latency |
 | **Observability** | Uniformly produces access logs and metrics for capacity observation and troubleshooting |
 
-> Note: because authentication and metering are pushed down to gateway Wasm plugins, the platform needs no standalone quota/rate-limiting service. Admission control is applied where the traffic is: per-API-key request-rate limits and per-organization service quotas (max concurrent requests, max inference services, max batch jobs per day, max output tokens per request) are enforced at the inference gateway and on the control-plane create paths, with organization spend limits enforced by the billing chain; the check order is rate → quota → funds.
+> Note: because authentication and metering are pushed down to gateway Wasm plugins, the platform needs no standalone quota/rate-limiting service. Admission control is applied where the traffic is: per-API-key request-rate limits and per-organization service quotas (max concurrent requests, max batch jobs per day, max output tokens per request) are enforced at the inference gateway and on the control-plane create paths, with organization spend limits enforced by the billing chain; the check order is rate → quota → funds.
 
 #### 3.2.1 The plugin pipeline, in order
 
@@ -708,7 +708,7 @@ topology diagram. It has four concerns:
 | Model hubs (ModelScope / HuggingFace) | model | Model weight download into the shared JuiceFS volume |
 | **AIBrix** | Controller · infer · runtime | Distributed inference runtime and the inference gateway: model deployment objects (`ModelClaim`, `PodAutoscaler`), KV-cache-aware routing, and the Envoy proxy that fronts the data plane. Installed as its own Helm release; the chart's `dataPlane` values publish its gateway under the inference hostname |
 | **HAMi** | Controller · vgpu | Heterogeneous accelerator virtualisation: device plugin, per-pod slice scheduling and the placement-policy annotation the controller sets for a shared-GPU service |
-| **Volcano** (`under construction`) | Controller · batch | Gang scheduling, queues and fair sharing for batch jobs and multi-pod inference roles. Optional: plain Kubernetes scheduling is used when it is not installed |
+| **Volcano** (`implemented`) | Controller · batch | Gang scheduling and priority preemption for multi-pod inference roles through a PodGroup per replica. Optional: with `controller.scheduling.schedulerName` empty the cluster's default scheduler is used |
 | **GPU / NPU operators** | Controller · accelerator | Vendor driver, device plugin, topology and health; the accelerator inventory reads the node labels they publish |
 | **Observability stack** (Prometheus · OpenTelemetry · Loki) | observability · tracing · all workloads | Metrics, traces and log aggregation; the console's observability pages read the aggregates the platform already stores |
 | **Inference engines** (vLLM · SGLang · TensorRT-LLM · MindIE · bring-your-own) | Controller · infer | Serve the model behind an OpenAI-compatible API. Registered as an image so a new engine is a registry entry, not a code change |

@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-35: the `CompareModels` RPC on `InferServiceService`, the end-user Playground Compare page (`/playground/compare`), plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `infer` (the compare RPC that runs the same prompt against multiple models and returns per-model latency/token/cost), `model` (read-only: the masked user-realm catalog the compare page's model selector draws from), `auth` (read-only: the active API keys the compare page offers), `web` end-user console (`PlaygroundComparePage`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/playground-comparison.md) · [Architecture Design](../design/architecture.md) §2.4 (`infer`), §3.1 (admin/user surface separation) · [Console Surface Separation](./console-surface-separation.md) (the end-user playground, the `UserShell` conventions, the masked-projection rule) · [Request Logs & API Playground](./request-logs-playground.md) (the existing model-based playground this feature extends into a multi-model comparison) · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) (the cost-attribution model this feature's per-model cost column draws from) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

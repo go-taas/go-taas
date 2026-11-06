@@ -6,7 +6,7 @@
 | 文档范围 | 功能-22 的架构与详细设计：两个新的 `AuthService` RPC（`SSOPasswordLogin`、`SwitchSurface`）及其按表面的精确 `google.api.http` 绑定、基于角色的会话 realm、可配置的管理角色集合、compose 的 Keycloak realm-export.json 与提供商/绑定预置、两个控制台的前端自定义登录页与基于角色的落地和切换按钮、页面 → 路由 → API 前缀映射、错误处理、配置、安全、上线，以及按层的函数级任务清单 |
 | 归属模块 | `services/auth`（密码授权登录、基于角色的 realm、切换表面的会话铸造、提供商/绑定预置）、`pkg/server`（网关 realm 守卫——不变）、`deploy/compose`（Keycloak realm-export.json 预置、提供商预置）、`web/`（自定义登录页、基于角色的落地、切换按钮）、`pkg/config`（管理角色集合）、`pkg/errors`（复用码） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/unified-login-role-routing.md) · [架构设计](../design/architecture.md) §2.1 `auth` 与 §3.1 管理端/用户表面分离 · [SSO 联邦与账号绑定](./sso-federation.md)（IdP 框架、`SSOAuthorize`/`SSOCallback`、身份绑定、属性到角色映射、会话）· [控制台表面分离](./console-surface-separation.md)（两个表面、realm 固定的会话、realm 守卫、本功能替换的登录页、`10038 REALM_MISMATCH` 规则）· [组织成员、角色与邀请](./org-members-rbac.md)（会话携带的、本功能据此路由的角色） |
-| 状态 | 架构完成，已移交给开发者智能体 |
+| 状态 | 已实现 |
 | 实现状态 | **建设中**：微信提供方部分；OIDC/OAuth 2.0 密码模式、SAML、LDAP/LDAPS 与内置本地账号登录已实现。 |
 
 ---

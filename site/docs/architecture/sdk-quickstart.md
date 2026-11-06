@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the quickstart feature: the config-driven user-realm `GET /api/v1/inference-endpoint` read, the four reused RPCs with their exact `google.api.http` bindings per surface, the `QuickstartPage` in the end-user console and its route → API-prefix mapping, the sixth `UserShell` nav item, error handling, configuration, security, rollout, and a function-level task list per layer |
 | Owning modules | `infer` (owns the new `GetInferenceEndpoint` read), `web/` end-user console (`QuickstartPage` in `UserShell`), `pkg/server` gateway (user-prefix binding), `auth` (API-key create/list, reused), `model` (masked model list, reused), `infer` (model-based playground, reused) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/sdk-quickstart.md) · [Architecture Design](../design/architecture.md) §3.2 (data-plane gateway) and §3.3 (API-key authentication chain) · [Console Surface Separation](./console-surface-separation.md) (the end-user surface this page lives on, the masked `GET /api/v1/models` projection, the model-based playground) · [API Key Lifecycle Management](./api-key-management.md) (the create/list surface this page reuses) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the model list this page consumes) · [Request Logs & API Playground](./request-logs-playground.md) (the playground proxy this page reuses for the test request) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

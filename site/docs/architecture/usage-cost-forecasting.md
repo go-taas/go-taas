@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-36: the `GetForecast` RPC on `BillingService` (dual-bound: admin fleet-wide and user tenant-scoped), the deterministic linear-trend forecast with a confidence band, the admin Forecast page (`/admin/forecast`) and the end-user Forecast page (`/forecast`), plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `billing` (read-only forecast aggregation over `charge_records`/`usage_records` historical trends, plus the `GetForecast` RPC), `metering` (read-only: token totals from `usage_records`), `model` (read-only: `model_name` resolution), `auth` (read-only: `api_key_name` resolution, session realm, session active org), `tenancy` (RoleGuard, read-only), `pkg/server` gateway (admin-prefix and user-prefix bindings), console web app (admin `ForecastPage`, end-user `UserForecastPage`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/usage-cost-forecasting.md) · [Architecture Design](../design/architecture.md) §2.5 (`metering`), §2.6 (`billing`), §3.1 (admin/user surface separation) · [Cost Analytics Dashboard](./cost-analytics-dashboard.md) (the sibling read-only aggregation this feature extends with a forecast, and its range/bucket/freshness conventions) · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) (the sibling dashboard and its inline-SVG chart, freshness, range, and group-by conventions) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the `AdminShell`/`UserShell` conventions, the masked-projection rule) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

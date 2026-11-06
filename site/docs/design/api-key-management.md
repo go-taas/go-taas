@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the API Key management capability of the `auth` module: console pages, user flows, API surface, and acceptance criteria |
 | Owning module | `auth` (control plane, served through the Control Gateway) |
 | Related documents | [Architecture Design](./architecture.md) — Section 2.1 `auth` responsibilities and Section 3.3 the Inference Gateway's API Key authentication chain |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

@@ -6,7 +6,7 @@
 | 文档范围 | 为单个模型配置有序的健康推理服务目标和可重试故障，并检查目标健康状态及路由策略行为 |
 | 所属模块 | `infer`（策略与服务资格）、推理网关路由（响应提交前应用策略）、`audit`（策略变更）、`web` 管理端控制台 |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 推理网关路由和 `infer` 端点注册 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 推理服务和模型标识 · [多集群管理](./multi-cluster-management.zh-cn.md) — 集群放置 · [请求追踪](./request-tracing.zh-cn.md) — 请求路径可见性 · [控制台面分离](./console-surface-separation.zh-cn.md) |
-| 状态 | 设计完成，待移交 |
+| 状态 | 已实现 |
 
 ## 1. 背景与竞品调研
 

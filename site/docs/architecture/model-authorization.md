@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-13: the `model_authorizations` table and the default-allow rule, the four `ModelService` RPCs (grant, revoke, list authorizations, org-filtered model list), control-plane enforcement in `CreateInferenceService`, data-plane enforcement in `VerifyAPIKey` (activating the dormant `model` field), activation of the dead code 10105 `CodeModelUnauthorized`, the console "Authorized organizations" panel, the "Restricted" badge, and org-aware deploy filtering, plus error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `model` (the `model_authorizations` table, the four authorization RPCs, the shared `IsModelAuthorized` check), `infer` (control-plane enforcement in `CreateInferenceService`), `auth` (data-plane enforcement in `VerifyAPIKey`, activating the dormant `model` field, the per-(org, model) authorization cache); console web app |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/model-authorization.md) · [Architecture Design](../design/architecture.md) §2.2 (`model`), §2.4 (`infer`), §2.1 (`auth`) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the catalog and `CreateInferenceService` this feature gates (its §1.4 defers tenant-level model authorization here) · [Multi-Tenancy Isolation](./multi-tenancy.md) — the organization entity this feature grants against · [Organization Members, Roles & Invitations (RBAC)](./org-members-rbac.md) — the session identity this feature records as `granted_by` |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -242,7 +242,7 @@ sequenceDiagram
     participant R as Repository
     participant DB as PostgreSQL
     Admin->>Console: Grant org-a access to model M
-    Console->>CGW: POST /api/v1/admin/models/M:grant
+    Console->>CGW: POST /api/v1/admin/models/{model_id}:grant
     CGW->>S: GrantModelAccess(M, org-a)
     S->>S: resolve granted_by from session (AD8)
     S->>R: GrantAccess(M, org-a, grantedBy)

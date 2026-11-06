@@ -6,7 +6,7 @@
 | 文档范围 | 功能 28 的架构与详细设计：`metering` 模块中的只读按密钥分析（通过共享数据库只读读取 `billing` 的 `charge_records`）；`MeteringService` 上的 `GetUsageKeysOverview`（admin 舰队）与 `GetUsageKeys`（双绑定）RPC；admin 用量密钥页面（`/admin/usage/keys`、`/admin/usage/keys/:apiKeyId`）与 end-user 用量密钥页面（`/usage/keys`、`/usage/keys/:apiKeyId`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 拥有模块 | `metering`（对 `request_logs` 与 `usage_records` 的只读聚合以获取按密钥指标，以及两个 RPC）、`billing`（只读：通过共享数据库从 `charge_records` 获取按密钥成本）、`model`（只读：`model_name` 解析）、`auth`（只读：`api_key_name` 解析、会话领域、会话活跃组织）、`tenancy`（RoleGuard，只读）、`pkg/server` 网关（admin 前缀与 user 前缀绑定）、控制台 Web 应用（admin `UsageKeysPage`/`UsageKeyDetailPage`，end-user `UserUsageKeysPage`/`UserUsageKeyDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/api-key-usage-analytics.md) · [架构设计](../design/architecture.md) §2.5（`metering`）、§2.6（`billing`）· [用量仪表盘与按请求成本归因](./usage-dashboard.md)（同类只读仪表盘及其内联 SVG 图表、新鲜度、范围与分组约定）· [模型可观测性仪表盘](./model-observability.md)（对 `request_logs` 的同类只读聚合及其按密钥分解）· [请求日志与 API 游乐场](./request-logs-playground.md)（`request_logs` 表及其本功能聚合的 `api_key_id`/`status`/`error`/token 字段）· [控制台表面分离](./console-surface-separation.md)（本功能跨越的两个表面、`UserShell`/`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

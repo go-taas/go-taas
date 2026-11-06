@@ -6,7 +6,7 @@
 | 文档范围 | 特性-43 的架构与详细设计：新增 `prompt` 模块，拥有提示词生命周期、版本化、文件夹、使用计数器与共享模板库；`prompts`、`prompt_versions`、`prompt_folders` 与 `prompt_templates` 表；`taas.prompt.v1.PromptService` proto，带管理面/用户面双 HTTP 绑定；终端用户面提示词页面（`/prompts`、`/prompts/:promptId`）与管理面提示词页面（`/admin/prompts`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 归属模块 | 新增 `prompt` 模块（`services/prompt`）：`prompts` + `prompt_versions` + `prompt_folders` + `prompt_templates` 表、CRUD/查询 RPC、版本化逻辑、使用计数器、共享模板库；`infer`（只读：提示词引用的模型目录）；`audit`（只读：提示词操作的审计事件）；`pkg/server` 网关（管理前缀与用户前缀绑定）；控制台 web 应用（终端用户面 `PromptsPage`/`PromptDetailPage`，管理面 `AdminPromptsPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/prompt-management.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.5 节（计量）、第 3.1 节（管理面/用户面分离）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面；realm 守卫，10038）· [请求日志与 API Playground](./request-logs-playground.zh-cn.md)（提示词打开的兄弟 Playground 面）· [模型目录与部署](./model-catalog-deployment.zh-cn.md)（提示词引用的模型目录）· [审计日志](./audit-logging.zh-cn.md)（提示词操作发出的审计事件） |
-| 状态 | 架构完成，已移交开发者代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -822,7 +822,7 @@ sequenceDiagram
     UI->>PL: 导航到 /playground?prompt=id&version=1
     PL-->>U: 提示词编辑器已预填充
     U->>UI: 在 Playground 中运行提示词
-    UI->>CGW: POST /api/v1/playground/run
+    UI->>CGW: POST /api/v1/models/{model_id}:playground
     CGW->>P: RecordPromptUsage
     P-->>UI: times_used 已递增
     U->>UI: 打开 /prompts/:promptId

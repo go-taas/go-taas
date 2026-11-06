@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the end-user prompt page for `/prompts`, the admin prompt page for `/admin/prompts`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `prompt` (new — owns the prompt lifecycle, versioning, folders, usage counters, and the shared template library), `infer` (read-only: the model catalog the prompt references), `audit` (read-only: prompt action audit events), `pkg/server` gateway (user- and admin-prefix bindings), `web` end-user console (`PromptsPage` in `UserShell`) and admin console (`AdminPromptsPage` in `AdminShell`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §3.1 (admin/user surface separation) · [Request Logs & API Playground](./request-logs-playground.md) — the sibling playground surface a prompt opens into · [Model Catalog & Deployment](./model-catalog-deployment.md) — the model catalog a prompt references · [Audit Logging](./audit-logging.md) — the audit events prompt actions emit · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature lives on, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -313,7 +313,7 @@ sequenceDiagram
     UI->>PL: Navigates to /playground?prompt=id&version=1
     PL-->>U: Prompt editor pre-filled
     U->>UI: Runs the prompt in the playground
-    UI->>CGW: POST /api/v1/playground/run
+    UI->>CGW: POST /api/v1/models/{model_id}:playground
     CGW->>P: RecordPromptUsage
     P-->>UI: times_used incremented
     U->>UI: Opens /prompts/:promptId

@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研与虚拟名路由组决策、无静默替换不变式、管理面页面 `/admin/routing-groups`、`/admin/routing-groups/:groupId` 与 `/admin/routing-groups/decisions`（组表、创建对话框、候选编辑器、策略配置、意图规则编辑器、试运行测试面板、带过滤的决策日志）、对既有目录/Playground 的租户侧变更、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `routing`（新增 — 拥有路由组注册表、候选列表、意图规则、请求时解析与决策日志）、`infer` / 数据面网关（虚拟名解析钩子与复用 #45 重试类别的有界候选故障转移）、`model`（目录查询；可授权列表纳入路由组）、`auth`（Key 模型作用域过滤纳入组名）、`metering`（归因到实际服务的真实模型）、`audit`（组与规则变更）、`pkg/server` 网关（管理前缀绑定）、`web` 管理控制台与终端用户控制台 |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.4 节 `infer`、第 3.1 节控制网关、第 3.2 节数据面、第 4.3 节推理请求与计费回路 · [推理路由策略](./inference-routing-policies.md) — 本特性构建其上的同模型部署故障转移与无替换不变式 · [外部模型提供方](./external-model-providers.md) — 已发布外部模型作为候选 · [按租户模型授权](./model-authorization.md) — 路由组复用的授权路径 · [API Key 模型作用域](./api-key-model-scoping.md) — 应用于候选的 Key 作用域过滤 · [计量](./metering.md) — 归因规则 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

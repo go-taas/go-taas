@@ -627,7 +627,7 @@ type InferenceService struct {
 3. `upsert` / `update_version` / `rollback` → 发布状态 `queued`；按拓扑构建 AIBrix `StormService`（single：一个 worker 角色；multinode：每个 TP×PP 分片一个 worker；PD：prefill + decode 角色）、Kubernetes Service、启用自动扩缩容时的 `PodAutoscaler`、AIBrix 方案启用时的 `ModelClaim`/`ModelRoute`，以及 gang 调度启用时的 Volcano `PodGroup`；经 dynamic client create-or-update；出错 → 发布状态 `failed` 及原因（AC7），不可重试错误（如权重路径缺失）返回 `mq.Permanent`，瞬时错误返回普通 error（broker 级重试）。没有 dynamic client 的 controller 回退到普通 Deployment。
 4. 监视 Pod 就绪：Pod 已调度时发布 `starting`，只有引擎响应健康检查时才发布 `running`；端点由 `infer.endpointBaseURL`（或集群内 Service DNS 名）组合。
 
-`ApplyImageWarmup` 保持桩（特性 #3）。
+`ApplyImageWarmup` 已由 image 模块的预热发布/消费链路实现（特性 #3）：Controller 解码预热任务、执行预拉取并回报状态。
 
 调和幂等：所有 Kubernetes 操作都是 create-or-update；同一变更的重复投递收敛到同一期望状态。
 

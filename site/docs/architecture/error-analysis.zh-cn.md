@@ -6,7 +6,7 @@
 | 文档范围 | 功能 31 的架构与详细设计：`metering` 模块中的只读错误分析；`MeteringService` 上的 `GetErrorAnalysisOverview`（admin 舰队）与 `GetErrorAnalysis`（双绑定）RPC；admin 错误分析页面（`/admin/errors`、`/admin/errors/:errorCode`）与 end-user 错误分析页面（`/errors`、`/errors/:errorCode`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 拥有模块 | `metering`（对 `request_logs` 的只读聚合以获取错误指标，以及两个 RPC）、`model`（只读：`model_name` 解析）、`auth`（只读：`api_key_name` 解析、会话领域、会话活跃组织）、`tenancy`（RoleGuard，只读）、`pkg/server` 网关（admin 前缀与 user 前缀绑定）、控制台 Web 应用（admin `ErrorAnalysisPage`/`ErrorDetailPage`，end-user `UserErrorAnalysisPage`/`UserErrorDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/error-analysis.md) · [架构设计](../design/architecture.md) §2.5（`metering`）· [请求日志与 API 游乐场](./request-logs-playground.md)（`request_logs` 表及其本功能聚合的 `status`/`error` 字段）· [模型可观测性仪表盘](./model-observability.md)（对 `request_logs` 的同类只读聚合及其错误率指标）· [请求追踪与延迟分解](./request-tracing.md)（本功能以错误聚合补充的同类按请求钻取）· [控制台表面分离](./console-surface-separation.md)（本功能跨越的两个表面、`UserShell`/`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

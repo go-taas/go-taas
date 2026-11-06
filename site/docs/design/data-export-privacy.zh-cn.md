@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/account/export` 终端用户面数据导出页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `account`（新增 — 拥有数据导出任务生命周期与账户数据包）、`metering`（只读：用量与请求日志导出）、`billing`（只读：计费导出）、`auth`（只读：账户资料导出）、`pkg/server` 网关（用户前缀绑定）、`web` 终端用户控制台（`UserShell` 中的 `DataExportPage`） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.5 节 `metering`、第 2.6 节 `billing`、第 3.1 节（管理/用户面分离）· [计费报告与 CSV 导出](./billing-reports.md) — 姊妹 CSV 导出特性及其异步任务、Excel 友好 CSV 与租户作用域约定 · [审计日志与活动导出](./audit-logging.md) — 姊妹导出特性及其审计事件约定 · [控制台面分离](./console-surface-separation.md) — 本页面所在的终端用户面、`UserShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

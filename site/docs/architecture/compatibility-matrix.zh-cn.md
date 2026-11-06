@@ -6,7 +6,7 @@
 | 文档范围 | 经过整理的、三维兼容矩阵的架构与详细设计：DB 支撑的 `compatibility_cells` 数据模型、首次启动与惰性播种规则、按面划分的五个 admin RPC 与一个 user RPC 及其精确 `google.api.http` 绑定、部署表单强制执行集成、掩码终端用户投影、两个控制台的前端页面及其路由 → API 前缀映射、错误处理（10209–10211）、配置、安全、上线，以及逐层的函数级任务清单 |
 | 归属模块 | `image`（按架构第 2.3 节拥有适配矩阵：`compatibility_cells` 表、六个 RPC、播种逻辑、部署表单强制执行接缝）、`web/` 管理控制台（`CompatibilityPage`）与终端用户控制台（`ModelDetailPage`）、`pkg/server` 网关（admin 前缀与 user 前缀绑定）、`pkg/errors`（10209–10211）、`pkg/config`（compatibility 区块） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/compatibility-matrix.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.3 节（`image` 拥有适配矩阵）· [加速器清单与健康](./accelerator-inventory.zh-cn.md)（本矩阵播种所用的卡型清单）· [镜像管理](./image-management.zh-cn.md)（引擎集合与延后的卡型级矩阵单元）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（模型维度与必须查询矩阵的部署表单）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面、realm 守卫、`AdminShell`/`UserShell`）· [按租户模型授权](./model-authorization.zh-cn.md)（掩码用户面目录与本特性复用的 10105/10101 错误码） |
-| 状态 | 架构完成，已交付开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

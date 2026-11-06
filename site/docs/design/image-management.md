@@ -257,7 +257,7 @@ All APIs belong to **`taas.image.v1.ImageService`** (proto: `proto/taas/image/v1
 | `DeleteImage` | `DELETE /api/v1/admin/images/{image_id}` | **new** | Remove a catalog entry | Reference-checked against non-terminated inference services |
 | `TriggerWarmup` | `POST /api/v1/admin/images/{image_id}:warmup` | exists, now implemented | Enqueue a pre-pull task | Returns `task_id` with `state=pending` immediately; `node_selector` optional |
 | `ListWarmupTasks` | `GET /api/v1/admin/images/{image_id}/warmup-tasks` | **new** | Warmup history per image | Paginated, newest first |
-| `GetWarmupTask` | `GET /api/v1/warmup-tasks/{task_id}` | **new** | Task detail with per-node results | Flat path — task ids are globally unique and the console may open a task without image context |
+| `GetWarmupTask` | `GET /api/v1/admin/warmup-tasks/{task_id}` | **new** | Task detail with per-node results | Flat path — task ids are globally unique and the console may open a task without image context |
 
 Constraints on the contract:
 

@@ -6,7 +6,7 @@
 | 文档范围 | `metering` 模块的需求分析与 UI/UX 设计：来自数据面的凭证摄取、按 API Key 的异步结算、用量查询 API、控制台用量页面，以及验收标准 |
 | 归属模块 | `metering`（凭证摄取、结算、用量查询），以及 `auth`（API Key 身份）和 `billing`（结算交接，特性点 #5） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) —— 第 2.5 节 `metering`、第 2.6 节 `billing`、第 4.3 节计量/结算时序 · [API Key 管理](./api-key-management.zh-cn.md) —— 凭证所依附的密钥身份 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) —— 凭证携带的模型身份 |
-| 状态 | 设计完成，已移交 Architect agent |
+| 状态 | 已实现 |
 
 ---
 

@@ -6,7 +6,7 @@
 | 文档范围 | `tenancy` 模块成员核心的需求分析与 UI/UX 设计：`org_members` 与 `invitations` 表、成员 CRUD、邀请生命周期（创建/列表/重发/撤销/接受/拒绝）、固定角色集（owner/admin/member/viewer）、按调用方角色把关组织范围管理 API 的 RoleGuard、由 `org_members` 派生的会话 `AccessibleOrgs`/角色（对 IdP 声明具有权威性）、控制台「成员」与「邀请」页面、邀请接受流程，以及验收标准 |
 | 归属模块 | `tenancy`（org_members、invitations、RoleGuard、成员解析），配合 `auth`（会话角色/可访问组织现改为由 `org_members` 派生，而非 IdP 声明） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.1 节 `auth`（RBAC、角色、邀请）、第 3.1 节 管理端/用户端表面分离 · [多租户隔离](./multi-tenancy.zh-cn.md) — 本特性成员行所挂接的 `organizations` 表与组织上下文（其 D12 将成员/角色延后至此） · [SSO 联合登录](./sso-federation.zh-cn.md) — 本特性在成员关系上取代的 User 模型、`identity_bindings`、会话与属性到角色的映射（其 D7 将 RBAC 强制延后至此） · [余额与配额](./balance-quota.zh-cn.md) — 已确立的文档格式与本特性把关的组织范围管理表面 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

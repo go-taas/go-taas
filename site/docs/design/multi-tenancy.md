@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the tenancy core: the organization and project entities (CRUD, display names, states), the transitional `X-Organization-Id` header evolving into a validated organization context, org-scoped resource isolation across API keys, inference services, usage, charges and bills, the console Organizations and Projects pages, and acceptance criteria |
 | Owning modules | `auth` (organizations, projects, and the tenancy context every module consumes), with `infer`, `metering`, and `billing` (org validation on their existing scoped queries) |
 | Related documents | [Architecture Design](./architecture.md) — Section 2.1 `auth` (multi-tenancy responsibility), Section 3.1 admin/user surface separation · [API Key Management](./api-key-management.md) — the transitional org-scoped keys this feature grounds in real rows (its D7) · [Token Metering Vouchers & Async Settlement](./metering.md) — org-scoped usage (its D8) · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) — org-scoped charges and bills (its FR5.3) |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

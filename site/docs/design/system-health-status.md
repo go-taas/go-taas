@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface status page for `/admin/status` (component health + uptime + dependency status), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `observability` (new read-only health aggregation over the existing component health signals), `pkg/server` gateway (admin-prefix bindings), `web` admin console (`SystemStatusPage`), `controller` (read-only: controller health) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §3.1 (admin/user surface separation) · [Model Observability Dashboard](./model-observability.md) — the sibling read-only aggregation and its freshness conventions · [Accelerator Inventory & Health](./accelerator-inventory.md) — the sibling health surface for GPU nodes · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

@@ -54,7 +54,7 @@ subgraph L3["LAYER 03 · K8s 集群"]
         direction LR
         B1["Aibrix<br/>分布式运行时、KV Cache"]:::dp
         B2["HAMI<br/>异构卡纳管、设备插件、调度"]:::dp
-        B3["Volcano<br/>Gang Scheduling、队列与公平共享"]:::dp
+        B3["Volcano<br/>Gang 调度与优先级抢占"]:::dp
         B4["GPU / NPU Operator<br/>驱动、设备插件、拓扑与健康"]:::cell
         B5["可观测栈<br/>Prometheus / OTel / Loki"]:::cell
         B1 ~~~ B2 ~~~ B3 ~~~ B4 ~~~ B5
@@ -127,7 +127,7 @@ Chart 刻意不再渲染这条路由：此前 Chart 与服务端同时写 `spec.
 
 - **单一集群**：推理服务与控制面部署在**同一个 Kubernetes 集群**内，共享一套控制面、消息队列与可观测性设施；
 - **集群网络**：集群内运行 CNI Pod 网络，并通过 ClusterIP Service 与 CoreDNS 提供东西向服务发现；南北向流量经 Envoy Gateway + TLS 终结进入；NetworkPolicy 对控制面、数据面与租户命名空间做隔离；推理数据链路可选走 RDMA 网络（RoCE / InfiniBand），控制面保持常规以太网（详见 §5.2）；
-- **配额与准入控制**：平台不引入独立的配额微服务，准入控制落在流量所在的位置——按 API Key 的请求限流与按组织的服务配额（最大并发推理请求数、推理服务数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制。在上述约束内，管理员按**集群可用资源**创建推理服务，集群容量由 Kubernetes 调度器与节点资源自然约束；
+- **配额与准入控制**：平台不引入独立的配额微服务，准入控制落在流量所在的位置——按 API Key 的请求限流与按组织的服务配额（最大并发推理请求数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制。推理服务数不是配额维度。在上述约束内，管理员按**集群可用资源**创建推理服务，集群容量由 Kubernetes 调度器与节点资源自然约束；
 - **负载隔离**：推理工作负载与控制面工作负载通过 Namespace、节点标签与污点/容忍度隔离，可在同一集群内稳定共存。
 - **内置依赖**：Helm Chart 默认在集群内置备单副本的 PostgreSQL、Redis 与 RabbitMQ（每个依赖均可通过 `dependencies.<name>.mode` 切换为外部实例）。**Keycloak 不属于默认安装的一部分**（`dependencies.keycloak.mode: disabled`）：平台在自有账号体系中 seed 管理员 `admin`（密码取自 `auth.seedSso.adminLocalPassword`），因此不需要任何 IdP 即可使用控制台。设为 `internal` 时会置备单副本 Keycloak，并 seed 出 `go-taas` realm 的客户端以及 Keycloak 侧的 `admin`/`admin` 用户；设为 `external` 时则对着你自己的 IdP seed 提供商记录。两种情况下 auth 的 Migrate 钩子都会按 `auth.seedSso` 配置（issuer/redirectUri 指向 IdP 与暴露地址）写入对应的 SSO 提供商记录。
 - **资源标签**：Chart 与 Controller 创建的每个资源都带标准 `app.kubernetes.io/*` 标签（`name`、`instance`、`version`、`managed-by`、`part-of: go-taas`，并按组件补充 `component`：`server`、`controller`、`postgresql`、`redis`、`rabbitmq`、`keycloak`）。平台自有键统一使用项目自己的 DNS 前缀 `go-taas.com/`（官方网站），不使用项目并不拥有的域名：`go-taas.com/service-id`、`go-taas.com/replica-index`、`go-taas.com/origin`、`go-taas.com/model`、`go-taas.com/model-id`、`go-taas.com/task-type`、`go-taas.com/task-id`、`go-taas.com/role`、`go-taas.com/accelerator`、`go-taas.com/accelerator-type`、`go-taas.com/driver-version`、`go-taas.com/device-plugin` 与 `go-taas.com/vgpu-pool`。出现在 selector 中的键属于 API 面：改名会触发受影响工作负载的滚动更新，不是纯展示性修改。
@@ -399,7 +399,7 @@ flowchart TD
 | **流式透传** | 保持 SSE 逐事件 Flush 透传，避免缓冲导致的额外时延 |
 | **可观测性** | 统一产出访问日志与指标，用于容量观测与问题定位 |
 
-> 说明：由于鉴权与计量下沉到网关 Wasm 插件，平台不再需要独立的配额/限流服务。准入控制落在流量所在的位置：按 API Key 的请求限流与按组织的服务配额（最大并发请求数、推理服务数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制；校验顺序为 限流 → 配额 → 资金。
+> 说明：由于鉴权与计量下沉到网关 Wasm 插件，平台不再需要独立的配额/限流服务。准入控制落在流量所在的位置：按 API Key 的请求限流与按组织的服务配额（最大并发请求数、每日批量作业数、单请求最大输出 token 数）在推理 Gateway 与控制面创建路径上强制，组织支出上限由计费链路强制；校验顺序为 限流 → 配额 → 资金。
 
 #### 3.2.1 插件流水线的执行顺序
 
@@ -662,7 +662,7 @@ sequenceDiagram
 | 模型仓库（ModelScope / HuggingFace） | model | 模型权重下载到共享 JuiceFS 卷 |
 | **AIBrix** | Controller · infer · runtime | 分布式推理运行时与推理网关：模型部署对象（`ModelClaim`、`PodAutoscaler`）、KV Cache 感知路由，以及数据面背后的 Envoy 代理。以独立 Helm release 安装；Chart 的 `dataPlane` 值负责把它的网关发布到推理主机名上 |
 | **HAMi** | Controller · vgpu | 异构加速卡虚拟化：设备插件、按 Pod 的切分调度，以及 Controller 为共享 GPU 服务设置的 placement-policy 注解 |
-| **Volcano**（建设中） | Controller · batch | 批处理与多 Pod 推理角色的 Gang 调度、队列与公平共享。可选组件：未安装时使用原生 Kubernetes 调度 |
+| **Volcano**（已实现） | Controller · batch | 通过每副本一个 PodGroup 为多 Pod 推理角色提供 Gang 调度与优先级抢占。可选组件：`controller.scheduling.schedulerName` 为空时使用集群默认调度器 |
 | **GPU / NPU Operator** | Controller · accelerator | 厂商驱动、设备插件、拓扑与健康状态；加速卡清单读取它们发布的节点标签 |
 | **可观测栈**（Prometheus · OpenTelemetry · Loki） | observability · tracing · 全部工作负载 | 指标、追踪与日志聚合；控制台的可观测页面读取平台已存储的聚合结果 |
 | **推理引擎**（vLLM · SGLang · TensorRT-LLM · MindIE · 自研） | Controller · infer | 以 OpenAI 兼容接口对外提供推理。以镜像方式注册，新增引擎是一条注册记录，而不是一次改代码 |

@@ -6,7 +6,7 @@
 | 文档范围 | `auth` 模块 API Key 管理能力的架构与详细设计：组件职责、数据模型、API 契约、关键流程、错误处理、配置、安全、发布与分层函数级设计 |
 | 归属模块 | `auth`（控制面，经控制面 Gateway 对外服务，由数据面推理 Gateway 调用校验） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/api-key-management.zh-cn.md) · [架构设计文档](../design/architecture.zh-cn.md) 第 2.1 节（`auth` 职责）、第 3.3 节（推理 Gateway 的 API Key 鉴权调用链） |
-| 状态 | 架构完成，已移交 Developer agent |
+| 状态 | 已实现 |
 
 > **归属更新：** Key 现在带有个人属主与可选项目。
 > 当前模型见 [API Key 归属与三级配额](./api-key-ownership.zh-cn.md)；本文档继续作为

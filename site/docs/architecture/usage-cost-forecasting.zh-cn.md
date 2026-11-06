@@ -6,7 +6,7 @@
 | 文档范围 | 功能点 36 的架构与详细设计：`BillingService` 上的 `GetForecast` RPC（双绑定：管理端全平台与用户端租户范围）、带置信区间的确定性线性趋势预测、管理端预测页面（`/admin/forecast`）与用户端预测页面（`/forecast`），以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | `billing`（对 `charge_records`/`usage_records` 历史趋势的只读预测聚合，以及 `GetForecast` RPC）、`metering`（只读：来自 `usage_records` 的令牌总量）、`model`（只读：`model_name` 解析）、`auth`（只读：`api_key_name` 解析、会话领域、会话活动组织）、`tenancy`（RoleGuard，只读）、`pkg/server` 网关（管理端前缀与用户端前缀绑定）、控制台 web 应用（管理端 `ForecastPage`、用户端 `UserForecastPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/usage-cost-forecasting.md) · [架构设计](../design/architecture.md) §2.5（`metering`）、§2.6（`billing`）、§3.1（管理端/用户端分离）· [成本分析仪表盘](./cost-analytics-dashboard.md)（本功能用预测扩展的同级只读聚合，及其范围/桶/新鲜度约定）· [使用仪表盘与每请求成本归属](./usage-dashboard.md)（同级仪表盘及其内联 SVG 图表、新鲜度、范围与分组约定）· [控制台表面分离](./console-surface-separation.md)（两个表面、`AdminShell`/`UserShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给开发智能体 |
+| 状态 | 已实现 |
 
 ---
 

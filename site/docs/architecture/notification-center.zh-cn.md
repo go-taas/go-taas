@@ -6,7 +6,7 @@
 | 文档范围 | 特性-26 的架构与详细设计：新增 `notification` 模块，拥有通知持久化、每用户偏好、阈值告警评估与已读/未读状态；`notifications`、`notification_preferences` 与 `notification_thresholds` 三张表；`taas.notification.v1.NotificationService` proto，带管理/用户双 HTTP 绑定；`notification.events` MQ 主题与生产模块发布点（复用特性-23 事件目录）；管理通知页（`/admin/notifications`）与终端用户通知页（`/notifications`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 归属模块 | 新增 `notification` 模块（`services/notification`）：`notifications` + `notification_preferences` + `notification_thresholds` 三张表、CRUD/查询 RPC、事件订阅、阈值评估、通知创建扇出与保留运行器；`infer` 与 `billing`（向 `notification.events` 发布事件目录）；`audit`（通知变更被审计）；`pkg/mq`（新增 `NotificationEvents` 主题）；`pkg/server` 网关（管理前缀与用户前缀绑定）；控制台 Web 应用（管理 `AdminNotificationsPage`、终端用户 `UserNotificationsPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/notification-center.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 1.2 节（消息队列）、第 2 节（模块职责）、第 3.1 节（管理/用户面分离）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则）· [Webhook 通知与事件订阅](./webhook-notifications.zh-cn.md)（本特性在控制台内消费的事件目录，特性 #23）· [推理自动扩缩](./inference-autoscaling.zh-cn.md)（自动扩缩事件）· [余额与配额](./balance-quota.zh-cn.md)（余额不足与消费限额事件）· [支付、发票与自动充值](./payments-invoices-auto-recharge.zh-cn.md)（账单/发票事件）· [审计日志](./audit-logging.zh-cn.md)（通知变更必须产生的审计轨迹） |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 

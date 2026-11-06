@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the `billing` module's account core: the per-organization billing account with prepaid/postpaid modes, recharge and quota administration, settlement-time deduction, inference gating, monthly cycle reset, the transaction ledger, the console Accounts pages, and acceptance criteria |
 | Owning modules | `billing` (accounts, transactions, deduction, cycle reset, gating check), with `infer` (gateway enforcement point); `metering` unchanged |
 | Related documents | [Architecture Design](./architecture.md) — §2.6 `billing` · [Token Metering Vouchers & Async Settlement](./metering.md) — the settlement pipeline · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) — the charge engine this feature hooks into (its D9 defers accounts here) · [Multi-Tenancy Isolation](./multi-tenancy.md) — org scoping |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

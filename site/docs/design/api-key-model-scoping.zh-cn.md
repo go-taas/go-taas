@@ -6,7 +6,7 @@
 | 文档范围 | 为 API Key 配置模型白名单、在用户控制台编辑范围、在管理 API 端面只读展示、并在推理网关与组织级模型授权一同强制执行 |
 | 所属模块 | `auth`（key 模型范围存储、verdict 缓存、VerifyAPIKey 强制执行）、`model`（范围选择器使用的模型目录列表）、`audit`（范围变更审计）、`web` 用户端与管理端控制台 |
 | 相关文档 | [架构设计](./architecture.md) — API Key 校验与数据面 verdict 缓存 · [API Key 管理](./api-key-management.md) — key 生命周期、加盐哈希存储、吊销 · [租户级模型授权](./model-authorization.md) — 本功能叠加其上的组织级授权 · [每 Key 限流与组织消费限额](./rate-limits-spend-limits.md) — 另一条按 key 限制的轴线 · [控制台分离](./console-surface-separation.md) |
-| 状态 | 设计完成；待交接 |
+| 状态 | 已实现 |
 
 ## 1. 背景与竞品调研
 

@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface page design for `/admin/accelerators`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `web` admin console (`AcceleratorsPage`), `pkg/server` gateway (admin-prefix binding), a new accelerator-inventory service or an extension of `infer`/`image` (node + GPU inventory projection), `Controller` (node/GPU status collection), `k8s` (node, device-plugin, and extended-resource reads) |
 | Related documents | [Architecture Design](./architecture.md) — §2.3 heterogeneous compute, §2.4 image module, §2.7 Controller · [Image Management](./image-management.md) — the "node inventory" this feature provides, warmup task per-node results · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — card type (`accelerator_type`) and accelerator selection · [Inference Autoscaling](./inference-autoscaling.md) — node-level capacity context · [Console Surface Separation](./console-surface-separation.md) — the admin surface this page lives on |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -136,7 +136,7 @@ Pitfalls to avoid: exposing raw `kubectl`/`nvidia-smi` output as the product sur
 
 **Purpose**: show everything about one node — per-GPU breakdown, driver/device-plugin health signals, labels/taints, and warmup-task context — so the operator can diagnose a failure or confirm capacity.
 
-**Surface**: admin — route `/admin/accelerators/:nodeId`, API `/api/v1/admin/accelerators/{node_id}`.
+**Surface**: admin — route `/admin/accelerators/:nodeId`, API `/api/v1/admin/accelerators/nodes/{node_id}`.
 
 **Layout**: a detail page under `AdminShell` with a back link to the list. A header with the node name and the composite health badge. Below, stacked cards:
 

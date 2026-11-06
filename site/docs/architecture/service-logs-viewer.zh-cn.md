@@ -6,7 +6,7 @@
 | 文档范围 | 功能点 33 的架构与详细设计：`InferServiceService` 上的 `ListServiceLogPods` 与 `GetServiceLogs` RPC、通过 Controller 从 Kubernetes API 只读枚举 Pod/容器与流式读取日志、管理端服务日志页面（`/admin/services/:serviceId/logs`），以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | `infer`（服务 Pod 上的日志获取 RPC）、`internal/controller`（只读：从 Kubernetes API 枚举 Pod/容器与流式读取日志）、`pkg/server` 网关（管理端前缀绑定）、`web` 管理端控制台（`ServiceLogsPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/service-logs-viewer.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§2.7 Controller、§4.2 一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.md)（推理服务生命周期与 `inference_services` 表）· [控制台表面分离](./console-surface-separation.md)（两个表面、`AdminShell` 约定、掩码投影规则）· [请求追踪与延迟分解](./request-tracing.md)（本功能用原始容器日志补充的同级诊断表面） |
-| 状态 | 架构完成，已移交给开发智能体 |
+| 状态 | 已实现 |
 
 ---
 

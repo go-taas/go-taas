@@ -6,7 +6,7 @@
 | 文档范围 | 负载测试特性的架构与详细设计：DB 支撑的 `load_tests` 数据模型、`infer` 模块中基于 goroutine 的异步运行器、按面划分的五个 admin RPC 与一个 user RPC 及其精确 `google.api.http` 绑定、运营者范围的系统凭证、掩码终端用户投影、两个控制台的前端页面及其路由 → API 前缀映射、错误处理（10308–10311）、配置、安全、上线，以及逐层的函数级任务清单 |
 | 归属模块 | `infer`（拥有 `load_tests` 表、六个 RPC、异步运行器、系统凭证）、`web/` 管理控制台（`LoadTestsPage`、`LoadTestDetailPage`）与终端用户控制台（`ModelDetailPage` 性能区块）、`pkg/server` 网关（管理前缀与用户前缀绑定）、`pkg/errors`（10308–10311）、`pkg/config`（loadtest 区块） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/load-testing.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.4 节（`infer` 拥有推理服务）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（本特性所针对的推理服务）· [请求日志与 API Playground](./request-logs-playground.zh-cn.md)（本特性放大为多请求的单请求测试面，以及系统凭证保留的请求日志可观测性）· [推理自动扩缩](./inference-autoscaling.zh-cn.md)（负载测试所支撑的容量语境，以及本特性紧随的 10307 错误码）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面、realm 守卫、`AdminShell`/`UserShell`）· [兼容矩阵](./compatibility-matrix.zh-cn.md)（本特性复用的掩码终端用户投影模式） |
-| 状态 | 架构完成，已交付开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

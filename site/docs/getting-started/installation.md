@@ -207,7 +207,7 @@ EOF
 kubectl get priorityclass | grep -E "high-priority|normal-priority|low-priority"
 ```
 
-If you skip Volcano, leave `controller.config.controller.scheduling` empty: inference pods then use the cluster default scheduler, one pod at a time, and the priority is only carried as a label on the pod.
+If you skip Volcano, leave `controller.scheduling.schedulerName` empty: inference pods then use the cluster default scheduler, one pod at a time, and the priority is only carried as a label on the pod.
 
 ### 3.4 Shared model weights (JuiceFS CSI)
 

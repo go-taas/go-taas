@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the pricing core: the effective-dated price matrix, the billing usage-line ingestion consumer, the charging engine (settlements consumer + reconciliation runner), charge and bill queries, error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `billing` (price matrix, usage lines, charging, charges/bills queries), with `metering` (additive event-contract extension only) and `infer` (service card-type read interface) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/pricing.md) · [Architecture Design](../design/architecture.md) Section 2.6 (`billing`) · [Token Metering Vouchers & Async Settlement](./metering.md) (the upstream pipeline and the `billing.settlements` contract) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -206,7 +206,7 @@ func (r *InferRepository) AcceleratorTypesByServiceIDs(ctx context.Context, ids 
 
 ### 4.1 RPC Surface
 
-All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/billing/v1/billing.proto`), served as HTTP via the Control Gateway. Four RPCs exist as stubs; one is added. Proto changes are additive only.
+All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/billing/v1/billing.proto`), served as HTTP via the Control Gateway. Four RPCs existed as stubs and are now implemented (`GetBalance` by the later account-mode feature); one RPC is added. Proto changes are additive only.
 
 | RPC | HTTP | Status | Purpose |
 | --- | --- | --- | --- |
@@ -214,7 +214,7 @@ All APIs belong to **`taas.billing.v1.BillingService`** (proto: `proto/taas/bill
 | `ListPrices` | `GET /api/v1/admin/billing/prices` | stub → implemented | Matrix view / history; request gains `accelerator_type` (3), `include_history` (4); `PriceEntry` gains `price_id`, `cached_price_per_million`, `effective_from`, `tiers` |
 | `ListCharges` | `GET /api/v1/admin/billing/charges` | **new** | Charge-record drill-down: filters `api_key_id`, `model_id`, `since`/`until` |
 | `ListBills` | `GET /api/v1/admin/billing/bills` | stub → implemented | Monthly bill summaries; `BillSummary` gains `priced`/`unpriced` counts |
-| `GetBalance` | `GET /api/v1/admin/billing/balance` | stays stub | Feature #8; returns 10503 |
+| `GetBalance` | `GET /api/v1/admin/billing/balance` | implemented (feature #8) | Returns the org's account snapshot; an unfunded org renders `has_account=false` instead of an error |
 
 New messages: `PriceTier {up_to_tokens, input_price_per_million, output_price_per_million}`, `ChargeRecordSummary` (Section 4.2 constraint 3).
 
@@ -463,7 +463,7 @@ All errors are `pkg/errors` business codes in the unified envelope. Two new code
 | Malformed price (validation matrix) | 10507 | `CodePriceInvalid` | **New**; canonical message "price invalid" |
 | Malformed time range (`since > until`, range > 366 days) | 10508 | `CodeBillingRangeInvalid` | **New**; canonical message "billing range invalid" |
 | Missing `X-Organization-Id` on query APIs | 10001 | `CodeUnauthorized` | Existing; the `resolveOrganizationID` pattern |
-| Balance queries (stub) | 10503 | `CodeAccountNotFound` | Existing; feature #8 replaces |
+| Balance query with no organization scope | 10503 | `CodeAccountNotFound` | An empty scope stays an error; an unfunded org returns `has_account=false` |
 | Database / MQ infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 Runner/consumer-side failures are not RPC errors: a charging pass that hits a transient DB error aborts that group and retries on the next tick (everything is still uncharged); a malformed metering event is logged and permanently skipped (FR3.3); an unpriced group is **not** an error at all — it charges 0 with `priced = false` (D8, AC9). The settlements consumer treats a redelivered event as a no-op (the unique index absorbs it, AC10).
@@ -625,7 +625,7 @@ type ChargeRecord struct {
 - `ListPrices` — normalize pagination, `ListPrices`, map to `PriceEntry` protos (tiers decoded from JSON).
 - `ListCharges` — resolve org (10001), validate range (10508), normalize pagination, map rows to `ChargeRecordSummary`.
 - `ListBills` — resolve org, validate range, `BillSummaries`, map to `BillSummary` protos (`bill_id`, amounts, period, priced/unpriced counts).
-- `GetBalance` — unchanged stub (10503).
+- `GetBalance` — implemented by the billing account service (feature #8): returns the account snapshot, or `has_account=false` for an unfunded org.
 
 `event_consumer.go`:
 

@@ -257,7 +257,7 @@ flowchart TD
 | `DeleteImage` | `DELETE /api/v1/admin/images/{image_id}` | **新增** | 移除目录条目 | 对非 terminated 推理服务做引用检查 |
 | `TriggerWarmup` | `POST /api/v1/admin/images/{image_id}:warmup` | 已存在，本特性实现 | 入队预拉取任务 | 立即返回 `task_id` 与 `state=pending`；`node_selector` 可选 |
 | `ListWarmupTasks` | `GET /api/v1/admin/images/{image_id}/warmup-tasks` | **新增** | 按镜像的预热历史 | 分页，最新在前 |
-| `GetWarmupTask` | `GET /api/v1/warmup-tasks/{task_id}` | **新增** | 含逐节点结果的任务详情 | 平铺路径 —— 任务 id 全局唯一，控制台可脱离镜像上下文打开任务 |
+| `GetWarmupTask` | `GET /api/v1/admin/warmup-tasks/{task_id}` | **新增** | 含逐节点结果的任务详情 | 平铺路径 —— 任务 id 全局唯一，控制台可脱离镜像上下文打开任务 |
 
 契约约束：
 

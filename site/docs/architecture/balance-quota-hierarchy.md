@@ -182,7 +182,7 @@ budget is the binding limit.
 
 | RPC | HTTP | Notes |
 | --- | --- | --- |
-| `GetOrganizationQuota` / `UpdateOrganizationQuota` | `/api/v1/admin/tenancy/quota` | tenant defaults |
+| `ListOrganizationQuotas` / `GetOrganizationQuota` / `UpdateOrganizationQuota` | `/api/v1/admin/quotas[/{organization_id}]` | tenant defaults |
 | `GetProjectQuota` / `UpdateProjectQuota` | `/api/v1/admin/tenancy/projects/{id}/quota` | project share, includes spend |
 | `ListUserQuotas` / `GetUserQuota` / `UpdateUserQuota` | `/api/v1/admin/tenancy/user-quotas[/{user_id}]` | org-wide personal budget |
 | `ListProjectMemberQuotas` | `/api/v1/admin/tenancy/projects/{id}/member-quotas` | roster with each member budget and its effective value |

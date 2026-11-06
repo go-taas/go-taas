@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface cost analytics page for `/admin/cost` (fleet-wide cost attribution by dimension + trends + cost-per-token), the end-user-surface cost analytics page for `/cost` (tenant-scoped cost attribution by dimension + trends + cost-per-token), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `billing` (read-only aggregation over `charge_records` for cost attribution), `metering` (read-only: token totals from `usage_records` for cost-per-token), `web` admin console (`CostAnalyticsPage`) and end-user console (`UserCostAnalyticsPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.6 `billing` · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the sibling read-only dashboard and its inline-SVG chart, freshness, range, and group-by conventions · [API Key Usage Analytics](./api-key-usage-analytics.md) — the sibling per-key analytics and its top-keys ranking · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) — the charge formula and effective-dated prices behind every cost figure · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -230,7 +230,7 @@ Error codes (cost block 11301–11399, `pkg/errors/codes.go`):
 | --- | --- | --- | --- |
 | An unsupported `dimension` | 11301 | `CodeCostDimensionInvalid` | **New** (D9) |
 | An unknown dimension value | 11302 | `CodeCostDimensionValueNotFound` | **New** (D9) |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused (D5) — the metering range contract |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused (D5) — the metering range contract |
 | Database / infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria

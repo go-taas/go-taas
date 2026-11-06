@@ -6,7 +6,7 @@
 | 文档范围 | 功能 29 的架构与详细设计：`billing` 模块中的只读成本分析（通过共享数据库只读读取 `metering` 的 `usage_records`）；`BillingService` 上的 `GetCostAnalyticsOverview`（admin 舰队）与 `GetCostAnalytics`（双绑定）RPC；admin 成本页面（`/admin/cost`、`/admin/cost/:dimension/:value`）与 end-user 成本页面（`/cost`、`/cost/:dimension/:value`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 拥有模块 | `billing`（对 `charge_records` 的只读聚合以进行成本归因，以及两个 RPC）、`metering`（只读：通过共享数据库从 `usage_records` 获取 token 总计）、`model`（只读：`model_name` 解析）、`auth`（只读：`api_key_name` 解析、会话领域、会话活跃组织）、`tenancy`（RoleGuard，只读）、`pkg/server` 网关（admin 前缀与 user 前缀绑定）、控制台 Web 应用（admin `CostAnalyticsPage`/`CostDetailPage`，end-user `UserCostAnalyticsPage`/`UserCostDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/cost-analytics-dashboard.md) · [架构设计](../design/architecture.md) §2.6（`billing`）· [用量仪表盘与按请求成本归因](./usage-dashboard.md)（同类只读仪表盘及其内联 SVG 图表、新鲜度、范围与分组约定）· [API 密钥用量分析](./api-key-usage-analytics.md)（同类按密钥分析及其 top 密钥排名）· [模型 × 卡类型价格矩阵与分层定价](./pricing.md)（每个成本数字背后的计费公式与生效日期价格）· [控制台表面分离](./console-surface-separation.md)（本功能跨越的两个表面、`UserShell`/`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

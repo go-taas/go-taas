@@ -6,7 +6,7 @@
 | 文档范围 | 功能 38 的架构与详细设计：新的 `docs` 模块，提供精选的用户域 API 目录；`taas.docs.v1.DocsService` proto 及 `GetApiDocs` RPC；用户端 API 文档页面（`/docs`）；复用 playground 代理与用户会话的试用接线；以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | 新 `docs` 模块（`services/docs`）：提供精选的用户域 API 目录；`pkg/server` 网关（用户前缀绑定）；`web` 用户端控制台（`UserShell` 中的 `ApiDocsPage`）；`infer`（复用：用于试用的基于模型的 playground 代理）；`auth`（复用：用于试用的 API 密钥列表）；`model`（复用：用于试用的掩码模型列表） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/api-docs-explorer.md) · [架构设计](../design/architecture.md) §3.2 数据面网关、§3.3 API 密钥认证链 · [控制台面分离](./console-surface-separation.md)（本页面所在的用户端面、`UserShell` 约定、掩码投影规则）· [SDK / 快速入门](./sdk-quickstart.md)（同类引导页及其语言标签 / 基础 URL / playground 代理约定）· [请求日志与 API Playground](./request-logs-playground.md)（本功能为试用复用的 `PlaygroundInfer` 代理）· [模型目录与一键部署](./model-catalog-deployment.md)（本页面消费的模型列表） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

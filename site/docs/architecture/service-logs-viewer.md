@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-33: the `ListServiceLogPods` and `GetServiceLogs` RPCs on `InferServiceService`, the read-only pod/container enumeration and log streaming from the Kubernetes API through the Controller, the admin Service Logs page (`/admin/services/:serviceId/logs`), plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `infer` (log-fetch RPCs over the service's pods), `internal/controller` (read-only: pod/container enumeration and log streaming from the Kubernetes API), `pkg/server` gateway (admin-prefix bindings), `web` admin console (`ServiceLogsPage`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/service-logs-viewer.md) · [Architecture Design](../design/architecture.md) §2.4 (`infer`), §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the inference-service lifecycle and the `inference_services` table) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the `AdminShell` conventions, the masked-projection rule) · [Request Tracing & Latency Breakdown](./request-tracing.md) (the sibling diagnostic surface this feature complements with raw container logs) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

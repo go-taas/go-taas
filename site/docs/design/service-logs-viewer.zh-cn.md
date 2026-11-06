@@ -247,7 +247,7 @@ sequenceDiagram
 | --- | --- | --- | --- |
 | 未知 `service_id` | 10301 | `CodeInferServiceNotFound` | `ListServiceLogPods`、`GetServiceLogs` |
 | 未知 Pod/容器 | 10304 | `CodeInferEndpointNotFound` | 复用于未知副本/容器（FR2.3） |
-| 非法 `tail`（0 或 > 5000）或格式错误的 `since` | 10404 | `CodeRequestLogRangeInvalid` | 复用 — metering 范围契约（FR2.3） |
+| 非法 `tail`（0 或 > 5000）或格式错误的 `since` | 10404 | `CodeMeteringRangeInvalid` | 复用 — metering 范围契约（FR2.3） |
 
 ---
 

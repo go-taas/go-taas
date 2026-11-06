@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/traces` 管理面追踪页面（追踪浏览器 + 请求 ID 查询）与 `/admin/traces/:traceId`（带瀑布图与延迟拆解的追踪详情），`/traces` 与 `/traces/:traceId` 终端用户面追踪页面，页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `tracing`（新增 — 拥有 `traces` 与 `trace_spans` 表及只读查询 RPC），`web` 管理控制台（`TracesPage`、`TraceDetailPage`）与终端用户控制台（`UserTracesPage`、`UserTraceDetailPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.5 节 `metering`、第 3.1 节（管理面/用户面分离）· [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md) — `request_logs` 表及其 `request_id` / `latency_ms` / `status` / `error` 字段，以及本特性以分阶段计时扩展的 best-effort 非致命写入模式 · [模型可观测性仪表盘](./model-observability.zh-cn.md) — 对 `request_logs` 的姊妹只读聚合及其内联 SVG 图表、新鲜度与范围约定 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -240,7 +240,7 @@ sequenceDiagram
 | 条件 | 码 | 常量 | 说明 |
 | --- | --- | --- | --- |
 | 未知 `trace_id` | 11101 | `CodeTraceNotFound` | **新增**（D9） |
-| 畸形或超长范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用（D9）— 计量范围契约 |
+| 畸形或超长范围 | 10404 | `CodeMeteringRangeInvalid` | 复用（D9）— 计量范围契约 |
 | 数据库 / 基础设施失败 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准

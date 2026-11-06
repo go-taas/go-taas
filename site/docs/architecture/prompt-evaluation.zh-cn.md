@@ -6,7 +6,7 @@
 | 文档范围 | 租户评测套件、变量化用例、确定性检查、计量异步运行、结果审阅和运行比较 |
 | 所属模块 | 新增 `evaluation` 模块（`services/evaluation`），现有 `prompt`（只读版本来源）、`infer`（计量模型执行）、`auth`/`tenancy`（身份和组织角色）、`web`（终端用户页面） |
 | 相关文档 | [UI/UX 设计](../design/prompt-evaluation.zh-cn.md) · [提示词管理](./prompt-management.zh-cn.md) · [批量推理](./batch-inference.zh-cn.md) · [控制台面分离](./console-surface-separation.zh-cn.md) · [架构概览](../design/architecture.zh-cn.md) |
-| 状态 | 架构完成，已可移交 Developer |
+| 状态 | 已实现 |
 
 ## 1. 目标与边界
 

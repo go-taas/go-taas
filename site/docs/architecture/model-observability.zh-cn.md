@@ -6,7 +6,7 @@
 | 文档范围 | 特性 #24 的架构与详细设计：新增 `observability` 模块，拥有对 `request_logs` 的只读聚合；`taas.observability.v1.ObservabilityService` proto，含 `GetObservabilityOverview`（管理面集群）与 `GetModelObservability`（管理/用户双绑定）；管理面可观测性页面（`/admin/observability`、`/admin/observability/models/:modelId`）与终端用户面模型可观测性页面（`/models/:modelId/observability`）；外加错误处理、配置、安全、上线与逐层函数级设计 |
 | 归属模块 | 新增 `observability` 模块（`services/observability`）：对 `request_logs` 的只读聚合 RPC；`model`（只读：`model_name` 解析）；`auth`（会话活动组织，只读）；`tenancy`（RoleGuard，只读）；`pkg/server` 网关（管理前缀与用户前缀绑定）；控制台 Web 应用（管理面 `ObservabilityPage`/`ModelObservabilityPage`、终端用户面 `UserModelObservabilityPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/model-observability.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.5 节（`metering`）、第 3.1 节（管理/用户面分离）· [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md)（本特性聚合的 `request_logs` 表及其 `latency_ms`/`status`/`error`/token 字段）· [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md)（姊妹只读仪表盘及其内联 SVG 图表、新鲜度与范围约定）· [控制台面分离](./console-surface-separation.zh-cn.md)（本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 

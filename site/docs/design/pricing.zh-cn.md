@@ -6,7 +6,7 @@
 | 文档范围 | `billing` 模块定价核心的需求分析与 UI/UX 设计：模型 × 加速卡型价格矩阵（含生效时间版本）、阶梯定价、将已结算用量转换为金额的计费引擎、账单/计费记录查询、控制台「定价」与「账单」页面，以及验收标准 |
 | 归属模块 | `billing`（价格矩阵、用量明细摄取、计费引擎、计费记录与账单），配合 `metering`（事件契约的增量扩展）与 `infer`（服务卡型查询） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.6 节 `billing`、第 4.3 节计量/结算时序 · [Token 计量凭证与异步结算](./metering.zh-cn.md) — 上游用量管道与 `billing.settlements` 契约（其 D6） · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 价格矩阵的模型维度 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -136,7 +136,7 @@
 - **FR5.1** `ListCharges`（`GET /api/v1/admin/billing/charges`）返回按 `api_key_id`、`model_id`、时间范围（`since`/`until`）过滤的计费记录，分页（默认 20，上限 100），最新周期在前，每行携带完整 token 求和、金额、币种、`priced` 标记与档位序号。
 - **FR5.2** `ListBills`（`GET /api/v1/admin/billing/bills`）返回按组织的月度账单汇总：`bill_id`（`{org}-{YYYYMM}`）、`organization_id`、求和 `amount`、`currency`、`period_start`/`period_end`（UTC 自然月），按 `organization_id` 与时间范围过滤，分页、最新月份在前 — 读取时从计费记录计算（D9）。
 - **FR5.3** 两个查询都要求 `X-Organization-Id` 头并限定其范围（过渡期身份模型，与 Usage 一致）；`since > until` 或跨度 > 366 天返回 10508。
-- **FR5.4** `GetBalance` 保持返回 10503 的占位 — 账户模式是特性 #8 的契约。
+- **FR5.4** `GetBalance` 已由 billing 账户服务实现（特性 #8）：返回账户快照，未入金组织 `has_account=false`。
 
 ### FR6 — 控制台定价与账单页面
 
@@ -211,7 +211,7 @@ flowchart TD
 
 ## 6. API 面影响
 
-所有 API 属于 **`taas.billing.v1.BillingService`**（proto：`proto/taas/billing/v1/billing.proto`），经控制网关以 HTTP 提供。两个既有 RPC 从占位变为实现；新增一个；一个为 #8 保留占位。proto 变更仅增量。
+所有 API 属于 **`taas.billing.v1.BillingService`**（proto：`proto/taas/billing/v1/billing.proto`），经控制网关以 HTTP 提供。两个既有 RPC 从占位变为实现；新增一个；`GetBalance` 由后续账户模式特性（#8）实现。proto 变更仅增量。
 
 | RPC | HTTP | 状态 | 用途 | 备注 |
 | --- | --- | --- | --- | --- |
@@ -219,7 +219,7 @@ flowchart TD
 | `ListPrices` | `GET /api/v1/admin/billing/prices` | 占位 → 实现 | 矩阵视图 / 历史 | 新增 `accelerator_type` 过滤与 `include_history`；`PriceEntry` 新增 `price_id`、缓存费率、`effective_from`、`tiers` |
 | `ListCharges` | `GET /api/v1/admin/billing/charges` | **新增** | 计费记录下钻 | 过滤：`api_key_id`、`model_id`、`since`/`until`；组织范围 |
 | `ListBills` | `GET /api/v1/admin/billing/bills` | 占位 → 实现 | 月度账单汇总 | 从计费记录计算（D9）；组织过滤 + 范围 |
-| `GetBalance` | `GET /api/v1/admin/billing/balance` | 保持占位 | 账户模式 | 特性 #8；返回 10503 |
+| `GetBalance` | `GET /api/v1/admin/billing/balance` | 已实现（特性 #8） | 账户模式 | 返回账户快照；未入金组织 `has_account=false` |
 
 契约约束：
 

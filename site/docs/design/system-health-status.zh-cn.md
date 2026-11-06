@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/status` 管理面状态页（组件健康 + 运行时长 + 依赖状态），页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `observability`（对既有组件健康信号的新只读聚合），`pkg/server` 网关（管理前缀绑定），`web` 管理控制台（`SystemStatusPage`），`controller`（只读：控制器健康） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.5 节 `metering`、第 3.1 节（管理面/用户面分离）· [模型可观测性仪表盘](./model-observability.zh-cn.md) — 姊妹只读聚合及其新鲜度约定 · [加速器清单与健康](./accelerator-inventory.zh-cn.md) — GPU 节点的姊妹健康面 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

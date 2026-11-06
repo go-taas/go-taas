@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the DB-backed image registry and warmup (pre-pull) orchestration: component responsibilities, data model, API contract, message contract, controller-side pre-pull, first-boot migration from the config-driven registry, error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `image` (registry CRUD and warmup tasks), `infer` (deploy-form image consumption, unchanged), `controller` (pre-pull execution and status report) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/image-management.md) · [Architecture Design](../design/architecture.md) Section 2.3 (`image`), Section 2.7 Controller · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the transitional config-driven registry, the deploy-form dropdown, the change-event shape, the status-report pattern) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -15,7 +15,7 @@
 ### 1.1 Goals
 
 - Replace the transitional in-memory, config-seeded image registry with a DB-backed `images` table as the single source of truth, keeping the `image.Lookup` interface signature unchanged so the `infer` module does not change (D1).
-- Implement the full `taas.image.v1.ImageService` surface: the three existing RPCs (`RegisterImage`, `ListImages`, `TriggerWarmup` — currently a stub / read-only) plus five new RPCs (`GetImage`, `UpdateImage`, `DeleteImage`, `ListWarmupTasks`, `GetWarmupTask`).
+- Implement the full `taas.image.v1.ImageService` surface: the three existing RPCs (`RegisterImage`, `ListImages`, `TriggerWarmup` — implemented by this feature) plus five new RPCs (`GetImage`, `UpdateImage`, `DeleteImage`, `ListWarmupTasks`, `GetWarmupTask`).
 - First-boot seed from `image.registry` config: an empty `images` table gets the config entries as rows preserving their `imageId` values; the seed is insert-only and never re-runs on a non-empty table (D2, AC3, AC4).
 - Full CRUD semantics: register with validation (name/tag syntax 10207, digest syntax 10203, accelerator 10204, duplicate triple 10202), description-only update (D6), reference-checked delete with the new 10206 `CodeImageInUse` naming blocking services (D7, D10).
 - Warmup (pre-pull) as an asynchronous task: `TriggerWarmup` returns a `task_id` with `state=pending` immediately; the Controller executes per-node pulls and reports status back through the message queue; task states are the closed set `pending` / `running` / `succeeded` / `failed`; at most one active task per image (D8).
@@ -430,7 +430,7 @@ Rules:
 - **Schema**: two new tables (`images`, `warmup_tasks`) via AutoMigrate on first start; additive only, no existing data touched. The first-boot seed runs immediately after AutoMigrate inside the same `Migrate` hook.
 - **Proto**: additive changes (five new RPCs, extended messages) — `make pbgen` required.
 - **New subject**: `image.warmup.status` is additive; brokers are subject-based (RabbitMQ) so no migration.
-- **Controller**: `ApplyImageWarmup` replaces the current stub behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
+- **Controller**: `ApplyImageWarmup` implements the warmup reconcile behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
 - **Rolling update order**: deploy `taas-server` first (it seeds, serves CRUD, publishes tasks and consumes status), then the controller. The reverse order is safe too: the controller ignores subjects with no publishers.
 - **Upgrade compatibility**: existing inference services referencing seeded ids (e.g. `img-vllm-nvidia-v063`) keep validating — the seed preserves config ids (D2, D4, AC3).
 - **Feature flags**: none needed — the transitional registry is replaced wholesale; the config seed remains as the fresh-install bootstrap.
@@ -551,7 +551,7 @@ Service RPCs (`service.go`):
 
 ### 10.4 Controller Pre-Pull (`internal/controller/reconciler.go`)
 
-`ApplyImageWarmup(ctx, msg)` replaces the stub:
+`ApplyImageWarmup(ctx, msg)` implements the warmup reconcile:
 
 1. Decode the warmup task (Section 4.5.1); malformed → log + `mq.Permanent`.
 2. Publish status `running` (empty node results).

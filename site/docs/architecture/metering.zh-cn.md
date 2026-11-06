@@ -6,7 +6,7 @@
 | 文档范围 | 计量流水线的架构与详细设计：事件摄取（MQ 消费者 + 直连 RPC）、凭证持久化、小时结算运行器、结算事件发布、用量/凭证查询 API、保留清理、错误处理、配置、发布说明，以及各层的函数级设计 |
 | 负责模块 | `metering`（摄取、凭证、结算、查询、保留），以及 `auth`（API Key 身份，只读）和 `billing`（结算事件消费者，特性点 #5） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/metering.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.5 节（`metering`）、第 2.6 节（`billing`）、第 4.3 节（推理请求与计费闭环） · [API Key 管理](./api-key-management.zh-cn.md)（凭证依附的密钥身份） |
-| 状态 | 架构设计完成，已移交 Developer 代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 目标
 
-- 实现完整的 `taas.metering.v1.MeteringService` 面：两个既有 RPC（`IngestMeteringEvent`、`ListVouchers` — 目前为桩）加三个新增 RPC（`GetVoucher`、`GetUsageSummary`、`ListUsageRecords`），proto 变更全部为增量。
+- 实现完整的 `taas.metering.v1.MeteringService` 面：两个既有 RPC（`IngestMeteringEvent`、`ListVouchers` — 由本特性实现）加三个新增 RPC（`GetVoucher`、`GetUsageSummary`、`ListUsageRecords`），proto 变更全部为增量。
 - **摄取**从两条路径汇聚到同一处理器：`metering.events` 上的 MQ 消费者（生产路径 —— 数据面网关的 Wasm 插件在此发布）与 `IngestMeteringEvent` gRPC RPC（测试与未来非 Envoy 网关的直连路径）（D2、FR1）。
 - **幂等的凭证写入**：每推理请求一行 `vouchers`，以 UUID v4 `voucher_id` 为主键，`request_id` 唯一；重复投递返回既有凭证 id 且不写入任何内容（D1、FR1.3、AC1）。
 - 每张凭证携带**完整 token 分解** —— prompt / completion / cached / reasoning token —— 加上 `api_key_id`、`organization_id`、`model_id`、`service_id`、`request_id`、`completed_at`；捕获时不做预聚合（D3、FR2）。

@@ -6,7 +6,7 @@
 | 文档范围 | `auth` 模块 API Key 管理能力的需求分析与 UI/UX 设计：控制台页面、用户流程、API 面与验收标准 |
 | 归属模块 | `auth`（控制面，经控制面 Gateway 对外服务） |
 | 相关文档 | [架构设计文档](./architecture.zh-cn.md) —— 第 2.1 节 `auth` 职责、第 3.3 节推理 Gateway 的 API Key 鉴权调用链 |
-| 状态 | 设计完成，已移交 Architect agent |
+| 状态 | 已实现 |
 
 ---
 

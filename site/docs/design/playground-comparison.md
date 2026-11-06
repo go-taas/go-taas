@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the end-user playground-comparison page for `/playground/compare`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `infer` (the compare RPC that runs the same prompt against multiple models and returns per-model latency/token/cost), `model` (read-only: the masked user-realm catalog the compare page's model selector draws from), `auth` (read-only: the active API keys the compare page offers), `web` end-user console (`PlaygroundComparePage`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §3.1 (admin/user surface separation) · [Console Surface Separation](./console-surface-separation.md) — the end-user playground (`/playground`, `POST /api/v1/models/{model_id}:playground`, D14), the `UserShell` conventions, the masked-projection rule · [Request Logs & API Playground](./request-logs-playground.md) — the existing model-based playground this feature extends into a multi-model comparison · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the cost-attribution model this feature's per-model cost column draws from |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -221,7 +221,7 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 | Unknown `model_id` | 10101 | `CodeModelNotFound` | `CompareModels` (FR1.3) |
 | Unknown `api_key_id` | 10007 | `CodeAPIKeyNotFound` | `CompareModels` (FR1.3) |
 | Inference blocked by funds/quota | 10502 | `CodeInsufficientFunds` | `CompareModels` (FR1.3) |
-| Fewer than 2 or more than 5 models | 10404 | `CodeRequestLogRangeInvalid` | Reused for the model-count validation (FR1.3) |
+| Fewer than 2 or more than 5 models | 10404 | `CodeMeteringRangeInvalid` | Reused for the model-count validation (FR1.3) |
 
 ---
 

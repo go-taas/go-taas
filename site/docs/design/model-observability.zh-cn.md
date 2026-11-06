@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/observability` 管理面可观测性页面（集群总览 + 按模型下钻），`/models/:modelId/observability` 终端用户面可观测性页面，页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `observability`（新增 — 拥有对 `request_logs` 与 `usage_records` 的只读聚合），`web` 管理控制台（`ObservabilityPage`、`ModelObservabilityPage`）与终端用户控制台（`UserModelObservabilityPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.5 节 `metering`、第 2.6 节 `billing` · [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md) — 本特性聚合的 `request_logs` 表及其 `latency_ms` / `status` / `error` / token 字段 · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 姊妹只读仪表盘及其内联 SVG 图表、新鲜度与范围约定 · [推理负载测试](./load-testing.zh-cn.md) — 本特性以连续时间序列补充的时点性能测量 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -44,7 +44,7 @@ go-taas 部署推理服务（特性 #2）、自动扩缩（特性 #16）、计�
 | D5 | **图表用内联 SVG 渲染** — 每桶一个柱（或线），带指标切换器（延迟 / 吞吐 / 错误率 / token/秒）— 无新图表依赖 | 控制台刻意依赖精简；小而可测试的 SVG 组件与 usage-dashboard D7 决策一致 |
 | D6 | **新鲜度显式**：每个响应携带 `data_through`（请求日志覆盖的最后一个完整桶），控制台显示「data through <time>」说明，并在所选范围超出它时显示 pending/partial 标记 | 用量滞后困惑是最常被记录的陷阱（OpenAI、usage-dashboard D4）；标记以零新流水线工作保持新鲜度故事诚实 |
 | D7 | **终端用户面是租户作用域且掩码**：用户前缀的 `GetModelObservability` 只返回租户自己对模型的用量，按 API Key 聚合，无服务 id、无副本数、无其他租户数据 | 遵循特性 #17 的掩码投影规则与 load-testing D2 模式：租户得到性能预期，而非运营者内部信息 |
-| D8 | **observability 块（10701–10799）新增错误码**：**10701 `CodeObservabilityModelNotFound`**（未知 `model_id`）。范围校验复用 **10404** | 可观测性是新模块（D3），因此其错误码放在 webhook 块（106xx）之后的全新块中；不同的 not-found 让「未知模型」可操作，而范围契约与计量保持统一（D4） |
+| D8 | **observability 块（10801–10899）新增错误码**：**10801 `CodeObservabilityModelNotFound`**（未知 `model_id`）。范围校验复用 **10404** | 可观测性是新模块（D3），因此其错误码放在 webhook 块（107xx）之后的全新块中；不同的 not-found 让「未知模型」可操作，而范围契约与计量保持统一（D4） |
 | D9 | **可观测性是只读且仅对访问审计** — 它不写数据、不改变任何东西；页面仅对具有相应角色的已认证会话可达，且无可观测性变更被审计（没有可变更的东西） | 该特性是对既有数据的纯聚合；审计轨迹（特性 #15）已覆盖底层请求日志写入。无需新增审计事件 |
 
 ## 2. 目标与非目标
@@ -75,12 +75,12 @@ go-taas 部署推理服务（特性 #2）、自动扩缩（特性 #16）、计�
 
 ### FR2 — 管理面按模型下钻
 
-- **FR2.1** `GetModelObservability`（`GET /api/v1/admin/observability/models/{model_id}`）返回时间范围下的单模型可观测性：摘要卡片、时间序列与按 API Key 拆分。它接收 `since`/`until`（默认与 10404 范围规则同 FR1.1）。未知 `model_id` 返回 **10701 `CodeObservabilityModelNotFound`**（D8）。
+- **FR2.1** `GetModelObservability`（`GET /api/v1/admin/observability/models/{model_id}`）返回时间范围下的单模型可观测性：摘要卡片、时间序列与按 API Key 拆分。它接收 `since`/`until`（默认与 10404 范围规则同 FR1.1）。未知 `model_id` 返回 **10801 `CodeObservabilityModelNotFound`**（D8）。
 - **FR2.2** 响应的 `cards` 与 `series[]` 镜像 FR1.2/FR1.4，作用域为该模型。`keys[]` 携带范围内使用该模型的每个 API Key 一行：`api_key_id`、`api_key_name`、`request_count`、`error_rate`、`p95_latency_ms`、`output_tokens_per_sec`。
 
 ### FR3 — 终端用户面单模型视图
 
-- **FR3.1** `GetModelObservability`（`GET /api/v1/models/{model_id}/observability`）返回**租户自己**的时间范围下的单模型可观测性：摘要卡片、时间序列与按 API Key 拆分。它接收 `since`/`until`（默认与 10404 范围规则同 FR1.1）。未知 `model_id` 返回 **10701**（D8）。
+- **FR3.1** `GetModelObservability`（`GET /api/v1/models/{model_id}/observability`）返回**租户自己**的时间范围下的单模型可观测性：摘要卡片、时间序列与按 API Key 拆分。它接收 `since`/`until`（默认与 10404 范围规则同 FR1.1）。未知 `model_id` 返回 **10801**（D8）。
 - **FR3.2** 响应作用域为调用者的组织（D7）：它只聚合租户自己对模型的 `request_logs`，`keys[]` 只携带租户自己的 API Key。它暴露**无**服务 id、副本数或其他租户数据（D7）。
 
 ### FR4 — 面与 API 绑定
@@ -131,7 +131,7 @@ go-taas 部署推理服务（特性 #2）、自动扩缩（特性 #16）、计�
 3. **时间序列图表** — 带指标切换器的内联 SVG 图表，作用域为该模型。
 4. **按密钥表格** — 使用该模型的 API Key，列：**API key**（名称）、**Requests**、**Error rate**、**Avg latency**、**p95 latency**、**Output tokens/sec**。
 
-**交互状态**：与第 5.1 节相同，空文案为「No request data for this model in this range.」，未知 `model_id`（10701）的未找到状态显示标准未找到状态，带返回总览的链接。
+**交互状态**：与第 5.1 节相同，空文案为「No request data for this model in this range.」，未知 `model_id`（10801）的未找到状态显示标准未找到状态，带返回总览的链接。
 
 **按密钥表格列**：API key（名称）、Requests、Error rate、Avg latency、p95 latency、Output tokens/sec。可按 Requests、Error rate、Avg latency、p95 latency 与 Output tokens/sec 排序。分页。
 
@@ -206,18 +206,18 @@ sequenceDiagram
 **给架构师代理的契约说明**：
 
 1. `GetObservabilityOverview` 校验 `since`/`until`（int64 unix 秒；默认 `until = now`、`since = until − 24h`）；`since > until` 或范围 > 92 天返回 10404（D4）。`model_id` 与 `organization_id` 为可选过滤。
-2. `GetModelObservability` 校验相同的范围契约；未知 `model_id` 返回 10701（D8）。在用户前缀上它作用域为调用者的组织（D7），且不暴露服务 id 或运营者内部信息。
+2. `GetModelObservability` 校验相同的范围契约；未知 `model_id` 返回 10801（D8）。在用户前缀上它作用域为调用者的组织（D7），且不暴露服务 id 或运营者内部信息。
 3. 桶在范围 ≤ 7 天时为小时，否则为日（D4）；每个桶携带 `bucket`、`request_count`、`error_count`、`error_rate`、`avg_latency_ms`、`p95_latency_ms`、`output_tokens_per_sec`、`input_tokens_per_sec`。`error_rate` 由客户端派生（error ÷ requests）；线上只携带整数计数与整数毫秒。
 4. 每个响应携带 `data_through`（请求日志覆盖的最后一个完整桶）用于新鲜度标记（D6）。
 5. 聚合读取 `request_logs`（特性 #12）— 每请求的 `latency_ms`、`status`、`error` 与四个 token 计数 — 以及需要 token 总数时的 `usage_records`；它不写任何东西（D9）。
 6. 线上约定不变：列表用点分页，成功返回 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`，int64 字段序列化为 JSON 字符串。
 
-错误码（observability 块 10701–10799，`pkg/errors/codes.go`）：
+错误码（observability 块 10801–10899，`pkg/errors/codes.go`）：
 
 | 条件 | 代码 | 常量 | 说明 |
 | --- | --- | --- | --- |
-| 未知 `model_id` | 10701 | `CodeObservabilityModelNotFound` | **新增**（D8） |
-| 格式错误或超长范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用（D4）— 计量范围契约 |
+| 未知 `model_id` | 10801 | `CodeObservabilityModelNotFound` | **新增**（D8） |
+| 格式错误或超长范围 | 10404 | `CodeMeteringRangeInvalid` | 复用（D4）— 计量范围契约 |
 | 数据库 / 基础设施故障 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准
@@ -226,7 +226,7 @@ sequenceDiagram
 | --- | --- | --- |
 | AC1 | `GetObservabilityOverview` 用有效范围返回摘要卡片、按模型表格与时间序列；范围 > 92 天或 `since > until` 返回 10404 | FVT |
 | AC2 | `GetObservabilityOverview` 带 `model_id` 过滤返回作用域为该模型的卡片与序列 | FVT |
-| AC3 | `GetModelObservability`（admin）返回单模型卡片、时间序列与按密钥拆分；未知 `model_id` 返回 10701 | FVT |
+| AC3 | `GetModelObservability`（admin）返回单模型卡片、时间序列与按密钥拆分；未知 `model_id` 返回 10801 | FVT |
 | AC4 | `GetModelObservability`（user）只返回调用者组织对模型的用量，按租户自己的 API Key 聚合，无服务 id 或运营者内部信息 | FVT |
 | AC5 | 桶在范围 ≤ 7 天时为小时，范围 > 7 天时为日；每个响应携带 `data_through` | FVT |
 | AC6 | `/admin/observability` 页面在首次成功加载后渲染过滤栏、摘要卡片、内联 SVG 图表与按模型表格，带 last-updated 时间戳 | E2E |

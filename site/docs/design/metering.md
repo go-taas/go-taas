@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the `metering` module: voucher ingestion from the data plane, async settlement per API Key, usage query APIs, the console Usage page, and acceptance criteria |
 | Owning modules | `metering` (voucher ingestion, settlement, usage queries), with `auth` (API Key identity) and `billing` (settlement hand-off, feature #5) |
 | Related documents | [Architecture Design](./architecture.md) — Section 2.5 `metering`, Section 2.6 `billing`, Section 4.3 the metering/settlement sequence · [API Key Management](./api-key-management.md) — the key identity that vouchers attach to · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the model identity carried on vouchers |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

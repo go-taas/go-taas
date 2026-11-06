@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the read-only admin-surface accelerator inventory: the discovery and reporting mechanism (Controller → MQ → accelerator service), the in-memory projection cache data model, the three admin RPCs with their exact `google.api.http` bindings, the health-composite semantics, the warmup-task context read, the frontend pages and their route → API-prefix mapping, error handling (10208), configuration, security, rollout, and a function-level task list per layer |
 | Owning modules | `services/accelerator` (new: projection cache + three admin RPCs), `internal/controller` (node/GPU collection + snapshot publish), `pkg/k8s` (node, device-plugin, extended-resource reads), `pkg/mq` (new `accelerator.inventory` subject), `pkg/errors` (10208), `pkg/config` (accelerator section), `web/` admin console (`AcceleratorsPage`, `AcceleratorNodeDetailPage`), `services/image` (warmup-task narrow read) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/accelerator-inventory.md) · [Architecture Design](../design/architecture.md) §2.3 (heterogeneous compute), §2.7 Controller · [Console Surface Separation](./console-surface-separation.md) (the admin surface, realm guard, `AdminShell`) · [Image Management](./image-management.md) (warmup tasks, per-node results, the "node inventory" this feature provides) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (card type `accelerator_type`) · [Inference Autoscaling](./inference-autoscaling.md) (node-level capacity context) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

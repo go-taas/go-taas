@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface cluster pages for `/admin/clusters` (cluster list) and `/admin/clusters/:clusterId` (cluster detail), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `cluster` (new — owns the cluster registry and the cluster-health projection), `infer` (read-only: workload placement and cross-cluster routing), `controller` (read-only: per-cluster health collection and snapshot publish), `pkg/server` gateway (admin-prefix bindings), `web` admin console (`ClustersPage`, `ClusterDetailPage`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §2.7 Controller, §4.2 one-click deployment flow · [Accelerator Inventory & Health](./accelerator-inventory.md) — the Controller → MQ → service projection pattern and the in-memory cache this feature reuses · [System Health & Service Status](./system-health-status.md) — the component-health conventions this feature extends to clusters · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle and the deploy form this feature's routing extends · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Why Multi-Cluster Management Comes Now
 
-go-taas runs inference services as Kubernetes Deployments on a single cluster (model-catalog-deployment §4.2): the Controller creates the Deployment and Service, and the accelerator inventory (feature #18) reports per-node GPU health. What the console still cannot do is *run inference across more than one cluster*: an operator with a second cluster (a different region, a different accelerator fleet, or a burst capacity pool) has no way to register it, see its health, see which services run on it, or choose where a new deployment lands. The operator must manage each cluster's Kubernetes API separately and route deployments by hand — an operator-orchestration escape hatch the console should own.
+go-taas runs inference services as AIBrix StormServices on a single cluster (model-catalog-deployment §4.2): the Controller creates the StormService and Service, and the accelerator inventory (feature #18) reports per-node GPU health. What the console still cannot do is *run inference across more than one cluster*: an operator with a second cluster (a different region, a different accelerator fleet, or a burst capacity pool) has no way to register it, see its health, see which services run on it, or choose where a new deployment lands. The operator must manage each cluster's Kubernetes API separately and route deployments by hand — an operator-orchestration escape hatch the console should own.
 
 This feature adds **multi-cluster management**: register and manage inference clusters, view cluster health and workload placement, and route deployments across clusters. It is the smallest independently valuable increment of Phase 4's productionization roadmap item: it turns "I have a second cluster" into "register it, see its health and what runs on it, and choose where each deployment lands".
 

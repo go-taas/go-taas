@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-30: a new `GetSystemStatus` RPC in the `observability` module aggregating the existing component health signals into a single admin-only endpoint; the admin System Status page (`/admin/status`); plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | `observability` (new read-only health aggregation over the existing component health signals, plus the `GetSystemStatus` RPC), `pkg/server` gateway (admin-prefix bindings), `controller` (read-only: controller health), `web` admin console (`SystemStatusPage`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/system-health-status.md) · [Architecture Design](../design/architecture.md) §2.5 (`metering`), §3.1 (admin/user surface separation) · [Model Observability Dashboard](./model-observability.md) (the sibling read-only aggregation and its freshness conventions) · [Accelerator Inventory & Health](./accelerator-inventory.md) (the sibling health surface for GPU nodes) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces this feature spans, the `AdminShell` conventions, the masked-projection rule) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

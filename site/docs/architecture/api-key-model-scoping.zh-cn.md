@@ -6,7 +6,7 @@
 | 文档范围 | 范围列与迁移、key 管理 API 端面、verdict 缓存传播、数据面强制执行顺序、用户控制台范围编辑、管理端只读可见性、审计、错误、安全、发布与实现职责 |
 | 所属模块 | `auth`（范围存储、verdict 缓存、VerifyAPIKey 强制执行、范围编辑 RPC、审计）；`model`（写入时校验的目录存在性检查）；`web/`（用户端 key 页面） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/api-key-model-scoping.zh-cn.md) · [架构设计](./architecture.zh-cn.md) §2.2（`auth`）与 §3.2（推理网关）· [API Key 管理](./api-key-management.zh-cn.md) — key 生命周期、加盐哈希存储、吊销 · [租户级模型授权](./model-authorization.zh-cn.md) — 本功能叠加其下的组织级门禁 · [每 Key 限流与组织消费限额](./rate-limits-spend-limits.zh-cn.md) · [控制台分离](./console-surface-separation.zh-cn.md) |
-| 状态 | 架构完成；已交接 Developer |
+| 状态 | 已实现 |
 
 ## 1. 目标与非目标
 
@@ -213,7 +213,7 @@ sequenceDiagram
 
 ## 9. 配置
 
-无新配置。verdict 缓存 TTL（`auth.apikey.cacheTTL`，默认 30s）与模型授权缓存 TTL（默认 5s）的传播上界与今天吊销和组织授权完全相同。无新 MQ subject、runner 或环境变量。
+无新配置。verdict 缓存 TTL（`auth.apiKeyCacheTTL`，默认 30s）与模型授权缓存 TTL（默认 5s）的传播上界与今天吊销和组织授权完全相同。无新 MQ subject、runner 或环境变量。
 
 ## 10. 安全与隐私
 

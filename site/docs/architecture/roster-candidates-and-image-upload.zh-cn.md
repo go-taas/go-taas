@@ -62,7 +62,7 @@ POST /api/v1/admin/images:upload      multipart/form-data
 
 **AD6 —— 身份规则与 gRPC 一致。** 处理器把 `Authorization` 与 `X-Organization-Id` 转发进 gRPC 元数据，并把会话角色解析器挂到 context 上（与一元拦截器完全相同），然后在进程内调用镜像服务。平台管理员门禁看到的调用者与转码调用一致。审计所需的操作者由接线适配层解析（`auth.SessionUserID`）。
 
-**AD7 —— 目标命名规则唯一。** 上传与仓库导入落到同一处：`image.harbor.hostname` + `image.harbor.project` + 镜像**自身**的名称。源仓库与其命名空间被丢弃，`docker.io/library/a/b/hello:1.0.0` 变成 `<harbor>/<project>/hello:1.0.0`。
+**AD7 —— 目标命名规则唯一。** 上传与仓库导入落到同一处：`image.harbor.url` + `image.harbor.project` + 镜像**自身**的名称。源仓库与其命名空间被丢弃，`docker.io/library/a/b/hello:1.0.0` 变成 `<harbor>/<project>/hello:1.0.0`。
 
 **AD8 —— 镜像包提供名称，表单是回退。** `pkg/registry.ReadArchiveReference` 从（可能 gzip 压缩的）tar 中读取 `manifest.json`，返回第一个 `RepoTags`。这里有两种用途，绝不能混用：
 

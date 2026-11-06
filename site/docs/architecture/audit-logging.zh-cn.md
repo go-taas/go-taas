@@ -6,7 +6,7 @@
 | 文档范围 | 特性 #15 的架构与详细设计：`audit_events` 表及其由每个变更性控制面 API 调用的尽力而为、非致命写入路径、带可过滤表格/下钻详情/CSV/JSON 导出的管理端「审计日志」页面、带范围限定导出的终端用户「我的活动」页面，以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 归属模块 | 新 `audit` 模块（`services/audit`）：`audit_events` 表、记录器、列表/详情/导出 RPC、保留运行器；`auth`（主体身份、会话领域）与 `tenancy`（组织范围、RoleGuard）只读；控制台 Web 应用 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/audit-logging.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.1 节（`auth`）、第 2.6 节（`billing`）、第 3.1 节（管理端/用户端表面分离）· [控制台表面分离](./console-surface-separation.zh-cn.md)（本特性两个页面必须遵守的双控制台拆分；领域守卫、10038）· [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md)（本特性补充的诊断日志；尽力而为非致命写入模式）· [组织成员、角色与邀请](./org-members-rbac.zh-cn.md)（把关谁能查看与导出审计数据的 RoleGuard）· [多租户与组织隔离](./multi-tenancy.zh-cn.md)（过渡性 `X-Organization-Id` 身份） |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -512,7 +512,7 @@ sequenceDiagram
 | `audit.retention.eventTTL` | `8760h`（365 天） | 早于该值的审计事件被审计保留运行器删除（AD6） |
 | `audit.retention.batchSize` | `1000` | 每次保留通过删除的行数 |
 | `audit.retention.interval` | `1h` | 保留通过之间的 ticker 周期 |
-| `audit.export.maxRows` | `10000` | 导出行数上限（AD7） |
+| `audit.exportMaxRows` | `10000` | 导出行数上限（AD7） |
 
 `audit` 配置块在 `pkg/config` 中新增（`AuditConfig` + `AuditRetentionConfig`），遵循 `metering.retention` 模式。`applyDefaults`/`Validate` 设置上述默认值。导出上限由导出 RPC 读取；保留运行器读取 `enabled`/`eventTTL`/`batchSize`/`interval`。
 

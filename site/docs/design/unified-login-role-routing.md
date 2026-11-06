@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the custom login page and provider-selection design for both surfaces, role-based landing, the admin switch button, the Keycloak realm/provider seeding on compose startup, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `web` (login pages, custom login form, role-based landing, admin switch button), `auth` (password-grant login, role-derived session realm, switch-surface session minting), `deploy/compose` (Keycloak realm-export.json seeding, provider seeding), `pkg/server` gateway (user-prefix and admin-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.1 `auth` (SSO federation, sessions), §3.1 admin/user surface separation · [SSO Federation & Account Binding](./sso-federation.md) — the IdP framework, `SSOAuthorize`/`SSOCallback`, identity binding, attribute-to-role mapping, sessions · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, realm-pinned sessions, the login pages this feature replaces, the `10038 REALM_MISMATCH` rule · [Organization Members, Roles & Invitations](./org-members-rbac.md) — the roles the session carries and this feature routes on |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 | Implementation status | **Under construction** for the WeChat provider (the OIDC/OAuth 2.0 password grant, SAML, LDAP/LDAPS, and the built-in local account login are implemented). |
 
 ---

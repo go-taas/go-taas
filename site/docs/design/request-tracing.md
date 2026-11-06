@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface tracing pages for `/admin/traces` (trace explorer + request-id lookup) and `/admin/traces/:traceId` (trace detail with waterfall + latency breakdown), the end-user-surface tracing pages for `/traces` and `/traces/:traceId`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `tracing` (new — owns the `traces` and `trace_spans` tables and the read-only query RPCs), `web` admin console (`TracesPage`, `TraceDetailPage`) and end-user console (`UserTracesPage`, `UserTraceDetailPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §3.1 (admin/user surface separation) · [Request Logs & API Playground](./request-logs-playground.md) — the `request_logs` table, its `request_id` / `latency_ms` / `status` / `error` fields, and the best-effort non-fatal write pattern this feature extends with per-phase timing · [Model Observability Dashboard](./model-observability.md) — the sibling read-only aggregation over `request_logs`, its inline-SVG chart, freshness, and range conventions · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -240,7 +240,7 @@ Error codes (tracing block 11101–11199, `pkg/errors/codes.go`):
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
 | An unknown `trace_id` | 11101 | `CodeTraceNotFound` | **New** (D9) |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused (D9) — the metering range contract |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused (D9) — the metering range contract |
 | Database / infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria

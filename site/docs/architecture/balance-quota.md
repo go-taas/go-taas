@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the billing account core: per-organization accounts (prepaid/postpaid), recharge and refund, settlement-time deduction, inference gating, monthly cycle reset, the transaction ledger, console Accounts pages, error handling, configuration, and function-level design per layer |
 | Owning modules | `billing` (accounts, transactions, deduction, cycle reset, gating check), with the Inference Gateway as the enforcement point (data-plane track) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/balance-quota.md) · [Architecture Design](../design/architecture.md) Section 2.6 (`billing`) · [Token Metering Vouchers & Async Settlement](./metering.md) (the settlement pipeline) · [Price Matrix & Tiered Pricing](./pricing.md) (the charge engine this feature hooks into) · [Multi-Tenancy Isolation](./multi-tenancy.md) (org scoping) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

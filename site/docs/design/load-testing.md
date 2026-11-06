@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface load-testing page design for `/admin/load-tests` (configure, run, live progress, results, history), the end-user-surface read-only performance display on `/models/:modelId`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `infer` (owns inference services and the load-test runner that drives them), `web` admin console (`LoadTestsPage`, `LoadTestDetailPage`) and end-user console (`ModelDetailPage` performance section), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference service this feature targets · [Request Logs & API Playground](./request-logs-playground.md) — the single-request test surface this feature scales up · [Inference Autoscaling](./inference-autoscaling.md) — the capacity context load tests inform · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

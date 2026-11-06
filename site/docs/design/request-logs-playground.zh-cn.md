@@ -6,7 +6,7 @@
 | 文档范围 | 特性-12 的需求分析与 UI/UX 设计：按请求的 `request_logs` 表及其查询 API（增量 A），以及控制台 API Playground — 经控制网关代理 RPC 发送一次测试推理（增量 B），外加验收标准 |
 | 归属模块 | `metering`（请求日志采集、列表/详情查询），`infer`（playground 代理 RPC），控制台 Web 应用；`auth`（API Key 身份）只读 |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.5 节 `metering`、第 2.6 节 `billing`、第 4.3 节计量/结算时序 · [Token 计量凭证与异步结算](./metering.zh-cn.md) — 本特性以请求元数据扩展的凭证管道 · [用量仪表盘与按请求成本归因](./usage-dashboard.zh-cn.md) — 归因成本的仪表盘；其非目标将完整请求上下文的所有权交给特性-12 · [API Key 管理](./api-key-management.zh-cn.md) — 每条日志行上的 Key 身份 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -40,7 +40,7 @@
 | D3 | **v1 不采集请求/响应体** — 日志仅采集元数据（身份、模型、服务、token 数、延迟、状态、错误） | 请求体是隐私与存储负担，且回答「这次请求发生了什么」并不需要它；仅元数据让行保持小巧、30 天保留期廉价。请求体采集延后（开放问题） |
 | D4 | **请求日志 30 天保留期**，由周期性清理 runner 执行；凭证保持其 90 天窗口 | 请求日志是诊断性的，价值衰减快；30 天在覆盖调试窗口的同时约束存储。保留期是配置而非代码 |
 | D5 | **Playground 经 `infer` 服务中的控制网关代理 RPC `PlaygroundInfer` 路由**，使用所选组织 API Key，并经正常计量路径产生真实请求日志 | Playground 必须走真实推理路径，使测试调用在用量与请求日志中可见（中国平台陷阱）；控制网关让数据面网关保持不动 |
-| D6 | **新错误码 10404 `CodeRequestLogRangeInvalid` 复用与 10405 `CodeRequestLogNotFound`** — 10404 复用于请求日志查询上的畸形范围；10405 为未知 `request_log_id` 新增 | 104xx 段预留给 metering；区分未找到与范围无效让 API 消费方的处理更精确，镜像 metering D9 模式 |
+| D6 | **新错误码 10404 `CodeMeteringRangeInvalid` 复用与 10405 `CodeRequestLogNotFound`** — 10404 复用于请求日志查询上的畸形范围；10405 为未知 `request_log_id` 新增 | 104xx 段预留给 metering；区分未找到与范围无效让 API 消费方的处理更精确，镜像 metering D9 模式 |
 | D7 | **控制台新增请求日志页与 API Playground 页** — 日志页是可过滤表格带下钻；Playground 是三栏表单（服务/模型选择器、提示词编辑器、响应面板） | 两者都是面向运营者的调试界面；它们是独立页面，因为任务不同（回顾式检查 vs 实时实验） |
 
 ### 1.3 范围边界

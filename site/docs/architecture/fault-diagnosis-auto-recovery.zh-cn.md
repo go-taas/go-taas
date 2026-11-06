@@ -6,7 +6,7 @@
 | 文档范围 | 功能-53 的架构与详细设计：新 `fault` 模块（事件生命周期、确定性根因分类器、恢复动作、自动恢复策略）、`infer` 状态扩展（带活动事件的服务状态）、Controller 的检测信号发布与恢复执行、135xx 错误块、管理页面 `/admin/faults`、`/admin/faults/:incidentId` 与 `/admin/faults/policy`、租户服务状态 / 事件横幅、配置、安全、上线，以及按层的函数级任务清单 |
 | 负责模块 | `fault`（新模块 — 事件生命周期、根因分类器、恢复动作、自动恢复策略）；`infer`（服务状态扩展、事件横幅数据）；`Controller`（检测信号、恢复执行）；`k8s`（Pod/节点/加速器状态读取、重启/重调度/排空动作）；`audit`（恢复动作）；`deployment-history`（部署轨迹中的恢复动作）；`pkg/server` 网关（管理 + 用户前缀绑定）；`pkg/errors`（135xx 块）；`pkg/config`（`fault` 段）；`pkg/mq`（一个新主题）；`web` 管理控制台（`FaultsPage`、`FaultDetailPage`、`FaultPolicyPage`、`ServiceStatusBanner`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/fault-diagnosis-auto-recovery.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.4 `infer`、§2.7 Controller · [系统健康与服务状态](./system-health-status.zh-cn.md)（本功能事件管理所扩展的组件健康表面；其非目标明确把事件管理与事件时间线延迟到这里）· [错误分析](./error-analysis.zh-cn.md)（本功能按事件诊断所补充的聚合错误表面）· [加速器清单与健康](./accelerator-inventory.zh-cn.md)（本功能消费的加速器故障信号）· [部署历史与审计](./deployment-history-audit.zh-cn.md)（恢复动作记录其中的变更事件轨迹）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（重启/重调度的服务生命周期目标）· [推理弹性伸缩](./inference-autoscaling.zh-cn.md)（为何恢复重调度而非扩容）· [控制台表面分离](./console-surface-separation.zh-cn.md)（两个表面、脱敏投影规则） |
-| 状态 | 架构完成，已移交开发者 agent |
+| 状态 | 已实现 |
 
 ---
 

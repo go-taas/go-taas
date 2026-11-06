@@ -6,7 +6,7 @@
 | 文档范围 | 功能 27 的架构与详细设计：新的 `tracing` 模块拥有 `traces` 与 `trace_spans` 表以及只读查询 RPC；`taas.tracing.v1.TracingService` proto 提供 `ListTraces` 与 `GetTrace`，双绑定到 admin 与 user 前缀；admin 追踪页面（`/admin/traces`、`/admin/traces/:traceId`）与 end-user 追踪页面（`/traces`、`/traces/:traceId`）；以及错误处理、配置、安全、上线与逐层函数级设计 |
 | 拥有模块 | 新 `tracing` 模块（`services/tracing`）：`traces` + `trace_spans` 表、随请求日志一起的最佳努力捕获、只读查询 RPC；`metering`（追踪捕获所扩展的请求日志写入点）；`model`（只读：`model_name` 解析）；`auth`（只读：`api_key_name` 解析、会话领域、会话活跃组织）；`tenancy`（RoleGuard，只读）；`pkg/server` 网关（admin 前缀与 user 前缀绑定）；控制台 Web 应用（admin `TracesPage`/`TraceDetailPage`，end-user `UserTracesPage`/`UserTraceDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/request-tracing.md) · [架构设计](../design/architecture.md) §2.5（`metering`）、§3.1（admin/user 表面分离）· [请求日志与 API 游乐场](./request-logs-playground.md)（`request_logs` 表、其 `request_id`/`latency_ms`/`status`/`error` 字段，以及本功能以分阶段计时扩展的最佳努力非致命写入模式）· [模型可观测性仪表盘](./model-observability.md)（对 `request_logs` 的同类只读聚合、其内联 SVG 图表、新鲜度与范围约定）· [控制台表面分离](./console-surface-separation.md)（本功能跨越的两个表面、`UserShell`/`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 

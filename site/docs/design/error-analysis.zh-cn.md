@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/errors` 管理面错误分析页面（集群级错误聚合 + Top 原因 + 错误率趋势 + 按错误下钻），`/errors` 终端用户面错误分析页面（租户作用域错误聚合 + Top 原因 + 错误率趋势 + 按错误下钻），页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `metering`（对 `request_logs` 的只读聚合，用于错误指标），`web` 管理控制台（`ErrorAnalysisPage`）与终端用户控制台（`UserErrorAnalysisPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.5 节 `metering` · [请求日志与 API 游乐场](./request-logs-playground.zh-cn.md) — 本特性聚合的 `request_logs` 表及其 `status` / `error` 字段 · [模型可观测性仪表盘](./model-observability.zh-cn.md) — 对 `request_logs` 的姊妹只读聚合及其错误率指标 · [请求追踪与延迟拆解](./request-tracing.zh-cn.md) — 本特性以错误聚合补充的姊妹按请求下钻 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -224,7 +224,7 @@ sequenceDiagram
 | 条件 | 码 | 常量 | 说明 |
 | --- | --- | --- | --- |
 | 未知 `error_code` | 11501 | `CodeErrorCauseNotFound` | **新增**（D8） |
-| 畸形或超长范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用（D4）— 计量范围契约 |
+| 畸形或超长范围 | 10404 | `CodeMeteringRangeInvalid` | 复用（D4）— 计量范围契约 |
 | 数据库 / 基础设施失败 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准

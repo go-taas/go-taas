@@ -13,7 +13,7 @@
 
 **Go TaaS** is an open-source platform for serving and billing large language models on Kubernetes. Administrators deploy open-source models (Qwen, DeepSeek, LLaMA, etc.) on a range of heterogeneous accelerators and price them per model and card type. Agents and SDKs consume the models through an OpenAI-compatible API, with per-API-Key isolation, token metering, and settlement.
 
-> **Status**: Enterprise-ready (under construction: the WeChat SSO provider is not implemented yet) and production-proven. All 50 backlog feature points (rows 1–51; model fine-tuning, row 39, was descoped by the product owner) are implemented across both consoles, with unit + FVT suites and 50 Nightwatch end-to-end suites green on the Docker Compose stack. See the [roadmap](#roadmap) for what shipped in each phase.
+> **Status**: Enterprise-ready (under construction: the WeChat SSO provider is not implemented yet) and production-proven. All 52 backlog feature points (rows 1–53; model fine-tuning, row 39, was descoped by the product owner) are implemented across both consoles, with unit + FVT suites and 52 Nightwatch end-to-end suites green on the Docker Compose stack. See the [roadmap](#roadmap) for what shipped in each phase.
 
 **English | [简体中文](./README.zh-cn.md)**
 
@@ -77,7 +77,7 @@ console and is covered by an end-to-end test suite.
 | Area | Capability |
 | --- | --- |
 | Multi-tenancy | Organization/project isolation across the whole platform, with organization members, roles, and invitations (RBAC). |
-| Service quota management | Per-organization quotas on four dimensions — concurrent inference requests (429 + `Retry-After`), number of inference services, batch jobs per day, and maximum output tokens per request — with tier presets, fail-closed enforcement, and an audited change history. |
+| Service quota management | Per-organization quotas on three dimensions — concurrent inference requests (429 + `Retry-After`), batch jobs per day, and maximum output tokens per request — with tier presets, fail-closed enforcement, and an audited change history. |
 | Per-tenant model authorization | Restrict which catalog models each tenant may consume. |
 | API Keys | Full lifecycle (create / list / revoke), salted-hash storage, per-key rate limits, org spend limits, and per-key **model scoping** so a leaked or over-broad key cannot reach unauthorized models. |
 | SSO federation | Pluggable identity providers — OIDC/OAuth 2.0, SAML 2.0, and LDAP/LDAPS — with account binding, JIT provisioning, and attribute-to-role mapping. |

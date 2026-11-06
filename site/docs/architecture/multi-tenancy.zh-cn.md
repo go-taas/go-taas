@@ -6,7 +6,7 @@
 | 文档范围 | 租户核心的架构与详细设计：`organizations` 与 `projects` 表、`tenancy` 模块（CRUD RPC、状态迁移、首次启动默认组织播种）、由 `auth`/`infer`/`metering`/`billing` 消费的组织上下文闸门、错误处理、配置、发布，以及各层的函数级设计 |
 | 归属模块 | `tenancy`（新建：`services/tenancy`），`auth`、`infer`、`metering`、`billing` 作为闸门消费方（仅增量接线） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/multi-tenancy.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.1 节 · [API Key 管理](./api-key-management.zh-cn.md) · [Token 计量凭证与异步结算](./metering.zh-cn.md) · [模型 × 卡型价格矩阵与阶梯定价](./pricing.zh-cn.md) |
-| 状态 | 架构完成，已移交研发代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -447,7 +447,7 @@ sequenceDiagram
 | | `guard.go` | `OrgGuard` — `NewOrgGuard`、`RequireExists`、`RequireActive` |
 | | `service.go` | 12 个 RPC 实现 + `Migrate`（AutoMigrate + 首次启动播种）+ `NewForFVT` + `MigrateSchemaForFVT` |
 | `services/auth` | `service.go` | `orgGuard` 字段 + `SetOrgGuard` + `checkOrg` + `ListAPIKeys`/`CreateAPIKey`/`RevokeAPIKey` 中的检查（增量） |
-| `services/infer` | `service.go` | 同样接线；全部五个 RPC 中的检查（增量） |
+| `services/infer` | `service.go` | 同样接线；生命周期 RPC 中的检查（增量） |
 | `services/metering` | `service.go` | 同样接线；四个查询 RPC 中的检查（增量） |
 | `services/billing` | `service.go` | 同样接线；`ListCharges`/`ListBills` 中的检查（增量） |
 | `pkg/errors` | `codes.go`、`messages.go` | 10015-10019 + 规范消息 |

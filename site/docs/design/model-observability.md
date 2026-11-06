@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface observability pages for `/admin/observability` (fleet overview + per-model drill-down), the end-user-surface observability page for `/models/:modelId/observability`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `observability` (new — owns the read-only aggregation over `request_logs` and `usage_records`), `web` admin console (`ObservabilityPage`, `ModelObservabilityPage`) and end-user console (`UserModelObservabilityPage`), `pkg/server` gateway (admin-prefix and user-prefix bindings) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing` · [Request Logs & API Playground](./request-logs-playground.md) — the `request_logs` table and its `latency_ms` / `status` / `error` / token fields this feature aggregates · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the sibling read-only dashboard and its inline-SVG chart, freshness, and range conventions · [Inference Load Testing](./load-testing.md) — the point-in-time performance measurement this feature complements with continuous time-series · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature spans, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -44,7 +44,7 @@ Pitfalls to avoid: raw Prometheus metrics as the product surface (vLLM) — the 
 | D5 | **The chart renders with inline SVG** — one bar (or line) per bucket, with a metric switcher (latency / throughput / error rate / tokens/sec) — no new charting dependency | The console is deliberately dependency-light; a small, testable SVG component matches the usage-dashboard D7 decision |
 | D6 | **Freshness is explicit**: every response carries `data_through` (the last complete bucket covered by request logs) and the console shows a "data through <time>" note plus a pending/partial marker when the selected range extends past it | Usage-lag confusion is the most consistently recorded pitfall (OpenAI, usage-dashboard D4); the marker keeps the freshness story honest with zero new pipeline work |
 | D7 | **The end-user surface is tenant-scoped and masked**: `GetModelObservability` on the user prefix returns only the tenant's own usage of the model, aggregated by API key, with no service ids, no replica counts, and no other tenants' data | Follows feature #17's masked-projection rule and the load-testing D2 pattern: tenants get a performance expectation, not operator internals |
-| D8 | **New error codes in an observability block (10701–10799)**: **10701 `CodeObservabilityModelNotFound`** (unknown `model_id`). Range validation reuses **10404** | Observability is a new module (D3), so its codes live in a fresh block after the webhook block (106xx); distinct not-found keeps "unknown model" actionable, while the range contract stays uniform with metering (D4) |
+| D8 | **New error codes in an observability block (10801–10899)**: **10801 `CodeObservabilityModelNotFound`** (unknown `model_id`). Range validation reuses **10404** | Observability is a new module (D3), so its codes live in a fresh block after the webhook block (107xx); distinct not-found keeps "unknown model" actionable, while the range contract stays uniform with metering (D4) |
 | D9 | **Observability is read-only and audited only for access** — it writes no data and mutates nothing; the pages are reachable only by authenticated sessions with the appropriate role, and no observability mutation is audited (there is nothing to mutate) | The feature is a pure aggregation over existing data; the audit trail (feature #15) already covers the underlying request-log writes. No new audit events are needed |
 
 ## 2. Goals and Non-goals
@@ -75,12 +75,12 @@ Pitfalls to avoid: raw Prometheus metrics as the product surface (vLLM) — the 
 
 ### FR2 — Admin per-model drill-down
 
-- **FR2.1** `GetModelObservability` (`GET /api/v1/admin/observability/models/{model_id}`) returns the single-model observability for a time range: summary cards, a time-series, and a per-API-key breakdown. It takes `since`/`until` (same defaults and 10404 range rule as FR1.1). An unknown `model_id` returns **10701 `CodeObservabilityModelNotFound`** (D8).
+- **FR2.1** `GetModelObservability` (`GET /api/v1/admin/observability/models/{model_id}`) returns the single-model observability for a time range: summary cards, a time-series, and a per-API-key breakdown. It takes `since`/`until` (same defaults and 10404 range rule as FR1.1). An unknown `model_id` returns **10801 `CodeObservabilityModelNotFound`** (D8).
 - **FR2.2** The response's `cards` and `series[]` mirror FR1.2/FR1.4 scoped to the model. The `keys[]` carry one row per API key that used the model in the range: `api_key_id`, `api_key_name`, `request_count`, `error_rate`, `p95_latency_ms`, `output_tokens_per_sec`.
 
 ### FR3 — End-user single-model view
 
-- **FR3.1** `GetModelObservability` (`GET /api/v1/models/{model_id}/observability`) returns the **tenant's own** single-model observability for a time range: summary cards, a time-series, and a per-API-key breakdown. It takes `since`/`until` (same defaults and 10404 range rule). An unknown `model_id` returns **10701** (D8).
+- **FR3.1** `GetModelObservability` (`GET /api/v1/models/{model_id}/observability`) returns the **tenant's own** single-model observability for a time range: summary cards, a time-series, and a per-API-key breakdown. It takes `since`/`until` (same defaults and 10404 range rule). An unknown `model_id` returns **10801** (D8).
 - **FR3.2** The response is scoped to the caller's organization (D7): it aggregates only the tenant's own `request_logs` for the model, and the `keys[]` carry only the tenant's own API keys. It exposes **no** service ids, replica counts, or other tenants' data (D7).
 
 ### FR4 — Surface and API binding
@@ -131,7 +131,7 @@ Pitfalls to avoid: raw Prometheus metrics as the product surface (vLLM) — the 
 3. **Time-series chart** — the inline-SVG chart with the metric switcher, scoped to the model.
 4. **Per-key table** — the API keys that used the model with columns: **API key** (name), **Requests**, **Error rate**, **Avg latency**, **p95 latency**, **Output tokens/sec**.
 
-**Interactive states**: identical to §5.1, with the empty copy "No request data for this model in this range." and the not-found state for an unknown `model_id` (10701) showing the standard not-found state with a link back to the overview.
+**Interactive states**: identical to §5.1, with the empty copy "No request data for this model in this range." and the not-found state for an unknown `model_id` (10801) showing the standard not-found state with a link back to the overview.
 
 **Per-key table columns**: API key (name), Requests, Error rate, Avg latency, p95 latency, Output tokens/sec. Sortable by Requests, Error rate, Avg latency, p95 latency, and Output tokens/sec. Paginated.
 
@@ -206,18 +206,18 @@ All observability RPCs belong to the **`observability` module** (D3), served as 
 **Contract notes for the Architect agent**:
 
 1. `GetObservabilityOverview` validates `since`/`until` (int64 unix seconds; defaults `until = now`, `since = until − 24h`); `since > until` or a range > 92 days returns 10404 (D4). `model_id` and `organization_id` are optional filters.
-2. `GetModelObservability` validates the same range contract; an unknown `model_id` returns 10701 (D8). On the user prefix it is scoped to the caller's organization (D7) and exposes no service ids or operator internals.
+2. `GetModelObservability` validates the same range contract; an unknown `model_id` returns 10801 (D8). On the user prefix it is scoped to the caller's organization (D7) and exposes no service ids or operator internals.
 3. Buckets are hourly for ranges ≤ 7 days and daily otherwise (D4); each bucket carries `bucket`, `request_count`, `error_count`, `error_rate`, `avg_latency_ms`, `p95_latency_ms`, `output_tokens_per_sec`, `input_tokens_per_sec`. `error_rate` is derived client-side (error ÷ requests); the wire carries integer counts and integer milliseconds only.
 4. Every response carries `data_through` (the last complete bucket covered by request logs) for the freshness marker (D6).
 5. Aggregation reads `request_logs` (feature #12) — `latency_ms`, `status`, `error`, and the four token counts per request — and `usage_records` where token totals are needed; it writes nothing (D9).
 6. Wire conventions unchanged: dotted pagination where lists apply, HTTP 200 on success, business errors as `{"code": <int>, "message": "..."}`, int64 fields serialized as JSON strings.
 
-Error codes (observability block 10701–10799, `pkg/errors/codes.go`):
+Error codes (observability block 10801–10899, `pkg/errors/codes.go`):
 
 | Condition | Code | Constant | Notes |
 | --- | --- | --- | --- |
-| An unknown `model_id` | 10701 | `CodeObservabilityModelNotFound` | **New** (D8) |
-| A malformed or over-long range | 10404 | `CodeRequestLogRangeInvalid` | Reused (D4) — the metering range contract |
+| An unknown `model_id` | 10801 | `CodeObservabilityModelNotFound` | **New** (D8) |
+| A malformed or over-long range | 10404 | `CodeMeteringRangeInvalid` | Reused (D4) — the metering range contract |
 | Database / infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 ## 7. Acceptance Criteria
@@ -226,7 +226,7 @@ Error codes (observability block 10701–10799, `pkg/errors/codes.go`):
 | --- | --- | --- |
 | AC1 | `GetObservabilityOverview` with a valid range returns summary cards, a per-model table, and a time-series; a range > 92 days or `since > until` returns 10404 | FVT |
 | AC2 | `GetObservabilityOverview` with a `model_id` filter returns cards and a series scoped to that model | FVT |
-| AC3 | `GetModelObservability` (admin) returns single-model cards, a time-series, and a per-key breakdown; an unknown `model_id` returns 10701 | FVT |
+| AC3 | `GetModelObservability` (admin) returns single-model cards, a time-series, and a per-key breakdown; an unknown `model_id` returns 10801 | FVT |
 | AC4 | `GetModelObservability` (user) returns only the caller's organization's usage of the model, aggregated by the tenant's own API keys, with no service ids or operator internals | FVT |
 | AC5 | Buckets are hourly for ranges ≤ 7 days and daily for ranges > 7 days; every response carries `data_through` | FVT |
 | AC6 | The `/admin/observability` page renders the filter bar, summary cards, the inline-SVG chart, and the per-model table from the first successful load, with a last-updated timestamp | E2E |

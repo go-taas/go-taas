@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/forecast` 管理面预测页、`/forecast` 终端用户预测页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `billing`（对 `charge_records`/`usage_records` 历史趋势的只读预测聚合，以及两个 RPC）、`metering`（只读：来自 `usage_records` 的 token 总量）、`model`（只读：`model_name` 解析）、`auth`（只读：`api_key_name` 解析、会话域、会话活跃组织）、`tenancy`（RoleGuard，只读）、`pkg/server` 网关（管理前缀与用户前缀绑定）、控制台 web 应用（admin `ForecastPage`、end-user `UserForecastPage`） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.5 节 `metering`、第 2.6 节 `billing`、第 3.1 节（管理面/用户面分离）· [成本分析仪表盘](./cost-analytics-dashboard.md) — 本特性用预测扩展的姊妹只读聚合，及其范围/桶/新鲜度约定 · [用量仪表盘与按请求成本归属](./usage-dashboard.md) — 姊妹仪表盘及其内联 SVG 图、新鲜度、范围与分组约定 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell`/`UserShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -227,10 +227,10 @@ sequenceDiagram
 
 | 条件 | 码 | 常量 | 说明 |
 | --- | --- | --- | --- |
-| 格式错误或过长的范围 | 10404 | `CodeRequestLogRangeInvalid` | 复用 — metering 范围契约（FR1.3） |
+| 格式错误或过长的范围 | 10404 | `CodeMeteringRangeInvalid` | 复用 — metering 范围契约（FR1.3） |
 | 不支持的 `dimension` | 11301 | `CodeCostDimensionInvalid` | 从成本分析复用（FR1.3） |
 | 未知维度值 | 11302 | `CodeCostDimensionValueNotFound` | 从成本分析复用（FR1.3） |
-| `horizon_days` > 90 | 10404 | `CodeRequestLogRangeInvalid` | 复用于跨度校验（FR1.3） |
+| `horizon_days` > 90 | 10404 | `CodeMeteringRangeInvalid` | 复用于跨度校验（FR1.3） |
 
 ---
 

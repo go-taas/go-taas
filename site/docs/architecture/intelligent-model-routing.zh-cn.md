@@ -6,7 +6,7 @@
 | 文档范围 | 特性 49 的架构与详细设计:新建 `routing` 模块,拥有路由组注册表、候选列表、意图规则、请求时解析与决策日志;`taas.routing.v1.RoutingService` proto,十个 RPC 仅绑定在 `/api/v1/admin/routing-groups/*` 之下,外加一个内部 `ResolveRoutingGroup` RPC;`routing_groups`、`routing_group_candidates`、`routing_group_rules` 与 `routing_decisions` 等表;精确的解析算法(资格过滤 → 意图规则匹配 → 策略排序 → 3 次尝试截断);与模型目录、授权(#13)、密钥范围(#46)、Playground、计量归因与审计的集成接缝;错误处理(13101–13113 及 10038/10036);配置、安全、发布,以及逐层的函数级任务清单 |
 | 负责模块 | 新建 `routing` 模块(`services/routing`):路由组注册表、候选、规则、解析器与决策日志;`model`(可授权列表与脱敏用户目录新增虚拟条目);`auth`(密钥范围校验接受组名);`infer`(基于模型的 Playground 中可组合验证的虚拟名称解析接缝);`metering`(归因到实际服务的真实模型 — 代码不变,为约束性规则);`audit`(routing 事件);`pkg/errors`(131xx 块);`pkg/config`(routing 配置节);`pkg/server`(管理端前缀绑定,Realm 守卫不变);`web` 管理控制台(`RoutingGroupsPage`、`RoutingGroupDetailPage`、`RoutingDecisionsPage`)以及既有租户页面上的 Auto 标记与实际服务模型展示 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/intelligent-model-routing.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.2 `model`、§2.4 `infer`、§3.1 控制网关、§3.2 数据面(Envoy + Wasm)、§4.3 推理请求与计费闭环 · [推理路由策略](./inference-routing-policies.zh-cn.md)(本特性扩展的 #45 重试类别与不替换不变式) · [外部模型提供商](./external-model-providers.zh-cn.md)(已发布外部模型作为候选,以及本特性参照的模块模板) · [按租户模型授权](./model-authorization.zh-cn.md)(路由组复用的授权路径) · [API 密钥模型范围](./api-key-model-scoping.zh-cn.md)(作用于候选的密钥范围过滤) · [控制台双面分离](./console-surface-separation.zh-cn.md)(两个控制台面、`AdminShell`、脱敏投影规则) |
-| 状态 | 架构设计完成,已移交开发者智能体 |
+| 状态 | 已实现 |
 
 ---
 

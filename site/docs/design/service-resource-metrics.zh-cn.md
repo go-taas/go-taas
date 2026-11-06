@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/services/:serviceId/metrics` 管理面服务指标页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `resourcemetrics`（新增 — 拥有对新增 `service_resource_metrics` 表的只读聚合）、`internal/controller`（只读：从 Kubernetes metrics-server 与加速器信号采样每个服务的 CPU/内存/GPU）、`pkg/server` 网关（管理前缀绑定）、`web` 管理控制台（`ServiceMetricsPage`） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.4 节 `infer`、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型可观测性仪表盘](./model-observability.md) — 姊妹只读时序聚合及其 bucket/新鲜度/范围约定 · [加速器清单与健康](./accelerator-inventory.md) — 提供 GPU 利用率来源的姊妹 GPU 健康面 · [推理服务日志查看器](./service-logs-viewer.md) — 姊妹按服务诊断面及本特性复用的 Controller 读取模式 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做资源指标页
 
-go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2）：Controller 创建 Deployment 与 Service，推理引擎（vLLM 等）在容器中运行。模型可观测性特性（第 24 行）解释了*模型表现如何*（延迟、吞吐、错误率、token/秒），数据来自 `request_logs`；服务日志查看器（第 33 行）显示*引擎打印了什么*。运营者仍无法回答的基础设施问题是：*这个服务真的用上了分配给它的资源吗？* 当服务变慢时，运营者无法判断它是 CPU 受限、内存受限还是 GPU 饥饿，除非离开控制台对 Pod 执行 `kubectl top` 或查询指标端点。
+go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，推理引擎（vLLM 等）在容器中运行。模型可观测性特性（第 24 行）解释了*模型表现如何*（延迟、吞吐、错误率、token/秒），数据来自 `request_logs`；服务日志查看器（第 33 行）显示*引擎打印了什么*。运营者仍无法回答的基础设施问题是：*这个服务真的用上了分配给它的资源吗？* 当服务变慢时，运营者无法判断它是 CPU 受限、内存受限还是 GPU 饥饿，除非离开控制台对 Pod 执行 `kubectl top` 或查询指标端点。
 
 本特性新增**推理服务资源指标**页：按时间查看每个服务的 CPU / 内存 / GPU 利用率，支持时间范围过滤与资源使用图表。这是 Phase 4 运维面中最小可独立交付的增量：它把「服务很慢」变成「服务在过去一小时 CPU 饱和到 95%，而 GPU 只有 20% —— 瓶颈在算力而非加速器」。它是**只读**聚合层 — 推理、计量或计费管线均无改动。
 

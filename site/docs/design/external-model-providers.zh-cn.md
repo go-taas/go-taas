@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研与「注册表 vs 透传」决策、管理面页面 `/admin/providers` 与 `/admin/providers/:providerId`（提供方表、创建/编辑对话框、连通性测试面板、上游模型表、发布/取消发布与删除流程）、对既有目录/Playground 的租户侧变更、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `provider`（新增 — 拥有外部提供方注册表、加密的 API Key、上游模型策展、发布与连通性探测工作器）、`model`（发布委托到既有目录，并在其管理面与用户面投影中扩展外部标记）、`infer` / 数据面网关（用解密后的 Key 把已发布的外部模型路由到提供方，走同一条计量路径）、`audit`（提供方与发布变更）、`pkg/server` 网关（管理前缀绑定）、`web` 管理控制台与终端用户控制台 |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.2 节 `model`、第 2.4 节 `infer`、第 3.1 节控制网关、第 3.2 节数据面（Envoy + Wasm）、第 4.3 节推理请求与计费回路 · [模型目录与一键部署](./model-catalog-deployment.md) — 本特性发布进入的目录 · [按租户模型授权](./model-authorization.md) — 外部模型原样复用的授权路径 · [API Key 用量分析](./api-key-usage-analytics.md) / [计量](./metering.md) — 外部推理共享的计量路径 · [Webhook 通知](./webhook-notifications.md) — 本特性复用的 AES-256-GCM 密钥模式 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

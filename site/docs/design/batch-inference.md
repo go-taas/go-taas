@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the end-user batch page for `/batch`, the admin batch page for `/admin/batch`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `batch` (new — owns the batch-job lifecycle, the JSONL input/output file store, and the async batch worker), `infer` (read-only: the inference endpoint the batch worker calls), `metering` (read-only: per-request token/cost attribution for batch jobs), `pkg/server` gateway (user- and admin-prefix bindings), `web` end-user console (`BatchPage` in `UserShell`) and admin console (`AdminBatchPage` in `AdminShell`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing`, §3.1 (admin/user surface separation) · [Request Logs & API Playground](./request-logs-playground.md) — the sibling inference surface and its request-log conventions · [Billing Reports & CSV Export](./billing-reports.md) — the sibling async-job and Excel-friendly-CSV conventions · [Data Export & Privacy](./data-export-privacy.md) — the sibling async-job lifecycle and tenant-scoping conventions · [Console Surface Separation](./console-surface-separation.md) — the two surfaces this feature lives on, the `UserShell`/`AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

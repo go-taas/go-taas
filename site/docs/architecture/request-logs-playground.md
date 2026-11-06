@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-12: the per-request `request_logs` table and its query APIs (Increment A), and the console API playground that sends a test inference through a control-gateway proxy RPC (Increment B), plus error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `metering` (request-log capture, list/detail queries, retention), `infer` (playground proxy RPC), console web app; `auth` (API key identity) read-only |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/request-logs-playground.md) · [Architecture Design](../design/architecture.md) §2.5 (`metering`), §2.6 (`billing`), §4.3 (the metering/settlement sequence) · [Token Metering Vouchers & Async Settlement](./metering.md) (the voucher pipeline this feature extends with request metadata) · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) (the dashboard that attributes cost; its non-goal names feature-12 as the owner of full request context) · [API Key Management](./api-key-management.md) (the key identity on every log row) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the tenancy core: the `organizations` and `projects` tables, the `tenancy` module (CRUD RPCs, state transitions, first-boot default-org seed), the org-context guard consumed by `auth`/`infer`/`metering`/`billing`, error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `tenancy` (new: `services/tenancy`), with `auth`, `infer`, `metering`, `billing` as guard consumers (additive wiring only) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/multi-tenancy.md) · [Architecture Design](../design/architecture.md) Section 2.1 · [API Key Management](./api-key-management.md) · [Token Metering Vouchers & Async Settlement](./metering.md) · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -448,7 +448,7 @@ Rules:
 | | `guard.go` | `OrgGuard` — `NewOrgGuard`, `RequireExists`, `RequireActive` |
 | | `service.go` | The 12 RPC implementations + `Migrate` (AutoMigrate + first-boot seed) + `NewForFVT` + `MigrateSchemaForFVT` |
 | `services/auth` | `service.go` | `orgGuard` field + `SetOrgGuard` + `checkOrg` + checks in `ListAPIKeys`/`CreateAPIKey`/`RevokeAPIKey` (additive) |
-| `services/infer` | `service.go` | Same wiring; checks in all five RPCs (additive) |
+| `services/infer` | `service.go` | Same wiring; checks in the lifecycle RPCs (additive) |
 | `services/metering` | `service.go` | Same wiring; checks in the four query RPCs (additive) |
 | `services/billing` | `service.go` | Same wiring; checks in `ListCharges`/`ListBills` (additive) |
 | `pkg/errors` | `codes.go`, `messages.go` | 10015-10019 + canonical messages |

@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the `auth` module's API Key management capability: component responsibilities, data model, API contract, key flows, error handling, configuration, security, rollout, and function-level design per layer |
 | Owning module | `auth` (control plane, served through the Control Gateway; verified by the data-plane Inference Gateway) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/api-key-management.md) · [Architecture Design](../design/architecture.md) Section 2.1 (`auth` responsibilities) and Section 3.3 (the Inference Gateway's API Key authentication chain) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 > **Ownership update:** keys now carry a personal owner and an optional project.
 > See [API Key Ownership and Three-Level Quotas](./api-key-ownership.md) for the

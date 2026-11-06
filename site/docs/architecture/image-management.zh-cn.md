@@ -6,7 +6,7 @@
 | 文档范围 | DB 化镜像仓库与预热（预拉取）编排的架构与详细设计：组件职责、数据模型、API 契约、消息契约、控制器侧预拉取、从配置驱动仓库的首启迁移、错误处理、配置、发布说明，以及各层的函数级设计 |
 | 负责模块 | `image`（仓库 CRUD 与预热任务）、`infer`（部署表单镜像消费，不变）、`controller`（预拉取执行与状态上报） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/image-management.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.3 节（`image`）、第 2.7 节 Controller · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)（过渡期配置驱动仓库、部署表单下拉、变更事件形态、状态上报模式） |
-| 状态 | 架构设计完成，已移交 Developer 代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -15,7 +15,7 @@
 ### 1.1 目标
 
 - 用 DB 化的 `images` 表替换过渡期的内存配置种子镜像仓库，作为唯一事实来源；`image.Lookup` 接口签名保持不变，`infer` 模块无需改动（D1）。
-- 实现完整的 `taas.image.v1.ImageService` 面：三个既有 RPC（`RegisterImage`、`ListImages`、`TriggerWarmup` — 目前为桩 / 只读）加五个新增 RPC（`GetImage`、`UpdateImage`、`DeleteImage`、`ListWarmupTasks`、`GetWarmupTask`）。
+- 实现完整的 `taas.image.v1.ImageService` 面：三个既有 RPC（`RegisterImage`、`ListImages`、`TriggerWarmup` — 由本特性实现）加五个新增 RPC（`GetImage`、`UpdateImage`、`DeleteImage`、`ListWarmupTasks`、`GetWarmupTask`）。
 - 从 `image.registry` 配置首启种子：空的 `images` 表将配置条目作为行插入并保留其 `imageId` 值；种子只插入，且永不在非空表上重跑（D2、AC3、AC4）。
 - 完整 CRUD 语义：带校验的注册（name/tag 语法 10207、digest 语法 10203、加速卡 10204、三元组重复 10202）、仅描述可更新（D6）、带引用检查的删除，使用新增的 10206 `CodeImageInUse` 并指名阻塞服务（D7、D10）。
 - 预热（预拉取）作为异步任务：`TriggerWarmup` 立即返回 `task_id` 且 `state=pending`；Controller 执行逐节点拉取并通过消息队列回报状态；任务状态为封闭集合 `pending` / `running` / `succeeded` / `failed`；每个镜像至多一个活跃任务（D8）。
@@ -429,7 +429,7 @@ Controller 侧失败不是 RPC 错误：它们经状态 subject 以任务 `state
 - **模式**：首启经 AutoMigrate 新增两表（`images`、`warmup_tasks`）；仅增量，不触碰既有数据。首启种子在 `Migrate` 钩子内紧随 AutoMigrate 执行。
 - **proto**：增量变更（五个新 RPC、扩展消息）— 需要 `make pbgen`。
 - **新 subject**：`image.warmup.status` 为增量；broker 基于 subject（RabbitMQ）故无迁移。
-- **Controller**：`ApplyImageWarmup` 在既有 `Reconciler` 接口后替换当前桩 — 签名不变，基于 fake 的测试继续可用。
+- **Controller**：`ApplyImageWarmup` 在既有 `Reconciler` 接口后实现预热调和 — 签名不变，基于 fake 的测试继续可用。
 - **滚动更新顺序**：先部署 `taas-server`（种子、服务 CRUD、发布任务并消费状态），再部署 controller。反序亦安全：controller 忽略无发布者的 subject。
 - **升级兼容**：引用种子 id（如 `img-vllm-nvidia-v063`）的既有推理服务继续通过校验 — 种子保留配置 id（D2、D4、AC3）。
 - **特性开关**：无需 — 过渡期仓库被整体替换；配置种子保留为全新安装引导。
@@ -550,7 +550,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_warmup_tasks_one_active
 
 ### 10.4 Controller 预拉取（`internal/controller/reconciler.go`）
 
-`ApplyImageWarmup(ctx, msg)` 替换桩实现：
+`ApplyImageWarmup(ctx, msg)` 实现预热调和：
 
 1. 解码预热任务（第 4.5.1 节）；格式错误 → 日志 + `mq.Permanent`。
 2. 发布状态 `running`（空节点结果）。

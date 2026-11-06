@@ -204,7 +204,7 @@ EOF
 kubectl get priorityclass | grep -E "high-priority|normal-priority|low-priority"
 ```
 
-如果不安装 Volcano，请把 `controller.config.controller.scheduling` 留空：推理 Pod 将使用集群默认调度器逐个放置，优先级只作为 Pod 上的标签存在。
+如果不安装 Volcano，请把 `controller.scheduling.schedulerName` 留空：推理 Pod 将使用集群默认调度器逐个放置，优先级只作为 Pod 上的标签存在。
 
 ### 3.4 共享模型权重（JuiceFS CSI）
 

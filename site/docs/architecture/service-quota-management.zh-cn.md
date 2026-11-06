@@ -6,7 +6,7 @@
 | 文档范围 | feature-51 的架构与详细设计：`organizations` 上的五个增量配额列（三个限额加 `updated_by`/`updated_at`）；绑定在 `/api/v1/admin/quotas/*` 与 `/api/v1/quotas` 的四个新 tenancy RPC；`VerifyAPIKey` 判定扩展（响应字段 7/8、缓存机制、向后兼容）；`batch` 的创建时检查；网关执行契约（检查顺序 rate → quota → funds、在途跟踪、`quota.orgs.concurrency` MQ 中继、13301/13304 渲染）；133xx 错误块；管理/用户页面与配额条；配置、安全、发布，以及逐层的函数级任务清单 |
 | 负责模块 | `tenancy`（`organizations` 上的配额列、四个配额 RPC、`OrgQuotaReader` 接缝、在途上报消费者）；`auth`（`VerifyAPIKey` 判定扩展）；`batch`（每日任务检查）；`pkg/mq`（一个新 subject）；`pkg/errors`（133xx 块）；`pkg/config`（`quota` 节）；`pkg/server`（无变更 — `RealmGuard` 按前缀分类新路由）；`audit`（复用 — `quota.updated` 事件）；`web` 管理控制台（`QuotasPage`）与用户控制台（`UserQuotasPage`、`QuotaBar`）；推理网关（数据面 — **仅固化契约**，不在仓库范围内） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/service-quota-management.md) · [架构设计](../design/architecture.md) §2.4 `auth`/`infer`、§3.1 控制网关、§3.2 数据面 · [限流与消费限额](./rate-limits-spend-limits.md)（本功能扩展的 per-key RPM/TPM 判定搭载模式、先于配额执行的 10037 检查） · [余额与配额账户模式](./balance-quota.md)（在配额之后执行的资金检查 10502） · [多租户](./multi-tenancy.md)（配额列落地的 organizations 表） · [批量推理](./batch-inference.md)（每日计数读取的 `batch_jobs` 表） · [推理自动扩缩容](./inference-autoscaling.md)（网关在途 MQ 上报先例，彼处 AD11） · [API Key 管理](./api-key-management.md)（其 TTL 界定传播窗口的判定缓存） · [审计日志](./audit-logging.md)（`quota.updated` 事件与变更历史读取） · [控制台双面分离](./console-surface-separation.md)（两个面、脱敏投影规则） |
-| 状态 | 架构设计完成，已移交 Developer 智能体 |
+| 状态 | 已实现 |
 
 > **三级更新：** 这些组织配额现在与项目、个人配额按非零最小值合并执行。
 > 见 [API Key 归属与三级配额](./api-key-ownership.zh-cn.md)。
@@ -605,7 +605,7 @@ sequenceDiagram
 `configs/config.yaml` 增加：
 
 ```yaml
-# 服务配额（feature #51）。四个组织配额维度位于组织行上；网关
+# 服务配额（feature #51）。三个组织配额维度位于组织行上；网关
 # 从 VerifyAPIKey 判定执行热路径维度（契约固化于架构文档），
 # 控制面在创建时执行生命周期维度。
 quota:

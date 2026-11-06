@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/webhooks` 管理面 webhook 管理页面（列表、创建、带投递日志的详情），`/webhooks` 终端用户面 webhook 管理页面，页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `webhook`（新增 — 拥有 webhook 端点 CRUD、事件订阅、签名、重试与投递日志；订阅消息队列以获取事件目录），`web` 管理控制台（`WebhooksPage`、`WebhookDetailPage`）与终端用户控制台（`UserWebhooksPage`、`UserWebhookDetailPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 1.2 节消息队列、第 2 节模块职责 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 · [推理自动扩缩](./inference-autoscaling.zh-cn.md) — 本特性订阅的自动扩缩事件 · [支付、发票与自动充值](./payments-invoices-auto-recharge.zh-cn.md) — 账单/发票事件 · [余额与配额](./balance-quota.zh-cn.md) — 余额不足与消费限额事件 · [审计日志](./audit-logging.zh-cn.md) — webhook 变更必须产生的审计轨迹 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -44,7 +44,7 @@ go-taas 是一个 Token-as-a-Service 平台：它部署推理服务（特性 #2�
 | D6 | **投递日志列出每次投递**，含事件类型、状态（`delivered` / `failed` / `pending`）、HTTP 状态码、尝试次数与时间戳。失败的投递可**手动重发**；日志保留 90 天 | 投递日志是调试面（D1 的模式 5）；手动重发无需等待重试策略即可恢复丢失事件；90 天保留与请求日志保留（特性 #12）一致 |
 | D7 | **签名密钥可随时轮换**（重新生成）；旧密钥立即失效，新密钥仅显示一次 | 密钥轮换是 Stripe 针对疑似泄露的最佳实践；立即失效是 v1 最简单安全的默认 |
 | D8 | **`webhook` 模块拥有本特性。** 它暴露 CRUD/查询 RPC、订阅消息队列以获取事件目录、签名并投递负载、应用重试策略、记录投递日志。它是统一 gRPC 服务器中的新模块（架构第 1.2 节） | webhook 消费来自 `infer`、`billing` 与 `metering` 的事件；专用模块把投递关注点从产生模块中分离出来并给它一个归属，镜像 `metering` 拥有结算的方式 |
-| D9 | **webhook 块（10601–10699）新增错误码**：**10601 `CodeWebhookNotFound`**、**10602 `CodeWebhookConfigInvalid`**、**10603 `CodeWebhookStateInvalid`**、**10604 `CodeWebhookDeliveryNotFound`**、**10605 `CodeWebhookEventTypeInvalid`** | webhook 是新模块（D8），因此其错误码放在计费块（105xx）之后的全新块中；不同错误码让「未找到」vs「配置错误」vs「状态错误」vs「投递未找到」vs「事件类型错误」可操作 |
+| D9 | **webhook 块（10701–10799）新增错误码**：**10701 `CodeWebhookNotFound`**、**10702 `CodeWebhookConfigInvalid`**、**10703 `CodeWebhookStateInvalid`**、**10704 `CodeWebhookDeliveryNotFound`**、**10705 `CodeWebhookEventTypeInvalid`** | webhook 是新模块（D8），因此其错误码放在计费块（105xx）之后的全新块中；不同错误码让「未找到」vs「配置错误」vs「状态错误」vs「投递未找到」vs「事件类型错误」可操作 |
 | D10 | **webhook 变更被审计**（特性 #15）：创建、更新、启用/禁用、删除、轮换密钥、测试与重发各写一条审计事件 | webhook 端点是安全敏感面（它们可触发外部动作）；审计轨迹必须记录谁改了什么，与审计日志特性的变更覆盖一致 |
 
 ## 2. 目标与非目标
@@ -70,9 +70,9 @@ go-taas 是一个 Token-as-a-Service 平台：它部署推理服务（特性 #2�
 
 - **FR1.1** `CreateWebhook`（`POST /api/v1/admin/webhooks` 与 `POST /api/v1/webhooks`）接收 `name`、`url`、`enabled_event_types`（面目录的非空子集）、`max_attempts`（1–10，默认 5）与 `backoff_seconds`（1–3600，默认 60）。它同步校验、生成签名密钥，并返回带**仅显示一次明文密钥**的 webhook（D2、D3）。
 - **FR1.2** `ListWebhooks`（`GET /api/v1/admin/webhooks` 与 `GET /api/v1/webhooks`）返回该面的 webhook，可按名称搜索、按 `enabled` 状态过滤、分页（`offset`/`limit`，默认 20，最大 100）。每行携带 `webhook_id`、`name`、`url`、`enabled`、`enabled_event_types`、`created_at` 与投递摘要（总数 / 已投递 / 失败）。
-- **FR1.3** `GetWebhook`（`GET /api/v1/admin/webhooks/{webhook_id}` 与 `GET /api/v1/webhooks/{webhook_id}`）返回完整配置，含重试策略与启用的事件类型。缺失 id 返回 **10601 `CodeWebhookNotFound`**。
-- **FR1.4** `UpdateWebhook`（`PATCH /api/v1/admin/webhooks/{webhook_id}` 与 `PATCH /api/v1/webhooks/{webhook_id}`）更新 `name`、`url`、`enabled_event_types`、`max_attempts` 与 `backoff_seconds`。无效配置返回 **10602 `CodeWebhookConfigInvalid`**；未知事件类型返回 **10605 `CodeWebhookEventTypeInvalid`**。
-- **FR1.5** `DeleteWebhook`（`DELETE /api/v1/admin/webhooks/{webhook_id}` 与 `DELETE /api/v1/webhooks/{webhook_id}`）删除 webhook 及其投递日志。缺失 id 返回 **10601**。
+- **FR1.3** `GetWebhook`（`GET /api/v1/admin/webhooks/{webhook_id}` 与 `GET /api/v1/webhooks/{webhook_id}`）返回完整配置，含重试策略与启用的事件类型。缺失 id 返回 **10701 `CodeWebhookNotFound`**。
+- **FR1.4** `UpdateWebhook`（`PATCH /api/v1/admin/webhooks/{webhook_id}` 与 `PATCH /api/v1/webhooks/{webhook_id}`）更新 `name`、`url`、`enabled_event_types`、`max_attempts` 与 `backoff_seconds`。无效配置返回 **10702 `CodeWebhookConfigInvalid`**；未知事件类型返回 **10705 `CodeWebhookEventTypeInvalid`**。
+- **FR1.5** `DeleteWebhook`（`DELETE /api/v1/admin/webhooks/{webhook_id}` 与 `DELETE /api/v1/webhooks/{webhook_id}`）删除 webhook 及其投递日志。缺失 id 返回 **10701**。
 
 ### FR2 — 启用/禁用与密钥轮换
 
@@ -81,9 +81,9 @@ go-taas 是一个 Token-as-a-Service 平台：它部署推理服务（特性 #2�
 
 ### FR3 — 测试与投递日志
 
-- **FR3.1** `TestWebhook`（`POST /api/v1/admin/webhooks/{webhook_id}:test` 与 `POST /api/v1/webhooks/{webhook_id}:test`）向端点发送合成 `webhook.ping` 事件并将其记录到投递日志（D5）。禁用的 webhook 返回 **10603 `CodeWebhookStateInvalid`**（先启用）。
-- **FR3.2** `ListWebhookDeliveries`（`GET /api/v1/admin/webhooks/{webhook_id}/deliveries` 与 `GET /api/v1/webhooks/{webhook_id}/deliveries`）返回投递日志，可按 `status` 与 `event_type` 过滤、分页。每行携带 `delivery_id`、`event_type`、`status`（`delivered` / `failed` / `pending`）、`http_status_code`、`attempt_count`、`created_at` 与 `last_attempt_at`。缺失 webhook 返回 **10601**。
-- **FR3.3** `ResendWebhookDelivery`（`POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` 与 `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend`）手动重发 `failed`（或 `delivered`）投递（D6）。缺失投递返回 **10604 `CodeWebhookDeliveryNotFound`**；重发 `pending` 投递返回 **10603**。
+- **FR3.1** `TestWebhook`（`POST /api/v1/admin/webhooks/{webhook_id}:test` 与 `POST /api/v1/webhooks/{webhook_id}:test`）向端点发送合成 `webhook.ping` 事件并将其记录到投递日志（D5）。禁用的 webhook 返回 **10703 `CodeWebhookStateInvalid`**（先启用）。
+- **FR3.2** `ListWebhookDeliveries`（`GET /api/v1/admin/webhooks/{webhook_id}/deliveries` 与 `GET /api/v1/webhooks/{webhook_id}/deliveries`）返回投递日志，可按 `status` 与 `event_type` 过滤、分页。每行携带 `delivery_id`、`event_type`、`status`（`delivered` / `failed` / `pending`）、`http_status_code`、`attempt_count`、`created_at` 与 `last_attempt_at`。缺失 webhook 返回 **10701**。
+- **FR3.3** `ResendWebhookDelivery`（`POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` 与 `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend`）手动重发 `failed`（或 `delivered`）投递（D6）。缺失投递返回 **10704 `CodeWebhookDeliveryNotFound`**；重发 `pending` 投递返回 **10703**。
 
 ### FR4 — 事件目录与投递
 
@@ -140,7 +140,7 @@ go-taas 是一个 Token-as-a-Service 平台：它部署推理服务（特性 #2�
 | Max attempts | 是 | 整数 1–10 | 「Max attempts must be between 1 and 10.」 |
 | Backoff (seconds) | 是 | 整数 1–3600 | 「Backoff must be between 1 and 3600 seconds.」 |
 
-提交 → `CreateWebhook`；成功显示**密钥揭示对话框**（「Your signing secret — shown once」），含明文密钥、**Copy** 操作与 **Done** 操作。错误（10602 配置无效 / 10605 事件类型无效）在对话框内联显示。
+提交 → `CreateWebhook`；成功显示**密钥揭示对话框**（「Your signing secret — shown once」），含明文密钥、**Copy** 操作与 **Done** 操作。错误（10702 配置无效 / 10705 事件类型无效）在对话框内联显示。
 
 ### 5.3 页面：`/admin/webhooks/:webhookId` — Webhook 详情（管理面）
 
@@ -163,7 +163,7 @@ go-taas 是一个 Token-as-a-Service 平台：它部署推理服务（特性 #2�
 | 错误 | 带消息与 Retry 按钮的错误横幅；页面保留最后的好数据并显示「Showing stale data」横幅 |
 | 禁用 | 重发进行中 **Resend** 禁用；轮换进行中 **Roll secret** 禁用；测试进行中 **Test** 禁用；删除进行中 **Delete** 禁用 |
 | 权限拒绝 | 无所需角色的会话收到 10036，页面显示标准权限拒绝状态（特性 #17） |
-| 未找到 | 未知 `webhook_id` 返回 10601，页面显示标准未找到状态，带返回列表的链接 |
+| 未找到 | 未知 `webhook_id` 返回 10701，页面显示标准未找到状态，带返回列表的链接 |
 
 **投递日志表格列**：Event type、Status（徽章）、HTTP status、Attempts、Created（相对时间）。可按 Created 排序。可按 Status（全部 / delivered / failed / pending）与 Event type 过滤；分页。
 
@@ -248,18 +248,18 @@ sequenceDiagram
 | --- | --- | --- | --- | --- |
 | `CreateWebhook` | `POST /api/v1/admin/webhooks` · `POST /api/v1/webhooks` | admin · user | **新增** | 注册端点 + 事件订阅；返回 `webhook_id` + 明文密钥（仅一次） |
 | `ListWebhooks` | `GET /api/v1/admin/webhooks` · `GET /api/v1/webhooks` | admin · user | **新增** | 带名称搜索、启用过滤、分页与投递摘要的列表 |
-| `GetWebhook` | `GET /api/v1/admin/webhooks/{webhook_id}` · `GET /api/v1/webhooks/{webhook_id}` | admin · user | **新增** | 完整配置；缺失 → 10601 |
-| `UpdateWebhook` | `PATCH /api/v1/admin/webhooks/{webhook_id}` · `PATCH /api/v1/webhooks/{webhook_id}` | admin · user | **新增** | 更新名称/URL/事件/重试；配置错误 → 10602，事件错误 → 10605 |
-| `DeleteWebhook` | `DELETE /api/v1/admin/webhooks/{webhook_id}` · `DELETE /api/v1/webhooks/{webhook_id}` | admin · user | **新增** | 删除 webhook + 投递日志；缺失 → 10601 |
+| `GetWebhook` | `GET /api/v1/admin/webhooks/{webhook_id}` · `GET /api/v1/webhooks/{webhook_id}` | admin · user | **新增** | 完整配置；缺失 → 10701 |
+| `UpdateWebhook` | `PATCH /api/v1/admin/webhooks/{webhook_id}` · `PATCH /api/v1/webhooks/{webhook_id}` | admin · user | **新增** | 更新名称/URL/事件/重试；配置错误 → 10702，事件错误 → 10705 |
+| `DeleteWebhook` | `DELETE /api/v1/admin/webhooks/{webhook_id}` · `DELETE /api/v1/webhooks/{webhook_id}` | admin · user | **新增** | 删除 webhook + 投递日志；缺失 → 10701 |
 | `SetWebhookEnabled` | `POST /api/v1/admin/webhooks/{webhook_id}:set-enabled` · `POST /api/v1/webhooks/{webhook_id}:set-enabled` | admin · user | **新增** | 启用/禁用（暂停）webhook |
 | `RollWebhookSecret` | `POST /api/v1/admin/webhooks/{webhook_id}:roll-secret` · `POST /api/v1/webhooks/{webhook_id}:roll-secret` | admin · user | **新增** | 重新生成签名密钥；返回新明文（仅一次） |
-| `TestWebhook` | `POST /api/v1/admin/webhooks/{webhook_id}:test` · `POST /api/v1/webhooks/{webhook_id}:test` | admin · user | **新增** | 发送 `webhook.ping`；禁用 → 10603 |
+| `TestWebhook` | `POST /api/v1/admin/webhooks/{webhook_id}:test` · `POST /api/v1/webhooks/{webhook_id}:test` | admin · user | **新增** | 发送 `webhook.ping`；禁用 → 10703 |
 | `ListWebhookDeliveries` | `GET /api/v1/admin/webhooks/{webhook_id}/deliveries` · `GET /api/v1/webhooks/{webhook_id}/deliveries` | admin · user | **新增** | 带状态/事件过滤与分页的投递日志 |
-| `ResendWebhookDelivery` | `POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` · `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` | admin · user | **新增** | 重发失败/已投递投递；缺失 → 10604，pending → 10603 |
+| `ResendWebhookDelivery` | `POST /api/v1/admin/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` · `POST /api/v1/webhooks/{webhook_id}/deliveries/{delivery_id}:resend` | admin · user | **新增** | 重发失败/已投递投递；缺失 → 10704，pending → 10703 |
 
 **给架构师代理的契约说明**：
 
-1. `CreateWebhook` 校验 `name`（非空，≤ 64 字符）、`url`（合法 `https://` 或 `http://`，≤ 2048 字符）、`enabled_event_types`（面目录的非空子集，否则 10605）、`max_attempts`（1–10）与 `backoff_seconds`（1–3600）；无效配置返回 10602。它生成签名密钥、仅存储其哈希（D3），并仅返回一次明文密钥。
+1. `CreateWebhook` 校验 `name`（非空，≤ 64 字符）、`url`（合法 `https://` 或 `http://`，≤ 2048 字符）、`enabled_event_types`（面目录的非空子集，否则 10705）、`max_attempts`（1–10）与 `backoff_seconds`（1–3600）；无效配置返回 10702。它生成签名密钥、仅存储其哈希（D3），并仅返回一次明文密钥。
 2. `Webhook` 携带 `webhook_id`、`name`、`url`、`enabled`（布尔）、`enabled_event_types`（列表）、`max_attempts`、`backoff_seconds`、`created_at` 与投递摘要（`total_deliveries`、`delivered_count`、`failed_count`）。明文密钥仅由 `CreateWebhook` 与 `RollWebhookSecret` 返回。
 3. `ListWebhookDeliveries` 返回 `delivery_id`、`event_type`、`status`（封闭枚举：`delivered`、`failed`、`pending`）、`http_status_code`、`attempt_count`、`created_at`、`last_attempt_at`。`failed` 投递携带 `failure_reason`。
 4. 投递（FR4.2）：负载为 `{"id", "type", "created_at", "data"}`；签名是对原始 JSON 正文用端点密钥做 HMAC-SHA256，放在 `X-Go-Taas-Signature` 头中，格式 `t=<ts>,v1=<sig>`。重试策略最多 `max_attempts` 次，之间间隔 `backoff_seconds`；非 `2xx` 响应或网络错误为失败尝试（FR4.3）。
@@ -267,15 +267,15 @@ sequenceDiagram
 6. webhook 变更被审计（D10，特性 #15）：创建、更新、启用/禁用、删除、轮换密钥、测试与重发各写一条审计事件。
 7. 线上约定不变：列表用点分页，成功返回 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`。
 
-错误码（webhook 块 10601–10699，`pkg/errors/codes.go`）：
+错误码（webhook 块 10701–10799，`pkg/errors/codes.go`）：
 
 | 条件 | 代码 | 常量 | 说明 |
 | --- | --- | --- | --- |
-| 未知 `webhook_id` | 10601 | `CodeWebhookNotFound` | **新增**（D9） |
-| 无效 webhook 配置（名称/URL/重试错误） | 10602 | `CodeWebhookConfigInvalid` | **新增**（D9） |
-| 无效状态转换（对禁用/pending webhook 测试或重发） | 10603 | `CodeWebhookStateInvalid` | **新增**（D9） |
-| 未知 `delivery_id` | 10604 | `CodeWebhookDeliveryNotFound` | **新增**（D9） |
-| 事件类型不在面的目录中 | 10605 | `CodeWebhookEventTypeInvalid` | **新增**（D9） |
+| 未知 `webhook_id` | 10701 | `CodeWebhookNotFound` | **新增**（D9） |
+| 无效 webhook 配置（名称/URL/重试错误） | 10702 | `CodeWebhookConfigInvalid` | **新增**（D9） |
+| 无效状态转换（对禁用/pending webhook 测试或重发） | 10703 | `CodeWebhookStateInvalid` | **新增**（D9） |
+| 未知 `delivery_id` | 10704 | `CodeWebhookDeliveryNotFound` | **新增**（D9） |
+| 事件类型不在面的目录中 | 10705 | `CodeWebhookEventTypeInvalid` | **新增**（D9） |
 | 数据库 / MQ 基础设施故障 | 500 | `CodeInternal` | 经错误归一化 |
 
 ## 7. 验收标准
@@ -283,12 +283,12 @@ sequenceDiagram
 | # | 标准 | 级别 |
 | --- | --- | --- |
 | AC1 | `CreateWebhook` 用有效配置返回 `webhook_id` 与仅显示一次的明文签名密钥；后续任何 `GetWebhook` 都不返回该密钥 | FVT |
-| AC2 | `CreateWebhook` 用无效 URL/名称/重试返回 10602；用面目录之外的事件类型返回 10605 | FVT |
+| AC2 | `CreateWebhook` 用无效 URL/名称/重试返回 10702；用面目录之外的事件类型返回 10705 | FVT |
 | AC3 | `ListWebhooks` 返回该面的 webhook，带名称搜索、启用过滤、分页与投递摘要 | FVT |
 | AC4 | `UpdateWebhook` 更新名称/URL/事件/重试；`SetWebhookEnabled` 暂停并恢复投递；`DeleteWebhook` 删除 webhook 及其投递日志 | FVT |
 | AC5 | `RollWebhookSecret` 重新生成密钥、使旧密钥失效，并仅返回一次新明文 | FVT |
-| AC6 | `TestWebhook` 发送 `webhook.ping` 并记录 `delivered` 投递；测试禁用 webhook 返回 10603 | FVT |
-| AC7 | `ListWebhookDeliveries` 返回带状态/事件过滤与分页的投递日志；`ResendWebhookDelivery` 重发失败投递，未知投递返回 10604 | FVT |
+| AC6 | `TestWebhook` 发送 `webhook.ping` 并记录 `delivered` 投递；测试禁用 webhook 返回 10703 | FVT |
+| AC7 | `ListWebhookDeliveries` 返回带状态/事件过滤与分页的投递日志；`ResendWebhookDelivery` 重发失败投递，未知投递返回 10704 | FVT |
 | AC8 | 订阅事件（如管理面的 `deployment.status_changed`）产生带 `X-Go-Taas-Signature` 头的签名投递到端点；非 `2xx` 响应按策略重试然后标记投递为 `failed` | FVT |
 | AC9 | `/admin/webhooks` 页面在首次成功加载后渲染事件目录卡片与 webhooks 表格，带 last-updated 时间戳 | E2E |
 | AC10 | New Webhook 对话框按指定规则与错误文案校验每个字段；有效提交显示密钥揭示对话框并导航到详情页 | E2E |

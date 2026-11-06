@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the billing module's payment surface: payment channels, invoice generation and download, and automatic recharge thresholds, building on the balance-quota account core (feature #8) |
 | Owning modules | `billing` (payment intents, invoices, auto-recharge rules), `web` (admin console payment/invoice pages) |
 | Related documents | [Architecture Design](./architecture.md) — §2.6 `billing` · [Balance (Prepaid) & Quota (Postpaid)](./balance-quota.md) — the account core this feature builds on (its non-goals defer payments, invoices and auto-recharge here) · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) — the charge engine and bills this feature invoices |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

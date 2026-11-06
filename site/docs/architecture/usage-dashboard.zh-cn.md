@@ -6,7 +6,7 @@
 | 文档范围 | 统一用量 × 成本视图的架构与详细设计：`GetUsageDashboard` RPC（汇总卡片 + 按日分桶 × 分组维度）、凭证上的按请求预估成本、控制台 `/admin/usage` 仪表盘升级（内联 SVG 图表、指标切换、分组、CSV 导出、余额/配额组件）、错误处理、配置，以及各层的函数级设计 |
 | 归属模块 | `metering`（仪表盘聚合、凭证成本归因），只读读取 `billing` 计费记录与 `GetBalance`；控制台 Web 应用；结算、计费或账户管道无任何变更 |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/usage-dashboard.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.5 节（`metering`）、第 2.6 节（`billing`） · [Token 计量凭证与异步结算](./metering.zh-cn.md)（本特性扩展的用量数据与凭证表面） · [模型 × 卡类型价格矩阵与阶梯定价](./pricing.zh-cn.md)（每项成本数字背后的 D2 计费公式与生效日期价格） · [余额（预付费）与配额（后付费）账户模式](./balance-quota.zh-cn.md)（组件展示的 `GetBalance` 快照） · [多租户隔离](./multi-tenancy.zh-cn.md)（组织范围界定） |
-| 状态 | 架构完成，已移交开发代理 |
+| 状态 | 已实现 |
 
 ---
 

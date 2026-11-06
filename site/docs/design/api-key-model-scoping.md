@@ -6,7 +6,7 @@
 | Document scope | Restrict an API key to an allow-list of models, edit the scope in the end-user console, surface the scope read-only on the admin API surface, and enforce it at the inference gateway alongside org-level model authorization |
 | Owning modules | `auth` (key model scope storage, verdict cache, VerifyAPIKey enforcement), `model` (catalog model list for the scope picker), `audit` (scope changes), `web` end-user + admin consoles |
 | Related documents | [Architecture Design](./architecture.md) — API key verification and the data-plane verdict cache · [API Key Management](./api-key-management.md) — key lifecycle, salted-hash storage, revocation · [Per-tenant Model Authorization](./model-authorization.md) — org-level grants this feature layers on top of · [Per-key Rate Limits & Org Spend Limits](./rate-limits-spend-limits.md) — the other per-key restriction axis · [Console Surface Separation](./console-surface-separation.md) |
-| Status | Design complete; handoff pending |
+| Status | Implemented |
 
 ## 1. Background and Competitive Research
 

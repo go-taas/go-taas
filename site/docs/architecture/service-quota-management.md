@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-51: the five additive quota columns on `organizations` (three limits plus `updated_by`/`updated_at`); the four new tenancy RPCs bound under `/api/v1/admin/quotas/*` and `/api/v1/quotas`; the `VerifyAPIKey` verdict extension (response fields 7/8, cache mechanics, backward compatibility); the `batch` create-time check; the pinned gateway enforcement contract (check order rate → quota → funds, in-flight tracking, the `quota.orgs.concurrency` MQ relay, 13301/13304 rendering); the 133xx error block; the admin/user pages and the quota bar; configuration, security, rollout, and a function-level task list per layer |
 | Owning modules | `tenancy` (the quota columns on `organizations`, the four quota RPCs, the `OrgQuotaReader` seam, the in-flight report consumer); `auth` (the verdict extension on `VerifyAPIKey`); `batch` (the daily-jobs check); `pkg/mq` (one new subject); `pkg/errors` (the 133xx block); `pkg/config` (the `quota` section); `pkg/server` (no change — `RealmGuard` classifies the new prefixes); `audit` (reused — `quota.updated` events); `web` admin console (`QuotasPage`) and end-user console (`UserQuotasPage`, `QuotaBar`); Inference Gateway (data plane — **contract pinned only**, out of repository scope) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/service-quota-management.md) · [Architecture Design](../design/architecture.md) §2.4 `auth`/`infer`, §3.1 control gateway, §3.2 data plane · [Rate Limits & Spend Limits](./rate-limits-spend-limits.md) (the per-key RPM/TPM verdict-riding pattern this feature extends, the 10037 check that runs first) · [Balance & Quota Account Modes](./balance-quota.md) (the funds check 10502 that runs after quotas) · [Multi-Tenancy](./multi-tenancy.md) (the organizations table the columns land on) · [Batch Inference](./batch-inference.md) (the `batch_jobs` table the daily counter reads) · [Inference Autoscaling](./inference-autoscaling.md) (the gateway in-flight MQ reporting precedent, AD11 there) · [API Key Management](./api-key-management.md) (the verdict cache whose TTL bounds propagation) · [Audit Logging](./audit-logging.md) (the `quota.updated` events and the change-history read) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the masked-projection rule) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 > **Three-level update:** these organization quotas now combine with project and
 > personal limits by taking the minimum of the non-zero values. See
@@ -607,10 +607,10 @@ New `quota` section in `pkg/config` (`QuotaConfig`, mapped `mapstructure:"quota"
 `configs/config.yaml` gains:
 
 ```yaml
-# Service quotas (feature #51). The four org quota dimensions live on
+# Service quotas (feature #51). The three org quota dimensions live on
 # the organization row; the gateway enforces the hot-path dimensions
 # from the VerifyAPIKey verdict (contract pinned in the architecture
-# doc), the control plane enforces the lifecycle dimensions at create.
+# doc), the control plane enforces the lifecycle dimension at create.
 quota:
   # timezone is the platform timezone the batch daily counter's local
   # midnight is evaluated in (AD15).

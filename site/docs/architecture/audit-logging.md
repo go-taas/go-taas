@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-15: the `audit_events` table and its best-effort, non-fatal write path invoked by every mutating control-plane API, the admin Audit Logs page (filterable table, drill-down detail, CSV/JSON export), the end-user My Activity page (scoped table + export), plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | New `audit` module (`services/audit`): `audit_events` table, recorder, list/detail/export RPCs, retention runner; `auth` (actor identity, session realm) and `tenancy` (org scoping, RoleGuard) read-only; console web app |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/audit-logging.md) · [Architecture Design](../design/architecture.md) §2.1 (`auth`), §2.6 (`billing`), §3.1 (admin/user surface separation) · [Console Surface Separation](./console-surface-separation.md) (the two-console split this feature's two pages must respect; realm guard, 10038) · [Request Logs & API Playground](./request-logs-playground.md) (the diagnostic log this feature complements; the best-effort non-fatal write pattern) · [Organization Members, Roles & Invitations](./org-members-rbac.md) (the RoleGuard that gates who may view and export audit data) · [Multi-Tenancy & Organization Isolation](./multi-tenancy.md) (the transitional `X-Organization-Id` identity) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -515,7 +515,7 @@ The console branches on the body `code` (as `web/src/api.ts` already does), neve
 | `audit.retention.eventTTL` | `8760h` (365 d) | Audit events older than this are deleted by the audit retention runner (AD6) |
 | `audit.retention.batchSize` | `1000` | Rows deleted per retention pass |
 | `audit.retention.interval` | `1h` | Ticker period between retention passes |
-| `audit.export.maxRows` | `10000` | The export row cap (AD7) |
+| `audit.exportMaxRows` | `10000` | The export row cap (AD7) |
 
 The `audit` config block is new in `pkg/config` (`AuditConfig` + `AuditRetentionConfig`), following the `metering.retention` pattern. `applyDefaults`/`Validate` set the defaults above. The export cap is read by the export RPCs; the retention runner reads `enabled`/`eventTTL`/`batchSize`/`interval`.
 

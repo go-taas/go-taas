@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析与 UI/UX 设计：`/admin/notifications` 管理面通知中心，`/notifications` 终端用户面通知中心，页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `notification`（新增 — 拥有通知持久化、每用户偏好、阈值告警评估与已读/未读状态；订阅消息队列以获取事件目录），`web` 管理控制台（`AdminNotificationsPage`）与终端用户控制台（`UserNotificationsPage`），`pkg/server` 网关（管理前缀与用户前缀绑定） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 1.2 节消息队列、第 2 节模块职责 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性横跨的两个面、`UserShell`/`AdminShell` 约定、掩码投影规则 · [Webhook 通知与事件订阅](./webhook-notifications.zh-cn.md) — 本特性在控制台内消费的事件目录（特性 #23）· [推理自动扩缩](./inference-autoscaling.zh-cn.md) — 自动扩缩事件 · [余额与配额](./balance-quota.zh-cn.md) — 余额不足与消费限额事件 · [支付、发票与自动充值](./payments-invoices-auto-recharge.zh-cn.md) — 账单/发票事件 · [审计日志](./audit-logging.zh-cn.md) — 通知变更必须产生的审计轨迹 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

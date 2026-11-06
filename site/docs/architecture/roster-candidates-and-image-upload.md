@@ -62,7 +62,7 @@ It is mounted on the gateway mux with `HandlePath`, so the realm guard, the cons
 
 **AD6 — Same identity rules as gRPC.** The handler forwards `Authorization` and `X-Organization-Id` into the incoming gRPC metadata and parks the session-role resolver on the context, exactly as the unary interceptor does, then calls the image service in-process. The platform-administrator gate therefore sees the same caller it would for a transcoded call. The actor for the audit trail is resolved by the wiring adapter (`auth.SessionUserID`).
 
-**AD7 — One destination rule.** An upload lands where a registry import lands: `image.harbor.hostname` + `image.harbor.project` + the image's **own** name. The source registry and its namespaces are dropped, so `docker.io/library/a/b/hello:1.0.0` becomes `<harbor>/<project>/hello:1.0.0`.
+**AD7 — One destination rule.** An upload lands where a registry import lands: `image.harbor.url` + `image.harbor.project` + the image's **own** name. The source registry and its namespaces are dropped, so `docker.io/library/a/b/hello:1.0.0` becomes `<harbor>/<project>/hello:1.0.0`.
 
 **AD8 — The archive names the image; the form is the fallback.** `pkg/registry.ReadArchiveReference` reads `manifest.json` from the (optionally gzipped) tar and returns the first `RepoTags` entry. Two different uses must not be confused:
 

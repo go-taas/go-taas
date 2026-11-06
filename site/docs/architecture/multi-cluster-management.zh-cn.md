@@ -6,13 +6,13 @@
 | 文档范围 | 功能 40 的架构与详细设计：新的 `cluster` 模块，负责集群注册表与集群健康投影；`taas.cluster.v1.ClusterService` proto 及五个 RPC；`clusters` 表；Controller 的按集群健康采集与快照发布；部署表单中的集群选择器；管理端集群页面（`/admin/clusters`、`/admin/clusters/:clusterId`）；以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | 新 `cluster` 模块（`services/cluster`）：集群注册表与集群健康投影；`infer`（只读：工作负载放置与跨集群路由）；`controller`（只读：按集群健康采集与快照发布）；`pkg/server` 网关（管理端前缀绑定）；`web` 管理端控制台（`ClustersPage`、`ClusterDetailPage`） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/multi-cluster-management.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§2.7 Controller、§4.2 一键部署流程 · [加速器清单与健康](./accelerator-inventory.md)（本功能复用的 Controller → MQ → 服务投影模式与内存缓存）· [系统健康与服务状态](./system-health-status.md)（本功能扩展到集群的组件健康约定）· [模型目录与一键部署](./model-catalog-deployment.md)（本功能路由扩展的推理服务生命周期与部署表单）· [控制台面分离](./console-surface-separation.md)（两个面、`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给 Developer 智能体 |
+| 状态 | 已实现 |
 
 ---
 
 ## 1. 概述与目标
 
-go-taas 在单一集群上以 Kubernetes Deployment 运行推理服务（model-catalog-deployment §4.2）：Controller 创建 Deployment 与 Service，加速器清单（功能 #18）上报每节点 GPU 健康。而控制台仍无法*跨多个集群运行推理*：拥有第二个集群（不同区域、不同加速器集群或突发容量池）的运维人员无法注册它、查看其健康、查看其上运行的服务或选择新部署落在何处。运维人员必须分别管理每个集群的 Kubernetes API 并手工路由部署 —— 这是控制台应拥有的运维编排逃生舱。
+go-taas 在单一集群上以 AIBrix StormService 运行推理服务（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，加速器清单（功能 #18）上报每节点 GPU 健康。而控制台仍无法*跨多个集群运行推理*：拥有第二个集群（不同区域、不同加速器集群或突发容量池）的运维人员无法注册它、查看其健康、查看其上运行的服务或选择新部署落在何处。运维人员必须分别管理每个集群的 Kubernetes API 并手工路由部署 —— 这是控制台应拥有的运维编排逃生舱。
 
 本功能新增**多集群管理**：注册与管理推理集群、查看集群健康与工作负载放置、跨集群路由部署。它是 Phase 4 生产化路线图最小且有独立价值的增量：把"我有第二个集群"变成"注册它、查看其健康与运行内容、选择每个部署落在何处"。
 

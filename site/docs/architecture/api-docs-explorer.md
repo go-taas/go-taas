@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-38: a new `docs` module serving the curated user-realm API catalog; the `taas.docs.v1.DocsService` proto with the `GetApiDocs` RPC; the end-user API Docs page (`/docs`); the try-it wiring that reuses the playground proxy and the user's session; plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | New `docs` module (`services/docs`): serves the curated user-realm API catalog; `pkg/server` gateway (user-prefix bindings); `web` end-user console (`ApiDocsPage` in `UserShell`); `infer` (reused: the model-based playground proxy for try-it); `auth` (reused: API-key list for try-it); `model` (reused: masked model list for try-it) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/api-docs-explorer.md) · [Architecture Design](../design/architecture.md) §3.2 data-plane gateway, §3.3 API-key authentication chain · [Console Surface Separation](./console-surface-separation.md) (the end-user surface this page lives on, the `UserShell` conventions, the masked-projection rule) · [SDK / Quickstart](./sdk-quickstart.md) (the sibling onboarding page and its language-tab / base-URL / playground-proxy conventions) · [Request Logs & API Playground](./request-logs-playground.md) (the `PlaygroundInfer` proxy this feature reuses for try-it) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the model list this page consumes) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

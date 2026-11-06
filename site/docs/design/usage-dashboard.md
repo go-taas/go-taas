@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the unified usage × cost view: the `GetUsageDashboard` API (summary cards + daily buckets × group-by), per-request estimated cost on vouchers, the console `/admin/usage` dashboard upgrade (chart, metric toggle, group-by, CSV export, balance/quota widget), and acceptance criteria |
 | Owning modules | `metering` (dashboard aggregation, voucher cost attribution), reading `billing` charge records and `GetBalance` read-only; console web app; no changes to settlement, charging, or account pipelines |
 | Related documents | [Architecture Design](./architecture.md) — §2.5 `metering`, §2.6 `billing` · [Token Metering Vouchers & Async Settlement](./metering.md) — the usage data and voucher surface being extended · [Model × Card-Type Price Matrix & Tiered Pricing](./pricing.md) — the D2 charge formula and effective-dated prices behind every cost figure · [Balance (Prepaid) & Quota (Postpaid) Account Modes](./balance-quota.md) — the `GetBalance` snapshot the widget shows · [Multi-Tenancy Isolation](./multi-tenancy.md) — org scoping |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

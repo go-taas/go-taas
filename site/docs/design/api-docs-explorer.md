@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the end-user-surface API docs page for `/docs`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `docs` (new — serves the curated user-realm API catalog), `pkg/server` gateway (user-prefix bindings), `web` end-user console (`ApiDocsPage` in `UserShell`), `infer` (reused: the model-based playground proxy for try-it), `auth` (reused: API-key list for try-it), `model` (reused: masked model list for try-it) |
 | Related documents | [Architecture Design](./architecture.md) — §3.2 data-plane gateway, §3.3 API-key authentication chain · [Console Surface Separation](./console-surface-separation.md) — the end-user surface this page lives on, the `UserShell` conventions, the masked-projection rule · [SDK / Quickstart](./sdk-quickstart.md) — the sibling onboarding page and its language-tab / base-URL / playground-proxy conventions · [Request Logs & API Playground](./request-logs-playground.md) — the `PlaygroundInfer` proxy this feature reuses for try-it · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the model list this page consumes |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for feature-41: a new `account` module owning the data-export job lifecycle and the account-data bundle; the `taas.account.v1.AccountService` proto with four RPCs; the `data_exports` table; the async export-generation runner; the end-user Data Export page (`/account/export`); plus error handling, configuration, security, rollout, and function-level design per layer |
 | Owning modules | New `account` module (`services/account`): the data-export job lifecycle and the account-data bundle; `metering` (read-only: usage and request-log export); `billing` (read-only: billing export); `auth` (read-only: account profile export); `pkg/server` gateway (user-prefix bindings); `web` end-user console (`DataExportPage` in `UserShell`) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/data-export-privacy.md) · [Architecture Design](../design/architecture.md) §2.5 (`metering`), §2.6 (`billing`), §3.1 (admin/user surface separation) · [Billing Reports & CSV Export](./billing-reports.md) (the sibling CSV-export feature and its async-job, Excel-friendly-CSV, and tenant-scoping conventions) · [Audit Logging & Activity Export](./audit-logging.md) (the sibling export feature and its audit-event conventions) · [Console Surface Separation](./console-surface-separation.md) (the end-user surface this page lives on, the `UserShell` conventions, the masked-projection rule) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 

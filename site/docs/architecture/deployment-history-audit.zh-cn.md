@@ -6,7 +6,7 @@
 | 文档范围 | 功能点 34 的架构与详细设计：`deployment_events` 表、`InferServiceService` 上的 `ListDeploymentEvents` 与 `RollbackDeployment` RPC、管理端部署历史页面（`/admin/deployments`），以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | `infer`（推理服务生命周期上的部署事件轨迹、差异计算与从历史回滚 RPC）、`audit`（只读：本功能的部署轨迹所补充的通用审计主干）、`web` 管理端控制台（`DeploymentHistoryPage`）、`controller`（只读：协调回滚事件） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/deployment-history-audit.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§2.7 Controller、§4.2 一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.md)（推理服务生命周期与变更事件结构）· [审计日志与活动导出](./audit-logging.md)（本功能的部署轨迹所补充的通用控制面审计主干）· [模型版本管理与回滚](./model-versioning.md)（本功能扩展到部署级别的同级回滚表面）· [控制台表面分离](./console-surface-separation.md)（两个表面、`AdminShell` 约定、掩码投影规则） |
-| 状态 | 架构完成，已移交给开发智能体 |
+| 状态 | 已实现 |
 
 ---
 

@@ -6,7 +6,7 @@
 | 文档范围 | 持久化路由策略与不可变版本、仅管理端 API 和 UI、网关快照分发与请求时选择、审计、错误、安全、发布及实现职责 |
 | 所属模块 | `infer`（策略、资格校验、版本、审计、发布）；数据面推理网关 Envoy/Wasm 路由适配器（应用快照和选择尝试目标）；`model`（目录标识）；`tenancy`（管理员角色）；`web/`（管理页面） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/inference-routing-policies.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.4（`infer`）和 §3.2（推理网关）· [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) · [推理自动伸缩](./inference-autoscaling.zh-cn.md) · [请求追踪](./request-tracing.zh-cn.md) · [控制台面分离](./console-surface-separation.zh-cn.md) |
-| 状态 | 架构完成；已向 Developer 发出移交 |
+| 状态 | 已实现 |
 
 ## 1. 目标与非目标
 
