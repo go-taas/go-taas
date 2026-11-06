@@ -4,9 +4,9 @@
 | --- | --- |
 | 特性点 | 推理自动扩缩容与缩容到零（backlog 第 16 行） |
 | 文档范围 | 推理服务自动水平扩缩容与空闲时缩容到零能力的需求分析与 UI/UX 设计：admin 控制台的策略控制、按服务的自动扩缩容配置、终端用户控制台只读的自动扩缩容可见性、API 面与验收标准 |
-| 归属模块 | `infer`（推理服务上的自动扩缩容策略）、`Controller`（HPA/KEDA 调和与缩容到零调度）、`model`（按模型默认值）、`auth`/`tenancy`（面与组织作用域） |
+| 归属模块 | `infer`（推理服务上的自动扩缩容策略）、`Controller`（AIBrix PodAutoscaler 调和与缩容到零调度）、`model`（按模型默认值）、`auth`/`tenancy`（面与组织作用域） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.4 节 `infer`、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本特性点所扩展的推理服务生命周期 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本设计遵循的双面规则 · [用量看板与按请求成本归因](./usage-dashboard.zh-cn.md) — 用户面模型列表模式 |
-| 状态 | 设计完成，已移交 Architect agent |
+| 状态 | 已实现 |
 
 ---
 
@@ -16,7 +16,7 @@
 
 go-taas 售卖推理 token，而 token 由运行中的推理服务产出。今天（特性 #2）管理员以**固定**副本数部署服务，并手动扩缩容。这带来两个成本：空闲服务让昂贵的 GPU 空转并持续计费；手动配置不足的繁忙服务会丢弃请求。自动扩缩容让平台按需匹配副本数；缩容到零让空闲服务完全释放 GPU，并在首个请求到来时重新拉起。本特性点定义的是操作员配置什么、租户看到什么。
 
-架构已固定了机制：`infer` 模块维护期望状态并把变更发布到消息队列，Controller 调和 Kubernetes 资源（§2.4、§2.7）。自动扩缩容作为**推理服务上的策略**接入，由 Controller 落成 Kubernetes 的 `HorizontalPodAutoscaler`（HPA）——对于缩容到零，则走 KEDA 风格的激活/停用路径。本设计不发明新的扩缩容引擎；它定义的是既有控制环之上的用户可见契约。
+架构已固定了机制：`infer` 模块维护期望状态并把变更发布到消息队列，Controller 调和 Kubernetes 资源（§2.4、§2.7）。自动扩缩容作为**推理服务上的策略**接入，由 Controller 落成 AIBrix `PodAutoscaler`，扩缩容目标是服务的 `StormService`，指标为引擎每 Pod 的 `num_requests_running`；缩容到零走同一对象的 `minReplicas: 0` 路径。本设计不发明新的扩缩容引擎；它定义的是既有控制环之上的用户可见契约。
 
 ### 1.2 竞品如何实现自动扩缩容与缩容到零
 
@@ -53,15 +53,15 @@ go-taas 售卖推理 token，而 token 由运行中的推理服务产出。今�
 
 | # | 决策 | 理由 |
 | --- | --- | --- |
-| D1 | 自动扩缩容是**推理服务上的策略**，部署时配置、原位可编辑；不创建新资源类型 | 契合 `infer` 模块的期望状态模型（§2.4）；Controller 把策略落成 HPA，保持控制台契约稳定 |
+| D1 | 自动扩缩容是**推理服务上的策略**，部署时配置、原位可编辑；不创建新资源类型 | 契合 `infer` 模块的期望状态模型（§2.4）；Controller 把策略落成 AIBrix `PodAutoscaler`，保持控制台契约稳定 |
 | D2 | 策略字段恰好为：**启用**（bool）、**最小副本**（0–max）、**最大副本**（min–100）、**目标并发**（1–1000，默认 32）、**缩容到零**（bool，要求 min=0）、**冷却秒数**（0–3600，默认 300） | 以最小字段集映射业界「min/max + 目标 + 激活/冷却」契约；并发是在零副本时也成立的指标 |
 | D3 | 缩容到零是**独立开关**，要求 `最小副本 = 0`；启用时强制 min=0，停用时强制 min ≥ 1 | KServe 的显式选择是最干净的交互；min=0 依赖以表单规则呈现，而非隐藏约束 |
-| D4 | Controller 把策略落成基于**并发**指标（推理网关上报的在途请求）的 Kubernetes HPA，缩容稳定窗口等于冷却期；缩容到零走 HPA `minReplicas: 0` 路径并带激活阈值 | 并发在零副本时也能在网关处测量（网关在路由前先看到请求）；这是唯一支持缩容到零的指标 |
+| D4 | Controller 把策略落成 AIBrix `PodAutoscaler`，目标是服务的 `StormService`，指标为引擎每 Pod 的 `num_requests_running`；缩容到零走 `PodAutoscaler` 的 `minReplicas: 0` 路径。冷却仍是平台契约中的策略字段，当前 CRD 对象不承载稳定窗口 | 引擎在单副本时也导出该指标，且 AIBrix 自动扩缩器理解 `StormService` 副本组；Kubernetes HPA 无法以 `StormService` 为目标 |
 | D5 | 自动扩缩容**配置仅限 admin 面**；终端用户控制台按模型提供**只读**的自动扩缩容摘要 | 配置是操作员编排（副本、目标、冷却）；租户消费模型，只需知道模型已自动扩缩容及其当前行为 |
 | D6 | admin 控制台在两处管理自动扩缩容：**全局默认策略**（应用于新服务）与**按服务策略**（覆盖默认）；按模型默认值由全局默认派生 | 全局默认让新部署无需逐服务配置即可合理；按服务覆盖让操作员在关键处掌控；按模型默认值是后续项（见 §8） |
 | D7 | 终端用户控制台在**模型**层面展示自动扩缩容（模型已自动扩缩容、当前 N 副本、缩容到零开/关），绝不在服务层面 | 租户经 OpenAI 兼容端点消费模型（特性 #17 AD14）；服务是操作员内部编排产物 |
 | D8 | 收到请求的缩容到零服务向操作员呈现**冷启动中**状态、向租户呈现**预热中**提示，而非静默丢弃或延迟 | 冷启动是缩容到零唯一的交互成本；呈现它可避免「模型是不是挂了」的困惑 |
-| D9 | 自动扩缩容变更是**异步**的，与部署一致：更新立即返回，服务状态反映收敛，控制台轮询 | 契合 MQ + Controller 调和模型（§4.2）；阻塞等待 HPA 收敛会拖垮 HTTP 调用 |
+| D9 | 自动扩缩容变更是**异步**的，与部署一致：更新立即返回，服务状态反映收敛，控制台轮询 | 契合 MQ + Controller 调和模型（§4.2）；阻塞等待自动扩缩器收敛会拖垮 HTTP 调用 |
 | D10 | 自动扩缩容策略在 **API 边界同步校验**（min ≤ max、min=0 需缩容到零、目标在范围内、冷却在范围内），任何消息发布前完成 | 无效策略绝不能到达 Controller（与特性 #2 部署校验同规则） |
 
 ### 1.4 范围边界
@@ -122,7 +122,7 @@ go-taas 售卖推理 token，而 token 由运行中的推理服务产出。今�
 - **FR3.1** 推理服务列表新增**自动扩缩容**列：徽标（`开` / `关`），开启时显示 `当前/min–max`（如 `3/1–10`）。
 - **FR3.2** 服务详情页展示完整自动扩缩容策略与**状态**块：当前副本、期望副本、目标并发、当前并发、自动扩缩容状态（`扩容中` / `缩容中` / `稳定` / `已缩容到零` / `冷启动中` / `已停用` / `错误`），以及最近一次扩缩容事件时间。
 - **FR3.3** 当缩容到零服务收到请求并正在拉起时显示 `冷启动中` 状态；空闲在零时显示 `已缩容到零`。
-- **FR3.4** `错误` 状态呈现自动扩缩容器失败原因（如指标不可用、HPA 被拒）并附可操作信息。
+- **FR3.4** `错误` 状态呈现自动扩缩器失败原因（如指标不可用、自动扩缩器被拒）并附可操作信息。当前 AIBrix 调和器发布生命周期状态（`queued`/`starting`/`running`/`failed`）与端点；自动扩缩容状态块仅在 Controller 回报中携带时渲染，否则显示「未回报」。
 
 ### FR4 — 终端用户只读自动扩缩容可见性（user）
 
@@ -135,7 +135,7 @@ go-taas 售卖推理 token，而 token 由运行中的推理服务产出。今�
 
 - **FR5.1** 收到请求的缩容到零服务转为 `冷启动中`（admin）/ `预热中`（user），并拉起至少 1 个副本。
 - **FR5.2** 冷却窗口防止刚缩容的服务被立即重建；服务在缩容后至少保持当前副本数 `cooldown` 秒。
-- **FR5.3** 缩容到零仅在并发低于激活阈值并持续冷却时长后缩容；单个偶发请求不会让它保持在 1。
+- **FR5.3** 缩容到零在引擎每 Pod 并发持续低于目标时缩容；稳定行为由 AIBrix 控制器决定。`cooldown_seconds` 在策略中校验并存储，供能兑现它的部署使用；单个偶发请求不会让服务保持在 1。
 
 ---
 
@@ -293,20 +293,20 @@ sequenceDiagram
     actor Agent as 智能体 / SDK
     participant DGW as 推理网关
     participant CTRL as Controller
-    participant HPA as HPA（并发指标）
+    participant PA as AIBrix PodAutoscaler
     participant SVC as 推理服务
 
-    Note over HPA,SVC: 服务空闲，已缩容到零
+    Note over PA,SVC: 服务空闲，已缩容到零
     Agent->>DGW: POST /v1/chat/completions（模型）
-    DGW->>HPA: 上报在途并发 = 1
-    HPA->>CTRL: 激活，0 -> 1 扩容
+    PA->>SVC: 抓取 num_requests_running
+    PA->>CTRL: 激活，0 -> 1 扩容
     CTRL->>SVC: 创建副本（冷启动）
     SVC-->>CTRL: 就绪
     CTRL-->>DGW: 端点可用
     DGW-->>Agent: 转发请求（首个调用较慢）
-    Note over DGW,HPA: 并发上升，HPA 1 -> N 扩容
-    Note over HPA,SVC: 低于激活阈值并持续冷却时长
-    HPA->>CTRL: 冷却后缩容到零
+    Note over PA: 并发上升，PodAutoscaler 1 -> N 扩容
+    Note over PA,SVC: 低于目标
+    PA->>CTRL: 缩容（AIBrix 行为）
 ```
 
 ### 6.10 自动扩缩容状态时序（admin 轮询）
@@ -321,10 +321,10 @@ sequenceDiagram
 
     Admin->>UI: 打开 /admin/inference-services/{id}
     UI->>CGW: GET /api/v1/admin/inference-services/{id}
-    CGW->>Infer: GetInferenceService（含自动扩缩容状态）
-    Infer-->>CGW: 策略 + 状态（当前、期望、状态）
+    CGW->>Infer: GetInferenceService（生命周期状态 + 策略）
+    Infer-->>CGW: 策略 + 状态（自动扩缩容块存在时包含当前/期望）
     CGW-->>UI: 渲染策略 + 状态块
-    Note over UI,CGW: 状态为扩缩中或冷启动中时每 10 秒轮询
+    Note over UI,CGW: 生命周期状态未稳定时每 10 秒轮询；自动扩缩容块为可选
     UI-->>Admin: 实时状态更新
 ```
 

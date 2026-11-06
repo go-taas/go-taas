@@ -12,7 +12,7 @@
 
 ## 1. 概述与目标
 
-go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2）：Controller 创建 Deployment 与 Service，推理引擎（vLLM 等）将其日志写入容器的 stdout/stderr。请求追踪功能（第 27 行）解释*请求内部发生了什么*（TTFT、生成、span），但它无法回答操作员的原始问题：*推理引擎打印了什么？* 当部署无法收敛、请求出错或引擎记录警告时，操作员必须离开控制台对 Pod 运行 `kubectl logs` —— 这是控制台应该拥有的操作员编排逃生舱。
+go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，推理引擎（vLLM 等）将其日志写入容器的 stdout/stderr。请求追踪功能（第 27 行）解释*请求内部发生了什么*（TTFT、生成、span），但它无法回答操作员的原始问题：*推理引擎打印了什么？* 当部署无法收敛、请求出错或引擎记录警告时，操作员必须离开控制台对 Pod 运行 `kubectl logs` —— 这是控制台应该拥有的操作员编排逃生舱。
 
 本功能新增**推理服务日志查看器**：在控制台中查看推理服务 Pod 的容器日志，带级别/时间过滤、实时跟踪与日志搜索。
 
@@ -304,7 +304,7 @@ sequenceDiagram
     Infer-->>UI: lines[] + has_more
     UI-->>Admin: 日志窗格渲染行
     Admin->>UI: 打开跟踪
-    UI->>CGW: GET /api/v1/admin/services/{service_id}/logs?since=<offset>（每 2 秒）
+    UI->>CGW: GET /api/v1/admin/services/{service_id}/logs?since=<RFC3339>（每 2 秒）
     CGW->>Infer: GetServiceLogs
     Infer-->>UI: 追加新行
     UI-->>Admin: 日志窗格实时跟踪输出
@@ -354,7 +354,7 @@ Controller 的日志获取使用现有 Kubernetes 客户端配置；Controller �
 
 - 无模式变更；无新表。
 - 新 RPC 绑定在现有管理端前缀下；领域守卫已将该前缀视为管理端表面。
-- Controller 必须暴露只读日志获取接口；`infer` 模块在进程内调用它（单 Deployment 拓扑）。
+- Controller 必须暴露只读日志获取接口；`infer` 模块在进程内调用它（StormService 拓扑）。
 - 功能是加性的；现有部署与页面不受影响。
 
 ---

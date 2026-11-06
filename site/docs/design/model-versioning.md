@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface model-versions page for `/admin/models/:modelId/versions`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `model` (version history, activation, registration), `infer` (in-place version change / rollback of an inference service), `web` admin console (`ModelVersionsPage`), `controller` (reconcile a version-change event) |
 | Related documents | [Architecture Design](./architecture.md) — §2.2 `model`, §2.4 `infer`, §3.1 (admin/user surface separation) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the catalog, the `model_versions` table, the deploy form, and the delete+recreate rule · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 

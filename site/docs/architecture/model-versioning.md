@@ -84,7 +84,7 @@ flowchart TD
 
     subgraph ctrl["Controller"]
         CTRL["Controller<br/>reconcile version-change event"]
-        K8S["Kubernetes<br/>Deployment · Service"]
+        K8S["Kubernetes<br/>StormService · Service"]
     end
 
     subgraph stores["State"]
@@ -284,7 +284,7 @@ The `infer` module publishes a version-change event on the existing `infer.servi
 }
 ```
 
-The Controller decodes `change_type=update_version`, recreates the Kubernetes Deployment pods with the new weights (the `model_version` maps to a weight path via the model module), keeps the Service and endpoints, and reports observed state on `infer.services.status` (the existing status subject). The `infer` status consumer updates the service row's `model_version` and `state`.
+The Controller decodes `change_type=update_version`, rolls the AIBrix StormService with the new weights (the `model_version` maps to a weight path via the model module), keeps the Service and endpoints, and reports observed state on `infer.services.status` (the existing status subject). The `infer` status consumer updates the service row's `model_version` and `state`.
 
 ---
 
@@ -486,7 +486,7 @@ No new configuration is required for this feature. The version-change event reus
 
 | File | Function | Responsibility |
 | --- | --- | --- |
-| `reconciler.go` | `ApplyInferServiceChange` | Decode `change_type=update_version`; recreate the Kubernetes Deployment pods with the new weights (resolve `model_version` → weight path via the model module), keep the Service and endpoints; report observed state on `infer.services.status` |
+| `reconciler.go` | `ApplyInferServiceChange` | Decode `change_type=update_version`; roll the AIBrix StormService with the new weights (resolve `model_version` → weight path via the model module), keep the Service and endpoints; report observed state on `infer.services.status` |
 
 ### 13.4 `web` admin console
 

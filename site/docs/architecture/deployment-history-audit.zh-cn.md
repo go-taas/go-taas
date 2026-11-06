@@ -12,7 +12,7 @@
 
 ## 1. 概述与目标
 
-go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2），并已在通用审计主干（`audit_events`，功能点 #15）中记录每个控制面变更。控制台目前仍无法回答部署特定的问题：*这个推理服务在其生命周期内发生了什么？* 通用审计日志记录 `infer.service.create` / `infer.service.scale` / `infer.service.delete` 事件，但它不携带**差异**（到底改了什么 —— 副本 2→4、版本 A→B），也不提供**从历史回滚**（将服务恢复到之前的期望状态）。操作员必须从审计元数据重建变更并手动重新应用。
+go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2），并已在通用审计主干（`audit_events`，功能点 #15）中记录每个控制面变更。控制台目前仍无法回答部署特定的问题：*这个推理服务在其生命周期内发生了什么？* 通用审计日志记录 `infer.service.create` / `infer.service.scale` / `infer.service.delete` 事件，但它不携带**差异**（到底改了什么 —— 副本 2→4、版本 A→B），也不提供**从历史回滚**（将服务恢复到之前的期望状态）。操作员必须从审计元数据重建变更并手动重新应用。
 
 本功能新增**部署历史与审计**表面：带时间戳、操作者与差异的每服务部署审计轨迹（创建/更新/扩缩容/回滚事件），以及从历史回滚。
 
@@ -81,7 +81,7 @@ flowchart TD
 
     subgraph ctrl["Controller"]
         CTRL["Controller<br/>协调回滚事件"]
-        K8S["Kubernetes<br/>Deployment · Service"]
+        K8S["Kubernetes<br/>StormService · Service"]
     end
 
     subgraph stores["状态"]

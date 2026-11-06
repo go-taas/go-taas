@@ -5,8 +5,8 @@
 | 特性点 | 分布式推理运行时 — 让平台运营者查看已安装的推理运行时及其健康、选择平台服务方案、并管理与运行时注册的模型（backlog 第 47 行） |
 | 文档范围 | 需求分析、竞品调研与 AIBrix / llm-d / KServe 决策、管理面页面 `/admin/runtime`（运行时概览、组件健康、服务方案切换器、已注册模型表、注册/注销流程）、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `runtime`（新增 — 拥有服务方案设置与运行时健康及已注册模型投影）、`controller`（只读：AIBrix 控制面健康采集与 `ModelClaim` 投影发布）、`infer`（只读：方案所选择的推理服务调和路径）、`audit`（方案变更）、`pkg/server` 网关（管理前缀绑定）、`web` 管理控制台（`RuntimePage`） |
-| 相关文档 | [架构设计](./architecture.md) — 第 1.1 节控制/数据面分离、第 2.4 节 `infer`、第 2.7 节 Controller、第 3.2 节数据面（Envoy + Wasm） · [推理自动扩缩容与缩容至零](./inference-autoscaling.md) — 朴素方案所用的 HPA/KEDA 路径 · [模型目录与一键部署](./model-catalog-deployment.md) — 方案所驱动的推理服务生命周期 · [加速器清单与健康](./accelerator-inventory.md) — 本特性复用的 Controller → MQ → 服务投影模式 · [多集群管理](./multi-cluster-management.md) — 运行时控制面所在的已注册集群 · [系统健康与服务状态](./system-health-status.md) — 本特性扩展到运行时的组件健康约定 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 相关文档 | [架构设计](./architecture.md) — 第 1.1 节控制/数据面分离、第 2.4 节 `infer`、第 2.7 节 Controller、第 3.2 节数据面（Envoy + Wasm） · [推理自动扩缩容与缩容至零](./inference-autoscaling.md) — 朴素方案所用的自动扩缩容路径 · [模型目录与一键部署](./model-catalog-deployment.md) — 方案所驱动的推理服务生命周期 · [加速器清单与健康](./accelerator-inventory.md) — 本特性复用的 Controller → MQ → 服务投影模式 · [多集群管理](./multi-cluster-management.md) — 运行时控制面所在的已注册集群 · [系统健康与服务状态](./system-health-status.md) — 本特性扩展到运行时的组件健康约定 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
+| 状态 | 已实现 |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做分布式推理运行时
 
-go-taas 的 Controller 今天为每个推理服务创建**朴素的 `apps/v1 Deployment` + ClusterIP Service** — 标签为 `app.kubernetes.io/managed-by: taas-controller` — 对 JuiceFS PVC 上的权重运行 `vllm.entrypoints.openai.api_server`，并在启用自动扩缩容时（特性 #16）创建 Kubernetes `HorizontalPodAutoscaler`（HPA）。该路径对单副本或简单复制服务完全够用，但没有 KV-cache 感知路由、没有 prefill/decode 解耦、也没有多 LoRA 适配器管理。这些正是分布式推理运行时提供的能力。
+go-taas 的 Controller 为每个推理服务创建 **AIBrix `StormService` + ClusterIP Service** — 标签为 `app.kubernetes.io/managed-by: taas-controller` — 对 JuiceFS PVC 上的权重运行 `vllm.entrypoints.openai.api_server`，并在启用自动扩缩容时（特性 #16）创建 AIBrix `PodAutoscaler`（绝不再创建 Kubernetes HPA）。StormService 已支持单机、多机与 PD 布局，但**朴素服务方案**没有 KV-cache 感知路由，也没有多 LoRA 适配器管理。这些正是分布式推理运行时提供的能力。
 
 本特性新增**运行时支撑的服务路径**：运营者选择平台级*服务方案*，当选择 **AIBrix** 方案时，Controller 额外把每个模型作为 `ModelClaim` 注册到 AIBrix 控制面，并使用 AIBrix 的 `PodAutoscaler` 取代朴素 HPA，从而由 AIBrix 提供 KV-cache 感知路由、LoRA 适配器与分布式拓扑。控制台新增一个页面，展示已安装运行时及其健康、切换方案并管理 `ModelClaim` 资源。
 
@@ -180,7 +180,7 @@ go-taas 的 Controller 今天为每个推理服务创建**朴素的 `apps/v1 Dep
 
 **方案切换器**：由页眉 **Switch scheme** 操作打开的对话框中的分段控件（单选组），含两个选项：
 
-- **Plain Deployment**（默认）— "go-taas creates a Kubernetes Deployment and Service (and an HPA for autoscaling) per inference service."
+- **朴素服务**（默认）— "go-taas creates an AIBrix StormService and Service (and a PodAutoscaler for autoscaling) per inference service."
 - **AIBrix** — "go-taas registers each model as an AIBrix ModelClaim and uses AIBrix's PodAutoscaler. AIBrix provides KV-cache-aware routing, LoRA adapters and distributed topologies."
 
 选择非当前选项使 **Apply** 可用。应用时打开确认对话框："Switch serving scheme to `<scheme>`? New and updated inference services will be served through `<scheme>`. Existing services keep running until they are next updated."，带 **Switch**（主要）与 **Cancel**。确认后调用 `UpdateServingScheme` 并显示 toast "Serving scheme updated."；概览徽标更新。运行时 `unavailable` 时选择 `AIBrix` 保持 **Apply** 禁用并附 tooltip "AIBrix is not available. Select it after the runtime is reachable."（FR2.5，D8）。
@@ -288,7 +288,7 @@ flowchart TD
 2. `UpdateServingScheme` 接受 `scheme` ∈ `{plain, aibrix}`，其他值以 **12902** 拒绝；运行时 `unavailable` 时切换到 `aibrix` 返回 **12901**；设为当前方案是无操作成功且无审计事件（FR2.2–FR2.5）。
 3. `RegisterRuntimeModel` 接受 `model_name`、`engine`、`replicas`、`artifact_url`、可选 `pod_selector` 与 `engine_args`；校验码 12904–12907 适用（FR4.2）。`replicas = 0` 有效（FR4.1）。
 4. `DeregisterRuntimeModel` 移除 `ModelClaim`；未知 `model_name` 返回 **12903**，且不触碰模型目录（FR4.4）。
-5. Controller 把运行时注册翻译为 AIBrix `ModelClaim`（engine `vllm`/`sglang`、`artifactURL`、`replicas`、`podSelector`、`engineConfig.args`），并在自动扩缩容适用时用 AIBrix `PodAutoscaler` 取代朴素 HPA（D3，D7）。朴素方案保持今日的 Deployment + Service + HPA 路径不变。
+5. Controller 把运行时注册翻译为 AIBrix `ModelClaim`（engine `vllm`/`sglang`、`artifactURL`、`replicas`、`podSelector`、`engineConfig.args`），并在自动扩缩容适用时使用 AIBrix `PodAutoscaler`（D3，D7）。朴素方案保持 StormService + Service + PodAutoscaler 路径不变。
 6. schema/wire 约定不变：成功 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`，int64 字段序列化为 JSON 字符串。
 
 错误码（`pkg/errors/codes.go`）：

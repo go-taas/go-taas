@@ -12,7 +12,7 @@
 
 ## 1. 概述与目标
 
-go-taas 的 Controller 今天为每个推理服务调和**朴素的 `apps/v1 Deployment` + ClusterIP Service**（`internal/controller/reconciler.go` 的 `buildDeployment` / `buildService`），对挂载于 `r.weights.MountPath` 的 JuiceFS PVC 上的权重运行 `python3 -m vllm.entrypoints.openai.api_server`，并在启用自动扩缩容时创建 Kubernetes `HorizontalPodAutoscaler`（`buildHPA`）。该路径没有 KV-cache 感知路由、没有 prefill/decode 解耦、也没有多 LoRA 适配器管理。
+go-taas 的 Controller 为每个推理服务调和 **AIBrix `StormService` + ClusterIP Service**（`internal/controller/reconciler.go` 的 `buildStormService` / `buildService`），对挂载于 `r.weights.MountPath` 的 JuiceFS PVC 上的权重运行 `python3 -m vllm.entrypoints.openai.api_server`。启用自动扩缩容时创建 AIBrix `PodAutoscaler`（绝不再创建 Kubernetes HPA）；AIBrix 服务方案启用时还会创建 `ModelClaim` 与 `ModelRoute`。普通 `apps/v1 Deployment` 仅作为无 CRD 安装与单元测试的回退。StormService 路径已支持单机、多机与 PD 分离布局，但**普通方案**没有 KV-cache 感知路由，也没有多 LoRA 适配器管理。
 
 本特性新增**运行时支撑的服务路径**。运营者选择平台级*服务方案*（`plain`，默认，或 `aibrix`），当选择 **AIBrix** 方案时，Controller 额外把每个模型作为 `modelclaims.model.aibrix.ai` 资源注册到 AIBrix 控制面 — 经 dynamic client 写入，因为没有 vendored 的 AIBrix Go client — 并在自动扩缩容适用时使用 AIBrix `PodAutoscaler` 取代朴素 HPA。管理控制台新增一个页面，展示已安装运行时及其健康、切换方案并管理 `ModelClaim` 资源。
 
@@ -779,7 +779,7 @@ type RuntimeAIBrixConfig struct {
 | `internal/controller` | `runtime.go`（新） | `RuntimeCollector`（组件 + ModelClaim 采集、快照发布）、`RuntimeSchemeConsumer`、`RuntimeModelChangeConsumer` |
 | | `modelclaim.go`（新） | `buildModelClaim`（源自变更事件与源自运行时注册）、`modelClaimName`、`applyModelClaim`、`deleteModelClaim`、`applyPodAutoscaler`、`deletePodAutoscaler`（dynamic client） |
 | | `aibrix_routing.go`（新） | `servedModelName`、`routingLabels`、`routingAnnotations`、`modelRouteName`、`buildModelHTTPRoute`、`buildModelReferenceGrant`、`applyModelRoute`、`deleteModelRoute`（dynamic client） |
-| | `reconciler.go`（增量） | `applyUpsert` 的 Aibrix 分支（写/删 `ModelClaim`；PodAutoscaler 对 HPA）与 `dynamic` client 字段 |
+| | `reconciler.go`（增量） | `applyUpsert` 的 Aibrix 分支（写/删 `ModelClaim`；PodAutoscaler 生命周期）与 `dynamic` client 字段 |
 | | `controller.go`（增量） | 在 `Run` 启动运行时采集器 + 方案/模型变更消费者；`SetRuntimeCollector` |
 | `pkg/mq` | `mq.go` | `RuntimeHealth`、`RuntimeScheme`、`RuntimeModelChanges` subject + 默认值 |
 | `pkg/errors` | `codes.go`、`messages.go` | `CodeRuntimeUnavailable` … `CodeRuntimeModelNameInvalid` + 消息 |
@@ -897,7 +897,7 @@ spec:
     args: <engine_args>                    # omitted when empty
 ```
 
-`applyModelClaim` 先 dynamic `Get` 再 `Create` 或 `Update`（幂等）；`deleteModelClaim` 按名删除并忽略 `NotFound`。`modelClaimName` 消毒为 DNS-1123 子域并加前缀 `mc-`，避免与 AIBrix 自有名称冲突。每次写失败均记录，且调和**继续朴素路径**（AD13）：Deployment/Service/HPA 始终调和，`ModelClaim` 为尽力而为。
+`applyModelClaim` 先 dynamic `Get` 再 `Create` 或 `Update`（幂等）；`deleteModelClaim` 按名删除并忽略 `NotFound`。`modelClaimName` 消毒为 DNS-1123 子域并加前缀 `mc-`，避免与 AIBrix 自有名称冲突。每次写失败均记录，且调和**继续主路径**（AD13）：StormService/Service 始终调和，`ModelClaim` 为尽力而为。
 
 ### 13.4b `internal/controller` — 服务网关路由契约
 
@@ -937,7 +937,7 @@ spec:
 
 ### 13.5 `internal/controller` — 自动扩缩容路径与组件采集
 
-**自动扩缩容（AD13）**：在 `applyUpsert` 中，当 `scheme=aibrix` 且启用自动扩缩容时，Controller 创建或更新 AIBrix `PodAutoscaler`（dynamic client，GVR `podautoscalers.autoscaling.aibrix.ai/v1alpha1`，命名空间 = 控制器命名空间，`spec.scaleTargetRef` → Deployment，`spec.minReplicas` / `spec.maxReplicas` 取自有效自动扩缩容策略）且**不**创建 Kubernetes HPA。`PodAutoscaler` 写失败（CRD 缺失）时记录并回退 `buildHPA`（朴素路径）。`scheme=plain` 时 `applyUpsert` 不变（Kubernetes HPA）。删除自动扩缩容（`deleteHPA`）在存在时也删除 `PodAutoscaler`。
+**自动扩缩容（AD13）**：在 `applyUpsert` 中，当启用自动扩缩容时，Controller 创建或更新 AIBrix `PodAutoscaler`（dynamic client，GVR `podautoscalers.autoscaling.aibrix.ai/v1alpha1`，命名空间 = 控制器命名空间，`spec.scaleTargetRef` → 服务的 `StormService`，`spec.minReplicas` / `spec.maxReplicas` 取自有效自动扩缩容策略）且**绝不**创建 Kubernetes HPA；每次调和都会删除遗留 HPA。`PodAutoscaler` 写失败时调和回报 `failed` 并删除陈旧对象，而不是静默固定副本数。删除自动扩缩容时也删除 `PodAutoscaler`。
 
 **组件采集**（`RuntimeCollector`，按 `runtime.collectInterval`，默认 30 秒）：
 
@@ -1016,7 +1016,7 @@ const (
 4. `proto/taas/runtime/v1/runtime.proto`：服务 + 消息；`buf generate`。
 5. `services/runtime`：`runtime_model.go`、`runtime_repository.go`、`projection.go`、`health_consumer.go`、`scheme_broadcaster.go`、`mq.go`、`service.go`。
 6. `internal/controller/modelclaim.go`：GVR、`modelClaimName`、`buildModelClaim`（服务 + 注册）、`applyModelClaim`、`deleteModelClaim`、`applyPodAutoscaler`、`deletePodAutoscaler`。
-7. `internal/controller/reconciler.go`：添加 `dynamic` client 字段 + `scheme` 字段；`applyUpsert` Aibrix 分支（ModelClaim 写/删；PodAutoscaler 对 HPA）与 AD13 回退。
+7. `internal/controller/reconciler.go`：添加 `dynamic` client 字段 + `scheme` 字段；`applyUpsert` Aibrix 分支（ModelClaim 写/删；PodAutoscaler 生命周期）与 AD13 回退。
 8. `internal/controller/runtime.go`：`RuntimeCollector`（组件 + ModelClaim 采集、可用性、全量快照发布、最后已知保留）、`RuntimeSchemeConsumer`、`RuntimeModelChangeConsumer`。
 9. `internal/controller/controller.go`：`SetRuntimeCollector`；在 `Run` 启动采集器 + 消费者。
 10. `apps/taas-server/main.go`：注册 `runtime.New(...)`，接审计记录器，在共享缓存上添加健康消费者 + 方案广播器 Runner。

@@ -12,7 +12,7 @@
 
 ## 1. Overview and Goals
 
-go-taas runs inference services as Kubernetes Deployments (model-catalog-deployment §4.2) and already records every control-plane mutation in the general audit spine (`audit_events`, feature #15). What the console still cannot answer is the deployment-specific question: *what happened to this inference service over its life?* The general audit log records `infer.service.create` / `infer.service.scale` / `infer.service.delete` events, but it does not carry a **diff** (what exactly changed — replicas 2→4, version A→B) and it does not offer **rollback from history** (revert a service to a previous desired state). The operator must reconstruct the change from the audit metadata and manually re-apply it.
+go-taas runs inference services as AIBrix StormServices (model-catalog-deployment §4.2) and already records every control-plane mutation in the general audit spine (`audit_events`, feature #15). What the console still cannot answer is the deployment-specific question: *what happened to this inference service over its life?* The general audit log records `infer.service.create` / `infer.service.scale` / `infer.service.delete` events, but it does not carry a **diff** (what exactly changed — replicas 2→4, version A→B) and it does not offer **rollback from history** (revert a service to a previous desired state). The operator must reconstruct the change from the audit metadata and manually re-apply it.
 
 This feature adds a **deployment history & audit** surface: a per-service deployment audit trail (create/update/scale/rollback events) with timestamps, actor, and diff, plus rollback from history.
 
@@ -81,7 +81,7 @@ flowchart TD
 
     subgraph ctrl["Controller"]
         CTRL["Controller<br/>reconcile rollback event"]
-        K8S["Kubernetes<br/>Deployment · Service"]
+        K8S["Kubernetes<br/>StormService · Service"]
     end
 
     subgraph stores["State"]

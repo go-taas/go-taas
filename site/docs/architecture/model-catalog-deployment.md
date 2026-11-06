@@ -6,7 +6,7 @@
 | Document scope | Architecture and detailed design for the `model` catalog and the `infer` inference-service lifecycle: component responsibilities, data model, API contract, message contract, controller reconciliation, error handling, configuration, rollout, and function-level design per layer |
 | Owning modules | `model` (catalog and weight assets), `infer` (inference-service lifecycle), `image` (read-only image lookup), `controller` (Kubernetes reconciliation) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/model-catalog-deployment.md) · [Architecture Design](../design/architecture.md) Section 2.2 (`model`), Section 2.4 (`infer`), Section 4.2 (one-click deployment flow) · [API Key Management Architecture](./api-key-management.md) (established patterns: Migrator hook, wire-format conventions, transitional organization scoping) |
-| Status | Architecture complete, handed to the Developer agent |
+| Status | Implemented |
 
 ---
 
@@ -15,25 +15,26 @@
 ### 1.1 Goals
 
 - Implement the four `taas.model.v1.ModelService` RPCs: `RegisterModel`, `ListModels`, `GetModel`, `DeleteModel` — the catalog that the deploy form picks from.
-- Implement the five `taas.infer.v1.InferServiceService` RPCs: `CreateInferenceService`, `ListInferenceServices`, `GetInferenceService`, `ScaleInferenceService`, `DeleteInferenceService` — the one-click deployment lifecycle.
+- Implement the inference-service lifecycle RPCs (`CreateInferenceService`, `ListInferenceServices`, `GetInferenceService`, `ScaleInferenceService`, `DeleteInferenceService`) — the one-click deployment lifecycle. Later features extend the same service with in-place version and topology changes, autoscaling, playground, load tests, logs, deployment history, service access policy, routing policy and engine-parameter templates.
 - Synchronous validation before publish: unknown model / image, out-of-range replicas, accelerator mismatch, and duplicate service names are rejected **before** anything reaches the message queue (AC5).
-- Asynchronous deployment through the existing `infer.services.changes` subject: the create call returns `service_id` with `state=pending` in under 2 s (AC4), and the Controller drives `pending → deploying → running / failed`.
+- Asynchronous deployment through the existing `infer.services.changes` subject: the create call returns `service_id` with `state=pending` in under 2 s (AC4), and the Controller drives `pending → queued → starting → running`, with `failed` on a reconcile error (`deploying` remains the legacy phase written by spec-change RPCs).
 - Status feedback loop: the Controller reports observed state and endpoints back to the `infer` module through a new `infer.services.status` subject, so `GetInferenceService` can return `endpoints` when `running` (AC6) and a human-readable reason when `failed` (AC7).
 - Catalog integrity: `DeleteModel` is blocked while a non-terminated inference service references the model, naming the blocking service (AC3).
-- Idempotent delete and organization-scoped listing for inference services (AC9).
+- Idempotent delete and a platform-wide listing for inference services, with an optional `organization_id` filter (AC9).
 - Schema, configuration, and framework changes needed to ship the above, with function-level responsibilities precise enough to implement without guessing.
 
 ### 1.2 Non-Goals
 
 | Item | Deferred to |
 | --- | --- |
-| Image registration UI, image versioning, and the full image × card-type adaptation matrix | Feature #3 image management |
-| Image pre-pull / warmup orchestration (`TriggerWarmup` exists; the controller side stays a stub) | Feature #3 |
-| Per-model and per-card pricing display | Feature #5 price matrix |
-| Tenant-level model authorization (which tenants may deploy which models) | Feature #6 multi-tenancy |
-| Autoscaling policies, canary upgrades, blue-green deployment | Future feature point |
-| The Inference Gateway routing of `/v1/chat/completions` to deployed services | Data-plane track (Architecture Section 3) |
-| Session-derived organization identity (this feature reuses the transitional `X-Organization-Id` header) | Feature #7 |
+| Image registration UI, image versioning, and the full image × card-type adaptation matrix | Implemented (feature #3) |
+| Image pre-pull / warmup orchestration | Implemented (feature #3) |
+| Per-model and per-card pricing display | Implemented (pricing feature) |
+| Tenant-level model authorization (which organizations may deploy which models) | Implemented (model-authorization feature) |
+| Autoscaling policies | Implemented with the AIBrix `PodAutoscaler` (features #16/#47) |
+| Canary upgrades and blue-green deployment | Future feature point |
+| The Inference Gateway routing of `/v1/chat/completions` to deployed services | Implemented by the serving-gateway/data-plane track |
+| Session-derived organization identity (the transitional `X-Organization-Id` header remains as a fallback) | Implemented (feature #7) |
 | Weight-path existence validation at registration time | Deliberate: the Controller checks at deploy time and surfaces `failed` with that reason (FR1.3, AC7) |
 
 ---
@@ -66,7 +67,7 @@ flowchart TD
     subgraph ctrl["Controller"]
         direction TB
         CTRL["Controller<br/>reconcile + status report"]
-        K8S["Kubernetes<br/>Deployment · Service"]
+        K8S["Kubernetes<br/>StormService · Service"]
         CTRL --> K8s
     end
 
@@ -91,13 +92,13 @@ flowchart TD
 | Component | Responsibility in this feature |
 | --- | --- |
 | Console | Models page (register, list, detail with versions), Inference Services page (deploy dialog, state badges, scale, delete), service detail with endpoints and curl snippet |
-| Control Gateway (`grpc-gateway`) | HTTP/JSON facade for all nine RPCs; passes the transitional `X-Organization-Id` header through as gRPC metadata (established by the API Key feature) |
+| Control Gateway (`grpc-gateway`) | HTTP/JSON facade for the catalog and inference-service RPCs; resolves the session organization and passes the transitional `X-Organization-Id` header as gRPC metadata only when no session is present |
 | `model` module (`services/model`) | Catalog RPCs, name+version uniqueness, weight-path syntax validation, delete protection while referenced |
 | `infer` module (`services/infer`) | Lifecycle RPCs, synchronous validation (model, image, replicas, accelerator), desired-state persistence, change publication, status consumption, endpoint exposure |
 | `image` module (`services/image`) | Read-only: `infer` looks images up by `image_id` to validate existence and accelerator compatibility. Registration UI is feature #3 |
 | PostgreSQL | `models`, `model_versions`, `inference_services` tables |
 | Message Queue | `infer.services.changes` (desired-state changes, consumed by the Controller) and the new `infer.services.status` (observed state, consumed by `infer`) |
-| Controller (`internal/controller`) | Decodes change events, creates/updates/deletes the Kubernetes Deployment and Service, reports observed state and endpoints on the status subject |
+| Controller (`internal/controller`) | Decodes change events, creates/updates/deletes the AIBrix `StormService` (and the Kubernetes Service, `PodAutoscaler`, `ModelClaim`, `ModelRoute` and Volcano `PodGroup` when the corresponding scheme is enabled), reports observed state and endpoints on the status subject. A plain `Deployment` is only used when the controller runs without a dynamic client (CRD-less installs, unit tests) |
 | Inference Gateway | **Not involved** in this feature — endpoints are recorded in the control plane; the data-plane routing track consumes them later |
 
 ---
@@ -143,15 +144,15 @@ Weight-path syntax rules (FR1.3): non-empty, ≤ 512 chars, no `..` path segment
 | Column | PostgreSQL type | Constraints | Description |
 | --- | --- | --- | --- |
 | `id` | `uuid` | PRIMARY KEY | Server-generated UUID v4, exposed as `service_id` |
-| `organization_id` | `varchar(64)` | NOT NULL, indexed | Owning organization (transitional, same as API keys) |
+| `organization_id` | `varchar(64)` | NOT NULL, indexed | Creating organization (provenance; not an access boundary) |
 | `name` | `varchar(63)` | NOT NULL | DNS-safe service name, 1–63 chars (FR3.1) |
 | `model_id` | `uuid` | NOT NULL, FK → `models.id` | Deployed model |
 | `model_version` | `varchar(64)` | NOT NULL | Pinned version (D-decision: never "latest") |
 | `image_id` | `uuid` | NOT NULL, FK → `images.id` | Engine image |
 | `replicas` | `int` | NOT NULL | Desired replicas, 1–100 |
-| `accelerator` | `varchar(32)` | NOT NULL | `nvidia` / `iluvatar` / `metax` |
+| `accelerator` | `varchar(32)` | NOT NULL | Any accelerator vendor the fleet reports, plus `cpu` |
 | `accelerator_type` | `varchar(64)` | NOT NULL | Card model, e.g. `A800`, `BI-V150` |
-| `state` | `varchar(16)` | NOT NULL DEFAULT 'pending' | `pending` / `deploying` / `running` / `failed` / `terminated` |
+| `state` | `varchar(16)` | NOT NULL DEFAULT 'pending' | `pending` / `queued` / `starting` / `deploying` / `running` / `failed` / `terminated` (`deploying` is the legacy name for the phase between `queued` and `starting`) |
 | `failure_reason` | `varchar(512)` | NULL | Human-readable reason when `state=failed` (AC7) |
 | `endpoints` | `jsonb` | NOT NULL DEFAULT '[]' | OpenAI-compatible base URLs, set by the Controller (AC6) |
 | `created_at` | `timestamptz` | NOT NULL | Creation time (UTC) |
@@ -162,8 +163,8 @@ Indexes:
 | Index | Definition | Purpose |
 | --- | --- | --- |
 | Primary key | `(id)` | Service identity |
-| Unique | `(organization_id, name)` | Duplicate service-name rejection within an organization (AC5) |
-| Composite | `(organization_id, updated_at DESC)` | Organization-scoped, newest-first paginated list |
+| Unique | `(organization_id, name)` | Database index; platform-wide name uniqueness is enforced by `NameTaken` (AC5) |
+| Composite | `(organization_id, updated_at DESC)` | Filter by creating organization, newest-first paginated list |
 | Composite | `(model_id)` where `state != 'terminated'` | Delete-model reference check (AC3) |
 
 Design notes:
@@ -171,13 +172,14 @@ Design notes:
 - **Soft termination**: delete sets `state=terminated` (and the Controller tears down the Kubernetes resources); the row stays for audit and idempotent re-delete (FR6.2, AC9). The default list view filters `state != 'terminated'`.
 - **`endpoints` as `jsonb`**: the Controller may register more than one endpoint (per-replica or per-gateway); JSON keeps the schema flexible without a join table. The console displays exactly this list (FR7.2).
 - **`failure_reason`**: written by the status consumer from the Controller's report; cleared on the next successful reconcile of the same service.
-- **No `images` table yet**: the `image` module's persistence ships with feature #3. Until then, `CreateInferenceService` validates `image_id` against the image module's in-memory registry seeded from configuration (Section 7). The FK is added by feature #3's migration; this design keeps `image_id` as a plain `uuid` column so the later FK addition is additive.
+- **Additive columns from later features**: the same row also stores `cluster_id`, `engine_args`, `extra_args`, `role_engine_args`, `topology`, `tensor_parallel_size`, `pipeline_parallel_size`, `prefill_replicas`, `decode_replicas`, the autoscaling policy/status block, the vGPU slice fields and the per-pod scheduling shape (`gpu_per_pod`, `cpu_milli`, `memory_mib`, `priority`). They are additive AutoMigrate columns; the lifecycle described here does not change shape when one is empty.
+- **Images are persisted**: the `image` module owns the `images`, `warmup_tasks` and `compatibility_cells` tables (feature #3), and `CreateInferenceService` validates `image_id` against that repository. The `image_id` column remains a plain string so the catalog is not coupled to the image row's lifetime.
 
 ### 3.4 Migration Notes
 
-- All three tables are created by **GORM `AutoMigrate` at startup** through the `Migrator` hook established by the API Key feature (`pkg/server`, optional interface invoked by `Init`). `model` and `infer` each implement `Migrate` for their own models; startup fails fast if migration fails.
+- The catalog and inference tables (plus the later image, autoscaling, template, load-test, deployment-event, routing-policy and access-policy tables) are created by **GORM `AutoMigrate` at startup** through the `Migrator` hook established by the API Key feature (`pkg/server`, optional interface invoked by `Init`). `model` and `infer` each implement `Migrate` for their own models; startup fails fast if migration fails.
 - The GORM models are the **single source of truth** for the schema (same rationale as the API Key feature: no two-descriptions drift).
-- Evolution is additive-only. The `images` FK (feature #3) and organization FK (feature #6/#7) are future additive changes.
+- Evolution is additive-only. The `images` and organization tables are present; later columns remain additive.
 
 ---
 
@@ -185,7 +187,7 @@ Design notes:
 
 ### 4.1 RPC Surface
 
-All nine RPCs already exist in the protos; this feature implements them. No proto changes are required.
+The table below is the lifecycle subset this feature implements; `InferServiceService` has since grown to cover version/topology changes, engine-parameter templates, service access, playground, status, autoscaling, load tests, logs, deployment history and routing policies (each documented in its own architecture document). All bindings are on the admin surface.
 
 | Service | RPC | HTTP | Purpose |
 | --- | --- | --- | --- |
@@ -204,7 +206,7 @@ All nine RPCs already exist in the protos; this feature implements them. No prot
 - Pagination binds as `?page.offset=0&page.limit=20` (dotted form); bare `offset`/`limit` are silently ignored. Default limit 20, cap 100 (FR2.2).
 - Success responses are HTTP 200 (grpc-gateway default for unary RPCs), including creates. The UI/UX doc's "201 with service_id" is corrected to 200, consistent with the API Key feature's correction.
 - Business errors render as `{"code": <int>, "message": "..."}` with HTTP 500 for out-of-range codes (platform-wide status quo; HTTP-status mapping is a platform-wide follow-up).
-- The transitional `X-Organization-Id` header scopes list and create calls, exactly as in the API Key feature. It is removed in feature #7.
+- Organization context comes from the session first; the transitional `X-Organization-Id` header remains only as a fallback when no session is present. Inference services themselves are platform assets, so the header is provenance for list/create, not an access boundary.
 
 ### 4.3 Validation Matrix (synchronous, before publish)
 
@@ -214,11 +216,19 @@ All nine RPCs already exist in the protos; this feature implements them. No prot
 | --- | --- | --- | --- |
 | 1 | `name` matches `^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$` (DNS-safe, 1–63) | 10303 `CodeInferServiceStateInvalid` | inference service state invalid |
 | 2 | `replicas` in 1–100 | 10305 `CodeInferReplicasInvalid` | inference replicas invalid |
-| 3 | `accelerator` in {nvidia, iluvatar, metax} | 10306 `CodeInferEngineUnsupported` | inference engine unsupported |
+| 3 | `accelerator` is a valid platform accelerator (`nvidia`, `iluvatar`, `metax`, the `cpu` marker, or another vendor the fleet reports) | 10306 `CodeInferEngineUnsupported` | inference engine unsupported |
 | 4 | `model_id` exists and `model_version` is a registered version of it | 10101 `CodeModelNotFound` / 10103 `CodeModelVersionNotFound` | model not found / model version not found |
-| 5 | `image_id` exists (image module lookup) | 10201 `CodeImageNotFound` | image not found |
-| 6 | image's `accelerator` equals the request's `accelerator` | 10204 `CodeImageIncompatible` | image incompatible |
-| 7 | no non-terminated service with the same `(organization_id, name)` | 10302 `CodeInferServiceExists` | inference service exists |
+| 5 | the model is not an external provider model | 10106 `CodeModelExternal` | external model cannot be deployed |
+| 6 | the creating organization is authorized for a restricted model | 10105 `CodeModelUnauthorized` | model unauthorized |
+| 7 | `image_id` exists (image repository lookup) | 10201 `CodeImageNotFound` | image not found |
+| 8 | image's `accelerator` equals the request's `accelerator` | 10204 `CodeImageIncompatible` | image incompatible |
+| 9 | an explicit `(model, engine, card type)` compatibility cell is not `unsupported` | 10212 `CodeCompatibilityUnsupported` | compatibility unsupported |
+| 10 | no service anywhere on the platform uses the same `name` | 10302 `CodeInferServiceExists` | inference service exists |
+| 11 | an explicit autoscaling policy is valid (`min ≤ max`, `min = 0 ⟺ scale_to_zero`, target 1–1000, cooldown 0–3600, max 1–100) | 10307 `CodeAutoscalingPolicyInvalid` | invalid autoscaling policy |
+| 12 | engine argument keys/values and per-role arguments are well formed | 10318 `CodeInferEngineArgsInvalid` | invalid engine argument |
+| 13 | `pool_id` and `slice_template_id` are both present and granted, or both absent | 13403 `CodeVGPUSliceUnavailable` | vGPU slice unavailable |
+| 14 | the topology and parallelism are valid for the image's engine | 10319 `CodeInferTopologyInvalid` | invalid serving topology |
+| 15 | the per-pod resource shape divides the replica's devices and the priority is known | 10323 `CodeInferSchedulingInvalid` | invalid scheduling shape |
 
 `ScaleInferenceService` validates: service exists and is not `terminated` (10301), `replicas` in 1–100 (10305). `DeleteInferenceService` validates: service exists (10301); already-terminated is a success (idempotent, AC9). `DeleteModel` validates: model exists (10101); no non-terminated inference service references it (10101 with detail naming the blocking service, AC3).
 
@@ -227,21 +237,30 @@ All nine RPCs already exist in the protos; this feature implements them. No prot
 ```mermaid
 stateDiagram-v2
     [*] --> pending: CreateInferenceService
-    pending --> deploying: controller picks up change
+    pending --> queued: controller accepts the change
+    queued --> starting: a pod is scheduled and the engine loads weights
+    starting --> running: the engine answers its health endpoint
+    pending --> deploying: older controller / spec change RPC
     deploying --> running: pods ready, endpoints registered
     deploying --> failed: reconcile error (reason recorded)
-    running --> deploying: scale / spec re-apply
-    failed --> deploying: retry (re-published change)
+    queued --> failed: reconcile error (reason recorded)
+    starting --> failed: reconcile error (reason recorded)
+    running --> deploying: version change
+    running --> pending: topology change
+    running --> running: scale (state unchanged)
+    failed --> queued: retry (re-published change)
     running --> terminated: DeleteInferenceService
     failed --> terminated: DeleteInferenceService
     deploying --> terminated: DeleteInferenceService
+    queued --> terminated: DeleteInferenceService
+    starting --> terminated: DeleteInferenceService
     pending --> terminated: DeleteInferenceService
     terminated --> [*]
 ```
 
-- The closed state set is exactly `pending`, `deploying`, `running`, `failed`, `terminated` (contract constraint 2); the console's badges rely on it (AC11).
+- The closed state set is `pending`, `queued`, `starting`, `deploying`, `running`, `failed`, `terminated` (contract constraint 2). The controller reports `queued` when it accepts a change, `starting` when a pod is scheduled and the engine is loading weights, and `running` only when the engine actually answers; `deploying` is the legacy name the spec-change RPCs still write before the controller picks the change up. The console derives a badge for every value.
 - `GetInferenceService` returns `endpoints` only when `state=running`; other states return an empty list (contract constraint 3).
-- `failed` is recoverable: the console's "Delete and retry" is delete + pre-filled create (FR4.3); a re-published change also moves `failed → deploying`.
+- `failed` is recoverable: the console's "Delete and retry" is delete + pre-filled create (FR4.3); a re-published change also moves `failed → queued`.
 
 ---
 
@@ -253,20 +272,33 @@ Published by `infer` after the desired state is durably written. JSON body:
 
 ```json
 {
-  "event_type": "upsert" | "delete",
+  "event_type": "upsert" | "delete" | "update_version" | "rollback",
   "service_id": "uuid",
   "organization_id": "org",
   "name": "qwen25-32b-a800",
-  "model": {"model_id": "uuid", "version": "Qwen2.5-32B-Instruct", "weight_path": "models/qwen2.5-32b/"},
+  "model": {"model_id": "uuid", "name": "Qwen2.5-32B-Instruct", "version": "v1", "weight_path": "models/qwen2.5-32b/"},
   "image": {"image_id": "uuid", "reference": "ghcr.io/go-taas/vllm:v0.6.3", "engine": "vllm"},
   "replicas": 2,
   "accelerator": "nvidia",
   "accelerator_type": "A800",
+  "topology": "single",
+  "tensor_parallel_size": 1,
+  "pipeline_parallel_size": 1,
+  "prefill_replicas": 0,
+  "decode_replicas": 0,
+  "engine_args": {"max-model-len": "8192"},
+  "extra_args": ["--enable-chunked-prefill"],
+  "role_engine_args": [],
+  "autoscaling": {"enabled": true, "min_replicas": 1, "max_replicas": 4, "target_concurrency": 32, "scale_to_zero": false, "cooldown_seconds": 300},
+  "gpu_per_pod": 1,
+  "cpu_milli": 0,
+  "memory_mib": 0,
+  "priority": "normal",
   "published_at": "2026-09-22T10:00:00Z"
 }
 ```
 
-Headers: `event_type` (duplicate of the body field for broker-side routing/debugging), `service_id`. The Controller's handler is idempotent: `upsert` creates or updates the Deployment/Service to match the desired state; `delete` tears them down. The message carries the **resolved** model weight path and image reference so the Controller never needs a database round-trip.
+Headers: `event_type` (duplicate of the body field for broker-side routing/debugging), `service_id`. The Controller's handler is idempotent: `upsert` creates or updates the `StormService` (and the Service, gang, autoscaler, ModelClaim and ModelRoute) to match the desired state; `update_version` and `rollback` do the same with a changed spec; `delete` tears the workload down. The message carries the **resolved** model name, weight path and image reference, plus the topology, engine arguments, autoscaling policy and per-pod resource shape, so the Controller never needs a database round-trip.
 
 ### 4.5.2 Status Report (`infer.services.status`, new subject)
 
@@ -275,14 +307,14 @@ Published by the Controller after each reconcile attempt. JSON body:
 ```json
 {
   "service_id": "uuid",
-  "state": "deploying" | "running" | "failed",
+  "state": "queued" | "starting" | "deploying" | "running" | "failed",
   "endpoints": ["https://infer.example.com/v1"],
   "failure_reason": "weight path models/qwen2.5-32b/ not found in object storage",
   "reported_at": "2026-09-22T10:03:41Z"
 }
 ```
 
-`infer` consumes this subject and updates `state`, `endpoints`, `failure_reason`, `updated_at`. The consumer is a `Runner` registered on the server (Section 10.4). `pending` is never reported — it is the initial DB state; `terminated` is set by the delete RPC, not by the Controller.
+`infer` consumes this subject and updates `state`, `endpoints`, `failure_reason`, `autoscaling` status and the assigned vGPU slice, and refreshes `updated_at`. The consumer is a `Runner` registered on the server (Section 10.4). `pending` is never reported — it is the initial DB state; `terminated` is set by the delete RPC, not by the Controller.
 
 Subject registration: `mq.Subjects` gains `InferServiceStatus: "infer.services.status"` in `DefaultSubjects()`. The controller subscribes to `InferServiceChanges` (already wired) and publishes to `InferServiceStatus`; `infer` subscribes to `InferServiceStatus` and publishes to `InferServiceChanges`. Both sides use the existing `mq.Client` interface; tests use `mq.NewFake()`.
 
@@ -315,8 +347,8 @@ sequenceDiagram
     CGW-->>Console: 200 with service_id
     Console-->>Admin: Detail page polls state
     MQ->>CTRL: Consume change event
-    CTRL->>K8s: Create or update Deployment + Service (mount weights)
-    CTRL->>MQ: Publish status deploying
+    CTRL->>K8s: Create or update StormService + Service (mount weights)
+    CTRL->>MQ: Publish status queued
     K8s-->>CTRL: Pods ready
     CTRL->>MQ: Publish status running + endpoints
     MQ->>Infer: Consume status
@@ -345,7 +377,7 @@ sequenceDiagram
     Infer->>Infer: Syntax checks pass (existence is the Controller's job)
     Infer->>MQ: Publish upsert
     MQ->>CTRL: Consume change event
-    CTRL->>K8s: Create Deployment (mount fails)
+    CTRL->>K8s: Create StormService (mount fails)
     K8s-->>CTRL: Pod stuck / mount error
     CTRL->>MQ: Publish status failed with reason
     MQ->>Infer: Consume status
@@ -374,13 +406,13 @@ sequenceDiagram
     Infer->>DB: UPDATE replicas=4 (spec only, state untouched)
     Infer->>MQ: Publish upsert (replicas=4)
     Infer-->>CGW: OK
-    MQ->>CTRL: Consume, scale Deployment
+    MQ->>CTRL: Consume, scale StormService
     Admin->>Console: Delete service (confirmed)
     Console->>CGW: DELETE /api/v1/admin/inference-services/{id}
     CGW->>Infer: DeleteInferenceService
     Infer->>DB: UPDATE state=terminated (idempotent)
     Infer->>MQ: Publish delete
-    MQ->>CTRL: Tear down Deployment + Service
+    MQ->>CTRL: Tear down StormService + Service
     Console-->>Admin: Row leaves default view
 ```
 
@@ -394,17 +426,23 @@ All errors are `pkg/errors` business codes in the unified envelope. Codes alread
 | --- | --- | --- | --- |
 | `name` not DNS-safe / 1–63 chars | 10303 | `CodeInferServiceStateInvalid` | Detail: "name must be DNS-safe, 1-63 characters" |
 | `replicas` out of 1–100 (create or scale) | 10305 | `CodeInferReplicasInvalid` | Detail: "replicas must be between 1 and 100" |
-| `accelerator` not in the supported set | 10306 | `CodeInferEngineUnsupported` | Detail names the supported set |
+| `accelerator` not a valid platform accelerator | 10306 | `CodeInferEngineUnsupported` | Detail names the accelerator contract |
 | Unknown `model_id` / `model_version` | 10101 / 10103 | `CodeModelNotFound` / `CodeModelVersionNotFound` | |
 | Unknown `image_id` | 10201 | `CodeImageNotFound` | |
 | Image accelerator mismatch | 10204 | `CodeImageIncompatible` | Detail: "image accelerator <x> does not match request accelerator <y>" |
-| Duplicate service name in organization | 10302 | `CodeInferServiceExists` | Only among non-terminated services |
-| Service not found (get/scale/delete) | 10301 | `CodeInferServiceNotFound` | Cross-organization access looks identical (no existence leak) |
+| Duplicate service name on the platform | 10302 | `CodeInferServiceExists` | Service names are platform-wide |
+| Service not found (get/scale/delete) | 10301 | `CodeInferServiceNotFound` | Any authorized operator may read a platform service; a missing id is 10301 |
 | Scale on a terminated service | 10303 | `CodeInferServiceStateInvalid` | Detail: "cannot scale a terminated service" |
 | Delete model referenced by live services | 10101 | `CodeModelNotFound` | Detail names the blocking service (AC3) |
 | Register duplicate name+version | 10102 | `CodeModelExists` | AC1 |
 | Weight path syntax invalid | 10104 | `CodeModelPathInvalid` | FR1.3 |
-| Missing `X-Organization-Id` | 10001 | `CodeUnauthorized` | Transitional (same as API keys) |
+| Missing session/organization context | 10001 / 10027 | `CodeUnauthorized` / `CodeSessionInvalid` | Session first; the transitional `X-Organization-Id` header still works |
+| Restricted model, organization not granted | 10105 | `CodeModelUnauthorized` | Checked before any write |
+| External provider model | 10106 | `CodeModelExternal` | Cannot be deployed as a local service |
+| Unsupported compatibility cell | 10212 | `CodeCompatibilityUnsupported` | Deploy is refused; `experimental` deploys with a warning |
+| Invalid topology/parallelism | 10319 | `CodeInferTopologyInvalid` | See the topology document |
+| Invalid per-pod resources or priority | 10323 | `CodeInferSchedulingInvalid` | See the gang-scheduling document |
+| Invalid engine arguments | 10318 | `CodeInferEngineArgsInvalid` | Flag names without dashes; `flag:` values are switches |
 | Database / MQ infrastructure failure | 500 | `CodeInternal` | Via error normalization |
 
 Controller-side failures are not RPC errors: they surface as `state=failed` + `failure_reason` through the status subject (AC7). A status-publish failure is logged and retried with the next reconcile; the service stays in its last known state (never silently `running`).
@@ -426,31 +464,33 @@ infer:
 | `infer.endpointBaseURL` | `""` | Base URL the Controller uses to compose endpoint URLs (`<base>/v1`). Empty means the Controller records the in-cluster Service DNS name instead. |
 | `infer.statusConsumer.enabled` | `true` | Kill switch for the status consumer Runner (operators can disable it during incident triage). |
 | `infer.statusConsumer.workers` | `2` | Concurrent status handlers. |
+| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | Kill switch for the legacy gateway-concurrency consumer; the current autoscaler reads the engine's per-pod `num_requests_running` metric through the AIBrix PodAutoscaler. |
+| `infer.autoscaling.statusReportInterval` | `5s` | Minimum interval between autoscaling status reports per service. |
 
 Rules (same as the API Key feature):
 
-- The section ships in **both** `configs/config.yaml` and `configs/server.yaml` (every binary's config glob must see the same keys). The controller binary additionally gets `infer.endpointBaseURL` in `configs/controller.yaml` (it composes endpoints).
+- The section ships in **both** `configs/config.yaml` and `configs/server.yaml` (every binary's config glob must see the same keys). The controller binary additionally gets `infer.endpointBaseURL` and `infer.autoscaling.statusReportInterval` in `configs/controller.yaml` (it composes endpoints and reports autoscaling status).
 - Zero values fall back to shipped defaults at the use site; `Configuration.Validate` rejects negative workers.
-- The image registry seed (until feature #3): `configs/server.yaml` gains an `image.registry` list (image_id, name, tag, accelerator, engine) that the image module loads at startup. This is transitional and replaced by the `images` table in feature #3.
+- The `images` table is the image source of truth (feature #3); the historical `image.registry` config seed is no longer required for a new install.
 
 ---
 
 ## 8. Security Considerations
 
-- **Organization scoping is transitional and spoofable** (`X-Organization-Id`), identical to the API Key feature's status quo; the management API is effectively unauthenticated today. This feature does not widen that exposure, and the console is the only intended caller. Removed in feature #7.
+- **Organization context comes from the session first**, falling back to the transitional `X-Organization-Id` header only when no session is present. The admin infer RPCs also enforce the caller's platform/org role (`RoleGuard` / `PlatformAdminGuard`), so the management API is no longer effectively unauthenticated.
 - **No secrets in messages**: change and status messages carry only resource specs and URLs — no credentials, no API keys.
 - **Weight-path traversal**: registration rejects `..` segments, leading `/`, and backslashes (FR1.3), so a malicious path cannot escape the object-storage prefix at mount time.
 - **DNS-safe names**: service names are validated DNS-safe, so the Controller can use them directly as Kubernetes resource names without injection.
-- **Controller privilege**: the controller's service account only needs Deployment/Service CRUD in the platform namespace — no cluster-admin, no secret read.
-- **Endpoint disclosure**: endpoints are organization-scoped data returned only through the scoped APIs; `GetInferenceService` on another organization's service returns 10301 (no existence leak).
+- **Controller privilege**: the controller's service account needs the serving CRDs (`StormService`, `PodAutoscaler`, `ModelClaim`, `ModelRoute`, `PodGroup`), Service and (fallback) Deployment CRUD in the platform namespace, plus read access to pods for readiness and logs — no cluster-admin, no secret read.
+- **Endpoint disclosure**: inference services are platform assets, so any authorized operator may read a service; who may *use* it is governed separately by the service access policy. Cross-realm callers are rejected by the gateway's realm guard.
 
 ---
 
 ## 9. Rollout Notes
 
-- **Schema**: three new tables via AutoMigrate on first start; additive only, no existing data.
-- **Configuration**: the `infer` section and the transitional `image.registry` seed ship in `configs/config.yaml`, `configs/server.yaml`, and (for `endpointBaseURL`) `configs/controller.yaml`. Custom configs without the section keep working (zero-value defaults).
-- **Proto**: no changes — all nine RPCs and messages already exist; no `make pbgen` needed.
+- **Schema**: the catalog, image, inference-service, autoscaling, template, load-test, deployment-event, routing-policy and access-policy tables are all created by AutoMigrate on first start; evolution is additive.
+- **Configuration**: the `infer` section ships in `configs/config.yaml` and `configs/server.yaml`, and `endpointBaseURL`/`autoscaling.statusReportInterval` in `configs/controller.yaml`. Custom configs without the section keep working (zero-value defaults).
+- **Proto**: the lifecycle RPCs and messages already existed for this feature; later features added their own additive RPCs/messages (`make pbgen` at those changes).
 - **New subject**: `infer.services.status` is additive; brokers are subject-based (RabbitMQ) so no migration. Environments sharing a broker keep isolation through the existing namespace prefix.
 - **Controller**: the reconcile implementation replaces the current TODO stub behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
 - **Rolling update order**: deploy `taas-server` first (it starts publishing changes and consuming status), then the controller. The reverse order is safe too: the controller ignores subjects with no publishers.
@@ -473,7 +513,7 @@ Rules (same as the API Key feature):
 | | `status_consumer.go` | Status subject consumer (Runner) |
 | | `service.go` | RPC implementations |
 | `services/image` | `registry.go` | Transitional in-memory registry (config-seeded) + lookup |
-| `internal/controller` | `reconciler.go` | K8s reconcile: Deployment/Service upsert + status publish |
+| `internal/controller` | `reconciler.go` | K8s reconcile: StormService/Service/autoscaler/gang upsert + status publish |
 | `pkg/mq` | `mq.go` | `InferServiceStatus` subject addition |
 | `pkg/config` | `api.go` | `InferConfig`, `ImageRegistryConfig` structs + Validate rules |
 
@@ -544,9 +584,9 @@ type InferenceService struct {
 
 `InferenceServiceRepository`:
 
-- `Create(ctx, svc *InferenceService) error` — unique-violation on `(organization_id, name)` maps to `CodeInferServiceExists`.
-- `FindByIDAndOrganization(ctx, orgID, serviceID string) (*InferenceService, error)` — miss → `CodeInferServiceNotFound` (no cross-org leak).
-- `ListByOrganization(ctx, orgID string, offset, limit int, includeTerminated bool) ([]*InferenceService, int64, error)` — paginated, `updated_at DESC`; default excludes `terminated` (AC9).
+- `Create(ctx, svc *InferenceService) error` — inserts the row; `NameTaken` enforces platform-wide name uniqueness before the insert (`CodeInferServiceExists`).
+- `FindByID(ctx, serviceID string) (*InferenceService, error)` — miss → `CodeInferServiceNotFound`; inference services are platform assets, so reads are not organization-scoped.
+- `ListAll(ctx, orgFilter string, offset, limit int, includeTerminated bool) ([]*InferenceService, int64, error)` — paginated, `updated_at DESC`; default excludes `terminated` (AC9); `organization_id` is an optional filter, not an access boundary.
 - `UpdateReplicas(ctx, orgID, serviceID string, replicas int) error` — spec-only update.
 - `MarkTerminated(ctx, orgID, serviceID string) error` — sets `state=terminated`; idempotent (already-terminated is a no-op success).
 - `ApplyStatus(ctx, serviceID string, state string, endpoints []string, failureReason *string) error` — used by the status consumer; last-write-wins by `reported_at` is acceptable (the Controller is the only publisher).
@@ -564,8 +604,8 @@ type InferenceService struct {
 
 Service RPCs (`service.go`):
 
-- `CreateInferenceService`: resolve organization (metadata, as in the API Key feature); run the validation matrix (Section 4.3) — model/version via `model.FindVersion`, image via `image.Lookup`; insert with `state=pending`; publish the change event; respond `{service_id}` (AC4, AC5).
-- `ListInferenceServices`: organization-scoped paginated list; map to `InferenceServiceSummary` (state, updated_at as unix).
+- `CreateInferenceService`: resolve the organization from the session (header fallback); run the validation matrix (Section 4.3) — model/version via `model.FindVersion`, authorization, image via the image repository, compatibility, engine arguments, topology, scheduling and vGPU slice; insert with `state=pending`; publish the change event; respond `{service_id}` (AC4, AC5).
+- `ListInferenceServices`: platform-wide paginated list with an optional `organization_id` filter; map to `InferenceServiceSummary` (state, updated_at as unix).
 - `GetInferenceService`: scoped fetch; `endpoints` only when `state=running` (contract constraint 3).
 - `ScaleInferenceService`: scoped fetch; terminated → 10303; validate replicas (10305); `UpdateReplicas`; publish `upsert` with the new spec (AC8).
 - `DeleteInferenceService`: scoped fetch; miss → 10301; already terminated → success; else `MarkTerminated` + publish `delete` (AC9).
@@ -583,9 +623,9 @@ Service RPCs (`service.go`):
 `ApplyInferServiceChange(ctx, msg)`:
 
 1. Decode the change event (Section 4.5.1); malformed → log + `mq.Permanent` (never retried).
-2. `delete` → delete the Deployment and Service (ignore not-found), publish status `terminated` is **not** needed (the RPC already set it); return.
-3. `upsert` → publish status `deploying`; build the Deployment (image reference, replicas, weight-volume mount from `model.weight_path`, accelerator node selector from `accelerator`/`accelerator_type`) and Service; create-or-update both through `k8s.Client`; on error → publish status `failed` with the reason (AC7) and return `mq.Permanent` for non-retryable errors (e.g. weight path missing) or a plain error for transient ones (broker-level retry).
-4. Watch pod readiness: the controller polls the Deployment's ready-replicas (existing clientset) with a bounded interval; when ready → publish status `running` with endpoints composed from `infer.endpointBaseURL` (or the in-cluster Service DNS name).
+2. `delete` → delete the `StormService`, Service, `PodAutoscaler`, `ModelClaim`, `ModelRoute`, Volcano `PodGroup` and any legacy Deployment (ignore not-found); the RPC already set `terminated`, so no status report is needed; return.
+3. `upsert` / `update_version` / `rollback` → publish status `queued`; build the AIBrix `StormService` from the topology (single: one worker role; multinode: one worker per TP×PP shard; PD: prefill + decode roles), the Kubernetes Service, the `PodAutoscaler` when autoscaling is enabled, the AIBrix `ModelClaim`/`ModelRoute` when the AIBrix scheme is active, and the Volcano `PodGroup` when gang scheduling is enabled; create-or-update through the dynamic client; on error → publish status `failed` with the reason (AC7) and return `mq.Permanent` for non-retryable errors (e.g. weight path missing) or a plain error for transient ones (broker-level retry). A controller without a dynamic client falls back to a plain Deployment.
+4. Watch pod readiness: publish `starting` when a pod is scheduled and `running` only when the engine answers its health endpoint; compose endpoints from `infer.endpointBaseURL` (or the in-cluster Service DNS name).
 
 `ApplyImageWarmup` stays a stub (feature #3).
 
@@ -593,7 +633,7 @@ Reconcile idempotency: every Kubernetes operation is create-or-update; re-delive
 
 ### 10.6 Console (out of repository scope, contract summary)
 
-The console is a separate deliverable; this design pins its contract: the five-state badge set (AC11), the deploy form fields and their client-side validation mirroring Section 4.3, the image dropdown filtered by accelerator (AC10), 10-second polling while any service is `pending`/`deploying` (AC12), endpoints displayed only from the API (FR7.2), and the curl snippet shape `curl <endpoint>/v1/chat/completions -H "Authorization: Bearer <API_KEY>"`.
+The console is a separate deliverable; this design pins its contract: the seven-state badge set (AC11), the deploy form fields and their client-side validation mirroring Section 4.3, the image dropdown filtered by accelerator (AC10), 10-second polling while any service is not yet `running`/`failed`/`terminated` (AC12), endpoints displayed only from the API (FR7.2), and the curl snippet shape `curl <endpoint>/v1/chat/completions -H "Authorization: Bearer <API_KEY>"`.
 
 ---
 
@@ -606,12 +646,12 @@ The console is a separate deliverable; this design pins its contract: the five-s
 | AC3 — delete-model reference check | Section 10.2 `DeleteModel` + `CountByModelID` | Unit + FVT |
 | AC4 — create returns immediately | Section 10.3 `CreateInferenceService` (insert + publish, no K8s call) | FVT latency bound < 2 s |
 | AC5 — validation before publish | Section 4.3 validation matrix, publish-after-commit | Unit (fake MQ asserts zero publishes) + FVT |
-| AC6 — pending → deploying → running with endpoints | Sections 4.5.2, 10.5 | FVT with fake controller + E2E |
+| AC6 — pending → queued → starting → running with endpoints | Sections 4.5.2, 10.5 | FVT with fake controller + E2E |
 | AC7 — failed with reason | Sections 5.2, 10.5 step 3 | FVT fault injection |
 | AC8 — scale changes replicas only | Section 10.3 `ScaleInferenceService` | Unit + FVT |
 | AC9 — idempotent delete, terminated hidden | Section 10.3 `DeleteInferenceService`, `ListByOrganization` filter | Unit + FVT |
 | AC10 — image dropdown filtered | Section 10.6 console contract, `ListImages` accelerator field | E2E |
-| AC11 — five-state badge set | Section 4.4 closed state set | Manual / E2E |
+| AC11 — seven-state badge set | Section 4.4 closed state set | Manual / E2E |
 | AC12 — 10-second polling | Section 10.6 console contract | Manual / E2E |
 
 ---
@@ -620,11 +660,12 @@ The console is a separate deliverable; this design pins its contract: the five-s
 
 | Item | Deferred to |
 | --- | --- |
-| `images` table + FK on `inference_services.image_id` | Feature #3 |
-| Image registration UI and warmup orchestration | Feature #3 |
-| Per-model / per-card pricing in catalog and deploy form | Feature #5 |
-| Tenant-level model authorization | Feature #6 |
-| Session-derived organization identity (removes `X-Organization-Id`) | Feature #7 |
-| Autoscaling, canary, blue-green | Future feature point |
+| `images` table + FK on `inference_services.image_id` | Implemented (feature #3) |
+| Image registration UI and warmup orchestration | Implemented (feature #3) |
+| Per-model / per-card pricing in catalog and deploy form | Implemented (pricing feature) |
+| Tenant-level model authorization | Implemented (model-authorization feature) |
+| Session-derived organization identity (removes `X-Organization-Id`) | Implemented; the header remains only as a transitional fallback |
+| Autoscaling | Implemented with the AIBrix `PodAutoscaler` (feature #16/#47) |
+| Canary / blue-green | Future feature point |
 | Joined single-query `ListModels` (avoid per-row version lookup) | Optimization TODO, catalog scale permitting |
 | Business-code → HTTP status mapping in the gateway | Platform-wide follow-up |

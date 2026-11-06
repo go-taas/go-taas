@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/deployments` 管理面部署历史页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `infer`（推理服务生命周期上的部署事件轨迹、差异计算与从历史回滚 RPC）、`audit`（只读：本特性的部署轨迹所补充的通用审计主干）、`web` 管理控制台（`DeploymentHistoryPage`）、`controller`（只读：调和回滚事件） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.4 节 `infer`、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.md) — 推理服务生命周期与变更事件结构 · [审计日志与活动导出](./audit-logging.md) — 本特性的部署轨迹所补充的通用控制面审计主干 · [模型版本管理与回滚](./model-versioning.md) — 本特性扩展到部署层的姊妹回滚面（版本级）· [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做部署历史与审计
 
-go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2），并已在通用审计主干（`audit_events`，特性 #15）中记录每个控制面变更。控制台仍然无法回答部署特定的问题：*这个推理服务在其生命周期内发生了什么？* 通用审计日志记录 `infer.service.create` / `infer.service.scale` / `infer.service.delete` 事件，但它不携带**差异**（到底改了什么 —— 副本 2→4、版本 A→B），也不提供**从历史回滚**（把服务恢复到先前期望状态）。运营者必须从审计元数据重建变更并手动重新应用。
+go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2），并已在通用审计主干（`audit_events`，特性 #15）中记录每个控制面变更。控制台仍然无法回答部署特定的问题：*这个推理服务在其生命周期内发生了什么？* 通用审计日志记录 `infer.service.create` / `infer.service.scale` / `infer.service.delete` 事件，但它不携带**差异**（到底改了什么 —— 副本 2→4、版本 A→B），也不提供**从历史回滚**（把服务恢复到先前期望状态）。运营者必须从审计元数据重建变更并手动重新应用。
 
 本特性新增**部署历史与审计**面：按服务的部署审计轨迹（创建/更新/扩缩容/回滚事件）含时间戳、操作者与差异，并支持从历史回滚。这是 Phase 4 运维面中最小可独立交付的增量：它把「服务变了」变成「副本数在 14:03 由 `admin@example.com` 从 2 变为 4，我可以一键回滚到先前状态」。
 

@@ -265,7 +265,7 @@ sequenceDiagram
     participant M as model Repository
     participant MQ as Message Queue
     Admin->>Console: Deploy model M as org-b
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>S: CreateInferenceService (org-b, model M)
     S->>R: validate name/replicas/accelerator
     S->>M: GetModel(M), FindVersion(M, v)

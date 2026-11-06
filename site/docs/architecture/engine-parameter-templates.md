@@ -22,7 +22,7 @@ Deploying a model means writing engine flags: `max-model-len`, `gpu-memory-utili
 | --- | --- | --- |
 | `template_id` | uuid | primary key |
 | `name` | varchar(128), unique | how an operator refers to the template |
-| `description` | varchar(512) | free text |
+| `description` | varchar(1024) | free text (≤ 1024 chars) |
 | `engine` | varchar | serving engine the flags belong to (`vllm`, `sglang`) |
 | `model_id` | varchar(64) | catalog model the template is tuned for; empty = any |
 | `topology` | varchar | `single` / `multinode` / `pd`; empty = any |

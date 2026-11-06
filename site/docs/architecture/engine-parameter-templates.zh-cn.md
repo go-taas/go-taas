@@ -22,7 +22,7 @@
 | --- | --- | --- |
 | `template_id` | uuid | 主键 |
 | `name` | varchar(128)，唯一 | 运维人员引用模板的名字 |
-| `description` | varchar(512) | 自由文本 |
+| `description` | varchar(1024) | 自由文本（≤ 1024 字符） |
 | `engine` | varchar | 参数所属推理引擎（`vllm`、`sglang`） |
 | `model_id` | varchar(64) | 模板调优针对的模型；空 = 任意 |
 | `topology` | varchar | `single` / `multinode` / `pd`；空 = 任意 |

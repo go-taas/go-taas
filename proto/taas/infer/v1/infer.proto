@@ -634,8 +634,8 @@ message InferenceServiceSummary {
   string model_version = 4;
   string image_id = 5;
   int32 replicas = 6;
-  // state is the observed lifecycle state: pending, deploying, running,
-  // failed, terminated.
+  // state is the observed lifecycle state: pending, queued, starting,
+  // deploying (legacy), running, failed, terminated.
   string state = 7;
   int64 updated_at = 8;
   // autoscaling_enabled is true when the service's effective policy has
@@ -667,7 +667,7 @@ message InferenceServiceSummary {
   // card.
   string accelerator_type = 17;
   // topology is the serving layout the service runs with: "single",
-  // "distributed" or "pd".
+  // "multinode" or "pd" (the legacy "distributed" name reads as "multinode").
   string topology = 18;
   // tensor_parallel_size / pipeline_parallel_size are the parallelism the
   // service runs with.
@@ -721,7 +721,7 @@ message GetServiceStatusRequest {
 
 message GetServiceStatusResponse {
   taas.common.v1.Response response = 1;
-  string state = 2;      // pending | deploying | running | failed | terminated
+  string state = 2;      // pending | queued | starting | deploying | running | failed | terminated
   bool degraded = 3;     // true when an active incident exists
   ServiceIncident incident = 4; // null when healthy
 }
@@ -732,7 +732,7 @@ message GetAdminServiceStatusRequest {
 
 message GetAdminServiceStatusResponse {
   taas.common.v1.Response response = 1;
-  string state = 2;      // pending | deploying | running | failed | terminated
+  string state = 2;      // pending | queued | starting | deploying | running | failed | terminated
   bool degraded = 3;     // true when an active incident exists
   ServiceIncident incident = 4; // null when healthy
 }
@@ -775,7 +775,7 @@ message UpdateInferenceServiceVersionResponse {
 // the storm out with the new roles.
 message UpdateInferenceServiceTopologyRequest {
   string service_id = 1; // path
-  // topology is "single", "distributed" or "pd".
+  // topology is "single", "multinode" or "pd" (legacy "distributed" is accepted).
   string topology = 2;
   int32 tensor_parallel_size = 3;
   int32 pipeline_parallel_size = 4;

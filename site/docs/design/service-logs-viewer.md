@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research, the admin-surface service-logs page for `/admin/services/:serviceId/logs`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `infer` (log-fetch RPCs over the service's pods), `internal/controller` (read-only: pod/container enumeration and log streaming from the Kubernetes API), `pkg/server` gateway (admin-prefix bindings), `web` admin console (`ServiceLogsPage`) |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle and the `inference_services` table · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule · [Request Tracing & Latency Breakdown](./request-tracing.md) — the sibling diagnostic surface (per-request traces) this feature complements with raw container logs |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Why the Logs Viewer Comes Now
 
-go-taas runs inference services as Kubernetes Deployments (model-catalog-deployment §4.2): the Controller creates the Deployment and Service, and the inference engine (vLLM, etc.) writes its logs to the container's stdout/stderr. The request-tracing feature (row 27) explains *what happened inside a request* (TTFT, generation, spans), but it cannot answer the operator's raw question: *what did the inference engine print?* When a deployment fails to converge, a request errors, or the engine logs a warning, the operator must leave the console and run `kubectl logs` against the pod — an operator-orchestration escape hatch that the console should own.
+go-taas runs inference services as AIBrix StormServices (model-catalog-deployment §4.2): the Controller creates the StormService and Service, and the inference engine (vLLM, etc.) writes its logs to the container's stdout/stderr. The request-tracing feature (row 27) explains *what happened inside a request* (TTFT, generation, spans), but it cannot answer the operator's raw question: *what did the inference engine print?* When a deployment fails to converge, a request errors, or the engine logs a warning, the operator must leave the console and run `kubectl logs` against the pod — an operator-orchestration escape hatch that the console should own.
 
 This feature adds an **inference service logs viewer**: view the container logs of an inference service's pods in the console, with level/time filters, tailing, and log search. It is the smallest independently valuable increment of Phase 4's operations surface: it turns "the engine printed something" into "the operator reads the engine's stdout in the console, filtered by level and time, without leaving the platform".
 
@@ -54,7 +54,7 @@ Pitfalls to avoid:
 | D2 | **Logs are read directly from the Kubernetes API through the Controller**, not from a new log store. The Controller enumerates the service's pods/containers and streams their stdout/stderr, exactly as `kubectl logs` does | Standing up Loki/Datadog/CloudWatch is out of scope and heavy; the Controller already owns the Deployment/Pod lifecycle (model-catalog §4.2), so reading logs from the Kubernetes API is the natural, dependency-light path |
 | D3 | **A new `ListServiceLogPods` RPC** returns the service's pods/containers (masked as replica indices, not raw pod names) so the console can offer a pod selector | The console must let the operator pick which replica's logs to view without leaking raw pod names (D1); a masked replica index is the product-safe projection |
 | D4 | **A new `GetServiceLogs` RPC** returns a bounded window of log lines for a chosen pod/container, with `tail` (default 500), `since` (time range), and `level` filters; the response carries the lines plus a `next_offset` for pagination | Bounding the fetch (tail + time range) avoids unbounded reads (pitfall); `next_offset` enables "load more" without a log store |
-| D5 | **Live tailing is a bounded poll, not a blocking stream**: the console's "Follow" toggle polls `GetServiceLogs` with a `since` offset on a short interval (e.g. 2 s) while active | A blocking stream would tie up the HTTP call and complicate the gateway; a bounded poll matches the existing console polling pattern (deployment state, observability) and is easy to test |
+| D5 | **Live tailing is a bounded poll, not a blocking stream**: the console's "Follow" toggle polls `GetServiceLogs` with a `since` RFC3339 timestamp on a short interval (e.g. 2 s) while active | A blocking stream would tie up the HTTP call and complicate the gateway; a bounded poll matches the existing console polling pattern (deployment state, observability) and is easy to test |
 | D6 | **Level filtering is best-effort**: the console filters by level when the engine emits structured levels (e.g. `[ERROR]`, `[WARN]`, `[INFO]`, `[DEBUG]`), and shows all lines otherwise | Engines vary in whether they emit structured levels; a best-effort level filter degrades gracefully to "show all" without a parsing contract |
 | D7 | **Search is client-side over the fetched window** — a search box filters the already-fetched lines; it does not query a log store | With no log store (D2), search must operate on the fetched window; this keeps the feature dependency-light and testable |
 | D8 | **The page is read-only and audited only for access** — it writes nothing and mutates nothing; the page is reachable only by authenticated admin sessions | The feature is a pure read of container logs; the audit trail (feature #15) already covers the underlying service writes. No new audit events are needed |
@@ -112,7 +112,7 @@ Pitfalls to avoid:
 
 ### FR4 — Live tailing
 
-- **FR4.1** The page offers a **Follow** toggle. When active, the page polls `GetServiceLogs` with a `since` offset on a short interval (default 2 s) and appends new lines; the toggle stops the poll when turned off.
+- **FR4.1** The page offers a **Follow** toggle. When active, the page polls `GetServiceLogs` with a `since` RFC3339 timestamp on a short interval (default 2 s) and appends new lines; the toggle stops the poll when turned off.
 - **FR4.2** Follow is disabled while the service has no running pods (nothing to tail).
 
 ### FR5 — Search and pagination

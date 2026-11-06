@@ -6,7 +6,7 @@
 | 文档范围 | 限制哪些组织可以部署与调用哪些模型的需求分析与 UI/UX 设计：`model_authorizations` 表、默认放行规则、控制面与数据面强制、四个 `ModelService` RPC、控制台「已授权组织」面板与「受限」徽标，以及验收标准 |
 | 归属模块 | `model`（`model_authorizations` 表与四个授权 RPC）、`infer`（`CreateInferenceService` 中的控制面强制）、`auth`（`VerifyAPIKey` 中的数据面强制，激活休眠的 `model` 字段） |
 | 相关文档 | [架构设计](./architecture.zh-cn.md) — 第 2.2 节 `model`、第 2.4 节 `infer`、第 2.1 节 `auth` · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本特性所门控的目录与 `CreateInferenceService`（其第 1.4 节把租户级模型授权延后至此）· [多租户隔离](./multi-tenancy.zh-cn.md) — 本特性所授予的组织实体 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -179,7 +179,7 @@ flowchart TD
     B --> C["模型选择器仅显示组织可用的模型"]
     C --> D["组织无访问权的受限模型被隐藏"]
     D --> E["管理员选择模型并完成表单"]
-    E --> F["POST /api/v1/inference-services"]
+    E --> F["POST /api/v1/admin/inference-services"]
     F --> G{模型受限且组织未授权?}
     G -->|是| H["10105 MODEL_UNAUTHORIZED，不发布任何内容"]
     G -->|否| I["部署进行，状态=pending"]
@@ -207,7 +207,7 @@ sequenceDiagram
     CGW-->>Console: 200，面板刷新，受限徽标显示
 
     Admin->>Console: 以 org-b 部署模型 M
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService (org-b, model M)
     Infer->>Model: IsModelAuthorized(M, org-b)
     Model-->>Infer: 拒绝（受限，org-b 未授权）

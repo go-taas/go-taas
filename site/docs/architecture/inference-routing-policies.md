@@ -92,7 +92,7 @@ All management and target-health methods are **admin-surface only**. Define them
 | `ListRoutingTargetHealth` | `get: "/api/v1/admin/routing-policies/{model_id}/health"` | Masked service readiness, desired/ready replicas, accelerator/card, cluster, health timestamp |
 | `ListRoutingPolicyRevisions` | `get: "/api/v1/admin/routing-policies/{model_id}/revisions"` | Latest 20 immutable revisions and before/after values |
 
-Existing selectors remain unchanged: `GET /api/v1/admin/models` and `GET /api/v1/admin/inference-services?model_id={model_id}`. The routing-policy RPC derives eligibility from its own authoritative service/model repositories rather than trusting client selector results. These endpoints and the new policy APIs are called only by the admin page.
+Existing selectors remain unchanged: `GET /api/v1/admin/models` and `GET /api/v1/admin/inference-services` (narrowed by `organization_id` when needed; the RPC re-derives eligibility from its own repository). The routing-policy RPC derives eligibility from its own authoritative service/model repositories rather than trusting client selector results. These endpoints and the new policy APIs are called only by the admin page.
 
 ### 5.1 Proto message contract
 

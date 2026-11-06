@@ -3,8 +3,8 @@
 | Attribute | Content |
 | --- | --- |
 | Feature point | Inference autoscaling & scale-to-zero (backlog row 16) |
-| Document scope | Architecture and detailed design for automatic horizontal scaling of inference services and scale-to-zero: the autoscaling policy data model (global default + per-service), the admin `/api/v1/admin/*` API surface (policy CRUD, per-service autoscaling config, extended service create/list/get), the user `/api/v1/*` read-only surface, the Controller's HPA/scale-to-zero reconciliation loop, the frontend pages for both consoles, surface/auth mapping, error handling, configuration, security, rollout, and function-level design per layer |
-| Owning modules | `infer` (autoscaling policy on inference services, policy RPCs, status projection), `model` (user-surface autoscaling projection), `internal/controller` (HPA reconciliation, scale-to-zero scheduling, autoscaling status reporting), `pkg/errors` (10307), `web/` (both consoles) |
+| Document scope | Architecture and detailed design for automatic horizontal scaling of inference services and scale-to-zero: the autoscaling policy data model (global default + per-service), the admin `/api/v1/admin/*` API surface (policy CRUD, per-service autoscaling config, extended service create/list/get), the user `/api/v1/*` read-only surface, the Controller's AIBrix PodAutoscaler/scale-to-zero reconciliation loop, the frontend pages for both consoles, surface/auth mapping, error handling, configuration, security, rollout, and function-level design per layer |
+| Owning modules | `infer` (autoscaling policy on inference services, policy RPCs, status projection), `model` (user-surface autoscaling projection), `internal/controller` (AIBrix PodAutoscaler reconciliation, scale-to-zero scheduling, autoscaling status reporting), `pkg/errors` (10307), `web/` (both consoles) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/inference-autoscaling.md) · [Architecture Design](../design/architecture.md) §2.4 (`infer`), §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle this feature extends · [Console Surface Separation](./console-surface-separation.md) — the two-surface rule and realm guard this feature follows · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the user-surface model list pattern |
 | Status | Architecture complete, handed to the Developer agent |
 
@@ -18,8 +18,8 @@
 - Implement the admin API surface: `GetAutoscalingPolicy` / `UpdateAutoscalingPolicy` (global default, synchronous), `UpdateInferenceServiceAutoscaling` (per-service, asynchronous via MQ), and the extended `CreateInferenceService` / `ListInferenceServices` / `GetInferenceService` that carry the policy and live autoscaling status.
 - Implement the user read-only surface: `ListAvailableModels` extended with an autoscaling projection and a new `GetAvailableModel` returning the read-only autoscaling summary.
 - Synchronous policy validation at the API boundary (design D10): `min ≤ max`, `min = 0 ⟺ scale_to_zero`, target 1–1000, cooldown 0–3600 — rejected **before** any message is published.
-- The Controller turns the policy into a Kubernetes **HPA on a concurrency metric** (design D4), with a downscale stabilization window equal to the cooldown, and drives scale-to-zero through the HPA `minReplicas: 0` path with an activation threshold.
-- Autoscaling status feedback: the Controller reports current/desired replicas, current concurrency, and an autoscaling state (closed enum) back to `infer`, so both consoles can render live status and cold-start visibility.
+- The Controller turns the policy into an **AIBrix `PodAutoscaler`** targeting the service's `StormService` and scaling on the engine's per-pod `num_requests_running` metric. Scale-to-zero is expressed as `minReplicas: 0` in the same object.
+- Autoscaling status feedback: the status contract carries current/desired replicas, current concurrency and an autoscaling state (closed enum) back to `infer`; the current AIBrix reconciler publishes lifecycle state and endpoints, and the wire fields are read-only projections (zero when the controller has not reported them).
 - Scale-to-zero scheduling: an idle service scales to zero after the cooldown window; a request to a scaled-to-zero service triggers activation (cold-start) and the state surfaces as `cold-starting` (admin) / `warming up` (user).
 - Schema, configuration, and framework changes needed to ship the above, with function-level responsibilities precise enough to implement without guessing.
 
@@ -43,18 +43,18 @@ AD1–AD10 restate the UI/UX design's decisions as implementation-level rules. *
 
 | # | Decision | Rationale |
 | --- | --- | --- |
-| AD1 | **Autoscaling is a policy on the inference service**, not a new resource type. The policy is a JSON column on `inference_services` plus a singleton global-default row | Design D1. Matches the `infer` module's desired-state model; the Controller turns the policy into an HPA, keeping the console contract stable |
+| AD1 | **Autoscaling is a policy on the inference service**, not a new resource type. The policy is a JSON column on `inference_services` plus a singleton global-default row | Design D1. Matches the `infer` module's desired-state model; the Controller turns the policy into an AIBrix `PodAutoscaler`, keeping the console contract stable |
 | AD2 | **The policy has exactly six fields**: `enabled` (bool), `min_replicas` (0–max), `max_replicas` (min–100), `target_concurrency` (1–1000, default 32), `scale_to_zero` (bool, requires min=0), `cooldown_seconds` (0–3600, default 300) | Design D2. The smallest field set that mirrors the industry min/max + target + activation/cooldown contract; concurrency is the metric that works at zero |
 | AD3 | **Scale-to-zero is a separate toggle that requires `min_replicas = 0`**; enabling it forces min to 0, disabling it forces min to ≥ 1 | Design D3. KServe's explicit opt-in is the cleanest UX; the min=0 dependency is a form rule and a synchronous validation rule, never a hidden constraint |
-| AD4 | **The Controller implements the policy as a Kubernetes HPA on a concurrency metric** (in-flight requests reported by the Inference Gateway), with a downscale stabilization window equal to the cooldown; scale-to-zero uses the HPA `minReplicas: 0` path with an activation threshold | Design D4. Concurrency is measurable at the gateway even at zero replicas (the gateway sees the request before routing); this is the only metric that supports scale-to-zero |
+| AD4 | **The Controller implements the policy as an AIBrix `PodAutoscaler` on the engine's per-pod concurrency metric** (`num_requests_running`, scraped at `:8000/metrics`); scale-to-zero uses the `PodAutoscaler` `minReplicas: 0` path | Design D4, refined by feature #47. The engine exports the metric even at one replica, and the AIBrix autoscaler is the component that understands `StormService` replica groups; a Kubernetes HPA cannot target a `StormService` |
 | AD5 | **Autoscaling configuration is admin-surface only**; the end-user console gets a read-only autoscaling summary per model | Design D5. Configuration is operator orchestration; the tenant consumes models and only needs to know the model is autoscaled and its current behavior |
 | AD6 | **The admin console manages autoscaling in two places**: a global default policy (applied to new services) and a per-service policy (overrides the default) | Design D6. A global default keeps new deployments sane; per-service override gives operators control where it matters |
 | AD7 | **The end-user console shows autoscaling at the model level**, never the service level | Design D7. The tenant consumes models over the OpenAI-compatible endpoint; services are operator-internal artifacts |
 | AD8 | **A scaled-to-zero service that receives a request shows `cold-starting` to the operator and `warming up` to the tenant** | Design D8. Cold-start is the one UX cost of scale-to-zero; surfacing it prevents "is the model down?" confusion |
-| AD9 | **Autoscaling changes are asynchronous like deployment**: the update returns immediately, the service state reflects convergence, and the console polls | Design D9. Matches the MQ + Controller reconciliation model; blocking on HPA convergence would time out the HTTP call |
+| AD9 | **Autoscaling changes are asynchronous like deployment**: the update returns immediately, the service state reflects convergence, and the console polls | Design D9. Matches the MQ + Controller reconciliation model; blocking on autoscaler convergence would time out the HTTP call |
 | AD10 | **The policy is validated synchronously at the API boundary** before any message is published | Design D10. Invalid policies must never reach the Controller (same rule as feature #2's deploy validation) |
-| AD11 | **REFINEMENT of design D4 — the concurrency metric is reported by the Inference Gateway on a dedicated subject, and the Controller exposes it to the HPA as a custom/object metric.** The HPA targets the gateway-reported in-flight concurrency for the service's label selector; the Controller owns the HPA object lifecycle (create/update/delete alongside the Deployment) | The data-plane gateway is the only component that sees a request before routing, so it is the authoritative source of in-flight concurrency. The Controller already owns the Deployment/Service; owning the HPA keeps one reconciler and one status publisher. The gateway-side metric emission is pinned as a contract here (the data-plane track implements it); the Controller consumes the subject and feeds the HPA |
-| AD12 | **REFINEMENT of design D4 — the activation threshold is derived from the target concurrency, not a separate user field.** Activation fires when reported concurrency ≥ 1 (a request is in flight) and the service is at zero; scale-down to zero fires only when concurrency stays below the target for the full cooldown window | The design's field set (AD2) has no activation-threshold field; deriving activation from "any in-flight request" and scale-down from "below target for cooldown" preserves KEDA's two-threshold intent (no flapping at the 0↔1 boundary) without adding a seventh field. A single stray request activates (cold-start), but does not keep the service at 1 — it scales back to zero after the cooldown if no further load arrives |
+| AD11 | **REFINEMENT of design D4 — the autoscaler is the AIBrix `PodAutoscaler` CRD.** The Controller owns the object lifecycle (create/update/delete alongside the `StormService`); the autoscaler scrapes `num_requests_running` from each engine pod. The legacy gateway `infer.services.concurrency` subject remains for the service's current-concurrency projection and quota visibility, not for autoscaling | A Kubernetes HPA cannot scale a `StormService`, and two autoscalers on one workload fight over the replica count. The AIBrix CRD is the one mechanism that scales storm replica groups. Stale HPAs from older controllers are deleted on every reconcile |
+| AD12 | **REFINEMENT of design D4 — the policy keeps six fields, but the AIBrix object only carries the ones the CRD understands.** `min_replicas`, `max_replicas` and `target_concurrency` map to `minReplicas`, `maxReplicas` and the metric `targetValue`; `cooldown_seconds` stays a validated, stored policy field, and the current object does not set a stabilization window | The CRD requires `scalingStrategy`, `maxReplicas` and a metric source; it has no stabilization-window field. The policy contract stays stable for a future controller that can honor the cooldown, while the current object never invents a field the CRD rejects |
 | AD13 | **REFINEMENT of design §7.2 — the user-surface model detail is a new `GetAvailableModel` RPC** (not an extension of `GetModel`), and the autoscaling projection is a new message type `ModelAutoscaling` carried by both `AvailableModel` and `GetAvailableModel` | The masked user catalog (feature-17 AD8/AD11) must not leak operator fields (cooldown, target concurrency, service identifiers). A separate RPC with a separate, smaller message makes the mask structural instead of conditional, exactly as `ListAvailableModels` already is |
 
 ---
@@ -69,8 +69,8 @@ AD1–AD10 restate the UI/UX design's decisions as implementation-level rules. *
 | **grpc-gateway mux** | Path → RPC routing from `google.api.http` annotations | New bindings for `GetAutoscalingPolicy`, `UpdateAutoscalingPolicy`, `UpdateInferenceServiceAutoscaling`, `GetAvailableModel`; extended bindings for `CreateInferenceService`, `ListInferenceServices`, `GetInferenceService`, `ListAvailableModels` |
 | **`infer`** | Inference-service lifecycle, autoscaling policy, change publication, status consumption, autoscaling status projection | Autoscaling policy fields on the service; global-default policy store; policy RPCs; extended create/list/get; autoscaling status consumer; concurrency-metric subject consumer |
 | **`model`** | Model catalog, versions, tenant authorization grants, masked user catalog | `ListAvailableModels` extended with the autoscaling projection; new `GetAvailableModel` |
-| **`internal/controller`** | Kubernetes reconciliation: Deployment/Service/HPA, scale-to-zero scheduling, autoscaling status reporting | HPA create/update/delete; concurrency-metric consumption; autoscaling status report on the status subject |
-| **Inference Gateway (data plane)** | Envoy + Wasm: auth, metering, routing | **Contract pinned only** — reports in-flight concurrency per service on a new subject (AD11); the data-plane track implements it |
+| **`internal/controller`** | Kubernetes reconciliation: `StormService`/Service/`PodAutoscaler`, scale-to-zero scheduling, autoscaling status reporting | `PodAutoscaler` create/update/delete; stale-HPA cleanup; lifecycle status report on the status subject |
+| **Inference Gateway (data plane)** | Envoy + Wasm: auth, metering, routing | Reports in-flight concurrency per service on the existing subject; that projection is for display and quota visibility, not for autoscaling (AD11) |
 | **`pkg/errors`** | Code blocks per module | One new infer code: **10307 `CodeAutoscalingPolicyInvalid`** |
 | **`web/`** | Both consoles | Admin: Autoscaling page, per-service dialog, autoscaling column/status block; User: model list autoscaling indicator, model detail autoscaling summary |
 
@@ -101,8 +101,8 @@ flowchart TD
     end
 
     subgraph ctrl["Controller"]
-        CTRL["Controller<br/>Deployment/Service/HPA reconcile + scale-to-zero"]
-        K8S["Kubernetes<br/>Deployment · Service · HPA"]
+        CTRL["Controller<br/>StormService/Service/PodAutoscaler reconcile + scale-to-zero"]
+        K8S["Kubernetes<br/>StormService · Service · PodAutoscaler"]
     end
 
     subgraph dp["Data Plane"]
@@ -141,12 +141,12 @@ flowchart TD
 | Admin console | Autoscaling page (global default), per-service autoscaling dialog, autoscaling column on the service list, autoscaling status block on the service detail |
 | End-user console | Model list autoscaling indicator, model detail read-only autoscaling summary |
 | Control Gateway (`grpc-gateway`) | HTTP/JSON facade for all new/extended RPCs; the realm guard enforces the surface split (AD5); passes `X-Organization-Id` through as gRPC metadata |
-| `infer` module (`services/infer`) | Policy RPCs, synchronous validation, global-default store, per-service policy persistence, extended create/list/get, autoscaling status consumer, concurrency-metric subject consumer |
+| `infer` module (`services/infer`) | Policy RPCs, synchronous validation, global-default store, per-service policy persistence, extended create/list/get, concurrency-metric subject consumer |
 | `model` module (`services/model`) | `ListAvailableModels` extended with the autoscaling projection; new `GetAvailableModel` |
 | PostgreSQL | `inference_services` gains autoscaling columns; new `autoscaling_policy` singleton table |
-| Message Queue | `infer.services.changes` (desired state, now carries the policy), `infer.services.status` (observed state, now carries autoscaling status), new `infer.services.concurrency` (gateway-reported in-flight concurrency) |
-| Controller (`internal/controller`) | Decodes change events, creates/updates/deletes the Deployment, Service and HPA, consumes the concurrency subject, drives scale-to-zero, reports autoscaling status |
-| Inference Gateway | **Contract pinned** — reports in-flight concurrency per service on `infer.services.concurrency` (AD11); the data-plane track implements it |
+| Message Queue | `infer.services.changes` (desired state, carries the policy), `infer.services.status` (observed state, may carry an autoscaling status block), `infer.services.concurrency` (gateway-reported in-flight concurrency for the display projection) |
+| Controller (`internal/controller`) | Decodes change events, creates/updates/deletes the `StormService`, Service and AIBrix `PodAutoscaler`, sweeps stale HPAs, drives scale-to-zero through the autoscaler and reports lifecycle status |
+| Inference Gateway | Reports in-flight concurrency per service on `infer.services.concurrency`; the `infer` consumer stores it for display (AD11) |
 
 ---
 
@@ -164,7 +164,7 @@ Design notes:
 
 - **`autoscaling` as `jsonb`**: the policy is a fixed six-field object (AD2); JSON keeps the schema flexible for the follow-up per-model defaults and fine-grained behaviors without a migration per field. The GORM model stores it as `datatypes.JSON` (the same pattern as `endpoints`).
 - **Empty `{}` means inherit**: a service created without an explicit policy stores `{}` and the effective policy is resolved at read time by merging the global default. This keeps `CreateInferenceService` backward-compatible (existing callers that omit the policy get the default) and makes "existing services are unaffected unless they opt in" (FR1.2) a natural consequence — an existing service with a stored policy keeps it; one with `{}` resolves to the current global default.
-- **`replicas` semantics under autoscaling**: when autoscaling is enabled, `replicas` is the **desired** count the HPA manages (the HPA's `minReplicas`/`maxReplicas` bound it). When autoscaling is disabled (FR2.5), `replicas` is the fixed count the service runs at. The Controller reconciles both cases.
+- **`replicas` semantics under autoscaling**: when autoscaling is enabled, `replicas` is the **desired** count the `PodAutoscaler` manages (its `minReplicas`/`maxReplicas` bound it). When autoscaling is disabled (FR2.5), `replicas` is the fixed count the `StormService` runs at. The Controller reconciles both cases.
 
 ### 4.2 The `autoscaling_policy` Table (new, singleton)
 
@@ -398,12 +398,12 @@ The `autoscaling` object is the **effective** policy (resolved from the global d
 
 ### 6.2 Status Report (`infer.services.status`, extended)
 
-The existing status report (model-catalog §4.5.2) gains an `autoscaling` status object. JSON body:
+The existing status report (model-catalog §4.5.2) can carry an `autoscaling` status object:
 
 ```json
 {
   "service_id": "uuid",
-  "state": "deploying" | "running" | "failed",
+  "state": "queued" | "starting" | "running" | "failed",
   "endpoints": ["https://infer.example.com/v1"],
   "failure_reason": "weight path models/qwen2.5-32b/ not found in object storage",
   "autoscaling": {
@@ -419,11 +419,11 @@ The existing status report (model-catalog §4.5.2) gains an `autoscaling` status
 }
 ```
 
-`infer` consumes this subject and updates `state`, `endpoints`, `failure_reason`, and the autoscaling status columns. The autoscaling status is **write-only by the Controller** — no RPC sets it directly; it is read-only on the wire.
+`infer` consumes this subject and applies the block when present. The field is **write-only by the Controller** — no RPC sets it directly; it is read-only on the wire. The current AIBrix reconciler publishes lifecycle state and endpoints, not the autoscaling block, so `GetInferenceService` returns a zero-valued `autoscaling_status` unless a controller reports one.
 
-### 6.3 Concurrency Metric (`infer.services.concurrency`, new subject)
+### 6.3 Gateway Concurrency Projection (`infer.services.concurrency`)
 
-Published by the Inference Gateway (AD11). JSON body:
+Published by the Inference Gateway when the data-plane component is enabled. JSON body:
 
 ```json
 {
@@ -433,55 +433,44 @@ Published by the Inference Gateway (AD11). JSON body:
 }
 ```
 
-The Controller consumes this subject and feeds the HPA's concurrency metric (Section 7). The gateway emits one report per service on a bounded interval (e.g. every 5 s) and on request arrival/departure; the Controller keeps the latest value per service in memory and exposes it to the HPA as the object metric value.
-
-Subject registration: `mq.Subjects` gains `InferServiceConcurrency: "infer.services.concurrency"` in `DefaultSubjects()`. The controller subscribes to it; the gateway publishes to it.
+The `infer` module consumes this subject and stores `in_flight` on the service (`ApplyConcurrency`). It is a **display and quota projection**, not the autoscaler input: the AIBrix `PodAutoscaler` scrapes the engine's own `num_requests_running` metric from each pod. Subject registration lives in `mq.DefaultSubjects()` as `InferServiceConcurrency: "infer.services.concurrency"`.
 
 ---
 
-## 7. Controller Design (HPA and Scale-to-Zero)
+## 7. Controller Design (AIBrix PodAutoscaler and Scale-to-Zero)
 
-### 7.1 HPA Reconciliation
+### 7.1 PodAutoscaler Reconciliation
 
-The Controller owns the HPA lifecycle alongside the Deployment/Service (AD11). On an `upsert` change event with `autoscaling.enabled = true`:
+The Controller owns the AIBrix `PodAutoscaler` lifecycle alongside the `StormService`/Service (AD11). On an `upsert` change event:
 
-1. Create or update the Deployment and Service exactly as today (model-catalog §10.5).
-2. Create or update a `HorizontalPodAutoscaler` named `hpa-<service-name>` in `reconcileNamespace`:
-   - `spec.scaleTargetRef` → the Deployment.
+1. Create or update the `StormService` and Service exactly as today (model-catalog §10.5).
+2. Delete any legacy `HorizontalPodAutoscaler` named `hpa-<service-name>` on every reconcile, so an object left by an older controller cannot compete with the AIBrix autoscaler.
+3. If `autoscaling.enabled = true`, create or update an `autoscaling.aibrix.ai/v1alpha1` `PodAutoscaler` named `hpa-<service-name>` in `reconcileNamespace`:
+   - `spec.scaleTargetRef` → `orchestration.aibrix.ai/v1alpha1` `StormService` with the service name.
    - `spec.minReplicas` → `autoscaling.min_replicas` (0 when scale-to-zero is on).
    - `spec.maxReplicas` → `autoscaling.max_replicas`.
-   - `spec.metrics` → one object metric: `pods`/`object` metric on the concurrency value for the service's label selector, with `target.type = AverageValue` and `target.averageValue = autoscaling.target_concurrency`.
-   - `spec.behavior.scaleDown.stabilizationWindowSeconds` → `autoscaling.cooldown_seconds` (AD4).
-3. On an `upsert` with `autoscaling.enabled = false`: delete the HPA and set the Deployment's `replicas` to the fixed count (the current desired count, per FR2.5).
-4. On a `delete` change event: delete the HPA alongside the Deployment and Service.
+   - `spec.scalingStrategy` → `HPA` (the CRD's enum value; it does not mean a Kubernetes HPA object).
+   - `spec.metricsSources` → one `metricSourceType: pod` entry: `protocolType: http`, `port: "8000"`, `path: /metrics`, `targetMetric: num_requests_running`, `targetValue: <target_concurrency>`.
+4. If `autoscaling.enabled = false`, delete the `PodAutoscaler` and pin the `StormService` replicas to the fixed count (FR2.5).
+5. On a `delete` change event, delete the `PodAutoscaler` alongside the `StormService` and Service.
+
+A failed autoscaler write is reported as `failed` rather than silently pinning the replica count; the stale object is deleted first so nothing keeps scaling with an outdated policy.
 
 ### 7.2 Scale-to-Zero Scheduling
 
-Scale-to-zero uses the HPA `minReplicas: 0` path with an activation threshold (AD4, AD12):
+Scale-to-zero uses the `PodAutoscaler` `minReplicas: 0` path (AD4, AD12):
 
-- **Activation (0 → 1)**: the HPA's concurrency metric is the gateway-reported in-flight concurrency. When a request arrives at a scaled-to-zero service, the gateway reports `in_flight ≥ 1`; the HPA sees the metric above the activation threshold (≥ 1) and scales to 1. The Controller observes the transition and reports `autoscaling.state = cold-starting` (admin) / `warming up` (user) while the replica spins up, then `steady` once ready.
-- **Scale-down to zero (1 → 0)**: the HPA scales down only when the concurrency stays below the target for the full `cooldown_seconds` stabilization window (AD12). A single stray request activates but does not keep the service at 1 — it scales back to zero after the cooldown if no further load arrives (design FR5.3).
-- **Cooldown enforcement**: the HPA's `scaleDown.stabilizationWindowSeconds = cooldown_seconds` prevents a just-scaled-down service from being immediately re-created (design FR5.2, AC7).
+- **Activation (0 → 1)**: the autoscaler watches the engine's per-pod `num_requests_running` metric. Once a request reaches the pod, the metric rises above the target and the autoscaler scales the storm from zero to one.
+- **Scale-down to zero (1 → 0)**: AIBrix scales down when the metric stays below the target; the exact stabilization behavior is the AIBrix controller's.
+- **Cooldown**: `cooldown_seconds` is validated and stored in the policy (0–3600), but the current `PodAutoscaler` object carries no stabilization-window field, so the CRD's own scale-down behavior applies. The policy field remains part of the contract for a future controller that can honor it.
 
 ### 7.3 Autoscaling Status Reporting
 
-The Controller derives the autoscaling state from the HPA and Deployment observed state and reports it on `infer.services.status` (Section 6.2):
+The status message shape in §6.2 defines the states `disabled`, `steady`, `scaling-up`, `scaling-down`, `scaled-to-zero`, `cold-starting` and `error`. The current reconciler publishes lifecycle state (`queued`/`starting`/`running`/`failed`) and endpoints; it does not emit the autoscaling block, so the projection stays zero-valued until that reporting is wired. The console renders lifecycle state from `state` and treats a missing autoscaling block as "not reported" rather than inventing a value.
 
-| Observed | `autoscaling.state` |
-| --- | --- |
-| Autoscaling disabled | `disabled` |
-| `current == desired`, both > 0 | `steady` |
-| `current < desired` | `scaling-up` |
-| `current > desired` | `scaling-down` |
-| `current == 0`, `desired == 0`, idle | `scaled-to-zero` |
-| `current == 0`, `desired ≥ 1` (a request arrived, spinning up) | `cold-starting` |
-| HPA rejected / metric unavailable / reconcile error | `error` (+ `error_reason`) |
+### 7.4 Gateway Concurrency Consumption
 
-The Controller reports autoscaling status on every reconcile and on every concurrency-metric update that changes the state (bounded to avoid flooding the subject — e.g. at most once per 5 s per service).
-
-### 7.4 Concurrency Metric Consumption
-
-The Controller subscribes to `infer.services.concurrency` (Section 6.3), keeps the latest `in_flight` per `service_id` in memory, and exposes it to the HPA as the object metric value. The HPA polls the metric via the metrics API; the Controller implements the metric provider seam (or, in the simplest integration, the Controller writes the value to a `CustomMetric`/`ExternalMetric` resource the HPA reads). The exact metric-provider mechanism is a data-plane/controller integration detail; the contract pinned here is the subject and the value semantics.
+The `infer` module's `ConcurrencyConsumer` subscribes to `infer.services.concurrency` (§6.3), validates the report and stores the latest `in_flight` on the service row for the `current_concurrency` projection. The Controller does not consume this subject and does not feed it to the autoscaler.
 
 ---
 
@@ -536,7 +525,7 @@ sequenceDiagram
     Infer-->>CGW: OK (fixed_replicas when disabling)
     CGW-->>UI: Row autoscaling column updates
     MQ->>CTRL: Consume change event
-    CTRL->>K8s: Create/update/delete HPA + Deployment
+    CTRL->>K8s: Create/update/delete PodAutoscaler + StormService
     CTRL->>MQ: Publish status (autoscaling state)
     MQ->>Infer: Consume status
     Infer->>Infer: UPDATE autoscaling status
@@ -553,24 +542,22 @@ sequenceDiagram
     participant DGW as Inference Gateway
     participant MQ as Message Queue
     participant CTRL as Controller
-    participant HPA as HPA (concurrency metric)
+    participant PA as AIBrix PodAutoscaler
     participant SVC as Inference service
 
-    Note over HPA,SVC: Service idle, scaled to zero
+    Note over PA,SVC: Service idle, scaled to zero
     Agent->>DGW: POST /v1/chat/completions (model)
-    DGW->>MQ: Report in-flight concurrency = 1
-    MQ->>CTRL: Consume concurrency metric
-    CTRL->>HPA: Metric above activation threshold
-    HPA->>CTRL: Activate, scale 0 -> 1
+    PA->>SVC: Scrape num_requests_running
+    PA->>PA: Metric above target, activate
+    PA->>CTRL: Scale storm 0 -> 1
     CTRL->>SVC: Create replica (cold start)
-    CTRL->>MQ: Report state cold-starting
+    CTRL->>MQ: Report lifecycle state starting
     SVC-->>CTRL: Ready
     CTRL-->>DGW: Endpoint available
     DGW-->>Agent: Forward request (slower first call)
-    Note over DGW,HPA: Concurrency rises, HPA scales 1 -> N
-    Note over HPA,SVC: Idle below target for cooldown window
-    HPA->>CTRL: Scale down to zero after cooldown
-    CTRL->>MQ: Report state scaled-to-zero
+    Note over PA: Concurrency rises, PodAutoscaler scales 1 -> N
+    Note over PA,SVC: Idle below target
+    PA->>CTRL: Scale down (AIBrix behavior)
 ```
 
 ### 8.4 Autoscaling Status Polling (admin)
@@ -585,10 +572,10 @@ sequenceDiagram
 
     Admin->>UI: Open /admin/inference-services/{id}
     UI->>CGW: GET /api/v1/admin/inference-services/{id}
-    CGW->>Infer: GetInferenceService (with autoscaling status)
+    CGW->>Infer: GetInferenceService (lifecycle state + policy)
     Infer-->>CGW: policy + status (current, desired, state)
     CGW-->>UI: Render policy + status block
-    Note over UI,CGW: UI polls every 10s while state is scaling-up, scaling-down or cold-starting
+    Note over UI,CGW: UI polls every 10s while the lifecycle state is not yet running/failed/terminated; the autoscaling block renders when the controller reports it
     UI-->>Admin: Live status updates
 ```
 
@@ -629,9 +616,9 @@ infer:
 
 | Key | Default | Description |
 | --- | --- | --- |
-| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | Kill switch for the concurrency-metric consumer Runner |
+| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | Kill switch for the gateway concurrency-projection consumer Runner |
 | `infer.autoscaling.concurrencyConsumer.workers` | `2` | Concurrent concurrency handlers |
-| `infer.autoscaling.statusReportInterval` | `5s` | Minimum interval between autoscaling status reports per service (bounded to avoid flooding the subject) |
+| `infer.autoscaling.statusReportInterval` | `5s` | Minimum interval between autoscaling status reports per service (used when the controller reports the block) |
 
 Rules (same as the API Key feature):
 
@@ -643,11 +630,11 @@ Rules (same as the API Key feature):
 ## 11. Security Considerations
 
 - **Surface separation is enforced by the realm guard** (console-surface-separation AD2/AD3): the admin autoscaling endpoints live only under `/api/v1/admin/*` and the user read-only endpoints only under `/api/v1/*`. A wrong-realm session fails with 10038; the two consoles never share a session token. The user surface carries **no** operator fields (no cooldown, no target concurrency, no service identifiers) — the masked projection (AD13) makes the mask structural.
-- **Organization scoping is transitional and spoofable** (`X-Organization-Id`), identical to the API Key feature's status quo; the management API is effectively unauthenticated today. This feature does not widen that exposure. Removed in feature #7.
+- **Organization context comes from the session first**, falling back to the transitional `X-Organization-Id` header only when no session is present. The admin RPCs also enforce the caller's platform/org role (`RoleGuard` / `PlatformAdminGuard`).
 - **No secrets in messages**: change, status and concurrency messages carry only resource specs, URLs and metric values — no credentials, no API keys.
-- **Policy validation is synchronous** (AD10): an invalid policy never reaches the Controller, so a malformed HPA spec cannot be created from a bad request.
-- **Controller privilege**: the controller's service account needs Deployment/Service/HPA CRUD in the platform namespace — no cluster-admin, no secret read. HPA CRUD is additive to the existing RBAC.
-- **Endpoint and status disclosure**: autoscaling status is organization-scoped data returned only through the scoped APIs; `GetInferenceService` on another organization's service returns 10301 (no existence leak).
+- **Policy validation is synchronous** (AD10): an invalid policy never reaches the Controller, so a malformed `PodAutoscaler` spec cannot be created from a bad request.
+- **Controller privilege**: the controller's service account needs `StormService`/`PodAutoscaler` CRD access, Service CRUD and read access to pods in the platform namespace — no cluster-admin, no secret read.
+- **Endpoint and status disclosure**: inference services are platform assets, so any authorized operator may read a service's status; who may *use* it is governed separately by the service access policy. Cross-realm callers are rejected by the gateway's realm guard.
 
 ---
 
@@ -656,8 +643,8 @@ Rules (same as the API Key feature):
 - **Schema**: `inference_services` gains `autoscaling` (jsonb, default `{}`); new `autoscaling_policy` singleton table seeded with defaults. Additive via AutoMigrate; no data migration.
 - **Configuration**: the `infer.autoscaling` section ships in `configs/config.yaml`, `configs/server.yaml`, and (for `statusReportInterval`) `configs/controller.yaml`. Custom configs without the section keep working (zero-value defaults).
 - **Proto**: additive changes — new messages, new RPCs, extended messages. `make pbgen` regenerates the gateway bindings.
-- **New subject**: `infer.services.concurrency` is additive; brokers are subject-based (RabbitMQ) so no migration.
-- **Controller**: the reconciler gains HPA lifecycle and the concurrency-metric consumer behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
+- **Subjects**: `infer.services.concurrency` already exists and is additive; brokers are subject-based (RabbitMQ), so no migration.
+- **Controller**: the reconciler owns the `PodAutoscaler` lifecycle and stale-HPA cleanup behind the existing `Reconciler` interface — no signature change, the fake-based tests keep working.
 - **Rolling update order**: deploy `taas-server` first (it starts publishing policy-bearing changes and consuming status), then the controller. The reverse order is safe too: the controller ignores subjects with no publishers.
 - **Feature flags**: none needed — the new RPCs are additive; existing services with `autoscaling = '{}'` inherit the global default and existing behavior is unchanged until an operator edits a policy.
 
@@ -714,10 +701,10 @@ Rules (same as the API Key feature):
 | | `infer_repository.go` | Autoscaling column read/write, effective-policy resolution |
 | | `change_publisher.go` | Change event gains the `autoscaling` object |
 | | `status_consumer.go` | Status consumer applies autoscaling status |
-| | `concurrency_consumer.go` | New Runner: consumes `infer.services.concurrency` (for status projection) |
+| | `concurrency_consumer.go` | Runner: consumes `infer.services.concurrency` (display/quota projection) |
 | | `service.go` | Extended `CreateInferenceService`/`ListInferenceServices`/`GetInferenceService` |
 | `services/model` | `service.go` | Extended `ListAvailableModels`; new `GetAvailableModel` |
-| `internal/controller` | `reconciler.go` | HPA lifecycle, concurrency-metric consumption, autoscaling status reporting |
+| `internal/controller` | `reconciler.go` | AIBrix PodAutoscaler lifecycle, stale-HPA cleanup, lifecycle status reporting |
 | `pkg/mq` | `mq.go` | `InferServiceConcurrency` subject addition |
 | `pkg/errors` | `codes.go`/`messages.go` | New `CodeAutoscalingPolicyInvalid Code = 10307` + canonical message |
 | `pkg/config` | `api.go` | `InferAutoscalingConfig` struct + Validate rules |
@@ -764,7 +751,7 @@ type AutoscalingPolicy struct {
 
 `status_consumer.go`: `StatusConsumer` applies the `autoscaling` status object to the service row (write-only by the Controller).
 
-`concurrency_consumer.go`: new `ConcurrencyConsumer` implementing `server.Runner` — subscribes to `infer.services.concurrency` and updates the service's current-concurrency projection (used by `GetInferenceService`). Registered in `apps/taas-server/main.go` via `srv.AddRunner(...)`.
+`concurrency_consumer.go`: `ConcurrencyConsumer` implements `server.Runner` — subscribes to `infer.services.concurrency` and updates the service's current-concurrency projection (used by `GetInferenceService`). Registered in `apps/taas-server/main.go` via `srv.AddRunner(...)`.
 
 `service.go` extended RPCs:
 
@@ -783,7 +770,7 @@ Cross-module dependency: `model` reads autoscaling status from `infer` through a
 
 ### 14.4 Framework Touch Points
 
-1. **`mq.Subjects`** (`pkg/mq/mq.go`): add `InferServiceConcurrency string` + `DefaultSubjects()` entry `"infer.services.concurrency"`. Additive.
+1. **`mq.Subjects`** (`pkg/mq/mq.go`): `InferServiceConcurrency` + the `"infer.services.concurrency"` entry already exist; the subject is unchanged.
 2. **`Runner` registration** (`apps/taas-server/main.go`): construct the `infer` service's `ConcurrencyConsumer` and `srv.AddRunner` it.
 3. **`Migrator` hook**: `infer.Service.Migrate` AutoMigrates `inference_services` (additive column) and `autoscaling_policy`, then seeds the singleton.
 4. **Config** (`pkg/config/api.go`): `InferAutoscalingConfig{ConcurrencyConsumer struct{ Enabled bool, Workers int }, StatusReportInterval time.Duration}`; `Validate` rejects negative workers and a non-positive interval.
@@ -794,13 +781,13 @@ Cross-module dependency: `model` reads autoscaling status from `infer` through a
 `ApplyInferServiceChange(ctx, msg)` gains autoscaling handling:
 
 1. Decode the change event (now with `autoscaling`, §6.1); malformed → log + `mq.Permanent`.
-2. `delete` → delete the Deployment, Service **and HPA** (ignore not-found); return.
-3. `upsert` → publish status `deploying`; build and create-or-update the Deployment and Service (as today); then:
-   - if `autoscaling.enabled`: build and create-or-update the HPA (§7.1); else delete the HPA and set the Deployment's `replicas` to the fixed count.
+2. `delete` → delete the `StormService`, Service, **`PodAutoscaler`** and any legacy HPA (ignore not-found); return.
+3. `upsert` / `update_version` / `rollback` → publish status `queued`; build and create-or-update the `StormService` and Service (as today); then:
+   - if `autoscaling.enabled`: delete any legacy HPA and create-or-update the AIBrix `PodAutoscaler` (§7.1); else delete the `PodAutoscaler` and pin the `StormService` replicas to the fixed count.
    - watch pod readiness; when ready → publish status `running` with endpoints and the autoscaling status block.
 4. On any reconcile error → publish status `failed` with the reason and `autoscaling.state = error`.
 
-New `ConcurrencyMetricConsumer` (a `server.Runner` in the controller binary): subscribes to `infer.services.concurrency`, keeps the latest `in_flight` per `service_id`, exposes it to the HPA metric provider, and triggers an autoscaling status report when the state changes (bounded by `statusReportInterval`).
+There is no controller-side concurrency consumer: the autoscaler scrapes the engine metric directly. The `infer` binary's `ConcurrencyConsumer` consumes `infer.services.concurrency` for the display projection.
 
 ### 14.6 Console (out of repository scope, contract summary)
 
@@ -825,7 +812,7 @@ The console is a separate deliverable; this design pins its contract:
 | AC4 — per-service update async, state transitions to steady | §14.2 `UpdateInferenceServiceAutoscaling`, §7.3 status reporting | FVT + E2E |
 | AC5 — disabling returns to fixed count, state disabled | §14.2 `UpdateInferenceServiceAutoscaling` (fixed_replicas), §7.3 | FVT |
 | AC6 — scaled-to-zero service cold-starts on request | §7.2 activation, §8.3 sequence | FVT (fault/load injection) + E2E |
-| AC7 — idle stays at zero for cooldown | §7.2 cooldown window (HPA stabilization) | FVT (timing) |
+| AC7 — idle service stays at zero | §7.2 `PodAutoscaler` `minReplicas: 0` | FVT |
 | AC8 — admin list/detail show autoscaling | §13.1, §14.6 console contract | E2E |
 | AC9 — user model list/detail read-only summary | §13.1, §14.6 console contract | E2E |
 | AC10 — surface separation (no cross-prefix calls) | §5.5 realm guard, §13.1 route/prefix table | E2E (source/network assertion) |
@@ -843,6 +830,6 @@ The console is a separate deliverable; this design pins its contract:
 | Fine-grained scaling behaviors (per-direction policies, custom metric formulas, multiple metrics) | Future feature point |
 | Canary / blue-green autoscaling | Future feature point |
 | Tenant-facing autoscaling configuration (self-service scaling) | Future feature point |
-| Inference Gateway concurrency-metric emission (`infer.services.concurrency` publisher) | Data-plane track (contract pinned in §6.3, AD11) |
+| Inference Gateway concurrency-metric emission (`infer.services.concurrency` publisher) | Data-plane track (used for display, §6.3) |
 | Requiring a session on `/api/v1/admin/*` | Follow-up hardening row |
 | Business-code → HTTP status mapping in the gateway | Platform-wide follow-up |

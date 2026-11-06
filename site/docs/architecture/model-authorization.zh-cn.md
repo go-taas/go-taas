@@ -265,7 +265,7 @@ sequenceDiagram
     participant M as model 仓库
     participant MQ as 消息队列
     Admin->>Console: 以 org-b 部署模型 M
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>S: CreateInferenceService (org-b, model M)
     S->>R: 校验 name/replicas/accelerator
     S->>M: GetModel(M), FindVersion(M, v)

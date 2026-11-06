@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for restricting which organizations may deploy and call which models: the `model_authorizations` table, the default-allow rule, control-plane and data-plane enforcement, the four `ModelService` RPCs, the console "Authorized organizations" panel and "Restricted" badge, and acceptance criteria |
 | Owning modules | `model` (the `model_authorizations` table and the four authorization RPCs), `infer` (control-plane enforcement in `CreateInferenceService`), `auth` (data-plane enforcement in `VerifyAPIKey`, activating the dormant `model` field) |
 | Related documents | [Architecture Design](./architecture.md) — §2.2 `model`, §2.4 `infer`, §2.1 `auth` · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the catalog and `CreateInferenceService` this feature gates (its §1.4 defers tenant-level model authorization here) · [Multi-Tenancy Isolation](./multi-tenancy.md) — the organization entity this feature grants against |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -179,7 +179,7 @@ flowchart TD
     B --> C["Model picker shows only models the org may use"]
     C --> D["Restricted models the org lacks access to are hidden"]
     D --> E["Administrator picks a model and completes the form"]
-    E --> F["POST /api/v1/inference-services"]
+    E --> F["POST /api/v1/admin/inference-services"]
     F --> G{Model restricted and org not granted?}
     G -->|Yes| H["10105 MODEL_UNAUTHORIZED, nothing published"]
     G -->|No| I["Deployment proceeds, state=pending"]
@@ -207,7 +207,7 @@ sequenceDiagram
     CGW-->>Console: 200, panel refreshes, Restricted badge shows
 
     Admin->>Console: Deploy model M as org-b
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService (org-b, model M)
     Infer->>Model: IsModelAuthorized(M, org-b)
     Model-->>Infer: denied (restricted, org-b not granted)

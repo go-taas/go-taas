@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/models/:modelId/versions` 管理面模型版本页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `model`（版本历史、激活、注册）、`infer`（推理服务的原位版本变更 / 回滚）、`web` 管理控制台（`ModelVersionsPage`）、`controller`（调和版本变更事件） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.2 节 `model`、第 2.4 节 `infer`、第 3.1 节（管理面/用户面分离）· [模型目录与一键部署](./model-catalog-deployment.md) — 目录、`model_versions` 表、部署表单与删除后重建规则 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 

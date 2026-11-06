@@ -2,9 +2,9 @@
 
 | Attribute | Content |
 | --- | --- |
-| Feature point | Service quota management — per-organization **resource quotas** on four dimensions (`max_concurrent_requests`, `max_inference_services`, `max_batch_jobs_per_day`, `max_output_tokens_per_request`; 0 = unlimited), operator-configured on the admin surface, enforced fail-closed at the Inference Gateway (concurrency, per-request output tokens — riding the `VerifyAPIKey` verdict) and the control plane (service count at `CreateInferenceService`, daily batch jobs at `CreateBatchJob`), with a tenant quota bar and `/quotas` page on the end-user surface and `/admin/quotas` (org table, presets, change history) on the admin surface (backlog row 51) |
-| Document scope | Architecture and detailed design for feature-51: the six additive quota columns on `organizations`; the four new tenancy RPCs bound under `/api/v1/admin/quotas/*` and `/api/v1/quotas`; the `VerifyAPIKey` verdict extension (response fields 7/8, cache mechanics, backward compatibility); the `infer`/`batch` create-time checks; the pinned gateway enforcement contract (check order rate → quota → funds, in-flight tracking, the `quota.orgs.concurrency` MQ relay, 13301/13304 rendering); the 133xx error block; the admin/user pages and the quota bar; configuration, security, rollout, and a function-level task list per layer |
-| Owning modules | `tenancy` (the quota columns on `organizations`, the four quota RPCs, the `OrgQuotaReader` seam, the in-flight report consumer); `auth` (the verdict extension on `VerifyAPIKey`); `infer` (the service-count check); `batch` (the daily-jobs check); `pkg/mq` (one new subject); `pkg/errors` (the 133xx block); `pkg/config` (the `quota` section); `pkg/server` (no change — `RealmGuard` classifies the new prefixes); `audit` (reused — `quota.updated` events); `web` admin console (`QuotasPage`) and end-user console (`UserQuotasPage`, `QuotaBar`); Inference Gateway (data plane — **contract pinned only**, out of repository scope) |
+| Feature point | Service quota management — per-organization **resource quotas** on three dimensions (`max_concurrent_requests`, `max_batch_jobs_per_day`, `max_output_tokens_per_request`; 0 = unlimited), operator-configured on the admin surface, enforced fail-closed at the Inference Gateway (concurrency, per-request output tokens — riding the `VerifyAPIKey` verdict) and the control plane (daily batch jobs at `CreateBatchJob`), with a tenant quota bar and `/quotas` page on the end-user surface and `/admin/quotas` (org table, presets, change history) on the admin surface (backlog row 51) |
+| Document scope | Architecture and detailed design for feature-51: the five additive quota columns on `organizations` (three limits plus `updated_by`/`updated_at`); the four new tenancy RPCs bound under `/api/v1/admin/quotas/*` and `/api/v1/quotas`; the `VerifyAPIKey` verdict extension (response fields 7/8, cache mechanics, backward compatibility); the `batch` create-time check; the pinned gateway enforcement contract (check order rate → quota → funds, in-flight tracking, the `quota.orgs.concurrency` MQ relay, 13301/13304 rendering); the 133xx error block; the admin/user pages and the quota bar; configuration, security, rollout, and a function-level task list per layer |
+| Owning modules | `tenancy` (the quota columns on `organizations`, the four quota RPCs, the `OrgQuotaReader` seam, the in-flight report consumer); `auth` (the verdict extension on `VerifyAPIKey`); `batch` (the daily-jobs check); `pkg/mq` (one new subject); `pkg/errors` (the 133xx block); `pkg/config` (the `quota` section); `pkg/server` (no change — `RealmGuard` classifies the new prefixes); `audit` (reused — `quota.updated` events); `web` admin console (`QuotasPage`) and end-user console (`UserQuotasPage`, `QuotaBar`); Inference Gateway (data plane — **contract pinned only**, out of repository scope) |
 | Related documents | [Requirement Analysis and UI/UX Design](../design/service-quota-management.md) · [Architecture Design](../design/architecture.md) §2.4 `auth`/`infer`, §3.1 control gateway, §3.2 data plane · [Rate Limits & Spend Limits](./rate-limits-spend-limits.md) (the per-key RPM/TPM verdict-riding pattern this feature extends, the 10037 check that runs first) · [Balance & Quota Account Modes](./balance-quota.md) (the funds check 10502 that runs after quotas) · [Multi-Tenancy](./multi-tenancy.md) (the organizations table the columns land on) · [Batch Inference](./batch-inference.md) (the `batch_jobs` table the daily counter reads) · [Inference Autoscaling](./inference-autoscaling.md) (the gateway in-flight MQ reporting precedent, AD11 there) · [API Key Management](./api-key-management.md) (the verdict cache whose TTL bounds propagation) · [Audit Logging](./audit-logging.md) (the `quota.updated` events and the change-history read) · [Console Surface Separation](./console-surface-separation.md) (the two surfaces, the masked-projection rule) |
 | Status | Architecture complete, handed to the Developer agent |
 
@@ -22,16 +22,16 @@
 
 Features #6 and #8 gave go-taas the **money** rails — per-key rate limits (RPM/TPM) and org funds/spend enforcement. What is still missing is the **resource** dimension: how many requests an organization may hold in flight, how many inference services it may deploy, how many batch jobs it may submit per day, and how many tokens a single request may generate. Rate limits cannot catch any of these — 60 RPM of ten-minute streaming requests holds sixty concurrent GPU slots indefinitely, and a tenant can deploy fifty idle services while staying perfectly inside its rate and spend limits.
 
-This feature adds **per-organization resource quotas**: four bounded dimensions stored on the organization row, operator-configured on the admin surface, enforced fail-closed — the two hot-path dimensions (concurrency, per-request output tokens) ride the `VerifyAPIKey` verdict to the Inference Gateway exactly as #6's RPM/TPM do, and the two lifecycle dimensions (service count, batch jobs/day) are checked by `infer` and `batch` at create time. The constraint is **visible to the constrained party**: a quota bar on every end-user page and a `/quotas` detail page, so a limit is a plannable constraint rather than a mysterious 429. The core invariants: quotas protect the fleet (not the bill — money stays on #6/#8), enforcement never queues or partially executes, quota errors (133xx) are never conflated with rate (10037) or funds (10502), 0 = unlimited with a permissive default, and tightening is non-destructive (usage drains naturally).
+This feature adds **per-organization resource quotas**: three bounded dimensions stored on the organization row, operator-configured on the admin surface, enforced fail-closed — the two hot-path dimensions (concurrency, per-request output tokens) ride the `VerifyAPIKey` verdict to the Inference Gateway exactly as #6's RPM/TPM do, and the one lifecycle dimension (batch jobs/day) is checked by `batch` at create time. The inference-service count is deliberately not a quota: inference services are platform assets created by a platform administrator (see the note above). The constraint is **visible to the constrained party**: a quota bar on every end-user page and a `/quotas` detail page, so a limit is a plannable constraint rather than a mysterious 429. The core invariants: quotas protect the fleet (not the bill — money stays on #6/#8), enforcement never queues or partially executes, quota errors (133xx) are never conflated with rate (10037) or funds (10502), 0 = unlimited with a permissive default, and tightening is non-destructive (usage drains naturally).
 
 **Goals**:
 
 - Two pages and one shared component: `/admin/quotas` (`QuotasPage` — org table with live usage, edit dialog with presets, change-history drawer) and `/quotas` (`UserQuotasPage` — four dimension cards, Request-increase mailto), plus the `QuotaBar` in the end-user org context area, per design §5.1–§5.4.
-- Four quota dimensions on the organization row with bounded ranges and 0 = unlimited defaults (design D2, FR1.1).
+- Three quota dimensions on the organization row with bounded ranges and 0 = unlimited defaults (design D2, FR1.1).
 - Four new RPCs on `TenancyService`: three admin-prefix (`/api/v1/admin/quotas*`) and one user-prefix (`/api/v1/quotas`) (design §6).
 - The `VerifyAPIKey` verdict extension: `max_concurrent_requests` and `max_output_tokens_per_request` cached with the verdict, TTL ≤ 30 s bounding propagation (design D3, FR2.1).
 - The pinned gateway contract: check order rate → quota concurrency → token cap → funds, per-org in-flight tracking (increment on accept, decrement on completion), 13301 as 429 + `Retry-After: 1`, 13304 as 400 with the cap named, absent `max_tokens` clamped, per-org in-flight reports on MQ (design FR2.2–FR2.4, §6 notes).
-- Create-time guards: 13302 in `CreateInferenceService`, 13303 in `CreateBatchJob`, inside the existing flows, non-destructive on tightening (design FR3).
+- Create-time guard: 13303 in `CreateBatchJob`, inside the existing flow, non-destructive on tightening (design FR3). 13302 remains defined but is no longer returned by any flow.
 - A new error block **133xx** (13301–13306) in `pkg/errors` (design D4).
 - Audit events `quota.updated` (old → new per dimension, acting operator) and the per-org change history (last 20) on the admin surface (design D9, FR1.3–FR1.4).
 - Numbered acceptance criteria (AC1–AC14) testable in Nightwatch, FVT and unit tests; the gateway contract verified synthetically (the established out-of-repository pattern).
@@ -51,16 +51,16 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D10) as implementation-lev
 | # | Decision | Rationale |
 | --- | --- | --- |
 | AD1 | **Both surfaces get a dedicated section**: admin `/admin/quotas` + `/api/v1/admin/quotas/*` (fleet-wide org table, edit dialog, change history), end-user `/quotas` + `/api/v1/quotas/*` (the caller's own org, read-only) — not extensions of #6's rate-limit editor or #5's org editor | Design D1. Quotas are a distinct object class (org-level resource axes with their own enforcement points and history); a dedicated page keeps #6's key-level throttles and this feature's org-level resources separately inspectable |
-| AD2 | **Four quota dimensions on the organization row**: `max_concurrent_requests` (0 = unlimited, default 0; when set, 1–10000), `max_inference_services` (0 = unlimited; 1–1000), `max_batch_jobs_per_day` (0 = unlimited; 1–10000), `max_output_tokens_per_request` (0 = unlimited; 64–32768). All four are **per-org**, never per-key | Design D2. The four resource axes the platform can actually starve on; bounded ranges keep values sane; 0 = unlimited keeps the default permissive. A tenant with two keys must not double every limit |
-| AD3 | **Hot-path dimensions ride the `VerifyAPIKey` verdict** exactly as #6's RPM/TPM do: the verdict gains `max_concurrent_requests` and `max_output_tokens_per_request`; the gateway tracks in-flight requests per org (increment on accept, decrement on completion including disconnects) and validates/clamps the request's `max_tokens` before dispatch. Lifecycle dimensions (`max_inference_services`, `max_batch_jobs_per_day`) are enforced by `infer` and `batch` at create time. The verdict cache TTL (30 s) bounds quota-change propagation | Design D3. Zero new hot-path RPCs (the #6 contract pattern); in-flight tracking is gateway-local state, the only place that sees accept/complete; create-time checks are naturally control-plane |
-| AD4 | **A dedicated error block 133xx**: 13301 `CodeQuotaConcurrencyExceeded` (HTTP 429 + `Retry-After: 1`), 13302 `CodeQuotaServiceCountExceeded`, 13303 `CodeQuotaBatchJobsExceeded`, 13304 `CodeQuotaOutputTokensExceeded` (HTTP 400, cap named), 13305 `CodeQuotaInvalid` (validation, dimension named), 13306 `CodeQuotaNotFound`. Realm failures reuse 10038, role failures 10036 | Design D4. Three-errors-never-conflated: quota ≠ rate (10037) ≠ funds (10502). The 429-vs-400 split mirrors the semantics — concurrency is transient (retry later), the others are configuration (fix the request or the quota) |
+| AD2 | **Three quota dimensions on the organization row**: `max_concurrent_requests` (0 = unlimited, default 0; when set, 1–10000), `max_batch_jobs_per_day` (0 = unlimited; 1–10000), `max_output_tokens_per_request` (0 = unlimited; 64–32768). All three are **per-org**, never per-key | Design D2, amended when the inference-service count was removed. The three resource axes the platform can actually starve on; bounded ranges keep values sane; 0 = unlimited keeps the default permissive. A tenant with two keys must not double every limit |
+| AD3 | **Hot-path dimensions ride the `VerifyAPIKey` verdict** exactly as #6's RPM/TPM do: the verdict gains `max_concurrent_requests` and `max_output_tokens_per_request`; the gateway tracks in-flight requests per org (increment on accept, decrement on completion including disconnects) and validates/clamps the request's `max_tokens` before dispatch. The lifecycle dimension (`max_batch_jobs_per_day`) is enforced by `batch` at create time. The verdict cache TTL (30 s) bounds quota-change propagation | Design D3. Zero new hot-path RPCs (the #6 contract pattern); in-flight tracking is gateway-local state, the only place that sees accept/complete; create-time checks are naturally control-plane |
+| AD4 | **A dedicated error block 133xx**: 13301 `CodeQuotaConcurrencyExceeded` (HTTP 429 + `Retry-After: 1`), 13302 `CodeQuotaServiceCountExceeded` (retired — kept for wire compatibility, no flow returns it), 13303 `CodeQuotaBatchJobsExceeded`, 13304 `CodeQuotaOutputTokensExceeded` (HTTP 400, cap named), 13305 `CodeQuotaInvalid` (validation, dimension named), 13306 `CodeQuotaNotFound`. Realm failures reuse 10038, role failures 10036 | Design D4. Three-errors-never-conflated: quota ≠ rate (10037) ≠ funds (10502). The 429-vs-400 split mirrors the semantics — concurrency is transient (retry later), the others are configuration (fix the request or the quota) |
 | AD5 | **Presets are UI constants in the admin page only**: Default (all unlimited), Starter (10 / 3 / 5 / 4096), Growth (50 / 20 / 50 / 8192), Enterprise (200 / 100 / 500 / 16384). Selecting a preset fills the form; the operator may edit any field before saving. No preset round-trip, no preset storage | Design D5. Operators configure dozens of orgs; presets speed the common cases without freezing the model. Raw fields remain the source of truth |
 | AD6 | **Change windows**: hot-path dimensions take effect within the verdict TTL (≤ 30 s); lifecycle dimensions on the next create call. Tightening below current usage never kills in-flight requests or deletes services — it blocks new ones and usage drains naturally | Design D6. Predictable, non-destructive tightening: the guard blocks at the boundary, never revokes what is already running |
 | AD7 | **Quota management is operator-only**; the tenant surface is read-only (the bar + `/quotas`). A tenant "request increase" action is a mailto link to the configured operator address, not a workflow | Design D7. The constrained party must not hold the lever; a mailto covers the one-operator platform without an approval-flow stack |
-| AD8 | **The tenant quota bar shows all four dimensions** (usage / limit, or "Unlimited") in the end-user org context area plus the `/quotas` detail page; usage counters are in-flight requests (gateway state), service count (infer), batch jobs today (batch), and the token cap (a constant display). No tenant ever sees another org's quotas | Design D8. Visible-before-you-hit-it: the bar makes the constraint transparent and the 13301 error diagnosable |
+| AD8 | **The tenant quota bar shows all three dimensions** (usage / limit, or "Unlimited") in the end-user org context area plus the `/quotas` detail page; usage counters are in-flight requests (gateway state), batch jobs today (batch), and the token cap (a constant display). No tenant ever sees another org's quotas | Design D8. Visible-before-you-hit-it: the bar makes the constraint transparent and the 13301 error diagnosable |
 | AD9 | **All quota mutations are audited** (`quota.updated` with old → new values per dimension and the acting operator) and the admin page shows a per-org change history (last 20 changes) | Design D9. Quota changes are fleet-protection decisions with fairness implications; the history answers "who tightened this and when" |
 | AD10 | **Realm and surface binding**: management is admin-only (`/admin/quotas` + `/api/v1/admin/quotas/*`); the tenant view is end-user (`/quotas` + `/api/v1/quotas/*`). A user-realm session on an admin route gets **10038**; a session without the platform-admin role gets **10036** | Design D10. Consistent with the console-surface separation; quota internals (fleet-wide comparisons) are operator knowledge, the org's own quotas are the tenant's |
-| AD11 | **REFINEMENT of design D2/FR1.1 — the quota state is six additive columns on `organizations`, no new tables.** `max_concurrent_requests`, `max_inference_services`, `max_batch_jobs_per_day`, `max_output_tokens_per_request` (int64, NOT NULL, DEFAULT 0 = unlimited) plus `quota_updated_by` (string(64), DEFAULT '') and `quota_updated_at` (timestamp, NULL) denormalized for the admin table's Updated / Updated by columns. Usage counters are computed, never stored (Section 4.2) | The design pins "the quota fields live on the organization row (additive AutoMigrate columns)" and the enforcement needs no per-dimension history table — the audit trail already is the history (AD16). Six columns on an existing table is the smallest schema that satisfies FR1.1's projection (which includes `updated_at`/`updated_by`) with zero backfill: existing rows read as all-unlimited, the pre-feature behavior |
+| AD11 | **REFINEMENT of design D2/FR1.1 — the quota state is five additive columns on `organizations`, no new tables.** `max_concurrent_requests`, `max_batch_jobs_per_day`, `max_output_tokens_per_request` (int64, NOT NULL, DEFAULT 0 = unlimited) plus `quota_updated_by` (string(64), DEFAULT '') and `quota_updated_at` (timestamp, NULL) denormalized for the admin table's Updated / Updated by columns. Usage counters are computed, never stored (Section 4.2) | The design pins "the quota fields live on the organization row (additive AutoMigrate columns)" and the enforcement needs no per-dimension history table — the audit trail already is the history (AD16). Five columns on an existing table is the smallest schema that satisfies FR1.1's projection with zero backfill: existing rows read as all-unlimited, the pre-feature behavior. `max_inference_services` was removed when the service-count quota was retired |
 | AD12 | **REFINEMENT of design D3/FR2.1 — the verdict extension mechanics.** `keyVerdict` (the auth service's cached verdict struct) gains `MaxConcurrentRequests` (`json:"max_concurrent_requests"`) and `MaxOutputTokensPerRequest` (`json:"max_output_tokens_per_request"`); `VerifyAPIKeyResponse` gains proto fields **7 and 8** (fields 1–6 are taken). Both the cache-miss path (verdict construction reads the org quota through the `OrgQuotaReader` seam) and the cache-hit path (the fields deserialize from the cached JSON) carry them. A verdict cached before the upgrade deserializes without the two keys → zero → unlimited: backward compatible, and the propagation window of any change is bounded by the cache TTL (≤ 30 s). A quota-read error during verdict construction logs a warning and degrades to unlimited (never fails `VerifyAPIKey` itself — an auth outage over a quota-display hiccup would stop all inference) | The design specifies the verdict fields and the TTL bound but not the cache mechanics; this pins them. The fail-open-on-read-error trade-off is accepted deliberately: the window is bounded by the TTL and the alternative (failing the verdict) turns a quota-table hiccup into a fleet-wide auth outage |
 | AD13 | **REFINEMENT of design D3/FR3 — one narrow read seam, three consumers.** `tenancy` exports a read-only `OrgQuotaReader` interface (`OrgQuota(ctx, organizationID) (OrgQuota, error)`, the four limits as a value struct) in `services/tenancy/quota.go`, implemented by the tenancy repository and exposed on the tenancy service. `apps/taas-server/main.go` injects it into `auth` (verdict construction), `infer` (`CreateInferenceService`) and `batch` (`CreateBatchJob`) via `SetOrgQuotaReader` setters; a nil seam reads as unlimited (the transitional-seam convention, so FVT setups are unchanged). `tenancy` additionally gains a `sessionOrgResolver` seam (`SessionActiveOrg`, the billing pattern) for `GetMyQuota`'s org scoping and a `requireAdminRole` gate (the provider shape) for the three admin quota RPCs — the existing tenancy RPCs keep the admin realm guard as their boundary, unchanged | The design says the checks read "the org's quota" without pinning how. One exported interface (one implementation, three consumers) avoids three consumer-side re-declarations of the same shape; the import direction (`auth`/`infer`/`batch` → `tenancy`) creates no cycle because tenancy defines its session seams locally and imports none of the three. The admin gate is new because the existing tenancy RPCs rely on the realm guard alone — quota mutations are the first tenancy writes that must also enforce the role (FR5.1) |
 | AD14 | **REFINEMENT of design FR2.4/FR1.2 — the in-flight usage relay rides the inference-autoscaling MQ precedent.** The gateway publishes per-org in-flight counts on the new subject **`quota.orgs.concurrency`** (JSON `{organization_id, in_flight, reported_at}`), one message per organization per report interval (default 10 s, zero counts included so stale entries clear). A consumer runner in `tenancy` (`quota_concurrency_consumer.go`, a `server.Runner` gated by `quota.concurrencyConsumer.enabled`) keeps the latest snapshot per org in a mutex-guarded in-memory map and exposes `CurrentInFlight(orgID)`, which returns **0** for a missing or stale entry (older than `quota.concurrencyConsumer.staleAfter`, default 2 m). The subscription is a plain subscribe (every taas-server replica keeps its own map — a queue group would leave replicas blind). The quota RPCs read the snapshot best-effort; a tenancy restart starts empty and refills within one report interval | The design requires the quota RPCs to surface live in-flight usage (FR1.2/FR4.1) while the counter is gateway-local state (FR2.4). The autoscaling feature already established gateway→MQ in-flight reporting as the platform's pattern; reusing it keeps one relay mechanism. Best-effort semantics (missing/stale/restart → 0) are the design's own framing — the counter is a display snapshot, never an enforcement input (enforcement is gateway-local) |
@@ -80,9 +80,9 @@ AD1–AD10 restate the UI/UX design's decisions (D1–D10) as implementation-lev
 | **Static bundle (SPA)** | One Vite bundle (`web/dist`) embedded into `taas-server`; served by the gateway's SPA fallback | Two new pages (`QuotasPage`, `UserQuotasPage`), the `QuotaBar` component, two nav items, route registration in `App.tsx`, i18n keys, the preset constants |
 | **Gateway (`pkg/server`)** | HTTP composition: `RealmGuard` → `withConsole` → grpc-gateway mux; the unified error renderer; the SPA fallback | **No change** — the new RPCs bind under `/api/v1/admin/quotas*` and `/api/v1/quotas`, which `RealmGuard` already classifies by prefix |
 | **grpc-gateway mux** | Path → RPC routing from `google.api.http` annotations | New bindings for the four quota RPCs (Section 5) |
-| **`tenancy`** | Organizations, projects, members, invitations | The six quota columns on `Organization`; the four quota RPCs; the `OrgQuotaReader` seam; the `sessionOrgResolver` seam and `requireAdminRole` gate; the in-flight consumer runner; the change-history read |
+| **`tenancy`** | Organizations, projects, members, invitations | The five quota columns on `Organization`; the four quota RPCs; the `OrgQuotaReader` seam; the `sessionOrgResolver` seam and `requireAdminRole` gate; the in-flight consumer runner; the change-history read |
 | **`auth`** | Sessions, API keys, the `VerifyAPIKey` verdict cache | The verdict gains the two quota fields (cache-miss construction + response mapping); the `SetOrgQuotaReader` seam |
-| **`infer`** | Inference services | The service-count check in `CreateInferenceService` (13302); `CountActiveServicesByOrg` in its repository; the `SetOrgQuotaReader` seam |
+| **`infer`** | Inference services | No quota check. Inference services are platform assets; the retired count cap is never enforced. |
 | **`batch`** | Batch jobs | The daily-jobs check in `CreateBatchJob` (13303); `CountJobsSince` in its repository; the `SetOrgQuotaReader` seam |
 | **`metering` / `billing`** | Usage records, funds | **No change** — quotas compose with, but never touch, the money axes |
 | **`audit`** | Best-effort audit recorder, the `audit_events` table | Reused unchanged: tenancy records `quota.updated` events and reads the history directly (AD16) |
@@ -110,7 +110,6 @@ flowchart TD
     subgraph services["gRPC services"]
         TEN["tenancy<br/>quota columns on organizations<br/>4 quota RPCs (new)<br/>OrgQuotaReader seam<br/>in-flight consumer (new)"]
         AUTH["auth<br/>VerifyAPIKey verdict<br/>+ 2 quota fields"]
-        INF["infer<br/>service-count check"]
         BAT["batch<br/>daily-jobs check"]
         AUD["audit"]
     end
@@ -120,7 +119,7 @@ flowchart TD
     end
 
     subgraph stores["State"]
-        PG[("PostgreSQL<br/>organizations (6 quota columns)<br/>inference_services<br/>batch_jobs<br/>audit_events")]
+        PG[("PostgreSQL<br/>organizations (5 quota columns)<br/>batch_jobs<br/>audit_events")]
         MQ["MQ<br/>quota.orgs.concurrency (new)"]
     end
 
@@ -166,21 +165,20 @@ A user-realm session presented on any `/api/v1/admin/quotas*` route is rejected 
 Enforcement lives at two points, and the usage display at a third:
 
 - **Hot path (gateway, contract pinned)** — concurrency and the per-request token cap are enforced by the Inference Gateway from the verdict, before dispatch (Section 5.3). The gateway is the only component that sees request accept/complete, so it is the only place in-flight tracking can be exact.
-- **Lifecycle (control plane)** — the service count and daily batch counters are enforced inside the existing create flows in `infer` and `batch` (Sections 13.6–13.7), reading the limits through the `OrgQuotaReader` seam (AD13).
-- **Usage display (tenancy, best-effort)** — the quota RPCs assemble the usage snapshot: in-flight from the MQ relay consumer (AD14), service count and batch-today from narrow COUNT reads on the shared handle (the established cross-module read pattern; display reads, independently evolvable from the enforcement queries).
+- **Lifecycle (control plane)** — the daily batch counter is enforced inside `CreateBatchJob` (Section 13.7), reading the limit through the `OrgQuotaReader` seam (AD13).
+- **Usage display (tenancy, best-effort)** — the quota RPCs assemble the usage snapshot: in-flight from the MQ relay consumer (AD14) and batch-today from a narrow COUNT read on the shared handle (the established cross-module read pattern; display reads, independently evolvable from the enforcement queries).
 
 ---
 
 ## 4. Data Model
 
-The feature adds **no new tables**. The quota state is six additive columns on `organizations` (AD11); the usage counters are computed (Section 4.2); the change history is the existing `audit_events` table (Section 4.3).
+The feature adds **no new tables**. The quota state is five additive columns on `organizations` (AD11); the usage counters are computed (Section 4.2); the change history is the existing `audit_events` table (Section 4.3).
 
 ### 4.1 `organizations` (additive columns)
 
 | Column | Type | Notes |
 | --- | --- | --- |
 | `max_concurrent_requests` | int64, NOT NULL, DEFAULT 0 | 0 = unlimited; when set, 1–10000 (FR1.1) |
-| `max_inference_services` | int64, NOT NULL, DEFAULT 0 | 0 = unlimited; when set, 1–1000 |
 | `max_batch_jobs_per_day` | int64, NOT NULL, DEFAULT 0 | 0 = unlimited; when set, 1–10000 |
 | `max_output_tokens_per_request` | int64, NOT NULL, DEFAULT 0 | 0 = unlimited; when set, 64–32768 |
 | `quota_updated_by` | string(64), NOT NULL, DEFAULT '' | The acting operator of the last change; '' = never updated |
@@ -193,11 +191,11 @@ The columns are added to the existing `Organization` GORM model in `services/ten
 | Counter | Source | Notes |
 | --- | --- | --- |
 | `concurrent_requests` | The in-flight consumer's snapshot (AD14) | Gateway-local state relayed on `quota.orgs.concurrency`; missing/stale (> `staleAfter`) or after a restart → 0; best-effort by design (FR2.4) |
-| `inference_services` | `COUNT(*) FROM inference_services WHERE organization_id = ? AND state <> 'terminated'` | Non-terminated services — the same population the org's service list shows; a narrowing read on the shared handle |
+| `inference_services` | `COUNT(*) FROM inference_services WHERE organization_id = ? AND state <> 'terminated'` | Read-only display counter; there is no `max_inference_services` limit and no create-time check. It remains on the wire for clients that show the count. |
 | `batch_jobs_today` | `COUNT(*) FROM batch_jobs WHERE organization_id = ? AND created_at >= <local midnight>` | Local midnight in `quota.timezone` (AD15); canceled and failed jobs count |
 | token cap | The limit itself | A constant display — there is no "current usage" for a per-request cap |
 
-The enforcement queries in `infer` and `batch` are the same shapes but live in their own repositories (the authoritative checks); tenancy's copies are display reads. The deliberate one-line duplication keeps display and enforcement independently evolvable (AD13).
+The enforcement query in `batch` is the same shape but lives in the batch repository (the authoritative check); tenancy's copy is a display read. The deliberate one-line duplication keeps display and enforcement independently evolvable (AD13).
 
 ### 4.3 Change history (`audit_events`, reused)
 
@@ -228,11 +226,10 @@ Four RPCs are new; three existing RPCs change behavior (one contract change, two
 | --- | --- | --- | --- | --- |
 | `ListOrganizationQuotas` (extends `taas.tenancy.v1.TenancyService`) | `GET /api/v1/admin/quotas` | admin | **new** | Per-org quota rows with best-effort live usage; pagination, name search, limit-state filter |
 | `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | admin | **new** | One org's quota + usage + the last 20 change-history entries; unknown org → 13306 |
-| `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | admin | **new** | Set any subset of the four dimensions; audited; 13305 on out-of-range values |
+| `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | admin | **new** | Set any subset of the three dimensions; audited; 13305 on out-of-range values |
 | `GetMyQuota` | `GET /api/v1/quotas` | user | **new** | The caller's own org quota with live usage (org-scoped from the session) |
 | `VerifyAPIKey` (`taas.auth.v1.AuthService`) | internal (gateway → `auth`) | n/a | **changed** | The verdict/response gain `max_concurrent_requests` (field 7) and `max_output_tokens_per_request` (field 8) |
-| `CreateInferenceService` (`taas.infer.v1`) | `POST /api/v1/inference-services` | user | **changed** | Gains the org service-count check; 13302 at the limit (no proto change) |
-| `CreateBatchJob` (`taas.batch.v1`) | `POST /api/v1/batch/jobs` | user | **changed** | Gains the daily batch-job check; 13303 at the limit (no proto change) |
+| `CreateBatchJob` (`taas.batch.v1`) | `POST /api/v1/batch` | user | **changed** | Gains the daily batch-job check; 13303 at the limit (no proto change) |
 
 Gateway routing notes: `GET /api/v1/admin/quotas` (collection root) and `GET /api/v1/admin/quotas/{organization_id}` are distinct paths — no wildcard conflict; the PATCH follows the existing `UpdateOrganization` convention on the same mux. The design's `unlimited_only`/`limited_only` filter (FR1.2) maps to a single `limit_state` query parameter (`all` (default) / `limited` / `unlimited`) — one parameter, three states, no boolean pair to validate.
 
@@ -257,7 +254,7 @@ Gateway routing notes: `GET /api/v1/admin/quotas` (collection root) and `GET /ap
     option (google.api.http) = {get: "/api/v1/admin/quotas/{organization_id}"};
   }
 
-  // UpdateOrganizationQuota sets any subset of the four dimensions
+  // UpdateOrganizationQuota sets any subset of the three dimensions
   // (proto3 optional tracks presence; an explicit 0 means unlimited).
   // Out-of-range values return 13305 with the dimension named. Audited
   // as quota.updated; tightening below current usage is allowed and
@@ -282,7 +279,6 @@ message OrganizationQuota {
   string organization_id = 1;
   string organization_name = 2;
   int64 max_concurrent_requests = 3;
-  int64 max_inference_services = 4;
   int64 max_batch_jobs_per_day = 5;
   int64 max_output_tokens_per_request = 6;
   int64 updated_at = 7; // unix seconds, 0 = never updated
@@ -292,7 +288,7 @@ message OrganizationQuota {
 // QuotaUsage is the best-effort live-usage snapshot (FR1.2/FR4.1).
 message QuotaUsage {
   int64 concurrent_requests = 1; // gateway in-flight snapshot (AD14)
-  int64 inference_services = 2;  // non-terminated service count
+  int64 inference_services = 2;  // non-terminated service count (display only; no limit)
   int64 batch_jobs_today = 3;    // COUNT since local midnight (AD15)
 }
 
@@ -300,7 +296,7 @@ message QuotaUsage {
 message QuotaChangeEntry {
   int64 changed_at = 1; // unix seconds
   string operator = 2;  // acting user id
-  string dimension = 3; // max_concurrent_requests | max_inference_services | max_batch_jobs_per_day | max_output_tokens_per_request
+  string dimension = 3; // max_concurrent_requests | max_batch_jobs_per_day | max_output_tokens_per_request
   int64 old_value = 4;
   int64 new_value = 5;
 }
@@ -338,7 +334,6 @@ message UpdateOrganizationQuotaRequest {
   string organization_id = 1;
   // optional tracks presence: absent = unchanged, explicit 0 = unlimited.
   optional int64 max_concurrent_requests = 2;
-  optional int64 max_inference_services = 3;
   optional int64 max_batch_jobs_per_day = 4;
   optional int64 max_output_tokens_per_request = 5;
 }
@@ -427,7 +422,6 @@ The contract, item by item:
 | --- | --- | --- |
 | `organization_id` (get/update) | must exist | 13306 |
 | `max_concurrent_requests` | 0 or 1–10000 | 13305 (dimension named) |
-| `max_inference_services` | 0 or 1–1000 | 13305 (dimension named) |
 | `max_batch_jobs_per_day` | 0 or 1–10000 | 13305 (dimension named) |
 | `max_output_tokens_per_request` | 0 or 64–32768 | 13305 (dimension named) |
 | `limit_state` filter | `all` / `limited` / `unlimited` (empty = all) | 13305 |
@@ -471,13 +465,13 @@ The admin page contains **no `/api/v1/*` call**; the user page and bar contain *
 <Route path="/quotas" element={<UserQuotasPage />} />
 ```
 
-`UserShell` additionally renders `QuotaBar` in the org context area, beside the `OrgSwitcher` (design §5.4): it polls `GET /api/v1/quotas` on a 30 s `usePolling` interval, hides entirely when all four dimensions are unlimited (the default — no visual noise for unconstrained orgs), and links to `/quotas` on click.
+`UserShell` additionally renders `QuotaBar` in the org context area, beside the `OrgSwitcher` (design §5.4): it polls `GET /api/v1/quotas` on a 30 s `usePolling` interval, hides entirely when all three dimensions are unlimited (the default — no visual noise for unconstrained orgs), and links to `/quotas` on click.
 
 ### 6.3 Shared components and state to reuse
 
 - `Dialog` (the edit dialog and its inline validation), the `data` table styles, `PageMeta` pagination, the drawer pattern from `RoutingDecisionsPage`/`AcceleratorNodeDetailPage`, `usePolling` (`web/src/components.tsx`) for the bar and the admin table refresh, the badge/progress-bar classes — all existing console conventions.
 - **`QuotaDimensionCard`** (`web/src/pages/user/quotas/QuotaDimensionCard.tsx`): one dimension card — name, plain-language description ("Requests in flight right now across your organization"), the usage/limit pair ("12 / 50" or "Unlimited"), a progress bar (amber ≥ 80%, red 100%), and for the token cap a constant display ("Each request may generate at most 8192 tokens"). Used by `UserQuotasPage`; the bar renders the same logic compactly.
-- **`QuotaBar`** (`web/src/pages/user/quotas/QuotaBar.tsx`): four compact chips — "In flight 12/50", "Services 3/20", "Batch today 5/50", "Tokens ≤ 8192" (or "Unlimited" per chip); amber at ≥ 80%, red at 100%; a failed poll keeps the last good data (the stale convention) and the bar hides when all dimensions are unlimited.
+- **`QuotaBar`** (`web/src/pages/user/quotas/QuotaBar.tsx`): three compact chips — "In flight 12/50", "Batch today 5/50", "Tokens ≤ 8192" (or "Unlimited" per chip); amber at ≥ 80%, red at 100%; a failed poll keeps the last good data (the stale convention) and the bar hides when all dimensions are unlimited.
 - **The preset constants** (AD17) live in `QuotasPage.tsx` as a typed map (`default`/`starter`/`growth`/`enterprise` → the four values); the edit dialog renders them as four one-click fill buttons, and every field stays editable after a fill.
 - The **Request-increase mailto** (AD18): `mailto:{request_increase_email}?subject=...&body=...` with the org's display name prefilled, `encodeURIComponent`-safe; hidden when `request_increase_email` is empty.
 
@@ -565,19 +559,12 @@ sequenceDiagram
     autonumber
     actor Agent as Tenant administrator
     participant UI as End-user console
-    participant ISVC as infer service
     participant BSVC as batch service
     participant TEN as tenancy (OrgQuotaReader)
     participant DB as PostgreSQL
 
-    Agent->>UI: Creates an inference service (the org runs 20)
-    UI->>ISVC: POST /api/v1/inference-services
-    ISVC->>TEN: OrgQuota(org) - max_inference_services 20
-    ISVC->>DB: COUNT services (state not terminated) = 20
-    ISVC-->>UI: 13302 - limit of 20 reached, remove one or request an increase
-    Note over ISVC: Existing services are never deleted by a tightening (D6)
     Agent->>UI: Submits a batch job (today's 51st)
-    UI->>BSVC: POST /api/v1/batch/jobs
+    UI->>BSVC: POST /api/v1/batch
     BSVC->>TEN: OrgQuota(org) - max_batch_jobs_per_day 50
     BSVC->>DB: COUNT batch_jobs since local midnight = 50
     BSVC-->>UI: 13303 - today's limit of 50 reached, backs off until midnight
@@ -591,7 +578,6 @@ sequenceDiagram
 | Condition | HTTP | Code | Constant | Notes |
 | --- | --- | --- | --- | --- |
 | Org concurrency at its limit | **429 + `Retry-After: 1`** | 13301 | `CodeQuotaConcurrencyExceeded` | Gateway-rendered (data plane, Section 5.3); the control plane never returns it |
-| Org at its inference-service limit | 500 | 13302 | `CodeQuotaServiceCountExceeded` | `CreateInferenceService` rejection; message names the current count and the limit |
 | Org at its daily batch-job limit | 500 | 13303 | `CodeQuotaBatchJobsExceeded` | `CreateBatchJob` rejection; message names today's count and the limit |
 | Request `max_tokens` above the org cap | **400** | 13304 | `CodeQuotaOutputTokensExceeded` | Gateway-rendered (data plane); the message names the cap |
 | Quota value out of range (or invalid `limit_state`) | 500 | 13305 | `CodeQuotaInvalid` | Validation; the dimension is named in the message |
@@ -661,12 +647,12 @@ The compose stack sets `CONFIG_QUOTA_REQUESTINCREASETO` so the e2e suite exercis
 
 ## 11. Rollout and Upgrade Notes
 
-1. **Additive only**: six columns with permissive defaults on `organizations` (AutoMigrate), a new proto extension, new routes, one MQ subject. No existing column, message field or route changes; existing callers are unaffected.
+1. **Additive only**: five columns with permissive defaults on `organizations` (AutoMigrate), a new proto extension, new routes, one MQ subject. No existing column, message field or route changes; existing callers are unaffected.
 2. **No behavior change until an operator sets a quota**: every dimension defaults to 0 = unlimited — the gateway's new verdict fields read 0 and skip their checks, the create guards skip, the bar hides. The feature is inert until deliberately activated (§1.4 rule 4).
 3. **Verdict backward compatibility** (AD12): verdicts cached before the upgrade deserialize without the quota keys → 0 → unlimited; the fields appear in new verdicts as caches expire (≤ 30 s). An older gateway that receives the extended response ignores the unknown proto fields — the two deployments order freely.
 4. **Deploy order**: none — one binary; the columns migrate on startup, the consumer runner starts (gated by config), the seams wire in `main.go`. Nil seams read as unlimited, so partial setups (e.g. FVT) behave as pre-feature.
 5. **Propagation windows** (D6, AC11): hot-path changes (concurrency, token cap) are enforced within the verdict TTL (≤ 30 s); lifecycle changes (services, batch/day) on the next create call. Both windows are documented in the admin drawer copy.
-6. **Rollback**: rolling the binary back leaves the six columns in place (harmless — nothing else reads them) and restores the pre-feature behavior completely; the MQ subject simply has no subscriber. Quota values survive a rollback and re-apply on re-upgrade.
+6. **Rollback**: rolling the binary back leaves the five columns in place (harmless — nothing else reads them) and restores the pre-feature behavior completely; the MQ subject simply has no subscriber. Quota values survive a rollback and re-apply on re-upgrade.
 7. **Load**: the create-time guards add one indexed COUNT per create call; the quota list adds two COUNTs per page row (best-effort, page-bounded); the consumer handles one small JSON message per org per 10 s — negligible against the existing runners.
 
 ---
@@ -679,10 +665,10 @@ The compose stack sets `CONFIG_QUOTA_REQUESTINCREASETO` so the e2e suite exercis
 | AC2 edit-dialog validation (ranges, "0 = unlimited" copy), 13305 with the dimension named, one-click presets remaining editable | FR1.4–FR1.5, D5 | §5.4, AD17, §13.2 (Update), §13.9 |
 | AC3 concurrency enforcement (synthetic): N+1st rejected 13301 + `Retry-After: 1`, slot freed on completion, unlimited never rejects | FR2.2, §6 note 2 | §5.3 (pinned contract), AD12, §7.2, §13.5, test/fvt (§14) |
 | AC4 token-cap enforcement (synthetic): explicit over-cap → 13304 naming the cap; absent `max_tokens` clamped and completes; ≤ cap passes | FR2.3 | §5.3, AD12, §7.2, §13.5 |
-| AC5 service-count guard: N+1st create → 13302 with the count; tightening below the running count is non-destructive | FR3.1, D6 | AD13, §13.6, §7.3, §11.5 |
+| AC5 service-count guard removed: `max_inference_services` is not projected or checked, and `CreateInferenceService` never returns 13302 | FR3.1 (retired) | FVT (`TestFVTQuotaServiceCountIsNotLimited`) |
 | AC6 batch daily guard: N+1st create → 13303 with today's count; canceled/failed count | FR3.2 | AD15, §13.7, §7.3 |
 | AC7 check order: rate before quota, quota before funds | §1.4, §6 note 2 | §5.3 (flowchart + items 2–3), §7.2 |
-| AC8 quota bar (four chips, amber ≥ 80%, red 100%, hides when all unlimited) + `/quotas` cards + Request-increase mailto | FR4.2–FR4.3, D8 | AD18, §6.1–6.3, §13.9 |
+| AC8 quota bar (three chips, amber ≥ 80%, red 100%, hides when all unlimited) + `/quotas` cards + Request-increase mailto | FR4.2–FR4.3, D8 | AD18, §6.1–6.3, §13.9 |
 | AC9 tenant org scoping: only the caller's org, no leak, no tenant mutation route | FR4.1, FR4.4 | §3.3, §5.2 (GetMyQuota), §10, §13.2 |
 | AC10 change history and audit: `quota.updated` old → new + operator, drawer last 20 | FR1.3–FR1.4, D9 | AD16, §4.3, §7.1, §13.2–13.3 |
 | AC11 propagation window: hot-path ≤ 30 s, lifecycle next create, drawer documents both | D6, D3 | AD12, §11.5, §7.1 |
@@ -698,15 +684,15 @@ The compose stack sets `CONFIG_QUOTA_REQUESTINCREASETO` so the e2e suite exercis
 
 | Module | File | Responsibility |
 | --- | --- | --- |
-| `proto/taas/tenancy/v1` | `tenancy.proto` | The four quota RPCs + messages (Section 5.2); regenerate |
+| `proto/taas/tenancy/v1` | `tenancy.proto` | The four quota RPCs + messages (Section 5.2, with the retired field reserved); regenerate |
 | `proto/taas/auth/v1` | `auth.proto` | `VerifyAPIKeyResponse` fields 7–8; regenerate |
-| `services/tenancy` | `tenancy_model.go` | The six additive fields on `Organization` (AD11) |
+| `services/tenancy` | `tenancy_model.go` | The five additive fields on `Organization` (AD11) |
 | | `quota.go` (new) | The `OrgQuota` value struct, the exported `OrgQuotaReader` interface, the range constants and `ValidateQuota` (AD13) |
 | | `quota_repository.go` (new) | Quota list/get/update, the usage COUNT reads, the change-history read (AD16) |
 | | `quota_service.go` (new) | The four RPCs, `requireAdminRole`, the `sessionOrgResolver` seam, `SetSessionOrgResolver` |
 | | `quota_concurrency_consumer.go` (new) | The MQ consumer runner + the snapshot map + `CurrentInFlight` (AD14) |
 | `services/auth` | `apikey_cache.go`, `service.go` | The verdict fields, the cache-miss construction, the response mapping, `SetOrgQuotaReader` (AD12) |
-| `services/infer` | `service.go`, the infer repository | `checkServiceQuota` in `CreateInferenceService`, `CountActiveServicesByOrg`, `SetOrgQuotaReader` |
+| `services/infer` | — | No quota check (the service-count cap is retired). |
 | `services/batch` | `service.go`, the batch repository | `checkBatchQuota` in `CreateBatchJob`, `CountJobsSince`, `SetOrgQuotaReader` |
 | `pkg/errors` | `codes.go`, `messages.go` | The 133xx block after the optimization block |
 | `pkg/config` | `api.go`, `configuration.go` | `QuotaConfig` (+ `QuotaConcurrencyConsumerConfig`), defaults, validation |
@@ -725,7 +711,7 @@ The compose stack sets `CONFIG_QUOTA_REQUESTINCREASETO` so the e2e suite exercis
 
 Per-RPC responsibilities:
 
-- **`ListOrganizationQuotas`**: `requireAdminRole` → validate `limit_state` (**13305**) → `repo.ListOrganizationQuotas(ctx, QuotaListFilter{Name, LimitState, Offset, Limit})` (org rows with the six columns; `limited` = any of the four maxima > 0) → per row assemble `QuotaUsage`: `concurrent_requests` from `concurrency.CurrentInFlight(orgID)`, `inference_services` from `repo.CountActiveServicesByOrg`, `batch_jobs_today` from `repo.CountBatchJobsSince(orgID, midnight)` → `PageMeta`. Usage assembly is per page row only (bounded), best-effort (a COUNT error logs a warning and yields 0 for that row — the list never fails on usage).
+- **`ListOrganizationQuotas`**: `requireAdminRole` → validate `limit_state` (**13305**) → `repo.ListOrganizationQuotas(ctx, QuotaListFilter{Name, LimitState, Offset, Limit})` (org rows with the five columns; `limited` = any of the three maxima > 0) → per row assemble `QuotaUsage`: `concurrent_requests` from `concurrency.CurrentInFlight(orgID)`, `batch_jobs_today` from `repo.CountBatchJobsSince(orgID, midnight)` → `PageMeta`. Usage assembly is per page row only (bounded), best-effort (a COUNT error logs a warning and yields 0 for that row — the list never fails on usage).
 - **`GetOrganizationQuota`**: `requireAdminRole` → `repo.GetOrganizationQuota(ctx, orgID)` (**13306** on unknown) → usage as above → `repo.ListQuotaChanges(ctx, orgID, 20)` (AD16) → the full response.
 - **`UpdateOrganizationQuota`**: `requireAdminRole` → load the org (**13306**) → for each present optional field validate the range (**13305**, dimension named in the message) → diff against the current values; no actual change → return the current quota + usage (no write, no audit) → `repo.UpdateOrganizationQuota(ctx, orgID, patch, actor, now)` (one UPDATE of the changed columns + `quota_updated_by`/`quota_updated_at`) → `recordAudit("quota.updated", orgID, orgID, "success", metadata{"changes": [...]})` (best-effort) → return the updated quota + usage.
 - **`GetMyQuota`**: resolve the org (`sessionOrgResolver.SessionActiveOrg`, the transitional header fallback, empty → **10005**) → `repo.GetOrganizationQuota` → usage → `request_increase_email` from `cfg.Quota.RequestIncreaseTo`. No role gate; no org parameter exists on the request.
@@ -734,13 +720,12 @@ Per-RPC responsibilities:
 
 `quota_repository.go` (the `database.Manager` pattern, same handle as the existing tenancy repository):
 
-- `ListOrganizationQuotas(ctx, filter)` — `SELECT` org rows with the six columns; `name` matches `display_name ILIKE '%q%'` or the id prefix; `limit_state` filters `limited` = any max > 0 / `unlimited` = all zero; ordered by `display_name`, paginated with a total count.
+- `ListOrganizationQuotas(ctx, filter)` — `SELECT` org rows with the five columns; `name` matches `display_name ILIKE '%q%'` or the id prefix; `limit_state` filters `limited` = any max > 0 / `unlimited` = all zero; ordered by `display_name`, paginated with a total count.
 - `GetOrganizationQuota(ctx, orgID)` — one row or GORM `ErrRecordNotFound` → **13306**.
 - `UpdateOrganizationQuota(ctx, orgID, patch, actor, now)` — the UPDATE (only changed columns + the two stamps).
-- `CountActiveServicesByOrg(ctx, orgID)` — `COUNT(*) FROM inference_services WHERE organization_id = ? AND state <> 'terminated'` (the shared-handle display read, AD13's noted duplication).
 - `CountBatchJobsSince(ctx, orgID, since)` — `COUNT(*) FROM batch_jobs WHERE organization_id = ? AND created_at >= ?`.
 - `ListQuotaChanges(ctx, orgID, limit)` — `SELECT created_at, actor_user_id, metadata FROM audit_events WHERE organization_id = ? AND action = 'quota.updated' ORDER BY created_at DESC` (walk until `limit` flattened entries are collected, newest first; AD16).
-- `OrgQuota(ctx, orgID)` — the `OrgQuotaReader` implementation: the four maxima off the org row (unknown org → the zero struct, not an error — a missing org during verdict construction must read as unlimited, never fail auth; AD12's fail-open rule).
+- `OrgQuota(ctx, orgID)` — the `OrgQuotaReader` implementation: the three maxima off the org row (unknown org → the zero struct, not an error — a missing org during verdict construction must read as unlimited, never fail auth; AD12's fail-open rule).
 
 ### 13.4 `services/tenancy` — the in-flight consumer (AD14)
 
@@ -759,19 +744,9 @@ Per-RPC responsibilities:
 - The response mapping gains `MaxConcurrentRequests: verdict.MaxConcurrentRequests` and `MaxOutputTokensPerRequest: verdict.MaxOutputTokensPerRequest` (proto fields 7/8).
 - `SetOrgQuotaReader(tenancy.OrgQuotaReader)` — the injection seam; nil reads as unlimited (existing FVT setups unchanged).
 
-### 13.6 `services/infer` — the service-count check (FR3.1)
+### 13.6 `services/infer` — no quota check (retired)
 
-- The infer repository gains `CountActiveServicesByOrg(ctx, orgID) (int64, error)` — `COUNT(*) WHERE organization_id = ? AND state <> 'terminated'`.
-- `CreateInferenceService`: immediately after `checkOrg(ctx, orgID, true)` and before the name-pattern validation — the org-level guard runs as soon as the org context is validated, before any payload work:
-
-```go
-if err := s.checkServiceQuota(ctx, orgID); err != nil {
-    return nil, err
-}
-```
-
-- `checkServiceQuota`: nil reader → nil (unlimited); `q.MaxInferenceServices == 0` → nil; `count, err := s.repo.CountActiveServicesByOrg(ctx, orgID)`; `count >= q.MaxInferenceServices` → **13302** with user-facing copy naming both numbers ("Your organization has reached its limit of 20 inference services. Request an increase or remove an unused service."). The check never deletes or mutates existing services (D6).
-- `SetOrgQuotaReader` — the injection seam.
+The inference-service count is not a quota dimension. `CreateInferenceService` has no `checkServiceQuota` call and never returns 13302; `CodeQuotaServiceCountExceeded` remains defined only so an older client can still decode it. The infer repository keeps `InferenceServiceCountByOrganization` for tenancy's historical usage projection, but neither the quota API nor the create flow consults it. The FVT `TestFVTQuotaServiceCountIsNotLimited` proves the create succeeds and the field is absent from the quota projection.
 
 ### 13.7 `services/batch` — the daily-jobs check (FR3.2, AD15)
 
@@ -798,7 +773,7 @@ if err := s.checkBatchQuota(ctx, orgID); err != nil {
 // Gateway (429/400) per the pinned contract; the rest surface through
 // grpc-gateway as the unified envelope.
 CodeQuotaConcurrencyExceeded   Code = 13301 // QUOTA_CONCURRENCY_EXCEEDED
-CodeQuotaServiceCountExceeded  Code = 13302 // QUOTA_SERVICE_COUNT_EXCEEDED
+CodeQuotaServiceCountExceeded  Code = 13302 // retired: kept for wire compatibility, never returned
 CodeQuotaBatchJobsExceeded     Code = 13303 // QUOTA_BATCH_JOBS_EXCEEDED
 CodeQuotaOutputTokensExceeded  Code = 13304 // QUOTA_OUTPUT_TOKENS_EXCEEDED
 CodeQuotaInvalid               Code = 13305 // QUOTA_INVALID
@@ -809,9 +784,9 @@ CodeQuotaNotFound              Code = 13306 // QUOTA_NOT_FOUND
 
 ### 13.9 Frontend detailed design
 
-- **`QuotasPage`** (`/admin/quotas`): loads `GET /api/v1/admin/quotas?{page, name, limit_state}`; renders the org table — Org (name + id), Concurrency ("12 / 50" or "Unlimited"), Services, Batch today (same shape), Token cap ("8192" or "Unlimited"), Updated (relative), Updated by; row click opens the edit dialog, the history icon opens the drawer. Filter bar: name search, Limit state (All / Limited / Unlimited), pagination. **Edit dialog**: the preset row (Default / Starter / Growth / Enterprise — one click fills the four fields, AD17), the four number fields labeled with their ranges and "0 = unlimited", inline validation ("Enter 0 (unlimited) or 1–10000" style copy), Save → `PATCH /api/v1/admin/quotas/{id}`; a **13305** response highlights the offending field with the server copy; success shows a toast and refreshes the row. **History drawer**: Time, Operator, Dimension, Old → New ("Concurrency: 50 → 100"), newest first, 20 entries, plus the propagation-window note (hot-path ≤ 30 s, lifecycle next create — D6/AC11) and the batch-counter timezone note. States: loading skeletons; empty ("No organizations yet"); error (stale with retry); permission-denied (10036, link to `/admin`).
+- **`QuotasPage`** (`/admin/quotas`): loads `GET /api/v1/admin/quotas?{page, name, limit_state}`; renders the org table — Org (name + id), Concurrency ("12 / 50" or "Unlimited"), Batch today (same shape), Token cap ("8192" or "Unlimited"), Updated (relative), Updated by; row click opens the edit dialog, the history icon opens the drawer. Filter bar: name search, Limit state (All / Limited / Unlimited), pagination. **Edit dialog**: the preset row (Default / Starter / Growth / Enterprise — one click fills the four fields, AD17), the four number fields labeled with their ranges and "0 = unlimited", inline validation ("Enter 0 (unlimited) or 1–10000" style copy), Save → `PATCH /api/v1/admin/quotas/{id}`; a **13305** response highlights the offending field with the server copy; success shows a toast and refreshes the row. **History drawer**: Time, Operator, Dimension, Old → New ("Concurrency: 50 → 100"), newest first, 20 entries, plus the propagation-window note (hot-path ≤ 30 s, lifecycle next create — D6/AC11) and the batch-counter timezone note. States: loading skeletons; empty ("No organizations yet"); error (stale with retry); permission-denied (10036, link to `/admin`).
 - **`UserQuotasPage`** (`/quotas`): loads `GET /api/v1/quotas`; renders four `QuotaDimensionCard`s; below them the **Request increase** button (the AD18 mailto with the org name prefilled, hidden when `request_increase_email` is empty) and the note that quotas are set by the platform operator. States: loading; the friendly all-unlimited empty state ("No limits are set for your organization — usage is unrestricted"); error (stale with retry).
-- **`QuotaBar`** (UserShell org context area, beside `OrgSwitcher`): `usePolling` on `GET /api/v1/quotas` (30 s); four chips ("In flight 12/50", "Services 3/20", "Batch today 5/50", "Tokens ≤ 8192", or "Unlimited" per chip); amber ≥ 80%, red 100%; click navigates to `/quotas`; hides when all four maxima are 0; a failed poll keeps the last good chips.
+- **`QuotaBar`** (UserShell org context area, beside `OrgSwitcher`): `usePolling` on `GET /api/v1/quotas` (30 s); three chips ("In flight 12/50", "Batch today 5/50", "Tokens ≤ 8192", or "Unlimited" per chip); amber ≥ 80%, red 100%; click navigates to `/quotas`; hides when all four maxima are 0; a failed poll keeps the last good chips.
 - **`api.ts`**: `OrganizationQuota`, `QuotaUsage`, `QuotaChangeEntry`, `OrganizationQuotaRow` types; the int64 fields typed as strings (the serialization convention).
 - **i18n**: `nav.quotas` and the `quota.*` keys (table, dialog, presets, drawer, cards, bar, states) in `en.ts`/`zh.ts` (the `routingGroups.*` convention).
 
@@ -847,13 +822,13 @@ Nil seams are safe everywhere: a nil reader reads as unlimited and a nil consume
 2. **`pkg/config`**: `QuotaConfig` (+ consumer sub-config) + defaults + validation + the `configs/config.yaml` section.
 3. **`pkg/mq`**: `SubjectQuotaOrgsConcurrency`.
 4. **`proto/taas/tenancy/v1/tenancy.proto`**: the four RPCs + messages; **`proto/taas/auth/v1/auth.proto`**: fields 7–8; regenerate.
-5. **`services/tenancy/tenancy_model.go`**: the six additive `Organization` fields.
+5. **`services/tenancy/tenancy_model.go`**: the five additive `Organization` fields.
 6. **`services/tenancy/quota.go`**: `OrgQuota`, the exported `OrgQuotaReader`, the range constants, `ValidateQuota`.
 7. **`services/tenancy/quota_repository.go`**: list/get/update, the usage COUNTs, the change-history read, the `OrgQuota` reader implementation.
 8. **`services/tenancy/quota_service.go`**: the four RPCs, `requireAdminRole`, the `sessionOrgResolver` seam.
 9. **`services/tenancy/quota_concurrency_consumer.go`**: the runner, the snapshot map, `CurrentInFlight`.
 10. **`services/auth`**: the verdict fields, the cache-miss construction (fail-open on read error), the response mapping, `SetOrgQuotaReader`.
-11. **`services/infer`**: `CountActiveServicesByOrg`, `checkServiceQuota` (13302), `SetOrgQuotaReader`.
+11. **`services/infer`**: no quota check. The inference-service count is not capped; its repository keeps the count helper only for display.
 12. **`services/batch`**: `CountJobsSince`, `checkBatchQuota` (13303, midnight in `quota.timezone`), `SetOrgQuotaReader`.
 13. **`apps/taas-server/main.go`**: the seam wiring + the consumer runner.
 14. **`web/src/api.ts` + locales**: types and i18n keys.

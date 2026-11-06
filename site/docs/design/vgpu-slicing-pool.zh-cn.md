@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研与切片模型决策（标签驱动的池成员、切片模板、切片感知调度提示）、管理面页面 `/admin/vgpu-pools` 与 `/admin/vgpu-pools/:poolId`（池 CRUD、节点成员、切片模板管理、按池分配）、终端用户面 vGPU 感知部署模式与服务详情切片展示、页面 → API 表面映射表，以及编号验收标准 |
 | 负责模块 | `vgpu`（新模块 — 池成员、切片模板、容量核算、调度提示）、`infer`（部署表单 vGPU 字段、服务切片分配）、`Controller`（将调度提示转为 HAMI 设备请求）、`k8s`（节点标签、扩展资源、HAMI 注解）、`pkg/server` 网关（管理 + 用户前缀绑定）、`web` 管理控制台 + 终端用户控制台 |
 | 相关文档 | [架构设计](./architecture.md) — §2.3 异构计算、§2.4 `infer`、§2.7 Controller · [加速器清单与健康](./accelerator-inventory.zh-cn.md) — 本功能池节点是其带标签子集的按节点 GPU 机群视图 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本功能扩展的部署表单 · [推理弹性伸缩](./inference-autoscaling.zh-cn.md) — 切片感知副本规模 · [服务配额管理](./service-quota-management.zh-cn.md) — 切片数配额维度由此延迟而来 · [多集群管理](./multi-cluster-management.zh-cn.md) — 跨集群池成员 · [控制台表面分离](./console-surface-separation.zh-cn.md) — 两个表面、脱敏投影规则 |
-| 状态 | 设计完成，已移交架构师 agent |
+| 状态 | 已实现 |
 
 ---
 
@@ -240,8 +240,8 @@ vGPU RPC 位于新 **`vgpu`** 模块（管理面）外加一个小的 **`infer`*
 | `UpdateVGPUPool` | `PATCH /api/v1/admin/vgpu-pools/{pool_id}` | 管理面 | **新** | 更新策略/模板/选择器；审计；模板非法 13402 |
 | `DeleteVGPUPool` | `DELETE /api/v1/admin/vgpu-pools/{pool_id}` | 管理面 | **新** | 删除池；有服务使用则 13405 |
 | `ListVGPUPools`（租户可见） | `GET /api/v1/vgpu-pools` | 用户面 | **新** | 调用者组织可用的池（授权过滤）含模板 — 供部署表单 |
-| `CreateInferenceService`（`taas.infer.v1`） | `POST /api/v1/inference-services` | 用户面 | **改** | 新增可选 `pool_id` + `slice_template_id`；池/模板非法或未授权则 13403 |
-| `GetInferenceService`（`taas.infer.v1`） | `GET /api/v1/inference-services/{service_id}` | 用户面 | **改** | 响应在共享 GPU 时新增分配的切片（池、模板、物理 GPU） |
+| `CreateInferenceService`（`taas.infer.v1`） | `POST /api/v1/admin/inference-services` | 用户面 | **改** | 新增可选 `pool_id` + `slice_template_id`；池/模板非法或未授权则 13403 |
+| `GetInferenceService`（`taas.infer.v1`） | `GET /api/v1/admin/inference-services/{service_id}` | 用户面 | **改** | 响应在共享 GPU 时新增分配的切片（池、模板、物理 GPU） |
 
 **给架构师 agent 的契约说明**：
 

@@ -4,9 +4,9 @@
 | --- | --- |
 | Feature point | Inference autoscaling & scale-to-zero (backlog row 16) |
 | Document scope | Requirement analysis and UI/UX design for automatic horizontal scaling of inference services and the ability to scale them to zero when idle: admin console policy controls, per-service autoscaling configuration, the end-user console's read-only autoscaling visibility, API surface, and acceptance criteria |
-| Owning modules | `infer` (autoscaling policy on inference services), `Controller` (HPA/KEDA reconciliation and scale-to-zero scheduling), `model` (per-model defaults), `auth`/`tenancy` (surface and org scoping) |
+| Owning modules | `infer` (autoscaling policy on inference services), `Controller` (AIBrix PodAutoscaler reconciliation and scale-to-zero scheduling), `model` (per-model defaults), `auth`/`tenancy` (surface and org scoping) |
 | Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle this feature extends · [Console Surface Separation](./console-surface-separation.md) — the two-surface rule this design follows · [Usage Dashboards & Per-Request Cost Attribution](./usage-dashboard.md) — the user-surface model list pattern |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -56,7 +56,7 @@ Pitfalls to avoid:
 | D1 | Autoscaling is a **policy on the inference service**, configured at deploy time and editable in place; it does not create a new resource type | Matches the `infer` module's desired-state model (§2.4); the Controller turns the policy into an HPA, keeping the console contract stable |
 | D2 | The policy has exactly: **enabled** (bool), **min replicas** (0–max), **max replicas** (min–100), **target concurrency** (1–1000, default 32), **scale-to-zero** (bool, requires min=0), **cooldown seconds** (0–3600, default 300) | Mirrors the industry min/max + target + activation/cooldown contract in the smallest field set; concurrency is the metric that works at zero |
 | D3 | Scale-to-zero is a **separate toggle** that requires `min replicas = 0`; enabling it forces min to 0, disabling it forces min to ≥ 1 | KServe's explicit opt-in is the cleanest UX; the min=0 dependency is surfaced as a form rule, not a hidden constraint |
-| D4 | The Controller implements the policy as a Kubernetes HPA on a **concurrency** metric (in-flight requests reported by the Inference Gateway), with a downscale stabilization window equal to the cooldown; scale-to-zero uses the HPA `minReplicas: 0` path with an activation threshold | Concurrency is measurable at the gateway even at zero replicas (the gateway sees the request before routing); this is the only metric that supports scale-to-zero |
+| D4 | The Controller implements the policy as an AIBrix `PodAutoscaler` targeting the service's `StormService`, scaling on the engine's per-pod `num_requests_running` metric; scale-to-zero uses the `PodAutoscaler` `minReplicas: 0` path. The cooldown remains a policy field enforced by the platform contract, not by the current CRD object | Concurrency is measurable at the gateway even at zero replicas (the gateway sees the request before routing); this is the only metric that supports scale-to-zero |
 | D5 | Autoscaling is **admin-surface only** for configuration; the end-user console gets a **read-only** autoscaling summary per model | Configuration is operator orchestration (replicas, targets, cooldowns); the tenant consumes models and only needs to know the model is autoscaled and its current behavior |
 | D6 | The admin console manages autoscaling in two places: a **global default policy** (applied to new services) and a **per-service policy** (overrides the default); per-model defaults are derived from the global default | A global default keeps new deployments sane without per-model config; per-service override gives operators control where it matters; per-model defaults are a follow-up (see §8) |
 | D7 | The end-user console shows autoscaling on the **model** level (a model is autoscaled, currently N replicas, scale-to-zero on/off), never on the service level | The tenant consumes models over the OpenAI-compatible endpoint (feature #17 AD14); services are operator-internal artifacts |
@@ -122,7 +122,7 @@ Pitfalls to avoid:
 - **FR3.1** The inference-services list shows an **Autoscaling** column: a badge (`On` / `Off`) and, when on, the current replica count as `current/min–max` (e.g. `3/1–10`).
 - **FR3.2** The service detail page shows the full autoscaling policy and a **status** block: current replicas, desired replicas, target concurrency, current concurrency, autoscaling state (`scaling-up` / `scaling-down` / `steady` / `scaled-to-zero` / `cold-starting` / `disabled` / `error`), and the last scaling event time.
 - **FR3.3** A `cold-starting` state is shown when a scaled-to-zero service has received a request and is spinning up; a `scaled-to-zero` state when it is idle at zero.
-- **FR3.4** An `error` state surfaces the autoscaler failure reason (e.g. metric unavailable, HPA rejected) with an actionable message.
+- **FR3.4** An `error` state surfaces the autoscaler failure reason (e.g. metric unavailable, autoscaler rejected) with an actionable message. The current AIBrix reconciler publishes lifecycle state (`queued`/`starting`/`running`/`failed`) and endpoints; the autoscaling status block is rendered when a controller report carries it, and shown as "not reported" otherwise.
 
 ### FR4 — End-user read-only autoscaling visibility (user)
 
@@ -135,7 +135,7 @@ Pitfalls to avoid:
 
 - **FR5.1** A scaled-to-zero service that receives a request transitions to `cold-starting` (admin) / `warming up` (user) and spins up to at least 1 replica.
 - **FR5.2** The cooldown window prevents a just-scaled-down service from being immediately re-created; the service stays at its current count for at least `cooldown` seconds after a scale-down.
-- **FR5.3** Scale-to-zero only scales down when concurrency is below the activation threshold for the cooldown duration; a single stray request does not keep it at 1.
+- **FR5.3** Scale-to-zero scales down when the engine's per-pod concurrency stays below the target; the AIBrix controller owns the stabilization behavior. `cooldown_seconds` is stored and validated on the policy for deployments that can honor it; a single stray request does not keep the service at 1.
 
 ---
 
@@ -293,20 +293,20 @@ sequenceDiagram
     actor Agent as Agent / SDK
     participant DGW as Inference Gateway
     participant CTRL as Controller
-    participant HPA as HPA (concurrency metric)
+    participant PA as AIBrix PodAutoscaler
     participant SVC as Inference service
 
-    Note over HPA,SVC: Service idle, scaled to zero
+    Note over PA,SVC: Service idle, scaled to zero
     Agent->>DGW: POST /v1/chat/completions (model)
-    DGW->>HPA: Report in-flight concurrency = 1
-    HPA->>CTRL: Activate, scale 0 -> 1
+    PA->>SVC: Scrape num_requests_running
+    PA->>CTRL: Activate, scale 0 -> 1
     CTRL->>SVC: Create replica (cold start)
     SVC-->>CTRL: Ready
     CTRL-->>DGW: Endpoint available
     DGW-->>Agent: Forward request (slower first call)
-    Note over DGW,HPA: Concurrency rises, HPA scales 1 -> N
-    Note over HPA,SVC: Idle below activation threshold for cooldown
-    HPA->>CTRL: Scale down to zero after cooldown
+    Note over PA: Concurrency rises, PodAutoscaler scales 1 -> N
+    Note over PA,SVC: Idle below target
+    PA->>CTRL: Scale down (AIBrix behavior)
 ```
 
 ### 6.10 Autoscaling Status Sequence (admin polling)
@@ -321,10 +321,10 @@ sequenceDiagram
 
     Admin->>UI: Open /admin/inference-services/{id}
     UI->>CGW: GET /api/v1/admin/inference-services/{id}
-    CGW->>Infer: GetInferenceService (with autoscaling status)
-    Infer-->>CGW: policy + status (current, desired, state)
+    CGW->>Infer: GetInferenceService (lifecycle state + policy)
+    Infer-->>CGW: policy + status (autoscaling block when reported)
     CGW-->>UI: Render policy + status block
-    Note over UI,CGW: UI polls every 10s while state is scaling or cold-starting
+    Note over UI,CGW: UI polls every 10s while the lifecycle state is unsettled; the autoscaling block is optional
     UI-->>Admin: Live status updates
 ```
 

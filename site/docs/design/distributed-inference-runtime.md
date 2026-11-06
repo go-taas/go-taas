@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research and the AIBrix / llm-d / KServe decision, the admin-surface page `/admin/runtime` (runtime overview, component health, serving-scheme switcher, registered-model table, register/deregister flows), the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `runtime` (new — owns the serving-scheme setting and the runtime-health and registered-model projections), `controller` (read-only: AIBrix control-plane health collection and `ModelClaim` projection publish), `infer` (read-only: the inference-service reconciliation path that the scheme selects), `audit` (scheme changes), `pkg/server` gateway (admin-prefix bindings), `web` admin console (`RuntimePage`) |
 | Related documents | [Architecture Design](./architecture.md) — §1.1 control/data-plane separation, §2.4 `infer`, §2.7 Controller, §3.2 data plane (Envoy + Wasm) · [Inference Autoscaling & Scale-to-Zero](./inference-autoscaling.md) — the HPA/KEDA path that the plain scheme uses · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle the scheme drives · [Accelerator Inventory & Health](./accelerator-inventory.md) — the Controller → MQ → service projection pattern this feature reuses · [Multi-Cluster Management](./multi-cluster-management.md) — the registered cluster the runtime control plane lives in · [System Health & Service Status](./system-health-status.md) — the component-health conventions this feature extends to the runtime · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 Why a Distributed Inference Runtime Comes Now
 
-go-taas's Controller today creates a **plain `apps/v1 Deployment` + a ClusterIP Service** per inference service — labelled `app.kubernetes.io/managed-by: taas-controller` — running `vllm.entrypoints.openai.api_server` against weights on a JuiceFS PVC, and creates a Kubernetes `HorizontalPodAutoscaler` (HPA) when autoscaling is enabled (feature #16). That path is fully sufficient for single-replica or simply replicated serving, but it has no KV-cache-aware routing, no prefill/decode disaggregation, and no multi-LoRA adapter management. Those are precisely the capabilities a distributed inference runtime provides.
+go-taas's Controller creates an **AIBrix `StormService` + a ClusterIP Service** per inference service — labelled `app.kubernetes.io/managed-by: taas-controller` — running `vllm.entrypoints.openai.api_server` against weights on a JuiceFS PVC, and creates an AIBrix `PodAutoscaler` (never a Kubernetes HPA) when autoscaling is enabled (feature #16). The StormService supports single-node, multi-machine and PD layouts, but the **plain serving scheme** has no KV-cache-aware routing and no multi-LoRA adapter management. Those are precisely the capabilities a distributed inference runtime provides.
 
 The feature adds a **runtime-backed serving path**: the operator selects a platform-level *serving scheme*, and when the **AIBrix** scheme is selected the Controller additionally registers each model with AIBrix's control plane as a `ModelClaim` and uses AIBrix's `PodAutoscaler` instead of a plain HPA, so AIBrix supplies KV-cache-aware routing, LoRA adapters and distributed topologies. The console gains one page that shows the installed runtime and its health, switches the scheme, and manages the `ModelClaim` resources.
 
@@ -180,7 +180,7 @@ There is one page; the scheme switcher, register dialog and deregister confirmat
 
 **Scheme switcher**: a segmented control (radio group) in a dialog opened by the **Switch scheme** header action, with two options:
 
-- **Plain Deployment** (default) — "go-taas creates a Kubernetes Deployment and Service (and an HPA for autoscaling) per inference service."
+- **Plain serving** (default) — "go-taas creates an AIBrix StormService and Service (and a PodAutoscaler for autoscaling) per inference service."
 - **AIBrix** — "go-taas registers each model as an AIBrix ModelClaim and uses AIBrix's PodAutoscaler. AIBrix provides KV-cache-aware routing, LoRA adapters and distributed topologies."
 
 Selecting a non-current option enables **Apply**. Applying opens a confirmation dialog: "Switch serving scheme to `<scheme>`? New and updated inference services will be served through `<scheme>`. Existing services keep running until they are next updated." with **Switch** (primary) and **Cancel**. Confirming calls `UpdateServingScheme` and shows a toast "Serving scheme updated."; the overview badge updates. Selecting `AIBrix` while the runtime is `unavailable` keeps **Apply** disabled with the tooltip "AIBrix is not available. Select it after the runtime is reachable." (FR2.5, D8).

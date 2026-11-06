@@ -92,7 +92,7 @@
 | `ListRoutingTargetHealth` | `get: "/api/v1/admin/routing-policies/{model_id}/health"` | 脱敏服务就绪、副本数、加速器/卡型、集群及健康时间 |
 | `ListRoutingPolicyRevisions` | `get: "/api/v1/admin/routing-policies/{model_id}/revisions"` | 返回最近 20 个不可变版本及变更前后值 |
 
-模型与服务选择器维持现状：`GET /api/v1/admin/models` 和 `GET /api/v1/admin/inference-services?model_id={model_id}`。路由策略 RPC 从自身权威服务/模型仓储重新计算资格，不信任客户端选择器结果。上述选择器和新策略 API 只能由管理页面调用。
+模型与服务选择器维持现状：`GET /api/v1/admin/models` 与 `GET /api/v1/admin/inference-services`（需要时按 `organization_id` 收窄；RPC 从自身仓储重新计算资格）。路由策略 RPC 从自身权威服务/模型仓储重新计算资格，不信任客户端选择器结果。上述选择器和新策略 API 只能由管理页面调用。
 
 ### 5.1 Proto 消息契约
 

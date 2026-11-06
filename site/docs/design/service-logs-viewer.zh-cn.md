@@ -6,7 +6,7 @@
 | 文档范围 | 需求分析、竞品调研、`/admin/services/:serviceId/logs` 管理面服务日志页、页面 → API 面映射表，以及编号验收标准 |
 | 归属模块 | `infer`（服务 Pod 的日志拉取 RPC）、`internal/controller`（只读：从 Kubernetes API 枚举 Pod/容器并流式读取日志）、`pkg/server` 网关（管理前缀绑定）、`web` 管理控制台（`ServiceLogsPage`） |
 | 相关文档 | [架构设计](./architecture.md) — 第 2.4 节 `infer`、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.md) — 推理服务生命周期与 `inference_services` 表 · [控制台面分离](./console-surface-separation.md) — 两个面、`AdminShell` 约定、掩码投影规则 · [请求追踪与延迟分解](./request-tracing.md) — 本特性用原始容器日志补充的姊妹诊断面（按请求追踪） |
-| 状态 | 设计完成，已移交架构师代理 |
+| 状态 | 已实现 |
 
 ---
 
@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做日志查看器
 
-go-taas 将推理服务作为 Kubernetes Deployment 运行（model-catalog-deployment §4.2）：Controller 创建 Deployment 与 Service，推理引擎（vLLM 等）把日志写入容器的 stdout/stderr。请求追踪特性（第 27 行）解释了*请求内部发生了什么*（TTFT、生成、span），但它无法回答运营者的原始问题：*推理引擎打印了什么？* 当部署无法收敛、请求出错或引擎记录警告时，运营者必须离开控制台对 Pod 执行 `kubectl logs` —— 这是控制台应当拥有的运营者编排逃生通道。
+go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，推理引擎（vLLM 等）把日志写入容器的 stdout/stderr。请求追踪特性（第 27 行）解释了*请求内部发生了什么*（TTFT、生成、span），但它无法回答运营者的原始问题：*推理引擎打印了什么？* 当部署无法收敛、请求出错或引擎记录警告时，运营者必须离开控制台对 Pod 执行 `kubectl logs` —— 这是控制台应当拥有的运营者编排逃生通道。
 
 本特性新增**推理服务日志查看器**：在控制台中查看推理服务 Pod 的容器日志，支持级别/时间过滤、实时跟随与日志搜索。这是 Phase 4 运维面中最小可独立交付的增量：它把「引擎打印了东西」变成「运营者在控制台里按级别和时间过滤地读取引擎 stdout，无需离开平台」。
 
@@ -216,7 +216,7 @@ sequenceDiagram
     Infer-->>UI: lines[] + has_more
     UI-->>Admin: 日志面板渲染行
     Admin->>UI: 打开 Follow
-    UI->>CGW: GET /api/v1/admin/services/{service_id}/logs?since=<offset>（每 2 秒）
+    UI->>CGW: GET /api/v1/admin/services/{service_id}/logs?since=<RFC3339>（每 2 秒）
     CGW->>Infer: GetServiceLogs
     Infer-->>UI: 追加新行
     UI-->>Admin: 日志面板实时跟随输出

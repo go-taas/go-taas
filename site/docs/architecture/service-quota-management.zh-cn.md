@@ -2,9 +2,9 @@
 
 | 属性 | 内容 |
 | --- | --- |
-| 功能点 | 服务配额管理 — 组织级**资源配额**，四个维度（`max_concurrent_requests`、`max_inference_services`、`max_batch_jobs_per_day`、`max_output_tokens_per_request`；0 = 不限制），由运营者在管理面配置，在推理网关（并发、单请求输出 token — 搭乘 `VerifyAPIKey` 判定）与控制面（`CreateInferenceService` 的服务数检查、`CreateBatchJob` 的每日批处理任务检查）fail-closed 执行；租户侧提供配额条与 `/quotas` 页面，管理侧提供 `/admin/quotas`（组织表格、预设、变更历史）（backlog 第 51 行） |
-| 文档范围 | feature-51 的架构与详细设计：`organizations` 上的六个增量配额列；绑定在 `/api/v1/admin/quotas/*` 与 `/api/v1/quotas` 的四个新 tenancy RPC；`VerifyAPIKey` 判定扩展（响应字段 7/8、缓存机制、向后兼容）；`infer`/`batch` 的创建时检查；网关执行契约（检查顺序 rate → quota → funds、在途跟踪、`quota.orgs.concurrency` MQ 中继、13301/13304 渲染）；133xx 错误块；管理/用户页面与配额条；配置、安全、发布，以及逐层的函数级任务清单 |
-| 负责模块 | `tenancy`（`organizations` 上的配额列、四个配额 RPC、`OrgQuotaReader` 接缝、在途上报消费者）；`auth`（`VerifyAPIKey` 判定扩展）；`infer`（服务数检查）；`batch`（每日任务检查）；`pkg/mq`（一个新 subject）；`pkg/errors`（133xx 块）；`pkg/config`（`quota` 节）；`pkg/server`（无变更 — `RealmGuard` 按前缀分类新路由）；`audit`（复用 — `quota.updated` 事件）；`web` 管理控制台（`QuotasPage`）与用户控制台（`UserQuotasPage`、`QuotaBar`）；推理网关（数据面 — **仅固化契约**，不在仓库范围内） |
+| 功能点 | 服务配额管理 — 组织级**资源配额**，三个维度（`max_concurrent_requests`、`max_batch_jobs_per_day`、`max_output_tokens_per_request`；0 = 不限制），由运营者在管理面配置，在推理网关（并发、单请求输出 token — 搭乘 `VerifyAPIKey` 判定）与控制面（`CreateBatchJob` 的每日批处理任务检查）fail-closed 执行；租户侧提供配额条与 `/quotas` 页面，管理侧提供 `/admin/quotas`（组织表格、预设、变更历史）（backlog 第 51 行） |
+| 文档范围 | feature-51 的架构与详细设计：`organizations` 上的五个增量配额列（三个限额加 `updated_by`/`updated_at`）；绑定在 `/api/v1/admin/quotas/*` 与 `/api/v1/quotas` 的四个新 tenancy RPC；`VerifyAPIKey` 判定扩展（响应字段 7/8、缓存机制、向后兼容）；`batch` 的创建时检查；网关执行契约（检查顺序 rate → quota → funds、在途跟踪、`quota.orgs.concurrency` MQ 中继、13301/13304 渲染）；133xx 错误块；管理/用户页面与配额条；配置、安全、发布，以及逐层的函数级任务清单 |
+| 负责模块 | `tenancy`（`organizations` 上的配额列、四个配额 RPC、`OrgQuotaReader` 接缝、在途上报消费者）；`auth`（`VerifyAPIKey` 判定扩展）；`batch`（每日任务检查）；`pkg/mq`（一个新 subject）；`pkg/errors`（133xx 块）；`pkg/config`（`quota` 节）；`pkg/server`（无变更 — `RealmGuard` 按前缀分类新路由）；`audit`（复用 — `quota.updated` 事件）；`web` 管理控制台（`QuotasPage`）与用户控制台（`UserQuotasPage`、`QuotaBar`）；推理网关（数据面 — **仅固化契约**，不在仓库范围内） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/service-quota-management.md) · [架构设计](../design/architecture.md) §2.4 `auth`/`infer`、§3.1 控制网关、§3.2 数据面 · [限流与消费限额](./rate-limits-spend-limits.md)（本功能扩展的 per-key RPM/TPM 判定搭载模式、先于配额执行的 10037 检查） · [余额与配额账户模式](./balance-quota.md)（在配额之后执行的资金检查 10502） · [多租户](./multi-tenancy.md)（配额列落地的 organizations 表） · [批量推理](./batch-inference.md)（每日计数读取的 `batch_jobs` 表） · [推理自动扩缩容](./inference-autoscaling.md)（网关在途 MQ 上报先例，彼处 AD11） · [API Key 管理](./api-key-management.md)（其 TTL 界定传播窗口的判定缓存） · [审计日志](./audit-logging.md)（`quota.updated` 事件与变更历史读取） · [控制台双面分离](./console-surface-separation.md)（两个面、脱敏投影规则） |
 | 状态 | 架构设计完成，已移交 Developer 智能体 |
 
@@ -18,18 +18,18 @@
 
 ## 1. 概述与目标
 
-Feature #6 与 #8 给了 go-taas **资金**护栏 — per-key 限流（RPM/TPM）与组织资金/消费执行。仍然缺失的是**资源**维度：一个组织可以同时保持多少在途请求、部署多少推理服务、每天提交多少批处理任务、单个请求最多生成多少 token。限流抓不住其中任何一个 — 每分钟 60 次的十分钟流式请求会无限期占用六十个并发 GPU 槽位，而租户可以在完全遵守限流与消费限额的前提下部署五十个空闲服务。
+Feature #6 与 #8 给了 go-taas **资金**护栏 — per-key 限流（RPM/TPM）与组织资金/消费执行。仍然缺失的是**资源**维度：一个组织可以同时保持多少在途请求、每天提交多少批处理任务、单个请求最多生成多少 token。限流抓不住其中任何一个 — 每分钟 60 次的十分钟流式请求会无限期占用六十个并发 GPU 槽位，而租户可以在完全遵守限流与消费限额的前提下部署五十个空闲服务。
 
-本功能新增**组织级资源配额**：存储在组织行上的四个有界维度，由运营者在管理面配置，fail-closed 执行 — 两个热路径维度（并发、单请求输出 token）与 #6 的 RPM/TPM 完全相同地搭乘 `VerifyAPIKey` 判定到达推理网关，两个生命周期维度（服务数、每日批处理）由 `infer` 与 `batch` 在创建时检查。约束对被约束方**可见**：每个用户页面上的配额条与 `/quotas` 详情页，让限额成为可规划的约束而非神秘的 429。核心不变量：配额保护的是集群而非账单（资金留在 #6/#8）、执行从不排队也不部分执行、配额错误（133xx）绝不与限流（10037）或资金（10502）混淆、0 = 不限制且默认宽松、收紧是非破坏性的（用量自然排空）。
+本功能新增**组织级资源配额**：存储在组织行上的三个有界维度，由运营者在管理面配置，fail-closed 执行 — 两个热路径维度（并发、单请求输出 token）与 #6 的 RPM/TPM 完全相同地搭乘 `VerifyAPIKey` 判定到达推理网关，一个生命周期维度（每日批处理）由 `batch` 在创建时检查。推理服务数刻意不作为配额：推理服务是平台资产，由平台管理员创建（见上方说明）。约束对被约束方**可见**：每个用户页面上的配额条与 `/quotas` 详情页，让限额成为可规划的约束而非神秘的 429。核心不变量：配额保护的是集群而非账单（资金留在 #6/#8）、执行从不排队也不部分执行、配额错误（133xx）绝不与限流（10037）或资金（10502）混淆、0 = 不限制且默认宽松、收紧是非破坏性的（用量自然排空）。
 
 **目标**：
 
-- 两个页面与一个共享组件：`/admin/quotas`（`QuotasPage` — 带实时用量的组织表格、带预设的编辑对话框、变更历史抽屉）与 `/quotas`（`UserQuotasPage` — 四个维度卡片、申请提升 mailto），以及用户控制台组织上下文区的 `QuotaBar`，见设计 §5.1–§5.4。
-- 组织行上的四个配额维度，有界范围与 0 = 不限制默认值（设计 D2、FR1.1）。
+- 两个页面与一个共享组件：`/admin/quotas`（`QuotasPage` — 带实时用量的组织表格、带预设的编辑对话框、变更历史抽屉）与 `/quotas`（`UserQuotasPage` — 三个维度卡片、申请提升 mailto），以及用户控制台组织上下文区的 `QuotaBar`，见设计 §5.1–§5.4。
+- 组织行上的三个配额维度，有界范围与 0 = 不限制默认值（设计 D2、FR1.1）。
 - `TenancyService` 上的四个新 RPC：三个管理前缀（`/api/v1/admin/quotas*`）与一个用户前缀（`/api/v1/quotas`）（设计 §6）。
 - `VerifyAPIKey` 判定扩展：`max_concurrent_requests` 与 `max_output_tokens_per_request` 随判定缓存，TTL ≤ 30 秒界定传播（设计 D3、FR2.1）。
 - 固化的网关契约：检查顺序 rate → quota 并发 → token 上限 → funds、按组织在途跟踪（接受时递增、完成时递减）、13301 为 429 + `Retry-After: 1`、13304 为 400 并指明上限、缺失 `max_tokens` 时钳制、按组织在途数经 MQ 上报（设计 FR2.2–FR2.4、§6 注）。
-- 创建时守卫：`CreateInferenceService` 中的 13302、`CreateBatchJob` 中的 13303，在既有流程内部，收紧非破坏（设计 FR3）。
+- 创建时守卫：`CreateBatchJob` 中的 13303，在既有流程内部，收紧非破坏（设计 FR3）。13302 仍定义但不再由任何流程返回。
 - `pkg/errors` 中的新错误块 **133xx**（13301–13306）（设计 D4）。
 - 审计事件 `quota.updated`（逐维度 old → new、操作运营者）与管理面的组织变更历史（最近 20 条）（设计 D9、FR1.3–FR1.4）。
 - 可在 Nightwatch、FVT 与单元测试中验证的编号验收标准（AC1–AC14）；网关契约以既有模式合成验证。
@@ -49,18 +49,18 @@ AD1–AD10 将 UI/UX 设计的决策（D1–D10）重述为实现级规则。**A
 | # | 决策 | 理由 |
 | --- | --- | --- |
 | AD1 | **两个面各获得专属区块**：管理 `/admin/quotas` + `/api/v1/admin/quotas/*`（全集群组织表格、编辑对话框、变更历史），用户 `/quotas` + `/api/v1/quotas/*`（调用者自己的组织，只读）— 不是 #6 限流编辑器或 #5 组织编辑器的扩展 | 设计 D1。配额是独立的对象类（组织级资源轴，有自己的执行点与历史）；专属页面让 #6 的 key 级限流与本功能的组织级资源各自可查 |
-| AD2 | **组织行上的四个配额维度**：`max_concurrent_requests`（0 = 不限制，默认 0；设置时 1–10000）、`max_inference_services`（0 = 不限制；1–1000）、`max_batch_jobs_per_day`（0 = 不限制；1–10000）、`max_output_tokens_per_request`（0 = 不限制；64–32768）。四个都是**组织级**，绝非 per-key | 设计 D2。平台真正可能被耗尽的四个资源轴；有界范围保证取值 sane；0 = 不限制保证默认宽松。持有两把 key 的租户不得让每个限额翻倍 |
-| AD3 | **热路径维度搭乘 `VerifyAPIKey` 判定**，与 #6 的 RPM/TPM 完全一致：判定增加 `max_concurrent_requests` 与 `max_output_tokens_per_request`；网关按组织跟踪在途请求（接受时递增、完成时递减，含断连）并在分发前校验/钳制请求的 `max_tokens`。生命周期维度（`max_inference_services`、`max_batch_jobs_per_day`）由 `infer` 与 `batch` 在创建时执行。判定缓存 TTL（30 秒）界定配额变更的传播 | 设计 D3。零新增热路径 RPC（#6 契约模式）；在途跟踪是网关本地状态，唯一能看到接受/完成的地方；创建时检查天然属于控制面 |
-| AD4 | **专属错误块 133xx**：13301 `CodeQuotaConcurrencyExceeded`（HTTP 429 + `Retry-After: 1`）、13302 `CodeQuotaServiceCountExceeded`、13303 `CodeQuotaBatchJobsExceeded`、13304 `CodeQuotaOutputTokensExceeded`（HTTP 400，指明上限）、13305 `CodeQuotaInvalid`（校验，指明维度）、13306 `CodeQuotaNotFound`。领域失败复用 10038，角色失败复用 10036 | 设计 D4。三类错误绝不混淆：配额 ≠ 限流（10037）≠ 资金（10502）。429 与 400 的拆分对应语义 — 并发是瞬态（稍后重试），其余是配置（改请求或改配额） |
+| AD2 | **组织行上的三个配额维度**：`max_concurrent_requests`（0 = 不限制，默认 0；设置时 1–10000）、`max_batch_jobs_per_day`（0 = 不限制；1–10000）、`max_output_tokens_per_request`（0 = 不限制；64–32768）。三个都是**组织级**，绝非 per-key | 设计 D2，在推理服务数配额移除后修订。平台真正可能被耗尽的三个资源轴；有界范围保证取值 sane；0 = 不限制保证默认宽松。持有两把 key 的租户不得让每个限额翻倍 |
+| AD3 | **热路径维度搭乘 `VerifyAPIKey` 判定**，与 #6 的 RPM/TPM 完全一致：判定增加 `max_concurrent_requests` 与 `max_output_tokens_per_request`；网关按组织跟踪在途请求（接受时递增、完成时递减，含断连）并在分发前校验/钳制请求的 `max_tokens`。生命周期维度（`max_batch_jobs_per_day`）由 `batch` 在创建时执行。判定缓存 TTL（30 秒）界定配额变更的传播 | 设计 D3。零新增热路径 RPC（#6 契约模式）；在途跟踪是网关本地状态，唯一能看到接受/完成的地方；创建时检查天然属于控制面 |
+| AD4 | **专属错误块 133xx**：13301 `CodeQuotaConcurrencyExceeded`（HTTP 429 + `Retry-After: 1`）、13302 `CodeQuotaServiceCountExceeded`（已退役 — 仅为线上兼容保留，无流程返回）、13303 `CodeQuotaBatchJobsExceeded`、13304 `CodeQuotaOutputTokensExceeded`（HTTP 400，指明上限）、13305 `CodeQuotaInvalid`（校验，指明维度）、13306 `CodeQuotaNotFound`。领域失败复用 10038，角色失败复用 10036 | 设计 D4。三类错误绝不混淆：配额 ≠ 限流（10037）≠ 资金（10502）。429 与 400 的拆分对应语义 — 并发是瞬态（稍后重试），其余是配置（改请求或改配额） |
 | AD5 | **预设仅是管理页面中的 UI 常量**：Default（全部不限制）、Starter（10 / 3 / 5 / 4096）、Growth（50 / 20 / 50 / 8192）、Enterprise（200 / 100 / 500 / 16384）。选择预设填充表单；运营者可在保存前编辑任意字段。无预设往返、无预设存储 | 设计 D5。运营者要配置几十个组织；预设加速常见场景而不冻结模型。原始字段仍是事实源 |
 | AD6 | **变更窗口**：热路径维度在判定 TTL 内（≤ 30 秒）生效；生命周期维度在下一次创建调用时生效。收紧到低于当前用量绝不杀死在途请求或删除服务 — 只阻断新的，用量自然排空 | 设计 D6。可预测、非破坏的收紧：守卫在边界阻断，绝不撤销已在运行的 |
 | AD7 | **配额管理仅限运营者**；租户面只读（配额条 + `/quotas`）。租户的「申请提升」动作是指向配置的运营者地址的 mailto 链接，不是工作流 | 设计 D7。被约束方不得持有杠杆；mailto 覆盖单运营者平台而无需审批流技术栈 |
-| AD8 | **租户配额条展示全部四个维度**（用量 / 限额，或「不限制」），位于用户组织上下文区，外加 `/quotas` 详情页；用量计数为在途请求（网关状态）、服务数（infer）、今日批处理（batch）、token 上限（常量展示）。任何租户看不到其他组织的配额 | 设计 D8。可见先于命中：配额条让约束透明、13301 错误可诊断 |
+| AD8 | **租户配额条展示全部三个维度**（用量 / 限额，或「不限制」），位于用户组织上下文区，外加 `/quotas` 详情页；用量计数为在途请求（网关状态）、今日批处理（batch）、token 上限（常量展示）。任何租户看不到其他组织的配额 | 设计 D8。可见先于命中：配额条让约束透明、13301 错误可诊断 |
 | AD9 | **所有配额变更均审计**（`quota.updated`，逐维度 old → new 与操作运营者），管理页面展示组织变更历史（最近 20 条） | 设计 D9。配额变更是有公平性影响的集群保护决策；历史回答「谁在何时收紧的」 |
 | AD10 | **领域与面绑定**：管理仅限 admin（`/admin/quotas` + `/api/v1/admin/quotas/*`）；租户视图是 end-user（`/quotas` + `/api/v1/quotas/*`）。用户领域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036** | 设计 D10。与控制台双面分离一致；配额内部信息（全集群对比）是运营者知识，组织自己的配额是租户的 |
-| AD11 | **对设计 D2/FR1.1 的细化 — 配额状态是 `organizations` 上的六个增量列，无新表。** `max_concurrent_requests`、`max_inference_services`、`max_batch_jobs_per_day`、`max_output_tokens_per_request`（int64，NOT NULL，DEFAULT 0 = 不限制），外加为管理表格 Updated / Updated by 列反规范化的 `quota_updated_by`（string(64)，DEFAULT ''）与 `quota_updated_at`（timestamp，NULL）。用量计数只计算、绝不存储（第 4.2 节） | 设计已钉死「配额字段在组织行上（增量 AutoMigrate 列）」，且执行不需要逐维度历史表 — 审计轨迹本身就是历史（AD16）。现有表上的六列是满足 FR1.1 投影（含 `updated_at`/`updated_by`）的最小 schema，零回填：现有行读作全部不限制，即 feature 前行为 |
+| AD11 | **对设计 D2/FR1.1 的细化 — 配额状态是 `organizations` 上的五个增量列，无新表。** `max_concurrent_requests`、`max_batch_jobs_per_day`、`max_output_tokens_per_request`（int64，NOT NULL，DEFAULT 0 = 不限制），外加为管理表格 Updated / Updated by 列反规范化的 `quota_updated_by`（string(64)，DEFAULT ''）与 `quota_updated_at`（timestamp，NULL）。用量计数只计算、绝不存储（第 4.2 节） | 设计已钉死「配额字段在组织行上（增量 AutoMigrate 列）」，且执行不需要逐维度历史表 — 审计轨迹本身就是历史（AD16）。现有表上的五列是满足 FR1.1 投影（含 `updated_at`/`updated_by`）的最小 schema，零回填：现有行读作全部不限制，即 feature 前行为。`max_inference_services` 已在服务数配额退役时移除 |
 | AD12 | **对设计 D3/FR2.1 的细化 — 判定扩展机制。** `keyVerdict`（auth 服务缓存的判定结构体）增加 `MaxConcurrentRequests`（`json:"max_concurrent_requests"`）与 `MaxOutputTokensPerRequest`（`json:"max_output_tokens_per_request"`）；`VerifyAPIKeyResponse` 增加 proto 字段 **7 与 8**（字段 1–6 已占用）。缓存未命中路径（判定构造经 `OrgQuotaReader` 接缝读取组织配额）与缓存命中路径（字段从缓存 JSON 反序列化）都携带它们。升级前缓存的判定反序列化时缺少这两个键 → 零 → 不限制：向后兼容，且任何变更的传播窗口受缓存 TTL（≤ 30 秒）界定。判定构造期间的配额读取错误记录警告并降级为不限制（绝不让 `VerifyAPIKey` 本身失败 — 配额展示故障演变为鉴权中断会停掉全部推理） | 设计规定了判定字段与 TTL 界定但未规定缓存机制；此处钉死。读取错误时 fail-open 的取舍是刻意接受的：窗口受 TTL 界定，而替代方案（判定失败）会把配额表故障变成全集群鉴权中断 |
-| AD13 | **对设计 D3/FR3 的细化 — 一个窄读取接缝，三个消费者。** `tenancy` 在 `services/tenancy/quota.go` 中导出只读 `OrgQuotaReader` 接口（`OrgQuota(ctx, organizationID) (OrgQuota, error)`，四个限额的值结构体），由 tenancy 仓储实现并在 tenancy 服务上暴露。`apps/taas-server/main.go` 通过 `SetOrgQuotaReader` 注入 `auth`（判定构造）、`infer`（`CreateInferenceService`）与 `batch`（`CreateBatchJob`）；nil 接缝读作不限制（过渡接缝惯例，FVT 设置不变）。`tenancy` 另外为 `GetMyQuota` 的组织限定获得 `sessionOrgResolver` 接缝（`SessionActiveOrg`，billing 模式），并为三个管理配额 RPC 获得 `requireAdminRole` 门（provider 形态）— 既有 tenancy RPC 保持以管理领域守卫为边界，不变 | 设计说检查读取「组织的配额」但未钉死方式。一个导出接口（一个实现、三个消费者）避免三个消费方重复声明同一形状；导入方向（`auth`/`infer`/`batch` → `tenancy`）不构成环，因为 tenancy 本地定义其会话接缝且不导入三者之一。管理门是新增的，因为既有 tenancy RPC 仅依赖领域守卫 — 配额变更是第一批还必须执行角色的 tenancy 写入（FR5.1） |
+| AD13 | **对设计 D3/FR3 的细化 — 一个窄读取接缝，两个消费者。** `tenancy` 在 `services/tenancy/quota.go` 中导出只读 `OrgQuotaReader` 接口（`OrgQuota(ctx, organizationID) (OrgQuota, error)`，三个限额的值结构体），由 tenancy 仓储实现并在 tenancy 服务上暴露。`apps/taas-server/main.go` 通过 `SetOrgQuotaReader` 注入 `auth`（判定构造）与 `batch`（`CreateBatchJob`）；nil 接缝读作不限制（过渡接缝惯例，FVT 设置不变）。`tenancy` 另外为 `GetMyQuota` 的组织限定获得 `sessionOrgResolver` 接缝（`SessionActiveOrg`，billing 模式），并为三个管理配额 RPC 获得 `requireAdminRole` 门（provider 形态）— 既有 tenancy RPC 保持以管理领域守卫为边界，不变 | 设计说检查读取「组织的配额」但未钉死方式。一个导出接口（一个实现、三个消费者）避免三个消费方重复声明同一形状；导入方向（`auth`/`infer`/`batch` → `tenancy`）不构成环，因为 tenancy 本地定义其会话接缝且不导入三者之一。管理门是新增的，因为既有 tenancy RPC 仅依赖领域守卫 — 配额变更是第一批还必须执行角色的 tenancy 写入（FR5.1） |
 | AD14 | **对设计 FR2.4/FR1.2 的细化 — 在途用量中继沿用推理自动扩缩容的 MQ 先例。** 网关在新 subject **`quota.orgs.concurrency`** 上发布按组织在途数（JSON `{organization_id, in_flight, reported_at}`），每个上报间隔（默认 10 秒）每组织一条消息（含零计数以清除陈旧条目）。`tenancy` 中的消费者 runner（`quota_concurrency_consumer.go`，由 `quota.concurrencyConsumer.enabled` 门控的 `server.Runner`）在互斥锁保护的内存在图中保存每组织最新快照并暴露 `CurrentInFlight(orgID)`，对缺失或陈旧条目（早于 `quota.concurrencyConsumer.staleAfter`，默认 2 分钟）返回 **0**。订阅是普通 subscribe（每个 taas-server 副本维护自己的 map — queue group 会让其他副本失明）。配额 RPC 尽力而为地读取快照；tenancy 重启后从空开始并在一个上报间隔内回填 | 设计要求配额 RPC 呈现实时在途用量（FR1.2/FR4.1），而计数器是网关本地状态（FR2.4）。自动扩缩容功能已确立网关→MQ 在途上报为平台模式；复用它保持单一中继机制。尽力而为语义（缺失/陈旧/重启 → 0）正是设计自己的表述 — 计数器是展示快照，绝不是执行输入（执行是网关本地的） |
 | AD15 | **对设计 FR3.2 的细化 — 每日批处理计数器是实时 COUNT，无新表。** `COUNT(*) FROM batch_jobs WHERE organization_id = ? AND created_at >= <本地午夜>`，本地午夜按配置的 `quota.timezone`（默认 UTC，抽屉中记录的平台时区）计算。已取消与失败的任务也计数（守卫针对提交而非成功）。batch 仓储增加 `CountJobsSince(ctx, orgID, since)`；检查在既有创建流程内运行 | 设计钉死了 COUNT 形状与无新表规则；此处钉死时区来源（平台无按组织时区）与仓储接缝。索引 `(organization_id, created_at)` 上的午夜边界 COUNT 在检查时刻是精确的，不需要计数表、重置任务或漂移修复 |
 | AD16 | **对设计 D9/FR1.3 的细化 — 变更历史是嵌入 `GetOrganizationQuota` 的直接 `audit_events` 读取。** 变更写入一条 `quota.updated` 事件（资源类型 `organization`、资源 id 为组织、actor 为运营者），其 metadata jsonb 为 `{"changes": [{"dimension": "max_concurrent_requests", "old": 0, "new": 50}, …]}` — 仅实际变化的维度。历史读取选择 `audit_events WHERE organization_id = ? AND action = 'quota.updated' ORDER BY created_at DESC`（窄共享句柄读取，既有的跨模块读取模式 — 审计服务的 `ListAuditEvents` 过滤器没有适配此用途的 resource-id 形状），将每个事件的 `changes` 数组展平为逐维度条目，返回最新 20 条 | 设计说抽屉「来自审计轨迹」但未钉死读取。每次变更一条事件（带 changes 数组）保持轨迹紧凑且原子；读取时展平给抽屉逐维度的 Old → New 行。直接读取是刻意的：审计模块不变，查询按组织与 action 限定 |
@@ -78,9 +78,9 @@ AD1–AD10 将 UI/UX 设计的决策（D1–D10）重述为实现级规则。**A
 | **静态包（SPA）** | 一个 Vite 包（`web/dist`）嵌入 `taas-server`；由网关 SPA 回退服务 | 两个新页面（`QuotasPage`、`UserQuotasPage`）、`QuotaBar` 组件、两个导航项、`App.tsx` 路由注册、i18n 键、预设常量 |
 | **网关（`pkg/server`）** | HTTP 组合：`RealmGuard` → `withConsole` → grpc-gateway mux；统一错误渲染器；SPA 回退 | **无变更** — 新 RPC 绑定在 `/api/v1/admin/quotas*` 与 `/api/v1/quotas` 下，`RealmGuard` 已按前缀分类 |
 | **grpc-gateway mux** | 来自 `google.api.http` 注解的路径 → RPC 路由 | 四个配额 RPC 的新绑定（第 5 节） |
-| **`tenancy`** | 组织、项目、成员、邀请 | `Organization` 上的六个配额列；四个配额 RPC；`OrgQuotaReader` 接缝；`sessionOrgResolver` 接缝与 `requireAdminRole` 门；在途消费者 runner；变更历史读取 |
+| **`tenancy`** | 组织、项目、成员、邀请 | `Organization` 上的五个配额列；四个配额 RPC；`OrgQuotaReader` 接缝；`sessionOrgResolver` 接缝与 `requireAdminRole` 门；在途消费者 runner；变更历史读取 |
 | **`auth`** | 会话、API key、`VerifyAPIKey` 判定缓存 | 判定增加两个配额字段（缓存未命中构造 + 响应映射）；`SetOrgQuotaReader` 接缝 |
-| **`infer`** | 推理服务 | `CreateInferenceService` 中的服务数检查（13302）；其仓储中的 `CountActiveServicesByOrg`；`SetOrgQuotaReader` 接缝 |
+| **`infer`** | 推理服务 | 无配额检查。推理服务是平台资产，已退役的服务数上限不再执行。 |
 | **`batch`** | 批处理任务 | `CreateBatchJob` 中的每日任务检查（13303）；其仓储中的 `CountJobsSince`；`SetOrgQuotaReader` 接缝 |
 | **`metering` / `billing`** | 用量记录、资金 | **无变更** — 配额与资金轴组合但绝不触碰 |
 | **`audit`** | 尽力而为审计记录器、`audit_events` 表 | 原样复用：tenancy 记录 `quota.updated` 事件并直接读取历史（AD16） |
@@ -108,7 +108,6 @@ flowchart TD
     subgraph services["gRPC 服务"]
         TEN["tenancy<br/>organizations 上的配额列<br/>4 个配额 RPC（新）<br/>OrgQuotaReader 接缝<br/>在途消费者（新）"]
         AUTH["auth<br/>VerifyAPIKey 判定<br/>+ 2 个配额字段"]
-        INF["infer<br/>服务数检查"]
         BAT["batch<br/>每日任务检查"]
         AUD["audit"]
     end
@@ -118,7 +117,7 @@ flowchart TD
     end
 
     subgraph stores["状态"]
-        PG[("PostgreSQL<br/>organizations（6 个配额列）<br/>inference_services<br/>batch_jobs<br/>audit_events")]
+        PG[("PostgreSQL<br/>organizations（5 个配额列）<br/>batch_jobs<br/>audit_events")]
         MQ["MQ<br/>quota.orgs.concurrency（新）"]
     end
 
@@ -171,14 +170,13 @@ flowchart TD
 
 ## 4. 数据模型
 
-本功能**不新增任何表**。配额状态是 `organizations` 上的六个增量列（AD11）；用量计数是计算的（第 4.2 节）；变更历史是既有的 `audit_events` 表（第 4.3 节）。
+本功能**不新增任何表**。配额状态是 `organizations` 上的五个增量列（AD11）；用量计数是计算的（第 4.2 节）；变更历史是既有的 `audit_events` 表（第 4.3 节）。
 
 ### 4.1 `organizations`（增量列）
 
 | 列 | 类型 | 说明 |
 | --- | --- | --- |
 | `max_concurrent_requests` | int64，NOT NULL，DEFAULT 0 | 0 = 不限制；设置时 1–10000（FR1.1） |
-| `max_inference_services` | int64，NOT NULL，DEFAULT 0 | 0 = 不限制；设置时 1–1000 |
 | `max_batch_jobs_per_day` | int64，NOT NULL，DEFAULT 0 | 0 = 不限制；设置时 1–10000 |
 | `max_output_tokens_per_request` | int64，NOT NULL，DEFAULT 0 | 0 = 不限制；设置时 64–32768 |
 | `quota_updated_by` | string(64)，NOT NULL，DEFAULT '' | 最近一次变更的操作运营者；'' = 从未变更 |
@@ -191,11 +189,11 @@ flowchart TD
 | 计数器 | 来源 | 说明 |
 | --- | --- | --- |
 | `concurrent_requests` | 在途消费者快照（AD14） | 网关本地状态经 `quota.orgs.concurrency` 中继；缺失/陈旧（> `staleAfter`）或重启后 → 0；设计上尽力而为（FR2.4） |
-| `inference_services` | `COUNT(*) FROM inference_services WHERE organization_id = ? AND state <> 'terminated'` | 非终止服务 — 与组织服务列表展示的同一群体；共享句柄上的窄读取 |
+| `inference_services` | `COUNT(*) FROM inference_services WHERE organization_id = ? AND state <> 'terminated'` | 只读展示计数；没有 `max_inference_services` 限额，也没有创建时检查。字段保留在线上供展示计数的客户端使用。 |
 | `batch_jobs_today` | `COUNT(*) FROM batch_jobs WHERE organization_id = ? AND created_at >= <本地午夜>` | `quota.timezone` 中的本地午夜（AD15）；已取消与失败的任务计数 |
 | token 上限 | 限额本身 | 常量展示 — 单请求上限没有「当前用量」 |
 
-`infer` 与 `batch` 中的执行查询是相同形状但位于各自仓储中（权威检查）；tenancy 的副本是展示读取。刻意的一行重复让展示与执行独立演进（AD13）。
+`batch` 中的执行查询是相同形状但位于 batch 仓储中（权威检查）；tenancy 的副本是展示读取。推理服务数只有 tenancy 的展示读取，没有执行检查（服务数配额已退役）。
 
 ### 4.3 变更历史（`audit_events`，复用）
 
@@ -210,7 +208,7 @@ flowchart TD
 
 本仓库**不**使用手写 init-SQL 脚本：每个 schema 变更都是 owning 服务 `Migrate` 经 `db.AutoMigrate(...)` 创建/变更的 GORM 模型，`deploy/` 下没有 `.sql` 文件。升级路径：
 
-1. 在 `services/tenancy/tenancy_model.go` 的 `Organization` 上增加六个字段。
+1. 在 `services/tenancy/tenancy_model.go` 的 `Organization` 上增加五个字段。
 2. 既有 tenancy `Migrate`（及 `MigrateSchemaForFVT`）已 AutoMigrate `Organization` — 列在下次启动时以 `ALTER TABLE organizations ADD COLUMN ... DEFAULT ...` 加入。
 3. 无数据回填：现有行读作 0/0/0/0 + ''/NULL = 全部不限制，恰为 feature 前行为。无手工 DDL、无 compose 变更。
 
@@ -226,11 +224,10 @@ flowchart TD
 | --- | --- | --- | --- | --- |
 | `ListOrganizationQuotas`（扩展 `taas.tenancy.v1.TenancyService`） | `GET /api/v1/admin/quotas` | admin | **新增** | 带尽力而为实时用量的逐组织配额行；分页、名称搜索、限额状态过滤 |
 | `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | admin | **新增** | 单组织的配额 + 用量 + 最近 20 条变更历史；未知组织 → 13306 |
-| `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | admin | **新增** | 设置四个维度的任意子集；审计；超范围值 13305 |
+| `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | admin | **新增** | 设置三个维度的任意子集；审计；超范围值 13305 |
 | `GetMyQuota` | `GET /api/v1/quotas` | user | **新增** | 调用者自己组织的配额与实时用量（从会话限定组织） |
 | `VerifyAPIKey`（`taas.auth.v1.AuthService`） | 内部（网关 → `auth`） | n/a | **变更** | 判定/响应增加 `max_concurrent_requests`（字段 7）与 `max_output_tokens_per_request`（字段 8） |
-| `CreateInferenceService`（`taas.infer.v1`） | `POST /api/v1/inference-services` | user | **变更** | 增加组织服务数检查；达到限额时 13302（无 proto 变更） |
-| `CreateBatchJob`（`taas.batch.v1`） | `POST /api/v1/batch/jobs` | user | **变更** | 增加每日批处理任务检查；达到限额时 13303（无 proto 变更） |
+| `CreateBatchJob`（`taas.batch.v1`） | `POST /api/v1/batch` | user | **变更** | 增加每日批处理任务检查；达到限额时 13303（无 proto 变更） |
 
 网关路由说明：`GET /api/v1/admin/quotas`（集合根）与 `GET /api/v1/admin/quotas/{organization_id}` 是不同路径 — 无通配冲突；PATCH 遵循同一 mux 上既有的 `UpdateOrganization` 惯例。设计的 `unlimited_only`/`limited_only` 过滤（FR1.2）映射为单个 `limit_state` 查询参数（`all`（默认）/ `limited` / `unlimited`）— 一个参数、三个状态、无需校验布尔对。
 
@@ -255,7 +252,7 @@ flowchart TD
     option (google.api.http) = {get: "/api/v1/admin/quotas/{organization_id}"};
   }
 
-  // UpdateOrganizationQuota sets any subset of the four dimensions
+  // UpdateOrganizationQuota sets any subset of the three dimensions
   // (proto3 optional tracks presence; an explicit 0 means unlimited).
   // Out-of-range values return 13305 with the dimension named. Audited
   // as quota.updated; tightening below current usage is allowed and
@@ -280,7 +277,6 @@ message OrganizationQuota {
   string organization_id = 1;
   string organization_name = 2;
   int64 max_concurrent_requests = 3;
-  int64 max_inference_services = 4;
   int64 max_batch_jobs_per_day = 5;
   int64 max_output_tokens_per_request = 6;
   int64 updated_at = 7; // unix seconds, 0 = never updated
@@ -290,7 +286,7 @@ message OrganizationQuota {
 // QuotaUsage is the best-effort live-usage snapshot (FR1.2/FR4.1).
 message QuotaUsage {
   int64 concurrent_requests = 1; // gateway in-flight snapshot (AD14)
-  int64 inference_services = 2;  // non-terminated service count
+  int64 inference_services = 2;  // non-terminated service count (display only; no limit)
   int64 batch_jobs_today = 3;    // COUNT since local midnight (AD15)
 }
 
@@ -298,7 +294,7 @@ message QuotaUsage {
 message QuotaChangeEntry {
   int64 changed_at = 1; // unix seconds
   string operator = 2;  // acting user id
-  string dimension = 3; // max_concurrent_requests | max_inference_services | max_batch_jobs_per_day | max_output_tokens_per_request
+  string dimension = 3; // max_concurrent_requests | max_batch_jobs_per_day | max_output_tokens_per_request
   int64 old_value = 4;
   int64 new_value = 5;
 }
@@ -336,7 +332,6 @@ message UpdateOrganizationQuotaRequest {
   string organization_id = 1;
   // optional tracks presence: absent = unchanged, explicit 0 = unlimited.
   optional int64 max_concurrent_requests = 2;
-  optional int64 max_inference_services = 3;
   optional int64 max_batch_jobs_per_day = 4;
   optional int64 max_output_tokens_per_request = 5;
 }
@@ -425,7 +420,6 @@ flowchart LR
 | --- | --- | --- |
 | `organization_id`（get/update） | 必须存在 | 13306 |
 | `max_concurrent_requests` | 0 或 1–10000 | 13305（指明维度） |
-| `max_inference_services` | 0 或 1–1000 | 13305（指明维度） |
 | `max_batch_jobs_per_day` | 0 或 1–10000 | 13305（指明维度） |
 | `max_output_tokens_per_request` | 0 或 64–32768 | 13305（指明维度） |
 | `limit_state` 过滤 | `all` / `limited` / `unlimited`（空 = all） | 13305 |
@@ -469,13 +463,13 @@ flowchart LR
 <Route path="/quotas" element={<UserQuotasPage />} />
 ```
 
-`UserShell` 另外在组织上下文区、`OrgSwitcher` 旁渲染 `QuotaBar`（设计 §5.4）：它以 30 秒 `usePolling` 间隔轮询 `GET /api/v1/quotas`，四个维度全部不限制时整体隐藏（默认 — 不受限组织的零视觉噪音），点击跳转 `/quotas`。
+`UserShell` 另外在组织上下文区、`OrgSwitcher` 旁渲染 `QuotaBar`（设计 §5.4）：它以 30 秒 `usePolling` 间隔轮询 `GET /api/v1/quotas`，三个维度全部不限制时整体隐藏（默认 — 不受限组织的零视觉噪音），点击跳转 `/quotas`。
 
 ### 6.3 复用的共享组件与状态
 
 - `Dialog`（编辑对话框及其内联校验）、`data` 表格样式、`PageMeta` 分页、`RoutingDecisionsPage`/`AcceleratorNodeDetailPage` 的抽屉模式、`usePolling`（`web/src/components.tsx`，用于配额条与管理表格刷新）、badge/进度条类 — 全部是既有控制台惯例。
 - **`QuotaDimensionCard`**（`web/src/pages/user/quotas/QuotaDimensionCard.tsx`）：单个维度卡片 — 名称、通俗描述（「您的组织当前在途的请求数」）、用量/限额对（「12 / 50」或「不限制」）、进度条（≥ 80% 琥珀色、100% 红色），token 上限为常量展示（「每个请求最多生成 8192 个 token」）。由 `UserQuotasPage` 使用；配额条以紧凑形式渲染同一逻辑。
-- **`QuotaBar`**（`web/src/pages/user/quotas/QuotaBar.tsx`）：四个紧凑 chip — 「在途 12/50」「服务 3/20」「今日批处理 5/50」「Token ≤ 8192」（或每 chip「不限制」）；≥ 80% 琥珀色、100% 红色；轮询失败保留最后的好数据（陈旧惯例），四个维度全部不限制时隐藏。
+- **`QuotaBar`**（`web/src/pages/user/quotas/QuotaBar.tsx`）：三个紧凑 chip — 「在途 12/50」「今日批处理 5/50」「Token ≤ 8192」（或每 chip「不限制」）；≥ 80% 琥珀色、100% 红色；轮询失败保留最后的好数据（陈旧惯例），四个维度全部不限制时隐藏。
 - **预设常量**（AD17）以类型化 map 形式存在于 `QuotasPage.tsx`（`default`/`starter`/`growth`/`enterprise` → 四个值）；编辑对话框将其渲染为四个一键填充按钮，填充后每个字段仍可编辑。
 - **申请提升 mailto**（AD18）：`mailto:{request_increase_email}?subject=...&body=...`，预填组织显示名，`encodeURIComponent` 安全；`request_increase_email` 为空时隐藏按钮。
 
@@ -563,19 +557,12 @@ sequenceDiagram
     autonumber
     actor Agent as 租户管理员
     participant UI as 用户控制台
-    participant ISVC as infer 服务
     participant BSVC as batch 服务
     participant TEN as tenancy（OrgQuotaReader）
     participant DB as PostgreSQL
 
-    Agent->>UI: 创建推理服务（组织已运行 20 个）
-    UI->>ISVC: POST /api/v1/inference-services
-    ISVC->>TEN: OrgQuota(org) - max_inference_services 20
-    ISVC->>DB: COUNT 服务（state 非 terminated）= 20
-    ISVC-->>UI: 13302 - 达到 20 个上限，移除一个或申请提升
-    Note over ISVC: 收紧绝不删除既有服务（D6）
     Agent->>UI: 提交批处理任务（当日第 51 个）
-    UI->>BSVC: POST /api/v1/batch/jobs
+    UI->>BSVC: POST /api/v1/batch
     BSVC->>TEN: OrgQuota(org) - max_batch_jobs_per_day 50
     BSVC->>DB: COUNT 自本地午夜以来的 batch_jobs = 50
     BSVC-->>UI: 13303 - 达到当日 50 个上限，午夜前退避
@@ -589,7 +576,6 @@ sequenceDiagram
 | 条件 | HTTP | 码 | 常量 | 说明 |
 | --- | --- | --- | --- | --- |
 | 组织并发达到上限 | **429 + `Retry-After: 1`** | 13301 | `CodeQuotaConcurrencyExceeded` | 网关渲染（数据面，第 5.3 节）；控制面绝不返回它 |
-| 组织达到推理服务上限 | 500 | 13302 | `CodeQuotaServiceCountExceeded` | `CreateInferenceService` 拒绝；消息指明当前数与限额 |
 | 组织达到每日批处理任务上限 | 500 | 13303 | `CodeQuotaBatchJobsExceeded` | `CreateBatchJob` 拒绝；消息指明今日数与限额 |
 | 请求 `max_tokens` 超组织上限 | **400** | 13304 | `CodeQuotaOutputTokensExceeded` | 网关渲染（数据面）；消息指明上限 |
 | 配额值超范围（或无效 `limit_state`） | 500 | 13305 | `CodeQuotaInvalid` | 校验；消息指明维度 |
@@ -598,7 +584,7 @@ sequenceDiagram
 | 会话缺少所需角色 | 500 | 10036 | `CodeForbidden` | 复用 — 权限拒绝（FR5.1） |
 | `GetMyQuota` 无组织上下文 | 500 | 10005 | `CodeOrganizationNotFound` | 复用 — 组织守卫惯例 |
 
-渲染拆分（对 Test 智能体绑定）：**13301 与 13304 是数据面网关状态**（429 带 `Retry-After: 1`，与 400），针对固化契约合成验证（AC3、AC4、AC7）；**13302/13303/13305/13306 是控制面业务错误**，经 grpc-gateway 以统一 `{"code": <int>, "message": "..."}` 信封与 HTTP 500 呈现，即仓库惯例。`Retry-After` 仅出现在 13301（在途窗口很短；其余码是配置错误而非瞬态负载）。
+渲染拆分（对 Test 智能体绑定）：**13301 与 13304 是数据面网关状态**（429 带 `Retry-After: 1`，与 400），针对固化契约合成验证（AC3、AC4、AC7）；**13303/13305/13306 是控制面业务错误**（13302 已退役，不再返回），经 grpc-gateway 以统一 `{"code": <int>, "message": "..."}` 信封与 HTTP 500 呈现，即仓库惯例。`Retry-After` 仅出现在 13301（在途窗口很短；其余码是配置错误而非瞬态负载）。
 
 ---
 
@@ -649,7 +635,7 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 - **服务层组织限定**（设计 §6 注 7）：`GetMyQuota` 从会话解析调用者组织（过渡性头回退），绝不信任客户端提供的组织 id；响应的任何字段都不携带其他组织的数据（AC9）。请求消息根本没有组织字段。
 - **执行 fail-closed、展示 fail-open**：执行检查拒绝（绝不排队、绝不部分执行）；用量快照在中继数据缺失/陈旧时降级为 0 — 这是展示降级，绝不是执行绕过（执行是网关本地状态，不是中继）。
 - **判定完整性**：配额字段与 RPM/TPM 搭乘同一缓存判定，同一 TTL 界定；调用者无法伪造判定（它由服务端从 key 摘要计算并服务端缓存）。
-- **非破坏收紧**：任何配额写入都不删除或杀死租户资源 — 更新路径只触碰六个组织列（D6、US9）。
+- **非破坏收紧**：任何配额写入都不删除或杀死租户资源 — 更新路径只触碰五个组织列（D6、US9）。
 - **审计**：`quota.updated` 事件携带操作运营者、组织与逐维度 old → new 值（FR5.3、AC10）；列表/读取调用不审计，遵循读取路径惯例。
 - **mailto**（AD18）：地址是运营者配置的 config，不是用户输入；组织显示名以 URL 编码插入 — 组织显示名是运营者管理的数据（组织编辑器在管理面）。
 
@@ -657,12 +643,12 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 
 ## 11. 发布与升级说明
 
-1. **仅增量**：`organizations` 上带宽松默认值的六列（AutoMigrate）、新 proto 扩展、新路由、一个 MQ subject。无既有列、消息字段或路由变更；既有调用方不受影响。
+1. **仅增量**：`organizations` 上带宽松默认值的五列（AutoMigrate）、新 proto 扩展、新路由、一个 MQ subject。无既有列、消息字段或路由变更；既有调用方不受影响。
 2. **运营者设置配额前无行为变更**：每个维度默认 0 = 不限制 — 网关的新判定字段读 0 并跳过检查、创建守卫跳过、配额条隐藏。功能在被刻意激活前是惰性的（§1.4 规则 4）。
 3. **判定向后兼容**（AD12）：升级前缓存的判定反序列化时缺少配额键 → 0 → 不限制；随缓存过期（≤ 30 秒）新判定携带字段。收到扩展响应的旧网关忽略未知 proto 字段 — 两种部署顺序自由。
 4. **部署顺序**：无 — 单二进制；列在启动时迁移，消费者 runner 启动（受配置门控），接缝在 `main.go` 中接线。nil 接缝读作不限制，因此部分设置（如 FVT）表现为 feature 前。
 5. **传播窗口**（D6、AC11）：热路径变更（并发、token 上限）在判定 TTL 内（≤ 30 秒）执行；生命周期变更（服务、每日批处理）在下一次创建调用时执行。两个窗口都记录在管理抽屉文案中。
-6. **回滚**：回滚二进制后六列留在原处（无害 — 没有其他东西读取它们）并完全恢复 feature 前行为；MQ subject 只是没有订阅者。配额值在回滚后保留，再升级时重新生效。
+6. **回滚**：回滚二进制后五列留在原处（无害 — 没有其他东西读取它们）并完全恢复 feature 前行为；MQ subject 只是没有订阅者。配额值在回滚后保留，再升级时重新生效。
 7. **负载**：创建时守卫为每次创建调用增加一次索引 COUNT；配额列表为每页行增加两次 COUNT（尽力而为、按页有界）；消费者每 10 秒每组织处理一条小 JSON 消息 — 相对既有 runner 可忽略。
 
 ---
@@ -675,7 +661,7 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 | AC2 编辑对话框校验（范围、「0 = 不限制」文案）、13305 指明维度、一键填充后仍可编辑的预设 | FR1.4–FR1.5、D5 | §5.4、AD17、§13.2（Update）、§13.9 |
 | AC3 并发执行（合成）：第 N+1 个被拒 13301 + `Retry-After: 1`，完成后释放槽位，不限制绝不拒绝 | FR2.2、§6 注 2 | §5.3（固化契约）、AD12、§7.2、§13.5、test/fvt（§14） |
 | AC4 Token 上限执行（合成）：显式超限 → 13304 指明上限；缺失 `max_tokens` 被钳制并完成；≤ 上限通过 | FR2.3 | §5.3、AD12、§7.2、§13.5 |
-| AC5 服务数守卫：第 N+1 次创建 → 13302 带计数；收紧低于运行数非破坏 | FR3.1、D6 | AD13、§13.6、§7.3、§11.5 |
+| AC5 服务数守卫已移除：`max_inference_services` 不再投影或检查，`CreateInferenceService` 永不返回 13302 | FR3.1（退役） | FVT（`TestFVTQuotaServiceCountIsNotLimited`） |
 | AC6 每日批处理守卫：第 N+1 次创建 → 13303 带今日计数；已取消/失败计数 | FR3.2 | AD15、§13.7、§7.3 |
 | AC7 检查顺序：限流先于配额、配额先于资金 | §1.4、§6 注 2 | §5.3（流程图 + 条目 2–3）、§7.2 |
 | AC8 配额条（四 chip、≥ 80% 琥珀、100% 红、全部不限制时隐藏）+ `/quotas` 卡片 + 申请提升 mailto | FR4.2–FR4.3、D8 | AD18、§6.1–6.3、§13.9 |
@@ -696,7 +682,7 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 | --- | --- | --- |
 | `proto/taas/tenancy/v1` | `tenancy.proto` | 四个配额 RPC + 消息（第 5.2 节）；重新生成 |
 | `proto/taas/auth/v1` | `auth.proto` | `VerifyAPIKeyResponse` 字段 7–8；重新生成 |
-| `services/tenancy` | `tenancy_model.go` | `Organization` 上的六个增量字段（AD11） |
+| `services/tenancy` | `tenancy_model.go` | `Organization` 上的五个增量字段（AD11） |
 | | `quota.go`（新） | `OrgQuota` 值结构体、导出的 `OrgQuotaReader` 接口、范围常量与 `ValidateQuota`（AD13） |
 | | `quota_repository.go`（新） | 配额列表/读取/更新、用量 COUNT 读取、变更历史读取（AD16） |
 | | `quota_service.go`（新） | 四个 RPC、`requireAdminRole`、`sessionOrgResolver` 接缝、`SetSessionOrgResolver` |
@@ -721,7 +707,7 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 
 逐 RPC 职责：
 
-- **`ListOrganizationQuotas`**：`requireAdminRole` → 校验 `limit_state`（**13305**）→ `repo.ListOrganizationQuotas(ctx, QuotaListFilter{Name, LimitState, Offset, Limit})`（带六列的组织行；`limited` = 四个上限任一 > 0）→ 逐行组装 `QuotaUsage`：`concurrent_requests` 来自 `concurrency.CurrentInFlight(orgID)`、`inference_services` 来自 `repo.CountActiveServicesByOrg`、`batch_jobs_today` 来自 `repo.CountBatchJobsSince(orgID, midnight)` → `PageMeta`。用量组装仅按页行（有界）、尽力而为（COUNT 错误记录警告并为该行产出 0 — 列表绝不因用量失败）。
+- **`ListOrganizationQuotas`**：`requireAdminRole` → 校验 `limit_state`（**13305**）→ `repo.ListOrganizationQuotas(ctx, QuotaListFilter{Name, LimitState, Offset, Limit})`（带五列的组织行；`limited` = 三个上限任一 > 0）→ 逐行组装 `QuotaUsage`：`concurrent_requests` 来自 `concurrency.CurrentInFlight(orgID)`、`inference_services` 来自 `repo.CountActiveServicesByOrg`、`batch_jobs_today` 来自 `repo.CountBatchJobsSince(orgID, midnight)` → `PageMeta`。用量组装仅按页行（有界）、尽力而为（COUNT 错误记录警告并为该行产出 0 — 列表绝不因用量失败）。
 - **`GetOrganizationQuota`**：`requireAdminRole` → `repo.GetOrganizationQuota(ctx, orgID)`（未知 → **13306**）→ 用量同上 → `repo.ListQuotaChanges(ctx, orgID, 20)`（AD16）→ 完整响应。
 - **`UpdateOrganizationQuota`**：`requireAdminRole` → 加载组织（**13306**）→ 对每个存在的 optional 字段校验范围（**13305**，消息指明维度）→ 与当前值求差；无实际变更 → 返回当前配额 + 用量（无写入、无审计）→ `repo.UpdateOrganizationQuota(ctx, orgID, patch, actor, now)`（一次 UPDATE 变更列 + `quota_updated_by`/`quota_updated_at`）→ `recordAudit("quota.updated", orgID, orgID, "success", metadata{"changes": [...]})`（尽力而为）→ 返回更新后的配额 + 用量。
 - **`GetMyQuota`**：解析组织（`sessionOrgResolver.SessionActiveOrg`，过渡性头回退，空 → **10005**）→ `repo.GetOrganizationQuota` → 用量 → 来自 `cfg.Quota.RequestIncreaseTo` 的 `request_increase_email`。无角色门；请求上不存在组织参数。
@@ -730,13 +716,12 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 
 `quota_repository.go`（`database.Manager` 模式，与既有 tenancy 仓储同一句柄）：
 
-- `ListOrganizationQuotas(ctx, filter)` — 带六列的组织行 `SELECT`；`name` 匹配 `display_name ILIKE '%q%'` 或 id 前缀；`limit_state` 过滤 `limited` = 任一上限 > 0 / `unlimited` = 全零；按 `display_name` 排序，带总数分页。
+- `ListOrganizationQuotas(ctx, filter)` — 带五列的组织行 `SELECT`；`name` 匹配 `display_name ILIKE '%q%'` 或 id 前缀；`limit_state` 过滤 `limited` = 任一上限 > 0 / `unlimited` = 全零；按 `display_name` 排序，带总数分页。
 - `GetOrganizationQuota(ctx, orgID)` — 单行或 GORM `ErrRecordNotFound` → **13306**。
 - `UpdateOrganizationQuota(ctx, orgID, patch, actor, now)` — UPDATE（仅变更列 + 两个戳）。
-- `CountActiveServicesByOrg(ctx, orgID)` — `COUNT(*) FROM inference_services WHERE organization_id = ? AND state <> 'terminated'`（共享句柄展示读取，AD13 注明的重复）。
 - `CountBatchJobsSince(ctx, orgID, since)` — `COUNT(*) FROM batch_jobs WHERE organization_id = ? AND created_at >= ?`。
 - `ListQuotaChanges(ctx, orgID, limit)` — `SELECT created_at, actor_user_id, metadata FROM audit_events WHERE organization_id = ? AND action = 'quota.updated' ORDER BY created_at DESC`（遍历直至收集 `limit` 条展平条目，最新在前；AD16）。
-- `OrgQuota(ctx, orgID)` — `OrgQuotaReader` 实现：组织行上的四个上限（未知组织 → 零结构体，不是错误 — 判定构造期间缺失的组织必须读作不限制，绝不让 auth 失败；AD12 的 fail-open 规则）。
+- `OrgQuota(ctx, orgID)` — `OrgQuotaReader` 实现：组织行上的三个上限（未知组织 → 零结构体，不是错误 — 判定构造期间缺失的组织必须读作不限制，绝不让 auth 失败；AD12 的 fail-open 规则）。
 
 ### 13.4 `services/tenancy` — 在途消费者（AD14）
 
@@ -755,19 +740,9 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 - 响应映射增加 `MaxConcurrentRequests: verdict.MaxConcurrentRequests` 与 `MaxOutputTokensPerRequest: verdict.MaxOutputTokensPerRequest`（proto 字段 7/8）。
 - `SetOrgQuotaReader(tenancy.OrgQuotaReader)` — 注入接缝；nil 读作不限制（既有 FVT 设置不变）。
 
-### 13.6 `services/infer` — 服务数检查（FR3.1）
+### 13.6 `services/infer` — 无配额检查（已退役）
 
-- infer 仓储增加 `CountActiveServicesByOrg(ctx, orgID) (int64, error)` — `COUNT(*) WHERE organization_id = ? AND state <> 'terminated'`。
-- `CreateInferenceService`：紧接 `checkOrg(ctx, orgID, true)` 之后、名称模式校验之前 — 组织级守卫在组织上下文校验后立即运行，先于任何负载处理：
-
-```go
-if err := s.checkServiceQuota(ctx, orgID); err != nil {
-    return nil, err
-}
-```
-
-- `checkServiceQuota`：nil reader → nil（不限制）；`q.MaxInferenceServices == 0` → nil；`count, err := s.repo.CountActiveServicesByOrg(ctx, orgID)`；`count >= q.MaxInferenceServices` → **13302**，用户向文案指明两个数字（「您的组织已达到 20 个推理服务的上限。请申请提升或移除未使用的服务。」）。检查绝不删除或变更既有服务（D6）。
-- `SetOrgQuotaReader` — 注入接缝。
+推理服务数不是配额维度。`CreateInferenceService` 没有 `checkServiceQuota` 调用，永不返回 13302；`CodeQuotaServiceCountExceeded` 仅为旧客户端可解码而保留定义。infer 仓储保留 `InferenceServiceCountByOrganization` 供 tenancy 的历史用量投影，但配额 API 与创建流程都不再查询它。FVT `TestFVTQuotaServiceCountIsNotLimited` 证明创建成功且配额投影中不再出现该字段。
 
 ### 13.7 `services/batch` — 每日任务检查（FR3.2、AD15）
 
@@ -794,20 +769,20 @@ if err := s.checkBatchQuota(ctx, orgID); err != nil {
 // Gateway (429/400) per the pinned contract; the rest surface through
 // grpc-gateway as the unified envelope.
 CodeQuotaConcurrencyExceeded   Code = 13301 // QUOTA_CONCURRENCY_EXCEEDED
-CodeQuotaServiceCountExceeded  Code = 13302 // QUOTA_SERVICE_COUNT_EXCEEDED
+CodeQuotaServiceCountExceeded  Code = 13302 // 已退役：仅为线上兼容保留，永不返回
 CodeQuotaBatchJobsExceeded     Code = 13303 // QUOTA_BATCH_JOBS_EXCEEDED
 CodeQuotaOutputTokensExceeded  Code = 13304 // QUOTA_OUTPUT_TOKENS_EXCEEDED
 CodeQuotaInvalid               Code = 13305 // QUOTA_INVALID
 CodeQuotaNotFound              Code = 13306 // QUOTA_NOT_FOUND
 ```
 
-`messages.go` 增加六条消息，每条在设计要求处指明维度/计数/限额（「组织并发上限超出」「组织推理服务上限已达」「组织每日批处理任务上限已达」「max_tokens 超出组织上限」「无效的配额值」「组织配额未找到」）。
+`messages.go` 保留六条消息（含已退役的 13302），每条在设计要求处指明维度/计数/限额（「组织并发上限超出」「组织推理服务上限已达（已退役）」「组织每日批处理任务上限已达」「max_tokens 超出组织上限」「无效的配额值」「组织配额未找到」）。
 
 ### 13.9 前端详细设计
 
-- **`QuotasPage`**（`/admin/quotas`）：加载 `GET /api/v1/admin/quotas?{page, name, limit_state}`；渲染组织表格 — 组织（名称 + id）、并发（「12 / 50」或「不限制」）、服务、今日批处理（同形状）、Token 上限（「8192」或「不限制」）、Updated（相对时间）、Updated by；行点击打开编辑对话框，历史图标打开抽屉。过滤栏：名称搜索、限额状态（全部 / 受限 / 不限制）、分页。**编辑对话框**：预设行（Default / Starter / Growth / Enterprise — 一键填充四个字段，AD17）、带范围与「0 = 不限制」标注的四个数字字段、内联校验（「输入 0（不限制）或 1–10000」式文案）、保存 → `PATCH /api/v1/admin/quotas/{id}`；**13305** 响应以服务端文案高亮出错字段；成功显示 toast 并刷新行。**历史抽屉**：时间、操作者、维度、Old → New（「并发：50 → 100」），最新在前，20 条，外加传播窗口说明（热路径 ≤ 30 秒、生命周期下次创建 — D6/AC11）与批处理计数器时区说明。状态：加载骨架；空（「暂无组织」）；错误（陈旧带重试）；无权限（10036，`/admin` 链接）。
+- **`QuotasPage`**（`/admin/quotas`）：加载 `GET /api/v1/admin/quotas?{page, name, limit_state}`；渲染组织表格 — 组织（名称 + id）、并发（「12 / 50」或「不限制」）、今日批处理（同形状）、Token 上限（「8192」或「不限制」）、Updated（相对时间）、Updated by；行点击打开编辑对话框，历史图标打开抽屉。过滤栏：名称搜索、限额状态（全部 / 受限 / 不限制）、分页。**编辑对话框**：预设行（Default / Starter / Growth / Enterprise — 一键填充四个字段，AD17）、带范围与「0 = 不限制」标注的四个数字字段、内联校验（「输入 0（不限制）或 1–10000」式文案）、保存 → `PATCH /api/v1/admin/quotas/{id}`；**13305** 响应以服务端文案高亮出错字段；成功显示 toast 并刷新行。**历史抽屉**：时间、操作者、维度、Old → New（「并发：50 → 100」），最新在前，20 条，外加传播窗口说明（热路径 ≤ 30 秒、生命周期下次创建 — D6/AC11）与批处理计数器时区说明。状态：加载骨架；空（「暂无组织」）；错误（陈旧带重试）；无权限（10036，`/admin` 链接）。
 - **`UserQuotasPage`**（`/quotas`）：加载 `GET /api/v1/quotas`；渲染四个 `QuotaDimensionCard`；其下是**申请提升**按钮（AD18 mailto，预填组织名，`request_increase_email` 为空时隐藏）与配额由平台运营者设置的说明。状态：加载；全部不限制的友好空态（「您的组织未设置任何限制 — 用量不受限」）；错误（陈旧带重试）。
-- **`QuotaBar`**（UserShell 组织上下文区，`OrgSwitcher` 旁）：对 `GET /api/v1/quotas` `usePolling`（30 秒）；四个 chip（「在途 12/50」「服务 3/20」「今日批处理 5/50」「Token ≤ 8192」，或每 chip「不限制」）；≥ 80% 琥珀、100% 红；点击跳转 `/quotas`；四个上限全为 0 时隐藏；轮询失败保留最后的好 chip。
+- **`QuotaBar`**（UserShell 组织上下文区，`OrgSwitcher` 旁）：对 `GET /api/v1/quotas` `usePolling`（30 秒）；三个 chip（「在途 12/50」「今日批处理 5/50」「Token ≤ 8192」，或每 chip「不限制」）；≥ 80% 琥珀、100% 红；点击跳转 `/quotas`；四个上限全为 0 时隐藏；轮询失败保留最后的好 chip。
 - **`api.ts`**：`OrganizationQuota`、`QuotaUsage`、`QuotaChangeEntry`、`OrganizationQuotaRow` 类型；int64 字段类型化为字符串（序列化惯例）。
 - **i18n**：`nav.quotas` 与 `quota.*` 键（表格、对话框、预设、抽屉、卡片、条、状态），位于 `en.ts`/`zh.ts`（`routingGroups.*` 惯例）。
 
@@ -843,13 +818,13 @@ if runner := tenancy.NewConcurrencyConsumer(srv.Components()); runner != nil {
 2. **`pkg/config`**：`QuotaConfig`（+ 消费者子配置）+ 默认值 + 校验 + `configs/config.yaml` 节。
 3. **`pkg/mq`**：`SubjectQuotaOrgsConcurrency`。
 4. **`proto/taas/tenancy/v1/tenancy.proto`**：四个 RPC + 消息；**`proto/taas/auth/v1/auth.proto`**：字段 7–8；重新生成。
-5. **`services/tenancy/tenancy_model.go`**：六个增量 `Organization` 字段。
+5. **`services/tenancy/tenancy_model.go`**：五个增量 `Organization` 字段。
 6. **`services/tenancy/quota.go`**：`OrgQuota`、导出的 `OrgQuotaReader`、范围常量、`ValidateQuota`。
 7. **`services/tenancy/quota_repository.go`**：列表/读取/更新、用量 COUNT、变更历史读取、`OrgQuota` reader 实现。
 8. **`services/tenancy/quota_service.go`**：四个 RPC、`requireAdminRole`、`sessionOrgResolver` 接缝。
 9. **`services/tenancy/quota_concurrency_consumer.go`**：runner、快照 map、`CurrentInFlight`。
 10. **`services/auth`**：判定字段、缓存未命中构造（读取错误 fail-open）、响应映射、`SetOrgQuotaReader`。
-11. **`services/infer`**：`CountActiveServicesByOrg`、`checkServiceQuota`（13302）、`SetOrgQuotaReader`。
+11. **`services/infer`**：无配额检查。推理服务数不设上限；仓储保留计数辅助仅供展示。
 12. **`services/batch`**：`CountJobsSince`、`checkBatchQuota`（13303，`quota.timezone` 午夜）、`SetOrgQuotaReader`。
 13. **`apps/taas-server/main.go`**：接缝接线 + 消费者 runner。
 14. **`web/src/api.ts` + locales**：类型与 i18n 键。

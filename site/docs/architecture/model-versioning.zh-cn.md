@@ -84,7 +84,7 @@ flowchart TD
 
     subgraph ctrl["Controller"]
         CTRL["Controller<br/>协调版本变更事件"]
-        K8S["Kubernetes<br/>Deployment · Service"]
+        K8S["Kubernetes<br/>StormService · Service"]
     end
 
     subgraph stores["状态"]
@@ -278,7 +278,7 @@ message UpdateInferenceServiceVersionResponse {
 }
 ```
 
-Controller 解码 `change_type=update_version`，用新权重重建 Kubernetes Deployment Pod（`model_version` 通过 model 模块映射到权重路径），保持 Service 和端点，并在 `infer.services.status`（现有状态主题）上报告观察状态。`infer` 状态消费者更新服务行的 `model_version` 与 `state`。
+Controller 解码 `change_type=update_version`，用新权重滚动 AIBrix StormService（`model_version` 通过 model 模块映射到权重路径），保持 Service 和端点，并在 `infer.services.status`（现有状态主题）上报告观察状态。`infer` 状态消费者更新服务行的 `model_version` 与 `state`。
 
 ---
 
@@ -480,7 +480,7 @@ sequenceDiagram
 
 | 文件 | 函数 | 职责 |
 | --- | --- | --- |
-| `reconciler.go` | `ApplyInferServiceChange` | 解码 `change_type=update_version`；用新权重重建 Kubernetes Deployment Pod（通过 model 模块将 `model_version` 解析为权重路径），保持 Service 与端点；在 `infer.services.status` 上报告观察状态 |
+| `reconciler.go` | `ApplyInferServiceChange` | 解码 `change_type=update_version`；用新权重滚动 AIBrix StormService（通过 model 模块将 `model_version` 解析为权重路径），保持 Service 与端点；在 `infer.services.status` 上报告观察状态 |
 
 ### 13.4 `web` 管理端控制台
 

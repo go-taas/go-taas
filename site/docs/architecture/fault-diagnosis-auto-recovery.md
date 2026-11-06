@@ -423,7 +423,7 @@ message GetServiceStatusRequest {
 
 message GetServiceStatusResponse {
   taas.common.v1.Response response = 1;
-  string state = 2;      // pending | deploying | running | failed | terminated
+  string state = 2;      // pending | queued | starting | deploying | running | failed | terminated
   bool degraded = 3;     // true when an active incident exists
   ServiceIncident incident = 4; // null when healthy
 }

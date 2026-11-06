@@ -12,7 +12,7 @@
 
 ## 1. Overview and Goals
 
-go-taas runs inference services as Kubernetes Deployments (model-catalog-deployment §4.2): the Controller creates the Deployment and Service, and the inference engine (vLLM, etc.) writes its logs to the container's stdout/stderr. The request-tracing feature (row 27) explains *what happened inside a request* (TTFT, generation, spans), but it cannot answer the operator's raw question: *what did the inference engine print?* When a deployment fails to converge, a request errors, or the engine logs a warning, the operator must leave the console and run `kubectl logs` against the pod — an operator-orchestration escape hatch that the console should own.
+go-taas runs inference services as AIBrix StormServices (model-catalog-deployment §4.2): the Controller creates the StormService and Service, and the inference engine (vLLM, etc.) writes its logs to the container's stdout/stderr. The request-tracing feature (row 27) explains *what happened inside a request* (TTFT, generation, spans), but it cannot answer the operator's raw question: *what did the inference engine print?* When a deployment fails to converge, a request errors, or the engine logs a warning, the operator must leave the console and run `kubectl logs` against the pod — an operator-orchestration escape hatch that the console should own.
 
 This feature adds an **inference service logs viewer**: view the container logs of an inference service's pods in the console, with level/time filters, tailing, and log search.
 
@@ -43,7 +43,7 @@ Section 2 records the architecture decisions (AD1–AD8, mirroring the design's 
 | AD2 | **Logs are read directly from the Kubernetes API through the Controller**, not from a new log store. The Controller enumerates the service's pods/containers and streams their stdout/stderr, exactly as `kubectl logs` does | Design D2. Standing up Loki/Datadog/CloudWatch is out of scope and heavy; the Controller already owns the Deployment/Pod lifecycle (model-catalog §4.2), so reading logs from the Kubernetes API is the natural, dependency-light path |
 | AD3 | **A new `ListServiceLogPods` RPC** returns the service's pods/containers (masked as replica indices, not raw pod names) so the console can offer a pod selector | Design D3. The console must let the operator pick which replica's logs to view without leaking raw pod names (D1); a masked replica index is the product-safe projection |
 | AD4 | **A new `GetServiceLogs` RPC** returns a bounded window of log lines for a chosen pod/container, with `tail` (default 500), `since` (time range), and `level` filters; the response carries the lines plus a `next_offset` for pagination | Design D4. Bounding the fetch (tail + time range) avoids unbounded reads (pitfall); `next_offset` enables "load more" without a log store |
-| AD5 | **Live tailing is a bounded poll, not a blocking stream**: the console's "Follow" toggle polls `GetServiceLogs` with a `since` offset on a short interval (e.g. 2 s) while active | Design D5. A blocking stream would tie up the HTTP call and complicate the gateway; a bounded poll matches the existing console polling pattern (deployment state, observability) and is easy to test |
+| AD5 | **Live tailing is a bounded poll, not a blocking stream**: the console's "Follow" toggle polls `GetServiceLogs` with a `since` RFC3339 timestamp on a short interval (e.g. 2 s) while active | Design D5. A blocking stream would tie up the HTTP call and complicate the gateway; a bounded poll matches the existing console polling pattern (deployment state, observability) and is easy to test |
 | AD6 | **Level filtering is best-effort**: the console filters by level when the engine emits structured levels (e.g. `[ERROR]`, `[WARN]`, `[INFO]`, `[DEBUG]`), and shows all lines otherwise | Design D6. Engines vary in whether they emit structured levels; a best-effort level filter degrades gracefully to "show all" without a parsing contract |
 | AD7 | **Search is client-side over the fetched window** — a search box filters the already-fetched lines; it does not query a log store | Design D7. With no log store (D2), search must operate on the fetched window; this keeps the feature dependency-light and testable |
 | AD8 | **The page is read-only and audited only for access** — it writes nothing and mutates nothing; the page is reachable only by authenticated admin sessions | Design D8. The feature is a pure read of container logs; the audit trail (feature #15) already covers the underlying service writes. No new audit events are needed |
@@ -356,7 +356,7 @@ The Controller's log-fetch uses the existing Kubernetes client configuration; no
 
 - No schema changes; no new tables.
 - The new RPCs bind under the existing admin prefix; the realm guard already treats that prefix as the admin surface.
-- The Controller must expose the read-only log-fetch interface; the `infer` module calls it in-process (single-Deployment topology).
+- The Controller must expose the read-only log-fetch interface; the `infer` module calls it in-process (single-server topology).
 - The feature is additive; existing deployments and pages are unaffected.
 
 ---

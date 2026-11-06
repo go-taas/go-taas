@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis, competitive research and the slicing-model decision (label-driven pool membership, slice templates, slice-aware scheduling hints), the admin-surface pages `/admin/vgpu-pools` and `/admin/vgpu-pools/:poolId` (pool CRUD, node membership, slice-template management, per-pool allocation), the end-user-surface vGPU-aware deploy mode and service-detail slice display, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `vgpu` (new module — pool membership, slice templates, capacity accounting, scheduling hints), `infer` (deploy-form vGPU fields, service slice assignment), `Controller` (turns scheduling hints into HAMI device requests), `k8s` (node labels, extended resources, HAMI annotations), `pkg/server` gateway (admin + user prefix bindings), `web` admin + end-user console |
 | Related documents | [Architecture Design](./architecture.md) — §2.3 heterogeneous compute, §2.4 `infer`, §2.7 Controller · [Accelerator Inventory & Health](./accelerator-inventory.md) — the per-node GPU fleet view this feature's pool nodes are a labeled subset of · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the deploy form this feature extends · [Inference Autoscaling](./inference-autoscaling.md) — slice-aware replica sizing · [Service Quota Management](./service-quota-management.md) — the resource dimension slice count is deferred from · [Multi-Cluster Management](./multi-cluster-management.md) — pool membership across clusters · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the masked-projection rule |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -240,8 +240,8 @@ The vGPU RPCs live in a new **`vgpu`** module (admin surface) plus a small **`in
 | `UpdateVGPUPool` | `PATCH /api/v1/admin/vgpu-pools/{pool_id}` | admin | **new** | Update policy/templates/selector; audited; 13402 on bad templates |
 | `DeleteVGPUPool` | `DELETE /api/v1/admin/vgpu-pools/{pool_id}` | admin | **new** | Delete a pool; 13405 if services use it |
 | `ListVGPUPools` (tenant-visible) | `GET /api/v1/vgpu-pools` | user | **new** | Pools the caller's org may use (grant-filtered), with templates — for the deploy form |
-| `CreateInferenceService` (`taas.infer.v1`) | `POST /api/v1/inference-services` | user | **changed** | Gains optional `pool_id` + `slice_template_id`; 13403 if the pool/template is invalid or not granted |
-| `GetInferenceService` (`taas.infer.v1`) | `GET /api/v1/inference-services/{service_id}` | user | **changed** | Response gains the assigned slice (pool, template, physical GPU) when shared-GPU |
+| `CreateInferenceService` (`taas.infer.v1`) | `POST /api/v1/admin/inference-services` | user | **changed** | Gains optional `pool_id` + `slice_template_id`; 13403 if the pool/template is invalid or not granted |
+| `GetInferenceService` (`taas.infer.v1`) | `GET /api/v1/admin/inference-services/{service_id}` | user | **changed** | Response gains the assigned slice (pool, template, physical GPU) when shared-GPU |
 
 **Contract notes for the Architect agent**:
 

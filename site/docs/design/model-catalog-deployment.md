@@ -6,7 +6,7 @@
 | Document scope | Requirement analysis and UI/UX design for the model catalog and one-click inference-service deployment capability: console pages, user flows, API surface, and acceptance criteria |
 | Owning modules | `model` (catalog and weight assets), `infer` (inference-service lifecycle), with `image` (engine image selection) |
 | Related documents | [Architecture Design](./architecture.md) — Section 2.2 `model`, Section 2.4 `infer`, Section 2.3 `image`, and Section 4.2 the one-click model deployment flow |
-| Status | Design complete, handed to the Architect agent |
+| Status | Implemented |
 
 ---
 
@@ -35,7 +35,7 @@ Common industry patterns worth adopting:
 1. **Model cards in a flat, filterable list** — every surveyed product shows models as cards or table rows with name, version, and a short description; Azure adds capability facts and benchmark tabs. The card is the anchor for "deploy this".
 2. **Deployment is a short guided form, not YAML** — Together, SiliconFlow, Aliyun Bailian, and Volcengine Ark all reduce deployment to: model + version, compute (card type), image/engine, replicas. Nobody asks the user to write Kubernetes manifests.
 3. **The deployment result is an endpoint with a copyable base URL** — the user's end goal is an OpenAI-compatible endpoint to point Agents at; the console must surface it immediately on the service detail page.
-4. **Async state with visible progress** — deployment takes minutes (image pull, weight mount, pod scheduling); every product shows a state (pending / deploying / running / failed) instead of blocking the HTTP call.
+4. **Async state with visible progress** — deployment takes minutes (image pull, weight mount, pod scheduling); every product shows a state (pending / queued / starting / running / failed) instead of blocking the HTTP call.
 5. **Scale is a first-class operation** — changing replica count is common and safe; Together and Volcengine Ark expose it directly on the service row.
 
 Pitfalls to avoid:
@@ -50,8 +50,8 @@ Pitfalls to avoid:
 | # | Decision | Rationale |
 | --- | --- | --- |
 | D1 | The catalog is the list of models registered through `RegisterModel` (name, version, weight path, description); the console shows one card per model with its latest version and a version list on the detail page | Matches the `model` module's metadata role (architecture Section 2.2); no marketplace or external registry sync in this feature point |
-| D2 | One-click deployment is a single guided form with exactly: **Service name**, **Model + version** (picked from the catalog), **Accelerator** (nvidia / iluvatar / metax), **Card type** (`accelerator_type`), **Image** (filtered to the chosen accelerator), **Replicas** (1–100) | Mirrors `CreateInferenceService` fields one-to-one; no YAML, no Kubernetes concepts exposed |
-| D3 | Deployment is asynchronous: the create call returns immediately with `state=pending`; the state machine is `pending → deploying → running / failed`, and `terminated` after deletion; the console polls the service list/detail | Matches architecture Section 4.2 (MQ + Controller reconciliation); blocking on pod readiness would time out the HTTP call |
+| D2 | One-click deployment is a single guided form with exactly: **Service name**, **Model + version** (picked from the catalog), **Accelerator** (the vendors the fleet reports, plus `cpu`), **Card type** (`accelerator_type`), **Image** (filtered to the chosen accelerator), **Replicas** (1–100) | Mirrors `CreateInferenceService` fields one-to-one; no YAML, no Kubernetes concepts exposed |
+| D3 | Deployment is asynchronous: the create call returns immediately with `state=pending`; the observed states are `pending → queued → starting → running`, with `failed` on a reconcile error and `terminated` after deletion (`deploying` is the legacy phase written by spec-change RPCs); the console polls the service list/detail | Matches architecture Section 4.2 (MQ + Controller reconciliation); blocking on pod readiness would time out the HTTP call |
 | D4 | The image dropdown is filtered by the selected accelerator; images incompatible with the chosen card type are hidden, not merely disabled | The `image` module owns the adaptation matrix (architecture Section 2.3); wrong combinations must be impossible to submit |
 | D5 | Scaling (replica count change) is an in-place operation on the service row; any other change (model, version, image, card type) requires delete + recreate | Matches `ScaleInferenceService` (replicas only); avoids half-updatable state |
 | D6 | The service detail page shows the OpenAI-compatible endpoint(s) with a copy button and a "try it" curl snippet | The endpoint is the user's actual deliverable; Agents call it through the Inference Gateway with an API Key |
@@ -62,7 +62,7 @@ Pitfalls to avoid:
 
 **In scope**: model registration and catalog browsing (list, detail with versions), one-click deployment of a registered model as an inference service (create, list, detail with endpoints, scale, delete), deployment state visibility, and image selection constrained by accelerator.
 
-**Out of scope** (tracked by other feature points): image registration, versioning, and the full image×card adaptation matrix UI (#3), image pre-pull/warmup orchestration (#3), per-model pricing display (#5), tenant-level model authorization (#6), autoscaling policies, canary upgrades, and fine-tuning flows.
+**Out of scope** (tracked by other feature points; most are now implemented): image registration, versioning, and the full image×card adaptation matrix UI (#3), image pre-pull/warmup orchestration (#3), per-model pricing display (#5), tenant-level model authorization (#6), autoscaling policies (#16/#47), canary upgrades, and fine-tuning flows.
 
 ---
 
@@ -71,7 +71,7 @@ Pitfalls to avoid:
 | Role | Description | Interaction with the catalog and deployment |
 | --- | --- | --- |
 | **Platform administrator** | The operator who runs the go-taas cluster and curates which models the platform serves | Registers models into the catalog, deploys inference services, scales and deletes them, and reads deployment state |
-| **Organization administrator (future)** | A tenant-side administrator consuming the platform | Out of scope for this feature point; the API surface is organization-scoped from day one (services belong to an organization), so tenant consumption can be enabled without breaking changes |
+| **Organization administrator (future)** | A tenant-side administrator consuming the platform | Out of scope for this feature point; inference services are platform assets, so the management surface stays with the platform administrator. Tenant consumption happens through model access policy and the data-plane API |
 | **Agent / SDK** | The programmatic consumer that calls `/v1/chat/completions` | Never touches the catalog or deployment APIs; consumes the endpoints that deployment produces, through the Inference Gateway with an API Key |
 
 > Terminology: the consumer-side caller is called an **Agent** (English) / 「智能体」(Chinese), consistent with the repo convention.
@@ -86,7 +86,7 @@ Pitfalls to avoid:
 | US2 | Platform administrator | browse the catalog with search and see each model's latest version and description | I can find the right model quickly without leaving the console |
 | US3 | Platform administrator | open a model and see all its registered versions | I can pick the exact version to deploy and know what changed |
 | US4 | Platform administrator | deploy a model with one guided form (model, image, accelerator, card type, replicas) | I get a serving endpoint without writing any Kubernetes YAML |
-| US5 | Platform administrator | watch the deployment go through pending / deploying / running and see the reason if it fails | I know when the service is actually usable and what to fix if it is not |
+| US5 | Platform administrator | watch the deployment go through pending / queued / starting / running and see the reason if it fails | I know when the service is actually usable and what to fix if it is not |
 | US6 | Platform administrator | copy the endpoint URL and a ready-made curl snippet from the service detail page | I can hand the endpoint to Agents immediately |
 | US7 | Platform administrator | scale replicas up or down from the service list | I can react to load without redeploying |
 | US8 | Platform administrator | delete a service with a clear warning about breaking Agents | I can retire services safely |
@@ -111,17 +111,17 @@ Pitfalls to avoid:
 
 ### FR3 — One-click deployment (create inference service)
 
-- **FR3.1** The "Deploy" action (from a model card or a version row) opens a deployment form pre-filled with the chosen model and version: **Service name** (required, DNS-safe, 1–63 chars), **Model + version** (pre-filled, changeable), **Accelerator** (nvidia / iluvatar / metax), **Card type** (free-text `accelerator_type`, e.g. `A800`, `H800`, `BI-V150`), **Image** (dropdown from `ListImages`, filtered by the chosen accelerator), **Replicas** (integer, 1–100, default 1).
+- **FR3.1** The "Deploy" action (from a model card or a version row) opens a deployment form pre-filled with the chosen model and version: **Service name** (required, DNS-safe, 1–63 chars), **Model + version** (pre-filled, changeable), **Accelerator** (fleet-reported vendors plus `cpu`), **Card type** (select of the cards that vendor actually carries, e.g. `A800`, `H800`, `BI-V150`), **Image** (dropdown from `ListImages`, filtered by the chosen accelerator), **Replicas** (integer, 1–100, default 1).
 - **FR3.2** Changing the accelerator re-filters the image dropdown; incompatible images are hidden. If no image matches the accelerator, the form shows "No image available for this accelerator — register one in Image Management" and disables submit.
-- **FR3.3** Submit calls `CreateInferenceService`; the response returns `service_id` with `state=pending` immediately; the console navigates to the service detail page, which polls until the state leaves `pending`.
+- **FR3.3** Submit calls `CreateInferenceService`; the response returns `service_id` with `state=pending` immediately; the console navigates to the service detail page, which polls until the state reaches `running`, `failed` or `terminated`.
 - **FR3.4** Validation errors (bad name, replicas out of range, unknown model/image) are shown inline in the form and never reach the message queue.
 
 ### FR4 — Deployment state visibility
 
-- **FR4.1** The inference-services list shows each service's **State** as a colored badge: `pending` (grey), `deploying` (blue), `running` (green), `failed` (red), `terminated` (grey strikethrough).
+- **FR4.1** The inference-services list shows each service's **State** as a colored badge for the full closed set: `pending` (grey), `queued` (grey-blue), `starting` (amber), `deploying` (blue, legacy), `running` (green), `failed` (red), `terminated` (grey strikethrough).
 - **FR4.2** The service detail page shows the state, the full spec (model, version, image, accelerator, card type, replicas), and — when `running` — the endpoint list with copy buttons and a curl snippet.
 - **FR4.3** A `failed` service shows the failure reason returned by the Controller path; the detail page offers "Delete and retry" (delete + pre-filled create form).
-- **FR4.4** The list refreshes on a 10-second poll while any service is `pending` or `deploying`, and on manual refresh otherwise.
+- **FR4.4** The list refreshes on a 10-second poll while any service is not yet `running`, `failed` or `terminated`, and on manual refresh otherwise.
 
 ### FR5 — Scale
 
@@ -174,16 +174,16 @@ flowchart TD
 ```mermaid
 flowchart TD
     A["Administrator clicks Deploy on a model card or version"] --> B["Deploy dialog pre-filled with model + version"]
-    B --> C["Choose accelerator (nvidia / iluvatar / metax)"]
+    B --> C["Choose accelerator (fleet-reported vendors + cpu)"]
     C --> D["Image dropdown filtered by accelerator"]
     D --> E["Enter service name, card type, replicas"]
     E --> F{Submit}
     F -->|Validation error| E
-    F -->|OK| G["POST /api/v1/inference-services"]
+    F -->|OK| G["POST /api/v1/admin/inference-services"]
     G --> H["Response: service_id, state=pending"]
     H --> I["Navigate to service detail page, poll state"]
     I --> J{State}
-    J -->|deploying| I
+    J -->|queued / starting / deploying| I
     J -->|running| K["Show endpoints + copy + curl snippet"]
     J -->|failed| L["Show failure reason, offer Delete and retry"]
 ```
@@ -202,7 +202,7 @@ sequenceDiagram
     participant K8s as Kubernetes
 
     Admin->>Console: Fill deploy form (model, image, accelerator, replicas)
-    Console->>CGW: POST /api/v1/inference-services
+    Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService
     Infer->>Infer: Validate model, image, replicas, write desired state
     Infer->>MQ: Publish deploy message
@@ -210,10 +210,10 @@ sequenceDiagram
     CGW-->>Console: 201 with service_id
     Console-->>Admin: Detail page polls state
     MQ->>CTRL: Consume deploy message
-    CTRL->>K8s: Create Deployment and Service (mount shared weights)
+    CTRL->>K8s: Create StormService and Service (mount shared weights)
     K8s-->>CTRL: Pods ready
     CTRL->>Infer: Report result, register endpoints
-    Note over Console,Infer: Console polls GET /api/v1/inference-services/{service_id}
+    Note over Console,Infer: Console polls GET /api/v1/admin/inference-services/{service_id}
     Infer-->>CGW: state=running, endpoints
     CGW-->>Console: Poll response with endpoints
     Console-->>Admin: Endpoints with copy + curl snippet
@@ -225,12 +225,12 @@ sequenceDiagram
 flowchart TD
     A["Inference Services page"] --> B{"Administrator action"}
     B -->|Scale| C["Dialog: current replicas, new count 1-100"]
-    C --> D["POST /api/v1/inference-services/{service_id}:scale"]
+    C --> D["POST /api/v1/admin/inference-services/{service_id}:scale"]
     D --> E["Row shows new desired count"]
     B -->|Delete| F["Confirmation: Agents will get errors immediately"]
     F --> G{"Confirm"}
     G -->|Cancel| A
-    G -->|Confirm| H["DELETE /api/v1/inference-services/{service_id}"]
+    G -->|Confirm| H["DELETE /api/v1/admin/inference-services/{service_id}"]
     H --> I["State becomes terminated, hidden from default view"]
 ```
 
@@ -242,21 +242,21 @@ The design spans three proto services, all served as HTTP via the Control Gatewa
 
 | RPC | HTTP | Purpose | Notes |
 | --- | --- | --- | --- |
-| `RegisterModel` (`taas.model.v1`) | `POST /api/v1/models` | Register a model version | `name` + `version` unique; `weight_path` required |
-| `ListModels` (`taas.model.v1`) | `GET /api/v1/models` | Paginated catalog list | Returns `ModelSummary` (model_id, name, latest_version, weight_path) |
-| `GetModel` (`taas.model.v1`) | `GET /api/v1/models/{model_id}` | Model detail with version list | Drives the detail page |
-| `DeleteModel` (`taas.model.v1`) | `DELETE /api/v1/models/{model_id}` | Remove a catalog entry | Blocked while referenced by live services |
-| `CreateInferenceService` (`taas.infer.v1`) | `POST /api/v1/inference-services` | One-click deploy | Returns `service_id`, `state=pending`; async via MQ |
-| `ListInferenceServices` (`taas.infer.v1`) | `GET /api/v1/inference-services` | Service list with states | Drives the list page and polling |
-| `GetInferenceService` (`taas.infer.v1`) | `GET /api/v1/inference-services/{service_id}` | Detail with endpoints | Endpoints only meaningful when `state=running` |
-| `ScaleInferenceService` (`taas.infer.v1`) | `POST /api/v1/inference-services/{service_id}:scale` | Change replicas only | In-place, no recreate |
-| `DeleteInferenceService` (`taas.infer.v1`) | `DELETE /api/v1/inference-services/{service_id}` | Retire a service | Idempotent, ends in `terminated` |
-| `ListImages` (`taas.image.v1`) | `GET /api/v1/images` | Image dropdown source | Filtered client-side by `accelerator` until the server-side filter ships |
+| `RegisterModel` (`taas.model.v1`) | `POST /api/v1/admin/models` | Register a model version | `name` + `version` unique; `weight_path` required |
+| `ListModels` (`taas.model.v1`) | `GET /api/v1/admin/models` | Paginated catalog list | Returns `ModelSummary` (model_id, name, latest_version, weight_path) |
+| `GetModel` (`taas.model.v1`) | `GET /api/v1/admin/models/{model_id}` | Model detail with version list | Drives the detail page |
+| `DeleteModel` (`taas.model.v1`) | `DELETE /api/v1/admin/models/{model_id}` | Remove a catalog entry | Blocked while referenced by live services |
+| `CreateInferenceService` (`taas.infer.v1`) | `POST /api/v1/admin/inference-services` | One-click deploy | Returns `service_id`, `state=pending`; async via MQ |
+| `ListInferenceServices` (`taas.infer.v1`) | `GET /api/v1/admin/inference-services` | Service list with states | Drives the list page and polling |
+| `GetInferenceService` (`taas.infer.v1`) | `GET /api/v1/admin/inference-services/{service_id}` | Detail with endpoints | Endpoints only meaningful when `state=running` |
+| `ScaleInferenceService` (`taas.infer.v1`) | `POST /api/v1/admin/inference-services/{service_id}:scale` | Change replicas only | In-place, no recreate |
+| `DeleteInferenceService` (`taas.infer.v1`) | `DELETE /api/v1/admin/inference-services/{service_id}` | Retire a service | Idempotent, ends in `terminated` |
+| `ListImages` (`taas.image.v1`) | `GET /api/v1/admin/images` | Image dropdown source | Filtered server-side by `accelerator` (and `engine`) |
 
 Constraints on the contract:
 
 1. `CreateInferenceService` must validate `model_id`/`model_version` existence and `replicas` range (1–100) synchronously, before publishing to the message queue — invalid requests must never reach the Controller.
-2. `InferenceServiceSummary.state` is a string enum with exactly the values `pending`, `deploying`, `running`, `failed`, `terminated`; the console relies on this closed set for badge rendering.
+2. `InferenceServiceSummary.state` is a string enum with the values `pending`, `queued`, `starting`, `deploying`, `running`, `failed`, `terminated`; the console relies on this closed set for badge rendering.
 3. `GetInferenceServiceResponse.endpoints` must be empty unless `state=running`; the console displays endpoints only from the API, never constructing URLs itself.
 4. `ScaleInferenceService` accepts only `replicas`; all other spec changes go through delete + create (D5).
 5. `ListImages` responses must carry `accelerator` (and `engine`) so the console can filter the deploy form's image dropdown without extra calls (D4).
@@ -272,13 +272,13 @@ Constraints on the contract:
 | AC3 | `DeleteModel` on a model referenced by a non-terminated inference service returns an error naming the blocking service; after that service is deleted, the same call succeeds | FVT |
 | AC4 | `CreateInferenceService` with a valid model, image, accelerator, and replicas returns immediately (no blocking on pods) with a `service_id` and `state=pending` | FVT (latency bound: < 2 s) |
 | AC5 | `CreateInferenceService` with an unknown `model_id`, an out-of-range `replicas` (0 or 101), or an image whose `accelerator` differs from the request's accelerator returns a validation error and publishes nothing to the message queue | Unit test + FVT |
-| AC6 | A deployment transitions `pending → deploying → running` and `GetInferenceService` then returns a non-empty `endpoints` list; the console shows the endpoints with a copy button and a curl snippet | FVT + E2E |
+| AC6 | A deployment transitions `pending → queued → starting → running` and `GetInferenceService` then returns a non-empty `endpoints` list; the console shows the endpoints with a copy button and a curl snippet | FVT + E2E |
 | AC7 | A deployment that cannot converge (e.g. missing weight path) reaches `failed` with a human-readable reason shown on the detail page | FVT (fault injection) |
-| AC8 | `ScaleInferenceService` changes the desired replica count and returns success; the service stays `running` (or briefly `deploying`) and never resets other spec fields | FVT |
+| AC8 | `ScaleInferenceService` changes the desired replica count and returns success; the service stays `running` (or briefly `deploying` while replicas converge) and never resets other spec fields | FVT |
 | AC9 | `DeleteInferenceService` is idempotent (second delete succeeds), moves the service to `terminated`, and the default list view hides terminated services | FVT |
 | AC10 | The deploy form's image dropdown only offers images matching the selected accelerator; with zero matching images, submit is disabled and a hint points to Image Management | E2E |
-| AC11 | The console's state badges cover exactly the five states `pending`, `deploying`, `running`, `failed`, `terminated` with distinct colors | Manual / E2E |
-| AC12 | The service list polls at 10-second intervals while any service is `pending` or `deploying` and stops polling when all are settled | Manual / E2E |
+| AC11 | The console's state badges cover the seven states `pending`, `queued`, `starting`, `deploying`, `running`, `failed`, `terminated` with distinct colors | Manual / E2E |
+| AC12 | The service list polls at 10-second intervals while any service is not yet `running`, `failed` or `terminated` and stops polling when all are settled | Manual / E2E |
 
 ---
 
@@ -286,11 +286,12 @@ Constraints on the contract:
 
 | Item | Deferred to |
 | --- | --- |
-| Image registration UI, versioning, and the full image × card-type adaptation matrix | Feature #3 image management |
-| Image pre-pull / warmup orchestration and cold-start optimization | Feature #3 (the `TriggerWarmup` RPC exists; UI deferred) |
-| Per-model and per-card pricing display in the catalog and deploy form | Feature #5 price matrix |
-| Tenant-level model authorization (which tenants may deploy which models) | Feature #6 multi-tenancy |
-| Autoscaling policies, canary upgrades, and blue-green deployment | Future feature point |
+| Image registration UI, versioning, and the full image × card-type adaptation matrix | Implemented (feature #3) |
+| Image pre-pull / warmup orchestration and cold-start optimization | Implemented (feature #3) |
+| Per-model and per-card pricing display in the catalog and deploy form | Implemented (pricing feature) |
+| Tenant-level model authorization (which tenants may deploy which models) | Implemented (model-authorization feature) |
+| Autoscaling policies | Implemented with the AIBrix `PodAutoscaler` (features #16/#47) |
+| Canary upgrades and blue-green deployment | Future feature point |
 | Fine-tuning flows and custom model onboarding beyond weight-path registration | Future feature point |
 
 ## Service states and engine parameters
