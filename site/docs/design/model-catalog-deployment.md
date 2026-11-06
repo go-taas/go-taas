@@ -14,7 +14,7 @@
 
 ### 1.1 Why the Catalog and One-Click Deployment Come Now
 
-go-taas is a Token-as-a-Service platform: the value it sells is inference tokens, and tokens can only be produced by running inference services. The catalog is where the supply side starts — an administrator registers open-source LLMs (Qwen, DeepSeek, LLaMA, …) with their weight paths in object storage — and one-click deployment is how a registered model becomes a serving endpoint that Agents can call through the Inference Gateway. The architecture already fixes the mechanics (Section 4.2): the console calls the control plane, the change is published to the message queue, and the Controller turns it into Kubernetes Deployments and Services. This feature point defines what the user sees and does.
+go-taas is a Token-as-a-Service platform: the value it sells is inference tokens, and tokens can only be produced by running inference services. The catalog is where the supply side starts — an administrator registers open-source LLMs (Qwen, DeepSeek, LLaMA, …) with their weight paths in object storage — and one-click deployment is how a registered model becomes a serving endpoint that Agents can call through the Inference Gateway. The architecture already fixes the mechanics (Section 4.2): the console calls the control plane, the change is published to the message queue, and the Controller turns it into AIBrix StormServices and Services. This feature point defines what the user sees and does.
 
 ### 1.2 How Comparable Products Implement Catalogs and Deployment
 

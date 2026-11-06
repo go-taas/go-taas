@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做目录与一键部署
 
-go-taas 是 Token-as-a-Service 平台：售卖的是推理 token，而 token 只能由运行中的推理服务产出。目录是供给侧的起点 —— 管理员将开源大模型（Qwen、DeepSeek、LLaMA 等）连同其对象存储中的权重路径注册进来；一键部署则把已注册的模型变成智能体可通过推理网关调用的服务端点。架构已固定了机制（第 4.2 节）：控制台调用控制面，变更发布到消息队列，由 Controller 落成 Kubernetes 的 Deployment 与 Service。本特性点定义的是用户看到什么、做什么。
+go-taas 是 Token-as-a-Service 平台：售卖的是推理 token，而 token 只能由运行中的推理服务产出。目录是供给侧的起点 —— 管理员将开源大模型（Qwen、DeepSeek、LLaMA 等）连同其对象存储中的权重路径注册进来；一键部署则把已注册的模型变成智能体可通过推理网关调用的服务端点。架构已固定了机制（第 4.2 节）：控制台调用控制面，变更发布到消息队列，由 Controller 落成 AIBrix StormService 与 Service。本特性点定义的是用户看到什么、做什么。
 
 ### 1.2 竞品如何实现目录与部署
 
