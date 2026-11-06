@@ -261,7 +261,7 @@ service TenancyService {
     option (google.api.http) = {get: "/api/v1/admin/quotas/{organization_id}"};
   }
 
-  // UpdateOrganizationQuota sets any subset of the four dimensions
+  // UpdateOrganizationQuota sets any subset of the three dimensions
   // (proto3 optional tracks presence; an explicit 0 means unlimited).
   // Out-of-range values return 13305 with the dimension named. Audited
   // as quota.updated; tightening below current usage is allowed and
