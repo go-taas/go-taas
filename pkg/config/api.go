@@ -513,6 +513,19 @@ type ImageWarmupStatusConsumerConfig struct {
 	Workers int `mapstructure:"workers"`
 }
 
+// ImageImportWorkerConfig holds the asynchronous image import worker
+// Runner settings.
+type ImageImportWorkerConfig struct {
+	// Enabled turns the import worker Runner on or off. A disabled
+	// worker leaves import tasks pending (they fail closed at creation
+	// only when the importer itself is unwired).
+	Enabled bool `mapstructure:"enabled"`
+	// PollInterval is how often the worker scans for pending tasks.
+	PollInterval time.Duration `mapstructure:"pollInterval"`
+	// Concurrency bounds how many imports run at once.
+	Concurrency int `mapstructure:"concurrency"`
+}
+
 // ImageConfig holds the image module settings: the deprecated
 // first-boot registry seed, the warmup status consumer and the internal
 // Harbor registry used by the image import flow.
@@ -521,6 +534,8 @@ type ImageConfig struct {
 	Registry []ImageRegistryEntry `mapstructure:"registry"`
 	// WarmupStatusConsumer configures the warmup status Runner.
 	WarmupStatusConsumer ImageWarmupStatusConsumerConfig `mapstructure:"warmupStatusConsumer"`
+	// ImportWorker configures the asynchronous image import Runner.
+	ImportWorker ImageImportWorkerConfig `mapstructure:"importWorker"`
 	// Compatibility configures the model × engine × card-type
 	// compatibility matrix (feature #19, AD3).
 	Compatibility CompatibilityConfig `mapstructure:"compatibility"`

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -22,6 +23,7 @@ func newServiceForTest(t *testing.T) (*Service, *Image) {
 	t.Helper()
 	db := newImageTestDB(t)
 	svc := NewWithRepositories(NewRepository(db), NewWarmupTaskRepository(db))
+	svc.importTasks = NewImportTaskRepository(db)
 	wireRegistry(db)
 	ctx := context.Background()
 	img := &Image{Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3", Accelerator: "nvidia", Engine: "vllm", Description: "vLLM engine"}
@@ -390,14 +392,32 @@ func TestServiceImportImageHappyPath(t *testing.T) {
 		Description:     "imported vLLM",
 	})
 	require.NoError(t, err)
-	assert.NotEmpty(t, resp.GetImageId())
-	// The destination reference lands in the internal Harbor project.
+	// The import is asynchronous: the response carries a task id, not an
+	// image id, and the importer has not run yet.
+	assert.NotEmpty(t, resp.GetTaskId())
 	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", resp.GetReference())
+	assert.Empty(t, imp.srcRef, "the importer must not run synchronously")
+
+	// A pending task row was written.
+	task, err := svc.importTasks.FindByID(ctx, resp.GetTaskId())
+	require.NoError(t, err)
+	assert.Equal(t, ImportStatePending, task.State)
+	assert.Equal(t, "docker.1ms.run/library/vllm:v0.6.3", task.SourceReference)
+	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", task.DestinationReference)
+
+	// Running the worker completes the import and registers the image.
+	worker := NewImportWorker(svc.importTasks, svc.repo, imp, 1, time.Millisecond)
+	worker.RunOnce(ctx)
 	assert.Equal(t, "docker.1ms.run/library/vllm:v0.6.3", imp.srcRef)
 	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", imp.dstRef)
 
+	task, err = svc.importTasks.FindByID(ctx, resp.GetTaskId())
+	require.NoError(t, err)
+	assert.Equal(t, ImportStateSucceeded, task.State)
+	assert.NotEmpty(t, task.ImageID)
+
 	// The catalog row carries the Harbor reference as its name.
-	found, err := svc.repo.FindByID(ctx, resp.GetImageId())
+	found, err := svc.repo.FindByID(ctx, task.ImageID)
 	require.NoError(t, err)
 	assert.Equal(t, "hub.example.com/taas/vllm", found.Name)
 	assert.Equal(t, "v0.6.3", found.Tag)
@@ -451,14 +471,21 @@ func TestServiceImportImageFailure(t *testing.T) {
 	svc, _ := newServiceForTest(t)
 	ctx := context.Background()
 	setTestHarbor("hub.example.com", "admin", "secret", "taas")
-	svc.SetImporter(&fakeImporter{err: errors.New("manifest unknown")})
+	imp := &fakeImporter{err: errors.New("manifest unknown")}
+	svc.SetImporter(imp)
 
-	_, err := svc.ImportImage(ctx, &imagev1.ImportImageRequest{SourceReference: "vllm:latest", Accelerator: "nvidia", Engine: "vllm"})
-	require.Error(t, err)
-	ae, ok := apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeImageReferenceInvalid, ae.Code)
-	assert.Contains(t, ae.Error(), "manifest unknown")
+	resp, err := svc.ImportImage(ctx, &imagev1.ImportImageRequest{SourceReference: "vllm:latest", Accelerator: "nvidia", Engine: "vllm"})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.GetTaskId())
+
+	// The importer failure is recorded on the task, not returned by the
+	// RPC.
+	worker := NewImportWorker(svc.importTasks, svc.repo, imp, 1, time.Millisecond)
+	worker.RunOnce(ctx)
+	task, err := svc.importTasks.FindByID(ctx, resp.GetTaskId())
+	require.NoError(t, err)
+	assert.Equal(t, ImportStateFailed, task.State)
+	assert.Contains(t, task.FailureReason, "manifest unknown")
 }
 
 func TestServiceImportImageDuplicate(t *testing.T) {
@@ -683,10 +710,19 @@ func TestServiceImportImageFlattensPath(t *testing.T) {
 	})
 	require.NoError(t, err)
 	assert.Equal(t, "hub.example.com/taas/hello:1.0.0", resp.GetReference())
+	assert.Empty(t, imp.srcRef, "the importer must not run synchronously")
+
+	// The task carries the flattened destination; running the worker
+	// completes the import.
+	worker := NewImportWorker(svc.importTasks, svc.repo, imp, 1, time.Millisecond)
+	worker.RunOnce(ctx)
 	assert.Equal(t, "docker.io/library/a/b/hello:1.0.0", imp.srcRef)
 	assert.Equal(t, "hub.example.com/taas/hello:1.0.0", imp.dstRef)
 
-	stored, err := svc.repo.FindByID(ctx, resp.GetImageId())
+	task, err := svc.importTasks.FindByID(ctx, resp.GetTaskId())
+	require.NoError(t, err)
+	assert.Equal(t, ImportStateSucceeded, task.State)
+	stored, err := svc.repo.FindByID(ctx, task.ImageID)
 	require.NoError(t, err)
 	assert.Equal(t, "hub.example.com/taas/hello", stored.Name)
 	assert.Equal(t, AcceleratorCPU, stored.Accelerator)

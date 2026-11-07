@@ -230,6 +230,10 @@ image:
   warmupStatusConsumer:
     enabled: true
     workers: 2
+  importWorker:
+    enabled: true
+    pollInterval: 5s
+    concurrency: 1
   # harbor configures the internal container registry (Harbor) that
   # imported images are pushed to. Imported images always land in the
   # configured project (default "taas"). In the compose stack these are

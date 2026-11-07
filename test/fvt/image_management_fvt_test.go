@@ -344,8 +344,9 @@ func (fvtImporter) Import(context.Context, string, *registry.Credentials, string
 }
 
 // TestImageImport verifies the image-import user story: importing an
-// engine image from a source registry pushes it into the internal Harbor
-// project and registers it in the catalog with the Harbor reference.
+// engine image from a source registry enqueues an async task that pushes
+// it into the internal Harbor project and registers it in the catalog
+// with the Harbor reference.
 func TestImageImport(t *testing.T) {
 	env := newImageEnv(t)
 
@@ -356,12 +357,30 @@ func TestImageImport(t *testing.T) {
 		"description":      "imported vLLM",
 	})
 	require.Equal(t, http.StatusOK, code, "import must succeed: %v", body)
-	imageID, ok := body["imageId"].(string)
-	require.True(t, ok, "imageId missing: %v", body)
+	taskID, ok := body["taskId"].(string)
+	require.True(t, ok, "taskId missing: %v", body)
 	assert.Equal(t, "hub.example.com/taas/vllm:v0.6.3", body["reference"])
 
+	// The import is asynchronous: run the worker to complete it.
+	worker := image.NewImportWorker(
+		image.NewImportTaskRepository(env.db),
+		image.NewRepository(env.db),
+		&fvtImporter{},
+		1, time.Millisecond,
+	)
+	worker.RunOnce(context.Background())
+
+	// The task is succeeded and carries the registered image id.
+	code, got := env.call(t, http.MethodGet, "/api/v1/admin/image-import-tasks/"+taskID, nil)
+	require.Equal(t, http.StatusOK, code)
+	task, ok := got["task"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "succeeded", task["state"])
+	imageID, ok := task["imageId"].(string)
+	require.True(t, ok, "imageId missing: %v", task)
+
 	// The catalog row carries the Harbor reference.
-	code, got := env.call(t, http.MethodGet, "/api/v1/admin/images/"+imageID, nil)
+	code, got = env.call(t, http.MethodGet, "/api/v1/admin/images/"+imageID, nil)
 	require.Equal(t, http.StatusOK, code)
 	img, ok := got["image"].(map[string]any)
 	require.True(t, ok)
