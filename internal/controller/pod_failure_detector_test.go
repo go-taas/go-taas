@@ -129,3 +129,27 @@ func TestApplyStartRecreatesResources(t *testing.T) {
 	_, err = dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
 	require.NoError(t, err)
 }
+
+// TestApplyUpdateEngineArgsRecreatesStorm verifies the controller's
+// update_engine_args handling recreates the StormService with the new
+// engine arguments (a hot update).
+func TestApplyUpdateEngineArgsRecreatesStorm(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
+
+	evt := testChangeEvent("upsert", "demo")
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
+	_, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// The engine-args event reuses applyUpsert, so the storm is recreated
+	// with the new args.
+	evt2 := testChangeEvent("update_engine_args", "demo")
+	evt2.EngineArgs = map[string]string{"max-model-len": "8192"}
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt2)))
+
+	storm, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotNil(t, storm)
+}

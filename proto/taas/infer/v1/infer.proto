@@ -67,6 +67,19 @@ service InferServiceService {
     };
   }
 
+  // UpdateInferenceServiceEngineArgs changes the serving-engine startup
+  // parameters (engine_args, extra_args, role_engine_args) of an existing
+  // service. It works on a stopped service (the new args are used when it
+  // starts again) and on a running service (the controller recreates the
+  // pods with the new args — a hot update).
+  // Admin-surface API: served under /api/v1/admin.
+  rpc UpdateInferenceServiceEngineArgs(UpdateInferenceServiceEngineArgsRequest) returns (UpdateInferenceServiceEngineArgsResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/inference-services/{service_id}:update-engine-args"
+      body: "*"
+    };
+  }
+
   // CreateEngineParamTemplate saves an engine-parameter template: a named
   // set of engine arguments plus the (engine, model, topology, accelerator)
   // combination it applies to. The deploy form loads the matching template
@@ -723,6 +736,13 @@ message GetInferenceServiceResponse {
   // once HAMI schedules them (feature #52, AD14). Nil for whole-card
   // services or before scheduling.
   AssignedSlice assigned_slice = 6;
+  // engine_args are the serving-engine parameters the service runs with,
+  // keyed by flag name without the leading dashes.
+  map<string, string> engine_args = 7;
+  // extra_args are the free-form arguments appended after the engine args.
+  repeated string extra_args = 8;
+  // role_engine_args are the per-role engine overrides.
+  repeated RoleEngineArgs role_engine_args = 9;
 }
 
 // AssignedSlice is the assigned physical GPU (AD14).
@@ -820,6 +840,30 @@ message UpdateInferenceServiceTopologyResponse {
   taas.common.v1.Response response = 1;
   string service_id = 2;
   string state = 3; // pending
+}
+
+// UpdateInferenceServiceEngineArgs changes the serving-engine startup
+// parameters of an existing service. It works on a stopped service (the
+// new args are used when it starts again) and on a running service (the
+// controller recreates the pods with the new args — a hot update).
+message UpdateInferenceServiceEngineArgsRequest {
+  string service_id = 1; // path
+  // engine_args are the serving-engine parameters, keyed by flag name
+  // without the leading dashes. A value starting with "flag:" means a
+  // valueless switch ("flag:true").
+  map<string, string> engine_args = 2;
+  // extra_args are free-form arguments appended after the engine args.
+  repeated string extra_args = 3;
+  // role_engine_args overrides the engine arguments per role. An empty
+  // list keeps the stored ones; a role present here overrides the shared
+  // engine_args for that role only.
+  repeated RoleEngineArgs role_engine_args = 4;
+}
+
+message UpdateInferenceServiceEngineArgsResponse {
+  taas.common.v1.Response response = 1;
+  string service_id = 2;
+  string state = 3; // pending (hot update) or stopped
 }
 
 message DeleteInferenceServiceRequest {

@@ -338,6 +338,12 @@ func (r *k8sReconciler) ApplyInferServiceChange(ctx context.Context, msg mq.Mess
 		// applyUpsert reconciles the Deployment/Service from the resolved
 		// spec, so the rollback event reuses it.
 		return r.applyUpsert(ctx, evt)
+	case "update_engine_args":
+		// Serving-engine parameter change: recreate the pods with the new
+		// startup arguments while keeping the service identity and
+		// endpoints. applyUpsert reconciles the storm from the resolved
+		// spec, so the engine-args event reuses it.
+		return r.applyUpsert(ctx, evt)
 	default:
 		return mq.Permanent(fmt.Errorf("controller: unknown event_type %q", evt.EventType))
 	}
