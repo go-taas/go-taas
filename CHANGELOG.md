@@ -1,3 +1,10 @@
+# [1.113.0](https://github.com/go-taas/go-taas/compare/v1.112.0...v1.113.0) (2026-11-07)
+
+
+### Features
+
+* **infer:** support editing and hot-updating engine startup parameters ([26874e4](https://github.com/go-taas/go-taas/commit/26874e4f782d72d4051658983924df27db6f964d))
+
 # [1.112.0](https://github.com/go-taas/go-taas/compare/v1.111.0...v1.112.0) (2026-11-07)
 
 
