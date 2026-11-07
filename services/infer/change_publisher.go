@@ -21,6 +21,12 @@ const (
 	// AD5). The controller applies the previous desired state while
 	// keeping the service identity and endpoints.
 	EventTypeRollback = "rollback"
+	// EventTypeStop stops a running service: the controller deletes its
+	// Kubernetes resources while keeping the catalog row.
+	EventTypeStop = "stop"
+	// EventTypeStart starts a stopped service: the controller recreates
+	// its Kubernetes resources from the stored spec.
+	EventTypeStart = "start"
 )
 
 // changeEventModel is the resolved model spec inside a change event. The

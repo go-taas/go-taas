@@ -282,6 +282,50 @@ func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, orgID, 
 	})
 }
 
+// MarkStopped sets a service's state to stopped. It is the durable
+// record of a stop: the controller deletes the k8s resources and the
+// row stays so the service can be started again.
+func (r *InferenceServiceRepository) MarkStopped(ctx context.Context, orgID, serviceID string) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		res := r.DB(ctx).
+			Model(&InferenceService{}).
+			Where("id = ? AND organization_id = ?", serviceID, orgID).
+			Updates(map[string]any{
+				"state":      StateStopped,
+				"endpoints":  "[]",
+				"updated_at": time.Now().UTC(),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apierrors.New(apierrors.CodeInferServiceNotFound)
+		}
+		return nil
+	})
+}
+
+// MarkPending resets a stopped service to pending so the controller
+// recreates its resources. It is the durable record of a start.
+func (r *InferenceServiceRepository) MarkPending(ctx context.Context, orgID, serviceID string) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		res := r.DB(ctx).
+			Model(&InferenceService{}).
+			Where("id = ? AND organization_id = ?", serviceID, orgID).
+			Updates(map[string]any{
+				"state":      StatePending,
+				"updated_at": time.Now().UTC(),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apierrors.New(apierrors.CodeInferServiceNotFound)
+		}
+		return nil
+	})
+}
+
 // ApplyStatus applies a controller status report: state, endpoints,
 // failure_reason and the autoscaling status block. Last-write-wins is
 // acceptable (the controller is the only publisher). failure_reason is

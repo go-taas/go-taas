@@ -1343,6 +1343,157 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	return &inferv1.DeleteInferenceServiceResponse{Response: okResponse()}, nil
 }
 
+// StopInferenceService stops a running inference service: the controller
+// deletes its Kubernetes resources (StormService, Service, autoscaler)
+// while the catalog row stays so the service can be started again. The
+// service transitions running → stopped.
+func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInferenceServiceRequest) (*inferv1.StopInferenceServiceResponse, error) {
+	orgID, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.mqClientFor()
+	if err != nil {
+		return nil, err
+	}
+
+	row, err := s.findService(ctx, repo, req.GetServiceId())
+	if err != nil {
+		return nil, err
+	}
+	if row.State == StateTerminated {
+		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
+	}
+	// Only a running (or starting/deploying) service can be stopped. A
+	// stopped service is idempotent: stopping it again succeeds.
+	if row.State == StateStopped {
+		return &inferv1.StopInferenceServiceResponse{
+			Response:  okResponse(),
+			ServiceId: req.GetServiceId(),
+			State:     StateStopped,
+		}, nil
+	}
+
+	if err := repo.MarkStopped(ctx, orgID, req.GetServiceId()); err != nil {
+		return nil, err
+	}
+
+	// A publish failure only logs: the row is already stopped, so the
+	// service is hidden from the running set and the controller's periodic
+	// resync eventually tears the resources down.
+	if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, "", "", "", "")); err != nil {
+		logger.S().Warnw("infer: publish stop change failed",
+			"service_id", req.GetServiceId(), "err", err)
+	}
+
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.stop",
+		ResourceType:   "inference_service",
+		ResourceID:     req.GetServiceId(),
+		Result:         "success",
+	})
+	s.recordLifecycleEvent(ctx, row, nil, DeploymentEventStop, s.actorFor(ctx, orgID))
+
+	return &inferv1.StopInferenceServiceResponse{
+		Response:  okResponse(),
+		ServiceId: req.GetServiceId(),
+		State:     StateStopped,
+	}, nil
+}
+
+// StartInferenceService starts a stopped inference service: the
+// controller recreates its Kubernetes resources from the stored spec.
+// The service transitions stopped → pending → running.
+func (s *Service) StartInferenceService(ctx context.Context, req *inferv1.StartInferenceServiceRequest) (*inferv1.StartInferenceServiceResponse, error) {
+	orgID, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.mqClientFor()
+	if err != nil {
+		return nil, err
+	}
+
+	row, err := s.findService(ctx, repo, req.GetServiceId())
+	if err != nil {
+		return nil, err
+	}
+	if row.State == StateTerminated {
+		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
+	}
+	// Only a stopped service can be started. A running service is
+	// idempotent: starting it again succeeds.
+	if row.State != StateStopped {
+		return &inferv1.StartInferenceServiceResponse{
+			Response:  okResponse(),
+			ServiceId: req.GetServiceId(),
+			State:     row.State,
+		}, nil
+	}
+
+	if err := repo.MarkPending(ctx, orgID, req.GetServiceId()); err != nil {
+		return nil, err
+	}
+
+	// Re-read the model and image to compose the resolved spec.
+	modelRepo, err := s.modelRepository()
+	if err != nil {
+		return nil, err
+	}
+	modelVersion, err := modelRepo.FindVersion(ctx, row.ModelID, row.ModelVersion)
+	if err != nil {
+		return nil, err
+	}
+	img, err := image.Lookup(row.ImageID)
+	if err != nil {
+		return nil, err
+	}
+
+	started := *row
+	started.State = StatePending
+	evt := buildChangeEvent(EventTypeStart, &started, servedModelName(ctx, modelRepo, row),
+		modelVersion.WeightPath, img.Reference(), img.Engine)
+	if err := publishChange(ctx, client, evt); err != nil {
+		logger.S().Errorw("infer: publish start change failed",
+			"service_id", req.GetServiceId(), "err", err)
+		return nil, apierrors.Newf(apierrors.CodeInternal, "infer: publish change failed")
+	}
+
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.start",
+		ResourceType:   "inference_service",
+		ResourceID:     req.GetServiceId(),
+		Result:         "success",
+	})
+	s.recordLifecycleEvent(ctx, row, &started, DeploymentEventStart, s.actorFor(ctx, orgID))
+
+	return &inferv1.StartInferenceServiceResponse{
+		Response:  okResponse(),
+		ServiceId: req.GetServiceId(),
+		State:     StatePending,
+	}, nil
+}
+
 // UpdateInferenceServiceVersion changes a service's model_version in
 // place, keeping the same service_id and endpoints (feature #32, AC3).
 // The service transitions running → deploying → running. Validation

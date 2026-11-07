@@ -407,6 +407,18 @@ type ControllerConfig struct {
 	// they ask for, the PriorityClass a service priority maps onto, and the
 	// Volcano queue their PodGroup joins.
 	Scheduling ControllerSchedulingConfig `mapstructure:"scheduling"`
+	// PodFailureDetector configures the periodic pod-failure scanner that
+	// publishes a failed status for a running service whose pod has a
+	// terminal failure.
+	PodFailureDetector ControllerPodFailureDetectorConfig `mapstructure:"podFailureDetector"`
+}
+
+// ControllerPodFailureDetectorConfig holds the pod-failure scanner
+// settings.
+type ControllerPodFailureDetectorConfig struct {
+	// Interval is how often the scanner lists inference pods. Defaults to
+	// 30s.
+	Interval time.Duration `mapstructure:"interval"`
 }
 
 // ControllerSchedulingConfig holds the pod-scheduling settings.

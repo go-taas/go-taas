@@ -61,6 +61,9 @@ type Controller struct {
 	// clusterCollector is the optional per-cluster health collection
 	// loop (feature #40). Nil when not configured.
 	clusterCollector *ClusterCollector
+	// podFailureDetector is the optional periodic pod-failure scanner.
+	// Nil when not configured.
+	podFailureDetector *PodFailureDetector
 }
 
 // New constructs a Controller consuming client and applying events with
@@ -103,6 +106,12 @@ func (c *Controller) SetRuntimeModelChangeConsumer(consumer *RuntimeModelChangeC
 // (feature #40). It must be called before Run.
 func (c *Controller) SetClusterCollector(collector *ClusterCollector) {
 	c.clusterCollector = collector
+}
+
+// SetPodFailureDetector installs the periodic pod-failure scanner. It
+// must be called before Run.
+func (c *Controller) SetPodFailureDetector(detector *PodFailureDetector) {
+	c.podFailureDetector = detector
 }
 
 // Run subscribes to all consumed subjects and blocks until ctx is
@@ -154,6 +163,10 @@ func (c *Controller) Run(ctx context.Context) error {
 	// Feature #40: the per-cluster health collection loop.
 	if c.clusterCollector != nil {
 		go c.clusterCollector.Run(ctx)
+	}
+	// The periodic pod-failure scanner.
+	if c.podFailureDetector != nil {
+		go c.podFailureDetector.Run(ctx)
 	}
 
 	select {

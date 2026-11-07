@@ -1440,6 +1440,16 @@ export const en: Record<string, string> = {
   'services.deleteTitle': 'Delete {name}?',
   'services.deleteBody': 'The Kubernetes Deployment and Service are removed. This action is idempotent but the service cannot be restarted — deploy again from the Models page if needed.',
   'services.deleteFailed': 'failed to delete',
+  'services.stop': 'Stop',
+  'services.stopTitle': 'Stop {name}?',
+  'services.stopBody': 'The Kubernetes resources are removed but the service stays so it can be started again.',
+  'services.stopping': 'Stopping…',
+  'services.stopFailed': 'failed to stop',
+  'services.start': 'Start',
+  'services.startTitle': 'Start {name}?',
+  'services.startBody': 'The Kubernetes resources are recreated from the stored spec.',
+  'services.starting': 'Starting…',
+  'services.startFailed': 'failed to start',
   'services.loadFailed': 'failed to load services',
 
   // ---- Load Test Detail ----

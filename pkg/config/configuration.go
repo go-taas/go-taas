@@ -179,6 +179,9 @@ func (c *Configuration) applyDefaults() {
 	if c.Image.ImportWorker.Concurrency == 0 {
 		c.Image.ImportWorker.Concurrency = 1
 	}
+	if c.Controller.PodFailureDetector.Interval == 0 {
+		c.Controller.PodFailureDetector.Interval = 30 * time.Second
+	}
 	// Feature #19: the compatibility matrix defaults. seedOnBoot is true
 	// by default; lazySeedDefault is "experimental" (the vendor-match
 	// rule's experimental branch; the unsupported branch is always

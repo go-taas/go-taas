@@ -43,6 +43,8 @@ export default function InferenceServicesPage() {
   const [error, setError] = useState('');
   const [scaleTarget, setScaleTarget] = useState<InferenceServiceSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InferenceServiceSummary | null>(null);
+  const [stopTarget, setStopTarget] = useState<InferenceServiceSummary | null>(null);
+  const [startTarget, setStartTarget] = useState<InferenceServiceSummary | null>(null);
   const [autoscalingTarget, setAutoscalingTarget] = useState<InferenceServiceSummary | null>(null);
   // The create form is an inline panel, not a dialog: it expands above the
   // list and collapses again once the service exists.
@@ -196,6 +198,21 @@ export default function InferenceServicesPage() {
                           label: t('services.scale'),
                           onClick: () => setScaleTarget(s),
                         },
+                        ...(s.state === 'stopped'
+                          ? [
+                              {
+                                key: `start-${s.name}`,
+                                label: t('services.start'),
+                                onClick: () => setStartTarget(s),
+                              },
+                            ]
+                          : [
+                              {
+                                key: `stop-${s.name}`,
+                                label: t('services.stop'),
+                                onClick: () => setStopTarget(s),
+                              },
+                            ]),
                         {
                           key: `delete-${s.name}`,
                           label: t('common.delete'),
@@ -239,6 +256,30 @@ export default function InferenceServicesPage() {
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => {
             setDeleteTarget(null);
+            void load();
+          }}
+        />
+      )}
+
+      {stopTarget && (
+        <StopDialog
+          service={stopTarget}
+          orgId={orgId}
+          onClose={() => setStopTarget(null)}
+          onStopped={() => {
+            setStopTarget(null);
+            void load();
+          }}
+        />
+      )}
+
+      {startTarget && (
+        <StartDialog
+          service={startTarget}
+          orgId={orgId}
+          onClose={() => setStartTarget(null)}
+          onStarted={() => {
+            setStartTarget(null);
             void load();
           }}
         />
@@ -600,6 +641,94 @@ function DeleteDialog({
           onClick={() => void del()}
         >
           {submitting ? t('common.deleting') : t('common.delete')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function StopDialog({
+  service,
+  orgId,
+  onClose,
+  onStopped,
+}: {
+  service: InferenceServiceSummary;
+  orgId: string;
+  onClose: () => void;
+  onStopped: () => void;
+}) {
+  const { t } = useI18n();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const stop = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post(`/api/v1/admin/inference-services/${service.serviceId}:stop`, orgId, {});
+      onStopped();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('services.stopFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog title={t('services.stopTitle', { name: service.name })} onClose={onClose} testId="stop-dialog">
+      <p>{t('services.stopBody')}</p>
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button data-testid="confirm-stop" disabled={submitting} onClick={() => void stop()}>
+          {submitting ? t('services.stopping') : t('services.stop')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+function StartDialog({
+  service,
+  orgId,
+  onClose,
+  onStarted,
+}: {
+  service: InferenceServiceSummary;
+  orgId: string;
+  onClose: () => void;
+  onStarted: () => void;
+}) {
+  const { t } = useI18n();
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const start = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post(`/api/v1/admin/inference-services/${service.serviceId}:start`, orgId, {});
+      onStarted();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('services.startFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog title={t('services.startTitle', { name: service.name })} onClose={onClose} testId="start-dialog">
+      <p>{t('services.startBody')}</p>
+      {error && <ErrorBanner message={error} />}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>
+          {t('common.cancel')}
+        </button>
+        <button data-testid="confirm-start" disabled={submitting} onClick={() => void start()}>
+          {submitting ? t('services.starting') : t('services.start')}
         </button>
       </div>
     </Dialog>

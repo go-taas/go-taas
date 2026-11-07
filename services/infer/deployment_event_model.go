@@ -16,6 +16,8 @@ const (
 	DeploymentEventScale    = "scale"
 	DeploymentEventRollback = "rollback"
 	DeploymentEventDelete   = "delete"
+	DeploymentEventStop     = "stop"
+	DeploymentEventStart    = "start"
 )
 
 // DeploymentEvent is the GORM model of the deployment_events table and
