@@ -85,6 +85,12 @@ func main() {
 		map[string]string{cfg.VGPU.HAMI.PoolLabelPrefix: "pool-a"},
 	)
 	ctrl := controller.New(mqClient, reconciler)
+	// The periodic pod-failure scanner publishes a failed status for any
+	// running service whose pod has a terminal failure, keeping the k8s
+	// resources for diagnosis.
+	ctrl.SetPodFailureDetector(controller.NewPodFailureDetector(
+		k8sClient.Clientset(), cfg.Controller.Namespace, cfg.Controller.PodFailureDetector.Interval, mqClient,
+	))
 	// Feature #18: the accelerator inventory collector lists nodes and
 	// publishes the full snapshot on the configured interval.
 	ctrl.SetInventoryCollector(controller.NewInventoryCollector(

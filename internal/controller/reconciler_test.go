@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"math"
 	"testing"
 	"time"
@@ -853,6 +854,34 @@ func TestApplyDeleteRemovesStormAndPodAutoscaler(t *testing.T) {
 	assert.True(t, apierrors.IsNotFound(err), "the storm is deleted with the service")
 	_, err = dyn.Resource(podAutoscalerGVR).Namespace(reconcileNamespace).Get(ctx, autoscalerName("demo"), metav1.GetOptions{})
 	assert.True(t, apierrors.IsNotFound(err), "the autoscaler is deleted with the service")
+}
+
+// TestApplyDeleteIsResilient verifies a failure on one resource (the
+// Deployment) does not leave the StormService behind: every delete is
+// attempted independently so a stuck Deployment cannot keep the service
+// serving.
+func TestApplyDeleteIsResilient(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, clientset, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
+
+	evt := testChangeEvent("upsert", "demo")
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(evt)))
+	_, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
+	require.NoError(t, err)
+
+	// Simulate a Deployment delete failure by injecting a reactor that
+	// errors on Deployment deletes.
+	clientset.PrependReactor("delete", "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, errors.New("deployment stuck terminating")
+	})
+
+	err = reconciler.ApplyInferServiceChange(ctx, changeMessage(testChangeEvent("delete", "demo")))
+	require.Error(t, err, "the deployment delete failure is surfaced")
+
+	// The StormService is still deleted despite the Deployment failure.
+	_, err = dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "the storm is deleted even when the deployment delete fails")
 }
 
 func TestChangeEventDecodeAutoscaling(t *testing.T) {

@@ -13,6 +13,7 @@ import (
 //	starting   a pod is placed on a node and the engine is loading weights
 //	running    the engine itself answers its health endpoint
 //	failed     scheduling, pulling, starting or health-checking failed
+//	stopped    the operator stopped the service; its k8s resources are gone
 //	terminated the service was deleted
 //
 // deploying is the legacy name for the phase between queued and starting;
@@ -24,6 +25,7 @@ const (
 	StateDeploying  = "deploying"
 	StateRunning    = "running"
 	StateFailed     = "failed"
+	StateStopped    = "stopped"
 	StateTerminated = "terminated"
 )
 

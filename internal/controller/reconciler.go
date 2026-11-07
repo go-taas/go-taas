@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"math"
 	"sort"
@@ -319,6 +320,10 @@ func (r *k8sReconciler) ApplyInferServiceChange(ctx context.Context, msg mq.Mess
 	switch evt.EventType {
 	case "delete":
 		return r.applyDelete(ctx, evt)
+	case "stop":
+		return r.applyStop(ctx, evt)
+	case "start":
+		return r.applyUpsert(ctx, evt)
 	case "upsert":
 		return r.applyUpsert(ctx, evt)
 	case "update_version":
@@ -627,26 +632,34 @@ func (r *k8sReconciler) publishWarmupStatus(ctx context.Context, taskID, state s
 // Deployment an older controller created for the same service, ignoring
 // not-found. The RPC already set state=terminated; no status report is
 // needed.
+//
+// Every delete is best-effort and independent: a failure on one resource
+// (e.g. a Deployment stuck terminating) must not leave the StormService
+// behind, or the service would keep serving after it was removed. Errors
+// are collected and returned together so the broker retries, but each
+// resource is still attempted.
 func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error {
+	var errs []error
+
 	depErr := r.clientset.AppsV1().Deployments(r.namespace).
 		Delete(ctx, deploymentName(evt.Name), metav1.DeleteOptions{})
 	if depErr != nil && !apierrors.IsNotFound(depErr) {
-		return fmt.Errorf("controller: delete deployment %s: %w", evt.Name, depErr)
+		errs = append(errs, fmt.Errorf("controller: delete deployment %s: %w", evt.Name, depErr))
 	}
 	svcErr := r.clientset.CoreV1().Services(r.namespace).
 		Delete(ctx, serviceName(evt.Name), metav1.DeleteOptions{})
 	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
-		return fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr)
+		errs = append(errs, fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr))
 	}
 	// Autoscaling is the AIBrix PodAutoscaler; the HPA delete sweeps an
 	// object an older controller left behind.
 	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
-		return err
+		errs = append(errs, err)
 	}
 	// The storm is the serving object: a failed delete is a real error
 	// (something would keep serving after the service was removed).
 	if err := deleteStormService(ctx, r.dynamic, r.namespace, stormServiceName(evt)); err != nil {
-		return fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err)
+		errs = append(errs, fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err))
 	}
 	// Feature #47: tear down the AIBrix ModelClaim and PodAutoscaler
 	// best-effort (ignoring absence and write failures).
@@ -660,7 +673,45 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 	// The PodGroup outlives the storm otherwise: Volcano keeps the queued
 	// gang in its accounting and the object lingers in the namespace.
 	deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt))
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
 	logger.S().Infow("controller: tore down inference service",
+		"service_id", evt.ServiceID, "name", evt.Name)
+	return nil
+}
+
+// applyStop stops a running service: it deletes the same Kubernetes
+// resources as applyDelete (StormService, Service, autoscaler, model
+// route) but keeps the catalog row so the service can be started again.
+// The RPC already set state=stopped; no status report is needed.
+func (r *k8sReconciler) applyStop(ctx context.Context, evt changeEvent) error {
+	depErr := r.clientset.AppsV1().Deployments(r.namespace).
+		Delete(ctx, deploymentName(evt.Name), metav1.DeleteOptions{})
+	if depErr != nil && !apierrors.IsNotFound(depErr) {
+		return fmt.Errorf("controller: delete deployment %s: %w", evt.Name, depErr)
+	}
+	svcErr := r.clientset.CoreV1().Services(r.namespace).
+		Delete(ctx, serviceName(evt.Name), metav1.DeleteOptions{})
+	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
+		return fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr)
+	}
+	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
+		return err
+	}
+	if err := deleteStormService(ctx, r.dynamic, r.namespace, stormServiceName(evt)); err != nil {
+		return fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err)
+	}
+	if err := deleteModelClaim(ctx, r.dynamic, r.namespace, evt.Name); err != nil {
+		logger.S().Warnw("controller: delete aibrix modelclaim failed", "name", evt.Name, "err", err)
+	}
+	if err := r.deleteModelRoute(ctx, evt); err != nil {
+		logger.S().Warnw("controller: delete aibrix model route failed", "name", evt.Name, "err", err)
+	}
+	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
+	deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt))
+	logger.S().Infow("controller: stopped inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
 	return nil
 }

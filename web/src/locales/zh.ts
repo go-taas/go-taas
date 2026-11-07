@@ -1432,6 +1432,16 @@ export const zh: Record<string, string> = {
   'services.deleteTitle': '删除 {name}？',
   'services.deleteBody': 'Kubernetes Deployment 和 Service 将被移除。此操作是幂等的，但服务无法重启——如需可再次从模型页面部署。',
   'services.deleteFailed': '删除失败',
+  'services.stop': '停止',
+  'services.stopTitle': '停止 {name}？',
+  'services.stopBody': 'Kubernetes 资源将被移除，但服务会保留，可随时重新启动。',
+  'services.stopping': '停止中…',
+  'services.stopFailed': '停止失败',
+  'services.start': '启动',
+  'services.startTitle': '启动 {name}？',
+  'services.startBody': '将根据已保存的配置重新创建 Kubernetes 资源。',
+  'services.starting': '启动中…',
+  'services.startFailed': '启动失败',
   'services.loadFailed': '加载服务失败',
 
   // ---- Load Test Detail ----

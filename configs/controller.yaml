@@ -79,3 +79,9 @@ controller:
   cluster:
     collectInterval: 30s
     kubeconfigDir: ""
+  # podFailureDetector: the periodic scanner that publishes a failed
+  # status for a running service whose pod has a terminal failure
+  # (ImagePullBackOff, CrashLoopBackOff, OOMKilled, Unschedulable). It
+  # keeps the k8s resources for diagnosis.
+  podFailureDetector:
+    interval: 30s

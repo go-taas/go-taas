@@ -150,6 +150,27 @@ service InferServiceService {
     option (google.api.http) = {delete: "/api/v1/admin/inference-services/{service_id}"};
   }
 
+  // StopInferenceService stops a running inference service: the
+  // controller deletes its Kubernetes resources (StormService, Service,
+  // autoscaler) while keeping the catalog row so it can be started again.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc StopInferenceService(StopInferenceServiceRequest) returns (StopInferenceServiceResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/inference-services/{service_id}:stop"
+      body: "*"
+    };
+  }
+
+  // StartInferenceService starts a stopped inference service: the
+  // controller recreates its Kubernetes resources from the stored spec.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc StartInferenceService(StartInferenceServiceRequest) returns (StartInferenceServiceResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/inference-services/{service_id}:start"
+      body: "*"
+    };
+  }
+
   // PlaygroundInfer sends a test inference through the service using a
   // selected org API key (feature #12, Increment B). The call is metered
   // and logged through the normal data-plane path.
@@ -807,6 +828,26 @@ message DeleteInferenceServiceRequest {
 
 message DeleteInferenceServiceResponse {
   taas.common.v1.Response response = 1;
+}
+
+message StopInferenceServiceRequest {
+  string service_id = 1;
+}
+
+message StopInferenceServiceResponse {
+  taas.common.v1.Response response = 1;
+  string service_id = 2;
+  string state = 3; // stopped
+}
+
+message StartInferenceServiceRequest {
+  string service_id = 1;
+}
+
+message StartInferenceServiceResponse {
+  taas.common.v1.Response response = 1;
+  string service_id = 2;
+  string state = 3; // pending
 }
 
 message PlaygroundInferRequest {
