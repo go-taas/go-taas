@@ -374,14 +374,21 @@ function ImportImageDialog({
     setSubmitting(true);
     setError('');
     try {
-      const res = await api.post<{ reference?: string }>('/api/v1/admin/images:import', orgId, {
-        sourceReference: ref,
-        accelerator,
-        engine: engine.trim(),
-        description: description.trim(),
-        sourceUsername: sourceUsername.trim() || undefined,
-        sourcePassword: sourceUsername.trim() ? sourcePassword : undefined,
-      });
+      const res = await api.post<{ taskId?: string; reference?: string }>(
+        '/api/v1/admin/images:import',
+        orgId,
+        {
+          sourceReference: ref,
+          accelerator,
+          engine: engine.trim(),
+          description: description.trim(),
+          sourceUsername: sourceUsername.trim() || undefined,
+          sourcePassword: sourceUsername.trim() ? sourcePassword : undefined,
+        },
+      );
+      // The import is asynchronous: the server returns a task id and the
+      // image is registered in the background. Close the dialog and let
+      // the operator track progress via the import task list.
       void res;
       onDone();
     } catch (e) {
@@ -403,6 +410,9 @@ function ImportImageDialog({
         {registry?.configured
           ? t('images.importHintConfigured', { registry: destination })
           : t('images.importHint')}
+      </p>
+      <p className="muted" data-testid="import-async-hint">
+        {t('images.importAsyncHint')}
       </p>
       <div className="kv-grid settings-summary" data-testid="import-destination">
         <div>

@@ -752,6 +752,7 @@ export const zh: Record<string, string> = {
   'images.importTargetHint': '请输入包含标签的完整源镜像地址。',
   'images.importing': '导入中…',
   'images.importFailed': '导入镜像失败。',
+  'images.importAsyncHint': '导入在后台进行，复制完成后镜像会出现在目录中。',
   'images.sourceReference': '源镜像地址',
   'images.sourceUsername': '源仓库用户名',
   'images.sourcePassword': '源仓库密码',

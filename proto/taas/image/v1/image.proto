@@ -19,16 +19,29 @@ service ImageService {
     };
   }
 
-  // ImportImage pulls an engine image from a source registry and pushes
-  // it into the internal Harbor project, then registers it in the
-  // catalog with the Harbor reference. All imported images land in the
-  // configured Harbor project (default "taas").
+  // ImportImage enqueues an asynchronous import of an engine image from
+  // a source registry into the internal Harbor project. It returns
+  // immediately with a task id; the ImportWorker copies the image and
+  // registers the catalog row in the background. Poll ListImportTasks /
+  // GetImportTask for progress.
   // Admin-surface API: served under /api/v1/admin.
   rpc ImportImage(ImportImageRequest) returns (ImportImageResponse) {
     option (google.api.http) = {
       post: "/api/v1/admin/images:import"
       body: "*"
     };
+  }
+
+  // ListImportTasks returns the image import task history, newest first.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc ListImportTasks(ListImportTasksRequest) returns (ListImportTasksResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/image-import-tasks"};
+  }
+
+  // GetImportTask returns one image import task.
+  // Admin-surface API: served under /api/v1/admin.
+  rpc GetImportTask(GetImportTaskRequest) returns (GetImportTaskResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/image-import-tasks/{task_id}"};
   }
 
   // GetImageRegistryConfig reports the internal Harbor registry the
@@ -195,9 +208,50 @@ message ImportImageRequest {
 
 message ImportImageResponse {
   taas.common.v1.Response response = 1;
-  string image_id = 2;
-  // reference is the full Harbor reference the image was pushed to.
+  // task_id is the id of the asynchronous import task. Poll
+  // GetImportTask for progress.
+  string task_id = 2;
+  // reference is the full Harbor reference the image will be pushed to.
   string reference = 3;
+}
+
+message ListImportTasksRequest {
+  taas.common.v1.PageRequest page = 1;
+}
+
+message ListImportTasksResponse {
+  taas.common.v1.Response response = 1;
+  repeated ImportTaskSummary tasks = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetImportTaskRequest {
+  string task_id = 1;
+}
+
+message GetImportTaskResponse {
+  taas.common.v1.Response response = 1;
+  ImportTaskSummary task = 2;
+}
+
+message ImportTaskSummary {
+  string task_id = 1;
+  // source_reference is the full source image reference to pull.
+  string source_reference = 2;
+  // destination_reference is the Harbor reference the image is pushed
+  // to (empty until succeeded).
+  string destination_reference = 3;
+  string accelerator = 4;
+  string engine = 5;
+  string description = 6;
+  // state is pending, running, succeeded or failed.
+  string state = 7;
+  // failure_reason carries the failure detail when state is failed.
+  string failure_reason = 8;
+  // image_id is the catalog image registered when state is succeeded.
+  string image_id = 9;
+  int64 created_at = 10;
+  int64 updated_at = 11;
 }
 
 message ListImagesRequest {

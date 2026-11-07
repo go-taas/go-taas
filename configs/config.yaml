@@ -484,6 +484,13 @@ image:
   warmupStatusConsumer:
     enabled: true
     workers: 2
+  # importWorker runs the asynchronous image import tasks: it picks up
+  # pending imports and copies each image into the internal Harbor
+  # project in the background.
+  importWorker:
+    enabled: true
+    pollInterval: 5s
+    concurrency: 1
   # compatibility configures the model × engine × card-type matrix
   # (feature #19, AD3).
   compatibility:

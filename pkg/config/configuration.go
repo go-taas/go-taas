@@ -173,6 +173,12 @@ func (c *Configuration) applyDefaults() {
 	if c.Image.WarmupStatusConsumer.Workers == 0 {
 		c.Image.WarmupStatusConsumer.Workers = 2
 	}
+	if c.Image.ImportWorker.PollInterval == 0 {
+		c.Image.ImportWorker.PollInterval = 5 * time.Second
+	}
+	if c.Image.ImportWorker.Concurrency == 0 {
+		c.Image.ImportWorker.Concurrency = 1
+	}
 	// Feature #19: the compatibility matrix defaults. seedOnBoot is true
 	// by default; lazySeedDefault is "experimental" (the vendor-match
 	// rule's experimental branch; the unsupported branch is always

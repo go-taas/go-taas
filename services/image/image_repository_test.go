@@ -19,7 +19,7 @@ func newImageTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Image{}, &WarmupTask{}))
+	require.NoError(t, db.AutoMigrate(&Image{}, &WarmupTask{}, &ImportTask{}))
 	t.Cleanup(func() {
 		sqlDB, _ := db.DB()
 		_ = sqlDB.Close()

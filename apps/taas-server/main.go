@@ -982,6 +982,20 @@ func main() {
 				account.NewDBExportDataProvider(gormDB),
 				cfg.Account.Export.GeneratorInterval,
 			))
+			// Feature: the asynchronous image import worker. It picks up
+			// pending import tasks and copies each image into the
+			// internal Harbor project in the background. It is wired
+			// whenever the Harbor registry and the importer are
+			// configured.
+			if cfg.Image.ImportWorker.Enabled && cfg.Image.Harbor.URL != "" && imageSvc.Importer() != nil {
+				srv.AddRunner(image.NewImportWorker(
+					image.NewImportTaskRepository(gormDB),
+					image.NewRepository(gormDB),
+					imageSvc.Importer(),
+					cfg.Image.ImportWorker.Concurrency,
+					cfg.Image.ImportWorker.PollInterval,
+				))
+			}
 			// Feature #42: the batch worker and the retention runner.
 			// The worker drives the inference endpoint with the system
 			// credential and meters successes at 0.5x; the retention

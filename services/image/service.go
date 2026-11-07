@@ -92,6 +92,11 @@ type Service struct {
 	repo  *Repository
 	tasks *WarmupTaskRepository
 
+	// importTasks is the asynchronous image import task repository.
+	// Production resolves it lazily from the shared components; tests
+	// and FVT inject it directly.
+	importTasks *ImportTaskRepository
+
 	// compatRepo is the compatibility matrix repository (feature #19).
 	// Production resolves it lazily from the shared components; tests
 	// and FVT inject it directly.
@@ -224,6 +229,11 @@ func (s *Service) SetImporter(imp Importer) {
 	s.importer = imp
 }
 
+// Importer returns the configured image importer, or nil when none is
+// wired. It lets the server wiring decide whether to start the import
+// worker.
+func (s *Service) Importer() Importer { return s.importer }
+
 // SetCardTypesProvider installs the live card-type provider from the
 // accelerator inventory (feature #19, AD11). It must be called before
 // serving.
@@ -305,11 +315,12 @@ func (s *Service) resolveOrg(ctx context.Context) (string, error) {
 // wire the real service stack against a disposable database and bus.
 func NewForFVT(db *gorm.DB, publisher mq.Client) *Service {
 	svc := &Service{
-		repo:       NewRepository(db),
-		tasks:      NewWarmupTaskRepository(db),
-		compatRepo: NewCompatibilityRepository(db),
-		modelRepo:  model.NewRepository(db),
-		publisher:  publisher,
+		repo:        NewRepository(db),
+		tasks:       NewWarmupTaskRepository(db),
+		importTasks: NewImportTaskRepository(db),
+		compatRepo:  NewCompatibilityRepository(db),
+		modelRepo:   model.NewRepository(db),
+		publisher:   publisher,
 	}
 	wireRegistry(db)
 	return svc
@@ -330,10 +341,10 @@ func NewWarmupTasksForNodeProvider(db *gorm.DB) WarmupTasksForNodeProvider {
 }
 
 // MigrateSchemaForFVT applies the image schema (images, warmup_tasks,
-// compatibility_cells) onto a caller-provided database for
-// full-verification tests.
+// compatibility_cells, image_import_tasks) onto a caller-provided
+// database for full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}); err != nil {
+	if err := db.AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}, &ImportTask{}); err != nil {
 		return err
 	}
 	return db.Exec(oneActivePartialIndex).Error
@@ -362,7 +373,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}, &ImportTask{}); err != nil {
 		return err
 	}
 	if err := db.WithContext(ctx).Exec(oneActivePartialIndex).Error; err != nil {
@@ -476,6 +487,20 @@ func (s *Service) taskRepository() (*WarmupTaskRepository, error) {
 	}
 	s.tasks = NewWarmupTaskRepository(db)
 	return s.tasks, nil
+}
+
+// importTaskRepository lazily wires and returns the image import task
+// repository.
+func (s *Service) importTaskRepository() (*ImportTaskRepository, error) {
+	if s.importTasks != nil {
+		return s.importTasks, nil
+	}
+	db, err := s.gormDB()
+	if err != nil {
+		return nil, err
+	}
+	s.importTasks = NewImportTaskRepository(db)
+	return s.importTasks, nil
 }
 
 // mqClient resolves the mq.Client from the direct injection point or
@@ -592,9 +617,12 @@ func (s *Service) RegisterImage(ctx context.Context, req *imagev1.RegisterImageR
 	return &imagev1.RegisterImageResponse{Response: okResponse(), ImageId: img.ID}, nil
 }
 
-// ImportImage pulls an engine image from a source registry and pushes
-// it into the internal Harbor project, then registers it in the catalog
-// with the Harbor reference. All imported images land in the configured
+// ImportImage enqueues an asynchronous import of an engine image from a
+// source registry into the internal Harbor project. It validates the
+// request, writes a pending ImportTask row and returns immediately with
+// the task id; the ImportWorker copies the image and registers the
+// catalog row in the background. The console polls ListImportTasks /
+// GetImportTask for progress. All imported images land in the configured
 // Harbor project (default "taas"). The import fails closed when the
 // Harbor registry or the importer is not configured.
 func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageRequest) (*imagev1.ImportImageResponse, error) {
@@ -637,20 +665,10 @@ func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageReque
 	// dropped, so "docker.io/library/a/b/hello:1.0.0" becomes
 	// "<harbor>/<project>/hello:1.0.0" - one flat project, no mirrored
 	// namespaces to keep in sync.
-	_, repo, tag, err := registry.ParseReference(sourceRef)
+	destRef, name, tag, err := deriveImportTarget(cfg.Image.Harbor, sourceRef)
 	if err != nil {
-		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: %v", err)
+		return nil, err
 	}
-	leaf := registry.LastRepoName(repo)
-	if leaf == "" {
-		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: %q has no image name", sourceRef)
-	}
-	localRepo := cfg.Image.Harbor.Project + "/" + leaf
-	destRef := registry.JoinReference(cfg.Image.Harbor.URL, localRepo, tag)
-
-	// The catalog name is the Harbor reference (host/project/name) so the
-	// deployed pods pull from the internal registry.
-	name := cfg.Image.Harbor.URL + "/" + localRepo
 
 	repoHandle, err := s.repository()
 	if err != nil {
@@ -660,42 +678,120 @@ func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageReque
 		return nil, errors.New(errors.CodeImageExists)
 	}
 
-	var srcCreds *registry.Credentials
-	if srcUser != "" {
-		srcCreds = &registry.Credentials{Username: srcUser, Password: srcPass}
-	}
-	dstCreds := &registry.Credentials{Username: cfg.Image.Harbor.Username, Password: cfg.Image.Harbor.Password}
-
-	if err := s.importer.Import(ctx, sourceRef, srcCreds, destRef, dstCreds); err != nil {
-		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: import %s failed: %v", sourceRef, err)
-	}
-
-	img := &Image{
-		ID:          uuid.NewString(),
-		Name:        name,
-		Tag:         tag,
-		Accelerator: accelerator,
-		Engine:      engine,
-		Description: description,
-	}
-	if err := repoHandle.CreateImage(ctx, img); err != nil {
+	taskRepo, err := s.importTaskRepository()
+	if err != nil {
 		return nil, err
 	}
-	// Feature #15: record the successful import best-effort.
-	s.recordAudit(ctx, &audit.AuditEvent{
-		OrganizationID: "",
-		ActorUserID:    "admin",
-		ActorType:      "user",
-		Action:         "image.import",
-		ResourceType:   "image",
-		ResourceID:     img.ID,
-		Result:         "success",
-	})
+	// Reject an import already in flight to the same destination: the
+	// catalog row does not exist yet, so the images-table check above
+	// cannot see it.
+	active, err := taskRepo.HasActiveByDestination(ctx, destRef)
+	if err != nil {
+		return nil, err
+	}
+	if active {
+		return nil, errors.New(errors.CodeImageExists)
+	}
+	task := &ImportTask{
+		ID:                 uuid.NewString(),
+		SourceReference:    sourceRef,
+		DestinationReference: destRef,
+		Accelerator:        accelerator,
+		Engine:             engine,
+		Description:        description,
+		SourceUsername:     srcUser,
+		SourcePassword:     srcPass,
+		State:              ImportStatePending,
+	}
+	if err := taskRepo.Create(ctx, task); err != nil {
+		return nil, err
+	}
 	return &imagev1.ImportImageResponse{
 		Response:  okResponse(),
-		ImageId:   img.ID,
+		TaskId:    task.ID,
 		Reference: destRef,
 	}, nil
+}
+
+// deriveImportTarget computes the destination Harbor reference, the
+// catalog name and the tag from a source reference and the Harbor
+// config. It is shared by the import RPC and the import worker.
+func deriveImportTarget(harbor config.HarborConfig, sourceRef string) (destRef, name, tag string, err error) {
+	_, repo, tag, err := registry.ParseReference(sourceRef)
+	if err != nil {
+		return "", "", "", errors.Newf(errors.CodeImageReferenceInvalid, "image: %v", err)
+	}
+	leaf := registry.LastRepoName(repo)
+	if leaf == "" {
+		return "", "", "", errors.Newf(errors.CodeImageReferenceInvalid, "image: %q has no image name", sourceRef)
+	}
+	localRepo := harbor.Project + "/" + leaf
+	destRef = registry.JoinReference(harbor.URL, localRepo, tag)
+	// The catalog name is the Harbor reference (host/project/name) so the
+	// deployed pods pull from the internal registry.
+	name = harbor.URL + "/" + localRepo
+	return destRef, name, tag, nil
+}
+
+// ListImportTasks returns one page of image import tasks, newest first.
+func (s *Service) ListImportTasks(ctx context.Context, req *imagev1.ListImportTasksRequest) (*imagev1.ListImportTasksResponse, error) {
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
+	taskRepo, err := s.importTaskRepository()
+	if err != nil {
+		return nil, err
+	}
+	offset, limit := normalizePage(req.GetPage())
+	rows, total, err := taskRepo.List(ctx, offset, limit)
+	if err != nil {
+		return nil, err
+	}
+	tasks := make([]*imagev1.ImportTaskSummary, 0, len(rows))
+	for _, row := range rows {
+		tasks = append(tasks, importTaskProjection(row))
+	}
+	return &imagev1.ListImportTasksResponse{
+		Response: okResponse(),
+		Tasks:    tasks,
+		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampToInt32(limit)},
+	}, nil
+}
+
+// GetImportTask returns one image import task.
+func (s *Service) GetImportTask(ctx context.Context, req *imagev1.GetImportTaskRequest) (*imagev1.GetImportTaskResponse, error) {
+	if err := s.requirePlatformAdmin(ctx); err != nil {
+		return nil, err
+	}
+	taskRepo, err := s.importTaskRepository()
+	if err != nil {
+		return nil, err
+	}
+	row, err := taskRepo.FindByID(ctx, strings.TrimSpace(req.GetTaskId()))
+	if err != nil {
+		return nil, err
+	}
+	return &imagev1.GetImportTaskResponse{
+		Response: okResponse(),
+		Task:     importTaskProjection(row),
+	}, nil
+}
+
+// importTaskProjection maps an import task row to its API projection.
+func importTaskProjection(task *ImportTask) *imagev1.ImportTaskSummary {
+	return &imagev1.ImportTaskSummary{
+		TaskId:               task.ID,
+		SourceReference:      task.SourceReference,
+		DestinationReference: task.DestinationReference,
+		Accelerator:          task.Accelerator,
+		Engine:               task.Engine,
+		Description:          task.Description,
+		State:                task.State,
+		FailureReason:        task.FailureReason,
+		ImageId:              task.ImageID,
+		CreatedAt:            task.CreatedAt.Unix(),
+		UpdatedAt:            task.UpdatedAt.Unix(),
+	}
 }
 
 // GetImageRegistryConfig reports the internal Harbor registry the import flow

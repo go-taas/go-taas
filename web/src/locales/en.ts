@@ -757,6 +757,7 @@ export const en: Record<string, string> = {
   'images.importTargetHint': 'Enter a full source reference including the tag.',
   'images.importing': 'Importing…',
   'images.importFailed': 'Failed to import the image.',
+  'images.importAsyncHint': 'The import runs in the background. The image appears in the catalog once the copy finishes.',
   'images.sourceReference': 'Source image reference',
   'images.sourceUsername': 'Source registry username',
   'images.sourcePassword': 'Source registry password',
