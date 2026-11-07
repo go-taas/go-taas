@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import {
   api,
+  ApiError,
   formatTime,
   type AssignedSlice,
   type InferenceServiceAccessSubject,
@@ -12,6 +13,7 @@ import {
   type AutoscalingStatus,
   type InferenceServiceSummary,
   normalizeTopology,
+  type RoleEngineArgs,
   type ServingTopology,
 } from '../api';
 import { useOrg } from '../org';
@@ -34,6 +36,9 @@ interface ServiceResponse {
   autoscaling?: AutoscalingPolicy;
   autoscalingStatus?: AutoscalingStatus;
   assignedSlice?: AssignedSlice;
+  engineArgs?: Record<string, string>;
+  extraArgs?: string[];
+  roleEngineArgs?: RoleEngineArgs[];
 }
 
 export default function ServiceDetailPage() {
@@ -48,6 +53,9 @@ export default function ServiceDetailPage() {
   const [servedModel, setServedModel] = useState('');
   // The topology editor is a dialog: changing the layout restarts the pods.
   const [topologyOpen, setTopologyOpen] = useState(false);
+  // The engine-parameters editor is a dialog: changing the startup args
+  // restarts the pods (a hot update) or is applied on the next start.
+  const [engineArgsOpen, setEngineArgsOpen] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -125,6 +133,13 @@ export default function ServiceDetailPage() {
         >
           {t('servicemetrics.title')}
         </a>
+        <button
+          className="secondary"
+          data-testid="service-engine-args-edit"
+          onClick={() => setEngineArgsOpen(true)}
+        >
+          {t('service.engineArgsEdit')}
+        </button>
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>
@@ -325,6 +340,21 @@ export default function ServiceDetailPage() {
           onClose={() => setTopologyOpen(false)}
           onSaved={() => {
             setTopologyOpen(false);
+            void load();
+          }}
+        />
+      )}
+
+      {engineArgsOpen && data && (
+        <EngineArgsDialog
+          service={s}
+          orgId={orgId}
+          engineArgs={data.engineArgs || {}}
+          extraArgs={data.extraArgs || []}
+          roleEngineArgs={data.roleEngineArgs || []}
+          onClose={() => setEngineArgsOpen(false)}
+          onSaved={() => {
+            setEngineArgsOpen(false);
             void load();
           }}
         />
@@ -574,6 +604,126 @@ function TopologyDialog({
           {t('common.cancel')}
         </button>
         <button onClick={() => void submit()} disabled={submitting} data-testid="topology-save">
+          {submitting ? t('common.saving') : t('common.save')}
+        </button>
+      </div>
+    </Dialog>
+  );
+}
+
+// argsToRows turns the stored flag map into editable rows.
+function argsToRows(args?: Record<string, string>): Array<{ name: string; value: string }> {
+  return Object.entries(args || {}).map(([name, value]) => ({ name, value }));
+}
+
+function rowsToArgs(rows: Array<{ name: string; value: string }>): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const row of rows) {
+    const name = row.name.trim();
+    if (!name) continue;
+    out[name] = row.value.trim();
+  }
+  return out;
+}
+
+// EngineArgsDialog edits the serving-engine startup parameters. It works
+// on a stopped service (the new args are used when it starts again) and
+// on a running service (the controller recreates the pods — a hot
+// update).
+function EngineArgsDialog({
+  service,
+  orgId,
+  engineArgs,
+  extraArgs,
+  roleEngineArgs,
+  onClose,
+  onSaved,
+}: {
+  service: InferenceServiceSummary;
+  orgId: string;
+  engineArgs: Record<string, string>;
+  extraArgs: string[];
+  roleEngineArgs: RoleEngineArgs[];
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const { t } = useI18n();
+  const [rows, setRows] = useState(argsToRows(engineArgs));
+  const [extra, setExtra] = useState(extraArgs.join('\n'));
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
+
+  const addRow = () => setRows((prev) => [...prev, { name: '', value: '' }]);
+  const removeRow = (i: number) => setRows((prev) => prev.filter((_, idx) => idx !== i));
+  const setRow = (i: number, field: 'name' | 'value', v: string) =>
+    setRows((prev) => prev.map((r, idx) => (idx === i ? { ...r, [field]: v } : r)));
+
+  const submit = async () => {
+    setSubmitting(true);
+    setError('');
+    try {
+      await api.post(`/api/v1/admin/inference-services/${service.serviceId}:update-engine-args`, orgId, {
+        engineArgs: rowsToArgs(rows),
+        extraArgs: extra.split('\n').map((a) => a.trim()).filter(Boolean),
+        roleEngineArgs: roleEngineArgs,
+      });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('service.engineArgsSaveFailed'));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Dialog title={t('service.engineArgsTitle', { name: service.name })} onClose={onClose} testId="engine-args-dialog">
+      <p className="muted">{t('service.engineArgsHint')}</p>
+      {error && <ErrorBanner message={error} />}
+      <div className="form-grid">
+        <div className="form-field full">
+          <label>{t('service.engineArgsFlags')}</label>
+          {rows.map((row, i) => (
+            <div key={i} className="kv-row" style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
+              <input
+                className="mono"
+                data-testid={`engine-arg-name-${i}`}
+                placeholder="max-model-len"
+                value={row.name}
+                onChange={(e) => setRow(i, 'name', e.target.value)}
+              />
+              <input
+                className="mono"
+                data-testid={`engine-arg-value-${i}`}
+                placeholder="4096"
+                value={row.value}
+                onChange={(e) => setRow(i, 'value', e.target.value)}
+              />
+              <button className="secondary" onClick={() => removeRow(i)}>
+                {t('common.remove')}
+              </button>
+            </div>
+          ))}
+          <button className="secondary" data-testid="engine-arg-add" onClick={addRow}>
+            {t('service.engineArgsAdd')}
+          </button>
+        </div>
+        <div className="form-field full">
+          <label>{t('service.engineArgsExtra')}</label>
+          <textarea
+            data-testid="engine-args-extra"
+            rows={3}
+            value={extra}
+            onChange={(e) => setExtra(e.target.value)}
+            placeholder="--gpu-memory-utilization 0.9"
+          />
+          <div className="field-hint">{t('service.engineArgsExtraHint')}</div>
+        </div>
+      </div>
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose} data-testid="engine-args-cancel">
+          {t('common.cancel')}
+        </button>
+        <button onClick={() => void submit()} disabled={submitting} data-testid="engine-args-save">
           {submitting ? t('common.saving') : t('common.save')}
         </button>
       </div>

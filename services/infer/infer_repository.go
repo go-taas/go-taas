@@ -261,6 +261,36 @@ func (r *InferenceServiceRepository) UpdateModelVersion(ctx context.Context, org
 	})
 }
 
+// UpdateEngineArgs applies an in-place serving-engine parameter change.
+// It writes the new engine_args, extra_args and role_engine_args and
+// transitions the service to nextState (pending for a hot update on a
+// running service, stopped for a stopped service). A miss maps to
+// CodeInferServiceNotFound.
+func (r *InferenceServiceRepository) UpdateEngineArgs(
+	ctx context.Context, orgID, serviceID string,
+	engineArgs, extraArgs, roleArgs datatypes.JSON, nextState string,
+) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		res := r.DB(ctx).
+			Model(&InferenceService{}).
+			Where("id = ? AND organization_id = ?", serviceID, orgID).
+			Updates(map[string]any{
+				"engine_args":      engineArgs,
+				"extra_args":       extraArgs,
+				"role_engine_args": roleArgs,
+				"state":            nextState,
+				"updated_at":       time.Now().UTC(),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return apierrors.New(apierrors.CodeInferServiceNotFound)
+		}
+		return nil
+	})
+}
+
 // MarkTerminated sets state=terminated. It is idempotent: an
 // already-terminated service is a no-op success (AC9).
 func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, orgID, serviceID string) error {

@@ -1138,7 +1138,28 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		Autoscaling:       policyToProto(effective),
 		AutoscalingStatus: autoscalingStatusFromRow(row),
 		AssignedSlice:     assignedSliceFromRow(row),
+		EngineArgs:        EngineArgsMap(row.EngineArgs),
+		ExtraArgs:         ExtraArgsList(row.ExtraArgs),
+		RoleEngineArgs:    roleEngineArgsToProto(row.RoleEngineArgs),
 	}, nil
+}
+
+// roleEngineArgsToProto maps the stored per-role overrides to the wire
+// projection.
+func roleEngineArgsToProto(stored datatypes.JSON) []*inferv1.RoleEngineArgs {
+	roles := RoleEngineArgsList(stored)
+	if len(roles) == 0 {
+		return nil
+	}
+	out := make([]*inferv1.RoleEngineArgs, 0, len(roles))
+	for _, r := range roles {
+		out = append(out, &inferv1.RoleEngineArgs{
+			Role:       r.Role,
+			EngineArgs: r.EngineArgs,
+			ExtraArgs:  r.ExtraArgs,
+		})
+	}
+	return out
 }
 
 // assignedSliceFromRow returns the assigned-slice projection for a
@@ -1727,6 +1748,109 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 		Response:  okResponse(),
 		ServiceId: req.GetServiceId(),
 		State:     StatePending,
+	}, nil
+}
+
+// UpdateInferenceServiceEngineArgs changes the serving-engine startup
+// parameters of an existing service. It works on a stopped service (the
+// new args are used when it starts again) and on a running service (the
+// controller recreates the pods with the new args — a hot update). The
+// service keeps its identity and endpoints.
+//
+// Validation order: service exists (10301), state updatable (10303),
+// engine args valid (10320). Nothing is written when a check fails.
+func (s *Service) UpdateInferenceServiceEngineArgs(ctx context.Context, req *inferv1.UpdateInferenceServiceEngineArgsRequest) (*inferv1.UpdateInferenceServiceEngineArgsResponse, error) {
+	orgID, err := s.resolveOrg(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkOrg(ctx, orgID, false); err != nil {
+		return nil, err
+	}
+	repo, err := s.repository()
+	if err != nil {
+		return nil, err
+	}
+	client, err := s.mqClientFor()
+	if err != nil {
+		return nil, err
+	}
+
+	row, err := s.findService(ctx, repo, req.GetServiceId())
+	if err != nil {
+		return nil, err
+	}
+	if row.State == StateTerminated {
+		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
+	}
+
+	// Validate the new parameters before any write.
+	engineArgs, err := normalizeEngineArgs(req.GetEngineArgs())
+	if err != nil {
+		return nil, err
+	}
+	extraArgs, err := normalizeExtraArgs(req.GetExtraArgs())
+	if err != nil {
+		return nil, err
+	}
+	roleArgs, err := normalizeRoleEngineArgs(req.GetRoleEngineArgs())
+	if err != nil {
+		return nil, err
+	}
+
+	// A running service transitions to pending so the controller recreates
+	// the pods with the new args (a hot update). A stopped service stays
+	// stopped and uses the new args when it starts again.
+	nextState := row.State
+	if row.State == StateRunning || row.State == StateStarting || row.State == StateDeploying {
+		nextState = StatePending
+	}
+	if err := repo.UpdateEngineArgs(ctx, orgID, req.GetServiceId(), engineArgs, extraArgs, roleArgs, nextState); err != nil {
+		return nil, err
+	}
+
+	// Re-read the model and image to compose the resolved spec.
+	modelRepo, err := s.modelRepository()
+	if err != nil {
+		return nil, err
+	}
+	modelVersion, err := modelRepo.FindVersion(ctx, row.ModelID, row.ModelVersion)
+	if err != nil {
+		return nil, err
+	}
+	img, err := image.Lookup(row.ImageID)
+	if err != nil {
+		return nil, err
+	}
+
+	updated := *row
+	updated.EngineArgs = engineArgs
+	updated.ExtraArgs = extraArgs
+	updated.RoleEngineArgs = roleArgs
+	updated.State = nextState
+	evt := buildChangeEvent(EventTypeUpdateEngineArgs, &updated, servedModelName(ctx, modelRepo, row),
+		modelVersion.WeightPath, img.Reference(), img.Engine)
+	if err := publishChange(ctx, client, evt); err != nil {
+		logger.S().Errorw("infer: publish engine-args change failed",
+			"service_id", req.GetServiceId(), "err", err)
+		return nil, apierrors.Newf(apierrors.CodeInternal, "infer: publish change failed")
+	}
+
+	s.recordAudit(ctx, &audit.AuditEvent{
+		OrganizationID: orgID,
+		ActorUserID:    orgID,
+		ActorType:      "user",
+		Action:         "inference_service.update_engine_args",
+		ResourceType:   "inference_service",
+		ResourceID:     req.GetServiceId(),
+		Result:         "success",
+	})
+	s.recordLifecycleEvent(ctx, row, &updated, DeploymentEventUpdate, s.actorFor(ctx, orgID))
+
+	return &inferv1.UpdateInferenceServiceEngineArgsResponse{
+		Response:  okResponse(),
+		ServiceId: req.GetServiceId(),
+		State:     nextState,
 	}, nil
 }
 

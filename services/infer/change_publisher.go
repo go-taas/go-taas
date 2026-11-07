@@ -27,6 +27,9 @@ const (
 	// EventTypeStart starts a stopped service: the controller recreates
 	// its Kubernetes resources from the stored spec.
 	EventTypeStart = "start"
+	// EventTypeUpdateEngineArgs changes the serving-engine startup
+	// parameters: the controller recreates the pods with the new args.
+	EventTypeUpdateEngineArgs = "update_engine_args"
 )
 
 // changeEventModel is the resolved model spec inside a change event. The

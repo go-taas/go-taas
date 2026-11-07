@@ -111,3 +111,110 @@ func TestStopInferenceServiceUnknown(t *testing.T) {
 }
 
 var _ = context.Background
+
+func TestUpdateEngineArgsOnStoppedService(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "demo", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		EngineArgs: map[string]string{"max-model-len": "4096"},
+	})
+	require.NoError(t, err)
+
+	// Stop the service.
+	_, err = svc.StopInferenceService(orgContext("org-1"), &inferv1.StopInferenceServiceRequest{ServiceId: created.GetServiceId()})
+	require.NoError(t, err)
+	client.published = nil
+
+	// Update engine args while stopped: the state stays stopped.
+	resp, err := svc.UpdateInferenceServiceEngineArgs(orgContext("org-1"), &inferv1.UpdateInferenceServiceEngineArgsRequest{
+		ServiceId:  created.GetServiceId(),
+		EngineArgs: map[string]string{"max-model-len": "8192", "enable-prefix-caching": "flag:true"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StateStopped, resp.GetState())
+
+	// The stored args are updated.
+	get, err := svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: created.GetServiceId()})
+	require.NoError(t, err)
+	assert.Equal(t, "8192", get.GetEngineArgs()["max-model-len"])
+	assert.Equal(t, "flag:true", get.GetEngineArgs()["enable-prefix-caching"])
+	assert.Equal(t, StateStopped, get.GetService().GetState())
+
+	// An update_engine_args event was published.
+	require.Len(t, client.published, 1)
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, EventTypeUpdateEngineArgs, evt.EventType)
+	assert.Equal(t, "8192", evt.EngineArgs["max-model-len"])
+}
+
+func TestUpdateEngineArgsHotUpdate(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "demo", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+	})
+	require.NoError(t, err)
+
+	// Simulate the service reaching running.
+	repo := NewInferenceServiceRepository(db)
+	require.NoError(t, repo.ApplyStatus(context.Background(), created.GetServiceId(), StateRunning, []string{"http://x"}, nil, nil, nil))
+	client.published = nil
+
+	// Hot update: the state transitions to pending so the controller
+	// recreates the pods.
+	resp, err := svc.UpdateInferenceServiceEngineArgs(orgContext("org-1"), &inferv1.UpdateInferenceServiceEngineArgsRequest{
+		ServiceId:  created.GetServiceId(),
+		EngineArgs: map[string]string{"max-model-len": "16384"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, StatePending, resp.GetState())
+
+	get, err := svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: created.GetServiceId()})
+	require.NoError(t, err)
+	assert.Equal(t, "16384", get.GetEngineArgs()["max-model-len"])
+	assert.Equal(t, StatePending, get.GetService().GetState())
+
+	require.Len(t, client.published, 1)
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, EventTypeUpdateEngineArgs, evt.EventType)
+}
+
+func TestUpdateEngineArgsValidation(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "demo", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+	})
+	require.NoError(t, err)
+
+	// Invalid engine arg name.
+	_, err = svc.UpdateInferenceServiceEngineArgs(orgContext("org-1"), &inferv1.UpdateInferenceServiceEngineArgsRequest{
+		ServiceId:  created.GetServiceId(),
+		EngineArgs: map[string]string{"Bad Arg": "x"},
+	})
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInferEngineArgsInvalid, ae.Code)
+
+	// Unknown service.
+	_, err = svc.UpdateInferenceServiceEngineArgs(orgContext("org-1"), &inferv1.UpdateInferenceServiceEngineArgsRequest{
+		ServiceId: "no-such",
+	})
+	require.Error(t, err)
+	ae, ok = apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInferServiceNotFound, ae.Code)
+}
