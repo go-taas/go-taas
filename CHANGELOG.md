@@ -1,3 +1,10 @@
+# [1.112.0](https://github.com/go-taas/go-taas/compare/v1.111.0...v1.112.0) (2026-11-07)
+
+
+### Features
+
+* **infer:** add stop/start, pod-failure detection and resilient delete ([f4fe1ec](https://github.com/go-taas/go-taas/commit/f4fe1ec3f55f96215d76da08c9567f6311ad48c6))
+
 # [1.111.0](https://github.com/go-taas/go-taas/compare/v1.110.1...v1.111.0) (2026-11-07)
 
 
