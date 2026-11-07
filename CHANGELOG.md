@@ -1,3 +1,10 @@
+# [1.111.0](https://github.com/go-taas/go-taas/compare/v1.110.1...v1.111.0) (2026-11-07)
+
+
+### Features
+
+* **image:** make image import asynchronous ([c49a75e](https://github.com/go-taas/go-taas/commit/c49a75e8a34451432b0d4dba21c9446e5af83ac9))
+
 ## [1.110.1](https://github.com/go-taas/go-taas/compare/v1.110.0...v1.110.1) (2026-11-06)
 
 
