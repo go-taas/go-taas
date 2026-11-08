@@ -76,6 +76,10 @@ type InferenceService struct {
 	// overrides EngineArgs for that role only (PD roles, the multi-machine
 	// worker).
 	RoleEngineArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	// Env are the environment variables set on every engine container of
+	// the service, as a JSON object of name to value. A per-role override
+	// lives inside RoleEngineArgs.
+	Env datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 	// Topology is the serving layout: single, multinode or pd. Empty on a
 	// row written before topologies existed, which reads as single.
 	Topology string `gorm:"size:16;not null;default:'single'"`

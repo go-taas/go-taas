@@ -594,5 +594,102 @@ module.exports = {
         });
       });
     });
+  },
+
+  'env: environment variables are accepted for single and PD services and per role': function (browser) {
+    const org = browser.globals.orgA;
+    const single = `e2e-env-single-${browser.globals.runId}`;
+    const pd = `e2e-env-pd-${browser.globals.runId}`;
+
+    api.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/models',
+      org,
+      body: {name: `${single}-model`, version: 'v1', weightPath: `models/${single}/`}
+    }, (res) => {
+      const model = api.assertOk(browser, res, 'register model for env');
+
+      api.request(browser, {
+        method: 'POST',
+        path: '/api/v1/admin/inference-services',
+        org,
+        body: {
+          name: single,
+          modelId: model.modelId,
+          modelVersion: 'v1',
+          imageId: NVIDIA_IMAGE,
+          replicas: '1',
+          accelerator: 'nvidia',
+          acceleratorType: 'gpu',
+          env: {VLLM_USE_V1: '1', HF_HOME: '/models/hf'}
+        }
+      }, (res2) => {
+        const created = api.assertOk(browser, res2, 'create single-node service with env');
+
+        api.request(browser, {
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
+          org
+        }, (res3) => {
+          const detail = api.assertOk(browser, res3, 'read single-node service env');
+          browser.assert.deepEqual(detail.env, {VLLM_USE_V1: '1', HF_HOME: '/models/hf'},
+            'single-node env round-trips');
+
+          api.request(browser, {
+            method: 'POST',
+            path: '/api/v1/admin/inference-services',
+            org,
+            body: {
+              name: pd,
+              modelId: model.modelId,
+              modelVersion: 'v1',
+              imageId: NVIDIA_IMAGE,
+              replicas: '1',
+              accelerator: 'nvidia',
+              acceleratorType: 'gpu',
+              topology: 'pd',
+              prefillReplicas: '1',
+              decodeReplicas: '1',
+              env: {VLLM_USE_V1: '1'},
+              roleEngineArgs: [
+                {role: 'decode', env: {VLLM_USE_V1: '0', DECODE_ONLY: '1'}}
+              ]
+            }
+          }, (res4) => {
+            const pdCreated = api.assertOk(browser, res4, 'create PD service with role env');
+
+            api.request(browser, {
+              path: `/api/v1/admin/inference-services/${pdCreated.serviceId}`,
+              org
+            }, (res5) => {
+              const detail2 = api.assertOk(browser, res5, 'read PD service env');
+              browser.assert.deepEqual(detail2.env, {VLLM_USE_V1: '1'}, 'PD shared env round-trips');
+              const decode = (detail2.roleEngineArgs || []).find((r) => r.role === 'decode');
+              browser.assert.ok(decode, 'PD decode role is returned');
+              browser.assert.deepEqual(decode && decode.env,
+                {VLLM_USE_V1: '0', DECODE_ONLY: '1'}, 'PD decode role env round-trips');
+
+              // A variable Kubernetes owns is refused (10318).
+              api.request(browser, {
+                method: 'POST',
+                path: '/api/v1/admin/inference-services',
+                org,
+                body: {
+                  name: `e2e-env-bad-${browser.globals.runId}`,
+                  modelId: model.modelId,
+                  modelVersion: 'v1',
+                  imageId: NVIDIA_IMAGE,
+                  replicas: '1',
+                  accelerator: 'nvidia',
+                  acceleratorType: 'gpu',
+                  env: {HOSTNAME: 'spoofed'}
+                }
+              }, (res6) => {
+                api.assertBusinessError(browser, res6, 10318, 'reserved env name');
+              });
+            });
+          });
+        });
+      });
+    });
   }
 };

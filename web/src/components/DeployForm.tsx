@@ -24,6 +24,7 @@ import {
 } from '../api';
 import { Dialog, ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
+import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from './EnvVarsEditor';
 import { engineParams, type EngineParam } from './engineParams';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
@@ -58,6 +59,7 @@ interface CreateResponse {
 interface RoleArgState {
   args: Record<string, string>;
   extra: string[];
+  env: EnvRow[];
 }
 
 // rolesForTopology returns the roles the chosen layout runs. A single-node
@@ -79,6 +81,7 @@ function roleArgPayload(state: Record<string, RoleArgState>): Array<{
   role: string;
   engineArgs: Record<string, string>;
   extraArgs: string[];
+  env: Record<string, string>;
 }> {
   return Object.entries(state)
     .map(([role, value]) => ({
@@ -87,8 +90,14 @@ function roleArgPayload(state: Record<string, RoleArgState>): Array<{
         Object.entries(value.args).filter(([, v]) => v !== undefined && v !== ''),
       ),
       extraArgs: value.extra.map((a) => a.trim()).filter(Boolean),
+      env: rowsToEnv(value.env || []),
     }))
-    .filter((entry) => Object.keys(entry.engineArgs).length > 0 || entry.extraArgs.length > 0);
+    .filter(
+      (entry) =>
+        Object.keys(entry.engineArgs).length > 0 ||
+        entry.extraArgs.length > 0 ||
+        Object.keys(entry.env).length > 0,
+    );
 }
 
 // topologySummary renders how many pods the layout will create, so an
@@ -178,6 +187,9 @@ export default function DeployForm({
   // engine is a property of the chosen image, so the catalog follows it.
   const [engineArgs, setEngineArgs] = useState<Record<string, string>>({});
   const [extraArgs, setExtraArgs] = useState<string[]>([]);
+  // Environment variables: shared defaults for every engine container, plus
+  // per-role overrides. They apply to every topology.
+  const [envRows, setEnvRows] = useState<EnvRow[]>([]);
   // Per-role engine parameters: a multi-machine or PD layout runs several
   // roles, and each may need its own tuning (memory fraction, sequence
   // limits). The shared section above acts as the default they inherit.
@@ -351,9 +363,14 @@ export default function DeployForm({
     if (!tpl) return;
     setEngineArgs({ ...(tpl.engineArgs || {}) });
     setExtraArgs([...(tpl.extraArgs || [])]);
+    setEnvRows(envToRows(tpl.env));
     const nextRoles: Record<string, RoleArgState> = {};
     for (const role of tpl.roleEngineArgs || []) {
-      nextRoles[role.role] = { args: { ...(role.engineArgs || {}) }, extra: [...(role.extraArgs || [])] };
+      nextRoles[role.role] = {
+        args: { ...(role.engineArgs || {}) },
+        extra: [...(role.extraArgs || [])],
+        env: envToRows(role.env),
+      };
     }
     setRoleArgs(nextRoles);
   };
@@ -439,6 +456,7 @@ export default function DeployForm({
           Object.entries(engineArgs).filter(([, v]) => v !== undefined && v !== ''),
         ),
         extraArgs: extraArgs.map((a) => a.trim()).filter(Boolean),
+        env: rowsToEnv(envRows),
         topology,
         tensorParallelSize: String(tp),
         pipelineParallelSize: String(pp),
@@ -479,7 +497,8 @@ export default function DeployForm({
     changed:
       id === 'shared'
         ? Object.values(engineArgs).some((v) => v !== undefined && v !== '') ||
-          extraArgs.some((a) => a.trim() !== '')
+          extraArgs.some((a) => a.trim() !== '') ||
+          envRows.some((row) => row.name.trim() !== '')
         : roleArgPayload(roleArgs).some((entry) => entry.role === id),
   }));
   const activeTab = paramTabs.some((tab) => tab.id === paramsTab) ? paramsTab : 'shared';
@@ -814,6 +833,7 @@ export default function DeployForm({
           acceleratorType={acceleratorType}
           engineArgs={engineArgs}
           extraArgs={extraArgs}
+          env={rowsToEnv(envRows)}
           roleEngineArgs={roleArgPayload(roleArgs)}
           onClose={() => setSaveTemplateOpen(false)}
           onSaved={(saved) => {
@@ -844,8 +864,10 @@ export default function DeployForm({
           values={engineArgs}
           extraArgs={extraArgs}
           title={t('deploy.engineParamsShared', { engine })}
+          envRows={envRows}
           onChange={(name, value) => setEngineArgs((prev) => ({ ...prev, [name]: value }))}
           onExtraChange={setExtraArgs}
+          onEnvChange={setEnvRows}
         />
       ) : (
         <EngineArgsSection
@@ -858,19 +880,36 @@ export default function DeployForm({
             role: t(`deploy.role.${activeTab}`),
           })}
           testId={`deploy-engine-args-${activeTab}`}
+          envRows={roleArgs[activeTab]?.env ?? []}
+          envHint={t('deploy.envVarsRoleHint')}
           onChange={(name, value) =>
             setRoleArgs((prev) => ({
               ...prev,
               [activeTab]: {
                 args: { ...(prev[activeTab]?.args ?? {}), [name]: value },
                 extra: prev[activeTab]?.extra ?? [],
+                env: prev[activeTab]?.env ?? [],
               },
             }))
           }
           onExtraChange={(next) =>
             setRoleArgs((prev) => ({
               ...prev,
-              [activeTab]: { args: prev[activeTab]?.args ?? {}, extra: next },
+              [activeTab]: {
+                args: prev[activeTab]?.args ?? {},
+                extra: next,
+                env: prev[activeTab]?.env ?? [],
+              },
+            }))
+          }
+          onEnvChange={(next) =>
+            setRoleArgs((prev) => ({
+              ...prev,
+              [activeTab]: {
+                args: prev[activeTab]?.args ?? {},
+                extra: prev[activeTab]?.extra ?? [],
+                env: next,
+              },
             }))
           }
         />
@@ -1063,6 +1102,7 @@ function SaveTemplateDialog({
   acceleratorType,
   engineArgs,
   extraArgs,
+  env,
   roleEngineArgs,
   onClose,
   onSaved,
@@ -1075,6 +1115,7 @@ function SaveTemplateDialog({
   acceleratorType: string;
   engineArgs: Record<string, string>;
   extraArgs: string[];
+  env: Record<string, string>;
   roleEngineArgs: ReturnType<typeof roleArgPayload>;
   onClose: () => void;
   onSaved: (templateId: string) => void;
@@ -1098,8 +1139,12 @@ function SaveTemplateDialog({
   );
   const filledExtra = extraArgs.map((a) => a.trim()).filter(Boolean);
   const filledRoles = roleEngineArgs;
+  const filledEnv = env;
   const hasValues =
-    Object.keys(filledArgs).length > 0 || filledExtra.length > 0 || filledRoles.length > 0;
+    Object.keys(filledArgs).length > 0 ||
+    filledExtra.length > 0 ||
+    Object.keys(filledEnv).length > 0 ||
+    filledRoles.length > 0;
 
   const save = async () => {
     if (!name.trim()) {
@@ -1126,6 +1171,7 @@ function SaveTemplateDialog({
           acceleratorType,
           engineArgs: filledArgs,
           extraArgs: filledExtra,
+          env: filledEnv,
           roleEngineArgs: filledRoles,
         },
       );
@@ -1262,19 +1308,25 @@ function EngineArgsSection({
   params,
   values,
   extraArgs,
+  envRows,
+  envHint,
   title,
   testId = 'deploy-engine-args',
   onChange,
   onExtraChange,
+  onEnvChange,
 }: {
   engine: string;
   params: EngineParam[];
   values: Record<string, string>;
   extraArgs: string[];
+  envRows?: EnvRow[];
+  envHint?: string;
   title?: string;
   testId?: string;
   onChange: (name: string, value: string) => void;
   onExtraChange: (next: string[]) => void;
+  onEnvChange?: (next: EnvRow[]) => void;
 }) {
   const { t } = useI18n();
   if (!engine) return null;
@@ -1366,6 +1418,15 @@ function EngineArgsSection({
           {t('deploy.addExtraArg')}
         </button>
       </div>
+
+      {onEnvChange && (
+        <EnvVarsEditor
+          rows={envRows ?? []}
+          onChange={onEnvChange}
+          testIdPrefix={`${testId}-env`}
+          hint={envHint}
+        />
+      )}
     </div>
   );
 }

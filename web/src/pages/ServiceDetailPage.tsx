@@ -28,6 +28,7 @@ import {
 import { useI18n } from '../i18n';
 import { navigate } from '../router';
 import ServiceStatusBanner from '../components/ServiceStatusBanner';
+import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
 
 interface ServiceResponse {
   response: { code: number; message: string };
@@ -39,6 +40,7 @@ interface ServiceResponse {
   engineArgs?: Record<string, string>;
   extraArgs?: string[];
   roleEngineArgs?: RoleEngineArgs[];
+  env?: Record<string, string>;
 }
 
 export default function ServiceDetailPage() {
@@ -173,6 +175,28 @@ export default function ServiceDetailPage() {
             <div className="value">{formatTime(s.updatedAt)}</div>
           </div>
         </div>
+      </div>
+
+      <div className="panel" style={{ marginBottom: 16 }} data-testid="service-env-card">
+        <h3 style={{ marginTop: 0 }}>{t('service.envVars')}</h3>
+        {Object.keys(data.env || {}).length === 0 ? (
+          <div className="muted">{t('service.envVarsEmpty')}</div>
+        ) : (
+          <table className="table" data-testid="service-env-table">
+            <tbody>
+              {Object.entries(data.env || {})
+                .sort(([a], [b]) => a.localeCompare(b))
+                .map(([name, value]) => (
+                  <tr key={name}>
+                    <td className="mono">{name}</td>
+                    <td className="mono" data-testid={`service-env-${name}`}>
+                      {value}
+                    </td>
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        )}
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }} data-testid="service-topology-card">
@@ -350,6 +374,7 @@ export default function ServiceDetailPage() {
           service={s}
           orgId={orgId}
           engineArgs={data.engineArgs || {}}
+          env={data.env || {}}
           extraArgs={data.extraArgs || []}
           roleEngineArgs={data.roleEngineArgs || []}
           onClose={() => setEngineArgsOpen(false)}
@@ -635,6 +660,7 @@ function EngineArgsDialog({
   orgId,
   engineArgs,
   extraArgs,
+  env,
   roleEngineArgs,
   onClose,
   onSaved,
@@ -643,6 +669,7 @@ function EngineArgsDialog({
   orgId: string;
   engineArgs: Record<string, string>;
   extraArgs: string[];
+  env: Record<string, string>;
   roleEngineArgs: RoleEngineArgs[];
   onClose: () => void;
   onSaved: () => void;
@@ -650,6 +677,7 @@ function EngineArgsDialog({
   const { t } = useI18n();
   const [rows, setRows] = useState(argsToRows(engineArgs));
   const [extra, setExtra] = useState(extraArgs.join('\n'));
+  const [envRows, setEnvRows] = useState<EnvRow[]>(envToRows(env));
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -665,6 +693,7 @@ function EngineArgsDialog({
       await api.post(`/api/v1/admin/inference-services/${service.serviceId}:update-engine-args`, orgId, {
         engineArgs: rowsToArgs(rows),
         extraArgs: extra.split('\n').map((a) => a.trim()).filter(Boolean),
+        env: rowsToEnv(envRows),
         roleEngineArgs: roleEngineArgs,
       });
       onSaved();
@@ -718,6 +747,12 @@ function EngineArgsDialog({
           />
           <div className="field-hint">{t('service.engineArgsExtraHint')}</div>
         </div>
+        <EnvVarsEditor
+          rows={envRows}
+          onChange={setEnvRows}
+          testIdPrefix="service-env"
+          hint={t('service.envVarsHint')}
+        />
       </div>
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose} data-testid="engine-args-cancel">

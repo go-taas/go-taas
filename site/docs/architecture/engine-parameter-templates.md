@@ -30,7 +30,8 @@ Deploying a model means writing engine flags: `max-model-len`, `gpu-memory-utili
 | `accelerator_type` | varchar | card model; empty = any |
 | `engine_args` | json | shared flags, keyed by flag name **without** leading dashes |
 | `extra_args` | json | free-form argument list, appended after the shared flags |
-| `role_engine_args` | json | per-role overrides (`worker` / `prefill` / `decode`) |
+| `role_engine_args` | json | per-role overrides (`worker` / `prefill` / `decode`), each carrying its own `engine_args`, `extra_args` and `env` |
+| `env` | json | environment variables (`NAME` → value) applied to every engine container |
 | `created_at` / `updated_at` / `updated_by` | | audit columns |
 
 `model_id` is deliberately text, not `uuid`: an empty string means "any model", and Postgres rejects `''` for a `uuid` column (see AD1).
@@ -88,7 +89,9 @@ Ordering is `match_score DESC, name ASC`, so a tie is stable and the list does n
 - a `topology` outside `single` / `multinode` / `pd` (legacy `distributed` is normalised to `multinode`, as it is everywhere else);
 - an `engine_args` key that already carries leading dashes or a `=` — the key is the flag name alone, and the value is the argument;
 - a `role_engine_args` role outside `worker` / `prefill` / `decode`;
-- an empty template: no `engine_args`, no `extra_args` and no `role_engine_args`.
+- an `env` name that is not a POSIX variable name (`^[A-Za-z_][A-Za-z0-9_]*$`), longer than 128 characters, or reserved by Kubernetes / the storm controller (`HOSTNAME`, `POD_NAME`, `ROLESET_INDEX`, …) — overriding those breaks the distributed rendezvous;
+- an `env` value longer than 4096 characters or containing a NUL byte;
+- an empty template: no `engine_args`, no `extra_args`, no `role_engine_args` and no `env`.
 
 Duplicate names map to 10321; a miss on get/update/delete maps to 10320.
 
@@ -117,7 +120,8 @@ Duplicate names map to 10321; a miss on get/update/delete maps to 10320.
       "acceleratorType": "NVIDIA-GeForce-RTX-4090",
       "engineArgs": { "max-model-len": "8192", "gpu-memory-utilization": "0.9" },
       "extraArgs": ["--enable-chunked-prefill"],
-      "roleEngineArgs": []
+      "roleEngineArgs": [],
+      "env": {"VLLM_USE_V1": "1"}
     }
   ]
 }

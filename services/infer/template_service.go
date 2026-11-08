@@ -54,6 +54,7 @@ type templateExportDocumentItem struct {
 	EngineArgs      map[string]string `json:"engineArgs,omitempty"`
 	ExtraArgs       []string          `json:"extraArgs,omitempty"`
 	RoleEngineArgs  []RoleEngineArgs  `json:"roleEngineArgs,omitempty"`
+	Env             map[string]string `json:"env,omitempty"`
 }
 
 // templateRepository lazily resolves the template repository.
@@ -96,6 +97,7 @@ type templateInput struct {
 	EngineArgs      datatypes.JSON
 	ExtraArgs       datatypes.JSON
 	RoleEngineArgs  datatypes.JSON
+	Env             datatypes.JSON
 }
 
 // validateTemplate normalizes and validates the request fields. Nothing is
@@ -105,6 +107,7 @@ func (s *Service) validateTemplate(
 	engineArgs map[string]string,
 	extraArgs []string,
 	roleArgs []*inferv1.RoleEngineArgs,
+	env map[string]string,
 ) (templateInput, error) {
 	trimmedName := strings.TrimSpace(name)
 	if trimmedName == "" || len(trimmedName) > maxTemplateName {
@@ -146,13 +149,18 @@ func (s *Service) validateTemplate(
 	if err != nil {
 		return templateInput{}, err
 	}
+	storedEnv, err := normalizeEnv(env)
+	if err != nil {
+		return templateInput{}, err
+	}
 	// A template with no parameters records nothing worth loading. The deploy
 	// form refuses one before sending it; the API refuses it too, because a
 	// client other than the console would otherwise fill the list with empty
 	// rows that match everything and change nothing.
-	if isEmptyJSONObject(storedArgs) && isEmptyJSONArray(storedExtra) && isEmptyJSONArray(storedRoles) {
+	if isEmptyJSONObject(storedArgs) && isEmptyJSONArray(storedExtra) &&
+		isEmptyJSONArray(storedRoles) && isEmptyJSONObject(storedEnv) {
 		return templateInput{}, apierrors.Newf(apierrors.CodeEngineTemplateInvalid,
-			"infer: the template needs at least one engine parameter, extra argument or role override")
+			"infer: the template needs at least one engine parameter, extra argument, role override or environment variable")
 	}
 	return templateInput{
 		Name:            trimmedName,
@@ -165,6 +173,7 @@ func (s *Service) validateTemplate(
 		EngineArgs:      storedArgs,
 		ExtraArgs:       storedExtra,
 		RoleEngineArgs:  storedRoles,
+		Env:             storedEnv,
 	}, nil
 }
 
@@ -211,7 +220,7 @@ func (s *Service) CreateEngineParamTemplate(ctx context.Context, req *inferv1.Cr
 	}
 	in, err := s.validateTemplate(req.GetName(), req.GetDescription(), req.GetEngine(), req.GetModelId(),
 		req.GetTopology(), req.GetAccelerator(), req.GetAcceleratorType(),
-		req.GetEngineArgs(), req.GetExtraArgs(), req.GetRoleEngineArgs())
+		req.GetEngineArgs(), req.GetExtraArgs(), req.GetRoleEngineArgs(), req.GetEnv())
 	if err != nil {
 		return nil, err
 	}
@@ -231,6 +240,7 @@ func (s *Service) CreateEngineParamTemplate(ctx context.Context, req *inferv1.Cr
 		EngineArgs:      in.EngineArgs,
 		ExtraArgs:       in.ExtraArgs,
 		RoleEngineArgs:  in.RoleEngineArgs,
+		Env:             in.Env,
 		UpdatedBy:       s.templateActor(ctx),
 	}
 	if err := repo.Create(ctx, row); err != nil {
@@ -315,7 +325,7 @@ func (s *Service) UpdateEngineParamTemplate(ctx context.Context, req *inferv1.Up
 	}
 	in, err := s.validateTemplate(req.GetName(), req.GetDescription(), req.GetEngine(), req.GetModelId(),
 		req.GetTopology(), req.GetAccelerator(), req.GetAcceleratorType(),
-		req.GetEngineArgs(), req.GetExtraArgs(), req.GetRoleEngineArgs())
+		req.GetEngineArgs(), req.GetExtraArgs(), req.GetRoleEngineArgs(), req.GetEnv())
 	if err != nil {
 		return nil, err
 	}
@@ -338,6 +348,7 @@ func (s *Service) UpdateEngineParamTemplate(ctx context.Context, req *inferv1.Up
 		EngineArgs:      in.EngineArgs,
 		ExtraArgs:       in.ExtraArgs,
 		RoleEngineArgs:  in.RoleEngineArgs,
+		Env:             in.Env,
 		UpdatedBy:       s.templateActor(ctx),
 		UpdatedAt:       time.Now().UTC(),
 	}
@@ -399,6 +410,7 @@ func (s *Service) ExportEngineParamTemplates(ctx context.Context, _ *inferv1.Exp
 			EngineArgs:      EngineArgsMap(row.EngineArgs),
 			ExtraArgs:       ExtraArgsList(row.ExtraArgs),
 			RoleEngineArgs:  RoleEngineArgsList(row.RoleEngineArgs),
+			Env:             EnvMap(row.Env),
 		})
 	}
 	payload, err := json.MarshalIndent(doc, "", "  ")
@@ -448,12 +460,12 @@ func (s *Service) ImportEngineParamTemplates(ctx context.Context, req *inferv1.I
 		roleArgs := make([]*inferv1.RoleEngineArgs, 0, len(entry.RoleEngineArgs))
 		for _, r := range entry.RoleEngineArgs {
 			roleArgs = append(roleArgs, &inferv1.RoleEngineArgs{
-				Role: r.Role, EngineArgs: r.EngineArgs, ExtraArgs: r.ExtraArgs,
+				Role: r.Role, EngineArgs: r.EngineArgs, ExtraArgs: r.ExtraArgs, Env: r.Env,
 			})
 		}
 		in, err := s.validateTemplate(entry.Name, entry.Description, entry.Engine, entry.ModelID,
 			entry.Topology, entry.Accelerator, entry.AcceleratorType,
-			entry.EngineArgs, entry.ExtraArgs, roleArgs)
+			entry.EngineArgs, entry.ExtraArgs, roleArgs, entry.Env)
 		if err != nil {
 			// One malformed entry must not abandon the whole document after
 			// earlier entries were written: count it and keep going.
@@ -478,6 +490,7 @@ func (s *Service) ImportEngineParamTemplates(ctx context.Context, req *inferv1.I
 			existing.EngineArgs = in.EngineArgs
 			existing.ExtraArgs = in.ExtraArgs
 			existing.RoleEngineArgs = in.RoleEngineArgs
+			existing.Env = in.Env
 			existing.UpdatedBy = s.templateActor(ctx)
 			existing.UpdatedAt = time.Now().UTC()
 			if err := repo.Update(ctx, existing); err != nil {
@@ -498,6 +511,7 @@ func (s *Service) ImportEngineParamTemplates(ctx context.Context, req *inferv1.I
 			EngineArgs:      in.EngineArgs,
 			ExtraArgs:       in.ExtraArgs,
 			RoleEngineArgs:  in.RoleEngineArgs,
+			Env:             in.Env,
 			UpdatedBy:       s.templateActor(ctx),
 		}); err != nil {
 			return nil, err
@@ -593,6 +607,7 @@ func (s *Service) templateSummaries(ctx context.Context, rows []*EngineParamTemp
 			EngineArgs:      EngineArgsMap(row.EngineArgs),
 			ExtraArgs:       ExtraArgsList(row.ExtraArgs),
 			RoleEngineArgs:  roleArgsToProto(RoleEngineArgsList(row.RoleEngineArgs)),
+			Env:             EnvMap(row.Env),
 			CreatedAt:       row.CreatedAt.Unix(),
 			UpdatedAt:       row.UpdatedAt.Unix(),
 			UpdatedBy:       row.UpdatedBy,
@@ -606,7 +621,7 @@ func roleArgsToProto(roles []RoleEngineArgs) []*inferv1.RoleEngineArgs {
 	out := make([]*inferv1.RoleEngineArgs, 0, len(roles))
 	for _, r := range roles {
 		out = append(out, &inferv1.RoleEngineArgs{
-			Role: r.Role, EngineArgs: r.EngineArgs, ExtraArgs: r.ExtraArgs,
+			Role: r.Role, EngineArgs: r.EngineArgs, ExtraArgs: r.ExtraArgs, Env: r.Env,
 		})
 	}
 	return out

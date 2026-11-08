@@ -85,6 +85,9 @@ type changeEvent struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// Env are the environment variables set on every engine container of
+	// the service.
+	Env map[string]string `json:"env,omitempty"`
 	// RoleEngineArgs overrides EngineArgs per role, so a PD service can tune
 	// prefill and decode independently.
 	RoleEngineArgs []RoleEngineArgs `json:"role_engine_args,omitempty"`
@@ -144,6 +147,7 @@ func buildChangeEvent(eventType string, svc *InferenceService, modelName, weight
 		SliceComputePct:      svc.SliceComputePct,
 		EngineArgs:           EngineArgsMap(svc.EngineArgs),
 		ExtraArgs:            ExtraArgsList(svc.ExtraArgs),
+		Env:                  EnvMap(svc.Env),
 		RoleEngineArgs:       RoleEngineArgsList(svc.RoleEngineArgs),
 		Topology:             storedTopologyName(svc.Topology),
 		TensorParallelSize:   maxInt(svc.TensorParallelSize, 1),

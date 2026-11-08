@@ -1029,6 +1029,9 @@ export const en: Record<string, string> = {
   'service.topologyUpdateFailed': 'Failed to update the serving layout',
   'service.engineArgsEdit': 'Edit parameters',
   'service.engineArgsTitle': 'Edit parameters for {name}',
+  'service.envVars': 'Environment variables',
+  'service.envVarsEmpty': 'No environment variables are set.',
+  'service.envVarsHint': 'Applied to every engine container of this service.',
   'service.engineArgsHint': 'Changing the startup parameters restarts the service with the new arguments (a hot update). On a stopped service the new arguments are used when it starts again.',
   'service.engineArgsFlags': 'Engine flags',
   'service.engineArgsAdd': 'Add flag',
@@ -1938,6 +1941,12 @@ export const en: Record<string, string> = {
   'deploy.extraArgs': 'Extra arguments',
   'deploy.extraArgsHint': 'One argument per row, exactly as the engine should receive it (for example --enable-chunked-prefill).',
   'deploy.addExtraArg': 'Add argument',
+  'deploy.envVars': 'Environment variables',
+  'deploy.envVarsHint':
+    'Applied to every engine container of this service, for every topology. A name Kubernetes or the storm controller sets (for example HOSTNAME) is rejected.',
+  'deploy.envVarsRoleHint':
+    'Overrides the shared variable for this role only; every other variable is inherited.',
+  'deploy.addEnvVar': 'Add variable',
   'engine.maxModelLen': 'Max model length',
   'engine.maxModelLenHint': 'Maximum context length in tokens; empty keeps the model default.',
   'engine.gpuMemUtil': 'GPU memory utilization',

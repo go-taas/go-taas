@@ -135,6 +135,9 @@ type RoleEngineArgs struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are the role's free-form arguments.
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// Env are the role's environment-variable overrides. A name present
+	// here replaces the shared env value for this role only.
+	Env map[string]string `json:"env,omitempty"`
 }
 
 // roleNames is the closed set of roles a per-role override may name: the
@@ -171,13 +174,18 @@ func normalizeRoleEngineArgs(roles []*inferv1.RoleEngineArgs) (datatypes.JSON, e
 		if err != nil {
 			return nil, err
 		}
+		storedEnv, err := normalizeEnv(raw.GetEnv())
+		if err != nil {
+			return nil, err
+		}
 		entry := RoleEngineArgs{
 			Role:       role,
 			EngineArgs: EngineArgsMap(engineArgs),
 			ExtraArgs:  ExtraArgsList(extraArgs),
+			Env:        EnvMap(storedEnv),
 		}
 		// An override with nothing in it is the same as no override.
-		if len(entry.EngineArgs) == 0 && len(entry.ExtraArgs) == 0 {
+		if len(entry.EngineArgs) == 0 && len(entry.ExtraArgs) == 0 && len(entry.Env) == 0 {
 			continue
 		}
 		out = append(out, entry)

@@ -286,19 +286,20 @@ func (r *InferenceServiceRepository) UpdateModelVersion(ctx context.Context, _ s
 }
 
 // UpdateEngineArgs applies an in-place serving-engine parameter change.
-// It writes the new engine_args, extra_args and role_engine_args and
+// It writes the new engine_args, extra_args, role_engine_args and env, and
 // transitions the service to nextState (pending for a hot update on a
 // running service, stopped for a stopped service). A miss maps to
 // CodeInferServiceNotFound.
 func (r *InferenceServiceRepository) UpdateEngineArgs(
 	ctx context.Context, _ string, serviceID string,
-	engineArgs, extraArgs, roleArgs datatypes.JSON, nextState string,
+	engineArgs, extraArgs, roleArgs, env datatypes.JSON, nextState string,
 ) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
 		return r.updateServiceByID(ctx, serviceID, map[string]any{
 			"engine_args":      engineArgs,
 			"extra_args":       extraArgs,
 			"role_engine_args": roleArgs,
+			"env":              env,
 			"state":            nextState,
 			"updated_at":       time.Now().UTC(),
 		})

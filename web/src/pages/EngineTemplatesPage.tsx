@@ -19,6 +19,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, RowActionsMenu } from '../components';
 import { engineParams } from '../components/engineParams';
+import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
 interface ListResponse {
@@ -165,7 +166,9 @@ export default function EngineTemplatesPage() {
                     </div>
                   </td>
                   <td className="small muted">
-                    {Object.keys(tpl.engineArgs || {}).length + (tpl.extraArgs || []).length}
+                    {Object.keys(tpl.engineArgs || {}).length +
+                      (tpl.extraArgs || []).length +
+                      Object.keys(tpl.env || {}).length}
                     {t('engineTemplates.paramCount')}
                     {(tpl.roleEngineArgs || []).length > 0 && (
                       <div>{t('engineTemplates.withRoles')}</div>
@@ -280,11 +283,13 @@ function TemplateDialog({
   const [acceleratorType, setAcceleratorType] = useState(template?.acceleratorType || '');
   const [rows, setRows] = useState(argsToRows(template?.engineArgs));
   const [extraArgs, setExtraArgs] = useState((template?.extraArgs || []).join('\n'));
+  const [envRows, setEnvRows] = useState<EnvRow[]>(envToRows(template?.env));
   const [roleRows, setRoleRows] = useState(
     (template?.roleEngineArgs || []).map((r) => ({
       role: r.role,
       rows: argsToRows(r.engineArgs),
       extra: (r.extraArgs || []).join('\n'),
+      env: envToRows(r.env),
     })),
   );
   const [submitting, setSubmitting] = useState(false);
@@ -318,13 +323,20 @@ function TemplateDialog({
       acceleratorType: acceleratorType.trim(),
       engineArgs: rowsToArgs(rows),
       extraArgs: extraArgs.split('\n').map((a) => a.trim()).filter(Boolean),
+      env: rowsToEnv(envRows),
       roleEngineArgs: roleRows
         .map((r) => ({
           role: r.role,
           engineArgs: rowsToArgs(r.rows),
           extraArgs: r.extra.split('\n').map((a) => a.trim()).filter(Boolean),
+          env: rowsToEnv(r.env || []),
         }))
-        .filter((r) => Object.keys(r.engineArgs).length > 0 || r.extraArgs.length > 0),
+        .filter(
+          (r) =>
+            Object.keys(r.engineArgs).length > 0 ||
+            r.extraArgs.length > 0 ||
+            Object.keys(r.env).length > 0,
+        ),
     };
     try {
       if (template) {
@@ -457,6 +469,7 @@ function TemplateDialog({
           />
           <div className="field-hint">{t('engineTemplates.extraArgsHint')}</div>
         </div>
+        <EnvVarsEditor rows={envRows} onChange={setEnvRows} testIdPrefix="tpl-env" />
       </div>
 
       <h4 style={{ marginBottom: 8 }}>{t('engineTemplates.roleTitle')}</h4>
@@ -473,7 +486,7 @@ function TemplateDialog({
                   onChange={(e) =>
                     setRoleRows((prev) =>
                       e.target.checked
-                        ? [...prev, { role, rows: [], extra: '' }]
+                        ? [...prev, { role, rows: [], extra: '', env: [] }]
                         : prev.filter((r) => r.role !== role),
                     )
                   }
@@ -481,17 +494,29 @@ function TemplateDialog({
                 {t('deploy.engineParamsRole', { engine, role: t(`deploy.role.${role}`) })}
               </label>
               {existing && (
-                <textarea
-                  data-testid={`tpl-role-extra-${role}`}
-                  rows={2}
-                  value={existing.extra}
-                  placeholder="--gpu-memory-utilization 0.5"
-                  onChange={(e) =>
-                    setRoleRows((prev) =>
-                      prev.map((r) => (r.role === role ? { ...r, extra: e.target.value } : r)),
-                    )
-                  }
-                />
+                <>
+                  <textarea
+                    data-testid={`tpl-role-extra-${role}`}
+                    rows={2}
+                    value={existing.extra}
+                    placeholder="--gpu-memory-utilization 0.5"
+                    onChange={(e) =>
+                      setRoleRows((prev) =>
+                        prev.map((r) => (r.role === role ? { ...r, extra: e.target.value } : r)),
+                      )
+                    }
+                  />
+                  <EnvVarsEditor
+                    rows={existing.env || []}
+                    onChange={(next) =>
+                      setRoleRows((prev) =>
+                        prev.map((r) => (r.role === role ? { ...r, env: next } : r)),
+                      )
+                    }
+                    testIdPrefix={`tpl-role-env-${role}`}
+                    hint={t('deploy.envVarsRoleHint')}
+                  />
+                </>
               )}
             </div>
           );

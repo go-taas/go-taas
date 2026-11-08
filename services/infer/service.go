@@ -945,6 +945,12 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
+	// Environment variables are validated with the engine parameters, before
+	// any write: a malformed name must never reach a pod spec.
+	env, err := normalizeEnv(req.GetEnv())
+	if err != nil {
+		return nil, err
+	}
 
 	// Feature #52 (AD13): the vGPU slice request is validated before any
 	// write or publish. Both pool_id and slice_template_id must be
@@ -1040,6 +1046,7 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		EngineArgs:           engineArgs,
 		ExtraArgs:            extraArgs,
 		RoleEngineArgs:       roleArgs,
+		Env:                  env,
 		Endpoints:            []string{},
 		Autoscaling:          autoscalingJSON,
 		PoolID:               poolID,
@@ -1204,6 +1211,7 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		EngineArgs:        EngineArgsMap(row.EngineArgs),
 		ExtraArgs:         ExtraArgsList(row.ExtraArgs),
 		RoleEngineArgs:    roleEngineArgsToProto(row.RoleEngineArgs),
+		Env:               EnvMap(row.Env),
 	}, nil
 }
 
@@ -1220,6 +1228,7 @@ func roleEngineArgsToProto(stored datatypes.JSON) []*inferv1.RoleEngineArgs {
 			Role:       r.Role,
 			EngineArgs: r.EngineArgs,
 			ExtraArgs:  r.ExtraArgs,
+			Env:        r.Env,
 		})
 	}
 	return out
@@ -1874,6 +1883,10 @@ func (s *Service) UpdateInferenceServiceEngineArgs(ctx context.Context, req *inf
 	if err != nil {
 		return nil, err
 	}
+	env, err := normalizeEnv(req.GetEnv())
+	if err != nil {
+		return nil, err
+	}
 
 	// A running service transitions to pending so the controller recreates
 	// the pods with the new args (a hot update). A stopped service stays
@@ -1882,7 +1895,7 @@ func (s *Service) UpdateInferenceServiceEngineArgs(ctx context.Context, req *inf
 	if row.State == StateRunning || row.State == StateStarting || row.State == StateDeploying {
 		nextState = StatePending
 	}
-	if err := repo.UpdateEngineArgs(ctx, orgID, req.GetServiceId(), engineArgs, extraArgs, roleArgs, nextState); err != nil {
+	if err := repo.UpdateEngineArgs(ctx, orgID, req.GetServiceId(), engineArgs, extraArgs, roleArgs, env, nextState); err != nil {
 		return nil, err
 	}
 
@@ -1904,6 +1917,7 @@ func (s *Service) UpdateInferenceServiceEngineArgs(ctx context.Context, req *inf
 	updated.EngineArgs = engineArgs
 	updated.ExtraArgs = extraArgs
 	updated.RoleEngineArgs = roleArgs
+	updated.Env = env
 	updated.State = nextState
 	evt := buildChangeEvent(EventTypeUpdateEngineArgs, &updated, servedModelName(ctx, modelRepo, row),
 		modelVersion.WeightPath, img.Reference(), img.Engine)

@@ -73,6 +73,10 @@ type changeEvent struct {
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
+	// Env are the environment variables set on every engine container of the
+	// service. A per-role entry in RoleEngineArgs overrides one variable for
+	// that role only.
+	Env map[string]string `json:"env,omitempty"`
 	// RoleEngineArgs overrides EngineArgs per role, so the prefill and decode
 	// roles of a PD service (or the worker role of a multi-machine service)
 	// can each be tuned.
@@ -1400,6 +1404,10 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 			// at the weights mount path; the model lives in a
 			// subdirectory named by its weight path).
 			Command: engineCommand(evt, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), role),
+			// Operator-supplied environment variables. They apply to every
+			// topology; a PD or multi-machine role may override one for
+			// itself (see envForRole).
+			Env: evt.envForRole(role.Name),
 			VolumeMounts: []corev1.VolumeMount{{
 				Name:      "weights",
 				MountPath: r.weights.MountPath,
@@ -1858,6 +1866,7 @@ type roleEngineArgs struct {
 	Role       string            `json:"role"`
 	EngineArgs map[string]string `json:"engine_args,omitempty"`
 	ExtraArgs  []string          `json:"extra_args,omitempty"`
+	Env        map[string]string `json:"env,omitempty"`
 }
 
 // argsForRole merges one role's override over the shared engine arguments:
@@ -1882,6 +1891,38 @@ func (e changeEvent) argsForRole(role string) (map[string]string, []string) {
 		engineArgs = nil
 	}
 	return engineArgs, extra
+}
+
+// envForRole merges one role's environment overrides over the shared set: a
+// variable the role sets wins, the rest is inherited. The result is sorted by
+// name so the pod template is deterministic — an unordered map would rewrite
+// the storm (and roll the pods) on every reconcile.
+func (e changeEvent) envForRole(role string) []corev1.EnvVar {
+	merged := make(map[string]string, len(e.Env))
+	for name, value := range e.Env {
+		merged[name] = value
+	}
+	for _, override := range e.RoleEngineArgs {
+		if override.Role != role {
+			continue
+		}
+		for name, value := range override.Env {
+			merged[name] = value
+		}
+	}
+	if len(merged) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(merged))
+	for name := range merged {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	out := make([]corev1.EnvVar, 0, len(names))
+	for _, name := range names {
+		out = append(out, corev1.EnvVar{Name: name, Value: merged[name]})
+	}
+	return out
 }
 
 // resourceLabels returns the label set shared by the Deployment and

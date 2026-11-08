@@ -463,6 +463,11 @@ message CreateInferenceServiceRequest {
   // every topology accepts (single, multinode, pd). Omitted leaves the
   // platform default: one device per pod and no CPU/memory request.
   PodScheduling scheduling = 20;
+  // env are environment variables set on every engine container of the
+  // service, for every topology (single, multinode, pd). Keys are the
+  // variable names ("VLLM_USE_V1"); values are passed through verbatim.
+  // A role_engine_args entry may override a variable for that role only.
+  map<string, string> env = 21;
 }
 
 // PodScheduling is how much of the node one pod of the service asks for,
@@ -525,6 +530,9 @@ message EngineParamTemplate {
   // match_score is how specifically the template matches the query that
   // listed it (read-only; 0 when the query carried no context).
   int32 match_score = 16;
+  // env are the environment variables the template sets on every engine
+  // container, keyed by variable name.
+  map<string, string> env = 17;
 }
 
 message CreateEngineParamTemplateRequest {
@@ -538,6 +546,7 @@ message CreateEngineParamTemplateRequest {
   map<string, string> engine_args = 8;
   repeated string extra_args = 9;
   repeated RoleEngineArgs role_engine_args = 10;
+  map<string, string> env = 11;
 }
 
 message CreateEngineParamTemplateResponse {
@@ -585,6 +594,7 @@ message UpdateEngineParamTemplateRequest {
   map<string, string> engine_args = 9;
   repeated string extra_args = 10;
   repeated RoleEngineArgs role_engine_args = 11;
+  map<string, string> env = 12;
 }
 
 message UpdateEngineParamTemplateResponse {
@@ -635,6 +645,9 @@ message RoleEngineArgs {
   // extra_args are the role's free-form arguments, appended after the
   // shared ones.
   repeated string extra_args = 3;
+  // env are the role's environment variables. An entry overrides the
+  // shared env for that role only; other variables are inherited.
+  map<string, string> env = 4;
 }
 
 message CreateInferenceServiceResponse {
@@ -743,6 +756,9 @@ message GetInferenceServiceResponse {
   repeated string extra_args = 8;
   // role_engine_args are the per-role engine overrides.
   repeated RoleEngineArgs role_engine_args = 9;
+  // env are the environment variables the service runs with, keyed by
+  // variable name.
+  map<string, string> env = 10;
 }
 
 // AssignedSlice is the assigned physical GPU (AD14).
@@ -858,6 +874,10 @@ message UpdateInferenceServiceEngineArgsRequest {
   // list keeps the stored ones; a role present here overrides the shared
   // engine_args for that role only.
   repeated RoleEngineArgs role_engine_args = 4;
+  // env replaces the environment variables of every engine container. An
+  // empty map clears them; the controller recreates the pods (a hot update)
+  // or applies them on the next start.
+  map<string, string> env = 5;
 }
 
 message UpdateInferenceServiceEngineArgsResponse {

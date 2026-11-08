@@ -258,6 +258,7 @@ export interface EngineParamTemplate {
   engineArgs?: Record<string, string>;
   extraArgs?: string[];
   roleEngineArgs?: RoleEngineArgs[];
+  env?: Record<string, string>;
   createdAt?: string;
   updatedAt?: string;
   updatedBy?: string;
@@ -272,6 +273,7 @@ export interface RoleEngineArgs {
   role: string;
   engineArgs?: Record<string, string>;
   extraArgs?: string[];
+  env?: Record<string, string>;
 }
 
 // ModelDownload is one background hub download job.

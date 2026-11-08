@@ -26,8 +26,10 @@ func TestCreateEngineParamTemplate(t *testing.T) {
 		EngineArgs:      map[string]string{"max-model-len": "8192", "gpu-memory-utilization": "0.9"},
 		ExtraArgs:       []string{"--enable-chunked-prefill"},
 		RoleEngineArgs: []*inferv1.RoleEngineArgs{
-			{Role: "worker", EngineArgs: map[string]string{"max-num-seqs": "32"}},
+			{Role: "worker", EngineArgs: map[string]string{"max-num-seqs": "32"},
+				Env: map[string]string{"WORKER_ONLY": "1"}},
 		},
+		Env: map[string]string{"VLLM_USE_V1": "1", "HF_HOME": "/models/hf"},
 	})
 	require.NoError(t, err)
 	tpl := resp.GetTemplate()
@@ -39,6 +41,8 @@ func TestCreateEngineParamTemplate(t *testing.T) {
 	assert.Contains(t, tpl.GetExtraArgs(), "--enable-chunked-prefill")
 	require.Len(t, tpl.GetRoleEngineArgs(), 1)
 	assert.Equal(t, "32", tpl.GetRoleEngineArgs()[0].GetEngineArgs()["max-num-seqs"])
+	assert.Equal(t, map[string]string{"WORKER_ONLY": "1"}, tpl.GetRoleEngineArgs()[0].GetEnv())
+	assert.Equal(t, map[string]string{"VLLM_USE_V1": "1", "HF_HOME": "/models/hf"}, tpl.GetEnv())
 
 	// A duplicate name is refused.
 	_, err = svc.CreateEngineParamTemplate(orgContext("org-1"), &inferv1.CreateEngineParamTemplateRequest{
@@ -61,6 +65,8 @@ func TestCreateEngineParamTemplateValidation(t *testing.T) {
 		"bad engine arg":   {Name: "x", Engine: "vllm", EngineArgs: map[string]string{"--max": "1"}},
 		"unknown role":     {Name: "x", Engine: "vllm", RoleEngineArgs: []*inferv1.RoleEngineArgs{{Role: "coordinator", EngineArgs: map[string]string{"max-num-seqs": "4"}}}},
 		"nothing to load":  {Name: "x", Engine: "vllm"},
+		"bad env name":     {Name: "x", Engine: "vllm", Env: map[string]string{"FOO-BAR": "1"}},
+		"reserved env":     {Name: "x", Engine: "vllm", Env: map[string]string{"HOSTNAME": "spoof"}},
 	}
 	for name, req := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -161,6 +167,7 @@ func TestExportImportEngineParamTemplates(t *testing.T) {
 		Name: "exported", Engine: "vllm", Topology: "multinode",
 		EngineArgs:     map[string]string{"max-model-len": "8192"},
 		RoleEngineArgs: []*inferv1.RoleEngineArgs{{Role: "worker", ExtraArgs: []string{"--seed=1"}}},
+		Env:            map[string]string{"NCCL_DEBUG": "INFO"},
 	})
 	require.NoError(t, err)
 
@@ -173,6 +180,7 @@ func TestExportImportEngineParamTemplates(t *testing.T) {
 	assert.Equal(t, templateExportVersion, doc.Version)
 	require.Len(t, doc.Templates, 1)
 	assert.Equal(t, "exported", doc.Templates[0].Name)
+	assert.Equal(t, map[string]string{"NCCL_DEBUG": "INFO"}, doc.Templates[0].Env)
 
 	// Importing the same document onto a second service creates the template.
 	svc2, _, _ := newInferTestService(t)

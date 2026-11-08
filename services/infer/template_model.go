@@ -48,6 +48,9 @@ type EngineParamTemplate struct {
 	ExtraArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
 	// RoleEngineArgs are the per-role overrides as a JSON array.
 	RoleEngineArgs datatypes.JSON `gorm:"type:jsonb;not null;default:'[]'"`
+	// Env are the environment variables the template sets, as a JSON
+	// object of name to value.
+	Env datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
 	// UpdatedBy is the acting administrator's label.
 	UpdatedBy string `gorm:"size:255;not null;default:''"`
 	CreatedAt time.Time

@@ -52,6 +52,7 @@ func (r *EngineParamTemplateRepository) Update(ctx context.Context, row *EngineP
 			"engine_args":      row.EngineArgs,
 			"extra_args":       row.ExtraArgs,
 			"role_engine_args": row.RoleEngineArgs,
+			"env":              row.Env,
 			"updated_by":       row.UpdatedBy,
 			"updated_at":       row.UpdatedAt,
 		})

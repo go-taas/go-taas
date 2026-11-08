@@ -30,7 +30,8 @@
 | `accelerator_type` | varchar | 卡型；空 = 任意 |
 | `engine_args` | json | 公共参数，键为**不带**前缀横线的参数名 |
 | `extra_args` | json | 自由参数列表，追加在公共参数之后 |
-| `role_engine_args` | json | 按角色覆盖（`worker` / `prefill` / `decode`） |
+| `role_engine_args` | json | 按角色覆盖（`worker` / `prefill` / `decode`），每项携带自己的 `engine_args`、`extra_args` 与 `env` |
+| `env` | json | 环境变量（`NAME` → 值），应用于该服务的所有引擎容器 |
 | `created_at` / `updated_at` / `updated_by` | | 审计列 |
 
 `model_id` 刻意使用文本而非 `uuid`：空字符串表示「任意模型」，而 Postgres 不接受 `uuid` 列写入 `''`（见 AD1）。
@@ -88,7 +89,9 @@ AND (accelerator_type = :accelerator_type OR accelerator_type = '')
 - 不在 `single` / `multinode` / `pd` 内的 `topology`（历史值 `distributed` 会像其他地方一样归一化为 `multinode`）；
 - 已带前缀横线或含 `=` 的 `engine_args` 键 —— 键是参数名本身，值是参数值；
 - 不在 `worker` / `prefill` / `decode` 内的 `role_engine_args` 角色；
-- 空模板：既没有 `engine_args`，也没有 `extra_args` 与 `role_engine_args`。
+- `env` 名称不符合 POSIX 变量名（`^[A-Za-z_][A-Za-z0-9_]*$`）、超过 128 字符，或被 Kubernetes / 调度控制器保留（`HOSTNAME`、`POD_NAME`、`ROLESET_INDEX` 等）——覆盖它们会破坏分布式 rendezvous；
+- `env` 值超过 4096 字符或包含 NUL 字节；
+- 空模板：既没有 `engine_args`，也没有 `extra_args`、`role_engine_args` 与 `env`。
 
 重名返回 10321；get/update/delete 未命中返回 10320。
 
