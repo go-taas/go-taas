@@ -173,9 +173,32 @@ func (r *InferenceServiceRepository) ListAll(ctx context.Context, orgFilter stri
 	return r.Paginate(ctx, offset, limit, conds, "updated_at DESC", "id DESC")
 }
 
+// ListTeardownCandidates returns services in one of the teardown states
+// (terminated, stopped) whose row was updated at or after since, newest
+// first, capped at limit. The teardown converger re-publishes their
+// teardown events so a lost event or a controller restart still removes
+// the k8s resources.
+func (r *InferenceServiceRepository) ListTeardownCandidates(ctx context.Context, states []string, since time.Time, limit int) ([]*InferenceService, error) {
+	if len(states) == 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 200
+	}
+	var rows []*InferenceService
+	err := r.DB(ctx).
+		Where("state IN ? AND updated_at >= ?", states, since).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // UpdateReplicas applies a spec-only replica update (state untouched).
-func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, serviceID string, replicas int) error {
-	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, serviceID string, replicas int) error {	return r.db.WithinTx(ctx, func(ctx context.Context) error {
 		res := r.DB(ctx).
 			Model(&InferenceService{}).
 			Where("id = ? AND organization_id = ?", serviceID, orgID).
@@ -703,7 +726,7 @@ func (r *InferenceServiceRepository) RestrictedServiceIDs(ctx context.Context, s
 func (r *InferenceServiceRepository) NameTaken(ctx context.Context, name string) (bool, error) {
 	var count int64
 	if err := r.DB(ctx).Model(&InferenceService{}).
-		Where("name = ?", name).
+		Where("name = ? AND state <> ?", name, StateTerminated).
 		Count(&count).Error; err != nil {
 		return false, err
 	}

@@ -465,6 +465,19 @@ type InferConfig struct {
 	// Autoscaling controls the infer module's autoscaling consumers and
 	// the controller's status-report interval (feature #16).
 	Autoscaling InferAutoscalingConfig `mapstructure:"autoscaling"`
+	// TeardownConverger configures the periodic re-publisher that removes
+	// the k8s resources of terminated/stopped services whose teardown
+	// event was lost.
+	TeardownConverger InferTeardownConvergerConfig `mapstructure:"teardownConverger"`
+}
+
+// InferTeardownConvergerConfig holds the teardown converger settings.
+type InferTeardownConvergerConfig struct {
+	// Enabled turns the converger Runner on or off.
+	Enabled bool `mapstructure:"enabled"`
+	// Interval is how often it re-publishes teardown events. Defaults to
+	// 1m.
+	Interval time.Duration `mapstructure:"interval"`
 }
 
 // InferAutoscalingConfig holds the feature-16 autoscaling settings.

@@ -370,7 +370,7 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 
 	code, body = env.call(t, http.MethodDelete, "/api/v1/admin/inference-services/"+serviceID, nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
-	assert.Len(t, env.mqBus.changes, 1, "second delete publishes nothing (AC9)")
+	assert.Len(t, env.mqBus.changes, 2, "a repeat delete re-publishes the teardown so leftovers converge")
 
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/inference-services", nil, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)

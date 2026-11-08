@@ -169,6 +169,9 @@ infer:
       enabled: true
       workers: 2
     statusReportInterval: 5s
+  teardownConverger:
+    enabled: true
+    interval: 1m
 
 tenancy:
   # The organization seeded on first boot (when the organizations table

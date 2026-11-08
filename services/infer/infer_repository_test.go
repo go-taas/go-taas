@@ -37,6 +37,7 @@ func newInferTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(testDSN(t)), &gorm.Config{})
 	require.NoError(t, err)
 	require.NoError(t, db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &InferenceServiceAccess{}))
+	require.NoError(t, applyInferenceServiceNameIndex(db))
 	require.NoError(t, model.MigrateSchemaForFVT(db))
 	require.NoError(t, NewAutoscalingPolicyRepository(db).SeedDefault(context.Background()))
 	t.Cleanup(func() {

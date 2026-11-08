@@ -30,6 +30,7 @@ func newFakeDynamic(objs ...k8sruntime.Object) *dynamicfake.FakeDynamicClient {
 		modelClaimGVR:    "ModelClaimList",
 		podAutoscalerGVR: "PodAutoscalerList",
 		stormServiceGVR:  "StormServiceList",
+		podGroupGVR:      "PodGroupList",
 	}, objs...)
 }
 

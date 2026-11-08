@@ -36,10 +36,13 @@ type InferenceService struct {
 	// ID is the server-generated UUID v4 exposed as service_id.
 	ID string `gorm:"primaryKey;type:uuid"`
 	// OrganizationID is the owning organization (transitional plain
-	// string; foreign key deferred to features #6/#7).
-	OrganizationID string `gorm:"size:64;not null;uniqueIndex:idx_infer_services_org_name,priority:1;index:idx_infer_services_org_updated,priority:1"`
+	// string; foreign key deferred to features #6/#7). Uniqueness of
+	// (organization_id, name) is enforced by a partial unique index that
+	// excludes terminated rows, so a deleted service frees its name for
+	// reuse (see inferenceServiceNameIndex).
+	OrganizationID string `gorm:"size:64;not null;index:idx_infer_services_org_updated,priority:1"`
 	// Name is the DNS-safe service name, 1-63 chars.
-	Name string `gorm:"size:63;not null;uniqueIndex:idx_infer_services_org_name,priority:2"`
+	Name string `gorm:"size:63;not null"`
 	// ModelID is the deployed model's id.
 	ModelID string `gorm:"type:uuid;not null;index"`
 	// ModelVersion is the pinned version (never "latest").

@@ -374,6 +374,12 @@ infer:
       enabled: true
       workers: 2
     statusReportInterval: 5s
+  # teardownConverger re-publishes the teardown event for terminated and
+  # stopped services so a lost event or a controller restart still removes
+  # their k8s resources.
+  teardownConverger:
+    enabled: true
+    interval: 1m
 
 resourceMetrics:
   # prometheusURL is where the service metrics page reads CPU, memory and

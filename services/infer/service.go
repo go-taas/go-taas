@@ -628,7 +628,33 @@ func MigrateSchemaForFVT(db *gorm.DB) error {
 	if err := db.AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}, &InferenceServiceAccess{}); err != nil {
 		return err
 	}
+	if err := applyInferenceServiceNameIndex(db); err != nil {
+		return err
+	}
 	return NewAutoscalingPolicyRepository(db).SeedDefault(context.Background())
+}
+
+// inferenceServiceNameIndex is the partial unique index that keeps service
+// names unique among non-terminated rows. A terminated service therefore
+// frees its name for reuse: deleting a service and deploying a new one with
+// the same name is allowed.
+//
+// The historical non-partial unique index (idx_infer_services_org_name) is
+// dropped first; a plain unique index cannot express "ignore terminated
+// rows", and leaving it in place would keep blocking a reused name with a
+// database error after the friendly pre-check passes.
+const (
+	dropLegacyNameIndex     = `DROP INDEX IF EXISTS idx_infer_services_org_name`
+	createActiveNameIndex   = `CREATE UNIQUE INDEX IF NOT EXISTS uq_infer_services_org_name_active ON inference_services(organization_id, name) WHERE state <> 'terminated'`
+)
+
+// applyInferenceServiceNameIndex replaces the legacy unique name index with
+// the partial one. It is idempotent and safe to run on every boot.
+func applyInferenceServiceNameIndex(db *gorm.DB) error {
+	if err := db.Exec(dropLegacyNameIndex).Error; err != nil {
+		return err
+	}
+	return db.Exec(createActiveNameIndex).Error
 }
 
 // AttachToServer implements server.Service.
@@ -651,6 +677,11 @@ func (s *Service) Migrate(ctx context.Context) error {
 		return err
 	}
 	if err := db.WithContext(ctx).AutoMigrate(&InferenceService{}, &AutoscalingPolicy{}, &LoadTest{}, &DeploymentEvent{}, &RoutingPolicy{}, &RoutingPolicyRevision{}, &RoutingPolicyOutbox{}, &InferenceServiceAccess{}, &EngineParamTemplate{}); err != nil {
+		return err
+	}
+	// Replace the legacy unique name index with the partial one so a
+	// terminated service frees its name for reuse.
+	if err := applyInferenceServiceNameIndex(db); err != nil {
 		return err
 	}
 	// Seed the singleton global-default policy (feature #16, §4.3): the
@@ -1329,9 +1360,15 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 		return nil, err
 	}
 
-	// Idempotent delete: an already-terminated service succeeds without
-	// publishing a second event (AC9).
+	// Idempotent delete: an already-terminated service succeeds. The
+	// teardown event is re-published (best-effort) so a delete whose first
+	// event was lost (a broker or controller restart) still converges the
+	// k8s resources on retry instead of leaving them behind.
 	if row.State == StateTerminated {
+		if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, "", "", "", "")); err != nil {
+			logger.S().Warnw("infer: re-publish delete change failed",
+				"service_id", req.GetServiceId(), "err", err)
+		}
 		return &inferv1.DeleteInferenceServiceResponse{Response: okResponse()}, nil
 	}
 
@@ -1393,8 +1430,14 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
 	}
 	// Only a running (or starting/deploying) service can be stopped. A
-	// stopped service is idempotent: stopping it again succeeds.
+	// stopped service is idempotent: stopping it again succeeds and
+	// re-publishes the teardown (best-effort) so a lost event still
+	// converges the k8s resources on retry.
 	if row.State == StateStopped {
+		if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, "", "", "", "")); err != nil {
+			logger.S().Warnw("infer: re-publish stop change failed",
+				"service_id", req.GetServiceId(), "err", err)
+		}
 		return &inferv1.StopInferenceServiceResponse{
 			Response:  okResponse(),
 			ServiceId: req.GetServiceId(),

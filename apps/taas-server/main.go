@@ -829,6 +829,12 @@ func main() {
 	if runner := infer.NewConcurrencyConsumerRunner(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
+	// The teardown converger re-publishes delete/stop events for
+	// terminated/stopped services so their k8s resources are removed even
+	// if the original event was lost.
+	if runner := infer.NewTeardownConvergerFromConfig(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
 	// Feature #51 (AD14): the quota in-flight report consumer keeps the
 	// per-org snapshot the quota RPCs surface. Gated by config.
 	if cfg.Quota.ConcurrencyConsumer.Enabled {
