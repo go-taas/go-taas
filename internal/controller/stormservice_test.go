@@ -369,6 +369,23 @@ func TestTerminalPodFailureInFailsTheGroup(t *testing.T) {
 	assert.Contains(t, terminalPodFailureIn(pods), "ImagePullBackOff")
 }
 
+// TestTerminalPodFailureCrashLoop verifies a container that keeps crashing
+// (the engine starts, errors out and restarts) is reported as a failure so
+// the service state becomes failed instead of hanging in starting.
+func TestTerminalPodFailureCrashLoop(t *testing.T) {
+	pod := corev1.Pod{Status: corev1.PodStatus{
+		ContainerStatuses: []corev1.ContainerStatus{{
+			State: corev1.ContainerState{Waiting: &corev1.ContainerStateWaiting{Reason: "CrashLoopBackOff"}},
+			LastTerminationState: corev1.ContainerState{Terminated: &corev1.ContainerStateTerminated{
+				ExitCode: 1,
+			}},
+		}},
+	}}
+	reason := terminalPodFailure(pod)
+	assert.Contains(t, reason, "CrashLoopBackOff")
+	assert.Contains(t, reason, "exit code 1")
+}
+
 // TestParallelReplicaGetsSharedMemory verifies a tensor/pipeline-parallel
 // replica mounts a memory-backed /dev/shm: the engine's parallel workers
 // exchange tensors through it, and the Kubernetes default (64 MiB) makes the
