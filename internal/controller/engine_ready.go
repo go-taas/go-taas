@@ -228,6 +228,19 @@ func terminalPodFailure(pod corev1.Pod) string {
 					return w.Reason + ": " + w.Message
 				}
 				return w.Reason
+			case "CrashLoopBackOff":
+				// The engine starts, exits with an error and restarts. It
+				// never becomes ready on its own, so the deploy has failed.
+				// The last exit reason (when the kubelet records one) names
+				// why (e.g. "Error", "OOMKilled").
+				reason := "CrashLoopBackOff: the engine container keeps crashing"
+				if cs.LastTerminationState.Terminated != nil && cs.LastTerminationState.Terminated.ExitCode != 0 {
+					reason += " (last exit code " + strconv.Itoa(int(cs.LastTerminationState.Terminated.ExitCode)) + ")"
+				}
+				if w.Message != "" {
+					reason += ": " + w.Message
+				}
+				return reason
 			}
 		}
 		if t := cs.State.Terminated; t != nil && strings.TrimSpace(t.Reason) == "OOMKilled" {
