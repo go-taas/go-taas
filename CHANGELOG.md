@@ -1,3 +1,10 @@
+# [1.114.0](https://github.com/go-taas/go-taas/compare/v1.113.3...v1.114.0) (2026-11-08)
+
+
+### Features
+
+* **infer:** support environment variables on every serving topology ([3d43a9a](https://github.com/go-taas/go-taas/commit/3d43a9a49909728b60c5e56f8f45eca6eb766ce8))
+
 ## [1.113.3](https://github.com/go-taas/go-taas/compare/v1.113.2...v1.113.3) (2026-11-08)
 
 
