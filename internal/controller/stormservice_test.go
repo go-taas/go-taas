@@ -396,6 +396,22 @@ func TestParallelReplicaGetsSharedMemory(t *testing.T) {
 	}
 	assert.True(t, mounted, "/dev/shm is backed by the shared-memory volume")
 
+	// A single-node replica that shards the model across more than one
+	// device (topology single, tensor_parallel_size 2) also needs the
+	// larger shared-memory volume: vLLM's multiproc executor uses it even
+	// inside one pod.
+	singleParallel := testChangeEvent("upsert", "demo")
+	singleParallel.Topology = "single"
+	singleParallel.TensorParallelSize = 2
+	spec2, _ := testReconciler().buildPodTemplate(context.Background(), singleParallel, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	found := false
+	for _, volume := range spec2.Volumes {
+		if volume.Name == "shm" {
+			found = true
+		}
+	}
+	assert.True(t, found, "a single-node tensor-parallel replica needs a shared-memory volume")
+
 	// A single-device replica keeps the default shm.
 	single, _ := testReconciler().buildPodTemplate(context.Background(), testChangeEvent("upsert", "demo"), stormRole{Name: stormRoleWorker, PodGroupSize: 1})
 	for _, volume := range single.Volumes {

@@ -38,11 +38,14 @@ func TestStopAndStartInferenceService(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StateStopped, get.GetService().GetState())
 
-	// Stopping again is idempotent: no new event.
+	// Stopping again is idempotent and re-publishes the teardown
+	// (best-effort) so a lost event still converges the k8s resources.
 	client.published = nil
 	_, err = svc.StopInferenceService(orgContext("org-1"), &inferv1.StopInferenceServiceRequest{ServiceId: created.GetServiceId()})
 	require.NoError(t, err)
-	assert.Empty(t, client.published)
+	require.Len(t, client.published, 1)
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, EventTypeStop, evt.EventType)
 
 	// Start: one start event, state becomes pending.
 	client.published = nil

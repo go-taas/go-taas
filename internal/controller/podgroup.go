@@ -32,8 +32,6 @@ import (
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
-
-	"github.com/go-taas/go-taas/pkg/logger"
 )
 
 // podGroupGVR is the Volcano PodGroup resource.
@@ -164,14 +162,18 @@ func applyPodGroup(ctx context.Context, dyn dynamic.Interface, group *unstructur
 
 // deletePodGroup removes a service's PodGroup, ignoring not-found. Volcano
 // created no owner reference for it, so its lifecycle is the controller's.
-func deletePodGroup(ctx context.Context, dyn dynamic.Interface, namespace, name string) {
+// deletePodGroup removes a service's PodGroup, ignoring not-found. Volcano
+// created no owner reference for it, so its lifecycle is the controller's.
+// A real delete failure is returned so teardown can retry it.
+func deletePodGroup(ctx context.Context, dyn dynamic.Interface, namespace, name string) error {
 	if dyn == nil || name == "" {
-		return
+		return nil
 	}
 	err := dyn.Resource(podGroupGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
 	if err != nil && !apierrors.IsNotFound(err) {
-		logger.S().Warnw("controller: delete podgroup failed", "name", name, "err", err)
+		return err
 	}
+	return nil
 }
 
 // scaleResourceList multiplies a resource list by count, for the PodGroup's

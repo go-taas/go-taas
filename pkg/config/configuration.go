@@ -182,6 +182,9 @@ func (c *Configuration) applyDefaults() {
 	if c.Controller.PodFailureDetector.Interval == 0 {
 		c.Controller.PodFailureDetector.Interval = 30 * time.Second
 	}
+	if c.Infer.TeardownConverger.Interval == 0 {
+		c.Infer.TeardownConverger.Interval = time.Minute
+	}
 	// Feature #19: the compatibility matrix defaults. seedOnBoot is true
 	// by default; lazySeedDefault is "experimental" (the vendor-match
 	// rule's experimental branch; the unsupported branch is always

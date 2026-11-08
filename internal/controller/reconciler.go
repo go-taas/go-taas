@@ -635,53 +635,11 @@ func (r *k8sReconciler) publishWarmupStatus(ctx context.Context, taskID, state s
 }
 
 // applyDelete tears down the StormService, Service and autoscaler, plus the
-// Deployment an older controller created for the same service, ignoring
-// not-found. The RPC already set state=terminated; no status report is
-// needed.
-//
-// Every delete is best-effort and independent: a failure on one resource
-// (e.g. a Deployment stuck terminating) must not leave the StormService
-// behind, or the service would keep serving after it was removed. Errors
-// are collected and returned together so the broker retries, but each
-// resource is still attempted.
+// Deployment an older controller created for the same service. The RPC
+// already set state=terminated; no status report is needed.
 func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error {
-	var errs []error
-
-	depErr := r.clientset.AppsV1().Deployments(r.namespace).
-		Delete(ctx, deploymentName(evt.Name), metav1.DeleteOptions{})
-	if depErr != nil && !apierrors.IsNotFound(depErr) {
-		errs = append(errs, fmt.Errorf("controller: delete deployment %s: %w", evt.Name, depErr))
-	}
-	svcErr := r.clientset.CoreV1().Services(r.namespace).
-		Delete(ctx, serviceName(evt.Name), metav1.DeleteOptions{})
-	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
-		errs = append(errs, fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr))
-	}
-	// Autoscaling is the AIBrix PodAutoscaler; the HPA delete sweeps an
-	// object an older controller left behind.
-	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
-		errs = append(errs, err)
-	}
-	// The storm is the serving object: a failed delete is a real error
-	// (something would keep serving after the service was removed).
-	if err := deleteStormService(ctx, r.dynamic, r.namespace, stormServiceName(evt)); err != nil {
-		errs = append(errs, fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err))
-	}
-	// Feature #47: tear down the AIBrix ModelClaim and PodAutoscaler
-	// best-effort (ignoring absence and write failures).
-	if err := deleteModelClaim(ctx, r.dynamic, r.namespace, evt.Name); err != nil {
-		logger.S().Warnw("controller: delete aibrix modelclaim failed", "name", evt.Name, "err", err)
-	}
-	if err := r.deleteModelRoute(ctx, evt); err != nil {
-		logger.S().Warnw("controller: delete aibrix model route failed", "name", evt.Name, "err", err)
-	}
-	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-	// The PodGroup outlives the storm otherwise: Volcano keeps the queued
-	// gang in its accounting and the object lingers in the namespace.
-	deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt))
-
-	if len(errs) > 0 {
-		return errors.Join(errs...)
+	if err := r.teardown(ctx, evt); err != nil {
+		return err
 	}
 	logger.S().Infow("controller: tore down inference service",
 		"service_id", evt.ServiceID, "name", evt.Name)
@@ -693,21 +651,39 @@ func (r *k8sReconciler) applyDelete(ctx context.Context, evt changeEvent) error 
 // route) but keeps the catalog row so the service can be started again.
 // The RPC already set state=stopped; no status report is needed.
 func (r *k8sReconciler) applyStop(ctx context.Context, evt changeEvent) error {
-	depErr := r.clientset.AppsV1().Deployments(r.namespace).
-		Delete(ctx, deploymentName(evt.Name), metav1.DeleteOptions{})
-	if depErr != nil && !apierrors.IsNotFound(depErr) {
-		return fmt.Errorf("controller: delete deployment %s: %w", evt.Name, depErr)
-	}
-	svcErr := r.clientset.CoreV1().Services(r.namespace).
-		Delete(ctx, serviceName(evt.Name), metav1.DeleteOptions{})
-	if svcErr != nil && !apierrors.IsNotFound(svcErr) {
-		return fmt.Errorf("controller: delete service %s: %w", evt.Name, svcErr)
-	}
-	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
+	if err := r.teardown(ctx, evt); err != nil {
 		return err
 	}
+	logger.S().Infow("controller: stopped inference service",
+		"service_id", evt.ServiceID, "name", evt.Name)
+	return nil
+}
+
+// teardown removes every Kubernetes resource a service owns. It deletes by
+// name (the fast path) and then sweeps by the go-taas.com/service-id label
+// (the backstop): a resource left behind by an earlier partial teardown, or
+// one whose name does not match the current naming rule, is still removed so
+// no workload keeps serving after the service was stopped or deleted.
+//
+// Every delete is independent: a failure on one resource (e.g. a Deployment
+// stuck terminating) must not leave the others behind. Errors are collected
+// and returned together so the broker retries, but each resource is still
+// attempted.
+func (r *k8sReconciler) teardown(ctx context.Context, evt changeEvent) error {
+	var errs []error
+
+	// Fast path: delete the well-known names.
+	if err := r.deleteDeployment(ctx, deploymentName(evt.Name)); err != nil {
+		errs = append(errs, err)
+	}
+	if err := r.deleteService(ctx, serviceName(evt.Name)); err != nil {
+		errs = append(errs, err)
+	}
+	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
+		errs = append(errs, err)
+	}
 	if err := deleteStormService(ctx, r.dynamic, r.namespace, stormServiceName(evt)); err != nil {
-		return fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err)
+		errs = append(errs, fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err))
 	}
 	if err := deleteModelClaim(ctx, r.dynamic, r.namespace, evt.Name); err != nil {
 		logger.S().Warnw("controller: delete aibrix modelclaim failed", "name", evt.Name, "err", err)
@@ -716,9 +692,84 @@ func (r *k8sReconciler) applyStop(ctx context.Context, evt changeEvent) error {
 		logger.S().Warnw("controller: delete aibrix model route failed", "name", evt.Name, "err", err)
 	}
 	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-	deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt))
-	logger.S().Infow("controller: stopped inference service",
-		"service_id", evt.ServiceID, "name", evt.Name)
+	if err := deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt)); err != nil {
+		errs = append(errs, fmt.Errorf("controller: delete podgroup %s: %w", podGroupName(evt), err))
+	}
+
+	// Backstop: sweep every resource still labeled with the service id.
+	if err := r.sweepByServiceID(ctx, evt.ServiceID); err != nil {
+		errs = append(errs, err)
+	}
+
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
+}
+
+// deleteDeployment deletes one Deployment, ignoring not-found.
+func (r *k8sReconciler) deleteDeployment(ctx context.Context, name string) error {
+	err := r.clientset.AppsV1().Deployments(r.namespace).
+		Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("controller: delete deployment %s: %w", name, err)
+	}
+	return nil
+}
+
+// deleteService deletes one Service, ignoring not-found.
+func (r *k8sReconciler) deleteService(ctx context.Context, name string) error {
+	err := r.clientset.CoreV1().Services(r.namespace).
+		Delete(ctx, name, metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return fmt.Errorf("controller: delete service %s: %w", name, err)
+	}
+	return nil
+}
+
+// sweepByServiceID deletes every Service, Deployment and PodGroup that still
+// carries the service's go-taas.com/service-id label. It is the backstop that
+// keeps a partially torn-down service from leaking resources. A blank
+// service id is a no-op (never sweep the whole namespace).
+func (r *k8sReconciler) sweepByServiceID(ctx context.Context, serviceID string) error {
+	if strings.TrimSpace(serviceID) == "" {
+		return nil
+	}
+	selector := labelServiceID + "=" + serviceID
+	var errs []error
+
+	if svcs, err := r.clientset.CoreV1().Services(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
+		errs = append(errs, fmt.Errorf("controller: list services for %s: %w", serviceID, err))
+	} else {
+		for i := range svcs.Items {
+			if err := r.deleteService(ctx, svcs.Items[i].Name); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if deps, err := r.clientset.AppsV1().Deployments(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
+		errs = append(errs, fmt.Errorf("controller: list deployments for %s: %w", serviceID, err))
+	} else {
+		for i := range deps.Items {
+			if err := r.deleteDeployment(ctx, deps.Items[i].Name); err != nil {
+				errs = append(errs, err)
+			}
+		}
+	}
+	if r.dynamic != nil {
+		if groups, err := r.dynamic.Resource(podGroupGVR).Namespace(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
+			errs = append(errs, fmt.Errorf("controller: list podgroups for %s: %w", serviceID, err))
+		} else {
+			for i := range groups.Items {
+				if err := deletePodGroup(ctx, r.dynamic, r.namespace, groups.Items[i].GetName()); err != nil {
+					errs = append(errs, err)
+				}
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
 	return nil
 }
 
@@ -1167,10 +1218,13 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 		NodeSelector: nodeSelector,
 	}
 	// A distributed engine (multi-machine or PD) runs collectives inside the
-	// pod and exchanges tensors through shared memory. Kubernetes defaults
-	// /dev/shm to 64 MiB, which makes the engine die with "Insufficient space
-	// in /dev/shm", so such a pod gets a memory-backed volume of its own.
-	if evt.distributedServing() {
+	// pod and exchanges tensors through shared memory. So does a single-node
+	// engine whose tensor/pipeline parallelism shards the model across more
+	// than one device: vLLM's multiproc executor allocates a shared-memory
+	// broadcast buffer even within one pod. Kubernetes defaults /dev/shm to
+	// 64 MiB, which makes the engine die with "Insufficient space in
+	// /dev/shm", so such a pod gets a memory-backed volume of its own.
+	if evt.distributedServing() || evt.engineParallel() {
 		size := resource.MustParse("2Gi")
 		spec.Volumes = append(spec.Volumes, corev1.Volume{
 			Name: "shm",
@@ -1577,6 +1631,26 @@ func autoscalerName(name string) string { return "hpa-" + name }
 // shared-GPU slice.
 func (e changeEvent) distributedServing() bool {
 	return isMultiNode(e.Topology) || e.Topology == topologyPD
+}
+
+// engineParallel reports whether the engine shards the model across more
+// than one device, so its multiprocess executor needs a large /dev/shm
+// even inside a single pod. It covers the single-node tensor/pipeline
+// parallel case (topology "single" with tensor_parallel_size > 1) as well
+// as a pod that itself owns more than one device.
+func (e changeEvent) engineParallel() bool {
+	tp := e.TensorParallelSize
+	if tp < 1 {
+		tp = 1
+	}
+	pp := e.PipelineParallelSize
+	if pp < 1 {
+		pp = 1
+	}
+	if tp*pp > 1 {
+		return true
+	}
+	return e.GPUPerPod > 1
 }
 
 // roleEngineArgs is one role's engine-argument override, mirroring the infer

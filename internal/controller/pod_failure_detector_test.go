@@ -130,6 +130,34 @@ func TestApplyStartRecreatesResources(t *testing.T) {
 	require.NoError(t, err)
 }
 
+// TestApplyDeleteSweepsLeftoverResources verifies teardown also removes a
+// leftover Service/Deployment that carries the service-id label but a
+// different name (e.g. left by an older controller or a partial teardown).
+func TestApplyDeleteSweepsLeftoverResources(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, clientset, _ := newAIBrixFakeReconciler(dyn)
+	ctx := context.Background()
+
+	// A leftover Service labeled for the service but with a stale name.
+	leftover := &corev1.Service{
+		ObjectMeta: metav1.ObjectMeta{
+			Name:      "demo-old-svc",
+			Namespace: reconcileNamespace,
+			Labels: map[string]string{
+				"app":            "demo",
+				labelServiceID:   "svc-1",
+			},
+		},
+	}
+	_, err := clientset.CoreV1().Services(reconcileNamespace).Create(ctx, leftover, metav1.CreateOptions{})
+	require.NoError(t, err)
+
+	require.NoError(t, reconciler.ApplyInferServiceChange(ctx, changeMessage(testChangeEvent("delete", "demo"))))
+
+	_, err = clientset.CoreV1().Services(reconcileNamespace).Get(ctx, "demo-old-svc", metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "the leftover service is swept by label")
+}
+
 // TestApplyUpdateEngineArgsRecreatesStorm verifies the controller's
 // update_engine_args handling recreates the StormService with the new
 // engine arguments (a hot update).

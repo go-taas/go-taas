@@ -371,6 +371,30 @@ func TestCreateInferenceServiceDuplicate(t *testing.T) {
 	assert.EqualValues(t, apierrors.CodeInferServiceExists, apierrors.CodeOf(err))
 }
 
+// TestCreateInferenceServiceReusesNameAfterDelete verifies a terminated
+// service frees its name: deleting a service and deploying a new one with
+// the same name succeeds (the partial unique index ignores terminated
+// rows).
+func TestCreateInferenceServiceReusesNameAfterDelete(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	req := &inferv1.CreateInferenceServiceRequest{
+		Name: "demo", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+	}
+	first, err := svc.CreateInferenceService(orgContext("org-1"), req)
+	require.NoError(t, err)
+
+	_, err = svc.DeleteInferenceService(orgContext("org-1"), &inferv1.DeleteInferenceServiceRequest{ServiceId: first.GetServiceId()})
+	require.NoError(t, err)
+
+	second, err := svc.CreateInferenceService(orgContext("org-1"), req)
+	require.NoError(t, err, "a terminated service must free its name for reuse")
+	assert.NotEqual(t, first.GetServiceId(), second.GetServiceId())
+}
+
 func TestCreateInferenceServiceRequiresOrganization(t *testing.T) {
 	seedImageRegistry(t)
 	svc, _, _ := newInferTestService(t)
@@ -495,10 +519,13 @@ func TestDeleteInferenceServiceIdempotent(t *testing.T) {
 	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
 	assert.Equal(t, EventTypeDelete, evt.EventType)
 
-	// Second delete: success, no new event (AC9).
+	// Second delete: success and the teardown is re-published (best-effort)
+	// so a lost first event still converges the k8s resources on retry.
 	_, err = svc.DeleteInferenceService(orgContext("org-1"), &inferv1.DeleteInferenceServiceRequest{ServiceId: created.GetServiceId()})
 	require.NoError(t, err)
-	assert.Len(t, client.published, 1)
+	require.Len(t, client.published, 2)
+	require.NoError(t, json.Unmarshal(client.published[1].Body, &evt))
+	assert.Equal(t, EventTypeDelete, evt.EventType)
 
 	// Terminated services are hidden from the list.
 	list, err := svc.ListInferenceServices(orgContext("org-1"), &inferv1.ListInferenceServicesRequest{})
