@@ -65,9 +65,22 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 	}
 
 	reportedStarting := false
+	// The zero time makes the first loop iteration check immediately: a
+	// stale change for an already-deleted service must not create pods.
+	var lastStateCheck time.Time
 	ticker := time.NewTicker(engineProbeInterval)
 	defer ticker.Stop()
 	for {
+		// A stop/delete marks the row immediately but its change event is
+		// queued behind this reconcile. Without this check the teardown
+		// would wait out the readiness timeout (20 minutes) while the
+		// operator sees the resources still running.
+		if r.serviceState != nil && time.Since(lastStateCheck) >= serviceStateCheckInterval {
+			lastStateCheck = time.Now()
+			if r.serviceSuperseded(ctx, evt.ServiceID) {
+				return errReconcileSuperseded
+			}
+		}
 		pods, err := r.clientset.CoreV1().Pods(r.namespace).
 			List(ctx, metav1.ListOptions{LabelSelector: serviceLabelKey + "=" + evt.ServiceID})
 		if err != nil {

@@ -31,6 +31,7 @@ func newFakeDynamic(objs ...k8sruntime.Object) *dynamicfake.FakeDynamicClient {
 		podAutoscalerGVR: "PodAutoscalerList",
 		stormServiceGVR:  "StormServiceList",
 		podGroupGVR:      "PodGroupList",
+		httpRouteGVR:     "HTTPRouteList",
 	}, objs...)
 }
 

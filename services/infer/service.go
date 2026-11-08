@@ -639,22 +639,40 @@ func MigrateSchemaForFVT(db *gorm.DB) error {
 // frees its name for reuse: deleting a service and deploying a new one with
 // the same name is allowed.
 //
-// The historical non-partial unique index (idx_infer_services_org_name) is
-// dropped first; a plain unique index cannot express "ignore terminated
-// rows", and leaving it in place would keep blocking a reused name with a
-// database error after the friendly pre-check passes.
+// Service names are platform-wide (see NameTaken), so the index is on name
+// alone: an organization-scoped index would let two organizations race past
+// the pre-check and both insert the same name. The historical non-partial
+// unique index (idx_infer_services_org_name) and the first iteration of the
+// partial index (organization_id, name) are dropped first; a plain unique
+// index cannot express "ignore terminated rows".
 const (
-	dropLegacyNameIndex     = `DROP INDEX IF EXISTS idx_infer_services_org_name`
-	createActiveNameIndex   = `CREATE UNIQUE INDEX IF NOT EXISTS uq_infer_services_org_name_active ON inference_services(organization_id, name) WHERE state <> 'terminated'`
+	dropLegacyNameIndex   = `DROP INDEX IF EXISTS idx_infer_services_org_name`
+	dropOrgNameIndex      = `DROP INDEX IF EXISTS uq_infer_services_org_name_active`
+	createActiveNameIndex = `CREATE UNIQUE INDEX IF NOT EXISTS uq_infer_services_name_active ON inference_services(name) WHERE state <> 'terminated'`
+	// createOrgNameIndex is the fallback when an installation already has
+	// the same active name under two organizations: the platform-wide index
+	// cannot be built until an operator resolves those rows, and blocking
+	// startup would be worse than keeping the narrower guard.
+	createOrgNameIndex = `CREATE UNIQUE INDEX IF NOT EXISTS uq_infer_services_org_name_active ON inference_services(organization_id, name) WHERE state <> 'terminated'`
 )
 
 // applyInferenceServiceNameIndex replaces the legacy unique name index with
-// the partial one. It is idempotent and safe to run on every boot.
+// the partial, platform-wide one. It is idempotent and safe to run on every
+// boot.
 func applyInferenceServiceNameIndex(db *gorm.DB) error {
 	if err := db.Exec(dropLegacyNameIndex).Error; err != nil {
 		return err
 	}
-	return db.Exec(createActiveNameIndex).Error
+	if err := db.Exec(dropOrgNameIndex).Error; err != nil {
+		return err
+	}
+	createErr := db.Exec(createActiveNameIndex).Error
+	if createErr == nil {
+		return nil
+	}
+	logger.S().Warnw("infer: platform-wide service-name index could not be created, "+
+		"resolving duplicate active names is required; falling back to the org-scoped index", "err", createErr)
+	return db.Exec(createOrgNameIndex).Error
 }
 
 // AttachToServer implements server.Service.
@@ -742,6 +760,20 @@ func servedModelName(ctx context.Context, repo *model.Repository, svc *Inference
 		return svc.Name
 	}
 	return row.Name
+}
+
+// eventModelName resolves the served model name for a lifecycle event that
+// does not otherwise need the full spec (stop/delete). The controller needs
+// it to find the model's HTTPRoute: a route is named after the served model,
+// not the service, so without it teardown can only rely on the label sweep.
+// A lookup failure falls back to the service name, which buildChangeEvent
+// uses anyway.
+func (s *Service) eventModelName(ctx context.Context, svc *InferenceService) string {
+	repo, err := s.modelRepository()
+	if err != nil {
+		return ""
+	}
+	return servedModelName(ctx, repo, svc)
 }
 
 // mqClientFor lazily resolves the MQ client.
@@ -1364,8 +1396,9 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	// teardown event is re-published (best-effort) so a delete whose first
 	// event was lost (a broker or controller restart) still converges the
 	// k8s resources on retry instead of leaving them behind.
+	modelName := s.eventModelName(ctx, row)
 	if row.State == StateTerminated {
-		if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, "", "", "", "")); err != nil {
+		if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish delete change failed",
 				"service_id", req.GetServiceId(), "err", err)
 		}
@@ -1379,7 +1412,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	// A publish failure only logs: the row is already terminated, so the
 	// service is hidden from lists and the controller's periodic resync
 	// (feature #4) eventually tears the resources down.
-	if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, "", "", "", "")); err != nil {
+	if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, modelName, "", "", "")); err != nil {
 		logger.S().Warnw("infer: publish delete change failed",
 			"service_id", req.GetServiceId(), "err", err)
 	}
@@ -1433,8 +1466,9 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 	// stopped service is idempotent: stopping it again succeeds and
 	// re-publishes the teardown (best-effort) so a lost event still
 	// converges the k8s resources on retry.
+	modelName := s.eventModelName(ctx, row)
 	if row.State == StateStopped {
-		if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, "", "", "", "")); err != nil {
+		if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish stop change failed",
 				"service_id", req.GetServiceId(), "err", err)
 		}
@@ -1452,7 +1486,7 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 	// A publish failure only logs: the row is already stopped, so the
 	// service is hidden from the running set and the controller's periodic
 	// resync eventually tears the resources down.
-	if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, "", "", "", "")); err != nil {
+	if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, modelName, "", "", "")); err != nil {
 		logger.S().Warnw("infer: publish stop change failed",
 			"service_id", req.GetServiceId(), "err", err)
 	}

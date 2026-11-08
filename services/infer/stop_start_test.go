@@ -33,6 +33,9 @@ func TestStopAndStartInferenceService(t *testing.T) {
 	var evt changeEvent
 	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
 	assert.Equal(t, EventTypeStop, evt.EventType)
+	// The teardown needs the served model name to find the model's
+	// HTTPRoute, which is named after the model rather than the service.
+	assert.Equal(t, "qwen-3b", evt.Model.Name)
 
 	get, err := svc.GetInferenceService(orgContext("org-1"), &inferv1.GetInferenceServiceRequest{ServiceId: created.GetServiceId()})
 	require.NoError(t, err)
@@ -69,7 +72,7 @@ func TestStopAndStartInferenceService(t *testing.T) {
 
 func TestStopInferenceServiceTerminatedRejected(t *testing.T) {
 	seedImageRegistry(t)
-	svc, _, db := newInferTestService(t)
+	svc, client, db := newInferTestService(t)
 	modelID := seedModel(t, db, "qwen-3b", "v1")
 
 	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
@@ -78,8 +81,15 @@ func TestStopInferenceServiceTerminatedRejected(t *testing.T) {
 	})
 	require.NoError(t, err)
 
+	client.published = nil
 	_, err = svc.DeleteInferenceService(orgContext("org-1"), &inferv1.DeleteInferenceServiceRequest{ServiceId: created.GetServiceId()})
 	require.NoError(t, err)
+	require.Len(t, client.published, 1)
+	var deleteEvt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &deleteEvt))
+	assert.Equal(t, EventTypeDelete, deleteEvt.EventType)
+	assert.Equal(t, "qwen-3b", deleteEvt.Model.Name,
+		"the delete event carries the served model name so teardown finds the model route")
 
 	// Stopping a terminated service is rejected.
 	_, err = svc.StopInferenceService(orgContext("org-1"), &inferv1.StopInferenceServiceRequest{ServiceId: created.GetServiceId()})

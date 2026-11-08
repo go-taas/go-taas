@@ -31,9 +31,11 @@ rules:
     resources: ["services", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Inference workloads and their autoscalers. Deployments are also listed
-  # cluster-wide to locate the AIBrix gateway.
+  # cluster-wide to locate the AIBrix gateway. StatefulSets are swept during
+  # teardown: the storm controller creates one for a stateful topology, and a
+  # stale set would keep its pods alive after the StormService is gone.
   - apiGroups: ["apps"]
-    resources: ["deployments"]
+    resources: ["deployments", "statefulsets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]

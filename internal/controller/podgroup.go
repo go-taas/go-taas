@@ -160,22 +160,6 @@ func applyPodGroup(ctx context.Context, dyn dynamic.Interface, group *unstructur
 	return err
 }
 
-// deletePodGroup removes a service's PodGroup, ignoring not-found. Volcano
-// created no owner reference for it, so its lifecycle is the controller's.
-// deletePodGroup removes a service's PodGroup, ignoring not-found. Volcano
-// created no owner reference for it, so its lifecycle is the controller's.
-// A real delete failure is returned so teardown can retry it.
-func deletePodGroup(ctx context.Context, dyn dynamic.Interface, namespace, name string) error {
-	if dyn == nil || name == "" {
-		return nil
-	}
-	err := dyn.Resource(podGroupGVR).Namespace(namespace).Delete(ctx, name, metav1.DeleteOptions{})
-	if err != nil && !apierrors.IsNotFound(err) {
-		return err
-	}
-	return nil
-}
-
 // scaleResourceList multiplies a resource list by count, for the PodGroup's
 // minResources.
 func scaleResourceList(resources corev1.ResourceList, count int32) map[string]any {

@@ -197,19 +197,40 @@ func (r *InferenceServiceRepository) ListTeardownCandidates(ctx context.Context,
 	return rows, nil
 }
 
-// UpdateReplicas applies a spec-only replica update (state untouched).
-func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, serviceID string, replicas int) error {	return r.db.WithinTx(ctx, func(ctx context.Context) error {
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Update("replicas", replicas)
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
+// updateServiceByID applies a management update to an inference service by
+// id. Inference services are platform assets (see findService), so these
+// writes are not scoped by the caller's active organization: a platform
+// administrator can stop, delete or edit a service created by another
+// organization. A missing row maps to CodeInferServiceNotFound.
+func (r *InferenceServiceRepository) updateServiceByID(ctx context.Context, serviceID string, updates map[string]any) error {
+	res := r.DB(ctx).
+		Model(&InferenceService{}).
+		Where("id = ?", serviceID).
+		Updates(updates)
+	if res.Error != nil {
+		return res.Error
+	}
+	if res.RowsAffected > 0 {
 		return nil
+	}
+	// An UPDATE that matches no row is either a missing service or an
+	// update that changed nothing (some drivers report 0 for that).
+	var count int64
+	if err := r.DB(ctx).Model(&InferenceService{}).
+		Where("id = ?", serviceID).
+		Count(&count).Error; err != nil {
+		return err
+	}
+	if count == 0 {
+		return apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	return nil
+}
+
+// UpdateReplicas applies a spec-only replica update (state untouched).
+func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, _ string, serviceID string, replicas int) error {
+	return r.db.WithinTx(ctx, func(ctx context.Context) error {
+		return r.updateServiceByID(ctx, serviceID, map[string]any{"replicas": replicas})
 	})
 }
 
@@ -218,7 +239,7 @@ func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, orgID, 
 // service_id and endpoints are untouched; replicas is only written when
 // non-zero. A miss maps to CodeInferServiceNotFound.
 func (r *InferenceServiceRepository) UpdateTopology(
-	ctx context.Context, orgID, serviceID string, spec TopologySpec, replicas int,
+	ctx context.Context, _ string, serviceID string, spec TopologySpec, replicas int,
 	roleArgs datatypes.JSON, scheduling *PodScheduling,
 ) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
@@ -246,17 +267,7 @@ func (r *InferenceServiceRepository) UpdateTopology(
 			updates["memory_mib"] = scheduling.MemoryMiB
 			updates["priority"] = scheduling.Priority
 		}
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Updates(updates)
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
-		return nil
+		return r.updateServiceByID(ctx, serviceID, updates)
 	})
 }
 
@@ -264,23 +275,13 @@ func (r *InferenceServiceRepository) UpdateTopology(
 // model_version and transitions the service to deploying (feature #32,
 // AD6). The service_id and endpoints are untouched. A miss maps to
 // CodeInferServiceNotFound.
-func (r *InferenceServiceRepository) UpdateModelVersion(ctx context.Context, orgID, serviceID, modelVersion string) error {
+func (r *InferenceServiceRepository) UpdateModelVersion(ctx context.Context, _ string, serviceID, modelVersion string) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Updates(map[string]any{
-				"model_version": modelVersion,
-				"state":         StateDeploying,
-				"updated_at":    time.Now().UTC(),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
-		return nil
+		return r.updateServiceByID(ctx, serviceID, map[string]any{
+			"model_version": modelVersion,
+			"state":         StateDeploying,
+			"updated_at":    time.Now().UTC(),
+		})
 	})
 }
 
@@ -290,92 +291,52 @@ func (r *InferenceServiceRepository) UpdateModelVersion(ctx context.Context, org
 // running service, stopped for a stopped service). A miss maps to
 // CodeInferServiceNotFound.
 func (r *InferenceServiceRepository) UpdateEngineArgs(
-	ctx context.Context, orgID, serviceID string,
+	ctx context.Context, _ string, serviceID string,
 	engineArgs, extraArgs, roleArgs datatypes.JSON, nextState string,
 ) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Updates(map[string]any{
-				"engine_args":      engineArgs,
-				"extra_args":       extraArgs,
-				"role_engine_args": roleArgs,
-				"state":            nextState,
-				"updated_at":       time.Now().UTC(),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
-		return nil
+		return r.updateServiceByID(ctx, serviceID, map[string]any{
+			"engine_args":      engineArgs,
+			"extra_args":       extraArgs,
+			"role_engine_args": roleArgs,
+			"state":            nextState,
+			"updated_at":       time.Now().UTC(),
+		})
 	})
 }
 
 // MarkTerminated sets state=terminated. It is idempotent: an
 // already-terminated service is a no-op success (AC9).
-func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, orgID, serviceID string) error {
+func (r *InferenceServiceRepository) MarkTerminated(ctx context.Context, _ string, serviceID string) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Updates(map[string]any{
-				"state":      StateTerminated,
-				"updated_at": time.Now().UTC(),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
-		return nil
+		return r.updateServiceByID(ctx, serviceID, map[string]any{
+			"state":      StateTerminated,
+			"updated_at": time.Now().UTC(),
+		})
 	})
 }
 
 // MarkStopped sets a service's state to stopped. It is the durable
 // record of a stop: the controller deletes the k8s resources and the
 // row stays so the service can be started again.
-func (r *InferenceServiceRepository) MarkStopped(ctx context.Context, orgID, serviceID string) error {
+func (r *InferenceServiceRepository) MarkStopped(ctx context.Context, _ string, serviceID string) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Updates(map[string]any{
-				"state":      StateStopped,
-				"endpoints":  "[]",
-				"updated_at": time.Now().UTC(),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
-		return nil
+		return r.updateServiceByID(ctx, serviceID, map[string]any{
+			"state":      StateStopped,
+			"endpoints":  "[]",
+			"updated_at": time.Now().UTC(),
+		})
 	})
 }
 
 // MarkPending resets a stopped service to pending so the controller
 // recreates its resources. It is the durable record of a start.
-func (r *InferenceServiceRepository) MarkPending(ctx context.Context, orgID, serviceID string) error {
+func (r *InferenceServiceRepository) MarkPending(ctx context.Context, _ string, serviceID string) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
-		res := r.DB(ctx).
-			Model(&InferenceService{}).
-			Where("id = ? AND organization_id = ?", serviceID, orgID).
-			Updates(map[string]any{
-				"state":      StatePending,
-				"updated_at": time.Now().UTC(),
-			})
-		if res.Error != nil {
-			return res.Error
-		}
-		if res.RowsAffected == 0 {
-			return apierrors.New(apierrors.CodeInferServiceNotFound)
-		}
-		return nil
+		return r.updateServiceByID(ctx, serviceID, map[string]any{
+			"state":      StatePending,
+			"updated_at": time.Now().UTC(),
+		})
 	})
 }
 
@@ -383,6 +344,10 @@ func (r *InferenceServiceRepository) MarkPending(ctx context.Context, orgID, ser
 // failure_reason and the autoscaling status block. Last-write-wins is
 // acceptable (the controller is the only publisher). failure_reason is
 // cleared on any non-failed state.
+//
+// Lifecycle states the operator owns (stopped, terminated) are terminal for
+// status reports: a report published by an in-flight reconcile can arrive
+// after a stop/delete and must not resurrect the row or repopulate endpoints.
 func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID, state string, endpoints []string, failureReason *string, autoscaling *autoscalingStatusReport, assignedSlice *assignedSliceReport) error {
 	if endpoints == nil {
 		endpoints = []string{}
@@ -424,16 +389,25 @@ func (r *InferenceServiceRepository) ApplyStatus(ctx context.Context, serviceID,
 	}
 	res := r.DB(ctx).
 		Model(&InferenceService{}).
-		Where("id = ?", serviceID).
+		Where("id = ? AND state NOT IN ?", serviceID, []string{StateStopped, StateTerminated}).
 		Updates(fields)
 	if res.Error != nil {
 		return res.Error
 	}
-	if res.RowsAffected == 0 {
-		// Unknown service id: a deleted service's late report. The
-		// caller decides whether to log-and-skip; the repository
-		// surfaces it as not-found.
+	if res.RowsAffected > 0 {
+		return nil
+	}
+	// Zero rows means either an unknown service or a row the operator has
+	// stopped/deleted. Distinguish the two: a late report for a stopped or
+	// terminated service is ignored (the teardown owns those rows), while an
+	// unknown id is surfaced as not-found so the consumer can skip it.
+	var current InferenceService
+	err = r.DB(ctx).Select("id", "state").Where("id = ?", serviceID).First(&current).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return apierrors.New(apierrors.CodeInferServiceNotFound)
+	}
+	if err != nil {
+		return err
 	}
 	return nil
 }

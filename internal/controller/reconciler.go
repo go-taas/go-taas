@@ -15,8 +15,10 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/dynamic"
@@ -190,7 +192,29 @@ type k8sReconciler struct {
 	// traffic?". Nil uses the HTTP health probe. Tests inject a stub so
 	// they never reach the network.
 	engineProber func(ctx context.Context, host string, port int) bool
+	// serviceState reads the platform database's desired state for a
+	// service. It lets a long readiness wait notice a stop/delete that is
+	// queued behind this event and abort promptly, so the teardown is not
+	// delayed by the readiness timeout. Nil disables the check.
+	serviceState ServiceStateProvider
 }
+
+// ServiceStateProvider reports the current desired state of an inference
+// service from the platform database. found is false when the row no longer
+// exists.
+type ServiceStateProvider func(ctx context.Context, serviceID string) (state string, found bool, err error)
+
+// errReconcileSuperseded is returned when the platform state says the service
+// was stopped or deleted while this reconcile was still waiting. The event is
+// acknowledged without a status report or an error: the stop/delete event
+// already queued behind it owns the teardown.
+var errReconcileSuperseded = errors.New("controller: reconcile superseded by a stop or delete")
+
+// serviceStateCheckInterval bounds how often a reconcile re-reads the
+// platform state while waiting for an engine. Five seconds is well under the
+// time it takes an operator to notice a stuck deploy, and one query per
+// service per interval is negligible.
+const serviceStateCheckInterval = 5 * time.Second
 
 // WeightsConfig holds the model-weights storage settings used by the
 // controller when it mounts model weights into inference pods.
@@ -289,6 +313,32 @@ func (r *k8sReconciler) SetScheduling(schedulerName, highClass, normalClass, low
 func (r *k8sReconciler) SetGatewayRouting(namespace, gateway string) {
 	r.gatewayNamespace = namespace
 	r.gatewayName = gateway
+}
+
+// SetServiceStateProvider installs the desired-state reader used to abort a
+// reconcile promptly when the service is stopped or deleted while it waits for
+// its engine. It must be called before serving.
+func (r *k8sReconciler) SetServiceStateProvider(provider ServiceStateProvider) {
+	r.serviceState = provider
+}
+
+// serviceSuperseded reports whether the platform state says this change is
+// obsolete: the service was stopped/deleted (or its row is gone) while the
+// event was in flight. An unavailable provider fails open so a database blip
+// never leaves a deploy half-applied.
+func (r *k8sReconciler) serviceSuperseded(ctx context.Context, serviceID string) bool {
+	if r.serviceState == nil || serviceID == "" {
+		return false
+	}
+	state, found, err := r.serviceState(ctx, serviceID)
+	if err != nil {
+		logger.S().Warnw("controller: read desired service state failed, continuing",
+			"service_id", serviceID, "err", err)
+		return false
+	}
+	// The infer module owns these states. String literals keep the
+	// controller free of a dependency on the service package.
+	return !found || state == "stopped" || state == "terminated"
 }
 
 // gatewayRouteTarget returns the namespace and Gateway name model routes
@@ -659,6 +709,15 @@ func (r *k8sReconciler) applyStop(ctx context.Context, evt changeEvent) error {
 	return nil
 }
 
+const (
+	// reclaimWaitTimeout bounds how long an upsert waits for a stale object
+	// with a reused name to finish terminating.
+	reclaimWaitTimeout = 30 * time.Second
+	// reclaimPollInterval is how often the native reclaim wait re-checks a
+	// terminating object.
+	reclaimPollInterval = 200 * time.Millisecond
+)
+
 // teardown removes every Kubernetes resource a service owns. It deletes by
 // name (the fast path) and then sweeps by the go-taas.com/service-id label
 // (the backstop): a resource left behind by an earlier partial teardown, or
@@ -672,27 +731,40 @@ func (r *k8sReconciler) applyStop(ctx context.Context, evt changeEvent) error {
 func (r *k8sReconciler) teardown(ctx context.Context, evt changeEvent) error {
 	var errs []error
 
-	// Fast path: delete the well-known names.
-	if err := r.deleteDeployment(ctx, deploymentName(evt.Name)); err != nil {
+	// Fast path: delete the well-known names. The ownership check keeps a
+	// late delete event for an old service from tearing down the objects
+	// of a new service that reused its name.
+	if err := r.deleteDeploymentOwnedBy(ctx, deploymentName(evt.Name), evt.ServiceID); err != nil {
 		errs = append(errs, err)
 	}
-	if err := r.deleteService(ctx, serviceName(evt.Name)); err != nil {
+	if err := r.deleteServiceOwnedBy(ctx, serviceName(evt.Name), evt.ServiceID); err != nil {
+		errs = append(errs, err)
+	}
+	// A stateful StormService creates a headless Service named after the
+	// storm. It carries the service-id label, but deleting it explicitly
+	// makes teardown work even when that label is missing.
+	if err := r.deleteServiceOwnedBy(ctx, evt.Name, evt.ServiceID); err != nil {
 		errs = append(errs, err)
 	}
 	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
 		errs = append(errs, err)
 	}
-	if err := deleteStormService(ctx, r.dynamic, r.namespace, stormServiceName(evt)); err != nil {
+	if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, stormServiceGVR, r.namespace,
+		stormServiceName(evt), evt.ServiceID); err != nil {
 		errs = append(errs, fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err))
 	}
-	if err := deleteModelClaim(ctx, r.dynamic, r.namespace, evt.Name); err != nil {
-		logger.S().Warnw("controller: delete aibrix modelclaim failed", "name", evt.Name, "err", err)
+	if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, modelClaimGVR, r.namespace,
+		modelClaimName(evt.Name), evt.ServiceID); err != nil {
+		errs = append(errs, fmt.Errorf("controller: delete modelclaim %s: %w", evt.Name, err))
 	}
 	if err := r.deleteModelRoute(ctx, evt); err != nil {
-		logger.S().Warnw("controller: delete aibrix model route failed", "name", evt.Name, "err", err)
+		errs = append(errs, fmt.Errorf("controller: delete model route %s: %w", evt.Name, err))
 	}
-	deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-	if err := deletePodGroup(ctx, r.dynamic, r.namespace, podGroupName(evt)); err != nil {
+	if err := deletePodAutoscalerOwnedBy(ctx, r.dynamic, r.namespace, evt.Name, evt.ServiceID); err != nil {
+		errs = append(errs, fmt.Errorf("controller: delete podautoscaler %s: %w", evt.Name, err))
+	}
+	if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, podGroupGVR, r.namespace,
+		podGroupName(evt), evt.ServiceID); err != nil {
 		errs = append(errs, fmt.Errorf("controller: delete podgroup %s: %w", podGroupName(evt), err))
 	}
 
@@ -705,6 +777,38 @@ func (r *k8sReconciler) teardown(ctx context.Context, evt changeEvent) error {
 		return errors.Join(errs...)
 	}
 	return nil
+}
+
+// deleteDeploymentOwnedBy deletes a Deployment by name unless another
+// inference service owns it.
+func (r *k8sReconciler) deleteDeploymentOwnedBy(ctx context.Context, name, serviceID string) error {
+	dep, err := r.clientset.AppsV1().Deployments(r.namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("controller: get deployment %s: %w", name, err)
+	}
+	if ownedByOtherService(dep.Labels, serviceID) {
+		return nil
+	}
+	return r.deleteDeployment(ctx, name)
+}
+
+// deleteServiceOwnedBy deletes a Service by name unless another inference
+// service owns it.
+func (r *k8sReconciler) deleteServiceOwnedBy(ctx context.Context, name, serviceID string) error {
+	svc, err := r.clientset.CoreV1().Services(r.namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("controller: get service %s: %w", name, err)
+	}
+	if ownedByOtherService(svc.Labels, serviceID) {
+		return nil
+	}
+	return r.deleteService(ctx, name)
 }
 
 // deleteDeployment deletes one Deployment, ignoring not-found.
@@ -727,10 +831,16 @@ func (r *k8sReconciler) deleteService(ctx context.Context, name string) error {
 	return nil
 }
 
-// sweepByServiceID deletes every Service, Deployment and PodGroup that still
-// carries the service's go-taas.com/service-id label. It is the backstop that
-// keeps a partially torn-down service from leaking resources. A blank
-// service id is a no-op (never sweep the whole namespace).
+// sweepByServiceID deletes every object that still carries the service's
+// go-taas.com/service-id label. It is the backstop that keeps a partially
+// torn-down service from leaking resources: the fast path deletes by the
+// names the current controller would use, so anything an older controller
+// named differently (or left behind after a failed delete) is removed here.
+//
+// The sweep covers every resource a service can own: Services, Deployments,
+// StatefulSets, Pods, StormServices, PodGroups, ModelClaims and the model
+// HTTPRoute in the gateway namespace. A blank service id is a no-op (never
+// sweep the whole namespace).
 func (r *k8sReconciler) sweepByServiceID(ctx context.Context, serviceID string) error {
 	if strings.TrimSpace(serviceID) == "" {
 		return nil
@@ -756,14 +866,76 @@ func (r *k8sReconciler) sweepByServiceID(ctx context.Context, serviceID string) 
 			}
 		}
 	}
+	// A stale StatefulSet (created by the storm controller) would keep its
+	// pods alive after the StormService is gone.
+	if sets, err := r.clientset.AppsV1().StatefulSets(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
+		errs = append(errs, fmt.Errorf("controller: list statefulsets for %s: %w", serviceID, err))
+	} else {
+		for i := range sets.Items {
+			if err := r.clientset.AppsV1().StatefulSets(r.namespace).Delete(ctx, sets.Items[i].Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				errs = append(errs, fmt.Errorf("controller: delete statefulset %s: %w", sets.Items[i].Name, err))
+			}
+		}
+	}
+	// Pods are deleted last: deleting them before their controller can make
+	// the controller recreate them.
+	if pods, err := r.clientset.CoreV1().Pods(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
+		errs = append(errs, fmt.Errorf("controller: list pods for %s: %w", serviceID, err))
+	} else {
+		for i := range pods.Items {
+			if err := r.clientset.CoreV1().Pods(r.namespace).Delete(ctx, pods.Items[i].Name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+				errs = append(errs, fmt.Errorf("controller: delete pod %s: %w", pods.Items[i].Name, err))
+			}
+		}
+	}
 	if r.dynamic != nil {
-		if groups, err := r.dynamic.Resource(podGroupGVR).Namespace(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
-			errs = append(errs, fmt.Errorf("controller: list podgroups for %s: %w", serviceID, err))
-		} else {
-			for i := range groups.Items {
-				if err := deletePodGroup(ctx, r.dynamic, r.namespace, groups.Items[i].GetName()); err != nil {
-					errs = append(errs, err)
-				}
+		if err := r.sweepDynamicByServiceID(ctx, serviceID, selector); err != nil {
+			errs = append(errs, err)
+		}
+	}
+	if len(errs) > 0 {
+		return errors.Join(errs...)
+	}
+	return nil
+}
+
+// sweepDynamicByServiceID deletes the dynamic-client resources labeled for
+// the service. The HTTPRoute lives in the gateway namespace, not the
+// workload namespace, so it is swept there.
+func (r *k8sReconciler) sweepDynamicByServiceID(ctx context.Context, serviceID, selector string) error {
+	var errs []error
+	targets := []struct {
+		kind      string
+		namespace string
+		gvr       schema.GroupVersionResource
+	}{
+		{"stormservice", r.namespace, stormServiceGVR},
+		{"modelclaim", r.namespace, modelClaimGVR},
+		{"podgroup", r.namespace, podGroupGVR},
+		{"podautoscaler", r.namespace, podAutoscalerGVR},
+	}
+	gatewayNamespace, _ := r.gatewayRouteTarget()
+	targets = append(targets, struct {
+		kind      string
+		namespace string
+		gvr       schema.GroupVersionResource
+	}{"httproute", gatewayNamespace, httpRouteGVR})
+
+	for _, target := range targets {
+		items, err := r.dynamic.Resource(target.gvr).Namespace(target.namespace).
+			List(ctx, metav1.ListOptions{LabelSelector: selector})
+		if err != nil {
+			// A missing CRD is not a leak: nothing of that kind exists.
+			if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+				continue
+			}
+			errs = append(errs, fmt.Errorf("controller: list %ss for %s: %w", target.kind, serviceID, err))
+			continue
+		}
+		for i := range items.Items {
+			name := items.Items[i].GetName()
+			if err := deleteUnstructuredObject(ctx, r.dynamic, target.gvr, target.namespace, name); err != nil {
+				errs = append(errs, fmt.Errorf("controller: delete %s %s: %w", target.kind, name, err))
 			}
 		}
 	}
@@ -792,6 +964,28 @@ func (r *k8sReconciler) deleteLegacyDeployment(ctx context.Context, name string)
 // running with endpoints. Any reconcile failure reports failed with the
 // reason (AC7).
 func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error {
+	// A stop/delete may have been applied before this (stale) change was
+	// delivered, e.g. an update event published just before the operator
+	// deleted the service. Recreating its resources would resurrect a
+	// service the platform already considers gone.
+	if r.serviceSuperseded(ctx, evt.ServiceID) {
+		logger.S().Infow("controller: skipping obsolete change, service is stopped or deleted",
+			"service_id", evt.ServiceID, "name", evt.Name, "event", evt.EventType)
+		return nil
+	}
+
+	// A service name can be reused after its previous owner was deleted.
+	// The previous teardown may still be in flight (or may have been lost),
+	// and its objects carry the old service id. Reclaim them before
+	// creating so the new service starts from clean objects instead of
+	// colliding with a terminating Deployment/StormService or inheriting a
+	// stale route. This is retryable: if an object takes too long to
+	// terminate the broker redelivers the event, rather than marking the
+	// service failed permanently.
+	if err := r.reclaimServiceName(ctx, evt); err != nil {
+		return fmt.Errorf("controller: reclaim name %s: %w", evt.Name, err)
+	}
+
 	// The service is queued the moment the controller picks the change up:
 	// nothing has been scheduled yet, so the console shows "queued" until a
 	// pod actually lands on a node.
@@ -904,6 +1098,11 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	// Running has not loaded its weights yet, so its readiness says nothing
 	// about whether the service can serve traffic.
 	if err := r.awaitEngineReady(ctx, evt); err != nil {
+		if errors.Is(err, errReconcileSuperseded) {
+			logger.S().Infow("controller: engine wait abandoned, service was stopped or deleted",
+				"service_id", evt.ServiceID, "name", evt.Name)
+			return nil
+		}
 		return r.reportFailure(ctx, evt, err)
 	}
 
@@ -955,7 +1154,7 @@ func (r *k8sReconciler) applyAIBrixAutoscaler(ctx context.Context, evt changeEve
 	if target < 1 {
 		target = 32
 	}
-	return applyPodAutoscaler(ctx, r.dynamic, r.namespace, stormServiceName(evt), minReplicas, maxReplicas, target)
+	return applyPodAutoscalerForService(ctx, r.dynamic, r.namespace, stormServiceName(evt), evt.ServiceID, minReplicas, maxReplicas, target)
 }
 
 // pinDeploymentReplicas sets the Deployment's replicas to the fixed

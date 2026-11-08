@@ -9,6 +9,7 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
@@ -213,8 +214,24 @@ const (
 // service's replica count for every topology (a PD storm replica is one
 // prefill+decode pair).
 func buildPodAutoscaler(namespace, name string, minReplicas, maxReplicas, targetConcurrency int32) *unstructured.Unstructured {
+	return buildPodAutoscalerForService(namespace, name, "", minReplicas, maxReplicas, targetConcurrency)
+}
+
+// buildPodAutoscalerForService composes a PodAutoscaler that carries the
+// owning service's identity. The labels let a teardown for an old service
+// leave a replacement service's autoscaler alone when a name is reused, and
+// let the by-label sweep find an autoscaler whose name does not follow the
+// current convention.
+func buildPodAutoscalerForService(namespace, name, serviceID string, minReplicas, maxReplicas, targetConcurrency int32) *unstructured.Unstructured {
 	if targetConcurrency < 1 {
 		targetConcurrency = 32
+	}
+	labels := map[string]any{
+		mcLabelManagedBy: managedByValue,
+		"app":            name,
+	}
+	if serviceID != "" {
+		labels[mcLabelServiceID] = serviceID
 	}
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "autoscaling.aibrix.ai/v1alpha1",
@@ -222,7 +239,7 @@ func buildPodAutoscaler(namespace, name string, minReplicas, maxReplicas, target
 		"metadata": map[string]any{
 			"name":      autoscalerName(name),
 			"namespace": namespace,
-			"labels":    map[string]any{mcLabelManagedBy: managedByValue},
+			"labels":    labels,
 		},
 		"spec": map[string]any{
 			"scaleTargetRef": map[string]any{
@@ -254,10 +271,16 @@ func buildPodAutoscaler(namespace, name string, minReplicas, maxReplicas, target
 // retry re-reads the fresh object after a short backoff until the write
 // lands or the bounded attempts are exhausted.
 func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, name string, minReplicas, maxReplicas, targetConcurrency int32) error {
+	return applyPodAutoscalerForService(ctx, dyn, namespace, name, "", minReplicas, maxReplicas, targetConcurrency)
+}
+
+// applyPodAutoscalerForService is applyPodAutoscaler with the owning
+// service's identity, so the object can be swept and reclaimed by label.
+func applyPodAutoscalerForService(ctx context.Context, dyn dynamic.Interface, namespace, name, serviceID string, minReplicas, maxReplicas, targetConcurrency int32) error {
 	if dyn == nil {
 		return fmt.Errorf("controller: dynamic client unavailable")
 	}
-	desired := buildPodAutoscaler(namespace, name, minReplicas, maxReplicas, targetConcurrency)
+	desired := buildPodAutoscalerForService(namespace, name, serviceID, minReplicas, maxReplicas, targetConcurrency)
 	const maxAttempts = 5
 	for attempt := 0; ; attempt++ {
 		existing, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, autoscalerName(name), metav1.GetOptions{})
@@ -289,13 +312,33 @@ func applyPodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, n
 // deletePodAutoscaler deletes the AIBrix PodAutoscaler by name, ignoring
 // not-found.
 func deletePodAutoscaler(ctx context.Context, dyn dynamic.Interface, namespace, name string) {
-	if dyn == nil {
-		return
-	}
-	err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Delete(ctx, autoscalerName(name), metav1.DeleteOptions{})
-	if err != nil && !apierrors.IsNotFound(err) {
+	if err := deletePodAutoscalerOwnedBy(ctx, dyn, namespace, name, ""); err != nil {
 		logger.S().Warnw("controller: delete aibrix podautoscaler failed", "name", name, "err", err)
 	}
+}
+
+// deletePodAutoscalerOwnedBy deletes the PodAutoscaler by name unless it
+// belongs to a different inference service. The explicit delete ignores
+// not-found; a real failure is returned so teardown can retry.
+func deletePodAutoscalerOwnedBy(ctx context.Context, dyn dynamic.Interface, namespace, name, serviceID string) error {
+	if dyn == nil {
+		return nil
+	}
+	obj, err := dyn.Resource(podAutoscalerGVR).Namespace(namespace).Get(ctx, autoscalerName(name), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	if ownedByOtherService(obj.GetLabels(), serviceID) {
+		return nil
+	}
+	err = dyn.Resource(podAutoscalerGVR).Namespace(namespace).Delete(ctx, autoscalerName(name), metav1.DeleteOptions{})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	return nil
 }
 
 // stringMapToAny converts a string map into the map[string]any shape the

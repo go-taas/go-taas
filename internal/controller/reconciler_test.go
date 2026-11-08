@@ -870,6 +870,16 @@ func TestApplyDeleteIsResilient(t *testing.T) {
 	_, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
 	require.NoError(t, err)
 
+	// A legacy Deployment left by an older controller: teardown must try to
+	// delete it next to the storm.
+	legacy := &appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{
+		Name:      deploymentName(evt.Name),
+		Namespace: reconcileNamespace,
+		Labels:    map[string]string{labelServiceID: evt.ServiceID},
+	}}
+	_, err = clientset.AppsV1().Deployments(reconcileNamespace).Create(ctx, legacy, metav1.CreateOptions{})
+	require.NoError(t, err)
+
 	// Simulate a Deployment delete failure by injecting a reactor that
 	// errors on Deployment deletes.
 	clientset.PrependReactor("delete", "deployments", func(k8stesting.Action) (bool, runtime.Object, error) {

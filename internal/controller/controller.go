@@ -37,6 +37,11 @@ type Reconciler interface {
 	// priority maps onto, and the Volcano queue its PodGroup joins. It must
 	// be called before serving.
 	SetScheduling(schedulerName, highClass, normalClass, lowClass, queue string)
+
+	// SetServiceStateProvider installs the desired-state reader used to
+	// abandon a reconcile whose service was stopped or deleted while it
+	// waited for its engine. It must be called before serving.
+	SetServiceStateProvider(provider ServiceStateProvider)
 }
 
 // Controller wires the message queue subscriptions to a Reconciler.

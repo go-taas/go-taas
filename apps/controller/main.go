@@ -174,6 +174,22 @@ func main() {
 			cfg.Controller.Cluster.CollectInterval,
 			cfg.Controller.Cluster.KubeconfigDir,
 		))
+		// A stop/delete marks the row before publishing its change event.
+		// Reading the desired state lets a reconcile that is waiting for an
+		// engine notice the change and abandon the wait, so the teardown is
+		// not delayed by the 20-minute readiness timeout.
+		reconciler.SetServiceStateProvider(func(ctx context.Context, serviceID string) (string, bool, error) {
+			var state string
+			tx := db.WithContext(ctx).Table("inference_services").
+				Select("state").Where("id = ?", serviceID).Scan(&state)
+			if tx.Error != nil {
+				return "", false, tx.Error
+			}
+			if tx.RowsAffected == 0 {
+				return "", false, nil
+			}
+			return state, true, nil
+		})
 	} else {
 		logger.S().Warnw("controller: cluster health collection disabled, database unreachable", "err", dbErr)
 	}

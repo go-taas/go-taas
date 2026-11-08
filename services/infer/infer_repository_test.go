@@ -178,6 +178,17 @@ func TestRepositoryCreateDuplicate(t *testing.T) {
 	ae, ok := apierrors.As(err)
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeInferServiceExists, ae.Code)
+
+	// Names are platform-wide: another organization cannot claim the same
+	// active name, even if it raced past the friendly pre-check.
+	err = repo.Create(ctx, &InferenceService{
+		ID: NewServiceID(), OrganizationID: "org-b", Name: "dup",
+		State: StatePending, Endpoints: []string{},
+	})
+	require.Error(t, err)
+	ae, ok = apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeInferServiceExists, ae.Code)
 }
 
 func TestRepositoryListExcludesTerminated(t *testing.T) {
@@ -216,6 +227,15 @@ func TestRepositoryUpdateReplicasAndMarkTerminated(t *testing.T) {
 	row, err := repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	assert.Equal(t, 5, row.Replicas)
+
+	// Inference services are platform assets: a management write from an
+	// administrator whose active organization differs still applies. Without
+	// this, a platform-wide delete leaves the row active and its name is
+	// never freed for reuse.
+	require.NoError(t, repo.UpdateReplicas(ctx, "org-other", svc.ID, 7))
+	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, 7, row.Replicas)
 
 	// UpdateReplicas on a missing service: 10301.
 	err = repo.UpdateReplicas(ctx, "org", "missing", 5)
@@ -261,6 +281,23 @@ func TestRepositoryApplyStatus(t *testing.T) {
 	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
 	require.NoError(t, err)
 	require.Nil(t, row.FailureReason)
+
+	// A stopped service ignores a late controller report: an in-flight
+	// reconcile must not resurrect the row or repopulate endpoints while
+	// the teardown removes its resources.
+	require.NoError(t, repo.MarkStopped(ctx, "org", svc.ID))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateRunning, []string{"http://late"}, nil, nil, nil))
+	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StateStopped, row.State)
+	assert.Empty(t, row.Endpoints, "a late status must not repopulate the endpoints")
+
+	// Same for a terminated service.
+	require.NoError(t, repo.MarkTerminated(ctx, "org", svc.ID))
+	require.NoError(t, repo.ApplyStatus(ctx, svc.ID, StateFailed, nil, nil, nil, nil))
+	row, err = repo.FindByIDAndOrganization(ctx, "org", svc.ID)
+	require.NoError(t, err)
+	assert.Equal(t, StateTerminated, row.State)
 
 	// Unknown service: 10301.
 	err = repo.ApplyStatus(ctx, "missing", StateRunning, nil, nil, nil, nil)
