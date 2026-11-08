@@ -1,3 +1,10 @@
+## [1.113.1](https://github.com/go-taas/go-taas/compare/v1.113.0...v1.113.1) (2026-11-08)
+
+
+### Bug Fixes
+
+* **infer:** reliable teardown, reusable names and single-node shm ([8d1a4ea](https://github.com/go-taas/go-taas/commit/8d1a4eaf4066c35e338133ae47181c85694cb5b4))
+
 # [1.113.0](https://github.com/go-taas/go-taas/compare/v1.112.0...v1.113.0) (2026-11-07)
 
 
