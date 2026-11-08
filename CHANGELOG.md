@@ -1,3 +1,10 @@
+## [1.113.3](https://github.com/go-taas/go-taas/compare/v1.113.2...v1.113.3) (2026-11-08)
+
+
+### Bug Fixes
+
+* **infer:** converge teardown and free reused service names ([08facb2](https://github.com/go-taas/go-taas/commit/08facb25715f25b586257830ae896dec761e4987))
+
 ## [1.113.2](https://github.com/go-taas/go-taas/compare/v1.113.1...v1.113.2) (2026-11-08)
 
 
