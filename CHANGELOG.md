@@ -1,3 +1,10 @@
+## [1.118.1](https://github.com/go-taas/go-taas/compare/v1.118.0...v1.118.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **infer:** keep a model routable when one of its services goes away ([faa7784](https://github.com/go-taas/go-taas/commit/faa7784ec6848b9f83f6023bc57f14f8a0732b83))
+
 # [1.118.0](https://github.com/go-taas/go-taas/compare/v1.117.0...v1.118.0) (2026-11-09)
 
 
