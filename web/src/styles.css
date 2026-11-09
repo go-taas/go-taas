@@ -1169,8 +1169,18 @@ th.sortable:hover {
   grid-column: 2;
   grid-row: 2;
   padding: 32px 40px 48px;
+  /* The content column is capped so a line of text does not stretch across an
+     ultrawide monitor. The cap has to be centred: a grid item defaults to
+     start alignment, so the capped column would otherwise sit against the
+     navigation and leave all the slack on the right. `width: 100%` keeps the
+     cap as a maximum rather than a fixed width, and the auto margins centre
+     the same element on the standalone pages that render it outside the app
+     grid (the /admin role picker). */
+  width: 100%;
   max-width: 1240px;
   min-width: 0;
+  justify-self: center;
+  margin-inline: auto;
 }
 
 .page-header {
