@@ -1,3 +1,10 @@
+## [1.115.2](https://github.com/go-taas/go-taas/compare/v1.115.1...v1.115.2) (2026-11-09)
+
+
+### Bug Fixes
+
+* **infer:** refuse NCCL_IB_DISABLE on an RDMA service ([94908f5](https://github.com/go-taas/go-taas/commit/94908f512792724fb3ac44cf52077ccc65da35b1))
+
 ## [1.115.1](https://github.com/go-taas/go-taas/compare/v1.115.0...v1.115.1) (2026-11-09)
 
 
