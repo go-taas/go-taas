@@ -1006,7 +1006,8 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
-	if err := validatePodsForTopology(topology, scheduling); err != nil {
+	scheduling, err = resolvePodsForTopology(topology, scheduling)
+	if err != nil {
 		return nil, err
 	}
 
@@ -1781,10 +1782,27 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 		if err != nil {
 			return nil, err
 		}
-		if err := validatePodsForTopology(topology, normalized); err != nil {
+		normalized, err = resolvePodsForTopology(topology, normalized)
+		if err != nil {
 			return nil, err
 		}
 		scheduling = &normalized
+	} else if topology.Topology == TopologySingle {
+		// A single-node pod owns the whole replica, so its device count is
+		// derived from the layout. It has to be rewritten even when the
+		// request omits the shape: a stored 1 would otherwise linger while
+		// the engine's world size grew, and the pod would be admitted with
+		// fewer devices than the engine needs.
+		derived, err := resolvePodsForTopology(topology, PodScheduling{
+			GPUPerPod: row.GPUPerPod,
+			CPUMilli:  row.CPUMilli,
+			MemoryMiB: row.MemoryMiB,
+			Priority:  row.Priority,
+		})
+		if err != nil {
+			return nil, err
+		}
+		scheduling = &derived
 	}
 
 	// The RDMA request rides with the pod shape for the same reason: it is a

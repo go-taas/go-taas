@@ -55,6 +55,9 @@ const roleLabel = "go-taas.com/role"
 // services/infer (the control plane decides the value; the controller only
 // interprets it).
 const (
+	// topologySingle runs one pod per replica; tensor/pipeline parallelism
+	// shards inside that pod.
+	topologySingle = "single"
 	// topologyMultiNode spreads one replica across several pods, one per
 	// machine. topologyDistributed is its pre-rename name and keeps working
 	// for an older control plane.

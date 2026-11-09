@@ -9,17 +9,36 @@ import (
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 )
 
-func TestNormalizeTopologySingleIgnoresParallelism(t *testing.T) {
-	// A single-node deploy is one pod per replica: a stray parallelism value
-	// must not shape a pod group the operator did not ask for.
+func TestNormalizeTopologySingleKeepsParallelismInOnePod(t *testing.T) {
+	// A single-node replica is one pod, and tensor/pipeline parallelism runs
+	// inside it: the parallelism is kept (the engine shards over NVLink) but
+	// the replica still spans exactly one pod.
 	spec, err := NormalizeTopology(TopologySingle, 4, 2, 3, 3, "vllm")
 	require.NoError(t, err)
 	assert.Equal(t, TopologySingle, spec.Topology)
-	assert.Equal(t, 1, spec.TensorParallelSize)
-	assert.Equal(t, 1, spec.PipelineParallelSize)
-	assert.Equal(t, 0, spec.PrefillReplicas)
+	assert.Equal(t, 4, spec.TensorParallelSize)
+	assert.Equal(t, 2, spec.PipelineParallelSize)
+	assert.Equal(t, 0, spec.PrefillReplicas, "PD role counts do not apply")
 	assert.Equal(t, 0, spec.DecodeReplicas)
-	assert.Equal(t, 1, spec.PodGroupSize())
+	assert.Equal(t, 1, spec.PodGroupSize(), "still one pod per replica")
+
+	// The default stays a plain single-device pod.
+	plain, err := NormalizeTopology(TopologySingle, 0, 0, 0, 0, "vllm")
+	require.NoError(t, err)
+	assert.Equal(t, 1, plain.TensorParallelSize)
+	assert.Equal(t, 1, plain.PipelineParallelSize)
+}
+
+func TestNormalizeTopologySingleIsBoundedByOneMachinesDevices(t *testing.T) {
+	// Everything the replica shards across must fit in its one pod.
+	_, err := NormalizeTopology(TopologySingle, maxGPUPerPod+1, 1, 0, 0, "vllm")
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeInferTopologyInvalid, apierrors.CodeOf(err))
+	assert.Contains(t, err.Error(), "multinode", "the message points at the layout that spans machines")
+
+	// 2 x 4 = 8 still fits.
+	_, err = NormalizeTopology(TopologySingle, 2, 4, 0, 0, "vllm")
+	require.NoError(t, err)
 }
 
 func TestNormalizeTopologyMultiNode(t *testing.T) {

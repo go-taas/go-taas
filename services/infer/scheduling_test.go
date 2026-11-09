@@ -59,22 +59,31 @@ func TestNormalizePodSchedulingRejectsBadValues(t *testing.T) {
 	}
 }
 
-// TestValidatePodsForTopology covers the divisibility rule: a multi-pod
+// TestResolvePodsForTopology covers the divisibility rule: a multi-pod
 // replica's devices must split evenly into pods.
-func TestValidatePodsForTopology(t *testing.T) {
+func TestResolvePodsForTopology(t *testing.T) {
 	multi := TopologySpec{Topology: TopologyMultiNode, TensorParallelSize: 4, PipelineParallelSize: 1}
-	require.NoError(t, validatePodsForTopology(multi, PodScheduling{GPUPerPod: 2}))
-	require.NoError(t, validatePodsForTopology(multi, PodScheduling{GPUPerPod: 1}))
-	require.NoError(t, validatePodsForTopology(multi, PodScheduling{GPUPerPod: 4}))
-	require.Error(t, validatePodsForTopology(multi, PodScheduling{GPUPerPod: 3}),
-		"4 devices do not split into pods of 3")
-	require.Error(t, validatePodsForTopology(multi, PodScheduling{GPUPerPod: 8}),
-		"a pod cannot take more devices than the replica has")
+	for _, perPod := range []int{1, 2, 4} {
+		got, err := resolvePodsForTopology(multi, PodScheduling{GPUPerPod: perPod})
+		require.NoError(t, err)
+		assert.Equal(t, perPod, got.GPUPerPod, "an even split keeps the requested size")
+	}
+	_, err := resolvePodsForTopology(multi, PodScheduling{GPUPerPod: 3})
+	require.Error(t, err, "4 devices do not split into pods of 3")
+	_, err = resolvePodsForTopology(multi, PodScheduling{GPUPerPod: 8})
+	require.Error(t, err, "a pod cannot take more devices than the replica has")
 
-	// A single-node replica takes whatever the pod is given: one pod, no
-	// divisibility question.
-	single := TopologySpec{Topology: TopologySingle, TensorParallelSize: 1, PipelineParallelSize: 1}
-	require.NoError(t, validatePodsForTopology(single, PodScheduling{GPUPerPod: 4}))
+	// A single-node replica is one pod, so it owns the whole replica: the pod
+	// size is derived from the parallelism, whatever the request said.
+	one := TopologySpec{Topology: TopologySingle, TensorParallelSize: 1, PipelineParallelSize: 1}
+	got, err := resolvePodsForTopology(one, PodScheduling{GPUPerPod: 4})
+	require.NoError(t, err)
+	assert.Equal(t, 1, got.GPUPerPod, "a one-device replica cannot reserve unused cards")
+
+	sharded := TopologySpec{Topology: TopologySingle, TensorParallelSize: 2, PipelineParallelSize: 2}
+	got, err = resolvePodsForTopology(sharded, PodScheduling{GPUPerPod: 1})
+	require.NoError(t, err)
+	assert.Equal(t, 4, got.GPUPerPod, "the pod must own every device the engine shards across")
 }
 
 // TestPodGroupSizeFor covers the pod count a replica spans.

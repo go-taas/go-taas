@@ -180,6 +180,28 @@
         "labels": {
           "type": "object",
           "description": "Extra labels for the DeviceClass."
+        },
+        "additionalDeviceClasses": {
+          "type": "array",
+          "description": "Extra DeviceClasses, one per fabric rail.",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "selector": {
+                "type": "string"
+              },
+              "labels": {
+                "type": "object"
+              }
+            },
+            "required": [
+              "name",
+              "selector"
+            ]
+          }
         }
       }
     }

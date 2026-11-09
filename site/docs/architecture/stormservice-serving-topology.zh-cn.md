@@ -18,7 +18,7 @@ AIBrix 恰好提供了缺失的这套原语：**`StormService`**（`orchestratio
 
 | 拓扑 | Storm 形态 | 每个副本的 Pod 数 |
 | --- | --- | --- |
-| `single` | 单角色 `worker`，`podGroupSize = 1` | 1 |
+| `single` | 单角色 `worker`，`podGroupSize = 1`，该 Pod 拥有 `TP × PP` 张卡 | 1（在 Pod 内通过 NVLink 切分） |
 | `multinode` | 单角色 `worker`，`podGroupSize = TP × PP` | TP × PP（每个 worker 一个 Pod，各自独立机器） |
 | `pd` | `prefill` 与 `decode` 两个角色，各自 `podGroupSize = TP × PP` 与独立副本数 | (prefill + decode) × TP × PP |
 
@@ -50,6 +50,10 @@ exec "$0" "$@" --nnodes <TP×PP> --node-rank "$rank" --master-addr "$master" --m
 **AD2 —— 拓扑是数据，不是代码。** `inference_services.topology` 存 `single` / `multinode` / `pd`，同时存 `tensor_parallel_size`、`pipeline_parallel_size`、`prefill_replicas`、`decode_replicas`。读取时空值归一化为 `single`（即历史数据行的语义）。接口契约使用同一套小写名称，控制台与后端使用同一词汇。
 
 **AD3 —— 任何写入之前先校验。** `NormalizeTopology` 拒绝未知形态、越界的并行度（`1..100`，且 `TP × PP ≤ 100`）、实际只有一个 Pod 的“多机”请求（`TP × PP < 2`）、不支持分离的引擎上的 PD（只允许 vLLM/SGLang）、以及越界的角色副本数；错误码 **10319 INFER_TOPOLOGY_INVALID**。校验失败不会发布任何期望状态。
+
+**AD3b —— `single` 在它唯一的 Pod 内完成切分。** 单机副本无论并行度如何都只有一个 Pod，因此 `tensor_parallel_size` 与 `pipeline_parallel_size` 在该拓扑下同样有效，引擎在 Pod 内通过 NVLink 切分：不涉及跨 Pod 集合通信、不加 rendezvous 包装、`podGroupSize` 恒为 1。Pod 的卡数由 `TP × PP` **推导**，而不是取自 `gpu_per_pod`——若采用更小的值，引擎拿到的设备会少于其 world size 所需；若采用更大的值，则会在卡资源紧张的节点上预留用不到的卡。上限为单机容量（`8`），更宽的副本属于 `multinode`，错误信息会直接说明。
+
+同样的 Pod 形态也可以通过 `multinode` + `gpu_per_pod = TP × PP` 表达（副本的 Pod 数为 `TP × PP / gpu_per_pod`），这是 `single` 支持并行度之前平台要求的写法。两者都得到一个拥有全部设备的 Pod；应当使用 `single`，因为它表达的是意图，且不会因为 `gpu_per_pod` 的误填被拆成两个 Pod。
 
 **AD4 —— 只下发引擎无法自行推导的参数。** 当用户未显式设置时，控制器追加 `--tensor-parallel-size` / `--pipeline-parallel-size`；PD 场景追加角色标记：vLLM 使用 `--kv-transfer-config`（prefill 为 `kv_producer`，decode 为 `kv_consumer`，默认连接器 `PyNcclConnector`），SGLang 使用 `--disaggregation-mode prefill|decode`。用户显式给出的引擎参数始终优先，因此集群若使用其它 KV 连接器，可通过现有的高级参数表单配置。
 

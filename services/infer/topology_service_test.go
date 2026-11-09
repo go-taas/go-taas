@@ -362,3 +362,90 @@ func TestNormalizeTopologyAcceptsLegacyDistributedName(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, TopologyMultiNode, spec.Topology)
 }
+
+// TestCreateInferenceServiceSingleNodeShardsInOnePod verifies a single-node
+// service can now shard across several devices: the parallelism is stored and
+// the pod's device count is derived from it, so a one-node fleet can run a
+// multi-GPU replica without spreading pipeline stages across pods.
+func TestCreateInferenceServiceSingleNodeShardsInOnePod(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	id := createTopologyService(t, svc, "single-shard", &inferv1.CreateInferenceServiceRequest{
+		ModelId: modelID, ModelVersion: "v1", ImageId: "img-vllm-nvidia",
+		Replicas: 1, Accelerator: "nvidia",
+		Topology:             TopologySingle,
+		TensorParallelSize:   2,
+		PipelineParallelSize: 2,
+		// The console still sends its default; the platform derives 4.
+		Scheduling: &inferv1.PodScheduling{GpuPerPod: 1, CpuCores: 4, MemoryMib: 16384, Priority: "normal"},
+	})
+
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	row, err := repo.FindByID(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, TopologySingle, row.Topology)
+	assert.Equal(t, 2, row.TensorParallelSize)
+	assert.Equal(t, 2, row.PipelineParallelSize)
+	assert.Equal(t, 4, row.GPUPerPod, "the one pod owns every device the engine shards across")
+	assert.Equal(t, int64(4000), row.CPUMilli, "the rest of the pod shape is honoured")
+
+	// The change event carries the layout and the derived pod size.
+	require.NotEmpty(t, client.published)
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, TopologySingle, evt.Topology)
+	assert.Equal(t, 2, evt.TensorParallelSize)
+	assert.Equal(t, 2, evt.PipelineParallelSize)
+	assert.Equal(t, 4, evt.GPUPerPod)
+}
+
+// TestSubmitRejectsTooManyDevicesForOnePod verifies the single-node bound: a
+// replica cannot shard across more devices than one machine holds.
+func TestSubmitRejectsTooManyDevicesForOnePod(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	_, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "single-too-wide", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		Topology:             TopologySingle,
+		TensorParallelSize:   maxGPUPerPod,
+		PipelineParallelSize: 2,
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeInferTopologyInvalid, apierrors.CodeOf(err))
+	assert.Empty(t, client.published)
+}
+
+// TestUpdateTopologyRedrivesSinglePodSize verifies a layout change recomputes
+// the single-node pod size even when the request omits the per-pod shape: a
+// stored 1 would otherwise leave the pod with fewer devices than the engine's
+// world size needs.
+func TestUpdateTopologyRedrivesSinglePodSize(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	id := createTopologyService(t, svc, "reshape-single", &inferv1.CreateInferenceServiceRequest{
+		ModelId: modelID, ModelVersion: "v1", ImageId: "img-vllm-nvidia",
+		Replicas: 1, Accelerator: "nvidia",
+		Topology: TopologySingle,
+	})
+
+	_, err := svc.UpdateInferenceServiceTopology(orgContext("org-1"), &inferv1.UpdateInferenceServiceTopologyRequest{
+		ServiceId: id, Topology: TopologySingle,
+		TensorParallelSize: 2, PipelineParallelSize: 1,
+	})
+	require.NoError(t, err)
+
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	row, err := repo.FindByID(t.Context(), id)
+	require.NoError(t, err)
+	assert.Equal(t, 2, row.TensorParallelSize)
+	assert.Equal(t, 2, row.GPUPerPod, "derived from the new layout without an explicit shape")
+}

@@ -787,6 +787,18 @@ rdma:
   selector: ""
   # -- Extra labels for the DeviceClass.
   labels: {}
+  # One extra DeviceClass per rail, for a fleet whose NIC ports sit on separate
+  # L3 networks. Pods of one replica must allocate from the same rail: a
+  # cross-rail collective blocks forever instead of failing, which shows up as
+  # a service that stays "starting". Name the rail's class in the service
+  # (rdma.device_class).
+  #
+  #   additionalDeviceClasses:
+  #     - name: taas-rdma-rail-0
+  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0","0000:0f:00.1"]'
+  #     - name: taas-rdma-rail-1
+  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:87:00.0","0000:87:00.1"]'
+  additionalDeviceClasses: []
 
 controller:
   # -- Deploy the controller.

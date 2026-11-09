@@ -153,29 +153,38 @@ func schedulingToProto(svc *InferenceService) *infersv1.PodScheduling {
 	}
 }
 
-// validatePodsForTopology checks that a replica's devices divide into pods of
-// the requested size.
+// resolvePodsForTopology folds the per-pod shape into the layout and checks
+// that a replica's devices divide into pods of the requested size.
 //
 // One pod owns gpu_per_pod devices, and a replica's parallelism is the total
 // number of devices it shards across (tensor x pipeline). A multi-pod replica
 // therefore needs (tp x pp) % gpu_per_pod == 0: an uneven split would give the
 // engine a world size its pods cannot see, which vLLM refuses at startup.
-// A single-pod replica has no such constraint - the one pod simply takes
-// gpu_per_pod devices.
-func validatePodsForTopology(spec TopologySpec, scheduling PodScheduling) error {
-	if spec.Topology == TopologySingle {
-		return nil
-	}
+//
+// A single-node replica is exactly one pod, so it owns the whole replica:
+// gpu_per_pod is derived as tp x pp instead of being taken from the request.
+// Honouring a smaller value would give the engine fewer devices than its world
+// size needs, and a larger one would reserve cards the engine never uses on a
+// node where cards are the scarce resource. The derived value is returned so
+// the caller stores and reports what the pod actually requests.
+func resolvePodsForTopology(spec TopologySpec, scheduling PodScheduling) (PodScheduling, error) {
 	devices := spec.TensorParallelSize * spec.PipelineParallelSize
 	if devices < 1 {
 		devices = 1
 	}
+	if spec.Topology == TopologySingle {
+		scheduling.GPUPerPod = devices
+		return scheduling, nil
+	}
+	if scheduling.GPUPerPod < 1 {
+		scheduling.GPUPerPod = 1
+	}
 	if scheduling.GPUPerPod > devices || devices%scheduling.GPUPerPod != 0 {
-		return apierrors.Newf(apierrors.CodeInferTopologyInvalid,
+		return PodScheduling{}, apierrors.Newf(apierrors.CodeInferTopologyInvalid,
 			"infer: %d devices per replica cannot be split into pods of %d; use a gpu_per_pod that divides tensor_parallel_size x pipeline_parallel_size",
 			devices, scheduling.GPUPerPod)
 	}
-	return nil
+	return scheduling, nil
 }
 
 // PodGroupSizeFor is how many pods one replica runs with when each pod owns

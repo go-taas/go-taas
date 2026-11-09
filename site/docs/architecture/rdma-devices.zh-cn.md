@@ -222,6 +222,7 @@ vLLM 仍会正常启动并初始化 NCCL，然后在第一次集合通信处永�
   的按节点选择器），并在服务中指定该类。这样副本内每个 Pod 都从同一条 rail 分配。
 
 **AD8 —— 同一节点内的多 Pod 副本不应通过 RDMA 承载副本内通信。** 同一节点上两个 Pod
-之间走的是 CNI 而不是 RDMA 网络；单节点多卡的受支持做法是让一个 Pod 拥有全部设备（见
-[StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md) 的 AD7）。当副本真正
+之间走的是 CNI 而不是 RDMA 网络，因此单节点多卡的做法是让一个 Pod 拥有全部设备：使用
+`single` 拓扑并设置 `TP × PP`，其卡数会自动推导（见
+[StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md) 的 AD3b）。当副本真正
 跨机器时才使用带 RDMA 的 multinode，并确保所用 DeviceClass 的 rail 一致。

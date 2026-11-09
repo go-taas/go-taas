@@ -4,13 +4,15 @@ The DeviceClass inference pods allocate RDMA devices from.
 DRA replaces the extended-resource model for network devices: a DeviceClass
 names the devices a fleet offers, a ResourceClaimTemplate describes a request,
 and the scheduler hands each pod its own devices. The controller writes the
-per-service claim template (the device count is a service property); this
-object is cluster infrastructure, so it lives here and not in the controller.
+per-service claim template (the device count is a service property); these
+objects are cluster infrastructure, so they live here and not in the controller.
 
-The selector is CEL over the devices the installed driver publishes. The
-default accepts every device the DRA network driver (dra.net) reports as
-RDMA-capable, and — when `rdma.requireLinkUp` is set — only links the node
-reports as up, so a pod is never given a down port.
+The default class accepts every device the DRA network driver reports as
+RDMA-capable (and, with `rdma.requireLinkUp`, only links the node reports as up).
+`rdma.additionalDeviceClasses` adds one class per rail for a multi-rail fleet:
+pods of one replica must allocate from the same rail, because the rails are
+separate L3 networks and a cross-rail collective blocks forever instead of
+failing (see site/docs/architecture/rdma-devices.md).
 
 Every value is read defensively: `helm upgrade --reuse-values` keeps the
 previous release's values instead of merging the new chart defaults, so a
@@ -20,34 +22,46 @@ must still render the documented default rather than fail the upgrade.
 {{- $rdma := .Values.rdma | default dict }}
 {{- $disabled := and (hasKey $rdma "enabled") (not $rdma.enabled) }}
 {{- if not $disabled }}
-{{- $class := $rdma.deviceClass | default "taas-rdma" }}
 {{- $driver := $rdma.driver | default "dra.net" }}
 {{- $requireUp := true }}
 {{- if hasKey $rdma "requireLinkUp" }}
 {{- $requireUp = $rdma.requireLinkUp }}
 {{- end }}
-{{- $selector := $rdma.selector | default "" }}
-{{- $labels := $rdma.labels | default dict }}
-{{- $expression := $selector }}
-{{- if not $expression }}
+{{- $defaultExpression := $rdma.selector | default "" }}
+{{- if not $defaultExpression }}
 {{- if $requireUp }}
-{{- $expression = printf "device.driver == %q && device.attributes[%q].rdma == true && device.attributes[%q].state == %q" $driver "dra.net" "dra.net" "up" }}
+{{- $defaultExpression = printf "device.driver == %q && device.attributes[%q].rdma == true && device.attributes[%q].state == %q" $driver "dra.net" "dra.net" "up" }}
 {{- else }}
-{{- $expression = printf "device.driver == %q && device.attributes[%q].rdma == true" $driver "dra.net" }}
+{{- $defaultExpression = printf "device.driver == %q && device.attributes[%q].rdma == true" $driver "dra.net" }}
 {{- end }}
 {{- end }}
+{{- $classes := list (dict
+      "name" ($rdma.deviceClass | default "taas-rdma")
+      "selector" $defaultExpression
+      "labels" ($rdma.labels | default dict)) }}
+{{- range $extra := ($rdma.additionalDeviceClasses | default list) }}
+{{- if and $extra $extra.name $extra.selector }}
+{{- $classes = append $classes (dict
+      "name" $extra.name
+      "selector" $extra.selector
+      "labels" ($extra.labels | default dict)) }}
+{{- end }}
+{{- end }}
+{{- range $class := $classes }}
+---
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
-  name: {{ $class }}
+  name: {{ $class.name }}
   labels:
-    {{- include "go-taas.labels" . | nindent 4 }}
+    {{- include "go-taas.labels" $ | nindent 4 }}
     app.kubernetes.io/component: inference-rdma
-    {{- with $labels }}
+    {{- with $class.labels }}
     {{- toYaml . | nindent 4 }}
     {{- end }}
 spec:
   selectors:
     - cel:
-        expression: {{ $expression | quote }}
+        expression: {{ $class.selector | quote }}
+{{- end }}
 {{- end }}

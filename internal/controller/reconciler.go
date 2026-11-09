@@ -1753,6 +1753,8 @@ func rendezvousCommand(evt changeEvent, base []string, role stormRole) []string 
 // they are appended to the engine command. Only the parameters the operator
 // cannot express in the generic form are derived here:
 //
+//	single       the parallelism of the whole replica, when it shards across
+//	             more than one device inside its one pod
 //	multinode    the parallelism of the whole role (tensor/pipeline size)
 //	pd           the same, plus the role marker: vLLM's kv-transfer-config
 //	             (kv_role producer/consumer) or SGLang's
@@ -1761,7 +1763,10 @@ func rendezvousCommand(evt changeEvent, base []string, role stormRole) []string 
 // Every one of them is skipped when the role's engine arguments already set
 // the flag, so the explicit arguments stay authoritative.
 func topologyEngineArgs(engine string, role stormRole, engineArgs map[string]string, evt changeEvent) []string {
-	if !isMultiNode(evt.Topology) && evt.Topology != topologyPD {
+	// A single-node replica only needs the flags when it shards: spreading
+	// the model across one device's worth of memory needs nothing.
+	if !isMultiNode(evt.Topology) && evt.Topology != topologyPD &&
+		evt.TensorParallelSize <= 1 && evt.PipelineParallelSize <= 1 {
 		return nil
 	}
 	args := make([]string, 0, 6)

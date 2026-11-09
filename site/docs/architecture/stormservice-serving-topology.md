@@ -18,7 +18,7 @@ AIBrix ships exactly the missing primitive: **`StormService`** (`orchestration.a
 
 | Topology | Storm shape | Pods per storm replica |
 | --- | --- | --- |
-| `single` | one role `worker`, `podGroupSize = 1` | 1 |
+| `single` | one role `worker`, `podGroupSize = 1`, the pod owns `TP × PP` devices | 1 (shards over NVLink inside the pod) |
 | `multinode` | one role `worker`, `podGroupSize = TP × PP` | TP × PP (one pod per worker, on its own machine) |
 | `pd` | roles `prefill` and `decode`, each with `podGroupSize = TP × PP` and its own replica count | (prefill + decode) × TP × PP |
 
@@ -49,7 +49,9 @@ The engine arguments are passed as positional parameters (`sh -c script name arg
 
 **AD3 — Validation happens before any write.** `NormalizeTopology` rejects an unknown layout, out-of-range parallelism (`1..100`, `TP × PP ≤ 100`), a "multinode" request that is really one pod (`TP × PP < 2`), PD on an engine that cannot split (anything but vLLM/SGLang), and out-of-range role counts. Error **10319 INFER_TOPOLOGY_INVALID**. Nothing is published when a check fails.
 
-**AD3b — `gpu_per_pod = TP × PP` collapses a replica into one pod.** The pod count of a replica is `TP × PP / gpu_per_pod`, so asking for as many devices per pod as the replica has parallelism produces a single pod that owns every device. That is the supported way to run a multi-GPU replica on **one machine**: the engine shards with `--tensor-parallel-size` / `--pipeline-parallel-size` over NVLink inside the pod and no cross-pod collective is involved. The `single` topology cannot express it (it is defined as one pod with one device), so such a service uses the `multinode` topology with `gpu_per_pod = TP × PP`; `podGroupSize` becomes 1 and the controller skips the rendezvous wrapper. This matters in practice: on a one-node fleet it is the only layout that uses a multi-GPU replica locally instead of forcing pipeline-parallel traffic over the network between two pods.
+**AD3b — `single` shards inside its one pod.** A single-node replica is one pod whatever its parallelism, so `tensor_parallel_size` and `pipeline_parallel_size` are accepted there and the engine shards over NVLink inside that pod: no cross-pod collective, no rendezvous wrapper, `podGroupSize` stays 1. The pod's device count is **derived** as `TP × PP` rather than taken from `gpu_per_pod` — honouring a smaller value would leave the engine with fewer devices than its world size, and a larger one would reserve cards it never uses on a node where cards are the scarce resource. The bound is one machine's worth (`8`); a wider replica belongs to `multinode`, and the error says so.
+
+The same pod size is expressible through `multinode` with `gpu_per_pod = TP × PP` (the pod count of a replica is `TP × PP / gpu_per_pod`), which is what the platform required before `single` accepted parallelism. Both produce one pod owning every device; `single` is the one to use, because it states the intent and cannot be split into two pods by a stray `gpu_per_pod`.
 
 **AD4 — The engine gets only the flags it cannot derive itself.** The controller appends `--tensor-parallel-size` / `--pipeline-parallel-size` when the operator did not set them, and for PD the role marker: vLLM's `--kv-transfer-config` (`kv_producer` for prefill, `kv_consumer` for decode, default connector `PyNcclConnector`) or SGLang's `--disaggregation-mode prefill|decode`. An explicit engine argument always wins, so a cluster with a different KV connector is configured through the existing advanced-args form.
 

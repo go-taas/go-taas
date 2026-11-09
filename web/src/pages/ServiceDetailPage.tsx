@@ -30,6 +30,10 @@ import { navigate } from '../router';
 import ServiceStatusBanner from '../components/ServiceStatusBanner';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
 
+// MAX_GPUS_PER_POD mirrors the platform bound: a single-node replica shards
+// inside one pod, so its parallelism cannot exceed what a machine holds.
+const MAX_GPUS_PER_POD = 8;
+
 interface ServiceResponse {
   response: { code: number; message: string };
   service: InferenceServiceSummary & { accelerator?: string; acceleratorType?: string };
@@ -470,7 +474,13 @@ function TopologyDialog({
       setError(t('deploy.errorMultiNodeParallel'));
       return;
     }
-    const perPod = parseInt(gpuPerPod, 10) || 1;
+    // A single-node replica is one pod that owns every device it shards
+    // across; a machine cannot hold more than the platform's per-pod bound.
+    const perPod = topology === 'single' ? tpv * ppv : parseInt(gpuPerPod, 10) || 1;
+    if (topology === 'single' && perPod > MAX_GPUS_PER_POD) {
+      setError(t('deploy.errorSingleDevices', { devices: perPod, max: MAX_GPUS_PER_POD }));
+      return;
+    }
     if (topology !== 'single' && (tpv * ppv) % perPod !== 0) {
       setError(t('deploy.errorGpuPerPod', { devices: tpv * ppv, perPod }));
       return;
@@ -528,34 +538,30 @@ function TopologyDialog({
             <option value="pd">{t('deploy.topologyPd')}</option>
           </select>
         </div>
-        {topology !== 'single' && (
-          <>
-            <div className="form-field">
-              <label htmlFor="topology-tp">{t('deploy.tensorParallel')}</label>
-              <input
-                id="topology-tp"
-                data-testid="topology-tp-input"
-                type="number"
-                min={1}
-                max={100}
-                value={tp}
-                onChange={(e) => setTp(e.target.value)}
-              />
-            </div>
-            <div className="form-field">
-              <label htmlFor="topology-pp">{t('deploy.pipelineParallel')}</label>
-              <input
-                id="topology-pp"
-                data-testid="topology-pp-input"
-                type="number"
-                min={1}
-                max={100}
-                value={pp}
-                onChange={(e) => setPp(e.target.value)}
-              />
-            </div>
-          </>
-        )}
+        <div className="form-field">
+          <label htmlFor="topology-tp">{t('deploy.tensorParallel')}</label>
+          <input
+            id="topology-tp"
+            data-testid="topology-tp-input"
+            type="number"
+            min={1}
+            max={100}
+            value={tp}
+            onChange={(e) => setTp(e.target.value)}
+          />
+        </div>
+        <div className="form-field">
+          <label htmlFor="topology-pp">{t('deploy.pipelineParallel')}</label>
+          <input
+            id="topology-pp"
+            data-testid="topology-pp-input"
+            type="number"
+            min={1}
+            max={100}
+            value={pp}
+            onChange={(e) => setPp(e.target.value)}
+          />
+        </div>
         {topology === 'pd' && (
           <>
             <div className="form-field">
@@ -603,8 +609,13 @@ function TopologyDialog({
             data-testid="topology-gpu-per-pod"
             type="number"
             min={1}
-            max={8}
-            value={gpuPerPod}
+            max={MAX_GPUS_PER_POD}
+            value={
+              topology === 'single'
+                ? String((parseInt(tp, 10) || 1) * (parseInt(pp, 10) || 1))
+                : gpuPerPod
+            }
+            disabled={topology === 'single'}
             onChange={(e) => setGpuPerPod(e.target.value)}
           />
         </div>

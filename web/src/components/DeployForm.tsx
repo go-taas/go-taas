@@ -28,6 +28,11 @@ import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from './EnvVarsEditor';
 import { engineParams, type EngineParam } from './engineParams';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
+// MAX_GPUS_PER_POD mirrors the platform bound on one pod's device count: a
+// single-node replica shards inside one pod, so its parallelism cannot exceed
+// what a machine can hold.
+const MAX_GPUS_PER_POD = 8;
+
 interface ImageEntry {
   imageId: string;
   name: string;
@@ -112,6 +117,14 @@ function topologySummary(
   prefill: number,
   decode: number,
 ): string {
+  if (topology === 'single') {
+    // One pod per replica, owning every device the engine shards across.
+    return t('deploy.topologySummarySingle', {
+      replicas: String(replicas),
+      pods: String(replicas),
+      cards: String(tp * pp),
+    });
+  }
   if (topology === 'pd') {
     // Each role runs one pod per worker, so the pod count is the role counts
     // times the shard count.
@@ -423,10 +436,17 @@ export default function DeployForm({
       setError(t('deploy.errorImage'));
       return;
     }
+    // A single-node replica is one pod, so it owns every device the engine
+    // shards across: gpu_per_pod is derived, not chosen. More than one pod's
+    // worth of devices (8) does not fit on a machine.
+    const perPod = topology === 'single' ? tp * pp : parseInt(gpuPerPod, 10) || 1;
+    if (topology === 'single' && perPod > MAX_GPUS_PER_POD) {
+      setError(t('deploy.errorSingleDevices', { devices: perPod, max: MAX_GPUS_PER_POD }));
+      return;
+    }
     // One pod owns gpu_per_pod devices, so a multi-pod replica's total
     // (tensor x pipeline) must divide evenly by it: an uneven split gives the
     // engine a world size its pods cannot see (the server rejects it too).
-    const perPod = parseInt(gpuPerPod, 10) || 1;
     if (topology !== 'single' && (tp * pp) % perPod !== 0) {
       setError(t('deploy.errorGpuPerPod', { devices: tp * pp, perPod }));
       return;
@@ -470,7 +490,7 @@ export default function DeployForm({
         prefillReplicas: String(parseInt(prefillReplicas, 10) || 1),
         decodeReplicas: String(parseInt(decodeReplicas, 10) || 1),
         scheduling: {
-          gpuPerPod: parseInt(gpuPerPod, 10) || 1,
+          gpuPerPod: perPod,
           cpuCores: Number(cpuCores) || 0,
           memoryMib: Math.round((Number(memoryGiB) || 0) * 1024),
           priority,
@@ -660,36 +680,32 @@ export default function DeployForm({
           </select>
           <div className="field-hint">{t('deploy.topologyHint')}</div>
         </div>
-        {topology !== 'single' && (
-          <>
-            <div className="form-field">
-              <label htmlFor="deploy-tp">{t('deploy.tensorParallel')}</label>
-              <input
-                id="deploy-tp"
-                data-testid="deploy-tp-input"
-                type="number"
-                min={1}
-                max={100}
-                value={tensorParallel}
-                onChange={(e) => setTensorParallel(e.target.value)}
-              />
-              <div className="field-hint">{t('engine.tensorParallelHint')}</div>
-            </div>
-            <div className="form-field">
-              <label htmlFor="deploy-pp">{t('deploy.pipelineParallel')}</label>
-              <input
-                id="deploy-pp"
-                data-testid="deploy-pp-input"
-                type="number"
-                min={1}
-                max={100}
-                value={pipelineParallel}
-                onChange={(e) => setPipelineParallel(e.target.value)}
-              />
-              <div className="field-hint">{t('engine.pipelineParallelHint')}</div>
-            </div>
-          </>
-        )}
+        <div className="form-field">
+          <label htmlFor="deploy-tp">{t('deploy.tensorParallel')}</label>
+          <input
+            id="deploy-tp"
+            data-testid="deploy-tp-input"
+            type="number"
+            min={1}
+            max={100}
+            value={tensorParallel}
+            onChange={(e) => setTensorParallel(e.target.value)}
+          />
+          <div className="field-hint">{t('engine.tensorParallelHint')}</div>
+        </div>
+        <div className="form-field">
+          <label htmlFor="deploy-pp">{t('deploy.pipelineParallel')}</label>
+          <input
+            id="deploy-pp"
+            data-testid="deploy-pp-input"
+            type="number"
+            min={1}
+            max={100}
+            value={pipelineParallel}
+            onChange={(e) => setPipelineParallel(e.target.value)}
+          />
+          <div className="field-hint">{t('engine.pipelineParallelHint')}</div>
+        </div>
         {topology === 'pd' && (
           <>
             <div className="form-field">
@@ -742,11 +758,14 @@ export default function DeployForm({
             data-testid="deploy-gpu-per-pod"
             type="number"
             min={1}
-            max={8}
-            value={gpuPerPod}
+            max={MAX_GPUS_PER_POD}
+            value={topology === 'single' ? String(tp * pp) : gpuPerPod}
+            disabled={topology === 'single'}
             onChange={(e) => setGpuPerPod(e.target.value)}
           />
-          <div className="field-hint">{t('deploy.gpuPerPodHint')}</div>
+          <div className="field-hint">
+            {topology === 'single' ? t('deploy.gpuPerPodSingleHint') : t('deploy.gpuPerPodHint')}
+          </div>
         </div>
         <div className="form-field">
           <label htmlFor="deploy-cpu">{t('deploy.cpuCores')}</label>

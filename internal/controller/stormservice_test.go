@@ -474,3 +474,52 @@ func TestSingleNodeStormIsNotStateful(t *testing.T) {
 	stateful, _, _ := unstructured.NestedBool(storm.Object, "spec", "stateful")
 	assert.False(t, stateful)
 }
+
+// TestBuildStormServiceSingleNodeShardsInsideOnePod verifies the single-node
+// layout now carries tensor/pipeline parallelism: the replica is still one
+// pod, but that pod owns every device the engine shards across and the engine
+// is told the parallelism.
+func TestBuildStormServiceSingleNodeShardsInsideOnePod(t *testing.T) {
+	evt := testChangeEvent("upsert", "demo")
+	evt.Topology = topologySingle
+	evt.TensorParallelSize = 2
+	evt.PipelineParallelSize = 2
+	evt.GPUPerPod = 4
+	evt.Replicas = 1
+
+	storm, err := testReconciler().buildStormService(context.Background(), evt)
+	require.NoError(t, err)
+
+	roles := stormRolesOf(t, storm)
+	require.Len(t, roles, 1, "a single-node storm has one role")
+	assert.Equal(t, int64(1), roles[0]["podGroupSize"], "still one pod per replica")
+	assert.Equal(t, int64(1), roles[0]["replicas"])
+
+	// The pod owns all four devices, and the engine is told both degrees.
+	assert.Equal(t, "4", roleGPURequest(t, roles[0]))
+	cmd := strings.Join(roleCommand(t, roles[0]), " ")
+	assert.Contains(t, cmd, "--tensor-parallel-size 2")
+	assert.Contains(t, cmd, "--pipeline-parallel-size 2")
+	// One pod: no rendezvous wrapper.
+	assert.NotContains(t, cmd, "--nnodes")
+	assert.NotContains(t, cmd, "--node-rank")
+	assert.Equal(t, "python3", roleCommand(t, roles[0])[0])
+}
+
+// TestBuildStormServiceSingleNodeDefaultStaysPlain verifies a one-device
+// single-node replica is unchanged: one device, no parallelism flags.
+func TestBuildStormServiceSingleNodeDefaultStaysPlain(t *testing.T) {
+	evt := testChangeEvent("upsert", "demo")
+	evt.Topology = topologySingle
+	evt.TensorParallelSize = 1
+	evt.PipelineParallelSize = 1
+	evt.GPUPerPod = 1
+
+	storm, err := testReconciler().buildStormService(context.Background(), evt)
+	require.NoError(t, err)
+	roles := stormRolesOf(t, storm)
+	assert.Equal(t, "1", roleGPURequest(t, roles[0]))
+	cmd := strings.Join(roleCommand(t, roles[0]), " ")
+	assert.NotContains(t, cmd, "--tensor-parallel-size")
+	assert.NotContains(t, cmd, "--pipeline-parallel-size")
+}

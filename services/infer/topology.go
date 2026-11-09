@@ -5,7 +5,8 @@
 // a single-node deploy, a distributed deploy and a PD-disaggregated deploy is
 // expressed in this module:
 //
-//	single       one pod per replica
+//	single       one pod per replica; tensor/pipeline parallelism runs inside
+//	             that pod, so it owns TP x PP devices on one machine
 //	multinode    one pod group per replica: every worker is its own pod on
 //	             its own machine, and the workers rendezvous so tensor and
 //	             pipeline parallelism span nodes
@@ -65,8 +66,11 @@ type TopologySpec struct {
 
 // PodGroupSize is how many pods one replica of the role runs with: one pod
 // per worker (tensor/pipeline shard), each on its own machine. A single-node
-// replica is one pod.
+// replica is always one pod, however many devices it shards across inside it.
 func (t TopologySpec) PodGroupSize() int {
+	if t.Topology == TopologySingle {
+		return 1
+	}
 	size := t.TensorParallelSize * t.PipelineParallelSize
 	if size < 1 {
 		return 1
@@ -103,14 +107,7 @@ func NormalizeTopology(topology string, tensorParallel, pipelineParallel, prefil
 	}
 	spec := TopologySpec{Topology: name}
 	switch spec.Topology {
-	case TopologySingle:
-		// A single-node deploy is exactly one pod per replica; parallelism
-		// is not expressible there, so a stray value is ignored rather than
-		// silently shaping a pod group the operator did not ask for.
-		spec.TensorParallelSize = 1
-		spec.PipelineParallelSize = 1
-		return spec, nil
-	case TopologyMultiNode, TopologyPD:
+	case TopologySingle, TopologyMultiNode, TopologyPD:
 	default:
 		return TopologySpec{}, apierrors.New(apierrors.CodeInferTopologyInvalid)
 	}
@@ -133,6 +130,21 @@ func NormalizeTopology(topology string, tensorParallel, pipelineParallel, prefil
 	}
 	spec.TensorParallelSize = tp
 	spec.PipelineParallelSize = pp
+
+	// A single-node replica is one pod, so the engine shards over NVLink
+	// inside that pod and every device of the replica must fit in it. That is
+	// the layout for multi-GPU on one machine, and the reason the topology is
+	// not limited to one device: without it a one-node fleet could only run
+	// multi-GPU replicas by spreading pipeline stages across pods over the
+	// network.
+	if spec.Topology == TopologySingle {
+		if tp*pp > maxGPUPerPod {
+			return TopologySpec{}, apierrors.Newf(apierrors.CodeInferTopologyInvalid,
+				"infer: a single-node replica runs in one pod, so tensor_parallel_size x pipeline_parallel_size must be at most %d devices; use the multinode topology to span machines",
+				maxGPUPerPod)
+		}
+		return spec, nil
+	}
 
 	if spec.Topology == TopologyMultiNode {
 		if tp*pp < 2 {

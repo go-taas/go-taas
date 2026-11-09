@@ -231,16 +231,18 @@ This is the reason a **replica must take its devices from one rail**, and why
 
 - the default `taas-rdma` accepts every RDMA device, which is right for a
   single-NIC-per-pod or single-rail fleet;
-- for a multi-rail fleet, create one class per rail (pin the rail's ports with
-  `rdma.selector`, for example
+- for a multi-rail fleet, render one class per rail with
+  `rdma.additionalDeviceClasses` (each entry a `name` + `selector`; pin the
+  rail's ports with a selector such as
   `device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]`, or the
   corresponding per-node selector in a homogeneous fleet) and name that class in
   the service. Every pod of the replica then allocates from the same rail.
 
 **AD8 — A replica that spans pods on one node should not use RDMA for
 intra-replica traffic.** Two pods of one node exchange pipeline-parallel
-activations over the CNI, not over the fabric; the supported layout for
-multi-GPU on a single node is one pod owning all the devices (see
-[StormService Serving Topology](./stormservice-serving-topology.md), AD7). Use a
+activations over the CNI, not over the fabric, so the layout for multi-GPU on a
+single node is one pod owning all the devices: the `single` topology with
+`TP × PP` set, which derives the pod's device count (see
+[StormService Serving Topology](./stormservice-serving-topology.md), AD3b). Use a
 multinode replica with RDMA when the replica genuinely spans machines, and then
 make sure the class is rail-consistent.

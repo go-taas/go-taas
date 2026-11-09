@@ -357,6 +357,7 @@ secrets:
 | `controller.config.controller.scheduling.schedulerName` | `""` | 设为 `volcano` 时启用 gang 调度（控制器写入 PodGroup）；为空则使用集群默认调度器 |
 | `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | 服务优先级映射到的 PriorityClass；未映射时 Pod 使用集群默认类 |
 | `rdma.enabled` / `deviceClass` | `true` / `taas-rdma` | 推理 Pod 申请 RDMA 设备所用的 DRA `DeviceClass`；`rdma.requireLinkUp` 只接受节点报告为 up 的链路，`rdma.selector` 可覆盖内置 CEL 表达式（用于固定网卡或 PCI 地址） |
+| `rdma.additionalDeviceClasses` | `[]` | 额外的 `DeviceClass`，每条 rail 一个；在服务的 `rdma.device_class` 中指定所属 rail 的类，保证同一副本的 Pod 取自同一条 rail |
 | `controller.config.controller.rdma.deviceClass` | `taas-rdma` | 服务开启 RDMA 但未指定设备类时继承的类；必须与 `rdma.deviceClass` 一致 |
 | `dependencies.keycloak.mode` | `disabled` | `disabled`、`internal`（Chart 置备 Keycloak）或 `external` |
 | `dependencies.keycloak.external.*` | — | `issuer`、`clientId`、`clientSecret`、`redirectUri`（seed 进 SSO 提供商记录） |
