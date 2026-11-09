@@ -1,4 +1,3 @@
-{{- if .Values.rdma.enabled }}
 {{/*
 The DeviceClass inference pods allocate RDMA devices from.
 
@@ -12,25 +11,43 @@ The selector is CEL over the devices the installed driver publishes. The
 default accepts every device the DRA network driver (dra.net) reports as
 RDMA-capable, and — when `rdma.requireLinkUp` is set — only links the node
 reports as up, so a pod is never given a down port.
+
+Every value is read defensively: `helm upgrade --reuse-values` keeps the
+previous release's values instead of merging the new chart defaults, so a
+release upgraded from an older chart arrives here without an `rdma` block and
+must still render the documented default rather than fail the upgrade.
 */}}
+{{- $rdma := .Values.rdma | default dict }}
+{{- $disabled := and (hasKey $rdma "enabled") (not $rdma.enabled) }}
+{{- if not $disabled }}
+{{- $class := $rdma.deviceClass | default "taas-rdma" }}
+{{- $driver := $rdma.driver | default "dra.net" }}
+{{- $requireUp := true }}
+{{- if hasKey $rdma "requireLinkUp" }}
+{{- $requireUp = $rdma.requireLinkUp }}
+{{- end }}
+{{- $selector := $rdma.selector | default "" }}
+{{- $labels := $rdma.labels | default dict }}
+{{- $expression := $selector }}
+{{- if not $expression }}
+{{- if $requireUp }}
+{{- $expression = printf "device.driver == %q && device.attributes[%q].rdma == true && device.attributes[%q].state == %q" $driver "dra.net" "dra.net" "up" }}
+{{- else }}
+{{- $expression = printf "device.driver == %q && device.attributes[%q].rdma == true" $driver "dra.net" }}
+{{- end }}
+{{- end }}
 apiVersion: resource.k8s.io/v1
 kind: DeviceClass
 metadata:
-  name: {{ .Values.rdma.deviceClass }}
+  name: {{ $class }}
   labels:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: inference-rdma
-  {{- with .Values.rdma.labels }}
-  {{- toYaml . | nindent 4 }}
-  {{- end }}
+    {{- with $labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
 spec:
   selectors:
     - cel:
-        {{- if .Values.rdma.selector }}
-        expression: {{ .Values.rdma.selector | quote }}
-        {{- else if .Values.rdma.requireLinkUp }}
-        expression: {{ printf "device.driver == %q && device.attributes[%q].rdma == true && device.attributes[%q].state == %q" .Values.rdma.driver "dra.net" "dra.net" "up" | quote }}
-        {{- else }}
-        expression: {{ printf "device.driver == %q && device.attributes[%q].rdma == true" .Values.rdma.driver "dra.net" | quote }}
-        {{- end }}
+        expression: {{ $expression | quote }}
 {{- end }}
