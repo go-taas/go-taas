@@ -1,3 +1,10 @@
+## [1.115.3](https://github.com/go-taas/go-taas/compare/v1.115.2...v1.115.3) (2026-11-09)
+
+
+### Bug Fixes
+
+* **web:** centre the capped content column on wide screens ([a020fab](https://github.com/go-taas/go-taas/commit/a020fabe6a4d4aaa6ced3212e119d2cfa7921ee3))
+
 ## [1.115.2](https://github.com/go-taas/go-taas/compare/v1.115.1...v1.115.2) (2026-11-09)
 
 
