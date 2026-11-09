@@ -42,6 +42,11 @@ type Reconciler interface {
 	// abandon a reconcile whose service was stopped or deleted while it
 	// waited for its engine. It must be called before serving.
 	SetServiceStateProvider(provider ServiceStateProvider)
+
+	// SetRDMAConfig installs the DRA DeviceClass used when a service
+	// requests RDMA devices without naming one. It must be called before
+	// serving.
+	SetRDMAConfig(deviceClass string)
 }
 
 // Controller wires the message queue subscriptions to a Reconciler.

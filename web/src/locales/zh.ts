@@ -1024,6 +1024,10 @@ export const zh: Record<string, string> = {
   'service.topologyUpdateFailed': '调整服务拓扑失败',
   'service.engineArgsEdit': '编辑参数',
   'service.engineArgsTitle': '编辑 {name} 的参数',
+  'service.rdma': 'RDMA',
+  'service.rdmaValue': '{devices} 个设备（来自 {deviceClass}）',
+  'service.rdmaDefaultClass': '平台默认设备类',
+  'service.rdmaDisabled': '未申请',
   'service.envVars': '环境变量',
   'service.envVarsEmpty': '未设置环境变量。',
   'service.envVarsHint': '应用于该服务的所有引擎容器。',
@@ -1910,6 +1914,15 @@ export const zh: Record<string, string> = {
   'deploy.extraArgs': '自定义参数',
   'deploy.extraArgsHint': '每行一个参数，按引擎实际接收的形式填写（例如 --enable-chunked-prefill）。',
   'deploy.addExtraArg': '添加参数',
+  'deploy.rdma': 'RDMA 设备',
+  'deploy.rdmaHint':
+    '通过集群的 DRA 驱动为每个 Pod 申请 RDMA 网卡。分布式与 PD 服务需要在 Pod 之间交换张量与 KV 缓存，走 RDMA 可以避免互联成为瓶颈。',
+  'deploy.rdmaDevices': '每个 Pod 的设备数',
+  'deploy.rdmaDevicesHint':
+    '每个设备都是独立分配。通常按网卡 rail 申请；每个 GPU 配一张网卡的节点最多可申请 8 个。',
+  'deploy.rdmaDeviceClass': '设备类',
+  'deploy.rdmaDeviceClassPlaceholder': '平台默认',
+  'deploy.rdmaDeviceClassHint': '用于分配的 DRA DeviceClass；留空使用 Chart 创建的平台默认类。',
   'deploy.envVars': '环境变量',
   'deploy.envVarsHint':
     '应用于该服务的所有引擎容器，且对所有拓扑生效。Kubernetes 或调度控制器使用的变量名（如 HOSTNAME）会被拒绝。',

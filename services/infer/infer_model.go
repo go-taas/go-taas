@@ -80,6 +80,14 @@ type InferenceService struct {
 	// the service, as a JSON object of name to value. A per-role override
 	// lives inside RoleEngineArgs.
 	Env datatypes.JSON `gorm:"type:jsonb;not null;default:'{}'"`
+	// RdmaEnabled requests RDMA network devices for every pod of the
+	// service through the cluster's DRA driver.
+	RdmaEnabled bool `gorm:"not null;default:false"`
+	// RdmaDevices is how many devices one pod requests (0 when disabled).
+	RdmaDevices int `gorm:"not null;default:0"`
+	// RdmaDeviceClass is the DRA DeviceClass the devices come from. Empty
+	// means the platform default.
+	RdmaDeviceClass string `gorm:"size:253;not null;default:''"`
 	// Topology is the serving layout: single, multinode or pd. Empty on a
 	// row written before topologies existed, which reads as single.
 	Topology string `gorm:"size:16;not null;default:'single'"`

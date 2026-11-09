@@ -951,6 +951,12 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
+	// The RDMA request is validated with the pod shape: the device count and
+	// DeviceClass must be usable before a claim template can be written.
+	rdma, err := NormalizeRdma(req.GetRdma())
+	if err != nil {
+		return nil, err
+	}
 
 	// Feature #52 (AD13): the vGPU slice request is validated before any
 	// write or publish. Both pool_id and slice_template_id must be
@@ -1047,6 +1053,9 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		ExtraArgs:            extraArgs,
 		RoleEngineArgs:       roleArgs,
 		Env:                  env,
+		RdmaEnabled:          rdma.Enabled,
+		RdmaDevices:          rdma.Devices,
+		RdmaDeviceClass:      rdma.DeviceClass,
 		Endpoints:            []string{},
 		Autoscaling:          autoscalingJSON,
 		PoolID:               poolID,
@@ -1212,6 +1221,7 @@ func (s *Service) GetInferenceService(ctx context.Context, req *inferv1.GetInfer
 		ExtraArgs:         ExtraArgsList(row.ExtraArgs),
 		RoleEngineArgs:    roleEngineArgsToProto(row.RoleEngineArgs),
 		Env:               EnvMap(row.Env),
+		Rdma:              protoRdma(rdmaSpecFromRow(row)),
 	}, nil
 }
 
@@ -1771,7 +1781,20 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 		}
 		scheduling = &normalized
 	}
-	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas, roleArgs, scheduling); err != nil {
+
+	// The RDMA request rides with the pod shape for the same reason: it is a
+	// property of the pod, not of the layout, and a layout change must not
+	// silently drop the devices a distributed service depends on. Omitted
+	// keeps the stored request.
+	var rdma *RdmaSpec
+	if req.GetRdma() != nil {
+		normalized, err := NormalizeRdma(req.GetRdma())
+		if err != nil {
+			return nil, err
+		}
+		rdma = &normalized
+	}
+	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas, roleArgs, scheduling, rdma); err != nil {
 		return nil, err
 	}
 
@@ -1793,6 +1816,11 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 		updated.CPUMilli = scheduling.CPUMilli
 		updated.MemoryMiB = scheduling.MemoryMiB
 		updated.Priority = scheduling.Priority
+	}
+	if rdma != nil {
+		updated.RdmaEnabled = rdma.Enabled
+		updated.RdmaDevices = rdma.Devices
+		updated.RdmaDeviceClass = rdma.DeviceClass
 	}
 
 	modelRepo, err := s.modelRepository()
@@ -2374,6 +2402,7 @@ func summarizeService(row *InferenceService, effective *AutoscalingPolicy) *infe
 		PrefillReplicas:      clampToInt32(row.PrefillReplicas),
 		DecodeReplicas:       clampToInt32(row.DecodeReplicas),
 		Scheduling:           schedulingToProto(row),
+		Rdma:                 protoRdma(rdmaSpecFromRow(row)),
 	}
 }
 

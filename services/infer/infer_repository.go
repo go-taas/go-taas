@@ -240,7 +240,7 @@ func (r *InferenceServiceRepository) UpdateReplicas(ctx context.Context, _ strin
 // non-zero. A miss maps to CodeInferServiceNotFound.
 func (r *InferenceServiceRepository) UpdateTopology(
 	ctx context.Context, _ string, serviceID string, spec TopologySpec, replicas int,
-	roleArgs datatypes.JSON, scheduling *PodScheduling,
+	roleArgs datatypes.JSON, scheduling *PodScheduling, rdma *RdmaSpec,
 ) error {
 	return r.db.WithinTx(ctx, func(ctx context.Context) error {
 		updates := map[string]any{
@@ -266,6 +266,13 @@ func (r *InferenceServiceRepository) UpdateTopology(
 			updates["cpu_milli"] = scheduling.CPUMilli
 			updates["memory_mib"] = scheduling.MemoryMiB
 			updates["priority"] = scheduling.Priority
+		}
+		// A nil RDMA spec keeps the stored request: a layout change that says
+		// nothing about devices must not silently detach them.
+		if rdma != nil {
+			updates["rdma_enabled"] = rdma.Enabled
+			updates["rdma_devices"] = rdma.Devices
+			updates["rdma_device_class"] = rdma.DeviceClass
 		}
 		return r.updateServiceByID(ctx, serviceID, updates)
 	})

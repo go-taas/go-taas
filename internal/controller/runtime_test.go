@@ -27,11 +27,14 @@ import (
 func newFakeDynamic(objs ...k8sruntime.Object) *dynamicfake.FakeDynamicClient {
 	scheme := k8sruntime.NewScheme()
 	return dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{
-		modelClaimGVR:    "ModelClaimList",
-		podAutoscalerGVR: "PodAutoscalerList",
-		stormServiceGVR:  "StormServiceList",
-		podGroupGVR:      "PodGroupList",
-		httpRouteGVR:     "HTTPRouteList",
+		modelClaimGVR:            "ModelClaimList",
+		podAutoscalerGVR:         "PodAutoscalerList",
+		stormServiceGVR:          "StormServiceList",
+		podGroupGVR:              "PodGroupList",
+		httpRouteGVR:             "HTTPRouteList",
+		deviceClassGVR:           "DeviceClassList",
+		resourceClaimTemplateGVR: "ResourceClaimTemplateList",
+		resourceClaimGVR:         "ResourceClaimList",
 	}, objs...)
 }
 

@@ -267,6 +267,17 @@ export interface EngineParamTemplate {
   matchScore?: number;
 }
 
+// RdmaConfig requests RDMA network devices for an inference service's pods.
+// The platform allocates them through Kubernetes DRA: the controller writes a
+// ResourceClaimTemplate per service and every pod gets its own device.
+export interface RdmaConfig {
+  enabled?: boolean;
+  // How many devices one pod requests (0/undefined reads as 1).
+  devices?: number;
+  // DeviceClass to allocate from; empty uses the platform default.
+  deviceClass?: string;
+}
+
 // RoleEngineArgs is one role's engine parameters inside a template or a
 // service.
 export interface RoleEngineArgs {
@@ -367,6 +378,8 @@ export interface InferenceServiceSummary {
   // Per-pod resource shape and scheduling priority. Every topology accepts
   // them; the platform schedules the pods through Volcano.
   scheduling?: PodScheduling;
+  // rdma is the RDMA device request of the service's pods.
+  rdma?: RdmaConfig;
 }
 
 // PodScheduling is how much of a node one pod asks for, plus the priority it

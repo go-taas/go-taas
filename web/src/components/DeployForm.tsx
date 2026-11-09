@@ -205,6 +205,12 @@ export default function DeployForm({
   const [cpuCores, setCpuCores] = useState('4');
   const [memoryGiB, setMemoryGiB] = useState('16');
   const [priority, setPriority] = useState('normal');
+  // RDMA devices. Distributed serving (multinode/pd) exchanges tensors and KV
+  // cache between pods; over RDMA that link stops being the bottleneck. The
+  // platform allocates the devices through Kubernetes DRA.
+  const [rdmaEnabled, setRdmaEnabled] = useState(false);
+  const [rdmaDevices, setRdmaDevices] = useState('1');
+  const [rdmaDeviceClass, setRdmaDeviceClass] = useState('');
   // Parameter templates that fit the current engine/model/topology/card. The
   // operator loads one instead of retyping a dozen flags.
   const [templates, setTemplates] = useState<EngineParamTemplate[]>([]);
@@ -468,6 +474,11 @@ export default function DeployForm({
           cpuCores: Number(cpuCores) || 0,
           memoryMib: Math.round((Number(memoryGiB) || 0) * 1024),
           priority,
+        },
+        rdma: {
+          enabled: rdmaEnabled,
+          devices: parseInt(rdmaDevices, 10) || 1,
+          deviceClass: rdmaDeviceClass.trim(),
         },
         ...(sharedGpu ? { poolId, sliceTemplateId } : {}),
       });
@@ -777,6 +788,46 @@ export default function DeployForm({
           </select>
           <div className="field-hint">{t('deploy.priorityHint')}</div>
         </div>
+        <div className="form-field">
+          <label htmlFor="deploy-rdma">{t('deploy.rdma')}</label>
+          <input
+            id="deploy-rdma"
+            data-testid="deploy-rdma-toggle"
+            type="checkbox"
+            checked={rdmaEnabled}
+            onChange={(e) => setRdmaEnabled(e.target.checked)}
+          />
+          <div className="field-hint">{t('deploy.rdmaHint')}</div>
+        </div>
+        {rdmaEnabled && (
+          <>
+            <div className="form-field">
+              <label htmlFor="deploy-rdma-devices">{t('deploy.rdmaDevices')}</label>
+              <input
+                id="deploy-rdma-devices"
+                data-testid="deploy-rdma-devices"
+                type="number"
+                min={1}
+                max={8}
+                value={rdmaDevices}
+                onChange={(e) => setRdmaDevices(e.target.value)}
+              />
+              <div className="field-hint">{t('deploy.rdmaDevicesHint')}</div>
+            </div>
+            <div className="form-field">
+              <label htmlFor="deploy-rdma-class">{t('deploy.rdmaDeviceClass')}</label>
+              <input
+                id="deploy-rdma-class"
+                data-testid="deploy-rdma-device-class"
+                className="mono"
+                value={rdmaDeviceClass}
+                placeholder={t('deploy.rdmaDeviceClassPlaceholder')}
+                onChange={(e) => setRdmaDeviceClass(e.target.value)}
+              />
+              <div className="field-hint">{t('deploy.rdmaDeviceClassHint')}</div>
+            </div>
+          </>
+        )}
       </div>
 
       {/* The template row is always present once an engine is known: the

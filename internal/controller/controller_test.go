@@ -35,6 +35,8 @@ func (f *fakeReconciler) SetScheduling(_, _, _, _, _ string) {}
 
 func (f *fakeReconciler) SetServiceStateProvider(ServiceStateProvider) {}
 
+func (f *fakeReconciler) SetRDMAConfig(string) {}
+
 func TestControllerDispatchesSubjects(t *testing.T) {
 	client := mq.NewFake()
 	rec := &fakeReconciler{}

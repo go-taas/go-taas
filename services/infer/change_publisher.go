@@ -88,6 +88,9 @@ type changeEvent struct {
 	// Env are the environment variables set on every engine container of
 	// the service.
 	Env map[string]string `json:"env,omitempty"`
+	// Rdma is the RDMA device request of the service's pods. Nil means the
+	// service asked for no device.
+	Rdma *changeEventRdma `json:"rdma,omitempty"`
 	// RoleEngineArgs overrides EngineArgs per role, so a PD service can tune
 	// prefill and decode independently.
 	RoleEngineArgs []RoleEngineArgs `json:"role_engine_args,omitempty"`
@@ -112,6 +115,26 @@ type changeEvent struct {
 	// what Volcano preempts on, so it is carried on every event.
 	Priority    string    `json:"priority,omitempty"`
 	PublishedAt time.Time `json:"published_at"`
+}
+
+// changeEventRdmaFor projects a row's RDMA columns onto the event. A service
+// without RDMA carries nil, so the controller's default is "no claim".
+func changeEventRdmaFor(svc *InferenceService) *changeEventRdma {
+	if !svc.RdmaEnabled || svc.RdmaDevices < 1 {
+		return nil
+	}
+	return &changeEventRdma{
+		Enabled:     true,
+		Devices:     svc.RdmaDevices,
+		DeviceClass: svc.RdmaDeviceClass,
+	}
+}
+
+// changeEventRdma is the RDMA request inside a change event.
+type changeEventRdma struct {
+	Enabled     bool   `json:"enabled"`
+	Devices     int    `json:"devices"`
+	DeviceClass string `json:"device_class,omitempty"`
 }
 
 // buildChangeEvent composes the change event for a service row with its
@@ -148,6 +171,7 @@ func buildChangeEvent(eventType string, svc *InferenceService, modelName, weight
 		EngineArgs:           EngineArgsMap(svc.EngineArgs),
 		ExtraArgs:            ExtraArgsList(svc.ExtraArgs),
 		Env:                  EnvMap(svc.Env),
+		Rdma:                 changeEventRdmaFor(svc),
 		RoleEngineArgs:       RoleEngineArgsList(svc.RoleEngineArgs),
 		Topology:             storedTopologyName(svc.Topology),
 		TensorParallelSize:   maxInt(svc.TensorParallelSize, 1),

@@ -152,6 +152,36 @@
     },
     "configOverrides": {
       "type": "object"
+    },
+    "rdma": {
+      "type": "object",
+      "description": "RDMA network devices for inference workloads (DRA).",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Create the DeviceClass."
+        },
+        "deviceClass": {
+          "type": "string",
+          "description": "DeviceClass name services inherit."
+        },
+        "driver": {
+          "type": "string",
+          "description": "DRA driver whose devices the class accepts."
+        },
+        "requireLinkUp": {
+          "type": "boolean",
+          "description": "Only accept links reported up."
+        },
+        "selector": {
+          "type": "string",
+          "description": "Full CEL selector overriding the built expression."
+        },
+        "labels": {
+          "type": "object",
+          "description": "Extra labels for the DeviceClass."
+        }
+      }
     }
   },
   "definitions": {

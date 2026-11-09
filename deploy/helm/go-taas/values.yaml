@@ -755,6 +755,39 @@ console:
 # controller: the reconciliation loop that turns desired-state messages into
 # Kubernetes resources (Deployments, Services, HPAs, ModelClaims) inside the
 # inference namespace it manages.
+# RDMA network devices for inference workloads (Kubernetes DRA).
+#
+# A model sharded across machines, or split into prefill and decode roles,
+# exchanges tensors and KV cache over RDMA; over TCP that link is the
+# bottleneck. The platform allocates the device through Dynamic Resource
+# Allocation: this chart creates the DeviceClass (cluster infrastructure) and
+# the controller writes one ResourceClaimTemplate per service so the device
+# count is a service property.
+#
+# Requires a DRA driver that publishes network devices (for example NVIDIA
+# DRANet, driver `dra.net`). The device attributes in the selector below are
+# that driver's: `dra.net/rdma` marks an RDMA-capable device, `dra.net/state`
+# is the link state the node reports.
+rdma:
+  # -- Create the DeviceClass. Disable it on a cluster without a DRA network
+  # driver; services that request RDMA then fail with a clear message.
+  enabled: true
+  # -- DeviceClass name. `controller.config.controller.rdma.deviceClass` must
+  # name the same class, because that is the default a service inherits.
+  deviceClass: taas-rdma
+  # -- Driver whose devices this class accepts.
+  driver: dra.net
+  # -- Only accept links the node reports as up (`dra.net/state == "up"`), so
+  # a pod is never handed a down port. Disable it on a driver version that
+  # does not publish the state attribute.
+  requireLinkUp: true
+  # -- Full CEL selector, overriding the expression built from `driver` and
+  # `requireLinkUp`. Use it to pin specific cards or PCI addresses, e.g.
+  #   selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0","0000:0f:00.1"]'
+  selector: ""
+  # -- Extra labels for the DeviceClass.
+  labels: {}
+
 controller:
   # -- Deploy the controller.
   enabled: true
@@ -838,6 +871,17 @@ controller:
       #     priorityClassNormal: normal-priority
       #     priorityClassLow: low-priority
       #     queue: ""                           # Volcano queue, default if empty
+      # RDMA devices for inference pods. The DeviceClass below is created by
+      # this chart; the controller only needs its name for services that
+      # accept the platform default.
+      #
+      #   rdma:
+      #     deviceClass: taas-rdma             # CONFIG_CONTROLLER_RDMA_DEVICECLASS
+      rdma:
+        # -- Default DRA DeviceClass a service gets when it enables RDMA but
+        # names no class (`controller.rdma.deviceClass`). It must match
+        # `rdma.deviceClass` below.
+        deviceClass: taas-rdma
       weights:
         # -- Name of the shared model-weights PVC the controller ensures (`controller.weights.pvcName`).
         pvcName: model-weights

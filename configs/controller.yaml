@@ -85,3 +85,9 @@ controller:
   # keeps the k8s resources for diagnosis.
   podFailureDetector:
     interval: 30s
+  # rdma configures the DRA DeviceClass inference pods request devices from
+  # when a service enables RDMA. The class is cluster infrastructure created
+  # by the helm chart; this is only the default a service inherits when it
+  # does not name one (CONFIG_CONTROLLER_RDMA_DEVICECLASS).
+  rdma:
+    deviceClass: taas-rdma

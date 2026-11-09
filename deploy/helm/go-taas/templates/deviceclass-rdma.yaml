@@ -1,0 +1,36 @@
+{{- if .Values.rdma.enabled }}
+{{/*
+The DeviceClass inference pods allocate RDMA devices from.
+
+DRA replaces the extended-resource model for network devices: a DeviceClass
+names the devices a fleet offers, a ResourceClaimTemplate describes a request,
+and the scheduler hands each pod its own devices. The controller writes the
+per-service claim template (the device count is a service property); this
+object is cluster infrastructure, so it lives here and not in the controller.
+
+The selector is CEL over the devices the installed driver publishes. The
+default accepts every device the DRA network driver (dra.net) reports as
+RDMA-capable, and — when `rdma.requireLinkUp` is set — only links the node
+reports as up, so a pod is never given a down port.
+*/}}
+apiVersion: resource.k8s.io/v1
+kind: DeviceClass
+metadata:
+  name: {{ .Values.rdma.deviceClass }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: inference-rdma
+  {{- with .Values.rdma.labels }}
+  {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  selectors:
+    - cel:
+        {{- if .Values.rdma.selector }}
+        expression: {{ .Values.rdma.selector | quote }}
+        {{- else if .Values.rdma.requireLinkUp }}
+        expression: {{ printf "device.driver == %q && device.attributes[%q].rdma == true && device.attributes[%q].state == %q" .Values.rdma.driver "dra.net" "dra.net" "up" | quote }}
+        {{- else }}
+        expression: {{ printf "device.driver == %q && device.attributes[%q].rdma == true" .Values.rdma.driver "dra.net" | quote }}
+        {{- end }}
+{{- end }}

@@ -1029,6 +1029,10 @@ export const en: Record<string, string> = {
   'service.topologyUpdateFailed': 'Failed to update the serving layout',
   'service.engineArgsEdit': 'Edit parameters',
   'service.engineArgsTitle': 'Edit parameters for {name}',
+  'service.rdma': 'RDMA',
+  'service.rdmaValue': '{devices} device(s) from {deviceClass}',
+  'service.rdmaDefaultClass': 'the platform default class',
+  'service.rdmaDisabled': 'not requested',
   'service.envVars': 'Environment variables',
   'service.envVarsEmpty': 'No environment variables are set.',
   'service.envVarsHint': 'Applied to every engine container of this service.',
@@ -1941,6 +1945,16 @@ export const en: Record<string, string> = {
   'deploy.extraArgs': 'Extra arguments',
   'deploy.extraArgsHint': 'One argument per row, exactly as the engine should receive it (for example --enable-chunked-prefill).',
   'deploy.addExtraArg': 'Add argument',
+  'deploy.rdma': 'RDMA devices',
+  'deploy.rdmaHint':
+    'Allocate RDMA network devices for every pod through the cluster DRA driver. Distributed and PD serving exchange tensors and KV cache between pods; over RDMA that link stops being the bottleneck.',
+  'deploy.rdmaDevices': 'Devices per pod',
+  'deploy.rdmaDevicesHint':
+    'Each device is a separate allocation from the class. Use one per NIC rail; a node with one NIC per GPU asks for up to 8.',
+  'deploy.rdmaDeviceClass': 'Device class',
+  'deploy.rdmaDeviceClassPlaceholder': 'platform default',
+  'deploy.rdmaDeviceClassHint':
+    'DRA DeviceClass to allocate from. Empty uses the platform default created by the chart.',
   'deploy.envVars': 'Environment variables',
   'deploy.envVarsHint':
     'Applied to every engine container of this service, for every topology. A name Kubernetes or the storm controller sets (for example HOSTNAME) is rejected.',

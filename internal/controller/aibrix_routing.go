@@ -451,6 +451,7 @@ func (r *k8sReconciler) reclaimTargets(evt changeEvent) []reclaimTarget {
 		r.reclaimDynamic("PodGroup", r.namespace, podGroupGVR, podGroupName(evt)),
 		r.reclaimDynamic("PodAutoscaler", r.namespace, podAutoscalerGVR, autoscalerName(evt.Name)),
 		r.reclaimDynamic("HTTPRoute", gatewayNamespace, httpRouteGVR, routeName),
+		r.reclaimDynamic("ResourceClaimTemplate", r.namespace, resourceClaimTemplateGVR, rdmaClaimTemplateName(evt)),
 	)
 	return targets
 }

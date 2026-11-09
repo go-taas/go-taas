@@ -79,6 +79,10 @@ func main() {
 		cfg.Controller.Scheduling.PriorityClassLow,
 		cfg.Controller.Scheduling.Queue,
 	)
+	// RDMA devices are allocated through DRA. The DeviceClass is cluster
+	// infrastructure created by the chart; the controller only needs its
+	// name for services that accept the platform default.
+	reconciler.SetRDMAConfig(cfg.Controller.RDMA.DeviceClass)
 	reconciler.SetVGPUConfig(
 		cfg.VGPU.HAMI.PolicyAnnotation,
 		"binpack",

@@ -45,6 +45,8 @@ exec "$0" "$@" --nnodes <TP×PP> --node-rank "$rank" --master-addr "$master" --m
 
 **AD1e —— 环境变量对所有角色生效。** `env`（共享）与 `role_engine_args[].env`（按角色）会写入引擎容器的 `env` 列表。控制器把角色的条目合并到共享映射之上，并按名称排序后写入，保证 Pod 模板确定：无序 Map 会让每次 reconcile 都重写 StormService 并无谓滚动 Pod。变量对所有拓扑（single、multinode、pd）以及 Storm 的所有角色生效，只有显式声明同名变量的角色会覆盖共享值。Kubernetes 或调度控制器保留的名称（`HOSTNAME`、`POD_NAME`、`POD_NAMESPACE`、`POD_IP`、`NODE_NAME`、`STORM_SERVICE_NAME`、`ROLESET_NAME`、`ROLESET_INDEX`、`ROLE_NAME`、`ROLE_TEMPLATE_HASH`）在 API 层即被拒绝：rendezvous 脚本正是从 `HOSTNAME` 与 `ROLESET_INDEX` 推导 rank，覆盖后服务无法启动。校验失败使用 **10318 INFER_ENGINE_ARGS_INVALID**，与引擎参数表单一致，控制台统一展示为「参数不合法」。变量值以明文存储并展示在服务详情页：它属于配置而不是密钥仓库，凭据应放在镜像或挂载的 Secret 中，不要写进 `env`。
 
+**AD1f —— 分布式角色共用同一个 RDMA claim 模板。** `multinode` 或 `pd` 服务可以申请 RDMA 设备；控制器只写一个 `<service>-rdma` 模板，各角色的 Pod 模板都引用它，因此每个角色的每个 Pod 都会得到各自的分配。详见 [推理服务的 RDMA 设备](./rdma-devices.zh-cn.md)。
+
 **AD2 —— 拓扑是数据，不是代码。** `inference_services.topology` 存 `single` / `multinode` / `pd`，同时存 `tensor_parallel_size`、`pipeline_parallel_size`、`prefill_replicas`、`decode_replicas`。读取时空值归一化为 `single`（即历史数据行的语义）。接口契约使用同一套小写名称，控制台与后端使用同一词汇。
 
 **AD3 —— 任何写入之前先校验。** `NormalizeTopology` 拒绝未知形态、越界的并行度（`1..100`，且 `TP × PP ≤ 100`）、实际只有一个 Pod 的“多机”请求（`TP × PP < 2`）、不支持分离的引擎上的 PD（只允许 vLLM/SGLang）、以及越界的角色副本数；错误码 **10319 INFER_TOPOLOGY_INVALID**。校验失败不会发布任何期望状态。

@@ -167,6 +167,12 @@ const (
 	// or priority is outside the supported set (gpu_per_pod, cpu_cores,
 	// memory_mib, priority).
 	CodeInferSchedulingInvalid Code = 10323 // INFER_SCHEDULING_INVALID
+
+	// CodeInferRdmaInvalid is returned when an RDMA device request is
+	// outside the supported set: more devices than one pod may take, a
+	// malformed DeviceClass name, or a class the platform has no chart
+	// default for.
+	CodeInferRdmaInvalid Code = 10324 // INFER_RDMA_INVALID
 )
 
 // metering module error codes.

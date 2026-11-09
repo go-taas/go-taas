@@ -411,6 +411,17 @@ type ControllerConfig struct {
 	// publishes a failed status for a running service whose pod has a
 	// terminal failure.
 	PodFailureDetector ControllerPodFailureDetectorConfig `mapstructure:"podFailureDetector"`
+	// RDMA configures the DRA DeviceClass inference pods request when a
+	// service enables RDMA.
+	RDMA ControllerRDMAConfig `mapstructure:"rdma"`
+}
+
+// ControllerRDMAConfig holds the RDMA device-allocation settings.
+type ControllerRDMAConfig struct {
+	// DeviceClass is the resource.k8s.io DeviceClass a service's pods
+	// request devices from when the service does not name one. The helm
+	// chart creates this class; defaults to "taas-rdma".
+	DeviceClass string `mapstructure:"deviceClass"`
 }
 
 // ControllerPodFailureDetectorConfig holds the pod-failure scanner

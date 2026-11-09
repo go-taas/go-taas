@@ -468,6 +468,34 @@ message CreateInferenceServiceRequest {
   // variable names ("VLLM_USE_V1"); values are passed through verbatim.
   // A role_engine_args entry may override a variable for that role only.
   map<string, string> env = 21;
+  // rdma requests RDMA network devices for every pod of the service
+  // through the cluster's DRA driver. Omitted (or enabled=false) means
+  // the pods get no RDMA device.
+  RdmaConfig rdma = 22;
+}
+
+// RdmaConfig selects the RDMA network devices one inference pod gets.
+//
+// Inference pods exchange tensors and KV cache over RDMA (RoCE/InfiniBand)
+// when a model is sharded across machines or split into prefill/decode roles;
+// without a device the engine falls back to TCP and the interconnect becomes
+// the bottleneck. The platform allocates the device through Kubernetes DRA:
+// the controller writes a ResourceClaimTemplate for the service and every pod
+// references it, so each pod gets its own device from the requested
+// DeviceClass.
+message RdmaConfig {
+  // enabled turns the request on. A service with enabled=false stores no
+  // request and its pods are created exactly as before.
+  bool enabled = 1;
+  // devices is how many RDMA devices one pod requests. 0 means 1, the
+  // common case of one dual-port card per pod with a rail-optimized pair;
+  // the bound is 8 (one device per GPU in a full node). Each device is a
+  // separate allocation from the same DeviceClass.
+  int32 devices = 2;
+  // device_class names the DeviceClass the devices are allocated from
+  // (resource.k8s.io). Empty uses the platform default, which the helm
+  // chart creates and the controller reports in its configuration.
+  string device_class = 3;
 }
 
 // PodScheduling is how much of the node one pod of the service asks for,
@@ -727,6 +755,8 @@ message InferenceServiceSummary {
   // scheduling is the per-pod resource shape and priority the service was
   // created (or last updated) with.
   PodScheduling scheduling = 23;
+  // rdma is the RDMA device request of the service's pods.
+  RdmaConfig rdma = 24;
 }
 
 
@@ -759,6 +789,8 @@ message GetInferenceServiceResponse {
   // env are the environment variables the service runs with, keyed by
   // variable name.
   map<string, string> env = 10;
+  // rdma is the RDMA device request of the service's pods.
+  RdmaConfig rdma = 11;
 }
 
 // AssignedSlice is the assigned physical GPU (AD14).
@@ -850,6 +882,10 @@ message UpdateInferenceServiceTopologyRequest {
   // keeps the stored values, so a topology change never silently resizes
   // the pods.
   PodScheduling scheduling = 9;
+  // rdma replaces the RDMA device request. Omitted keeps the stored
+  // request, so rolling out a new layout never silently drops the devices
+  // a distributed service depends on.
+  RdmaConfig rdma = 10;
 }
 
 message UpdateInferenceServiceTopologyResponse {

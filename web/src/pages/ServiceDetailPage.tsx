@@ -41,6 +41,7 @@ interface ServiceResponse {
   extraArgs?: string[];
   roleEngineArgs?: RoleEngineArgs[];
   env?: Record<string, string>;
+  rdma?: { enabled?: boolean; devices?: number; deviceClass?: string };
 }
 
 export default function ServiceDetailPage() {
@@ -250,6 +251,17 @@ export default function ServiceDetailPage() {
               {t(`deploy.priority${prioritySuffix(s.scheduling?.priority)}`)}
             </div>
           </div>
+          <div className="detail-item">
+            <div className="label">{t('service.rdma')}</div>
+            <div className="value" data-testid="service-rdma">
+              {s.rdma?.enabled
+                ? t('service.rdmaValue', {
+                    devices: String(s.rdma.devices || 1),
+                    deviceClass: s.rdma.deviceClass || t('service.rdmaDefaultClass'),
+                  })
+                : t('service.rdmaDisabled')}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -443,6 +455,11 @@ function TopologyDialog({
     String(Math.round((service.scheduling?.memoryMib || 0) / 1024)),
   );
   const [priority, setPriority] = useState(service.scheduling?.priority || 'normal');
+  // The RDMA request is part of the pod shape too: rolling out a layout is
+  // when an operator adds the interconnect a distributed service needs.
+  const [rdmaEnabled, setRdmaEnabled] = useState(Boolean(service.rdma?.enabled));
+  const [rdmaDevices, setRdmaDevices] = useState(String(service.rdma?.devices || 1));
+  const [rdmaDeviceClass, setRdmaDeviceClass] = useState(service.rdma?.deviceClass || '');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
 
@@ -477,6 +494,11 @@ function TopologyDialog({
             cpuCores: Number(cpuCores) || 0,
             memoryMib: Math.round((Number(memoryGiB) || 0) * 1024),
             priority,
+          },
+          rdma: {
+            enabled: rdmaEnabled,
+            devices: parseInt(rdmaDevices, 10) || 1,
+            deviceClass: rdmaDeviceClass.trim(),
           },
         },
       );
@@ -623,6 +645,44 @@ function TopologyDialog({
             <option value="low">{t('deploy.priorityLow')}</option>
           </select>
         </div>
+        <div className="form-field">
+          <label htmlFor="topology-rdma">{t('deploy.rdma')}</label>
+          <input
+            id="topology-rdma"
+            data-testid="topology-rdma-toggle"
+            type="checkbox"
+            checked={rdmaEnabled}
+            onChange={(e) => setRdmaEnabled(e.target.checked)}
+          />
+          <div className="field-hint">{t('deploy.rdmaHint')}</div>
+        </div>
+        {rdmaEnabled && (
+          <>
+            <div className="form-field">
+              <label htmlFor="topology-rdma-devices">{t('deploy.rdmaDevices')}</label>
+              <input
+                id="topology-rdma-devices"
+                data-testid="topology-rdma-devices"
+                type="number"
+                min={1}
+                max={8}
+                value={rdmaDevices}
+                onChange={(e) => setRdmaDevices(e.target.value)}
+              />
+            </div>
+            <div className="form-field">
+              <label htmlFor="topology-rdma-class">{t('deploy.rdmaDeviceClass')}</label>
+              <input
+                id="topology-rdma-class"
+                data-testid="topology-rdma-device-class"
+                className="mono"
+                value={rdmaDeviceClass}
+                placeholder={t('deploy.rdmaDeviceClassPlaceholder')}
+                onChange={(e) => setRdmaDeviceClass(e.target.value)}
+              />
+            </div>
+          </>
+        )}
       </div>
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose} data-testid="topology-cancel">

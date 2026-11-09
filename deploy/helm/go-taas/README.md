@@ -473,6 +473,8 @@ Three mechanisms, highest precedence first:
 | `controller.config.controller.weights.*` | `model-weights` / `/data/weights` / `""` | shared weights PVC name, mount path, StorageClass |
 | `controller.config.controller.scheduling.schedulerName` | `""` | `volcano` turns on gang scheduling with the PodGroups the controller writes; empty keeps the cluster default scheduler |
 | `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | PriorityClasses a service priority maps onto; an unmapped priority leaves the pod with the cluster default class |
+| `rdma.enabled` / `deviceClass` | `true` / `taas-rdma` | the DRA `DeviceClass` inference pods request RDMA devices from; `rdma.requireLinkUp` accepts only links the node reports up, and `rdma.selector` overrides the built CEL expression (pin cards or PCI addresses) |
+| `controller.config.controller.rdma.deviceClass` | `taas-rdma` | the class a service inherits when it enables RDMA without naming one; must match `rdma.deviceClass` |
 | `dependencies.keycloak.mode` | `disabled` | `disabled`, `internal` (chart-provisioned Keycloak) or `external` |
 | `dependencies.keycloak.external.*` | — | `issuer`, `clientId`, `clientSecret`, `redirectUri` (seeded into the SSO provider row) |
 | `dependencies.keycloak.internal.redirectUri` / `webOrigin` | localhost values | the console's public URL when `mode: internal` |

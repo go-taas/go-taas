@@ -77,6 +77,9 @@ type changeEvent struct {
 	// service. A per-role entry in RoleEngineArgs overrides one variable for
 	// that role only.
 	Env map[string]string `json:"env,omitempty"`
+	// Rdma is the DRA device request for every pod of the service. Nil means
+	// the pods get no RDMA device.
+	Rdma *rdmaRequest `json:"rdma,omitempty"`
 	// RoleEngineArgs overrides EngineArgs per role, so the prefill and decode
 	// roles of a PD service (or the worker role of a multi-machine service)
 	// can each be tuned.
@@ -196,6 +199,9 @@ type k8sReconciler struct {
 	// traffic?". Nil uses the HTTP health probe. Tests inject a stub so
 	// they never reach the network.
 	engineProber func(ctx context.Context, host string, port int) bool
+	// rdmaClass is the DRA DeviceClass a service gets when it requests RDMA
+	// without naming one. Empty uses defaultRdmaDeviceClass.
+	rdmaClass string
 	// serviceState reads the platform database's desired state for a
 	// service. It lets a long readiness wait notice a stop/delete that is
 	// queued behind this event and abort promptly, so the teardown is not
@@ -285,6 +291,13 @@ func (r *k8sReconciler) SetVGPUConfig(policyAnnotation, placementPolicy string, 
 	r.policyAnnotation = policyAnnotation
 	r.placementPolicy = placementPolicy
 	r.poolSelector = poolSelector
+}
+
+// SetRDMAConfig installs the DRA DeviceClass used when a service requests RDMA
+// devices without naming one. An empty value keeps defaultRdmaDeviceClass.
+// It must be called before serving.
+func (r *k8sReconciler) SetRDMAConfig(deviceClass string) {
+	r.rdmaClass = strings.TrimSpace(deviceClass)
 }
 
 // SetScheduling installs the pod scheduling configuration: the scheduler
@@ -771,6 +784,12 @@ func (r *k8sReconciler) teardown(ctx context.Context, evt changeEvent) error {
 		podGroupName(evt), evt.ServiceID); err != nil {
 		errs = append(errs, fmt.Errorf("controller: delete podgroup %s: %w", podGroupName(evt), err))
 	}
+	// The RDMA claim template is workload output: without this, a service
+	// that is stopped and later restarted for a different model would keep a
+	// stale device request.
+	if err := r.deleteRdmaClaimTemplate(ctx, evt); err != nil {
+		errs = append(errs, fmt.Errorf("controller: delete rdma claim template %s: %w", rdmaClaimTemplateName(evt), err))
+	}
 
 	// Backstop: sweep every resource still labeled with the service id.
 	if err := r.sweepByServiceID(ctx, evt.ServiceID); err != nil {
@@ -924,6 +943,21 @@ func (r *k8sReconciler) sweepDynamicByServiceID(ctx context.Context, serviceID, 
 		namespace string
 		gvr       schema.GroupVersionResource
 	}{"httproute", gatewayNamespace, httpRouteGVR})
+	// RDMA claims: the template and the claims DRA generated from it. A
+	// generated claim outlives its pod only if the pod was force-deleted,
+	// which is exactly the leak this sweep exists for.
+	targets = append(targets,
+		struct {
+			kind      string
+			namespace string
+			gvr       schema.GroupVersionResource
+		}{"resourceclaimtemplate", r.namespace, resourceClaimTemplateGVR},
+		struct {
+			kind      string
+			namespace string
+			gvr       schema.GroupVersionResource
+		}{"resourceclaim", r.namespace, resourceClaimGVR},
+	)
 
 	for _, target := range targets {
 		items, err := r.dynamic.Resource(target.gvr).Namespace(target.namespace).
@@ -1003,6 +1037,13 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	// JuiceFS-backed StorageClass so every inference pod reads the same
 	// model weights the control plane downloads.
 	if err := r.ensureWeightsPVC(ctx); err != nil {
+		return r.reportFailure(ctx, evt, err)
+	}
+
+	// The RDMA claim template must exist before the storm is written: a pod
+	// referencing a missing template is rejected by admission, and the
+	// failure would only surface later as a stalled deploy.
+	if err := r.applyRdmaClaims(ctx, evt); err != nil {
 		return r.reportFailure(ctx, evt, err)
 	}
 
@@ -1424,6 +1465,20 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 		}},
 		NodeSelector: nodeSelector,
 	}
+	// RDMA devices come from the service's ResourceClaimTemplate: each pod
+	// created from this template gets its own allocation, so replicas never
+	// share one device set. The container has to name the claim as well as
+	// the pod, which is how DRA binds devices into the container.
+	if !rdmaDisabled(evt) {
+		template := rdmaClaimTemplateName(evt)
+		spec.ResourceClaims = append(spec.ResourceClaims, corev1.PodResourceClaim{
+			Name:                      rdmaClaimName,
+			ResourceClaimTemplateName: ptr(template),
+		})
+		spec.Containers[0].Resources.Claims = append(spec.Containers[0].Resources.Claims,
+			corev1.ResourceClaim{Name: rdmaClaimName})
+	}
+
 	// A distributed engine (multi-machine or PD) runs collectives inside the
 	// pod and exchanges tensors through shared memory. So does a single-node
 	// engine whose tensor/pipeline parallelism shards the model across more
@@ -1862,6 +1917,13 @@ func (e changeEvent) engineParallel() bool {
 
 // roleEngineArgs is one role's engine-argument override, mirroring the infer
 // module's RoleEngineArgs.
+// rdmaRequest is the RDMA device request carried by a change event.
+type rdmaRequest struct {
+	Enabled     bool   `json:"enabled"`
+	Devices     int    `json:"devices"`
+	DeviceClass string `json:"device_class,omitempty"`
+}
+
 type roleEngineArgs struct {
 	Role       string            `json:"role"`
 	EngineArgs map[string]string `json:"engine_args,omitempty"`

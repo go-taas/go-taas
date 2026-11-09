@@ -67,6 +67,16 @@ rules:
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes", "referencegrants"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # RDMA device allocation (DRA). The DeviceClass is chart infrastructure and
+  # is only read here; the per-service ResourceClaimTemplate is workload
+  # output, so the controller creates and deletes it with the service. Claims
+  # DRA generates from the template are read and swept during teardown.
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["deviceclasses"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["resource.k8s.io"]
+    resources: ["resourceclaimtemplates", "resourceclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
 {{- end }}
 ---
 apiVersion: rbac.authorization.k8s.io/v1

@@ -691,5 +691,67 @@ module.exports = {
         });
       });
     });
+  },
+
+  'rdma: an RDMA request round-trips and a bad device count is refused': function (browser) {
+    const org = browser.globals.orgA;
+    const name = `e2e-rdma-${browser.globals.runId}`;
+
+    api.request(browser, {
+      method: 'POST',
+      path: '/api/v1/admin/models',
+      org,
+      body: {name: `${name}-model`, version: 'v1', weightPath: `models/${name}/`}
+    }, (res) => {
+      const model = api.assertOk(browser, res, 'register model for rdma');
+
+      api.request(browser, {
+        method: 'POST',
+        path: '/api/v1/admin/inference-services',
+        org,
+        body: {
+          name,
+          modelId: model.modelId,
+          modelVersion: 'v1',
+          imageId: NVIDIA_IMAGE,
+          replicas: '1',
+          accelerator: 'nvidia',
+          acceleratorType: 'gpu',
+          topology: 'multinode',
+          tensorParallelSize: '2',
+          rdma: {enabled: true, devices: 2}
+        }
+      }, (res2) => {
+        const created = api.assertOk(browser, res2, 'create service with rdma');
+
+        api.request(browser, {
+          path: `/api/v1/admin/inference-services/${created.serviceId}`,
+          org
+        }, (res3) => {
+          const detail = api.assertOk(browser, res3, 'read rdma request');
+          browser.assert.equal(detail.rdma && detail.rdma.enabled, true, 'rdma enabled round-trips');
+          browser.assert.equal(detail.rdma && String(detail.rdma.devices), '2', 'device count round-trips');
+
+          // More devices than one pod may take is refused (10324).
+          api.request(browser, {
+            method: 'POST',
+            path: '/api/v1/admin/inference-services',
+            org,
+            body: {
+              name: `e2e-rdma-bad-${browser.globals.runId}`,
+              modelId: model.modelId,
+              modelVersion: 'v1',
+              imageId: NVIDIA_IMAGE,
+              replicas: '1',
+              accelerator: 'nvidia',
+              acceleratorType: 'gpu',
+              rdma: {enabled: true, devices: 99}
+            }
+          }, (res4) => {
+            api.assertBusinessError(browser, res4, 10324, 'rdma device count');
+          });
+        });
+      });
+    });
   }
 };

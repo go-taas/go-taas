@@ -100,6 +100,8 @@ var messages = map[Code]string{
 	CodeEngineTemplateExists:     "engine parameter template already exists",
 	CodeEngineTemplateInvalid:    "invalid engine parameter template",
 	CodeInferAccessInvalid:       "inference service access policy invalid",
+	CodeInferSchedulingInvalid:   "invalid pod resource shape",
+	CodeInferRdmaInvalid:         "invalid RDMA device request",
 
 	// metering
 	CodeMeteringEventInvalid:    "metering event invalid",
