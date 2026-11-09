@@ -1680,6 +1680,152 @@ button.primary:hover {
   background: var(--primary);
 }
 
+/* ------------------------------------------------------------
+   Form sections and requirement tiers
+   ------------------------------------------------------------
+   A long create form is only scannable when it says, per section
+   and per field, what actually has to be filled in. Three tiers,
+   three visually distinct flags: required (red), defaulted (blue:
+   a working value is already there) and optional (neutral: empty
+   means "feature off" or "engine default"). Sections are separated
+   by a hairline rule so the form reads as a few small blocks
+   instead of one wall of inputs.
+   ------------------------------------------------------------ */
+.form-legend {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 18px;
+  margin: 0 0 4px;
+  padding: 9px 12px;
+  border: 1px dashed var(--border-strong);
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.form-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.req-flag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 10.5px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+
+.req-flag.req-required {
+  color: var(--danger);
+  background: var(--danger-soft);
+  border-color: rgba(185, 28, 52, 0.3);
+}
+
+.req-flag.req-defaulted {
+  color: var(--info);
+  background: var(--info-soft);
+  border-color: rgba(7, 89, 133, 0.26);
+}
+
+.req-flag.req-optional {
+  color: var(--muted);
+  background: var(--badge-neutral-bg);
+  border-color: var(--border-strong);
+}
+
+.field-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.field-label-text {
+  color: var(--muted-strong);
+}
+
+.form-section {
+  margin-top: 6px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.form-section:first-of-type {
+  margin-top: 16px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.form-section-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.form-section-head h4 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.form-section-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--primary-ring);
+  background: var(--primary-soft);
+  color: var(--primary-strong);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.form-section-hint {
+  margin-left: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  text-align: right;
+}
+
+.deploy-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px 14px;
+  margin-top: 22px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-strong);
+}
+
+.deploy-checklist {
+  margin-right: auto;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.deploy-checklist.pending {
+  color: var(--warn);
+}
+
+.deploy-checklist.ready {
+  color: var(--ok);
+}
+
 .form-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

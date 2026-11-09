@@ -1,4 +1,5 @@
 import { useI18n } from '../i18n';
+import { FieldLabel } from './FormField';
 
 // EnvRow is one environment variable as the editors hold it: an ordered row
 // rather than a map, so renaming a variable does not collide with another row
@@ -55,7 +56,9 @@ export function EnvVarsEditor({
 
   return (
     <div className="form-field full" data-testid={`${testIdPrefix}-vars`}>
-      <label>{t('deploy.envVars')}</label>
+      {/* Variables are always optional: an unset variable is simply not
+          passed to the engine, which keeps its own default. */}
+      <FieldLabel text={t('deploy.envVars')} requirement="optional" />
       <div className="field-hint">{hint ?? t('deploy.envVarsHint')}</div>
       {rows.map((row, i) => (
         <div key={i} className="toolbar" style={{ marginTop: 6 }}>

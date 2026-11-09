@@ -115,6 +115,7 @@ Pitfalls to avoid:
 - **FR3.2** Changing the accelerator re-filters the image dropdown; incompatible images are hidden. If no image matches the accelerator, the form shows "No image available for this accelerator — register one in Image Management" and disables submit.
 - **FR3.3** Submit calls `CreateInferenceService`; the response returns `service_id` with `state=pending` immediately; the console navigates to the service detail page, which polls until the state reaches `running`, `failed` or `terminated`.
 - **FR3.4** Validation errors (bad name, replicas out of range, unknown model/image) are shown inline in the form and never reach the message queue.
+- **FR3.5** The form states what it needs instead of leaving an operator to discover it by trial. Every field carries one of three tiers, rendered as a badge next to its label and explained once in a legend at the top of the panel: **Required** (the request is rejected without it — service name, model, version, image; the last three are pre-filled, so in the common case only the name is typed), **Default** (a working value is already there: the platform default, the fleet's own numbers, or a value derived from another field, e.g. cards per pod for the single-node layout), and **Optional** (empty is a valid answer: the feature stays off or the engine keeps its own default). The badges state the concrete default where there is one (`Default · 4`). The panel is split into six numbered blocks — Basics, Replicas and layout, Per-pod resources, Engine parameters, Shared GPU, Autoscaling — each with a one-line summary of what it decides and a hairline rule separating it from the previous one. The submit row shows what is still missing (`Still empty: Service name`) and turns green once every required field is filled, so a missing value is visible before the round trip rather than after it.
 
 ### FR4 — Deployment state visibility
 
@@ -151,7 +152,7 @@ Pitfalls to avoid:
 | **Register Model dialog** | Name, version, weight path, description |
 | **Model detail page** (`/models/{model_id}`) | Metadata + version list, per-version deploy action |
 | **Inference Services page** (`/inference-services`) | Service list with state badges, scale and delete actions |
-| **Deploy dialog** | The one-click deployment form (FR3) |
+| **Deploy form** | The one-click deployment form (FR3): six numbered, rule-separated blocks whose fields are badged Required / Default / Optional (FR3.5) |
 | **Service detail page** (`/inference-services/{service_id}`) | State, spec, endpoints with copy + curl snippet, failure reason |
 
 ### 5.2 Register Model Flow

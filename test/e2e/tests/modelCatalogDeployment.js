@@ -693,6 +693,96 @@ module.exports = {
     });
   },
 
+  'create form: required, defaulted and optional fields are marked and the sections are separated': function (browser) {
+    const org = browser.globals.orgA;
+    // The form lives on the inference-services page; the session seeded in
+    // beforeEach is an admin-realm one only for the API cases, so give the
+    // page an admin session here as the other UI suites do.
+    api.seedSession(browser, 'admin', org);
+    browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${org}')`);
+    browser.url(browser.globals.baseUrl + '/admin/inference-services');
+    browser.waitForElementPresent('[data-testid="create-service"]', 15000, 'create form: page loaded');
+    browser.click('[data-testid="create-service"]');
+    browser.waitForElementPresent('[data-testid="deploy-panel"]', 15000, 'create form: panel opened');
+
+    // FR3.5: the three tiers are explained once and shown per field.
+    browser.waitForElementPresent('[data-testid="deploy-legend"]', 5000, 'create form: legend');
+    ['required', 'defaulted', 'optional'].forEach((kind) => {
+      browser.assert.elementsCount(
+        `[data-testid="deploy-legend"] [data-testid="deploy-req-${kind}"]`,
+        1,
+        `create form: legend explains "${kind}"`,
+      );
+    });
+    ['deploy-model', 'deploy-version', 'deploy-image', 'deploy-name'].forEach((field) => {
+      browser.assert.elementsCount(
+        `label[for="${field}"] [data-testid="deploy-req-required"]`,
+        1,
+        `create form: ${field} is marked required`,
+      );
+    });
+    browser.assert.elementsCount(
+      'label[for="deploy-card-type"] [data-testid="deploy-req-optional"]',
+      1,
+      'create form: card type is marked optional',
+    );
+    browser.assert.elementsCount(
+      'label[for="deploy-cpu"] [data-testid="deploy-req-defaulted"]',
+      1,
+      'create form: CPU request is marked defaulted',
+    );
+
+    // FR3.5: the form is a short list of numbered, rule-separated blocks.
+    const sections = [
+      'basics',
+      'scale',
+      'pod',
+      'engine',
+      'shared-gpu',
+      'autoscaling',
+    ];
+    sections.forEach((name, i) => {
+      const selector = `[data-testid="deploy-section-${name}"]`;
+      browser.waitForElementPresent(selector, 5000, `create form: section "${name}"`);
+      browser.execute(
+        function (sel, isFirst) {
+          const el = document.querySelector(sel);
+          const style = getComputedStyle(el);
+          return {
+            border: `${style.borderTopWidth} ${style.borderTopStyle}`,
+            first: isFirst,
+          };
+        },
+        [selector, i === 0],
+        (res) => {
+          browser.assert.equal(
+            res.value.border,
+            res.value.first ? '0px none' : '1px solid',
+            `create form: section "${name}" ${res.value.first ? 'has no divider' : 'has a divider'}`,
+          );
+        },
+      );
+    });
+
+    // FR3.5: what is still missing is stated next to the submit button
+    // instead of only surfacing as a server error after the round trip.
+    browser.getAttribute('[data-testid="deploy-required-status"]', 'class', (res) => {
+      browser.assert.ok(
+        String(res.value || '').includes('pending'),
+        'create form: name still empty, so the status reports work outstanding',
+      );
+    });
+    browser.setValue('[data-testid="deploy-name-input"]', `e2e-form-${browser.globals.runId}`);
+    browser.getAttribute('[data-testid="deploy-required-status"]', 'class', (res) => {
+      browser.assert.ok(
+        String(res.value || '').includes('ready'),
+        'create form: a filled name completes every required field',
+      );
+    });
+    // Nothing is submitted: the case checks the form, not the service.
+    browser.click('[data-testid="deploy-panel-close"]');
+  },
+
   'rdma: an RDMA request round-trips and a bad device count is refused': function (browser) {
     const org = browser.globals.orgA;
     const name = `e2e-rdma-${browser.globals.runId}`;

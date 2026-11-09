@@ -25,6 +25,7 @@ import {
 import { Dialog, ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from './EnvVarsEditor';
+import { FieldLabel, FormSection, ReqFlag } from './FormField';
 import { engineParams, type EngineParam } from './engineParams';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
@@ -539,6 +540,18 @@ export default function DeployForm({
     setAutoscalingErrors({});
   };
 
+  // The required fields, checked as the operator types. Only the ones the
+  // request genuinely cannot do without are listed: the name and version are
+  // typed, the model and image come from the pickers. Everything else on the
+  // form has a default or is optional, so a half-filled form that passes this
+  // check is deployable.
+  const missingRequired = [
+    !selectedModelId && t('deploy.modelAny'),
+    !version.trim() && t('deploy.version'),
+    !imageId && t('deploy.image'),
+    !name.trim() && t('deploy.serviceName'),
+  ].filter((entry): entry is string => Boolean(entry));
+
   return (
     <div className="panel" data-testid="deploy-panel">
       <div className="panel-header">
@@ -547,9 +560,34 @@ export default function DeployForm({
           {t('common.cancel')}
         </button>
       </div>
-      <div className="form-grid">
-        <div className="form-field full">
-          <label htmlFor="deploy-model">{t('deploy.modelAny')}</label>
+
+      {/* The three tiers are explained once, here, so the badge next to
+          every field is already understood when it first appears. */}
+      <div className="form-legend" data-testid="deploy-legend">
+        <span className="form-legend-item">
+          <ReqFlag kind="required" />
+          {t('deploy.reqHint.required')}
+        </span>
+        <span className="form-legend-item">
+          <ReqFlag kind="defaulted" />
+          {t('deploy.reqHint.defaulted')}
+        </span>
+        <span className="form-legend-item">
+          <ReqFlag kind="optional" />
+          {t('deploy.reqHint.optional')}
+        </span>
+      </div>
+
+      <FormSection
+        step={1}
+        title={t('deploy.sectionBasics')}
+        hint={t('deploy.sectionBasicsHint')}
+        requirement="required"
+        testId="deploy-section-basics"
+      >
+        <div className="form-grid">
+          <div className="form-field full">
+            <FieldLabel htmlFor="deploy-model" text={t('deploy.modelAny')} requirement="required" />
           <select
             id="deploy-model"
             data-testid="deploy-model-select"
@@ -571,7 +609,7 @@ export default function DeployForm({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-version">{t('deploy.version')}</label>
+          <FieldLabel htmlFor="deploy-version" text={t('deploy.version')} requirement="required" />
           <input
             id="deploy-version"
             data-testid="deploy-version-input"
@@ -580,7 +618,11 @@ export default function DeployForm({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-accelerator">{t('deploy.accelerator')}</label>
+          <FieldLabel
+            htmlFor="deploy-accelerator"
+            text={t('deploy.accelerator')}
+            requirement="defaulted"
+          />
           <select
             id="deploy-accelerator"
             data-testid="deploy-accelerator-select"
@@ -599,35 +641,8 @@ export default function DeployForm({
             ))}
           </select>
         </div>
-        <div className="form-field full">
-          <label htmlFor="deploy-image">{t('deploy.image')}</label>
-          <select
-            id="deploy-image"
-            data-testid="deploy-image-select"
-            value={imageId}
-            onChange={(e) => setImageId(e.target.value)}
-          >
-            {compatible.length === 0 && <option value="">{t('deploy.noCompatibleImage')}</option>}
-            {compatible.map((i) => (
-              <option key={i.imageId} value={i.imageId}>
-                {i.name}:{i.tag} ({i.engine})
-              </option>
-            ))}
-          </select>
-        </div>
         <div className="form-field">
-          <label htmlFor="deploy-name">{t('deploy.serviceName')}</label>
-          <input
-            id="deploy-name"
-            data-testid="deploy-name-input"
-            value={name}
-            maxLength={63}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('deploy.placeholderServiceName')}
-          />
-        </div>
-        <div className="form-field">
-          <label htmlFor="deploy-card-type">{t('deploy.cardType')}</label>
+          <FieldLabel htmlFor="deploy-card-type" text={t('deploy.cardType')} requirement="optional" />
           <select
             id="deploy-card-type"
             data-testid="deploy-card-type-select"
@@ -650,24 +665,66 @@ export default function DeployForm({
                 : t('deploy.cardTypeHintEmpty')}
           </div>
         </div>
+        <div className="form-field full">
+          <FieldLabel htmlFor="deploy-image" text={t('deploy.image')} requirement="required" />
+          <select
+            id="deploy-image"
+            data-testid="deploy-image-select"
+            value={imageId}
+            onChange={(e) => setImageId(e.target.value)}
+          >
+            {compatible.length === 0 && <option value="">{t('deploy.noCompatibleImage')}</option>}
+            {compatible.map((i) => (
+              <option key={i.imageId} value={i.imageId}>
+                {i.name}:{i.tag} ({i.engine})
+              </option>
+            ))}
+          </select>
+        </div>
         <div className="form-field">
-          <label htmlFor="deploy-replicas">{t('deploy.replicas')}</label>
+          <FieldLabel htmlFor="deploy-name" text={t('deploy.serviceName')} requirement="required" />
           <input
-            id="deploy-replicas"
-            data-testid="deploy-replicas-input"
-            type="number"
-            min={1}
-            max={100}
-            value={replicas}
-            onChange={(e) => setReplicas(e.target.value)}
+            id="deploy-name"
+            data-testid="deploy-name-input"
+            value={name}
+            maxLength={63}
+            onChange={(e) => setName(e.target.value)}
+            placeholder={t('deploy.placeholderServiceName')}
           />
         </div>
-      </div>
+        </div>
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('deploy.topology')}</h4>
-      <div className="form-grid">
+      <FormSection
+        step={2}
+        title={t('deploy.sectionScale')}
+        hint={t('deploy.sectionScaleHint')}
+        requirement="defaulted"
+        testId="deploy-section-scale"
+      >
+        <div className="form-grid">
+          <div className="form-field">
+            <FieldLabel
+              htmlFor="deploy-replicas"
+              text={t('deploy.replicas')}
+              requirement="defaulted"
+            />
+            <input
+              id="deploy-replicas"
+              data-testid="deploy-replicas-input"
+              type="number"
+              min={1}
+              max={100}
+              value={replicas}
+              onChange={(e) => setReplicas(e.target.value)}
+            />
+          </div>
         <div className="form-field">
-          <label htmlFor="deploy-topology">{t('deploy.topologyMode')}</label>
+          <FieldLabel
+            htmlFor="deploy-topology"
+            text={t('deploy.topologyMode')}
+            requirement="defaulted"
+          />
           <select
             id="deploy-topology"
             data-testid="deploy-topology-select"
@@ -681,7 +738,12 @@ export default function DeployForm({
           <div className="field-hint">{t('deploy.topologyHint')}</div>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-tp">{t('deploy.tensorParallel')}</label>
+          <FieldLabel
+            htmlFor="deploy-tp"
+            text={t('deploy.tensorParallel')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '1' })}
+          />
           <input
             id="deploy-tp"
             data-testid="deploy-tp-input"
@@ -694,7 +756,12 @@ export default function DeployForm({
           <div className="field-hint">{t('engine.tensorParallelHint')}</div>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-pp">{t('deploy.pipelineParallel')}</label>
+          <FieldLabel
+            htmlFor="deploy-pp"
+            text={t('deploy.pipelineParallel')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '1' })}
+          />
           <input
             id="deploy-pp"
             data-testid="deploy-pp-input"
@@ -709,7 +776,12 @@ export default function DeployForm({
         {topology === 'pd' && (
           <>
             <div className="form-field">
-              <label htmlFor="deploy-prefill">{t('deploy.prefillReplicas')}</label>
+              <FieldLabel
+                htmlFor="deploy-prefill"
+                text={t('deploy.prefillReplicas')}
+                requirement="defaulted"
+                flag={t('deploy.reqDefaultValue', { value: '1' })}
+              />
               <input
                 id="deploy-prefill"
                 data-testid="deploy-prefill-input"
@@ -721,7 +793,12 @@ export default function DeployForm({
               />
             </div>
             <div className="form-field">
-              <label htmlFor="deploy-decode">{t('deploy.decodeReplicas')}</label>
+              <FieldLabel
+                htmlFor="deploy-decode"
+                text={t('deploy.decodeReplicas')}
+                requirement="defaulted"
+                flag={t('deploy.reqDefaultValue', { value: '1' })}
+              />
               <input
                 id="deploy-decode"
                 data-testid="deploy-decode-input"
@@ -732,27 +809,47 @@ export default function DeployForm({
                 onChange={(e) => setDecodeReplicas(e.target.value)}
               />
             </div>
-            <div className="form-field full">
-              <div className="muted" data-testid="deploy-topology-summary">
-                {topologySummary(t, topology, parseInt(replicas, 10) || 1, tp, pp,
-                  parseInt(prefillReplicas, 10) || 1, parseInt(decodeReplicas, 10) || 1)}
-              </div>
-            </div>
           </>
         )}
-        {topology === 'multinode' && (
-          <div className="form-field full">
-            <div className="muted" data-testid="deploy-topology-summary">
-              {topologySummary(t, topology, parseInt(replicas, 10) || 1, tp, pp, 1, 1)}
-            </div>
+        {/* The footprint line is shown for every layout, not just the
+            multi-pod ones: "2 replicas × 1 pod" is how an operator notices
+            that a single-node deploy with TP × PP = 4 is about to ask for
+            four cards on one machine. */}
+        <div className="form-field full">
+          <div className="muted" data-testid="deploy-topology-summary">
+            {topologySummary(
+              t,
+              topology,
+              parseInt(replicas, 10) || 1,
+              tp,
+              pp,
+              parseInt(prefillReplicas, 10) || 1,
+              parseInt(decodeReplicas, 10) || 1,
+            )}
           </div>
-        )}
+        </div>
       </div>
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('deploy.podShape')}</h4>
+      <FormSection
+        step={3}
+        title={t('deploy.sectionPod')}
+        hint={t('deploy.sectionPodHint')}
+        requirement="defaulted"
+        testId="deploy-section-pod"
+      >
       <div className="form-grid" data-testid="deploy-pod-shape">
         <div className="form-field">
-          <label htmlFor="deploy-gpu-per-pod">{t('deploy.gpuPerPod')}</label>
+          <FieldLabel
+            htmlFor="deploy-gpu-per-pod"
+            text={t('deploy.gpuPerPod')}
+            requirement="defaulted"
+            flag={
+              topology === 'single'
+                ? t('deploy.reqDerived')
+                : t('deploy.reqDefaultValue', { value: '1' })
+            }
+          />
           <input
             id="deploy-gpu-per-pod"
             data-testid="deploy-gpu-per-pod"
@@ -768,7 +865,12 @@ export default function DeployForm({
           </div>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-cpu">{t('deploy.cpuCores')}</label>
+          <FieldLabel
+            htmlFor="deploy-cpu"
+            text={t('deploy.cpuCores')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '4' })}
+          />
           <input
             id="deploy-cpu"
             data-testid="deploy-cpu-cores"
@@ -781,7 +883,12 @@ export default function DeployForm({
           <div className="field-hint">{t('deploy.cpuCoresHint')}</div>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-memory">{t('deploy.memoryGiB')}</label>
+          <FieldLabel
+            htmlFor="deploy-memory"
+            text={t('deploy.memoryGiB')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '16' })}
+          />
           <input
             id="deploy-memory"
             data-testid="deploy-memory-gib"
@@ -794,7 +901,12 @@ export default function DeployForm({
           <div className="field-hint">{t('deploy.memoryGiBHint')}</div>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-priority">{t('deploy.priority')}</label>
+          <FieldLabel
+            htmlFor="deploy-priority"
+            text={t('deploy.priority')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: t('deploy.priorityNormal') })}
+          />
           <select
             id="deploy-priority"
             data-testid="deploy-priority-select"
@@ -808,7 +920,7 @@ export default function DeployForm({
           <div className="field-hint">{t('deploy.priorityHint')}</div>
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-rdma">{t('deploy.rdma')}</label>
+          <FieldLabel htmlFor="deploy-rdma" text={t('deploy.rdma')} requirement="optional" />
           <input
             id="deploy-rdma"
             data-testid="deploy-rdma-toggle"
@@ -821,7 +933,12 @@ export default function DeployForm({
         {rdmaEnabled && (
           <>
             <div className="form-field">
-              <label htmlFor="deploy-rdma-devices">{t('deploy.rdmaDevices')}</label>
+              <FieldLabel
+                htmlFor="deploy-rdma-devices"
+                text={t('deploy.rdmaDevices')}
+                requirement="defaulted"
+                flag={t('deploy.reqDefaultValue', { value: '1' })}
+              />
               <input
                 id="deploy-rdma-devices"
                 data-testid="deploy-rdma-devices"
@@ -834,7 +951,11 @@ export default function DeployForm({
               <div className="field-hint">{t('deploy.rdmaDevicesHint')}</div>
             </div>
             <div className="form-field">
-              <label htmlFor="deploy-rdma-class">{t('deploy.rdmaDeviceClass')}</label>
+              <FieldLabel
+                htmlFor="deploy-rdma-class"
+                text={t('deploy.rdmaDeviceClass')}
+                requirement="optional"
+              />
               <input
                 id="deploy-rdma-class"
                 data-testid="deploy-rdma-device-class"
@@ -848,14 +969,26 @@ export default function DeployForm({
           </>
         )}
       </div>
+      </FormSection>
 
+      <FormSection
+        step={4}
+        title={t('deploy.sectionEngine')}
+        hint={t('deploy.sectionEngineHint', { engine: engine || '—' })}
+        requirement="optional"
+        testId="deploy-section-engine"
+      >
       {/* The template row is always present once an engine is known: the
           save button is how the first template comes into existence, so
           hiding the row until one exists would be a chicken-and-egg. */}
       {engine && (
         <div className="form-grid" style={{ marginBottom: 12 }} data-testid="deploy-template-picker">
           <div className="form-field full">
-            <label htmlFor="deploy-template">{t('deploy.templateLabel')}</label>
+            <FieldLabel
+              htmlFor="deploy-template"
+              text={t('deploy.templateLabel')}
+              requirement="optional"
+            />
             <div className="toolbar" style={{ gap: 8 }}>
               <select
                 id="deploy-template"
@@ -984,11 +1117,22 @@ export default function DeployForm({
           }
         />
       )}
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('deploy.sharedGpu')}</h4>
+      <FormSection
+        step={5}
+        title={t('deploy.sectionSharedGpu')}
+        hint={t('deploy.sectionSharedGpuHint')}
+        requirement="optional"
+        testId="deploy-section-shared-gpu"
+      >
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="deploy-shared-gpu">{t('deploy.sharedGpuSlice')}</label>
+          <FieldLabel
+            htmlFor="deploy-shared-gpu"
+            text={t('deploy.sharedGpuSlice')}
+            requirement="optional"
+          />
           <input
             id="deploy-shared-gpu"
             data-testid="deploy-shared-gpu-toggle"
@@ -1006,7 +1150,7 @@ export default function DeployForm({
         {sharedGpu && (
           <>
             <div className="form-field">
-              <label htmlFor="deploy-pool">{t('deploy.vgpuPool')}</label>
+              <FieldLabel htmlFor="deploy-pool" text={t('deploy.vgpuPool')} requirement="required" />
               <select
                 id="deploy-pool"
                 data-testid="deploy-pool-select"
@@ -1022,7 +1166,11 @@ export default function DeployForm({
               </select>
             </div>
             <div className="form-field">
-              <label htmlFor="deploy-slice-template">{t('deploy.sliceTemplate')}</label>
+              <FieldLabel
+                htmlFor="deploy-slice-template"
+                text={t('deploy.sliceTemplate')}
+                requirement="required"
+              />
               <select
                 id="deploy-slice-template"
                 data-testid="deploy-slice-template-select"
@@ -1045,11 +1193,22 @@ export default function DeployForm({
           </>
         )}
       </div>
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('deploy.autoscaling')}</h4>
+      <FormSection
+        step={6}
+        title={t('deploy.sectionAutoscaling')}
+        hint={t('deploy.sectionAutoscalingHint')}
+        requirement="defaulted"
+        testId="deploy-section-autoscaling"
+      >
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="deploy-as-enabled">{t('common.enabled')}</label>
+          <FieldLabel
+            htmlFor="deploy-as-enabled"
+            text={t('common.enabled')}
+            requirement="defaulted"
+          />
           <input
             id="deploy-as-enabled"
             data-testid="deploy-as-enabled"
@@ -1059,7 +1218,12 @@ export default function DeployForm({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-min">{t('deploy.minReplicas')}</label>
+          <FieldLabel
+            htmlFor="deploy-as-min"
+            text={t('deploy.minReplicas')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '1' })}
+          />
           <input
             id="deploy-as-min"
             data-testid="deploy-as-min"
@@ -1075,7 +1239,12 @@ export default function DeployForm({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-max">{t('deploy.maxReplicas')}</label>
+          <FieldLabel
+            htmlFor="deploy-as-max"
+            text={t('deploy.maxReplicas')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '10' })}
+          />
           <input
             id="deploy-as-max"
             data-testid="deploy-as-max"
@@ -1091,7 +1260,12 @@ export default function DeployForm({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-target">{t('deploy.targetConcurrency')}</label>
+          <FieldLabel
+            htmlFor="deploy-as-target"
+            text={t('deploy.targetConcurrency')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '32' })}
+          />
           <input
             id="deploy-as-target"
             data-testid="deploy-as-target"
@@ -1107,7 +1281,11 @@ export default function DeployForm({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-scale-to-zero">{t('deploy.scaleToZero')}</label>
+          <FieldLabel
+            htmlFor="deploy-as-scale-to-zero"
+            text={t('deploy.scaleToZero')}
+            requirement="optional"
+          />
           <input
             id="deploy-as-scale-to-zero"
             data-testid="deploy-as-scale-to-zero"
@@ -1121,7 +1299,12 @@ export default function DeployForm({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="deploy-as-cooldown">{t('deploy.cooldown')}</label>
+          <FieldLabel
+            htmlFor="deploy-as-cooldown"
+            text={t('deploy.cooldown')}
+            requirement="defaulted"
+            flag={t('deploy.reqDefaultValue', { value: '300' })}
+          />
           <input
             id="deploy-as-cooldown"
             data-testid="deploy-as-cooldown"
@@ -1137,8 +1320,21 @@ export default function DeployForm({
           )}
         </div>
       </div>
+      </FormSection>
+
       {error && <ErrorBanner message={error} />}
-      <div className="dialog-actions">
+      <div className="deploy-actions">
+        {/* The same three tiers, checked against the request: an operator who
+            missed a required field is told which one before submitting rather
+            than after the round trip. */}
+        <div
+          className={`deploy-checklist ${missingRequired.length === 0 ? 'ready' : 'pending'}`}
+          data-testid="deploy-required-status"
+        >
+          {missingRequired.length === 0
+            ? t('deploy.requiredComplete')
+            : t('deploy.requiredMissing', { fields: missingRequired.join(' · ') })}
+        </div>
         <button className="secondary" onClick={onCancel}>
           {t('common.cancel')}
         </button>
@@ -1414,7 +1610,16 @@ function EngineArgsSection({
           const inputId = `engine-arg-${p.name}`;
           return (
             <div className="form-field" key={p.name}>
-              <label htmlFor={inputId}>{t(p.labelKey)}</label>
+              <FieldLabel
+                htmlFor={inputId}
+                text={t(p.labelKey)}
+                requirement="optional"
+                flag={
+                  p.defaultValue
+                    ? t('deploy.reqDefaultValue', { value: p.defaultValue })
+                    : undefined
+                }
+              />
               {p.kind === 'switch' ? (
                 <input
                   id={inputId}
@@ -1454,7 +1659,7 @@ function EngineArgsSection({
       </div>
 
       <div className="form-field full">
-        <label>{t('deploy.extraArgs')}</label>
+        <FieldLabel text={t('deploy.extraArgs')} requirement="optional" />
         <div className="field-hint">{t('deploy.extraArgsHint')}</div>
         {extraArgs.map((arg, i) => (
           <div className="toolbar" key={i} style={{ marginTop: 6 }}>
