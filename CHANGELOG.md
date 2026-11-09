@@ -1,3 +1,10 @@
+# [1.115.0](https://github.com/go-taas/go-taas/compare/v1.114.0...v1.115.0) (2026-11-09)
+
+
+### Features
+
+* **infer:** request RDMA devices for inference pods through DRA ([edb46f0](https://github.com/go-taas/go-taas/commit/edb46f0766d373326698b4c1b1ddfb04f08b3a38))
+
 # [1.114.0](https://github.com/go-taas/go-taas/compare/v1.113.3...v1.114.0) (2026-11-08)
 
 
