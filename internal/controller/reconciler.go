@@ -1030,7 +1030,7 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	// deleted the service. Recreating its resources would resurrect a
 	// service the platform already considers gone.
 	if r.serviceSuperseded(ctx, evt.ServiceID) {
-		logger.S().Infow("controller: skipping obsolete change, service is stopped or deleted",
+		logger.S().Infow("controller: skipping obsolete change, service is stopped, deleted or has a newer change queued",
 			"service_id", evt.ServiceID, "name", evt.Name, "event", evt.EventType)
 		return nil
 	}
@@ -1167,7 +1167,7 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	// about whether the service can serve traffic.
 	if err := r.awaitEngineReady(ctx, evt); err != nil {
 		if errors.Is(err, errReconcileSuperseded) {
-			logger.S().Infow("controller: engine wait abandoned, service was stopped or deleted",
+			logger.S().Infow("controller: engine wait abandoned, service was stopped, deleted or has a newer change queued",
 				"service_id", evt.ServiceID, "name", evt.Name)
 			return nil
 		}

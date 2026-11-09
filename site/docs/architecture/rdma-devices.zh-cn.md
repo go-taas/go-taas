@@ -198,3 +198,30 @@ claim；但它本身并不限制引擎最终选用哪张网卡。
 NVIDIA CDI / 设备集合上，而不是本 Chart：从驱动能力中去掉 `network`（或生成不含
 `/dev/infiniband` 的 CDI kind）。在此之前，诚实的表述是：“被授权的设备保证存在且申请
 可审计，可见集合仍由节点决定”。
+
+## 12. 多 rail 集群：同一副本必须取自同一条 rail
+
+网卡端口本身并不构成网络。在 `sd4090` 节点上，同一张卡的两个端口分属**不同 rail**，
+DRA 驱动给每个端口分配所在 rail 子网的地址：
+
+| 端口 | Pod 内的 netdev | Pod 地址 |
+| --- | --- | --- |
+| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12` |
+| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12` |
+
+在 Pod 内部，`172.16.30.0/24` 与 `172.16.40.0/24` 之间没有路由（连接会走 `eth0`
+默认路由并超时）。当 `multinode` 副本的各个 Pod 被分配到**不同 rail** 的端口时，
+vLLM 仍会正常启动并初始化 NCCL，然后在第一次集合通信处永久阻塞：Pod 是 `Running`，
+引擎始终不响应 `/health`，服务停留在 `starting` 直到就绪超时。
+
+因此**同一副本必须取自同一条 rail**，这也是服务级 `rdma.device_class` 存在的原因：
+
+- 默认的 `taas-rdma` 接受所有 RDMA 设备，适合每 Pod 单网卡或单 rail 的集群；
+- 多 rail 集群应为每条 rail 建一个 DeviceClass（用 `rdma.selector` 固定该 rail 的端口，
+  例如 `device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]`；同构集群可用对应
+  的按节点选择器），并在服务中指定该类。这样副本内每个 Pod 都从同一条 rail 分配。
+
+**AD8 —— 同一节点内的多 Pod 副本不应通过 RDMA 承载副本内通信。** 同一节点上两个 Pod
+之间走的是 CNI 而不是 RDMA 网络；单节点多卡的受支持做法是让一个 Pod 拥有全部设备（见
+[StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md) 的 AD7）。当副本真正
+跨机器时才使用带 RDMA 的 multinode，并确保所用 DeviceClass 的 rail 一致。

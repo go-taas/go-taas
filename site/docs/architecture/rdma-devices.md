@@ -207,3 +207,40 @@ granted NIC, the lever is the node's NVIDIA CDI/device set, not this chart: drop
 `network` from the driver capabilities (or generate a CDI kind without
 `/dev/infiniband`). Until then, the honest statement is "the granted device is
 guaranteed and the request is auditable; the visible set is the node's".
+
+## 12. Multi-rail fleets: allocate from one rail per replica
+
+A NIC port is not a fabric by itself. On the `sd4090` node the two ports of the
+granted card sit on **different rails**, and the DRA driver gives each port an
+address on that rail's subnet:
+
+| Port | netdev in the pod | pod address |
+| --- | --- | --- |
+| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12` |
+| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12` |
+
+Nothing routes between `172.16.30.0/24` and `172.16.40.0/24` from inside a pod
+(a connect attempt times out on the default `eth0` route). When a `multinode`
+replica's pods are granted ports from *different* rails, vLLM still starts and
+initialises NCCL, and then blocks forever in its first collective: the pods are
+`Running`, the engine never answers `/health`, and the service stays `starting`
+until the readiness timeout.
+
+This is the reason a **replica must take its devices from one rail**, and why
+`rdma.device_class` exists per service:
+
+- the default `taas-rdma` accepts every RDMA device, which is right for a
+  single-NIC-per-pod or single-rail fleet;
+- for a multi-rail fleet, create one class per rail (pin the rail's ports with
+  `rdma.selector`, for example
+  `device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]`, or the
+  corresponding per-node selector in a homogeneous fleet) and name that class in
+  the service. Every pod of the replica then allocates from the same rail.
+
+**AD8 — A replica that spans pods on one node should not use RDMA for
+intra-replica traffic.** Two pods of one node exchange pipeline-parallel
+activations over the CNI, not over the fabric; the supported layout for
+multi-GPU on a single node is one pod owning all the devices (see
+[StormService Serving Topology](./stormservice-serving-topology.md), AD7). Use a
+multinode replica with RDMA when the replica genuinely spans machines, and then
+make sure the class is rail-consistent.
