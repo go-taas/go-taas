@@ -202,6 +202,9 @@ type k8sReconciler struct {
 	// rdmaClass is the DRA DeviceClass a service gets when it requests RDMA
 	// without naming one. Empty uses defaultRdmaDeviceClass.
 	rdmaClass string
+	// logTail reads one pod's engine log tail for the timeout hint. Nil reads
+	// it from the API server; tests inject a stub.
+	logTail func(ctx context.Context, podName string) (string, error)
 	// serviceState reads the platform database's desired state for a
 	// service. It lets a long readiness wait notice a stop/delete that is
 	// queued behind this event and abort promptly, so the teardown is not
@@ -210,15 +213,16 @@ type k8sReconciler struct {
 }
 
 // ServiceStateProvider reports the current desired state of an inference
-// service from the platform database. found is false when the row no longer
-// exists.
-type ServiceStateProvider func(ctx context.Context, serviceID string) (state string, found bool, err error)
+// service from the platform database. updatedAt is the row's last write, which
+// is how a reconcile tells "the state I published" from "a newer change the
+// operator just made". found is false when the row no longer exists.
+type ServiceStateProvider func(ctx context.Context, serviceID string) (state string, updatedAt time.Time, found bool, err error)
 
 // errReconcileSuperseded is returned when the platform state says the service
 // was stopped or deleted while this reconcile was still waiting. The event is
 // acknowledged without a status report or an error: the stop/delete event
 // already queued behind it owns the teardown.
-var errReconcileSuperseded = errors.New("controller: reconcile superseded by a stop or delete")
+var errReconcileSuperseded = errors.New("controller: reconcile superseded by a newer change")
 
 // serviceStateCheckInterval bounds how often a reconcile re-reads the
 // platform state while waiting for an engine. Five seconds is well under the
@@ -344,18 +348,37 @@ func (r *k8sReconciler) SetServiceStateProvider(provider ServiceStateProvider) {
 // event was in flight. An unavailable provider fails open so a database blip
 // never leaves a deploy half-applied.
 func (r *k8sReconciler) serviceSuperseded(ctx context.Context, serviceID string) bool {
+	_, superseded := r.serviceStateSnapshot(ctx, serviceID, time.Time{})
+	return superseded
+}
+
+// serviceStateSnapshot reads the desired state once and decides whether this
+// reconcile has been superseded.
+//
+// Three states end it. "stopped" and "terminated" mean the teardown owns the
+// service now. "pending" is the infer module's state for a change that has
+// been accepted but not applied, and a pending row written *after* this
+// reconcile started means a newer change is queued behind it — typically the
+// operator fixing the very configuration this reconcile is waiting on. Without
+// that check an update is stuck behind the twenty-minute engine wait, which is
+// exactly the situation an operator is trying to escape when a deploy hangs.
+func (r *k8sReconciler) serviceStateSnapshot(ctx context.Context, serviceID string, started time.Time) (string, bool) {
 	if r.serviceState == nil || serviceID == "" {
-		return false
+		return "", false
 	}
-	state, found, err := r.serviceState(ctx, serviceID)
+	state, updatedAt, found, err := r.serviceState(ctx, serviceID)
 	if err != nil {
 		logger.S().Warnw("controller: read desired service state failed, continuing",
 			"service_id", serviceID, "err", err)
-		return false
+		return "", false
 	}
-	// The infer module owns these states. String literals keep the
-	// controller free of a dependency on the service package.
-	return !found || state == "stopped" || state == "terminated"
+	if !found || state == "stopped" || state == "terminated" {
+		return state, true
+	}
+	if state == "pending" && !started.IsZero() && updatedAt.After(started) {
+		return state, true
+	}
+	return state, false
 }
 
 // gatewayRouteTarget returns the namespace and Gateway name model routes

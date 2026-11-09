@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -100,8 +101,8 @@ func TestTeardownLeavesReplacementServiceResources(t *testing.T) {
 func TestApplyUpsertSkipsDeletedService(t *testing.T) {
 	dyn := newFakeDynamic()
 	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
-	reconciler.SetServiceStateProvider(func(context.Context, string) (string, bool, error) {
-		return "terminated", true, nil
+	reconciler.SetServiceStateProvider(func(context.Context, string) (string, time.Time, bool, error) {
+		return "terminated", time.Now(), true, nil
 	})
 	ctx := context.Background()
 
@@ -120,14 +121,14 @@ func TestApplyUpsertAbandonsWaitWhenStopped(t *testing.T) {
 	dyn := newFakeDynamic()
 	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
 	calls := 0
-	reconciler.SetServiceStateProvider(func(context.Context, string) (string, bool, error) {
+	reconciler.SetServiceStateProvider(func(context.Context, string) (string, time.Time, bool, error) {
 		calls++
 		if calls == 1 {
 			// The reconcile starts normally.
-			return "pending", true, nil
+			return "pending", time.Time{}, true, nil
 		}
 		// The operator stopped the service while the engine was starting.
-		return "stopped", true, nil
+		return "stopped", time.Now(), true, nil
 	})
 	ctx := context.Background()
 
@@ -182,4 +183,79 @@ func TestApplyUpsertReclaimsStaleName(t *testing.T) {
 	storm, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).Get(ctx, "demo", metav1.GetOptions{})
 	require.NoError(t, err)
 	assert.Equal(t, "svc-1", storm.GetLabels()[labelServiceID], "the stale storm is replaced by the new owner's")
+}
+
+// TestApplyUpsertAbandonsWaitWhenANewerChangeIsQueued verifies a change the
+// operator queues while a deploy is waiting for its engine interrupts the
+// wait. Without it the fix they just submitted sits behind the twenty-minute
+// readiness timeout, which is exactly when someone is trying to unstick a
+// hung service.
+func TestApplyUpsertAbandonsWaitWhenANewerChangeIsQueued(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
+	// The reconcile's own start is "now"; the newer change is written after
+	// it, so its updated_at is in the future relative to the wait.
+	future := time.Now().Add(time.Minute)
+	reconciler.SetServiceStateProvider(func(context.Context, string) (string, time.Time, bool, error) {
+		return "pending", future, true, nil
+	})
+
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(),
+		changeMessage(testChangeEvent("upsert", "demo"))))
+}
+
+// TestApplyUpsertDoesNotAbandonOnItsOwnPendingRow verifies the check is
+// anchored to the reconcile start: the pending row the create/update RPC wrote
+// *before* the reconcile began must not abort the deploy.
+func TestApplyUpsertDoesNotAbandonOnItsOwnPendingRow(t *testing.T) {
+	dyn := newFakeDynamic()
+	reconciler, _, _ := newAIBrixFakeReconciler(dyn)
+	// Written well before this reconcile started.
+	stale := time.Now().Add(-time.Hour)
+	reconciler.SetServiceStateProvider(func(context.Context, string) (string, time.Time, bool, error) {
+		return "pending", stale, true, nil
+	})
+
+	require.NoError(t, reconciler.ApplyInferServiceChange(context.Background(),
+		changeMessage(testChangeEvent("upsert", "demo"))))
+
+	// The deploy really ran: the storm exists.
+	_, err := dyn.Resource(stormServiceGVR).Namespace(reconcileNamespace).
+		Get(context.Background(), "demo", metav1.GetOptions{})
+	require.NoError(t, err)
+}
+
+// TestServiceStateSnapshotTreatsPendingAfterStartAsSuperseded covers the
+// decision table directly.
+func TestServiceStateSnapshotTreatsPendingAfterStartAsSuperseded(t *testing.T) {
+	started := time.Now()
+	cases := []struct {
+		name      string
+		state     string
+		updatedAt time.Time
+		found     bool
+		want      bool
+	}{
+		{"stopped", "stopped", started.Add(time.Minute), true, true},
+		{"terminated", "terminated", started.Add(time.Minute), true, true},
+		{"row gone", "", time.Time{}, false, true},
+		{"newer pending", "pending", started.Add(time.Minute), true, true},
+		{"older pending", "pending", started.Add(-time.Minute), true, false},
+		{"running", "running", started.Add(time.Minute), true, false},
+		{"starting", "starting", started.Add(time.Minute), true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			r := &k8sReconciler{serviceState: func(context.Context, string) (string, time.Time, bool, error) {
+				return tc.state, tc.updatedAt, tc.found, nil
+			}}
+			_, superseded := r.serviceStateSnapshot(context.Background(), "svc-1", started)
+			assert.Equal(t, tc.want, superseded)
+		})
+	}
+
+	// Without a provider nothing is superseded.
+	r := &k8sReconciler{}
+	_, superseded := r.serviceStateSnapshot(context.Background(), "svc-1", started)
+	assert.False(t, superseded)
 }

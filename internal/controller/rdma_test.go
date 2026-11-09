@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,6 +11,7 @@ import (
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // seedDeviceClass writes the DeviceClass the chart would create, so the
@@ -280,4 +282,67 @@ func TestRdmaClaimsUseCoreV1Types(t *testing.T) {
 	asMap, err := podSpecToMap(spec)
 	require.NoError(t, err)
 	assert.EqualValues(t, "demo-rdma", asMap["resourceClaims"].([]any)[0].(map[string]any)["resourceClaimTemplateName"])
+}
+
+// TestLastLogLine verifies the hint keeps the last real line, trims it and
+// caps its size.
+func TestLastLogLine(t *testing.T) {
+	assert.Equal(t, "last engine line", lastLogLine("one\n\n  last engine line  \n"))
+	assert.Equal(t, "", lastLogLine("\n  \n"))
+
+	long := strings.Repeat("x", engineLogHintMaxLen+50)
+	got := lastLogLine(long)
+	assert.Len(t, got, engineLogHintMaxLen+len("…"))
+	assert.True(t, strings.HasSuffix(got, "…"))
+}
+
+// TestEngineTimeoutReasonIncludesLogHint verifies a Running-but-silent pod
+// reports the engine's own last log line instead of only "pod phase Running".
+func TestEngineTimeoutReasonIncludesLogHint(t *testing.T) {
+	r := &k8sReconciler{
+		clientset: fake.NewSimpleClientset(&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "demo-0",
+				Namespace: reconcileNamespace,
+				Labels:    map[string]string{"app": "demo", labelServiceID: "svc-1"},
+			},
+			Status: corev1.PodStatus{Phase: corev1.PodRunning},
+		}),
+		namespace: reconcileNamespace,
+		logTail: func(context.Context, string) (string, error) {
+			return "NCCL WARN Bootstrap : no socket interface found\n", nil
+		},
+	}
+	err := r.engineTimeoutError(context.Background(), testChangeEvent("upsert", "demo"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "did not answer its health endpoint")
+	assert.Contains(t, err.Error(), "NCCL WARN")
+	assert.NotContains(t, err.Error(), "pod phase")
+}
+
+// TestEngineTimeoutReasonKeepsBlockingReason verifies a real scheduling
+// blocker is still reported as-is, without a log hint that would hide it.
+func TestEngineTimeoutReasonKeepsBlockingReason(t *testing.T) {
+	r := &k8sReconciler{
+		clientset: fake.NewSimpleClientset(&corev1.Pod{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "demo-0",
+				Namespace: reconcileNamespace,
+				Labels:    map[string]string{"app": "demo", labelServiceID: "svc-1"},
+			},
+			Status: corev1.PodStatus{
+				Phase: corev1.PodPending,
+				Conditions: []corev1.PodCondition{{
+					Type: corev1.PodScheduled, Status: corev1.ConditionFalse,
+					Message: "0/1 nodes are available: 1 Insufficient nvidia.com/gpu.",
+				}},
+			},
+		}),
+		namespace: reconcileNamespace,
+		logTail:   func(context.Context, string) (string, error) { return "ignored", nil },
+	}
+	err := r.engineTimeoutError(context.Background(), testChangeEvent("upsert", "demo"))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "Insufficient nvidia.com/gpu")
+	assert.NotContains(t, err.Error(), "last engine log")
 }

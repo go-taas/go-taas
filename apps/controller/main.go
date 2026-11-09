@@ -182,17 +182,20 @@ func main() {
 		// Reading the desired state lets a reconcile that is waiting for an
 		// engine notice the change and abandon the wait, so the teardown is
 		// not delayed by the 20-minute readiness timeout.
-		reconciler.SetServiceStateProvider(func(ctx context.Context, serviceID string) (string, bool, error) {
-			var state string
+		reconciler.SetServiceStateProvider(func(ctx context.Context, serviceID string) (string, time.Time, bool, error) {
+			var row struct {
+				State     string
+				UpdatedAt time.Time
+			}
 			tx := db.WithContext(ctx).Table("inference_services").
-				Select("state").Where("id = ?", serviceID).Scan(&state)
+				Select("state, updated_at").Where("id = ?", serviceID).Scan(&row)
 			if tx.Error != nil {
-				return "", false, tx.Error
+				return "", time.Time{}, false, tx.Error
 			}
 			if tx.RowsAffected == 0 {
-				return "", false, nil
+				return "", time.Time{}, false, nil
 			}
-			return state, true, nil
+			return row.State, row.UpdatedAt, true, nil
 		})
 	} else {
 		logger.S().Warnw("controller: cluster health collection disabled, database unreachable", "err", dbErr)

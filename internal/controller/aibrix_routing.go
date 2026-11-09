@@ -404,7 +404,7 @@ func (r *k8sReconciler) otherOwnerActive(ctx context.Context, serviceID string) 
 	if r.serviceState == nil || serviceID == "" {
 		return false
 	}
-	state, found, err := r.serviceState(ctx, serviceID)
+	state, _, found, err := r.serviceState(ctx, serviceID)
 	if err != nil {
 		return false
 	}

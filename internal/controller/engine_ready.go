@@ -64,6 +64,10 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 		port = pinned
 	}
 
+	// The reconcile began before this wait did; a "pending" row written after
+	// it is a newer change the operator queued (often to fix this very wait),
+	// so the wait must yield instead of holding the consumer for 20 minutes.
+	started := time.Now()
 	reportedStarting := false
 	// The zero time makes the first loop iteration check immediately: a
 	// stale change for an already-deleted service must not create pods.
@@ -77,7 +81,7 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 		// operator sees the resources still running.
 		if r.serviceState != nil && time.Since(lastStateCheck) >= serviceStateCheckInterval {
 			lastStateCheck = time.Now()
-			if r.serviceSuperseded(ctx, evt.ServiceID) {
+			if _, superseded := r.serviceStateSnapshot(ctx, evt.ServiceID, started); superseded {
 				return errReconcileSuperseded
 			}
 		}
@@ -192,14 +196,81 @@ func (r *k8sReconciler) engineAnswers(ctx context.Context, host string, port int
 
 // engineTimeoutError explains a deploy that never became ready, preferring
 // the cluster's own reason when one is available.
+//
+// A pod that is Running but silent is the hardest case for an operator: the
+// scheduler, the image and the container all look fine, and the generic
+// "did not answer" says nothing about why. In that case the engine's own last
+// log line is appended, because it is where the answer actually is (NCCL
+// waiting for a peer, a weight read stalled on the shared filesystem, a
+// compile pass still running).
 func (r *k8sReconciler) engineTimeoutError(ctx context.Context, evt changeEvent) error {
-	detail := r.deployBlockedReason(context.WithoutCancel(ctx), evt.Name)
-	if detail == "" {
+	quiet := context.WithoutCancel(ctx)
+	detail := r.deployBlockedReason(quiet, evt.Name)
+	if detail == "" || strings.HasPrefix(detail, "pod phase ") {
 		detail = "the engine did not answer its health endpoint"
+		if hint := r.engineLastLogLine(quiet, evt.ServiceID); hint != "" {
+			detail += "; last engine log: " + hint
+		}
 	}
 	return fmt.Errorf("controller: service %s not ready within %s: %s",
 		evt.Name, engineReadyTimeout, detail)
 }
+
+// engineLastLogLine returns the last non-empty line the busiest pod's engine
+// container wrote, trimmed to a size that fits a failure reason. It is a
+// diagnostic aid: every failure path of the log read falls back to "".
+func (r *k8sReconciler) engineLastLogLine(ctx context.Context, serviceID string) string {
+	pods, err := r.clientset.CoreV1().Pods(r.namespace).List(ctx,
+		metav1.ListOptions{LabelSelector: serviceLabelKey + "=" + serviceID})
+	if err != nil || len(pods.Items) == 0 {
+		return ""
+	}
+	raw, err := r.podLogTail(ctx, newestPod(pods.Items).Name)
+	if err != nil {
+		return ""
+	}
+	return lastLogLine(raw)
+}
+
+// podLogTail reads the tail of one pod's engine container log. The indirection
+// exists so tests can exercise the hint without a fake log endpoint, which the
+// typed fake clientset does not implement.
+func (r *k8sReconciler) podLogTail(ctx context.Context, podName string) (string, error) {
+	if r.logTail != nil {
+		return r.logTail(ctx, podName)
+	}
+	// Twenty lines is enough to catch a stack trace's last line or the
+	// collective a process is blocked on, and small enough to read.
+	tail := int64(20)
+	raw, err := r.clientset.CoreV1().Pods(r.namespace).
+		GetLogs(podName, &corev1.PodLogOptions{Container: "engine", TailLines: &tail}).
+		DoRaw(ctx)
+	if err != nil {
+		return "", err
+	}
+	return string(raw), nil
+}
+
+// lastLogLine returns the last non-empty, trimmed line of a log tail, capped to
+// the size a failure reason can carry.
+func lastLogLine(raw string) string {
+	lines := strings.Split(raw, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line == "" {
+			continue
+		}
+		if len(line) > engineLogHintMaxLen {
+			line = line[:engineLogHintMaxLen] + "…"
+		}
+		return line
+	}
+	return ""
+}
+
+// engineLogHintMaxLen bounds the log line quoted in a failure reason, which
+// the database column caps at 512 characters.
+const engineLogHintMaxLen = 240
 
 // newestPod returns the most recently created pod of the set.
 func newestPod(pods []corev1.Pod) corev1.Pod {
