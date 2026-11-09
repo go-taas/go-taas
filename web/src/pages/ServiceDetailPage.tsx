@@ -26,6 +26,7 @@ import {
   usePolling,
 } from '../components';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend } from '../components/FormField';
 import { navigate } from '../router';
 import ServiceStatusBanner from '../components/ServiceStatusBanner';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
@@ -524,9 +525,15 @@ function TopologyDialog({
     <Dialog title={t('service.topologyEdit')} onClose={onClose} testId="topology-dialog">
       <p className="muted">{t('service.topologyEditHint')}</p>
       {error && <div className="field-error">{error}</div>}
+      <FormLegend testId="topology-legend" />
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="topology-mode">{t('service.topologyMode')}</label>
+          <FieldLabel
+            htmlFor="topology-mode"
+            text={t('service.topologyMode')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: topology })}
+          />
           <select
             id="topology-mode"
             data-testid="topology-mode-select"
@@ -539,7 +546,7 @@ function TopologyDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="topology-tp">{t('deploy.tensorParallel')}</label>
+          <FieldLabel htmlFor="topology-tp" text={t('deploy.tensorParallel')} requirement="defaulted" />
           <input
             id="topology-tp"
             data-testid="topology-tp-input"
@@ -551,7 +558,7 @@ function TopologyDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="topology-pp">{t('deploy.pipelineParallel')}</label>
+          <FieldLabel htmlFor="topology-pp" text={t('deploy.pipelineParallel')} requirement="defaulted" />
           <input
             id="topology-pp"
             data-testid="topology-pp-input"
@@ -565,7 +572,7 @@ function TopologyDialog({
         {topology === 'pd' && (
           <>
             <div className="form-field">
-              <label htmlFor="topology-prefill">{t('deploy.prefillReplicas')}</label>
+              <FieldLabel htmlFor="topology-prefill" text={t('deploy.prefillReplicas')} requirement="defaulted" />
               <input
                 id="topology-prefill"
                 data-testid="topology-prefill-input"
@@ -577,7 +584,7 @@ function TopologyDialog({
               />
             </div>
             <div className="form-field">
-              <label htmlFor="topology-decode">{t('deploy.decodeReplicas')}</label>
+              <FieldLabel htmlFor="topology-decode" text={t('deploy.decodeReplicas')} requirement="defaulted" />
               <input
                 id="topology-decode"
                 data-testid="topology-decode-input"
@@ -591,7 +598,7 @@ function TopologyDialog({
           </>
         )}
         <div className="form-field">
-          <label htmlFor="topology-replicas">{t('service.replicas')}</label>
+          <FieldLabel htmlFor="topology-replicas" text={t('service.replicas')} requirement="defaulted" />
           <input
             id="topology-replicas"
             data-testid="topology-replicas-input"
@@ -603,7 +610,7 @@ function TopologyDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="topology-gpu-per-pod">{t('deploy.gpuPerPod')}</label>
+          <FieldLabel htmlFor="topology-gpu-per-pod" text={t('deploy.gpuPerPod')} requirement="defaulted" />
           <input
             id="topology-gpu-per-pod"
             data-testid="topology-gpu-per-pod"
@@ -620,7 +627,7 @@ function TopologyDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="topology-cpu">{t('deploy.cpuCores')}</label>
+          <FieldLabel htmlFor="topology-cpu" text={t('deploy.cpuCores')} requirement="defaulted" />
           <input
             id="topology-cpu"
             data-testid="topology-cpu-cores"
@@ -632,7 +639,7 @@ function TopologyDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="topology-memory">{t('deploy.memoryGiB')}</label>
+          <FieldLabel htmlFor="topology-memory" text={t('deploy.memoryGiB')} requirement="defaulted" />
           <input
             id="topology-memory"
             data-testid="topology-memory-gib"
@@ -644,7 +651,7 @@ function TopologyDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="topology-priority">{t('deploy.priority')}</label>
+          <FieldLabel htmlFor="topology-priority" text={t('deploy.priority')} requirement="defaulted" />
           <select
             id="topology-priority"
             data-testid="topology-priority-select"
@@ -657,7 +664,7 @@ function TopologyDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="topology-rdma">{t('deploy.rdma')}</label>
+          <FieldLabel htmlFor="topology-rdma" text={t('deploy.rdma')} requirement="optional" />
           <input
             id="topology-rdma"
             data-testid="topology-rdma-toggle"
@@ -670,7 +677,7 @@ function TopologyDialog({
         {rdmaEnabled && (
           <>
             <div className="form-field">
-              <label htmlFor="topology-rdma-devices">{t('deploy.rdmaDevices')}</label>
+              <FieldLabel htmlFor="topology-rdma-devices" text={t('deploy.rdmaDevices')} requirement="defaulted" />
               <input
                 id="topology-rdma-devices"
                 data-testid="topology-rdma-devices"
@@ -682,7 +689,7 @@ function TopologyDialog({
               />
             </div>
             <div className="form-field">
-              <label htmlFor="topology-rdma-class">{t('deploy.rdmaDeviceClass')}</label>
+              <FieldLabel htmlFor="topology-rdma-class" text={t('deploy.rdmaDeviceClass')} requirement="optional" />
               <input
                 id="topology-rdma-class"
                 data-testid="topology-rdma-device-class"
@@ -781,7 +788,7 @@ function EngineArgsDialog({
       {error && <ErrorBanner message={error} />}
       <div className="form-grid">
         <div className="form-field full">
-          <label>{t('service.engineArgsFlags')}</label>
+          <FieldLabel text={t('service.engineArgsFlags')} requirement="optional" />
           {rows.map((row, i) => (
             <div key={i} className="kv-row" style={{ display: 'flex', gap: 8, marginBottom: 6 }}>
               <input
@@ -808,7 +815,7 @@ function EngineArgsDialog({
           </button>
         </div>
         <div className="form-field full">
-          <label>{t('service.engineArgsExtra')}</label>
+          <FieldLabel text={t('service.engineArgsExtra')} requirement="optional" />
           <textarea
             data-testid="engine-args-extra"
             rows={3}
@@ -932,7 +939,11 @@ function AccessPolicyCard({ serviceId }: { serviceId: string }) {
       ) : (
         <>
           <div className="form-row">
-            <label htmlFor="access-mode">{t('services.accessModeLabel')}</label>
+            <FieldLabel
+              htmlFor="access-mode"
+              text={t('services.accessModeLabel')}
+              requirement="defaulted"
+            />
             <select
               id="access-mode"
               data-testid="access-mode"
@@ -953,7 +964,11 @@ function AccessPolicyCard({ serviceId }: { serviceId: string }) {
           {restricted && (
             <>
               <div className="form-row">
-                <label htmlFor="access-subject-type">{t('services.accessSubjectId')}</label>
+                <FieldLabel
+                  htmlFor="access-subject-type"
+                  text={t('services.accessSubjectId')}
+                  requirement="required"
+                />
                 <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                   <select
                     id="access-subject-type"

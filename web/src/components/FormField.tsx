@@ -27,10 +27,10 @@ export function ReqFlag({ kind, label }: { kind: Requirement; label?: string }) 
   return (
     <span
       className={`req-flag req-${kind}`}
-      title={t(`deploy.reqHint.${kind}`)}
-      data-testid={`deploy-req-${kind}`}
+      title={t(`form.reqHint.${kind}`)}
+      data-testid={`req-flag-${kind}`}
     >
-      {label ?? t(`deploy.req.${kind}`)}
+      {label ?? t(`form.req.${kind}`)}
     </span>
   );
 }
@@ -52,6 +52,45 @@ export function FieldLabel({
       <span className="field-label-text">{text}</span>
       <ReqFlag kind={requirement} label={flag} />
     </label>
+  );
+}
+
+// FormLegend explains the three tiers once, at the top of a form, so the badge
+// next to every field is already understood when it first appears.
+export function FormLegend({ testId = 'form-legend' }: { testId?: string }) {
+  const { t } = useI18n();
+  return (
+    <div className="form-legend" data-testid={testId}>
+      <span className="form-legend-item">
+        <ReqFlag kind="required" />
+        {t('form.reqHint.required')}
+      </span>
+      <span className="form-legend-item">
+        <ReqFlag kind="defaulted" />
+        {t('form.reqHint.defaulted')}
+      </span>
+      <span className="form-legend-item">
+        <ReqFlag kind="optional" />
+        {t('form.reqHint.optional')}
+      </span>
+    </div>
+  );
+}
+
+// RequiredStatus is the line in a form's action row that names what is still
+// missing. A value the operator has not filled in yet is then visible before
+// the round trip rather than as a server error afterwards.
+export function RequiredStatus({ missing }: { missing: string[] }) {
+  const { t } = useI18n();
+  return (
+    <div
+      className={`deploy-checklist ${missing.length === 0 ? 'ready' : 'pending'}`}
+      data-testid="form-required-status"
+    >
+      {missing.length === 0
+        ? t('form.requiredComplete')
+        : t('form.requiredMissing', { fields: missing.join(' · ') })}
+    </div>
   );
 }
 

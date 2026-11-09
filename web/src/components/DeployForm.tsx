@@ -25,7 +25,7 @@ import {
 import { Dialog, ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from './EnvVarsEditor';
-import { FieldLabel, FormSection, ReqFlag } from './FormField';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 import { engineParams, type EngineParam } from './engineParams';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
@@ -561,22 +561,7 @@ export default function DeployForm({
         </button>
       </div>
 
-      {/* The three tiers are explained once, here, so the badge next to
-          every field is already understood when it first appears. */}
-      <div className="form-legend" data-testid="deploy-legend">
-        <span className="form-legend-item">
-          <ReqFlag kind="required" />
-          {t('deploy.reqHint.required')}
-        </span>
-        <span className="form-legend-item">
-          <ReqFlag kind="defaulted" />
-          {t('deploy.reqHint.defaulted')}
-        </span>
-        <span className="form-legend-item">
-          <ReqFlag kind="optional" />
-          {t('deploy.reqHint.optional')}
-        </span>
-      </div>
+      <FormLegend testId="deploy-legend" />
 
       <FormSection
         step={1}
@@ -742,7 +727,7 @@ export default function DeployForm({
             htmlFor="deploy-tp"
             text={t('deploy.tensorParallel')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '1' })}
+            flag={t('form.reqDefaultValue', { value: '1' })}
           />
           <input
             id="deploy-tp"
@@ -760,7 +745,7 @@ export default function DeployForm({
             htmlFor="deploy-pp"
             text={t('deploy.pipelineParallel')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '1' })}
+            flag={t('form.reqDefaultValue', { value: '1' })}
           />
           <input
             id="deploy-pp"
@@ -780,7 +765,7 @@ export default function DeployForm({
                 htmlFor="deploy-prefill"
                 text={t('deploy.prefillReplicas')}
                 requirement="defaulted"
-                flag={t('deploy.reqDefaultValue', { value: '1' })}
+                flag={t('form.reqDefaultValue', { value: '1' })}
               />
               <input
                 id="deploy-prefill"
@@ -797,7 +782,7 @@ export default function DeployForm({
                 htmlFor="deploy-decode"
                 text={t('deploy.decodeReplicas')}
                 requirement="defaulted"
-                flag={t('deploy.reqDefaultValue', { value: '1' })}
+                flag={t('form.reqDefaultValue', { value: '1' })}
               />
               <input
                 id="deploy-decode"
@@ -846,8 +831,8 @@ export default function DeployForm({
             requirement="defaulted"
             flag={
               topology === 'single'
-                ? t('deploy.reqDerived')
-                : t('deploy.reqDefaultValue', { value: '1' })
+                ? t('form.reqDerived')
+                : t('form.reqDefaultValue', { value: '1' })
             }
           />
           <input
@@ -869,7 +854,7 @@ export default function DeployForm({
             htmlFor="deploy-cpu"
             text={t('deploy.cpuCores')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '4' })}
+            flag={t('form.reqDefaultValue', { value: '4' })}
           />
           <input
             id="deploy-cpu"
@@ -887,7 +872,7 @@ export default function DeployForm({
             htmlFor="deploy-memory"
             text={t('deploy.memoryGiB')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '16' })}
+            flag={t('form.reqDefaultValue', { value: '16' })}
           />
           <input
             id="deploy-memory"
@@ -905,7 +890,7 @@ export default function DeployForm({
             htmlFor="deploy-priority"
             text={t('deploy.priority')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: t('deploy.priorityNormal') })}
+            flag={t('form.reqDefaultValue', { value: t('deploy.priorityNormal') })}
           />
           <select
             id="deploy-priority"
@@ -937,7 +922,7 @@ export default function DeployForm({
                 htmlFor="deploy-rdma-devices"
                 text={t('deploy.rdmaDevices')}
                 requirement="defaulted"
-                flag={t('deploy.reqDefaultValue', { value: '1' })}
+                flag={t('form.reqDefaultValue', { value: '1' })}
               />
               <input
                 id="deploy-rdma-devices"
@@ -1222,7 +1207,7 @@ export default function DeployForm({
             htmlFor="deploy-as-min"
             text={t('deploy.minReplicas')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '1' })}
+            flag={t('form.reqDefaultValue', { value: '1' })}
           />
           <input
             id="deploy-as-min"
@@ -1243,7 +1228,7 @@ export default function DeployForm({
             htmlFor="deploy-as-max"
             text={t('deploy.maxReplicas')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '10' })}
+            flag={t('form.reqDefaultValue', { value: '10' })}
           />
           <input
             id="deploy-as-max"
@@ -1264,7 +1249,7 @@ export default function DeployForm({
             htmlFor="deploy-as-target"
             text={t('deploy.targetConcurrency')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '32' })}
+            flag={t('form.reqDefaultValue', { value: '32' })}
           />
           <input
             id="deploy-as-target"
@@ -1303,7 +1288,7 @@ export default function DeployForm({
             htmlFor="deploy-as-cooldown"
             text={t('deploy.cooldown')}
             requirement="defaulted"
-            flag={t('deploy.reqDefaultValue', { value: '300' })}
+            flag={t('form.reqDefaultValue', { value: '300' })}
           />
           <input
             id="deploy-as-cooldown"
@@ -1324,17 +1309,7 @@ export default function DeployForm({
 
       {error && <ErrorBanner message={error} />}
       <div className="deploy-actions">
-        {/* The same three tiers, checked against the request: an operator who
-            missed a required field is told which one before submitting rather
-            than after the round trip. */}
-        <div
-          className={`deploy-checklist ${missingRequired.length === 0 ? 'ready' : 'pending'}`}
-          data-testid="deploy-required-status"
-        >
-          {missingRequired.length === 0
-            ? t('deploy.requiredComplete')
-            : t('deploy.requiredMissing', { fields: missingRequired.join(' · ') })}
-        </div>
+        <RequiredStatus missing={missingRequired} />
         <button className="secondary" onClick={onCancel}>
           {t('common.cancel')}
         </button>
@@ -1616,7 +1591,7 @@ function EngineArgsSection({
                 requirement="optional"
                 flag={
                   p.defaultValue
-                    ? t('deploy.reqDefaultValue', { value: p.defaultValue })
+                    ? t('form.reqDefaultValue', { value: p.defaultValue })
                     : undefined
                 }
               />

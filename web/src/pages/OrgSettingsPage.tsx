@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type OrganizationSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
 import { ErrorBanner } from '../components';
 
 interface GetOrgResponse {
@@ -75,30 +76,44 @@ export default function OrgSettingsPage() {
         {loading ? (
           <div className="loading">{t('common.loading')}</div>
         ) : (
-          <div className="form-grid">
-            <label>
-              {t('orgSettings.displayName')}
-              <input
-                data-testid="org-settings-name"
-                value={displayName}
-                onChange={(e) => setDisplayName(e.target.value)}
-              />
-            </label>
-            <label className="full">
-              {t('orgSettings.description')}
-              <input
-                data-testid="org-settings-description"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-              />
-            </label>
-            <label>
-              {t('orgSettings.state')}
-              <input value={state} disabled />
-            </label>
-          </div>
+          <>
+            <FormLegend testId="org-settings-legend" />
+            <div className="form-grid">
+              <div className="form-field">
+                <FieldLabel
+                  htmlFor="org-settings-name"
+                  text={t('orgSettings.displayName')}
+                  requirement="required"
+                />
+                <input
+                  id="org-settings-name"
+                  data-testid="org-settings-name"
+                  value={displayName}
+                  onChange={(e) => setDisplayName(e.target.value)}
+                />
+              </div>
+              <div className="form-field full">
+                <FieldLabel
+                  htmlFor="org-settings-description"
+                  text={t('orgSettings.description')}
+                  requirement="optional"
+                />
+                <input
+                  id="org-settings-description"
+                  data-testid="org-settings-description"
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                />
+              </div>
+              <div className="form-field">
+                <FieldLabel text={t('orgSettings.state')} requirement="defaulted" flag={state} />
+                <input value={state} disabled readOnly />
+              </div>
+            </div>
+          </>
         )}
         <div className="dialog-actions">
+          <RequiredStatus missing={displayName.trim() ? [] : [t('orgSettings.displayName')]} />
           <button
             data-testid="org-settings-save"
             disabled={saving || loading || !displayName.trim()}

@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type PageMeta, type SSOProvider } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 
 interface ListResponse {
@@ -188,6 +189,40 @@ export default function SSOProvidersPage() {
   );
 }
 
+// requiredProviderFields returns the labels of the inputs a provider cannot be
+// saved without, by protocol: the identity pair is common, the rest depends on
+// what the protocol actually needs. The submit row uses it to name what is
+// missing before the operator submits.
+function requiredProviderFields(
+  t: (key: string) => string,
+  id: string,
+  provider: Partial<SSOProvider>,
+): string[] {
+  const type = provider.type || 'oidc';
+  const missing = [
+    !/^[a-z0-9][a-z0-9-]{2,63}$/.test(id.trim()) && t('sso.fieldProviderId'),
+    !(provider.displayName || '').trim() && t('sso.fieldDisplayName'),
+  ];
+  if (type === 'oidc') {
+    missing.push(
+      !(provider.issuer || '').trim() && t('sso.fieldIssuer'),
+      !(provider.clientId || '').trim() && t('sso.fieldClientId'),
+      !(provider.clientSecret || '').trim() && t('sso.fieldClientSecret'),
+      !(provider.redirectUri || '').trim() && t('sso.fieldRedirectUri'),
+    );
+  }
+  if (type === 'saml') {
+    missing.push(!(provider.metadataUrl || '').trim() && t('sso.fieldMetadataUrl'));
+  }
+  if (type === 'ldap') {
+    missing.push(
+      !(provider.host || '').trim() && t('sso.fieldHost'),
+      !(provider.baseDn || '').trim() && t('sso.fieldBaseDn'),
+    );
+  }
+  return missing.filter((entry): entry is string => Boolean(entry));
+}
+
 function ProviderFields({
   provider,
   setProvider,
@@ -198,9 +233,22 @@ function ProviderFields({
   const { t } = useI18n();
   const type = provider.type || 'oidc';
   return (
+    <>
+    <FormSection
+      step={1}
+      title={t('sso.sectionIdentity')}
+      hint={t('sso.sectionIdentityHint')}
+      requirement="required"
+      testId="sso-section-identity"
+    >
     <div className="form-grid">
       <div className="form-field">
-        <label htmlFor="sso-provider-type">{t('sso.fieldType')}</label>
+        <FieldLabel
+          htmlFor="sso-provider-type"
+          text={t('sso.fieldType')}
+          requirement="defaulted"
+          flag={t('form.reqDefaultValue', { value: type })}
+        />
         <select
           id="sso-provider-type"
           data-testid="sso-provider-type-select"
@@ -215,7 +263,11 @@ function ProviderFields({
         </select>
       </div>
       <div className="form-field">
-        <label htmlFor="sso-provider-name">{t('sso.fieldDisplayName')}</label>
+        <FieldLabel
+          htmlFor="sso-provider-name"
+          text={t('sso.fieldDisplayName')}
+          requirement="required"
+        />
         <input
           id="sso-provider-name"
           data-testid="sso-provider-name-input"
@@ -224,10 +276,25 @@ function ProviderFields({
           onChange={(e) => setProvider({ ...provider, displayName: e.target.value })}
         />
       </div>
+    </div>
+    </FormSection>
+
+    <FormSection
+      step={2}
+      title={t('sso.sectionProtocol')}
+      hint={t('sso.sectionProtocolHint', { type: type.toUpperCase() })}
+      requirement="required"
+      testId="sso-section-protocol"
+    >
+    <div className="form-grid">
       {type === 'oidc' && (
         <>
           <div className="form-field">
-            <label htmlFor="sso-provider-issuer">{t('sso.fieldIssuer')}</label>
+            <FieldLabel
+              htmlFor="sso-provider-issuer"
+              text={t('sso.fieldIssuer')}
+              requirement="required"
+            />
             <input
               id="sso-provider-issuer"
               data-testid="sso-provider-issuer-input"
@@ -236,7 +303,7 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-client-id">{t('sso.fieldClientId')}</label>
+            <FieldLabel htmlFor="sso-provider-client-id" text={t('sso.fieldClientId')} requirement="required" />
             <input
               id="sso-provider-client-id"
               data-testid="sso-provider-client-id-input"
@@ -245,7 +312,7 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-client-secret">{t('sso.fieldClientSecret')}</label>
+            <FieldLabel htmlFor="sso-provider-client-secret" text={t('sso.fieldClientSecret')} requirement="required" />
             <input
               id="sso-provider-client-secret"
               data-testid="sso-provider-client-secret-input"
@@ -255,7 +322,7 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-redirect-uri">{t('sso.fieldRedirectUri')}</label>
+            <FieldLabel htmlFor="sso-provider-redirect-uri" text={t('sso.fieldRedirectUri')} requirement="required" />
             <input
               id="sso-provider-redirect-uri"
               data-testid="sso-provider-redirect-uri-input"
@@ -268,7 +335,7 @@ function ProviderFields({
       {type === 'saml' && (
         <>
           <div className="form-field">
-            <label htmlFor="sso-provider-metadata-url">{t('sso.fieldMetadataUrl')}</label>
+            <FieldLabel htmlFor="sso-provider-metadata-url" text={t('sso.fieldMetadataUrl')} requirement="required" />
             <input
               id="sso-provider-metadata-url"
               data-testid="sso-provider-metadata-url-input"
@@ -277,7 +344,7 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-entity-id">{t('sso.fieldEntityId')}</label>
+            <FieldLabel htmlFor="sso-provider-entity-id" text={t('sso.fieldEntityId')} requirement="optional" />
             <input
               id="sso-provider-entity-id"
               data-testid="sso-provider-entity-id-input"
@@ -286,7 +353,7 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-acs-url">{t('sso.fieldAcsUrl')}</label>
+            <FieldLabel htmlFor="sso-provider-acs-url" text={t('sso.fieldAcsUrl')} requirement="optional" />
             <input
               id="sso-provider-acs-url"
               data-testid="sso-provider-acs-url-input"
@@ -299,7 +366,7 @@ function ProviderFields({
       {type === 'ldap' && (
         <>
           <div className="form-field">
-            <label htmlFor="sso-provider-host">{t('sso.fieldHost')}</label>
+            <FieldLabel htmlFor="sso-provider-host" text={t('sso.fieldHost')} requirement="required" />
             <input
               id="sso-provider-host"
               data-testid="sso-provider-host-input"
@@ -308,7 +375,12 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-port">{t('sso.fieldPort')}</label>
+            <FieldLabel
+              htmlFor="sso-provider-port"
+              text={t('sso.fieldPort')}
+              requirement="defaulted"
+              flag={t('form.reqDefaultValue', { value: '389' })}
+            />
             <input
               id="sso-provider-port"
               data-testid="sso-provider-port-input"
@@ -318,7 +390,7 @@ function ProviderFields({
             />
           </div>
           <div className="form-field">
-            <label htmlFor="sso-provider-base-dn">{t('sso.fieldBaseDn')}</label>
+            <FieldLabel htmlFor="sso-provider-base-dn" text={t('sso.fieldBaseDn')} requirement="required" />
             <input
               id="sso-provider-base-dn"
               data-testid="sso-provider-base-dn-input"
@@ -328,8 +400,23 @@ function ProviderFields({
           </div>
         </>
       )}
+    </div>
+    </FormSection>
+
+    <FormSection
+      step={3}
+      title={t('sso.sectionDefaults')}
+      hint={t('sso.sectionDefaultsHint')}
+      requirement="optional"
+      testId="sso-section-defaults"
+    >
+    <div className="form-grid">
       <div className="form-field">
-        <label htmlFor="sso-provider-default-org">{t('sso.fieldDefaultOrg')}</label>
+        <FieldLabel
+          htmlFor="sso-provider-default-org"
+          text={t('sso.fieldDefaultOrg')}
+          requirement="optional"
+        />
         <input
           id="sso-provider-default-org"
           data-testid="sso-provider-default-org-input"
@@ -338,7 +425,12 @@ function ProviderFields({
         />
       </div>
       <div className="form-field">
-        <label htmlFor="sso-provider-jit-toggle">{t('sso.fieldJit')}</label>
+        <FieldLabel
+          htmlFor="sso-provider-jit-toggle"
+          text={t('sso.fieldJit')}
+          requirement="defaulted"
+          flag={t('form.reqDefaultValue', { value: t('common.enabled') })}
+        />
         <input
           id="sso-provider-jit-toggle"
           data-testid="sso-provider-jit-toggle"
@@ -348,7 +440,11 @@ function ProviderFields({
         />
       </div>
       <div className="form-field full">
-        <label htmlFor="sso-provider-mapping">{t('sso.fieldMapping')}</label>
+        <FieldLabel
+          htmlFor="sso-provider-mapping"
+          text={t('sso.fieldMapping')}
+          requirement="optional"
+        />
         <textarea
           id="sso-provider-mapping"
           data-testid="sso-provider-mapping-input"
@@ -359,6 +455,8 @@ function ProviderFields({
         />
       </div>
     </div>
+    </FormSection>
+    </>
   );
 }
 
@@ -398,9 +496,14 @@ function CreateProviderDialog({
 
   return (
     <Dialog title={t('sso.createTitle')} onClose={onClose} testId="create-sso-provider-dialog">
+      <FormLegend testId="create-sso-legend" />
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="sso-provider-id">{t('sso.fieldProviderId')}</label>
+          <FieldLabel
+            htmlFor="sso-provider-id"
+            text={t('sso.fieldProviderId')}
+            requirement="required"
+          />
           <input
             id="sso-provider-id"
             data-testid="sso-provider-id-input"
@@ -414,6 +517,7 @@ function CreateProviderDialog({
       <ProviderFields provider={provider} setProvider={setProvider} />
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={requiredProviderFields(t, id, provider)} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
@@ -463,6 +567,11 @@ function EditProviderDialog({
       <ProviderFields provider={fields} setProvider={setFields} />
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={requiredProviderFields(t, provider.providerId, fields).filter(
+            (entry) => entry !== t('sso.fieldProviderId'),
+          )}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

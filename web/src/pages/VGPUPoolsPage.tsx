@@ -8,6 +8,7 @@ import { Dialog, ErrorBanner, Pagination } from '../components';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { navigate } from '../router';
 import {
   type ListVGPUPoolsResponse,
@@ -252,9 +253,17 @@ function CreatePoolDialog({
 
   return (
     <Dialog title={t('vgpu.create')} onClose={onClose} testId="vgpu-pool-create-dialog">
+      <FormLegend testId="vgpu-pool-legend" />
+      <FormSection
+        step={1}
+        title={t('vgpu.sectionPool')}
+        hint={t('vgpu.sectionPoolHint')}
+        requirement="required"
+        testId="vgpu-pool-section-pool"
+      >
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="vgpu-pool-name">{t('providers.colName')}</label>
+          <FieldLabel htmlFor="vgpu-pool-name" text={t('providers.colName')} requirement="required" />
           <input
             id="vgpu-pool-name"
             data-testid="vgpu-pool-name-input"
@@ -265,7 +274,12 @@ function CreatePoolDialog({
           {fieldErrors.name && <div className="field-error">{fieldErrors.name}</div>}
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-policy">{t('vgpu.placementPolicy')}</label>
+          <FieldLabel
+            htmlFor="vgpu-pool-policy"
+            text={t('vgpu.placementPolicy')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: policy })}
+          />
           <select
             id="vgpu-pool-policy"
             data-testid="vgpu-pool-policy-select"
@@ -280,16 +294,25 @@ function CreatePoolDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-label-key">{t('vgpu.nodeLabelKey')}</label>
+          <FieldLabel
+            htmlFor="vgpu-pool-label-key"
+            text={t('vgpu.nodeLabelKey')}
+            requirement="defaulted"
+          />
           <input
             id="vgpu-pool-label-key"
             data-testid="vgpu-pool-label-key-input"
             value={labelKey}
             onChange={(e) => setLabelKey(e.target.value)}
           />
+          <div className="field-hint">{t('vgpu.nodeLabelKeyHint')}</div>
         </div>
         <div className="form-field">
-          <label htmlFor="vgpu-pool-label-value">{t('vgpu.nodeLabelValue')}</label>
+          <FieldLabel
+            htmlFor="vgpu-pool-label-value"
+            text={t('vgpu.nodeLabelValue')}
+            requirement="required"
+          />
           <input
             id="vgpu-pool-label-value"
             data-testid="vgpu-pool-label-value-input"
@@ -298,11 +321,28 @@ function CreatePoolDialog({
           />
           {fieldErrors.label && <div className="field-error">{fieldErrors.label}</div>}
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('vgpu.sectionSlices')}
+        hint={t('vgpu.sectionSlicesHint')}
+        requirement="required"
+        testId="vgpu-pool-section-slices"
+      >
         <SliceTemplateEditor rows={rows} onChange={setRows} />
         {fieldErrors.templates && <div className="field-error">{fieldErrors.templates}</div>}
-      </div>
+      </FormSection>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !name.trim() && t('providers.colName'),
+            !labelValue.trim() && t('vgpu.nodeLabelValue'),
+            rows.length === 0 && t('vgpu.sliceTemplates'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

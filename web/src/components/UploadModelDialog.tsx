@@ -17,6 +17,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '../components';
 import { ApiError, apiPrefix, sessionAuthHeader } from '../api';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 
 interface Props {
   onClose: () => void;
@@ -138,59 +139,97 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
   return (
     <Dialog title={t('models.upload.title')} onClose={onClose} testId="upload-model-dialog">
       <p className="muted">{t('models.upload.hint')}</p>
-      <div className="form-grid">
-        <div className="form-field full">
-          <label htmlFor="upload-model-archive">{t('models.upload.archive')}</label>
-          <input
-            id="upload-model-archive"
-            data-testid="upload-model-archive"
-            type="file"
-            accept={ARCHIVE_ACCEPT}
-            disabled={submitting}
-            onChange={(e) => pickFile(e.target.files?.[0] || null)}
-          />
-          <div className="field-hint">
-            {file
-              ? t('models.upload.selected', { name: file.name, size: sizeLabel(file.size) })
-              : t('models.upload.archiveHint')}
+      <FormLegend testId="upload-model-legend" />
+      <FormSection
+        step={1}
+        title={t('models.upload.sectionArchive')}
+        hint={t('models.upload.sectionArchiveHint')}
+        requirement="required"
+        testId="upload-model-section-archive"
+      >
+        <div className="form-grid">
+          <div className="form-field full">
+            <FieldLabel
+              htmlFor="upload-model-archive"
+              text={t('models.upload.archive')}
+              requirement="required"
+            />
+            <input
+              id="upload-model-archive"
+              data-testid="upload-model-archive"
+              type="file"
+              accept={ARCHIVE_ACCEPT}
+              disabled={submitting}
+              onChange={(e) => pickFile(e.target.files?.[0] || null)}
+            />
+            <div className="field-hint">
+              {file
+                ? t('models.upload.selected', { name: file.name, size: sizeLabel(file.size) })
+                : t('models.upload.archiveHint')}
+            </div>
           </div>
         </div>
-        <div className="form-field">
-          <label htmlFor="upload-model-name">{t('models.upload.name')}</label>
-          <input
-            id="upload-model-name"
-            data-testid="upload-model-name"
-            value={name}
-            maxLength={128}
-            disabled={submitting}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('models.upload.namePlaceholder')}
-          />
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('models.upload.sectionCatalog')}
+        hint={t('models.upload.sectionCatalogHint')}
+        requirement="required"
+        testId="upload-model-section-catalog"
+      >
+        <div className="form-grid">
+          <div className="form-field">
+            <FieldLabel
+              htmlFor="upload-model-name"
+              text={t('models.upload.name')}
+              requirement="required"
+            />
+            <input
+              id="upload-model-name"
+              data-testid="upload-model-name"
+              value={name}
+              maxLength={128}
+              disabled={submitting}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('models.upload.namePlaceholder')}
+            />
+            <div className="field-hint">{t('models.upload.nameHint')}</div>
+          </div>
+          <div className="form-field">
+            <FieldLabel
+              htmlFor="upload-model-version"
+              text={t('models.upload.version')}
+              requirement="optional"
+              flag={t('form.reqDerived')}
+            />
+            <input
+              id="upload-model-version"
+              data-testid="upload-model-version"
+              value={version}
+              maxLength={64}
+              disabled={submitting}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder={t('models.upload.versionPlaceholder')}
+            />
+          </div>
+          <div className="form-field full">
+            <FieldLabel
+              htmlFor="upload-model-description"
+              text={t('models.upload.description')}
+              requirement="optional"
+            />
+            <input
+              id="upload-model-description"
+              data-testid="upload-model-description"
+              value={description}
+              maxLength={1024}
+              disabled={submitting}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="form-field">
-          <label htmlFor="upload-model-version">{t('models.upload.version')}</label>
-          <input
-            id="upload-model-version"
-            data-testid="upload-model-version"
-            value={version}
-            maxLength={64}
-            disabled={submitting}
-            onChange={(e) => setVersion(e.target.value)}
-            placeholder={t('models.upload.versionPlaceholder')}
-          />
-        </div>
-        <div className="form-field full">
-          <label htmlFor="upload-model-description">{t('models.upload.description')}</label>
-          <input
-            id="upload-model-description"
-            data-testid="upload-model-description"
-            value={description}
-            maxLength={1024}
-            disabled={submitting}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-      </div>
+      </FormSection>
 
       {submitting && (
         <div style={{ marginBottom: 12 }} data-testid="upload-model-progress">
@@ -208,6 +247,12 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
       {error && <div className="field-error">{error}</div>}
 
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !file && t('models.upload.archive'),
+            !name.trim() && t('models.upload.name'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" data-testid="upload-model-cancel" onClick={onClose} disabled={submitting}>
           {t('common.cancel')}
         </button>

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../../components/FormField';
 import { navigate } from '../../router';
 import { ApiError, formatTime, type PageMeta } from '../../api';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../../components';
@@ -303,9 +304,17 @@ function CreateDialog({
 
   return (
     <Dialog title={t('webhooks.newTitle')} onClose={onClose} testId="webhook-create-dialog">
+      <FormLegend testId="user-webhook-legend" />
+      <FormSection
+        step={1}
+        title={t('webhooks.sectionEndpoint')}
+        hint={t('webhooks.sectionEndpointHint')}
+        requirement="required"
+        testId="user-webhook-section-endpoint"
+      >
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="wh-name">{t('webhooks.fieldName')}</label>
+          <FieldLabel htmlFor="wh-name" text={t('webhooks.fieldName')} requirement="required" />
           <input
             id="wh-name"
             data-testid="webhook-dialog-name"
@@ -315,7 +324,7 @@ function CreateDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="wh-url">{t('webhooks.fieldUrl')}</label>
+          <FieldLabel htmlFor="wh-url" text={t('webhooks.fieldUrl')} requirement="required" />
           <input
             id="wh-url"
             data-testid="webhook-dialog-url"
@@ -324,8 +333,19 @@ function CreateDialog({
             placeholder="https://example.com/hook"
           />
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('webhooks.sectionEvents')}
+        hint={t('webhooks.sectionEventsHint')}
+        requirement="required"
+        testId="user-webhook-section-events"
+      >
+      <div className="form-grid">
         <div className="form-field full">
-          <label>{t('webhooks.fieldEvents')}</label>
+          <FieldLabel text={t('webhooks.fieldEvents')} requirement="required" />
           <div data-testid="webhook-dialog-events">
             {USER_EVENTS.map((ev) => (
               <label key={ev.type} className="checkbox-row">
@@ -339,8 +359,19 @@ function CreateDialog({
             ))}
           </div>
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={3}
+        title={t('webhooks.sectionRetry')}
+        hint={t('webhooks.sectionRetryHint')}
+        requirement="defaulted"
+        testId="user-webhook-section-retry"
+      >
+      <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="wh-max">{t('webhooks.fieldMaxAttempts')}</label>
+          <FieldLabel htmlFor="wh-max" text={t('webhooks.fieldMaxAttempts')} requirement="defaulted" />
           <input
             id="wh-max"
             data-testid="webhook-dialog-max-attempts"
@@ -352,7 +383,7 @@ function CreateDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="wh-backoff">{t('webhooks.fieldBackoff')}</label>
+          <FieldLabel htmlFor="wh-backoff" text={t('webhooks.fieldBackoff')} requirement="defaulted" />
           <input
             id="wh-backoff"
             data-testid="webhook-dialog-backoff"
@@ -364,8 +395,16 @@ function CreateDialog({
           />
         </div>
       </div>
+      </FormSection>
       {error && <div className="error" data-testid="webhook-dialog-error">{error}</div>}
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !name.trim() && t('webhooks.fieldName'),
+            !/^https?:\/\/.+/.test(url.trim()) && t('webhooks.fieldUrl'),
+            events.length === 0 && t('webhooks.fieldEvents'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

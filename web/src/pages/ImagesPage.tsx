@@ -15,6 +15,7 @@ import {
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 import UploadImageDialog from '../components/UploadImageDialog';
 
@@ -422,9 +423,21 @@ function ImportImageDialog({
           </span>
         </div>
       </div>
+      <FormLegend testId="import-image-legend" />
+      <FormSection
+        step={1}
+        title={t('images.importSectionSource')}
+        hint={t('images.importSectionSourceHint')}
+        requirement="required"
+        testId="import-image-section-source"
+      >
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="import-source">{t('images.sourceReference')}</label>
+          <FieldLabel
+            htmlFor="import-source"
+            text={t('images.sourceReference')}
+            requirement="required"
+          />
           <input
             id="import-source"
             className="mono"
@@ -444,8 +457,23 @@ function ImportImageDialog({
                 : t('images.registryUnconfigured')}
           </div>
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('images.importSectionRuntime')}
+        hint={t('images.importSectionRuntimeHint')}
+        requirement="required"
+        testId="import-image-section-runtime"
+      >
+      <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="import-accelerator">{t('images.fieldAccelerator')}</label>
+          <FieldLabel
+            htmlFor="import-accelerator"
+            text={t('images.fieldAccelerator')}
+            requirement="defaulted"
+          />
           <select
             id="import-accelerator"
             data-testid="import-accelerator-select"
@@ -460,7 +488,7 @@ function ImportImageDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="import-engine">{t('images.fieldEngine')}</label>
+          <FieldLabel htmlFor="import-engine" text={t('images.fieldEngine')} requirement="required" />
           <input
             id="import-engine"
             data-testid="import-engine-input"
@@ -470,8 +498,26 @@ function ImportImageDialog({
             placeholder={t('images.placeholderEngine')}
           />
         </div>
+      </div>
+      </FormSection>
+
+      {/* Credentials are for a private source registry only, so the pair is
+          optional as a block and the password is disabled until a user name
+          is given. */}
+      <FormSection
+        step={3}
+        title={t('images.importSectionAuth')}
+        hint={t('images.importSectionAuthHint')}
+        requirement="optional"
+        testId="import-image-section-auth"
+      >
+      <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="import-src-user">{t('images.sourceUsername')}</label>
+          <FieldLabel
+            htmlFor="import-src-user"
+            text={t('images.sourceUsername')}
+            requirement="optional"
+          />
           <input
             id="import-src-user"
             data-testid="import-source-username"
@@ -482,7 +528,11 @@ function ImportImageDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="import-src-pass">{t('images.sourcePassword')}</label>
+          <FieldLabel
+            htmlFor="import-src-pass"
+            text={t('images.sourcePassword')}
+            requirement="optional"
+          />
           <input
             id="import-src-pass"
             type="password"
@@ -494,7 +544,11 @@ function ImportImageDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="import-desc">{t('common.descriptionOptional')}</label>
+          <FieldLabel
+            htmlFor="import-desc"
+            text={t('common.descriptionOptional')}
+            requirement="optional"
+          />
           <textarea
             id="import-desc"
             data-testid="import-description"
@@ -505,9 +559,16 @@ function ImportImageDialog({
           />
         </div>
       </div>
+      </FormSection>
       {error && <ErrorBanner message={error} />}
 
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !sourceReference.trim() && t('images.sourceReference'),
+            !engine.trim() && t('images.fieldEngine'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
@@ -558,7 +619,11 @@ function EditImageDialog({
     >
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="edit-image-description">{t('common.description')}</label>
+          <FieldLabel
+            htmlFor="edit-image-description"
+            text={t('common.description')}
+            requirement="optional"
+          />
           <textarea
             id="edit-image-description"
             data-testid="edit-image-description-input"

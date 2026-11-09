@@ -709,25 +709,25 @@ module.exports = {
     browser.waitForElementPresent('[data-testid="deploy-legend"]', 5000, 'create form: legend');
     ['required', 'defaulted', 'optional'].forEach((kind) => {
       browser.assert.elementsCount(
-        `[data-testid="deploy-legend"] [data-testid="deploy-req-${kind}"]`,
+        `[data-testid="deploy-legend"] [data-testid="req-flag-${kind}"]`,
         1,
         `create form: legend explains "${kind}"`,
       );
     });
     ['deploy-model', 'deploy-version', 'deploy-image', 'deploy-name'].forEach((field) => {
       browser.assert.elementsCount(
-        `label[for="${field}"] [data-testid="deploy-req-required"]`,
+        `label[for="${field}"] [data-testid="req-flag-required"]`,
         1,
         `create form: ${field} is marked required`,
       );
     });
     browser.assert.elementsCount(
-      'label[for="deploy-card-type"] [data-testid="deploy-req-optional"]',
+      'label[for="deploy-card-type"] [data-testid="req-flag-optional"]',
       1,
       'create form: card type is marked optional',
     );
     browser.assert.elementsCount(
-      'label[for="deploy-cpu"] [data-testid="deploy-req-defaulted"]',
+      'label[for="deploy-cpu"] [data-testid="req-flag-defaulted"]',
       1,
       'create form: CPU request is marked defaulted',
     );
@@ -766,14 +766,14 @@ module.exports = {
 
     // FR3.5: what is still missing is stated next to the submit button
     // instead of only surfacing as a server error after the round trip.
-    browser.getAttribute('[data-testid="deploy-required-status"]', 'class', (res) => {
+    browser.getAttribute('[data-testid="form-required-status"]', 'class', (res) => {
       browser.assert.ok(
         String(res.value || '').includes('pending'),
         'create form: name still empty, so the status reports work outstanding',
       );
     });
     browser.setValue('[data-testid="deploy-name-input"]', `e2e-form-${browser.globals.runId}`);
-    browser.getAttribute('[data-testid="deploy-required-status"]', 'class', (res) => {
+    browser.getAttribute('[data-testid="form-required-status"]', 'class', (res) => {
       browser.assert.ok(
         String(res.value || '').includes('ready'),
         'create form: a filled name completes every required field',
@@ -781,6 +781,63 @@ module.exports = {
     });
     // Nothing is submitted: the case checks the form, not the service.
     browser.click('[data-testid="deploy-panel-close"]');
+  },
+
+  'model download form: the same requirement tiers and blocks as the deploy form': function (browser) {
+    const org = browser.globals.orgA;
+    api.seedSession(browser, 'admin', org);
+    browser.execute(`localStorage.setItem('go-taas.admin.org-id', '${org}')`);
+    browser.url(browser.globals.baseUrl + '/admin/models');
+    browser.waitForElementPresent('[data-testid="toggle-download-form"]', 15000, 'download form: page loaded');
+    browser.click('[data-testid="toggle-download-form"]');
+    browser.waitForElementPresent('[data-testid="download-form"]', 10000, 'download form: opened');
+
+    // FR3.5 applied to the second admin form: legend, per-field tiers, and
+    // two rule-separated blocks.
+    ['required', 'defaulted', 'optional'].forEach((kind) => {
+      browser.assert.elementsCount(
+        `[data-testid="download-legend"] [data-testid="req-flag-${kind}"]`,
+        1,
+        `download form: legend explains "${kind}"`,
+      );
+    });
+    ['download-source', 'download-name', 'download-version'].forEach((field) => {
+      browser.assert.elementsCount(
+        `label[for="${field}"] [data-testid="req-flag-defaulted"], ` +
+          `label[for="${field}"] [data-testid="req-flag-optional"]`,
+        1,
+        `download form: ${field} is not marked required`,
+      );
+    });
+    browser.assert.elementsCount(
+      'label[for="download-hub-model-id"] [data-testid="req-flag-required"]',
+      1,
+      'download form: the hub model id is required',
+    );
+    ['source', 'catalog'].forEach((name) => {
+      browser.waitForElementPresent(
+        `[data-testid="download-section-${name}"]`,
+        5000,
+        `download form: section "${name}"`,
+      );
+    });
+
+    // The one required input drives the action-row checklist.
+    browser.getAttribute('[data-testid="form-required-status"]', 'class', (res) => {
+      browser.assert.ok(
+        String(res.value || '').includes('pending'),
+        'download form: empty hub id reports work outstanding',
+      );
+    });
+    browser.setValue('[data-testid="download-hub-model-id"]', 'Qwen/Qwen2.5-0.5B-Instruct');
+    browser.getAttribute('[data-testid="form-required-status"]', 'class', (res) => {
+      browser.assert.ok(
+        String(res.value || '').includes('ready'),
+        'download form: a valid hub id completes every required field',
+      );
+    });
+    // Nothing is started: the case checks the form, not the download.
+    browser.click('[data-testid="toggle-download-form"]');
   },
 
   'rdma: an RDMA request round-trips and a bad device count is refused': function (browser) {

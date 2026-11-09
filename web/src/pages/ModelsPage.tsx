@@ -7,6 +7,7 @@ import { navigate } from '../router';
 import { api, ApiError, formatTime, type ModelSummary, type PageMeta } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 import UploadModelDialog from '../components/UploadModelDialog';
@@ -327,69 +328,117 @@ function RegisterDialog({
     }
   };
 
+  // What the request cannot do without, checked as the operator types so a
+  // missing value is visible before the round trip.
+  const missing = [
+    !name.trim() && t('models.fieldName'),
+    !version.trim() && t('models.fieldVersion'),
+    !weightPath.trim() && t('models.fieldWeightPath'),
+  ].filter((entry): entry is string => Boolean(entry));
+
   return (
     <Dialog title={t('models.registerTitle')} onClose={onClose} testId="register-dialog">
-      <div className="form-grid">
-        <div className="form-field">
-          <label htmlFor="model-name">{t('models.fieldName')}</label>
-          <input
-            id="model-name"
-            data-testid="model-name-input"
-            value={name}
-            maxLength={128}
-            onChange={(e) => setName(e.target.value)}
-            placeholder={t('models.placeholderName')}
-          />
+      <FormLegend testId="register-legend" />
+      <FormSection
+        step={1}
+        title={t('models.registerSectionIdentity')}
+        hint={t('models.registerSectionIdentityHint')}
+        requirement="required"
+        testId="register-section-identity"
+      >
+        <div className="form-grid">
+          <div className="form-field">
+            <FieldLabel htmlFor="model-name" text={t('models.fieldName')} requirement="required" />
+            <input
+              id="model-name"
+              data-testid="model-name-input"
+              value={name}
+              maxLength={128}
+              onChange={(e) => setName(e.target.value)}
+              placeholder={t('models.placeholderName')}
+            />
+          </div>
+          <div className="form-field">
+            <FieldLabel
+              htmlFor="model-version"
+              text={t('models.fieldVersion')}
+              requirement="required"
+            />
+            <input
+              id="model-version"
+              data-testid="model-version-input"
+              value={version}
+              maxLength={64}
+              onChange={(e) => setVersion(e.target.value)}
+              placeholder={t('models.placeholderVersion')}
+            />
+          </div>
+          <div className="form-field full">
+            <FieldLabel
+              htmlFor="model-hub-id"
+              text={t('models.fieldHubModelId')}
+              requirement="optional"
+            />
+            <input
+              id="model-hub-id"
+              data-testid="model-hub-id-input"
+              className="mono"
+              value={hubModelId}
+              maxLength={255}
+              onChange={(e) => setHubModelId(e.target.value)}
+              placeholder={t('models.placeholderHubModelId')}
+            />
+            <div className="field-hint">{t('models.hubModelIdHint')}</div>
+          </div>
         </div>
-        <div className="form-field">
-          <label htmlFor="model-version">{t('models.fieldVersion')}</label>
-          <input
-            id="model-version"
-            data-testid="model-version-input"
-            value={version}
-            maxLength={64}
-            onChange={(e) => setVersion(e.target.value)}
-            placeholder={t('models.placeholderVersion')}
-          />
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('models.registerSectionWeights')}
+        hint={t('models.registerSectionWeightsHint')}
+        requirement="required"
+        testId="register-section-weights"
+      >
+        <div className="form-grid">
+          <div className="form-field full">
+            <FieldLabel
+              htmlFor="model-weight-path"
+              text={t('models.fieldWeightPath')}
+              requirement="required"
+            />
+            <input
+              id="model-weight-path"
+              data-testid="model-weight-path-input"
+              className="mono"
+              value={weightPath}
+              onChange={(e) => setWeightPath(e.target.value)}
+              placeholder={t('models.placeholderWeightPath')}
+            />
+            <div className="field-hint">{t('models.weightPathHint')}</div>
+          </div>
+          <div className="form-field full">
+            <FieldLabel
+              htmlFor="model-description"
+              text={t('common.descriptionOptional')}
+              requirement="optional"
+            />
+            <textarea
+              id="model-description"
+              data-testid="model-description-input"
+              value={description}
+              maxLength={1024}
+              rows={3}
+              onChange={(e) => setDescription(e.target.value)}
+            />
+          </div>
         </div>
-        <div className="form-field full">
-          <label htmlFor="model-hub-id">{t('models.fieldHubModelId')}</label>
-          <input
-            id="model-hub-id"
-            data-testid="model-hub-id-input"
-            value={hubModelId}
-            maxLength={255}
-            onChange={(e) => setHubModelId(e.target.value)}
-            placeholder={t('models.placeholderHubModelId')}
-          />
-          <div className="field-hint">{t('models.hubModelIdHint')}</div>
-        </div>
-        <div className="form-field full">
-          <label htmlFor="model-weight-path">{t('models.fieldWeightPath')}</label>
-          <input
-            id="model-weight-path"
-            data-testid="model-weight-path-input"
-            value={weightPath}
-            onChange={(e) => setWeightPath(e.target.value)}
-            placeholder={t('models.placeholderWeightPath')}
-          />
-          <div className="field-hint">{t('models.weightPathHint')}</div>
-        </div>
-        <div className="form-field full">
-          <label htmlFor="model-description">{t('common.descriptionOptional')}</label>
-          <textarea
-            id="model-description"
-            data-testid="model-description-input"
-            value={description}
-            maxLength={1024}
-            rows={3}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-      </div>
+      </FormSection>
+
       {error && <ErrorBanner message={error} />}
 
       <div className="dialog-actions">
+        <RequiredStatus missing={missing} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

@@ -10,6 +10,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta, type UserSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 
 interface ListResponse {
@@ -450,9 +451,10 @@ function AddToOrgDialog({
     >
       <p className="muted">{t('users.addOrgHint')}</p>
       {error && <ErrorBanner message={error} />}
+      <FormLegend testId="user-add-org-legend" />
       <div className="form-grid">
-        <label>
-          {t('users.org')}
+        <div className="form-field">
+          <FieldLabel text={t('users.org')} requirement="required" />
           <select
             data-testid="user-add-org-select"
             value={selected}
@@ -468,7 +470,7 @@ function AddToOrgDialog({
               </option>
             ))}
           </select>
-        </label>
+        </div>
         {movingFrom && (
           <div className="form-field full">
             <div className="error" data-testid="user-add-org-move-warning">
@@ -479,8 +481,12 @@ function AddToOrgDialog({
             </div>
           </div>
         )}
-        <label>
-          {t('users.role')}
+        <div className="form-field">
+          <FieldLabel
+            text={t('users.role')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: tEnum('state', role) })}
+          />
           <select
             data-testid="user-add-org-role"
             value={role}
@@ -492,9 +498,10 @@ function AddToOrgDialog({
               </option>
             ))}
           </select>
-        </label>
+        </div>
       </div>
       <div className="dialog-actions">
+        <RequiredStatus missing={selected ? [] : [t('users.org')]} />
         <button className="secondary" data-testid="user-add-org-cancel" onClick={onClose}>
           {t('common.cancel')}
         </button>

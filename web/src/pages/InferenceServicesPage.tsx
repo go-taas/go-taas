@@ -22,6 +22,7 @@ import {
   usePolling,
 } from '../components';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
 import ServiceStatusBanner from '../components/ServiceStatusBanner';
 import DeployForm from '../components/DeployForm';
 
@@ -427,9 +428,17 @@ function AutoscalingDialog({
           {t('services.asWarning')}
         </div>
       )}
+      <FormLegend testId="service-autoscaling-legend" />
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="asd-enabled">{t('services.fieldEnabled')}</label>
+          <FieldLabel
+            htmlFor="asd-enabled"
+            text={t('services.fieldEnabled')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', {
+              value: policy.enabled ? t('common.enabled') : t('common.disabled'),
+            })}
+          />
           <input
             id="asd-enabled"
             data-testid="asd-enabled"
@@ -439,7 +448,12 @@ function AutoscalingDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="asd-min">{t('services.fieldMinReplicas')}</label>
+          <FieldLabel
+            htmlFor="asd-min"
+            text={t('services.fieldMinReplicas')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: String(policy.minReplicas) })}
+          />
           <input
             id="asd-min"
             data-testid="asd-min"
@@ -453,7 +467,12 @@ function AutoscalingDialog({
           {fieldErrors.minReplicas && <div className="field-error">{fieldErrors.minReplicas}</div>}
         </div>
         <div className="form-field">
-          <label htmlFor="asd-max">{t('services.fieldMaxReplicas')}</label>
+          <FieldLabel
+            htmlFor="asd-max"
+            text={t('services.fieldMaxReplicas')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: String(policy.maxReplicas) })}
+          />
           <input
             id="asd-max"
             data-testid="asd-max"
@@ -467,7 +486,12 @@ function AutoscalingDialog({
           {fieldErrors.maxReplicas && <div className="field-error">{fieldErrors.maxReplicas}</div>}
         </div>
         <div className="form-field">
-          <label htmlFor="asd-target">{t('services.fieldTargetConcurrency')}</label>
+          <FieldLabel
+            htmlFor="asd-target"
+            text={t('services.fieldTargetConcurrency')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: String(policy.targetConcurrency) })}
+          />
           <input
             id="asd-target"
             data-testid="asd-target"
@@ -567,7 +591,12 @@ function ScaleDialog({
       />
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="scale-replicas">{t('services.fieldNewReplicas')}</label>
+          <FieldLabel
+            htmlFor="scale-replicas"
+            text={t('services.fieldNewReplicas')}
+            requirement="required"
+            flag={t('form.reqDefaultValue', { value: replicas })}
+          />
           <input
             id="scale-replicas"
             data-testid="scale-replicas-input"
@@ -581,6 +610,7 @@ function ScaleDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={parseInt(replicas, 10) >= 1 ? [] : [t('services.fieldNewReplicas')]} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

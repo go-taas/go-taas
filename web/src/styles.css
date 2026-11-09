@@ -1812,10 +1812,18 @@ button.primary:hover {
 }
 
 .deploy-checklist {
+  /* Shrinkable so a long "still empty" list never pushes the buttons onto
+     their own row; two lines are enough to name what is missing. */
+  flex: 1 1 140px;
+  min-width: 0;
   margin-right: auto;
   font-size: 12px;
   font-weight: 600;
   color: var(--muted);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
 }
 
 .deploy-checklist.pending {
@@ -1826,9 +1834,14 @@ button.primary:hover {
   color: var(--ok);
 }
 
+/* `minmax(0, 1fr)` rather than `1fr`: a bare `1fr` track refuses to shrink
+   below the min-content width of its content, so one long option label or
+   placeholder would push the second column past the form and give the panel
+   (or the dialog) a horizontal scrollbar. Inputs get `min-width: 0` for the
+   same reason: a control's intrinsic width is its text, not its track. */
 .form-grid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 18px;
   margin: 18px 0;
 }
@@ -1867,6 +1880,7 @@ button.primary:hover {
 .form-row input,
 .form-row select,
 .form-row textarea {
+  min-width: 0;
   border: 1px solid var(--border-strong);
   border-radius: 10px;
   padding: 10px 12px;
@@ -2116,9 +2130,26 @@ button.primary:hover {
 
 .dialog .dialog-actions {
   display: flex;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: flex-end;
   gap: 10px;
   margin-top: 18px;
+}
+
+/* A dialog taller than the viewport scrolls, and the action row is where the
+   "still empty" checklist lives: leaving it below the fold defeats the point
+   of the checklist. Sticking it to the bottom keeps the buttons and the
+   outstanding-field line visible while the fields scroll. The negative
+   offsets cancel the dialog's own padding so the row sits flush with the
+   frame instead of floating above it. */
+.dialog > .dialog-actions {
+  position: sticky;
+  bottom: -24px;
+  margin-bottom: -24px;
+  padding: 12px 0 24px;
+  border-top: 1px solid var(--border);
+  background: #fcfdff;
 }
 
 /* ============================================================

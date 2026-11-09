@@ -11,6 +11,7 @@ import { formatTime, type PageMeta } from '../api';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 import { navigate } from '../router';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 
 interface ResponseEnvelope {
   code: number;
@@ -560,88 +561,161 @@ export default function ProvidersPage() {
           testId="provider-dialog"
         >
           {formError && <ErrorBanner message={formError} />}
-          <label className="field">
-            <span>{t('providers.fieldName')}</span>
-            <input
-              data-testid="provider-form-name"
-              value={form.name}
-              onChange={(e) => setForm({ ...form, name: e.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>{t('providers.fieldType')}</span>
-            <select
-              data-testid="provider-form-type"
-              value={form.type}
-              onChange={(e) => setForm({ ...form, type: e.target.value })}
-            >
-              {PROVIDER_TYPES.map((v) => (
-                <option key={v} value={v}>
-                  {TYPE_LABELS[v]}
-                </option>
-              ))}
-            </select>
-          </label>
-          <label className="field">
-            <span>{t('providers.fieldBaseUrl')}</span>
-            <input
-              data-testid="provider-form-base-url"
-              value={form.baseUrl}
-              placeholder={t('providers.placeholderBaseUrl')}
-              onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>{t('providers.fieldApiKey')} {editing ? `(${editing.apiKeyHint} — ${t('providers.leaveBlankToKeep')})` : ''}</span>
-            <input
-              type="password"
-              data-testid="provider-form-api-key"
-              value={form.apiKey}
-              placeholder={editing ? t('providers.placeholderApiKeyKeep') : 'sk-…'}
-              onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
-            />
-          </label>
-          <label className="field">
-            <span>{t('providers.fieldEnabled')}</span>
-            <input
-              type="checkbox"
-              data-testid="provider-form-enabled"
-              checked={form.enabled}
-              onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
-            />
-          </label>
-          <label className="field">
-            <span>{t('providers.fieldTimeout')}</span>
-            <input
-              data-testid="provider-form-timeout"
-              value={form.timeout}
-              onChange={(e) => setForm({ ...form, timeout: e.target.value })}
-            />
-          </label>
-          <div className="field" data-testid="provider-form-headers">
-            <span>{t('providers.fieldHeaders')}</span>
-            {headers.map((row, i) => (
-              <div key={i} className="toolbar">
-                <input
-                  aria-label={t('providers.headerName')}
-                  value={row.name}
-                  onChange={(e) => setHeaders(headers.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))}
+          <FormLegend testId="provider-legend" />
+          <FormSection
+            step={1}
+            title={t('providers.sectionEndpoint')}
+            hint={t('providers.sectionEndpointHint')}
+            requirement="required"
+            testId="provider-section-endpoint"
+          >
+            <div className="form-grid">
+              <div className="form-field">
+                <FieldLabel
+                  htmlFor="provider-form-name"
+                  text={t('providers.fieldName')}
+                  requirement="required"
                 />
                 <input
-                  aria-label={t('providers.headerValue')}
-                  value={row.value}
-                  onChange={(e) => setHeaders(headers.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
+                  id="provider-form-name"
+                  data-testid="provider-form-name"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
                 />
-                <button className="link" onClick={() => setHeaders(headers.filter((_, j) => j !== i))}>
-                  {t('common.remove')}
+              </div>
+              <div className="form-field">
+                <FieldLabel
+                  htmlFor="provider-form-type"
+                  text={t('providers.fieldType')}
+                  requirement="defaulted"
+                  flag={t('form.reqDefaultValue', { value: TYPE_LABELS[form.type] || form.type })}
+                />
+                <select
+                  id="provider-form-type"
+                  data-testid="provider-form-type"
+                  value={form.type}
+                  onChange={(e) => setForm({ ...form, type: e.target.value })}
+                >
+                  {PROVIDER_TYPES.map((v) => (
+                    <option key={v} value={v}>
+                      {TYPE_LABELS[v]}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="form-field full">
+                <FieldLabel
+                  htmlFor="provider-form-base-url"
+                  text={t('providers.fieldBaseUrl')}
+                  requirement="required"
+                />
+                <input
+                  id="provider-form-base-url"
+                  data-testid="provider-form-base-url"
+                  value={form.baseUrl}
+                  placeholder={t('providers.placeholderBaseUrl')}
+                  onChange={(e) => setForm({ ...form, baseUrl: e.target.value })}
+                />
+              </div>
+              <div className="form-field full">
+                <FieldLabel
+                  htmlFor="provider-form-api-key"
+                  text={t('providers.fieldApiKey')}
+                  requirement={editing ? 'optional' : 'required'}
+                />
+                <input
+                  id="provider-form-api-key"
+                  type="password"
+                  data-testid="provider-form-api-key"
+                  value={form.apiKey}
+                  placeholder={editing ? t('providers.placeholderApiKeyKeep') : 'sk-…'}
+                  onChange={(e) => setForm({ ...form, apiKey: e.target.value })}
+                />
+                {editing && (
+                  <div className="field-hint">
+                    {editing.apiKeyHint} — {t('providers.leaveBlankToKeep')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </FormSection>
+
+          <FormSection
+            step={2}
+            title={t('providers.sectionBehaviour')}
+            hint={t('providers.sectionBehaviourHint')}
+            requirement="defaulted"
+            testId="provider-section-behaviour"
+          >
+            <div className="form-grid">
+              <div className="form-field">
+                <FieldLabel
+                  htmlFor="provider-form-enabled"
+                  text={t('providers.fieldEnabled')}
+                  requirement="defaulted"
+                  flag={t('form.reqDefaultValue', {
+                    value: form.enabled ? t('common.enabled') : t('common.disabled'),
+                  })}
+                />
+                <input
+                  id="provider-form-enabled"
+                  data-testid="provider-form-enabled"
+                  type="checkbox"
+                  checked={form.enabled}
+                  onChange={(e) => setForm({ ...form, enabled: e.target.checked })}
+                />
+              </div>
+              <div className="form-field">
+                <FieldLabel
+                  htmlFor="provider-form-timeout"
+                  text={t('providers.fieldTimeout')}
+                  requirement="defaulted"
+                  flag={t('form.reqDefaultValue', { value: form.timeout })}
+                />
+                <input
+                  id="provider-form-timeout"
+                  data-testid="provider-form-timeout"
+                  type="number"
+                  min={1}
+                  max={120}
+                  value={form.timeout}
+                  onChange={(e) => setForm({ ...form, timeout: e.target.value })}
+                />
+              </div>
+              <div className="form-field full" data-testid="provider-form-headers">
+                <FieldLabel text={t('providers.fieldHeaders')} requirement="optional" />
+                <div className="field-hint">{t('providers.headersHint')}</div>
+                {headers.map((row, i) => (
+                  <div key={i} className="toolbar">
+                    <input
+                      aria-label={t('providers.headerName')}
+                      value={row.name}
+                      onChange={(e) => setHeaders(headers.map((r, j) => (j === i ? { ...r, name: e.target.value } : r)))}
+                    />
+                    <input
+                      aria-label={t('providers.headerValue')}
+                      value={row.value}
+                      onChange={(e) => setHeaders(headers.map((r, j) => (j === i ? { ...r, value: e.target.value } : r)))}
+                    />
+                    <button className="link" onClick={() => setHeaders(headers.filter((_, j) => j !== i))}>
+                      {t('common.remove')}
+                    </button>
+                  </div>
+                ))}
+                <button className="secondary" onClick={() => setHeaders([...headers, { name: '', value: '' }])}>
+                  {t('providers.addHeader')}
                 </button>
               </div>
-            ))}
-            <button className="secondary" onClick={() => setHeaders([...headers, { name: '', value: '' }])}>
-              {t('providers.addHeader')}
-            </button>
-          </div>
+            </div>
+          </FormSection>
           <div className="dialog-actions">
+            <RequiredStatus
+              missing={[
+                !NAME_PATTERN.test(form.name.trim()) && t('providers.fieldName'),
+                !/^https?:\/\/[^/]+/.test(form.baseUrl.trim()) && t('providers.fieldBaseUrl'),
+                !editing && !form.apiKey.trim() && t('providers.fieldApiKey'),
+              ].filter((entry): entry is string => Boolean(entry))}
+            />
             <button className="secondary" data-testid="provider-form-cancel" onClick={() => setDialogOpen(false)}>
               {t('common.cancel')}
             </button>

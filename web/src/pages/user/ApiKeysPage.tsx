@@ -7,6 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useI18n } from '../../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../../components/FormField';
 import { ApiError, formatTime, type ApiKeySummary, type AvailableModel, type MyProject } from '../../api';
 import { CopyButton, Dialog, ErrorBanner, RowActionsMenu, StateBadge } from '../../components';
 
@@ -281,18 +282,19 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
 
   return <Dialog title={t(edit ? 'uapikeys.editTitle' : 'uapikeys.createTitle')} testId={edit ? 'edit-dialog' : 'create-dialog'} onClose={onClose}>
     {edit && <p className="muted">{t('uapikeys.editNote')}</p>}
+    <FormLegend testId="user-key-legend" />
     <div className="form-grid">
-      <div className="form-field full"><label htmlFor="user-key-name">{t('uapikeys.fieldName')}</label><input id="user-key-name" data-testid="key-name-input" maxLength={64} value={name} onChange={(event) => setName(event.target.value)} /></div>
-      {!edit && <div className="form-field full"><label htmlFor="user-key-expiry">{t('uapikeys.fieldExpiry')}</label><select id="user-key-expiry" data-testid="key-expiry-select" value={expiry} onChange={(event) => setExpiry(event.target.value)}><option value="never">{t('common.never')}</option><option value="30">{t('common.30days')}</option><option value="90">{t('common.90days')}</option><option value="365">{t('common.365days')}</option></select></div>}
-      {!edit && <div className="form-field full"><label htmlFor="user-key-project">{t('uapikeys.fieldProject')}</label>
+      <div className="form-field full"><FieldLabel htmlFor="user-key-name" text={t('uapikeys.fieldName')} requirement="required" /><input id="user-key-name" data-testid="key-name-input" maxLength={64} value={name} onChange={(event) => setName(event.target.value)} /></div>
+      {!edit && <div className="form-field full"><FieldLabel htmlFor="user-key-expiry" text={t('uapikeys.fieldExpiry')} requirement="defaulted" flag={t('form.reqDefaultValue', { value: expiry === 'never' ? t('common.never') : expiry })} /><select id="user-key-expiry" data-testid="key-expiry-select" value={expiry} onChange={(event) => setExpiry(event.target.value)}><option value="never">{t('common.never')}</option><option value="30">{t('common.30days')}</option><option value="90">{t('common.90days')}</option><option value="365">{t('common.365days')}</option></select></div>}
+      {!edit && <div className="form-field full"><FieldLabel htmlFor="user-key-project" text={t('uapikeys.fieldProject')} requirement="optional" />
         <select id="user-key-project" data-testid="key-project-select" value={projectId} onChange={(event) => setProjectId(event.target.value)}>
           <option value="">{t('uapikeys.projectNone')}</option>
           {projects.map((p) => <option key={p.projectId} value={p.projectId}>{p.displayName}</option>)}
         </select></div>}
-      <div className="form-field"><label htmlFor="rate-limit-rpm">{t('uapikeys.fieldRpm')}</label><input id="rate-limit-rpm" data-testid={edit ? 'edit-rate-limit-rpm' : 'rate-limit-rpm'} type="number" min={0} step={1} value={rpm} onChange={(event) => setRpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
-      <div className="form-field"><label htmlFor="rate-limit-tpm">{t('uapikeys.fieldTpm')}</label><input id="rate-limit-tpm" data-testid={edit ? 'edit-rate-limit-tpm' : 'rate-limit-tpm'} type="number" min={0} step={1} value={tpm} onChange={(event) => setTpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
+      <div className="form-field"><FieldLabel htmlFor="rate-limit-rpm" text={t('uapikeys.fieldRpm')} requirement="optional" /><input id="rate-limit-rpm" data-testid={edit ? 'edit-rate-limit-rpm' : 'rate-limit-rpm'} type="number" min={0} step={1} value={rpm} onChange={(event) => setRpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
+      <div className="form-field"><FieldLabel htmlFor="rate-limit-tpm" text={t('uapikeys.fieldTpm')} requirement="optional" /><input id="rate-limit-tpm" data-testid={edit ? 'edit-rate-limit-tpm' : 'rate-limit-tpm'} type="number" min={0} step={1} value={tpm} onChange={(event) => setTpm(event.target.value)} placeholder={t('uapikeys.placeholderZero')} /></div>
       {!edit && <div className="form-field full scope-section">
-        <label>{t('uapikeys.scopeSection')}</label>
+        <FieldLabel text={t('uapikeys.scopeSection')} requirement="optional" />
         <label className="radio"><input type="radio" name="key-scope" data-testid="scope-option-all" checked={scopeMode === 'all'} onChange={() => setScopeMode('all')} /> {t('uapikeys.scopeOptionAll')}</label>
         <label className="radio"><input type="radio" name="key-scope" data-testid="scope-option-restricted" checked={scopeMode === 'restricted'} onChange={() => setScopeMode('restricted')} /> {t('uapikeys.scopeOptionRestricted')}</label>
         {scopeMode === 'restricted' && (modelsError
@@ -311,7 +313,7 @@ function KeyDialog({ api, orgId, t, apiKey, onClose, onSaved }: {
       </div>}
     </div>
     {error && <ErrorBanner message={error} />}
-    <div className="dialog-actions"><button className="secondary" onClick={onClose}>{t('common.cancel')}</button><button data-testid={edit ? 'submit-edit-key' : 'submit-create-key'} disabled={saving} onClick={() => void submit()}>{saving ? t('common.saving') : t(edit ? 'common.save' : 'common.create')}</button></div>
+    <div className="dialog-actions"><RequiredStatus missing={name.trim() ? [] : [t('uapikeys.fieldName')]} /><button className="secondary" onClick={onClose}>{t('common.cancel')}</button><button data-testid={edit ? 'submit-edit-key' : 'submit-create-key'} disabled={saving} onClick={() => void submit()}>{saving ? t('common.saving') : t(edit ? 'common.save' : 'common.create')}</button></div>
   </Dialog>;
 }
 

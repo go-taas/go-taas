@@ -12,6 +12,7 @@ import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
+import { FieldLabel } from '../components/FormField';
 
 interface ResponseEnvelope {
   code: number;
@@ -170,7 +171,11 @@ export default function GatewaySettingsPage() {
         ) : (
           <>
             <div className="form-row">
-              <label htmlFor="settings-gateway-hostname">{t('settings.hostnameLabel')}</label>
+              <FieldLabel
+                htmlFor="settings-gateway-hostname"
+                text={t('settings.hostnameLabel')}
+                requirement="optional"
+              />
               <input
                 id="settings-gateway-hostname"
                 data-testid="settings-gateway-hostname"
@@ -182,7 +187,12 @@ export default function GatewaySettingsPage() {
             </div>
 
             <div className="form-row">
-              <label htmlFor="settings-gateway-scheme">{t('settings.schemeLabel')}</label>
+              <FieldLabel
+                htmlFor="settings-gateway-scheme"
+                text={t('settings.schemeLabel')}
+                requirement="defaulted"
+                flag={t('form.reqDefaultValue', { value: scheme })}
+              />
               <select
                 id="settings-gateway-scheme"
                 data-testid="settings-gateway-scheme"
@@ -196,7 +206,11 @@ export default function GatewaySettingsPage() {
             </div>
 
             <div className="form-row">
-              <label htmlFor="settings-gateway-internal">{t('settings.internalLabel')}</label>
+              <FieldLabel
+                htmlFor="settings-gateway-internal"
+                text={t('settings.internalLabel')}
+                requirement="optional"
+              />
               <input
                 id="settings-gateway-internal"
                 data-testid="settings-gateway-internal"

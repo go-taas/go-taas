@@ -17,6 +17,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, RowActionsMenu } from '../components';
 import { engineParams } from '../components/engineParams';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
@@ -359,13 +360,30 @@ function TemplateDialog({
       onClose={onClose}
       testId="engine-template-dialog"
     >
+      <FormLegend testId="tpl-legend" />
+      <FormSection
+        step={1}
+        title={t('engineTemplates.sectionScope')}
+        hint={t('engineTemplates.sectionScopeHint')}
+        requirement="required"
+        testId="tpl-section-scope"
+      >
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="tpl-name">{t('engineTemplates.fieldName')}</label>
+          <FieldLabel
+            htmlFor="tpl-name"
+            text={t('engineTemplates.fieldName')}
+            requirement="required"
+          />
           <input id="tpl-name" data-testid="tpl-name" value={name} maxLength={128} onChange={(e) => setName(e.target.value)} />
         </div>
         <div className="form-field">
-          <label htmlFor="tpl-engine">{t('engineTemplates.fieldEngine')}</label>
+          <FieldLabel
+            htmlFor="tpl-engine"
+            text={t('engineTemplates.fieldEngine')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: engine })}
+          />
           <select id="tpl-engine" data-testid="tpl-engine" value={engine} onChange={(e) => setEngine(e.target.value)}>
             {ENGINES.map((e) => (
               <option key={e} value={e}>{e}</option>
@@ -373,11 +391,19 @@ function TemplateDialog({
           </select>
         </div>
         <div className="form-field full">
-          <label htmlFor="tpl-description">{t('common.descriptionOptional')}</label>
+          <FieldLabel
+            htmlFor="tpl-description"
+            text={t('common.descriptionOptional')}
+            requirement="optional"
+          />
           <input id="tpl-description" data-testid="tpl-description" value={description} maxLength={1024} onChange={(e) => setDescription(e.target.value)} />
         </div>
         <div className="form-field">
-          <label htmlFor="tpl-model">{t('engineTemplates.fieldModel')}</label>
+          <FieldLabel
+            htmlFor="tpl-model"
+            text={t('engineTemplates.fieldModel')}
+            requirement="optional"
+          />
           <select id="tpl-model" data-testid="tpl-model" value={modelId} onChange={(e) => setModelId(e.target.value)}>
             <option value="">{t('engineTemplates.anyModel')}</option>
             {models.map((m) => (
@@ -386,7 +412,11 @@ function TemplateDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="tpl-topology">{t('engineTemplates.fieldTopology')}</label>
+          <FieldLabel
+            htmlFor="tpl-topology"
+            text={t('engineTemplates.fieldTopology')}
+            requirement="optional"
+          />
           <select id="tpl-topology" data-testid="tpl-topology" value={topology} onChange={(e) => setTopology(e.target.value)}>
             {TOPOLOGIES.map((value) => (
               <option key={value || 'any'} value={value}>
@@ -396,7 +426,11 @@ function TemplateDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="tpl-accelerator">{t('engineTemplates.fieldAccelerator')}</label>
+          <FieldLabel
+            htmlFor="tpl-accelerator"
+            text={t('engineTemplates.fieldAccelerator')}
+            requirement="optional"
+          />
           <select id="tpl-accelerator" data-testid="tpl-accelerator" value={accelerator} onChange={(e) => setAccelerator(e.target.value)}>
             <option value="">{t('engineTemplates.anyAccelerator')}</option>
             {[...fleet.vendors, CPU_ACCELERATOR].map((a) => (
@@ -405,19 +439,35 @@ function TemplateDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="tpl-card">{t('engineTemplates.fieldCardType')}</label>
+          <FieldLabel
+            htmlFor="tpl-card"
+            text={t('engineTemplates.fieldCardType')}
+            requirement="optional"
+          />
           <input id="tpl-card" data-testid="tpl-card" value={acceleratorType} maxLength={64} onChange={(e) => setAcceleratorType(e.target.value)} placeholder={t('engineTemplates.anyAccelerator')} />
         </div>
       </div>
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('engineTemplates.paramsTitle')}</h4>
+      <FormSection
+        step={2}
+        title={t('engineTemplates.paramsTitle')}
+        hint={t('engineTemplates.sectionParamsHint')}
+        requirement="optional"
+        testId="tpl-section-params"
+      >
       <div className="form-grid" data-testid="tpl-param-grid">
         {params.map((p) => {
           const row = rows.find((r) => r.name === p.name);
           const inputId = `tpl-param-${p.name}`;
           return (
             <div className="form-field" key={p.name}>
-              <label htmlFor={inputId}>{t(p.labelKey)}</label>
+              <FieldLabel
+                htmlFor={inputId}
+                text={t(p.labelKey)}
+                requirement="optional"
+                flag={p.defaultValue ? t('form.reqDefaultValue', { value: p.defaultValue }) : undefined}
+              />
               {p.kind === 'select' ? (
                 <select
                   id={inputId}
@@ -456,8 +506,15 @@ function TemplateDialog({
           );
         })}
       </div>
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('engineTemplates.extraArgsTitle')}</h4>
+      <FormSection
+        step={3}
+        title={t('engineTemplates.extraArgsTitle')}
+        hint={t('engineTemplates.sectionExtraHint')}
+        requirement="optional"
+        testId="tpl-section-extra"
+      >
       <div className="form-grid">
         <div className="form-field full">
           <textarea
@@ -471,8 +528,15 @@ function TemplateDialog({
         </div>
         <EnvVarsEditor rows={envRows} onChange={setEnvRows} testIdPrefix="tpl-env" />
       </div>
+      </FormSection>
 
-      <h4 style={{ marginBottom: 8 }}>{t('engineTemplates.roleTitle')}</h4>
+      <FormSection
+        step={4}
+        title={t('engineTemplates.roleTitle')}
+        hint={t('engineTemplates.sectionRoleHint')}
+        requirement="optional"
+        testId="tpl-section-role"
+      >
       <div className="form-grid" data-testid="tpl-role-grid">
         {['worker', 'prefill', 'decode'].map((role) => {
           const existing = roleRows.find((r) => r.role === role);
@@ -525,9 +589,11 @@ function TemplateDialog({
           <div className="field-hint">{t('engineTemplates.roleHint')}</div>
         </div>
       </div>
+      </FormSection>
 
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={name.trim() ? [] : [t('engineTemplates.fieldName')]} />
         <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
         <button data-testid="tpl-save" disabled={submitting} onClick={() => void submit()}>
           {submitting ? t('common.saving') : t('common.save')}

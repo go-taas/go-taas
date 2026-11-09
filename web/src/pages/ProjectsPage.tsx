@@ -18,6 +18,7 @@ import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { MemberQuotaDialog } from './ProjectMembersPage';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
 import { useAdminScope } from '../admin-scope';
 
 interface ListResponse {
@@ -374,9 +375,15 @@ function CreateProjectDialog({
 
   return (
     <Dialog title={t('projects.createTitle')} onClose={onClose} testId="create-project-dialog">
+      <FormLegend testId="create-project-legend" />
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="project-org">{t('projects.fieldOrganization')}</label>
+          <FieldLabel
+            htmlFor="project-org"
+            text={t('projects.fieldOrganization')}
+            requirement={fixedOrganizationId ? 'defaulted' : 'required'}
+            flag={fixedOrganizationId ? fixedOrgLabel : undefined}
+          />
           {fixedOrganizationId ? (
             <div className="muted" data-testid="project-org-fixed">
               {fixedOrgLabel}
@@ -405,7 +412,11 @@ function CreateProjectDialog({
           )}
         </div>
         <div className="form-field">
-          <label htmlFor="project-name">{t('projects.fieldDisplayName')}</label>
+          <FieldLabel
+            htmlFor="project-name"
+            text={t('projects.fieldDisplayName')}
+            requirement="required"
+          />
           <input
             id="project-name"
             data-testid="project-name-input"
@@ -416,7 +427,11 @@ function CreateProjectDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="project-desc">{t('common.descriptionOptional')}</label>
+          <FieldLabel
+            htmlFor="project-desc"
+            text={t('common.descriptionOptional')}
+            requirement="optional"
+          />
           <textarea
             id="project-desc"
             data-testid="project-desc-input"
@@ -429,6 +444,12 @@ function CreateProjectDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !fixedOrganizationId && !organizationId && t('projects.fieldOrganization'),
+            !name.trim() && t('projects.fieldDisplayName'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
@@ -489,7 +510,11 @@ function EditProjectDialog({
     >
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="project-edit-name">{t('projects.fieldDisplayName')}</label>
+          <FieldLabel
+            htmlFor="project-edit-name"
+            text={t('projects.fieldDisplayName')}
+            requirement="required"
+          />
           <input
             id="project-edit-name"
             data-testid="project-edit-name-input"
@@ -499,7 +524,11 @@ function EditProjectDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="project-edit-desc">{t('projects.fieldDescription')}</label>
+          <FieldLabel
+            htmlFor="project-edit-desc"
+            text={t('projects.fieldDescription')}
+            requirement="optional"
+          />
           <textarea
             id="project-edit-desc"
             data-testid="project-edit-desc-input"
@@ -512,6 +541,7 @@ function EditProjectDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={name.trim() ? [] : [t('projects.fieldDisplayName')]} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

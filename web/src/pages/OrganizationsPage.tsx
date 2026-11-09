@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
 import { navigate } from '../router';
 
@@ -278,9 +279,14 @@ function CreateOrgDialog({
 
   return (
     <Dialog title={t('orgs.createTitle')} onClose={onClose} testId="create-org-dialog">
+      <FormLegend testId="create-org-legend" />
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="org-name">{t('orgs.fieldDisplayName')}</label>
+          <FieldLabel
+            htmlFor="org-name"
+            text={t('orgs.fieldDisplayName')}
+            requirement="required"
+          />
           <input
             id="org-name"
             data-testid="org-name-input"
@@ -291,7 +297,11 @@ function CreateOrgDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="org-desc">{t('common.descriptionOptional')}</label>
+          <FieldLabel
+            htmlFor="org-desc"
+            text={t('common.descriptionOptional')}
+            requirement="optional"
+          />
           <textarea
             id="org-desc"
             data-testid="org-desc-input"
@@ -304,6 +314,7 @@ function CreateOrgDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={name.trim() ? [] : [t('orgs.fieldDisplayName')]} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
@@ -360,7 +371,11 @@ function EditOrgDialog({
     <Dialog title={t('orgs.editTitle', { orgId: org.organizationId })} onClose={onClose} testId="edit-org-dialog">
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="org-edit-name">{t('orgs.fieldDisplayName')}</label>
+          <FieldLabel
+            htmlFor="org-edit-name"
+            text={t('orgs.fieldDisplayName')}
+            requirement="required"
+          />
           <input
             id="org-edit-name"
             data-testid="org-edit-name-input"
@@ -370,7 +385,11 @@ function EditOrgDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="org-edit-desc">{t('orgs.fieldDescription')}</label>
+          <FieldLabel
+            htmlFor="org-edit-desc"
+            text={t('orgs.fieldDescription')}
+            requirement="optional"
+          />
           <textarea
             id="org-edit-desc"
             data-testid="org-edit-desc-input"
@@ -383,6 +402,7 @@ function EditOrgDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={name.trim() ? [] : [t('orgs.fieldDisplayName')]} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

@@ -13,6 +13,7 @@ import { api, ApiError, formatTime, type ModelDownload, type PageMeta } from '..
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { ErrorBanner, Pagination } from '../components';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -144,72 +145,130 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
       {formOpen && (
       <div className="panel" style={{ marginBottom: 16 }} data-testid="download-form">
         <h2>{t('models.downloads.formTitle')}</h2>
-        <div className="form-grid">
-          <div className="form-field">
-            <label htmlFor="download-source">{t('models.downloads.hub')}</label>
-            <select
-              id="download-source"
-              data-testid="download-source"
-              value={source}
-              onChange={(e) => setSource(e.target.value)}
-            >
-              {HUBS.map((h) => (
-                <option key={h.value} value={h.value}>
-                  {h.label}
-                </option>
-              ))}
-            </select>
-            <div className="field-hint">
-              {t(HUBS.find((h) => h.value === source)?.hint || 'models.downloads.hubModelScopeHint')}
+        <FormLegend testId="download-legend" />
+        <FormSection
+          step={1}
+          title={t('models.downloads.sectionSource')}
+          hint={t('models.downloads.sectionSourceHint')}
+          requirement="required"
+          testId="download-section-source"
+        >
+          <div className="form-grid">
+            <div className="form-field">
+              <FieldLabel
+                htmlFor="download-source"
+                text={t('models.downloads.hub')}
+                requirement="defaulted"
+                flag={t('form.reqDefaultValue', { value: 'ModelScope' })}
+              />
+              <select
+                id="download-source"
+                data-testid="download-source"
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+              >
+                {HUBS.map((h) => (
+                  <option key={h.value} value={h.value}>
+                    {h.label}
+                  </option>
+                ))}
+              </select>
+              <div className="field-hint">
+                {t(HUBS.find((h) => h.value === source)?.hint || 'models.downloads.hubModelScopeHint')}
+              </div>
+            </div>
+            <div className="form-field">
+              <FieldLabel
+                htmlFor="download-hub-model-id"
+                text={t('models.downloads.hubModelId')}
+                requirement="required"
+              />
+              <input
+                id="download-hub-model-id"
+                data-testid="download-hub-model-id"
+                className="mono"
+                value={hubModelId}
+                onChange={(e) => setHubModelId(e.target.value)}
+                placeholder="MiniMax/MiniMax-M3.1-Flash"
+              />
+              <div className="field-hint">{t('models.downloads.hubModelIdHint')}</div>
             </div>
           </div>
-          <div className="form-field">
-            <label htmlFor="download-hub-model-id">{t('models.downloads.hubModelId')}</label>
-            <input
-              id="download-hub-model-id"
-              data-testid="download-hub-model-id"
-              value={hubModelId}
-              onChange={(e) => setHubModelId(e.target.value)}
-              placeholder="MiniMax/MiniMax-M3.1-Flash"
-            />
-            <div className="field-hint">{t('models.downloads.hubModelIdHint')}</div>
+        </FormSection>
+
+        {/* The catalog name and version are derived from the hub id when
+            left empty, which is why the whole block is optional rather than
+            required: an operator who just wants the model registered types
+            one field. */}
+        <FormSection
+          step={2}
+          title={t('models.downloads.sectionCatalog')}
+          hint={t('models.downloads.sectionCatalogHint')}
+          requirement="optional"
+          testId="download-section-catalog"
+        >
+          <div className="form-grid">
+            <div className="form-field">
+              <FieldLabel
+                htmlFor="download-name"
+                text={t('models.downloads.modelName')}
+                requirement="optional"
+                flag={t('form.reqDerived')}
+              />
+              <input
+                id="download-name"
+                data-testid="download-name"
+                value={name}
+                maxLength={128}
+                onChange={(e) => setName(e.target.value)}
+                placeholder={t('models.downloads.modelNamePlaceholder')}
+              />
+              <div className="field-hint">{t('models.downloads.modelNameDerivedHint')}</div>
+            </div>
+            <div className="form-field">
+              <FieldLabel
+                htmlFor="download-version"
+                text={t('models.downloads.modelVersion')}
+                requirement="optional"
+                flag={t('form.reqDerived')}
+              />
+              <input
+                id="download-version"
+                data-testid="download-version"
+                value={version}
+                maxLength={64}
+                onChange={(e) => setVersion(e.target.value)}
+                placeholder={t('models.downloads.modelVersionPlaceholder')}
+              />
+              <div className="field-hint">{t('models.downloads.modelVersionDerivedHint')}</div>
+            </div>
+            <div className="form-field full">
+              <FieldLabel
+                htmlFor="download-description"
+                text={t('common.descriptionOptional')}
+                requirement="optional"
+              />
+              <textarea
+                id="download-description"
+                data-testid="download-description"
+                rows={2}
+                maxLength={1024}
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </div>
           </div>
-          <div className="form-field">
-            <label htmlFor="download-name">{t('models.downloads.modelName')}</label>
-            <input
-              id="download-name"
-              data-testid="download-name"
-              value={name}
-              maxLength={128}
-              onChange={(e) => setName(e.target.value)}
-              placeholder={t('models.downloads.modelNamePlaceholder')}
-            />
-          </div>
-          <div className="form-field">
-            <label htmlFor="download-version">{t('models.downloads.modelVersion')}</label>
-            <input
-              id="download-version"
-              data-testid="download-version"
-              value={version}
-              maxLength={64}
-              onChange={(e) => setVersion(e.target.value)}
-              placeholder={t('models.downloads.modelVersionPlaceholder')}
-            />
-          </div>
-          <div className="form-field full">
-            <label htmlFor="download-description">{t('common.descriptionOptional')}</label>
-            <textarea
-              id="download-description"
-              data-testid="download-description"
-              rows={2}
-              maxLength={1024}
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-        </div>
+        </FormSection>
+
         {formError && <ErrorBanner message={formError} />}
-        <div className="dialog-actions">
+        <div className="deploy-actions">
+          <RequiredStatus
+            missing={
+              /^[^/\s]+\/[^/\s]+$/.test(hubModelId.trim())
+                ? []
+                : [t('models.downloads.hubModelId')]
+            }
+          />
           <button data-testid="start-download" disabled={submitting} onClick={() => void submit()}>
             {submitting ? t('models.downloads.starting') : t('models.downloads.start')}
           </button>

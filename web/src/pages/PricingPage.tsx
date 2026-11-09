@@ -14,6 +14,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { useFleetAccelerators } from '../hooks/useFleetAccelerators';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
 
@@ -369,9 +370,17 @@ function SetPriceDialog({
       testId={edit ? 'edit-price-dialog' : 'set-price-dialog'}
     >
       {error && <ErrorBanner message={error} />}
+      <FormLegend testId="pricing-legend" />
+      <FormSection
+        step={1}
+        title={t('pricing.sectionTarget')}
+        hint={t('pricing.sectionTargetHint')}
+        requirement="required"
+        testId="pricing-section-target"
+      >
       <div className="form-grid">
-        <label>
-          {t('pricing.fieldModel')}
+        <div className="form-field">
+          <FieldLabel text={t('pricing.fieldModel')} requirement="required" />
           <select
             data-testid="set-price-model"
             value={modelId}
@@ -388,9 +397,13 @@ function SetPriceDialog({
           {models.length === 0 && (
             <span className="field-hint">{t('pricing.noModels')}</span>
           )}
-        </label>
-        <label>
-          {t('pricing.fieldCard')}
+        </div>
+        <div className="form-field">
+          <FieldLabel
+            text={t('pricing.fieldCard')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', { value: card })}
+          />
           <select
             data-testid="set-price-card"
             value={card}
@@ -404,9 +417,20 @@ function SetPriceDialog({
             ))}
           </select>
           <span className="field-hint">{t('pricing.cardHint')}</span>
-        </label>
-        <label>
-          {t('pricing.fieldInput')}
+        </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('pricing.sectionRates')}
+        hint={t('pricing.sectionRatesHint')}
+        requirement="required"
+        testId="pricing-section-rates"
+      >
+      <div className="form-grid">
+        <div className="form-field">
+          <FieldLabel text={t('pricing.fieldInput')} requirement="required" />
           <input
             data-testid="set-price-input-rate"
             type="number"
@@ -415,9 +439,9 @@ function SetPriceDialog({
             value={inputRate}
             onChange={(e) => setInputRate(e.target.value)}
           />
-        </label>
-        <label>
-          {t('pricing.fieldOutput')}
+        </div>
+        <div className="form-field">
+          <FieldLabel text={t('pricing.fieldOutput')} requirement="required" />
           <input
             data-testid="set-price-output-rate"
             type="number"
@@ -426,9 +450,13 @@ function SetPriceDialog({
             value={outputRate}
             onChange={(e) => setOutputRate(e.target.value)}
           />
-        </label>
-        <label>
-          {t('pricing.fieldCached')}
+        </div>
+        <div className="form-field">
+          <FieldLabel
+            text={t('pricing.fieldCached')}
+            requirement="optional"
+            flag={t('form.reqDefaultValue', { value: '0' })}
+          />
           <input
             data-testid="set-price-cached-rate"
             type="number"
@@ -437,13 +465,17 @@ function SetPriceDialog({
             value={cachedRate}
             onChange={(e) => setCachedRate(e.target.value)}
           />
-        </label>
+        </div>
       </div>
+      </FormSection>
 
-      <h3 style={{ marginTop: 16 }}>{t('pricing.tiersSection')}</h3>
-      <div className="muted" style={{ marginBottom: 8 }}>
-        {t('pricing.tiersNote')}
-      </div>
+      <FormSection
+        step={3}
+        title={t('pricing.tiersSection')}
+        hint={t('pricing.tiersNote')}
+        requirement="optional"
+        testId="pricing-section-tiers"
+      >
       {tiers.map((tier, i) => (
         <div key={i} className="toolbar" style={{ marginBottom: 8 }} data-testid={`tier-row-${i}`}>
           <input
@@ -503,8 +535,16 @@ function SetPriceDialog({
       <button className="secondary" data-testid="tier-add" onClick={addTier}>
         {t('pricing.addTier')}
       </button>
+      </FormSection>
 
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !modelId && t('pricing.fieldModel'),
+            !(Number(inputRate) >= 0) && t('pricing.fieldInput'),
+            !(Number(outputRate) >= 0) && t('pricing.fieldOutput'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

@@ -5,6 +5,7 @@
 
 import type { SliceTemplate } from '../../api';
 import { useI18n } from '../../i18n';
+import { FieldLabel } from '../../components/FormField';
 
 export interface TemplateRow {
   name: string;
@@ -50,7 +51,7 @@ export default function SliceTemplateEditor({
 
   return (
     <div className="form-field full">
-      <label>{t('vgpu.templates')}</label>
+      <FieldLabel text={t('vgpu.templates')} requirement="required" />
       {rows.map((row, i) => (
         <div
           key={i}

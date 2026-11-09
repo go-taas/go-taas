@@ -13,6 +13,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import {
   CopyButton,
   Dialog,
@@ -469,9 +470,17 @@ function CreateDialog({
 
   return (
     <Dialog title={t('apikeys.createTitle')} onClose={onClose} testId="create-dialog">
+      <FormLegend testId="create-key-legend" />
+      <FormSection
+        step={1}
+        title={t('apikeys.sectionIdentity')}
+        hint={t('apikeys.sectionIdentityHint')}
+        requirement="required"
+        testId="create-key-section-identity"
+      >
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="key-name">{t('apikeys.fieldName')}</label>
+          <FieldLabel htmlFor="key-name" text={t('apikeys.fieldName')} requirement="required" />
           <input
             id="key-name"
             data-testid="key-name-input"
@@ -482,7 +491,17 @@ function CreateDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="key-expiry">{t('apikeys.fieldExpiry')}</label>
+          <FieldLabel
+            htmlFor="key-expiry"
+            text={t('apikeys.fieldExpiry')}
+            requirement="defaulted"
+            flag={t('form.reqDefaultValue', {
+              value:
+                expiryDays === 'never'
+                  ? t('common.never')
+                  : t('apikeys.expiryDays', { days: expiryDays }),
+            })}
+          />
           <select
             id="key-expiry"
             data-testid="key-expiry-select"
@@ -495,8 +514,19 @@ function CreateDialog({
             <option value="365">{t('common.365days')}</option>
           </select>
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('apikeys.sectionLimits')}
+        hint={t('apikeys.sectionLimitsHint')}
+        requirement="optional"
+        testId="create-key-section-limits"
+      >
+      <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="rate-limit-rpm">{t('apikeys.fieldRpm')}</label>
+          <FieldLabel htmlFor="rate-limit-rpm" text={t('apikeys.fieldRpm')} requirement="optional" />
           <input
             id="rate-limit-rpm"
             data-testid="rate-limit-rpm"
@@ -508,7 +538,7 @@ function CreateDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="rate-limit-tpm">{t('apikeys.fieldTpm')}</label>
+          <FieldLabel htmlFor="rate-limit-tpm" text={t('apikeys.fieldTpm')} requirement="optional" />
           <input
             id="rate-limit-tpm"
             data-testid="rate-limit-tpm"
@@ -532,8 +562,10 @@ function CreateDialog({
           <div className="card-note">{t('apikeys.createSharedNote')}</div>
         </div>
       </div>
+      </FormSection>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={name.trim() ? [] : [t('apikeys.fieldName')]} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
@@ -594,7 +626,7 @@ function EditDialog({
       <p className="muted">{t('apikeys.editNote')}</p>
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="edit-key-name">{t('apikeys.fieldName')}</label>
+          <FieldLabel htmlFor="edit-key-name" text={t('apikeys.fieldName')} requirement="required" />
           <input
             id="edit-key-name"
             data-testid="edit-key-name-input"
@@ -604,7 +636,7 @@ function EditDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="edit-rate-limit-rpm">{t('apikeys.fieldRpm')}</label>
+          <FieldLabel htmlFor="edit-rate-limit-rpm" text={t('apikeys.fieldRpm')} requirement="optional" />
           <input
             id="edit-rate-limit-rpm"
             data-testid="edit-rate-limit-rpm"
@@ -616,7 +648,7 @@ function EditDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="edit-rate-limit-tpm">{t('apikeys.fieldTpm')}</label>
+          <FieldLabel htmlFor="edit-rate-limit-tpm" text={t('apikeys.fieldTpm')} requirement="optional" />
           <input
             id="edit-rate-limit-tpm"
             data-testid="edit-rate-limit-tpm"
@@ -630,6 +662,7 @@ function EditDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus missing={name.trim() ? [] : [t('apikeys.fieldName')]} />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>

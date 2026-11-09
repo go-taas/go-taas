@@ -10,6 +10,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend } from '../components/FormField';
 import { ErrorBanner } from '../components';
 
 const DEFAULTS: AutoscalingPolicy = {
@@ -124,9 +125,17 @@ export default function AutoscalingPage() {
       )}
 
       <div className="panel" style={{ maxWidth: 560 }}>
+        <FormLegend testId="autoscaling-legend" />
         <div className="form-grid">
           <div className="form-field">
-            <label htmlFor="as-enabled">{t('autoscaling.enabled')}</label>
+            <FieldLabel
+              htmlFor="as-enabled"
+              text={t('autoscaling.enabled')}
+              requirement="defaulted"
+              flag={t('form.reqDefaultValue', {
+                value: policy.enabled ? t('common.enabled') : t('common.disabled'),
+              })}
+            />
             <input
               id="as-enabled"
               data-testid="as-enabled"
@@ -136,7 +145,12 @@ export default function AutoscalingPage() {
             />
           </div>
           <div className="form-field">
-            <label htmlFor="as-min">{t('autoscaling.minReplicas')}</label>
+            <FieldLabel
+              htmlFor="as-min"
+              text={t('autoscaling.minReplicas')}
+              requirement="defaulted"
+              flag={t('form.reqDefaultValue', { value: String(policy.minReplicas) })}
+            />
             <input
               id="as-min"
               data-testid="as-min"
@@ -152,7 +166,12 @@ export default function AutoscalingPage() {
             )}
           </div>
           <div className="form-field">
-            <label htmlFor="as-max">{t('autoscaling.maxReplicas')}</label>
+            <FieldLabel
+              htmlFor="as-max"
+              text={t('autoscaling.maxReplicas')}
+              requirement="defaulted"
+              flag={t('form.reqDefaultValue', { value: String(policy.maxReplicas) })}
+            />
             <input
               id="as-max"
               data-testid="as-max"
@@ -168,7 +187,12 @@ export default function AutoscalingPage() {
             )}
           </div>
           <div className="form-field">
-            <label htmlFor="as-target">{t('autoscaling.targetConcurrency')}</label>
+            <FieldLabel
+              htmlFor="as-target"
+              text={t('autoscaling.targetConcurrency')}
+              requirement="defaulted"
+              flag={t('form.reqDefaultValue', { value: String(policy.targetConcurrency) })}
+            />
             <input
               id="as-target"
               data-testid="as-target"
@@ -184,7 +208,11 @@ export default function AutoscalingPage() {
             )}
           </div>
           <div className="form-field">
-            <label htmlFor="as-scale-to-zero">{t('autoscaling.scaleToZero')}</label>
+            <FieldLabel
+              htmlFor="as-scale-to-zero"
+              text={t('autoscaling.scaleToZero')}
+              requirement="optional"
+            />
             <input
               id="as-scale-to-zero"
               data-testid="as-scale-to-zero"
@@ -198,7 +226,12 @@ export default function AutoscalingPage() {
             )}
           </div>
           <div className="form-field">
-            <label htmlFor="as-cooldown">{t('autoscaling.cooldown')}</label>
+            <FieldLabel
+              htmlFor="as-cooldown"
+              text={t('autoscaling.cooldown')}
+              requirement="defaulted"
+              flag={t('form.reqDefaultValue', { value: String(policy.cooldownSeconds) })}
+            />
             <input
               id="as-cooldown"
               data-testid="as-cooldown"

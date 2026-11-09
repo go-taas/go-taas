@@ -14,6 +14,7 @@ import { useEffect, useRef, useState } from 'react';
 import { apiPrefix, ApiError, sessionAuthHeader, type ImageRegistryConfig } from '../api';
 import { Dialog, ErrorBanner } from '../components';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
 // derivedName mirrors the server's rule: the image name comes from the
@@ -130,9 +131,21 @@ export default function UploadImageDialog({
   return (
     <Dialog title={t('images.uploadTitle')} onClose={onClose} testId="upload-image-dialog">
       <p className="muted">{t('images.uploadHint')}</p>
+      <FormLegend testId="upload-image-legend" />
+      <FormSection
+        step={1}
+        title={t('images.uploadSectionArchive')}
+        hint={t('images.uploadSectionArchiveHint')}
+        requirement="required"
+        testId="upload-image-section-archive"
+      >
       <div className="form-grid">
         <div className="form-field full">
-          <label htmlFor="upload-archive">{t('images.archiveFile')}</label>
+          <FieldLabel
+            htmlFor="upload-archive"
+            text={t('images.archiveFile')}
+            requirement="required"
+          />
           <input
             id="upload-archive"
             data-testid="upload-archive-input"
@@ -150,8 +163,24 @@ export default function UploadImageDialog({
               : t('images.registryUnconfigured')}
           </div>
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={2}
+        title={t('images.uploadSectionIdentity')}
+        hint={t('images.uploadSectionIdentityHint')}
+        requirement="defaulted"
+        testId="upload-image-section-identity"
+      >
+      <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="upload-name">{t('images.fieldNameOptional')}</label>
+          <FieldLabel
+            htmlFor="upload-name"
+            text={t('images.fieldNameOptional')}
+            requirement="optional"
+            flag={t('form.reqDerived')}
+          />
           <input
             id="upload-name"
             data-testid="upload-name-input"
@@ -163,7 +192,12 @@ export default function UploadImageDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="upload-tag">{t('images.fieldTagOptional')}</label>
+          <FieldLabel
+            htmlFor="upload-tag"
+            text={t('images.fieldTagOptional')}
+            requirement="optional"
+            flag={t('form.reqDerived')}
+          />
           <input
             id="upload-tag"
             data-testid="upload-tag-input"
@@ -175,7 +209,11 @@ export default function UploadImageDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="upload-reference">{t('images.sourceReferenceOptional')}</label>
+          <FieldLabel
+            htmlFor="upload-reference"
+            text={t('images.sourceReferenceOptional')}
+            requirement="optional"
+          />
           <input
             id="upload-reference"
             className="mono"
@@ -187,8 +225,23 @@ export default function UploadImageDialog({
           />
           <div className="field-hint">{t('images.uploadReferenceHint')}</div>
         </div>
+      </div>
+      </FormSection>
+
+      <FormSection
+        step={3}
+        title={t('images.uploadSectionRuntime')}
+        hint={t('images.uploadSectionRuntimeHint')}
+        requirement="required"
+        testId="upload-image-section-runtime"
+      >
+      <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="upload-accelerator">{t('images.fieldAccelerator')}</label>
+          <FieldLabel
+            htmlFor="upload-accelerator"
+            text={t('images.fieldAccelerator')}
+            requirement="defaulted"
+          />
           <select
             id="upload-accelerator"
             data-testid="upload-accelerator-select"
@@ -204,7 +257,7 @@ export default function UploadImageDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="upload-engine">{t('images.fieldEngine')}</label>
+          <FieldLabel htmlFor="upload-engine" text={t('images.fieldEngine')} requirement="required" />
           <input
             id="upload-engine"
             data-testid="upload-engine-input"
@@ -216,7 +269,11 @@ export default function UploadImageDialog({
           />
         </div>
         <div className="form-field full">
-          <label htmlFor="upload-description">{t('common.descriptionOptional')}</label>
+          <FieldLabel
+            htmlFor="upload-description"
+            text={t('common.descriptionOptional')}
+            requirement="optional"
+          />
           <textarea
             id="upload-description"
             data-testid="upload-description"
@@ -228,6 +285,7 @@ export default function UploadImageDialog({
           />
         </div>
       </div>
+      </FormSection>
 
       {submitting && (
         <div className="upload-progress" data-testid="upload-progress">
@@ -244,6 +302,12 @@ export default function UploadImageDialog({
       {error && <ErrorBanner message={error} />}
 
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !file && t('images.archiveFile'),
+            !engine.trim() && t('images.fieldEngine'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose} disabled={submitting}>
           {t('common.cancel')}
         </button>

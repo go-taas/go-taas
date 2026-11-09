@@ -6,6 +6,7 @@ import { api, ApiError, type IdentityBinding, type PageMeta, type SSOProvider } 
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination } from '../components';
 import { useI18n } from '../i18n';
+import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -204,9 +205,14 @@ function CreateBindingDialog({
 
   return (
     <Dialog title={t('bindings.createTitle')} onClose={onClose} testId="create-identity-binding-dialog">
+      <FormLegend testId="identity-binding-legend" />
       <div className="form-grid">
         <div className="form-field">
-          <label htmlFor="identity-binding-provider">{t('bindings.fieldProvider')}</label>
+          <FieldLabel
+            htmlFor="identity-binding-provider"
+            text={t('bindings.fieldProvider')}
+            requirement="required"
+          />
           <select
             id="identity-binding-provider"
             data-testid="identity-binding-provider-select"
@@ -226,7 +232,11 @@ function CreateBindingDialog({
           </select>
         </div>
         <div className="form-field">
-          <label htmlFor="identity-binding-subject">{t('bindings.fieldSubject')}</label>
+          <FieldLabel
+            htmlFor="identity-binding-subject"
+            text={t('bindings.fieldSubject')}
+            requirement="required"
+          />
           <input
             id="identity-binding-subject"
             data-testid="identity-binding-subject-input"
@@ -236,7 +246,11 @@ function CreateBindingDialog({
           />
         </div>
         <div className="form-field">
-          <label htmlFor="identity-binding-user">{t('bindings.fieldUserId')}</label>
+          <FieldLabel
+            htmlFor="identity-binding-user"
+            text={t('bindings.fieldUserId')}
+            requirement="required"
+          />
           <input
             id="identity-binding-user"
             data-testid="identity-binding-user-input"
@@ -248,6 +262,13 @@ function CreateBindingDialog({
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
+        <RequiredStatus
+          missing={[
+            !providerId && t('bindings.fieldProvider'),
+            !subject.trim() && t('bindings.fieldSubject'),
+            !userId.trim() && t('bindings.fieldUserId'),
+          ].filter((entry): entry is string => Boolean(entry))}
+        />
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
