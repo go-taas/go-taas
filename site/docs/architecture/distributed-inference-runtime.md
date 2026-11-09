@@ -943,9 +943,10 @@ by every model of the namespace. Both writes are best-effort and logged, like
 the `ModelClaim` write.
 
 **The route is model-scoped, so two services of one model share it.** The
-platform allows that shape (a canary next to a primary, a service left
-`stopped` while its replacement runs), but a route can point at only one
-backend, which forces two rules:
+platform allows that shape (a replacement started before its predecessor is
+deleted, an old service left `stopped` while the new one runs). A route can
+point at only one backend, so the two services do not split traffic — the last
+one the controller wrote owns it — and that forces two rules:
 
 - **A teardown must not delete a route a survivor still serves.** The only
   durable record of "who serves this model right now" is the route's own
