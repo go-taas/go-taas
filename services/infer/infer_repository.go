@@ -197,6 +197,50 @@ func (r *InferenceServiceRepository) ListTeardownCandidates(ctx context.Context,
 	return rows, nil
 }
 
+// ListRunning returns running services, newest first, capped at limit. The
+// serving converger re-publishes their model-route reconciliation so a route
+// deleted out of band (or by another service's teardown) comes back without
+// waiting for an operator to update the service.
+func (r *InferenceServiceRepository) ListRunning(ctx context.Context, limit int) ([]*InferenceService, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var rows []*InferenceService
+	err := r.DB(ctx).
+		Where("state = ?", StateRunning).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
+// ListRunningByModel returns the running services of one model, excluding
+// excludeServiceID, newest first, capped at limit. The model route is named
+// after the model rather than the service, so two services of one model share
+// it; a teardown uses this list to re-point the route at a survivor before
+// it removes its own resources.
+func (r *InferenceServiceRepository) ListRunningByModel(ctx context.Context, modelID, excludeServiceID string, limit int) ([]*InferenceService, error) {
+	if strings.TrimSpace(modelID) == "" {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	var rows []*InferenceService
+	err := r.DB(ctx).
+		Where("model_id = ? AND state = ? AND id <> ?", modelID, StateRunning, excludeServiceID).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // updateServiceByID applies a management update to an inference service by
 // id. Inference services are platform assets (see findService), so these
 // writes are not scoped by the caller's active organization: a platform

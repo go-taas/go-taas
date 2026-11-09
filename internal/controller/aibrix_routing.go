@@ -512,15 +512,84 @@ func (r *k8sReconciler) applyModelRoute(ctx context.Context, evt changeEvent) er
 		buildModelHTTPRoute(evt, gatewayNamespace, gatewayName, r.namespace))
 }
 
-// deleteModelRoute removes the model's HTTPRoute. The ReferenceGrant stays:
-// it is namespace-scoped and shared by every model route of the namespace.
+// deleteModelRoute removes the model's HTTPRoute, but only while that route
+// still serves the service being torn down. The ReferenceGrant stays: it is
+// namespace-scoped and shared by every model route of the namespace.
+//
+// The "still serves this service" test matters because a route is named after
+// the model, not the service: two services that serve one model share a single
+// HTTPRoute, and the route can point at only one backend. Deleting it because
+// *one* of them went away would take the other offline — the gateway then
+// answers 503 (`httproutes ... not found`) for every request to that model
+// until something recreates the route. The backend ref is the only durable
+// record of who currently serves the model, so it decides.
 func (r *k8sReconciler) deleteModelRoute(ctx context.Context, evt changeEvent) error {
 	gatewayNamespace, _ := r.gatewayRouteTarget()
-	// A stop/delete event may not carry the catalog model name, in which
-	// case servedModelName falls back to the service name and this lookup
-	// misses the real route. The by-label sweep in teardown removes it; the
+	name := modelRouteName(servedModelName(evt))
+	// A stop/delete event may not carry the catalog model name, in which case
+	// servedModelName falls back to the service name and this lookup misses
+	// the real route. The by-label sweep in teardown removes it; the
 	// ownership check here keeps a late delete from removing a replacement
 	// service's route.
-	return deleteUnstructuredOwnedBy(ctx, r.dynamic, httpRouteGVR,
-		gatewayNamespace, modelRouteName(servedModelName(evt)), evt.ServiceID)
+	route, err := getUnstructuredObject(ctx, r.dynamic, httpRouteGVR, gatewayNamespace, name)
+	if err != nil || route == nil {
+		return err
+	}
+	if ownedByOtherService(route.GetLabels(), evt.ServiceID) {
+		return nil
+	}
+	if !routeServesService(route, serviceName(evt.Name)) {
+		// The route belongs to another live service of the same model (or was
+		// re-pointed at one). Leave it: that service is still answering
+		// requests through it.
+		return nil
+	}
+	return deleteUnstructuredObject(ctx, r.dynamic, httpRouteGVR, gatewayNamespace, name)
+}
+
+// getUnstructuredObject reads one object, mapping not-found and a missing CRD
+// to (nil, nil) so every caller can treat them the same way.
+func getUnstructuredObject(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, namespace, name string) (*unstructured.Unstructured, error) {
+	if dyn == nil || name == "" {
+		return nil, nil
+	}
+	obj, err := dyn.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
+	if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	return obj, nil
+}
+
+// routeServesService reports whether the HTTPRoute has a backend reference to
+// the given Service, i.e. whether that service is (one of) the model's current
+// backends. A route with no readable backend refs answers false: a malformed
+// route is not evidence that another service depends on it.
+func routeServesService(route *unstructured.Unstructured, service string) bool {
+	rules, found, err := unstructured.NestedSlice(route.Object, "spec", "rules")
+	if err != nil || !found {
+		return false
+	}
+	for _, raw := range rules {
+		rule, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		refs, found, err := unstructured.NestedSlice(rule, "backendRefs")
+		if err != nil || !found {
+			continue
+		}
+		for _, rawRef := range refs {
+			ref, ok := rawRef.(map[string]any)
+			if !ok {
+				continue
+			}
+			if name, _ := ref["name"].(string); name == service {
+				return true
+			}
+		}
+	}
+	return false
 }

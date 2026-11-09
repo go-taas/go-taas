@@ -835,6 +835,13 @@ func main() {
 	if runner := infer.NewTeardownConvergerFromConfig(srv.Components()); runner != nil {
 		srv.AddRunner(runner)
 	}
+	// The serving converger re-applies the model route of every running
+	// service: the route is named after the model rather than the service,
+	// so a teardown (or a manual cleanup) can remove a route a live service
+	// still needs, and nothing else would restore it.
+	if runner := infer.NewServingConvergerFromConfig(srv.Components()); runner != nil {
+		srv.AddRunner(runner)
+	}
 	// Feature #51 (AD14): the quota in-flight report consumer keeps the
 	// per-org snapshot the quota RPCs surface. Gated by config.
 	if cfg.Quota.ConcurrencyConsumer.Enabled {

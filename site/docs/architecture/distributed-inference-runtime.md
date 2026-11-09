@@ -937,10 +937,37 @@ otherwise only knows the weights directory it was started with.
 `modelRouteName` reproduces the AIBrix naming rule (the plain
 `<model>-router` form, or a lowercased/hashed variant for names that are
 not DNS subdomains), so a cluster that *does* run the AIBrix model router
-converges on the same object instead of creating a second one. Teardown
-deletes the route; the `ReferenceGrant` stays because it is namespace-scoped
-and shared by every model of the namespace. Both writes are best-effort and
-logged, like the `ModelClaim` write.
+converges on the same object instead of creating a second one. The
+`ReferenceGrant` stays on teardown because it is namespace-scoped and shared
+by every model of the namespace. Both writes are best-effort and logged, like
+the `ModelClaim` write.
+
+**The route is model-scoped, so two services of one model share it.** The
+platform allows that shape (a canary next to a primary, a service left
+`stopped` while its replacement runs), but a route can point at only one
+backend, which forces two rules:
+
+- **A teardown must not delete a route a survivor still serves.** The only
+  durable record of "who serves this model right now" is the route's own
+  `backendRefs`, so `deleteModelRoute` reads it and deletes only when the
+  backend is the service being torn down (or when there is no backend to
+  read). Before publishing its own `stop`/`delete`, the infer module
+  publishes a route reconciliation for every *running* sibling of the same
+  model, so the route is re-pointed first and the delete then declines. The
+  ordering is what makes it deterministic rather than a race.
+- **A live service must be able to restore a route that went missing.**
+  `reconcile_route` is a route-only event: the controller re-applies the
+  `HTTPRoute` (and the `ReferenceGrant`) and touches nothing else, so it costs
+  no pod churn and cannot restart an engine. `ServingConverger`
+  (`services/infer/serving_converger.go`) publishes it for every running
+  service on the convergence interval; the same event is what a teardown
+  publishes for a survivor.
+
+Without the second rule the failure is silent: the workload keeps running and
+the console shows `running`, while every request through the gateway answers
+`503 ... httproutes.gateway.networking.k8s.io "<model>-router" not found`, and
+nothing reconciles the route until an operator happens to scale or update the
+service.
 
 ### 13.5 `internal/controller` — autoscaler path and component collection
 

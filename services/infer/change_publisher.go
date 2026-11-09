@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
+	"github.com/go-taas/go-taas/services/model"
 )
 
 // Change-event types carried on infer.services.changes.
@@ -30,6 +31,13 @@ const (
 	// EventTypeUpdateEngineArgs changes the serving-engine startup
 	// parameters: the controller recreates the pods with the new args.
 	EventTypeUpdateEngineArgs = "update_engine_args"
+	// EventTypeReconcileRoute re-applies the model's serving route without
+	// touching the workload. A route is named after the served model, not
+	// the service, so two services of one model share it: a teardown has to
+	// re-point it at a survivor, and a running service has to be able to
+	// restore a route that was deleted out of band. Both cases publish this
+	// event instead of an upsert, which would also rewrite the workload.
+	EventTypeReconcileRoute = "reconcile_route"
 )
 
 // changeEventModel is the resolved model spec inside a change event. The
@@ -228,4 +236,60 @@ func publishChangeWithCompensation(
 		return err
 	}
 	return nil
+}
+
+// routeFailoverLimit caps how many survivor services one teardown re-points
+// the model route at. One is enough to keep the model routable; the cap only
+// exists so a pathological fleet cannot turn one delete into a publish storm.
+const routeFailoverLimit = 5
+
+// publishRouteReconciliations re-publishes a route-reconciliation event for
+// every running service of the given model except the excluded one.
+//
+// It exists because the serving route is named after the *model*, not the
+// service: two services that serve the same model share one HTTPRoute, and
+// the route can only point at one backend. When one of them is torn down, the
+// route would otherwise be deleted with it and the survivor would stay
+// unroutable until an operator touched it — the gateway answers 503
+// (`httproutes ... not found`) for every request in the meantime.
+//
+// Publishing the survivor's reconciliation *before* the teardown event also
+// makes the controller's ownership check do the right thing: the route no
+// longer serves the stopping service, so the teardown leaves it alone instead
+// of deleting it and relying on a later recreate.
+//
+// Failures are logged, never returned: a missing survivor route must not fail
+// the stop/delete the operator asked for. The serving converger retries on its
+// next tick.
+func publishRouteReconciliations(
+	ctx context.Context,
+	client mq.Client,
+	repo *InferenceServiceRepository,
+	models *model.Repository,
+	modelName, excludeServiceID string,
+) {
+	if client == nil || repo == nil || excludeServiceID == "" {
+		return
+	}
+	row, err := repo.FindByID(ctx, excludeServiceID)
+	if err != nil || row == nil || row.ModelID == "" {
+		return
+	}
+	survivors, err := repo.ListRunningByModel(ctx, row.ModelID, excludeServiceID, routeFailoverLimit)
+	if err != nil {
+		logger.S().Warnw("infer: list model survivor services failed",
+			"service_id", excludeServiceID, "err", err)
+		return
+	}
+	for _, survivor := range survivors {
+		name := modelName
+		if name == "" {
+			name = servedModelName(ctx, models, survivor)
+		}
+		evt := buildChangeEvent(EventTypeReconcileRoute, survivor, name, "", "", "")
+		if err := publishChange(ctx, client, evt); err != nil {
+			logger.S().Warnw("infer: publish route reconciliation failed",
+				"service_id", survivor.ID, "err", err)
+		}
+	}
 }

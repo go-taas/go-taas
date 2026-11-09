@@ -434,6 +434,13 @@ func (r *k8sReconciler) ApplyInferServiceChange(ctx context.Context, msg mq.Mess
 		// endpoints. applyUpsert reconciles the storm from the resolved
 		// spec, so the engine-args event reuses it.
 		return r.applyUpsert(ctx, evt)
+	case "reconcile_route":
+		// Route-only reconciliation: re-write the model's serving route
+		// without touching the workload. The platform publishes it for a
+		// running service whose route may have gone missing, and for a
+		// survivor when a sibling service of the same model is torn down
+		// (the route is named after the model, so the two share it).
+		return r.applyModelRoute(ctx, evt)
 	default:
 		return mq.Permanent(fmt.Errorf("controller: unknown event_type %q", evt.EventType))
 	}

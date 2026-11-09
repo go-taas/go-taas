@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -153,6 +154,63 @@ func TestDeleteModelRoute(t *testing.T) {
 	_, err = dyn.Resource(referenceGrantGVR).Namespace("taas-infer").
 		Get(context.Background(), referenceGrantName("aibrix-system", "taas-infer"), metav1.GetOptions{})
 	assert.NoError(t, err)
+}
+
+// TestDeleteModelRouteLeavesSurvivorRoute covers two services that serve the
+// same model: they share one model-scoped route, and the model stays routable
+// only while that route points at a live service. A teardown must therefore
+// leave a route that a sibling service is serving, or the survivor answers 503
+// until something recreates it.
+func TestDeleteModelRouteLeavesSurvivorRoute(t *testing.T) {
+	r, dyn := gatewayTestReconciler()
+
+	// "other" served the model last, so the shared route points at it.
+	other := testChangeEvent("upsert", "other")
+	other.Model.Name = "qwen2.5-0.5b"
+	require.NoError(t, r.applyModelRoute(context.Background(), other))
+
+	// "demo" is torn down afterwards. Its event carries the same model name.
+	demo := testChangeEvent("delete", "demo")
+	demo.Model.Name = "qwen2.5-0.5b"
+	require.NoError(t, r.deleteModelRoute(context.Background(), demo))
+
+	route, err := dyn.Resource(httpRouteGVR).Namespace("aibrix-system").
+		Get(context.Background(), "qwen2.5-0.5b-router", metav1.GetOptions{})
+	require.NoError(t, err, "the route of the surviving service must stay")
+	assert.True(t, routeServesService(route, "other-svc"))
+	assert.False(t, routeServesService(route, "demo-svc"))
+}
+
+// TestDeleteModelRouteRemovesOwnRoute is the complement: when the route still
+// points at the service being torn down, nothing else serves the model and the
+// route goes with it.
+func TestDeleteModelRouteRemovesOwnRoute(t *testing.T) {
+	r, dyn := gatewayTestReconciler()
+	evt := testChangeEvent("delete", "demo")
+	evt.Model.Name = "qwen2.5-0.5b"
+
+	require.NoError(t, r.applyModelRoute(context.Background(), evt))
+	require.NoError(t, r.deleteModelRoute(context.Background(), evt))
+
+	_, err := dyn.Resource(httpRouteGVR).Namespace("aibrix-system").
+		Get(context.Background(), "qwen2.5-0.5b-router", metav1.GetOptions{})
+	assert.True(t, apierrors.IsNotFound(err), "no other service serves the model, so the route goes")
+}
+
+// TestRouteServesService covers the backend-ref reader, including the
+// malformed shapes a hand-edited route can have.
+func TestRouteServesService(t *testing.T) {
+	route := buildModelHTTPRoute(testChangeEvent("upsert", "demo"), "aibrix-system", "aibrix-eg", "taas-infer")
+	assert.True(t, routeServesService(route, "demo-svc"))
+	assert.False(t, routeServesService(route, "other-svc"))
+
+	empty := &unstructured.Unstructured{Object: map[string]any{"spec": map[string]any{}}}
+	assert.False(t, routeServesService(empty, "demo-svc"), "a route without rules serves nothing")
+
+	broken := &unstructured.Unstructured{Object: map[string]any{
+		"spec": map[string]any{"rules": []any{"not-a-map"}},
+	}}
+	assert.False(t, routeServesService(broken, "demo-svc"), "a malformed rule must not look like a live backend")
 }
 
 func TestGatewayRouteTargetDefaults(t *testing.T) {

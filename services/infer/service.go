@@ -1423,6 +1423,9 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	// k8s resources on retry instead of leaving them behind.
 	modelName := s.eventModelName(ctx, row)
 	if row.State == StateTerminated {
+		// Same model-route failover as the stop path (see below).
+		modelRepo, _ := s.modelRepository()
+		publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
 		if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish delete change failed",
 				"service_id", req.GetServiceId(), "err", err)
@@ -1433,6 +1436,11 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	if err := repo.MarkTerminated(ctx, orgID, req.GetServiceId()); err != nil {
 		return nil, err
 	}
+
+	// Keep the model routable through the teardown: another running service
+	// of the same model takes over the model-scoped route.
+	modelRepo, _ := s.modelRepository()
+	publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
 
 	// A publish failure only logs: the row is already terminated, so the
 	// service is hidden from lists and the controller's periodic resync
@@ -1493,6 +1501,10 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 	// converges the k8s resources on retry.
 	modelName := s.eventModelName(ctx, row)
 	if row.State == StateStopped {
+		// A model we no longer serve may still be served by a sibling
+		// service: re-point its route before this service's teardown runs.
+		modelRepo, _ := s.modelRepository()
+		publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
 		if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish stop change failed",
 				"service_id", req.GetServiceId(), "err", err)
@@ -1507,6 +1519,13 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 	if err := repo.MarkStopped(ctx, orgID, req.GetServiceId()); err != nil {
 		return nil, err
 	}
+
+	// The model route is model-scoped: if another running service serves the
+	// same model, re-point the route at it before the teardown removes this
+	// service's resources. Otherwise the survivor would answer 503 until
+	// something reconciled it.
+	modelRepo, _ := s.modelRepository()
+	publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
 
 	// A publish failure only logs: the row is already stopped, so the
 	// service is hidden from the running set and the controller's periodic
