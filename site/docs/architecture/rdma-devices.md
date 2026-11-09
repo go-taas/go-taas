@@ -150,3 +150,44 @@ Runtime failures (missing class, missing DRA API) surface as the service's `fail
 | AC6 | Toggling RDMA off deletes the template; stop/delete removes it; a reused name reclaims a stale one instead of colliding |
 | AC7 | `devices` outside `1..8`, or a malformed class, is refused with 10324 before any write |
 | AC8 | `UpdateInferenceServiceTopology` with no `rdma` keeps the stored request; with one, it replaces it |
+
+## 11. How the engine learns the device name
+
+The platform never passes a device name to vLLM. `rdma` in the pod spec is the
+**claim's name inside the pod**, not a NIC name; `devices: 2` is a count. The
+driver injects the granted devices' character nodes, and the engine discovers
+the rest:
+
+1. DRA's driver (here `dra.net`) allocates, for example, PCI `0000:0f:00.0` and
+   `0000:0f:00.1`, then injects `/dev/infiniband/uverbsN` and the peer network
+   device into the container's network namespace.
+2. Inside the container `/sys/class/infiniband` is the **host's** sysfs, so all
+   six of the node's devices are visible there. Only the granted ones have a
+   `/dev/infiniband/uverbsN` node.
+3. `libibverbs` opens `uverbsN` for each sysfs entry, and silently drops the
+   entries it cannot open. NCCL and `PyNcclConnector` therefore see exactly the
+   granted devices, named after the host driver's enumeration (`mlx5_N`).
+
+Measured on a two-device request on a node with six NICs: `/dev/infiniband`
+held `uverbs4`/`uverbs5`, `/sys/class/infiniband` listed `mlx5_0`…`mlx5_5`, and
+`ibv_get_device_list` returned **only** `mlx5_4` and `mlx5_5`, both openable.
+A second pod on the same node asking for two devices got `uverbs2`/`uverbs3`.
+The index therefore depends on what the driver had free and on the host's
+enumeration order — it is **not** stable across pods or nodes, so it must never
+be hard-coded in a template.
+
+**Pinning a specific device.** When a pod owns several devices NCCL uses all of
+them, which is what a rail-optimized host wants. To restrict it, set a variable
+through the service's `env` (no code change needed):
+
+| Variable | Effect |
+| --- | --- |
+| `NCCL_IB_HCA=mlx5_4` | use only that device (`mlx5_4:1` pins a port) |
+| `NCCL_DEBUG=INFO` | the log line `NET/IB : Using [0]mlx5_4:1/IB` names the device actually chosen |
+| `NCCL_IB_DISABLE=1` | disables IB entirely: the engine silently falls back to TCP, so this must not be set on an RDMA service |
+
+**Practical caveat.** A pod that requests one device and runs on a node with
+several will still see the other NICs in `/sys/class/infiniband`; they are
+harmless because they cannot be opened, but a tool that reads sysfs instead of
+libibverbs (some NCCL forks, `ibv_devinfo`-style scripts) may report them.
+Set `NCCL_IB_HCA` when a workload must be unambiguous.
