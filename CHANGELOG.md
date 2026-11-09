@@ -1,3 +1,10 @@
+# [1.117.0](https://github.com/go-taas/go-taas/compare/v1.116.0...v1.117.0) (2026-11-09)
+
+
+### Features
+
+* **console:** grade the create-service form by requirement and split it into blocks ([8fbeb9e](https://github.com/go-taas/go-taas/commit/8fbeb9e8006c306ef064c3e8d5e572c7df7d1016))
+
 # [1.116.0](https://github.com/go-taas/go-taas/compare/v1.115.3...v1.116.0) (2026-11-09)
 
 
