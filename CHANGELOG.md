@@ -1,3 +1,10 @@
+# [1.118.0](https://github.com/go-taas/go-taas/compare/v1.117.0...v1.118.0) (2026-11-09)
+
+
+### Features
+
+* **console:** carry the requirement-tier form design across every admin form ([8c293a2](https://github.com/go-taas/go-taas/commit/8c293a20b2f9f23dc9569f9d1007fd6a9643aaee))
+
 # [1.117.0](https://github.com/go-taas/go-taas/compare/v1.116.0...v1.117.0) (2026-11-09)
 
 
