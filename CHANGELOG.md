@@ -1,3 +1,10 @@
+## [1.115.1](https://github.com/go-taas/go-taas/compare/v1.115.0...v1.115.1) (2026-11-09)
+
+
+### Bug Fixes
+
+* **helm:** render the RDMA device class from reused values too ([cd71d69](https://github.com/go-taas/go-taas/commit/cd71d69f4badff5196b320c1f17b7df75d4a454d))
+
 # [1.115.0](https://github.com/go-taas/go-taas/compare/v1.114.0...v1.115.0) (2026-11-09)
 
 
