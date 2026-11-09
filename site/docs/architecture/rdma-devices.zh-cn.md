@@ -201,13 +201,21 @@ NVIDIA CDI / 设备集合上，而不是本 Chart：从驱动能力中去掉 `ne
 
 ## 12. 多 rail 集群：同一副本必须取自同一条 rail
 
-网卡端口本身并不构成网络。在 `sd4090` 节点上，同一张卡的两个端口分属**不同 rail**，
-DRA 驱动给每个端口分配所在 rail 子网的地址：
+网卡端口本身并不构成网络。**一条 rail 就是一个三层网络**，而多端口网卡通常把每个端口
+放在不同的网络里 —— 所以 `sd4090` 上被授权那张卡的两个端口落在互不可达的两个子网。DRA
+驱动会发布分配给每个端口的地址，rail 的划分由此可见：
 
-| 端口 | Pod 内的 netdev | Pod 地址 |
-| --- | --- | --- |
-| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12` |
-| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12` |
+| 端口 | Pod 内的 netdev | Pod 地址 | rail |
+| --- | --- | --- | --- |
+| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12/24` | 30 |
+| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12/24` | 40 |
+| `0000:87:00.0` | `ens3f0np0` | `172.16.50.12/24` | 50 |
+| `0000:87:00.1` | `ens3f1np1` | `172.16.60.12/24` | 60 |
+
+该节点提供四条 rail，每条只有一个端口。剩下两个支持 RDMA 的端口
+（`0000:0a:00.0`、`0000:0a:00.1`，ConnectX-6 Lx，1500 MTU）处于 `down` 且没有地址，
+因此 `rdma.requireLinkUp` 不会把它们放进类里 —— 这也说明类选择器不能假设被授权的端口是
+*第一个* RDMA 设备：设备序号会随链路状态变化。
 
 在 Pod 内部，`172.16.30.0/24` 与 `172.16.40.0/24` 之间没有路由（连接会走 `eth0`
 默认路由并超时）。当 `multinode` 副本的各个 Pod 被分配到**不同 rail** 的端口时，
@@ -217,9 +225,23 @@ vLLM 仍会正常启动并初始化 NCCL，然后在第一次集合通信处永�
 因此**同一副本必须取自同一条 rail**，这也是服务级 `rdma.device_class` 存在的原因：
 
 - 默认的 `taas-rdma` 接受所有 RDMA 设备，适合每 Pod 单网卡或单 rail 的集群；
-- 多 rail 集群应为每条 rail 建一个 DeviceClass（用 `rdma.selector` 固定该 rail 的端口，
-  例如 `device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]`；同构集群可用对应
-  的按节点选择器），并在服务中指定该类。这样副本内每个 Pod 都从同一条 rail 分配。
+- 多 rail 集群应为每条 rail 建一个 DeviceClass（`rdma.additionalDeviceClasses`，每项是
+  `name` + `selector`，选择器只固定属于该 rail 子网的端口），并在服务中指定该类
+  （`rdma.device_class`）。这样副本内每个 Pod 都从同一条 rail 分配：
+
+  ```yaml
+  rdma:
+    additionalDeviceClasses:
+      - name: taas-rdma-rail-30
+        selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]'
+      - name: taas-rdma-rail-40
+        selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.1"]'
+  ```
+
+  只有当一个类里的地址在**所有**主机上都属于同一子网时才能合并：把双端口网卡的两个端口
+  放进同一个类，正是本节警告的跨 rail 授权，而且它在运行期才失败、不在准入期失败。固定
+  地址请用 `pciAddress`，因为所有设备都会发布它（包括 down 的端口）；基于
+  `dra.net/ipv4` 的选择器必须能容忍没有地址的设备。
 
 **AD8 —— 同一节点内的多 Pod 副本不应通过 RDMA 承载副本内通信。** 同一节点上两个 Pod
 之间走的是 CNI 而不是 RDMA 网络，因此单节点多卡的做法是让一个 Pod 拥有全部设备：使用

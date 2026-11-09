@@ -210,14 +210,24 @@ guaranteed and the request is auditable; the visible set is the node's".
 
 ## 12. Multi-rail fleets: allocate from one rail per replica
 
-A NIC port is not a fabric by itself. On the `sd4090` node the two ports of the
-granted card sit on **different rails**, and the DRA driver gives each port an
-address on that rail's subnet:
+A NIC port is not a fabric by itself. A **rail is one L3 network**, and a
+multi-port card usually puts each port on a different one — so the two ports of
+the granted card on the `sd4090` node reach two subnets that cannot see each
+other. The DRA driver publishes the address it gave each port, which is what
+makes the rails visible:
 
-| Port | netdev in the pod | pod address |
-| --- | --- | --- |
-| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12` |
-| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12` |
+| Port | netdev in the pod | pod address | rail |
+| --- | --- | --- | --- |
+| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12/24` | 30 |
+| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12/24` | 40 |
+| `0000:87:00.0` | `ens3f0np0` | `172.16.50.12/24` | 50 |
+| `0000:87:00.1` | `ens3f1np1` | `172.16.60.12/24` | 60 |
+
+That host offers four rails with exactly one port each. Its two remaining
+RDMA-capable ports (`0000:0a:00.0`, `0000:0a:00.1`, ConnectX-6 Lx, 1500 MTU) are
+`down` and carry no address, so `rdma.requireLinkUp` keeps them out of the
+classes — which is also why a class selector must never assume the granted port
+is the *first* RDMA device: the index moves with the link state.
 
 Nothing routes between `172.16.30.0/24` and `172.16.40.0/24` from inside a pod
 (a connect attempt times out on the default `eth0` route). When a `multinode`
@@ -232,11 +242,26 @@ This is the reason a **replica must take its devices from one rail**, and why
 - the default `taas-rdma` accepts every RDMA device, which is right for a
   single-NIC-per-pod or single-rail fleet;
 - for a multi-rail fleet, render one class per rail with
-  `rdma.additionalDeviceClasses` (each entry a `name` + `selector`; pin the
-  rail's ports with a selector such as
-  `device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]`, or the
-  corresponding per-node selector in a homogeneous fleet) and name that class in
-  the service. Every pod of the replica then allocates from the same rail.
+  `rdma.additionalDeviceClasses` — each entry a `name` + `selector` pinning the
+  ports that share that rail's subnet — and name that class in the service
+  (`rdma.device_class`). Every pod of the replica then allocates from the same
+  rail:
+
+  ```yaml
+  rdma:
+    additionalDeviceClasses:
+      - name: taas-rdma-rail-30
+        selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]'
+      - name: taas-rdma-rail-40
+        selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.1"]'
+  ```
+
+  Group addresses in one class only when they share a subnet on **every** host:
+  a class that accepts both ports of a dual-port card is exactly the
+  cross-rail grant this section warns about, and it fails at run time rather
+  than at admission. Pin by `pciAddress` because every device publishes it,
+  including the down ones; a selector on `dra.net/ipv4` has to tolerate devices
+  that carry no address.
 
 **AD8 — A replica that spans pods on one node should not use RDMA for
 intra-replica traffic.** Two pods of one node exchange pipeline-parallel

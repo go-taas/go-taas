@@ -783,21 +783,32 @@ rdma:
   requireLinkUp: true
   # -- Full CEL selector, overriding the expression built from `driver` and
   # `requireLinkUp`. Use it to pin specific cards or PCI addresses, e.g.
-  #   selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0","0000:0f:00.1"]'
+  #   selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]'
   selector: ""
   # -- Extra labels for the DeviceClass.
   labels: {}
   # One extra DeviceClass per rail, for a fleet whose NIC ports sit on separate
-  # L3 networks. Pods of one replica must allocate from the same rail: a
-  # cross-rail collective blocks forever instead of failing, which shows up as
-  # a service that stays "starting". Name the rail's class in the service
+  # L3 networks. A rail is one network, not one card: the two ports of a
+  # dual-port card usually land on two different subnets (on `sd4090`,
+  # 0000:0f:00.0 is 172.16.30.12 and 0000:0f:00.1 is 172.16.40.12), so a class
+  # that accepts both ports hands a replica devices that cannot reach each
+  # other. Pods of one replica must allocate from the same rail: a cross-rail
+  # collective blocks forever instead of failing, which shows up as a service
+  # that stays "starting". Name the rail's class in the service
   # (rdma.device_class).
   #
   #   additionalDeviceClasses:
-  #     - name: taas-rdma-rail-0
-  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0","0000:0f:00.1"]'
-  #     - name: taas-rdma-rail-1
-  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:87:00.0","0000:87:00.1"]'
+  #     - name: taas-rdma-rail-30
+  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.0"]'
+  #     - name: taas-rdma-rail-40
+  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:0f:00.1"]'
+  #     - name: taas-rdma-rail-50
+  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:87:00.0"]'
+  #     - name: taas-rdma-rail-60
+  #       selector: 'device.driver == "dra.net" && device.attributes["dra.net"].rdma == true && device.attributes["dra.net"].pciAddress in ["0000:87:00.1"]'
+  #
+  # A rail with one port per host takes a single PCI address; widen the list
+  # only with the addresses that share the rail's subnet on every host.
   additionalDeviceClasses: []
 
 controller:
