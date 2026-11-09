@@ -1,3 +1,15 @@
+# [1.116.0](https://github.com/go-taas/go-taas/compare/v1.115.3...v1.116.0) (2026-11-09)
+
+
+### Bug Fixes
+
+* **controller:** explain a silent engine and yield to a newer change ([b3f57c9](https://github.com/go-taas/go-taas/commit/b3f57c91d5dd0a6264fc673aaa686dfad286e76c))
+
+
+### Features
+
+* **infer:** let the single-node topology shard inside its one pod ([745ee30](https://github.com/go-taas/go-taas/commit/745ee30bd1c60198580ceaa3b7d7ae33be3de4cf))
+
 ## [1.115.3](https://github.com/go-taas/go-taas/compare/v1.115.2...v1.115.3) (2026-11-09)
 
 
