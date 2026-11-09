@@ -20,6 +20,8 @@ package infer
 import (
 	"strings"
 
+	"gorm.io/datatypes"
+
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 )
@@ -125,5 +127,46 @@ func rdmaSpecFromRow(row *InferenceService) RdmaSpec {
 		Enabled:     true,
 		Devices:     row.RdmaDevices,
 		DeviceClass: row.RdmaDeviceClass,
+	}
+}
+
+// ncclIBDisabledVar is the variable NCCL reads to skip InfiniBand entirely.
+// Setting it on an RDMA-enabled service is a silent downgrade: the engine
+// still starts, the devices are still allocated, and every transfer falls back
+// to TCP without an error anywhere. It is the one environment variable the
+// platform refuses to combine with an RDMA request.
+const ncclIBDisabledVar = "NCCL_IB_DISABLE"
+
+// validateRdmaEnv refuses an RDMA request whose environment variables disable
+// the fabric. Everything else about the two settings is independent: RDMA
+// allocates devices, env configures the engine, and only this pair is
+// contradictory.
+func validateRdmaEnv(rdma RdmaSpec, env datatypes.JSON, roleArgs datatypes.JSON) error {
+	if !rdma.Enabled {
+		return nil
+	}
+	if truthyEnvValue(EnvMap(env)[ncclIBDisabledVar]) {
+		return apierrors.Newf(apierrors.CodeInferRdmaInvalid,
+			"infer: %s=%s disables RDMA, so the requested devices would never be used; remove the variable or disable rdma",
+			ncclIBDisabledVar, EnvMap(env)[ncclIBDisabledVar])
+	}
+	for _, role := range RoleEngineArgsList(roleArgs) {
+		if truthyEnvValue(role.Env[ncclIBDisabledVar]) {
+			return apierrors.Newf(apierrors.CodeInferRdmaInvalid,
+				"infer: role %q sets %s=%s, which disables RDMA for that role; remove the variable or disable rdma",
+				role.Role, ncclIBDisabledVar, role.Env[ncclIBDisabledVar])
+		}
+	}
+	return nil
+}
+
+// truthyEnvValue reports whether an environment value asks for "on": NCCL
+// reads the variable as a boolean, and an empty or zero value means "off".
+func truthyEnvValue(value string) bool {
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
 	}
 }

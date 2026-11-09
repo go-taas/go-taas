@@ -957,6 +957,11 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	if err != nil {
 		return nil, err
 	}
+	// The two settings are independent except for one contradiction: an
+	// RDMA request whose environment disables the fabric.
+	if err := validateRdmaEnv(rdma, env, roleArgs); err != nil {
+		return nil, err
+	}
 
 	// Feature #52 (AD13): the vGPU slice request is validated before any
 	// write or publish. Both pool_id and slice_template_id must be
@@ -1794,6 +1799,18 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 		}
 		rdma = &normalized
 	}
+	// The stored environment still applies after the layout change, so a new
+	// RDMA request has to be checked against it.
+	effectiveEnv := row.Env
+	effectiveRoles := row.RoleEngineArgs
+	if len(roleArgs) > 0 {
+		effectiveRoles = roleArgs
+	}
+	if rdma != nil {
+		if err := validateRdmaEnv(*rdma, effectiveEnv, effectiveRoles); err != nil {
+			return nil, err
+		}
+	}
 	if err := repo.UpdateTopology(ctx, orgID, req.GetServiceId(), topology, replicas, roleArgs, scheduling, rdma); err != nil {
 		return nil, err
 	}
@@ -1913,6 +1930,9 @@ func (s *Service) UpdateInferenceServiceEngineArgs(ctx context.Context, req *inf
 	}
 	env, err := normalizeEnv(req.GetEnv())
 	if err != nil {
+		return nil, err
+	}
+	if err := validateRdmaEnv(rdmaSpecFromRow(row), env, roleArgs); err != nil {
 		return nil, err
 	}
 

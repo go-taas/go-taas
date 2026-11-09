@@ -150,44 +150,60 @@ Runtime failures (missing class, missing DRA API) surface as the service's `fail
 | AC6 | Toggling RDMA off deletes the template; stop/delete removes it; a reused name reclaims a stale one instead of colliding |
 | AC7 | `devices` outside `1..8`, or a malformed class, is refused with 10324 before any write |
 | AC8 | `UpdateInferenceServiceTopology` with no `rdma` keeps the stored request; with one, it replaces it |
+| AC9 | An RDMA request combined with `NCCL_IB_DISABLE=1` (shared or per role) is refused with 10324 on create, on the engine-argument update and when enabling RDMA on a service whose stored env disables the fabric |
 
 ## 11. How the engine learns the device name
 
 The platform never passes a device name to vLLM. `rdma` in the pod spec is the
 **claim's name inside the pod**, not a NIC name; `devices: 2` is a count. The
-driver injects the granted devices' character nodes, and the engine discovers
-the rest:
+name is discovered at runtime, and what is discoverable depends on the runtimes
+in play.
 
-1. DRA's driver (here `dra.net`) allocates, for example, PCI `0000:0f:00.0` and
-   `0000:0f:00.1`, then injects `/dev/infiniband/uverbsN` and the peer network
-   device into the container's network namespace.
-2. Inside the container `/sys/class/infiniband` is the **host's** sysfs, so all
-   six of the node's devices are visible there. Only the granted ones have a
-   `/dev/infiniband/uverbsN` node.
-3. `libibverbs` opens `uverbsN` for each sysfs entry, and silently drops the
-   entries it cannot open. NCCL and `PyNcclConnector` therefore see exactly the
-   granted devices, named after the host driver's enumeration (`mlx5_N`).
+**What DRA does.** The driver (here `dra.net`) allocates, for example, PCI
+`0000:0f:00.0` and `0000:0f:00.1`, then injects the matching
+`/dev/infiniband/uverbsN` nodes into the container. `libibverbs` walks
+`/sys/class/infiniband`, opens the `uverbsN` node of each entry, and silently
+skips the entries it cannot open; NCCL uses what is left, named after the host
+driver's own enumeration (`mlx5_N`).
 
-Measured on a two-device request on a node with six NICs: `/dev/infiniband`
-held `uverbs4`/`uverbs5`, `/sys/class/infiniband` listed `mlx5_0`…`mlx5_5`, and
-`ibv_get_device_list` returned **only** `mlx5_4` and `mlx5_5`, both openable.
-A second pod on the same node asking for two devices got `uverbs2`/`uverbs3`.
-The index therefore depends on what the driver had free and on the host's
-enumeration order — it is **not** stable across pods or nodes, so it must never
-be hard-coded in a template.
+**What the GPU runtime also does.** A container that requests a GPU is prepared
+by the NVIDIA runtime (CDI on this fleet). Its device set includes
+`/dev/infiniband/*` whenever the driver capabilities cover `network`, which is
+the default. The nodes are created inside the container's own `/dev` tmpfs —
+there is no `/dev/infiniband` mount to see in `mountinfo`.
 
-**Pinning a specific device.** When a pod owns several devices NCCL uses all of
-them, which is what a rail-optimized host wants. To restrict it, set a variable
-through the service's `env` (no code change needed):
+**Measured on the `sd4090` node (six NICs, two GPUs).**
+
+| Pod requests | `/dev/infiniband` | `ibv_get_device_list` |
+| --- | --- | --- |
+| 2 RDMA devices, no GPU (busybox probe) | `uverbs4`, `uverbs5` | 2 — `mlx5_4`, `mlx5_5` |
+| 1 RDMA device + 1 GPU (real inference pod) | `uverbs0`…`uverbs5` | 6 — all openable |
+
+So on a cluster whose GPU CDI spec carries the `network` capability, **a GPU pod
+can open every NIC on the node regardless of what DRA granted it**. DRA still
+guarantees the granted device is present and gives an auditable, schedulable
+claim; it does not, by itself, restrict which NIC the engine picks.
+
+**Consequence for the platform.** Device names are neither known before
+allocation nor required by the engine, and they are not stable across pods or
+nodes, so nothing is hard-coded. NCCL's default — use every device it can open —
+is also the right default for a rail-optimized host. Pinning is an engine
+concern, configured through the service's `env`:
 
 | Variable | Effect |
 | --- | --- |
-| `NCCL_IB_HCA=mlx5_4` | use only that device (`mlx5_4:1` pins a port) |
-| `NCCL_DEBUG=INFO` | the log line `NET/IB : Using [0]mlx5_4:1/IB` names the device actually chosen |
-| `NCCL_IB_DISABLE=1` | disables IB entirely: the engine silently falls back to TCP, so this must not be set on an RDMA service |
+| `NCCL_IB_HCA=mlx5_4` | use only that device (`mlx5_4:1` pins one port) |
+| `NCCL_DEBUG=INFO` | the line `NET/IB : Using [0]mlx5_4:1/IB` names the device actually chosen |
+| `NCCL_IB_DISABLE=1` | disables the fabric and silently falls back to TCP — **refused by the platform** on an RDMA service (10324) |
 
-**Practical caveat.** A pod that requests one device and runs on a node with
-several will still see the other NICs in `/sys/class/infiniband`; they are
-harmless because they cannot be opened, but a tool that reads sysfs instead of
-libibverbs (some NCCL forks, `ibv_devinfo`-style scripts) may report them.
-Set `NCCL_IB_HCA` when a workload must be unambiguous.
+**AD7 — `NCCL_IB_DISABLE` is rejected, not ignored.** It is the only setting
+that makes an RDMA request pointless without any error: the service starts, the
+devices are allocated, and every transfer goes over TCP. `validateRdmaEnv`
+refuses it (truthy values, shared or per-role) on create, on the engine-argument
+update and when RDMA is enabled on a service whose stored env carries it.
+
+**Making the grant exclusive.** When an operator needs the pod to see *only* the
+granted NIC, the lever is the node's NVIDIA CDI/device set, not this chart: drop
+`network` from the driver capabilities (or generate a CDI kind without
+`/dev/infiniband`). Until then, the honest statement is "the granted device is
+guaranteed and the request is auditable; the visible set is the node's".

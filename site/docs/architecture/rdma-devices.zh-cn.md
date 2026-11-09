@@ -150,36 +150,51 @@ spec:
 | AC6 | 关闭 RDMA 会删除模板；stop/delete 会删除模板；同名复用时回收旧模板而不是冲突 |
 | AC7 | `devices` 超出 `1..8` 或类名非法时，在任何写入前返回 10324 |
 | AC8 | `UpdateInferenceServiceTopology` 不传 `rdma` 时保留原申请；传了则替换 |
+| AC9 | RDMA 申请与 `NCCL_IB_DISABLE=1`（共享或按角色）同时出现时，在创建、引擎参数更新、以及为“存储环境已禁用 IB”的服务开启 RDMA 这三种场景下都以 10324 拒绝 |
 
 ## 11. 引擎是怎么知道设备名的
 
 平台**不会**把设备名传给 vLLM。Pod spec 里的 `rdma` 是**claim 在 Pod 内的名字**，
-不是网卡名；`devices: 2` 只是数量。真正确定可用范围的是：驱动把被授权设备的字符设备
-节点注入容器，剩下的由引擎自己发现。
+不是网卡名；`devices: 2` 只是数量。名字是运行时发现的，而“能看到什么”取决于同时
+参与的运行时。
 
-1. DRA 驱动（这里是 `dra.net`）分配例如 PCI `0000:0f:00.0`、`0000:0f:00.1`，然后把
-   对应的 `/dev/infiniband/uverbsN` 与配套网卡注入容器的网络命名空间。
-2. 容器内 `/sys/class/infiniband` 是**宿主**的 sysfs，节点上的 6 个设备都可见；但只有
-   被授权的那些才有 `/dev/infiniband/uverbsN` 节点。
-3. `libibverbs` 逐个尝试打开 `uverbsN`，打不开的直接跳过。因此 NCCL 与
-   `PyNcclConnector` 只会看到被授权的设备，名字沿用宿主驱动枚举出来的 `mlx5_N`。
+**DRA 做的事。** 驱动（这里是 `dra.net`）分配例如 PCI `0000:0f:00.0`、`0000:0f:00.1`，
+并把对应的 `/dev/infiniband/uverbsN` 节点注入容器。`libibverbs` 遍历
+`/sys/class/infiniband`，逐个打开各条目的 `uverbsN`，打不开的静默跳过；NCCL 使用
+剩下的设备，名称沿用宿主驱动自己的枚举（`mlx5_N`）。
 
-在一台有 6 张网卡的节点上申请 2 个设备的实测结果：`/dev/infiniband` 里是
-`uverbs4`/`uverbs5`，`/sys/class/infiniband` 列出 `mlx5_0`…`mlx5_5`，而
-`ibv_get_device_list` 只返回 **`mlx5_4` 与 `mlx5_5`**，且都可打开。同一节点上另一个
-申请 2 个设备的 Pod 拿到的是 `uverbs2`/`uverbs3`。可见索引取决于驱动当时空闲的设备与
-宿主枚举顺序，**跨 Pod、跨节点都不固定**，绝不能写死在模板里。
+**GPU 运行时还会做什么。** 申请 GPU 的容器由 NVIDIA 运行时准备（本集群为 CDI 模式）。
+只要驱动能力包含 `network`（默认即包含），其设备集合就包含 `/dev/infiniband/*`。这些
+节点是在容器自己的 `/dev` tmpfs 里创建的 —— 在 `mountinfo` 里看不到
+`/dev/infiniband` 挂载点。
 
-**指定某张网卡。** 一个 Pod 拥有多个设备时 NCCL 会全部使用，这正是 rail 优化想要的；
-若要限制，通过服务的 `env` 设置变量即可（无需改代码）：
+**在 `sd4090` 节点（6 张网卡、2 张 GPU）上的实测。**
+
+| Pod 申请 | `/dev/infiniband` | `ibv_get_device_list` |
+| --- | --- | --- |
+| 2 个 RDMA 设备，无 GPU（busybox 探针） | `uverbs4`、`uverbs5` | 2 个 —— `mlx5_4`、`mlx5_5` |
+| 1 个 RDMA 设备 + 1 张 GPU（真实推理 Pod） | `uverbs0`…`uverbs5` | 6 个，全部可打开 |
+
+也就是说，在 GPU 的 CDI 规格带 `network` 能力的集群上，**GPU Pod 可以打开节点上的
+全部网卡，与 DRA 授权无关**。DRA 仍然保证被授权的设备存在，并提供可审计、可调度的
+claim；但它本身并不限制引擎最终选用哪张网卡。
+
+**对平台的结论。** 设备名既不能在分配前得知，引擎也不需要它，而且跨 Pod、跨节点都
+不稳定，因此平台不写死任何名字。NCCL 的默认行为——能用几个就用几个——对 rail 优化的
+主机恰好是正确的默认。要指定设备属于引擎配置，通过服务的 `env` 完成：
 
 | 变量 | 作用 |
 | --- | --- |
 | `NCCL_IB_HCA=mlx5_4` | 只用该设备（`mlx5_4:1` 指定端口） |
-| `NCCL_DEBUG=INFO` | 日志 `NET/IB : Using [0]mlx5_4:1/IB` 会写明实际选用的设备 |
-| `NCCL_IB_DISABLE=1` | 完全关闭 IB：引擎会静默回退到 TCP，因此 RDMA 服务上绝不能设置 |
+| `NCCL_DEBUG=INFO` | 日志 `NET/IB : Using [0]mlx5_4:1/IB` 写明实际选用的设备 |
+| `NCCL_IB_DISABLE=1` | 关闭 IB 并静默回退 TCP —— RDMA 服务上**平台会直接拒绝**（10324） |
 
-**实践提醒。** 只申请一个设备的 Pod，在多功能网卡节点上仍会在
-`/sys/class/infiniband` 看到其他网卡；它们打不开所以无害，但绕过 libibverbs 直接读
-sysfs 的工具（部分 NCCL 分支、`ibv_devinfo` 风格脚本）可能会把它们列出来。工作负载
-必须唯一确定设备时，设置 `NCCL_IB_HCA`。
+**AD7 —— `NCCL_IB_DISABLE` 被拒绝，而不是被忽略。** 它是唯一能让 RDMA 申请彻底失去
+意义却又不报错的设置：服务照常启动、设备照常分配，但所有传输都走 TCP。
+`validateRdmaEnv` 在创建、引擎参数更新、以及为已有服务开启 RDMA 时都会拒绝它（共享或
+按角色的真值）。
+
+**如何让授权变成独占。** 若运维需要 Pod 只看到被授权的网卡，可用的杠杆在节点的
+NVIDIA CDI / 设备集合上，而不是本 Chart：从驱动能力中去掉 `network`（或生成不含
+`/dev/infiniband` 的 CDI kind）。在此之前，诚实的表述是：“被授权的设备保证存在且申请
+可审计，可见集合仍由节点决定”。

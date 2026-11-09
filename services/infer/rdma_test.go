@@ -6,6 +6,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	"gorm.io/datatypes"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
@@ -179,4 +180,104 @@ func TestUpdateTopologyReplacesRdma(t *testing.T) {
 	evt = changeEvent{}
 	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
 	assert.Nil(t, evt.Rdma)
+}
+
+// TestValidateRdmaEnv verifies an RDMA request cannot be combined with an
+// environment that disables the fabric: the service would start, the devices
+// would be allocated, and every transfer would silently fall back to TCP.
+func TestValidateRdmaEnv(t *testing.T) {
+	on := RdmaSpec{Enabled: true, Devices: 1}
+
+	var disabledEnv datatypes.JSON
+	for _, value := range []string{"1", "true", "TRUE", "yes", "on", " 1 "} {
+		blob, err := normalizeEnv(map[string]string{"NCCL_IB_DISABLE": value})
+		require.NoError(t, err)
+		disabledEnv = blob
+		err = validateRdmaEnv(on, blob, nil)
+		require.Error(t, err, "value %q must be refused", value)
+		assert.Equal(t, apierrors.CodeInferRdmaInvalid, apierrors.CodeOf(err))
+	}
+
+	// A per-role override is just as dangerous.
+	roleJSON, err := normalizeRoleEngineArgs([]*inferv1.RoleEngineArgs{{
+		Role: "decode", Env: map[string]string{"NCCL_IB_DISABLE": "1"},
+	}})
+	require.NoError(t, err)
+	err = validateRdmaEnv(on, nil, roleJSON)
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeInferRdmaInvalid, apierrors.CodeOf(err))
+
+	// "off" values and unrelated variables are fine.
+	okEnv, err := normalizeEnv(map[string]string{
+		"NCCL_IB_DISABLE": "0", "NCCL_IB_HCA": "mlx5_4",
+	})
+	require.NoError(t, err)
+	require.NoError(t, validateRdmaEnv(on, okEnv, nil))
+
+	// Without RDMA the variable is the operator's own business.
+	require.NoError(t, validateRdmaEnv(RdmaSpec{}, disabledEnv, roleJSON))
+}
+
+// TestCreateRejectsRdmaWithIBDisabled verifies the create RPC refuses the
+// contradictory combination before any row or event exists.
+func TestCreateRejectsRdmaWithIBDisabled(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	_, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "rdma-tcp", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		Rdma: &inferv1.RdmaConfig{Enabled: true, Devices: 1},
+		Env:  map[string]string{"NCCL_IB_DISABLE": "1"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeInferRdmaInvalid, apierrors.CodeOf(err))
+	assert.Contains(t, err.Error(), "NCCL_IB_DISABLE")
+	assert.Empty(t, client.published, "nothing may be published")
+}
+
+// TestUpdateEngineArgsRejectsDisablingIB verifies a hot update cannot turn off
+// the fabric of a service that owns RDMA devices.
+func TestUpdateEngineArgsRejectsDisablingIB(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "rdma-hot", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		Rdma: &inferv1.RdmaConfig{Enabled: true, Devices: 1},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.UpdateInferenceServiceEngineArgs(orgContext("org-1"), &inferv1.UpdateInferenceServiceEngineArgsRequest{
+		ServiceId: created.GetServiceId(),
+		Env:       map[string]string{"NCCL_IB_DISABLE": "1"},
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeInferRdmaInvalid, apierrors.CodeOf(err))
+}
+
+// TestUpdateTopologyRejectsRdmaOverDisabledIB verifies enabling RDMA on a
+// service whose stored environment disables the fabric is refused.
+func TestUpdateTopologyRejectsRdmaOverDisabledIB(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "tcp-then-rdma", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+		Env: map[string]string{"NCCL_IB_DISABLE": "1"},
+	})
+	require.NoError(t, err)
+
+	_, err = svc.UpdateInferenceServiceTopology(orgContext("org-1"), &inferv1.UpdateInferenceServiceTopologyRequest{
+		ServiceId: created.GetServiceId(), Topology: "multinode",
+		TensorParallelSize: 2, PipelineParallelSize: 1,
+		Rdma: &inferv1.RdmaConfig{Enabled: true, Devices: 1},
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeInferRdmaInvalid, apierrors.CodeOf(err))
 }
