@@ -92,7 +92,7 @@ Go TaaS 不内置这些组件。请使用它们各自的 Chart 安装，并遵�
 | **JuiceFS CSI**（或任意 ReadWriteMany 存储） | 控制面（下载/上传）与推理 Pod（只读挂载）共享的同一套模型权重文件系统 | 模型下载/上传必需；任何 RWX 存储类均可 | [JuiceFS CSI 驱动](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor**（或其他镜像仓库） | 平台内部镜像仓库：镜像导入/上传流程把引擎镜像推到这里并注册本地引用 | 可选；未设置时镜像导入与上传功能关闭 | [Harbor 安装](https://goharbor.io/docs/2.11.0/install-config/) |
 | **kube-prometheus-stack** | 指标页面读取 Prometheus；没有它时相关页面回退到控制器自身采集的样本 | 可选 | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| **HAMi** | vGPU 切分（共享 GPU） | 可选 | [HAMi（Helm）](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| **HAMi** | 共享 GPU 的 GPU 切分。仅使用切分（vGPU 切分）能力，暂未使用其异构卡纳管、设备插件与调度 | 可选 | [HAMi（Helm）](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | **cert-manager** | 为控制台与推理域名签发证书 | 可选（自带证书时不需要） | [cert-manager（Helm）](https://cert-manager.io/docs/installation/helm/) |
 
 ### 3.1 Gateway API 与 Envoy Gateway

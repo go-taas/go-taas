@@ -27,9 +27,9 @@ type statusReport struct {
 	// (feature #16, §6.2). Nil when the report carries no autoscaling
 	// status.
 	Autoscaling *autoscalingStatusReport `json:"autoscaling,omitempty"`
-	// AssignedSlice is the assigned physical GPU once HAMI schedules the
-	// slice (feature #52, AD14). Nil for whole-card services or before
-	// scheduling.
+	// AssignedSlice is the assigned physical GPU once the pods were
+	// placed on sliced GPUs (feature #52, AD14). Nil for whole-card
+	// services or before scheduling.
 	AssignedSlice *assignedSliceReport `json:"assigned_slice,omitempty"`
 	ReportedAt    string               `json:"reported_at"`
 }

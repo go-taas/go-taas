@@ -1281,7 +1281,7 @@ type QuotaConcurrencyConsumerConfig struct {
 // VGPUConfig holds the vGPU slicing-pool module settings (feature #52,
 // Section 9). The vgpu module owns the pool configuration; membership
 // and capacity are projections of the accelerator-inventory snapshot
-// and the HAMI-reported device state.
+// and the Controller's slice accounting.
 type VGPUConfig struct {
 	// MembershipInterval bounds the freshness of the pool membership
 	// and capacity projection (the accelerator-inventory interval,

@@ -52,7 +52,7 @@ console and is covered by an end-to-end test suite.
 | Model catalog & one-click deployment | Register and version models, then deploy with one click from either console or the API; the platform provisions inference workloads through a message queue and a Kubernetes controller, with no hand-written YAML. Version history and rollback are built in. |
 | Inference image management | Register, version, and map engine images across the supported accelerator cards, with node-level pre-pulling to shorten cold starts. |
 | Distributed inference runtime | Platform-level serving scheme: run inference services as plain Deployments (default) or on an **AIBrix**-managed distributed runtime (StormService / RoleSet). The admin console inspects runtime component health and the models registered with the runtime. |
-| vGPU slicing pools | **HAMI**-based GPU sharing: label nodes into slicing pools, define slice templates (memory / core percentages), and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement — pool utilization and per-service slice assignment visible in the admin console. |
+| vGPU slicing pools | **HAMI**-based GPU slicing: label nodes into slicing pools, define slice templates (memory / core percentages), and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement — pool utilization and per-service slice assignment visible in the admin console. HAMi is used **only** for GPU slicing; its heterogeneous accelerator management, device plugin and scheduling features are not used. |
 | OpenAI-compatible API | `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` served by an Envoy-based gateway; authentication, metering, and routing run in Wasm plugins, so inference traffic never passes through business processes. |
 | External model providers | Register third-party LLM providers (DeepSeek / OpenAI / OpenAI-compatible), verify connectivity with a five-state probe (`ok` / `unauthorized` / `unreachable` / `error` / `unknown`), curate the upstream model list, and publish models into the catalog — write-only API keys encrypted at rest, and tenants consume them through the same metered OpenAI-compatible gateway. |
 | Routing & resilience | Ordered **routing policies** over healthy deployments with bounded same-model failover and retryable-failure categories — no silent model or version substitution. |
@@ -146,7 +146,7 @@ subgraph L3["LAYER 03 · K8s cluster"]
     subgraph L3B["② Third-party dependencies · Helm Chart"]
         direction LR
         B1["Aibrix<br/>Distributed runtime, KV cache"]:::dp
-        B2["HAMI<br/>Heterogeneous accelerator management, device plugin, scheduling"]:::dp
+        B2["HAMi<br/>GPU slicing: partition a physical GPU by memory / compute"]:::dp
         B3["Volcano<br/>Gang scheduling, queues and fair sharing"]:::dp
         B4["GPU / NPU Operator<br/>Drivers, device plugin, topology and health"]:::cell
         B5["Observability stack<br/>Prometheus / OTel / Loki"]:::cell
@@ -224,7 +224,7 @@ Install these with their own charts — the platform does not vendor them:
 | JuiceFS CSI (or any RWX storage) | model weights shared by the control plane and inference pods | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor (optional) | image import / upload into your own registry | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
 | kube-prometheus-stack (optional) | metrics and latency pages | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| HAMi (optional) | vGPU slicing | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| HAMi (optional) | GPU slicing only (vGPU partitioning); its heterogeneous accelerator management, device plugin and scheduler are not used | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | cert-manager (optional) | issuing the console and inference certificates | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
 
 The **console alone** needs none of them beyond a cluster and a StorageClass.
@@ -450,7 +450,7 @@ acknowledge:
 - [Kubernetes](https://kubernetes.io) — the container-orchestration foundation the whole platform runs on
 - [AIBrix](https://github.com/vllm-project/aibrix) — serving runtime and autoscaling building blocks integrated by the platform (ModelClaim, PodAutoscaler)
 - [Volcano](https://github.com/volcano-sh/volcano) — batch/gang scheduling reference for heterogeneous cluster workloads
-- [HAMi](https://github.com/Project-HAMi/HAMi) — heterogeneous GPU sharing & virtualization inspiration for the accelerator tier
+- [HAMi](https://github.com/Project-HAMi/HAMi) — GPU slicing & sharing (vGPU partitioning) inspiration for the accelerator tier
 
 ## License
 

@@ -3830,7 +3830,7 @@ export const zh: Record<string, string> = {
   'providers.testFailed': '连通性测试失败。',
   'vgpu.placementPolicy': '放置策略',
   'vgpu.nodeLabelKey': '节点标签键',
-  'vgpu.nodeLabelKeyHint': 'HAMi 设备插件监听的节点标签；资源池的节点需带有该标签。默认使用平台默认值。',
+  'vgpu.nodeLabelKeyHint': '用于标记节点为资源池成员的节点标签；资源池的节点需带有该标签。默认使用平台默认值。',
   'vgpu.nodeLabelValue': '节点标签值',
   'routingGroups.external': '外部',
   'routingGroups.keyword': '关键字',

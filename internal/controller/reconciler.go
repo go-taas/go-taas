@@ -1434,7 +1434,7 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 	// instead of a whole card. The engine container requests the HAMI
 	// extended resources, the pod carries the placement-policy
 	// annotation, and the nodeSelector is constrained to the pool's
-	// label selector so HAMI schedules only onto pool nodes.
+	// label selector so a shared-GPU pod only lands on pool nodes.
 	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
 	annotations := map[string]string{}
 	nodeSelector := acceleratorNodeSelector(r.acceleratorLabelKeyFor(ctx), evt.Accelerator)

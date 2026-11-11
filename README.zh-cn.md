@@ -52,7 +52,7 @@
 | 推理镜像管理 | 统一登记、版本化并维护各受支持加速卡的引擎镜像适配关系，节点级预热缩短冷启动。 |
 | OpenAI 兼容 API | `/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 由基于 Envoy 的网关承载；鉴权、计量与路由运行在 Wasm 插件中，推理流量不经过业务进程。 |
 | 分布式推理运行时 | 平台级服务形态：推理服务既可以普通 Deployment（默认）运行，也可以交由 **AIBrix** 分布式运行时（StormService / RoleSet）托管；管理控制台可查看运行时组件健康与被其纳管的模型。 |
-| vGPU 切分池 | 基于 **HAMI** 的 GPU 共享：通过标签把节点划入切分池，定义切片模板（显存 / 算力百分比），让多个小推理作业以 binpack 或 spread 策略共调度到同一块物理 GPU；管理控制台可查看池利用率与每服务的切片分配。 |
+| vGPU 切分池 | 基于 **HAMI** 的 GPU 切分：通过标签把节点划入切分池，定义切片模板（显存 / 算力百分比），让多个小推理作业以 binpack 或 spread 策略共调度到同一块物理 GPU；管理控制台可查看池利用率与每服务的切片分配。HAMi 仅用于 GPU 切分，暂未使用其异构卡纳管、设备插件与调度能力。 |
 | 外部模型提供方 | 登记第三方大模型提供方（DeepSeek / OpenAI / OpenAI 兼容），通过五态连通性探测（`ok` / `unauthorized` / `unreachable` / `error` / `unknown`）验证可用性，维护上游模型清单并发布到目录；API Key 只写不可读、加密落库，租户经同一套 OpenAI 兼容计费网关消费。 |
 | 路由与容灾 | **路由策略**按序使用健康部署，在同一模型内做有界故障转移与可重试失败分类，绝不静默替换模型或版本。 |
 | 智能模型路由 | **路由组**（虚拟模型名，如 `auto-chat`）按序编排真实目录模型候选，支持加权、成本优先、时延优先三种策略与关键词/正则意图规则，并保留可筛选的决策轨迹；响应始终记录实际服务的真实模型。 |
@@ -145,7 +145,7 @@ subgraph L3["LAYER 03 · K8s 集群"]
     subgraph L3B["② 第三方依赖 · Helm Chart"]
         direction LR
         B1["Aibrix<br/>分布式运行时、KV Cache"]:::dp
-        B2["HAMI<br/>异构卡纳管、设备插件、调度"]:::dp
+        B2["HAMi<br/>GPU 切分：按显存 / 算力切分物理 GPU"]:::dp
         B3["Volcano<br/>Gang Scheduling、队列与公平共享"]:::dp
         B4["GPU / NPU Operator<br/>驱动、设备插件、拓扑与健康"]:::cell
         B5["可观测栈<br/>Prometheus / OTel / Loki"]:::cell
@@ -222,7 +222,7 @@ GPU 节点需安装 NVIDIA GPU Operator（或厂商 device plugin），使 `nvid
 | JuiceFS CSI（或任意 RWX 存储） | 控制面与推理 Pod 共享的模型权重 | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor（可选） | 把外部镜像导入/上传到自有仓库 | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
 | kube-prometheus-stack（可选） | 指标与延迟页面 | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| HAMi（可选） | vGPU 切分 | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| HAMi（可选） | 仅 GPU 切分（vGPU 切分）；暂未使用其异构卡纳管、设备插件与调度 | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | cert-manager（可选） | 签发控制台与推理域名证书 | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
 
 只要**控制台**的话，除集群与一个 StorageClass 外不需要安装任何组件。
@@ -435,7 +435,7 @@ Go TaaS 站在开源社区的肩膀上。感谢以下上游社区：
 - [Kubernetes](https://kubernetes.io) —— 整个平台运行的容器编排基座
 - [AIBrix](https://github.com/vllm-project/aibrix) —— 平台对接的推理服务运行时与弹性伸缩组件（ModelClaim、PodAutoscaler）
 - [Volcano](https://github.com/volcano-sh/volcano) —— 面向异构集群的批量/gang 调度实践参考
-- [HAMi](https://github.com/Project-HAMi/HAMi) —— 异构 GPU 共享与虚拟化思路参考
+- [HAMi](https://github.com/Project-HAMi/HAMi) —— GPU 切分与共享（vGPU 切分）思路参考
 
 ## 许可证
 

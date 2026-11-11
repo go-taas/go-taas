@@ -3866,7 +3866,7 @@ export const en: Record<string, string> = {
   'providers.testFailed': 'The connectivity test failed.',
   'vgpu.placementPolicy': 'Placement policy',
   'vgpu.nodeLabelKey': 'Node label key',
-  'vgpu.nodeLabelKeyHint': 'The node label the HAMi device plugin watches; the nodes of the pool carry it. Pre-filled with the platform default.',
+  'vgpu.nodeLabelKeyHint': 'The node label that marks a node as a pool member; the nodes of the pool carry it. Pre-filled with the platform default.',
   'vgpu.nodeLabelValue': 'Node label value',
   'routingGroups.external': 'External',
   'routingGroups.keyword': 'Keyword',

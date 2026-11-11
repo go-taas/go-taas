@@ -282,7 +282,7 @@
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"/><path d="M12 17v3M8 20h8"/><path d="M7.5 10.5h3M13.5 10.5h3M7.5 13.5h9"/></svg>
             </div>
             <h3 data-i18n="features.f23.t">vGPU Slicing Pools</h3>
-            <p data-i18n="features.f23.d">HAMI-based vGPU slicing: label nodes into slicing pools, define slice templates, and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement.</p>
+            <p data-i18n="features.f23.d">HAMI-based vGPU slicing: label nodes into slicing pools, define slice templates, and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement. HAMi is used only for GPU slicing — its heterogeneous management, device plugin and scheduler are not used.</p>
           </article>
           <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
@@ -342,7 +342,7 @@
                   <div class="aglabel" data-i18n="arch.l3.g2">② Third-party dependencies · Helm Chart</div>
                   <div class="arow five">
                     <div class="abox em"><div class="t">Aibrix</div><div class="d" data-i18n="arch.l3.aibrix.d">Distributed runtime, KV cache</div></div>
-                    <div class="abox em"><div class="t">HAMI</div><div class="d" data-i18n="arch.l3.hami.d">Heterogeneous accelerator management, device plugin, scheduling</div></div>
+                    <div class="abox em"><div class="t">HAMi</div><div class="d" data-i18n="arch.l3.hami.d">GPU slicing: partition a physical GPU by memory / compute</div></div>
                     <div class="abox em"><div class="t">Volcano</div><div class="d" data-i18n="arch.l3.volcano.d">Gang scheduling, queues and fair sharing</div></div>
                     <div class="abox"><div class="t">GPU / NPU Operator</div><div class="d" data-i18n="arch.l3.gpu.d">Drivers, device plugin, topology and health</div></div>
                     <div class="abox"><div class="t" data-i18n="arch.l3.obs.t">Observability stack</div><div class="d">Prometheus / OTel / Loki</div></div>

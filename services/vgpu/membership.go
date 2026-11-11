@@ -25,7 +25,7 @@ type acceleratorNode struct {
 
 // acceleratorGPU is one physical GPU's slice allocation (feature #52,
 // FR3.1). The slice allocation is carried in the inventory snapshot by
-// the Controller from the HAMI-reported device state.
+// the Controller's own slice accounting.
 type acceleratorGPU struct {
 	Index     int64             `json:"index"`
 	Model     string            `json:"model"`

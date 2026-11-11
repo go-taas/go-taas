@@ -53,7 +53,7 @@ subgraph L3["LAYER 03 · K8s 集群"]
     subgraph L3B["② 第三方依赖 · Helm Chart"]
         direction LR
         B1["Aibrix<br/>分布式运行时、KV Cache"]:::dp
-        B2["HAMI<br/>异构卡纳管、设备插件、调度"]:::dp
+        B2["HAMi<br/>GPU 切分：按显存 / 算力切分物理 GPU"]:::dp
         B3["Volcano<br/>Gang 调度与优先级抢占"]:::dp
         B4["GPU / NPU Operator<br/>驱动、设备插件、拓扑与健康"]:::cell
         B5["可观测栈<br/>Prometheus / OTel / Loki"]:::cell
@@ -515,7 +515,7 @@ sequenceDiagram
 | 3 | Server 写入部署记录（`PENDING`）与 Outbox 事件，返回部署 ID |
 | 4 | Outbox Publisher 把事件投递到队列 |
 | 5 | Controller 调谐：创建工作负载对象，渲染 Deployment、Service 与弹性策略 |
-| 6 | Kubernetes + HAMi + Volcano 分配设备；镜像预热；挂载模型缓存 |
+| 6 | Kubernetes + Volcano 编排工作负载；共享 GPU 池节点上由 HAMi 提供 GPU 切分资源模型；镜像预热；挂载模型缓存 |
 | 7 | 健康检查与 warmup 通过；状态置 `READY`，注册端点 |
 | 8 | 网关刷新路由；模型可调用；审计与通知完成 |
 
@@ -661,7 +661,7 @@ sequenceDiagram
 | 客户 Webhook 端点（HTTPS） | webhook | 带 HMAC 签名与重试策略的出站事件投递 |
 | 模型仓库（ModelScope / HuggingFace） | model | 模型权重下载到共享 JuiceFS 卷 |
 | **AIBrix** | Controller · infer · runtime | 分布式推理运行时与推理网关：模型部署对象（`ModelClaim`、`PodAutoscaler`）、KV Cache 感知路由，以及数据面背后的 Envoy 代理。以独立 Helm release 安装；Chart 的 `dataPlane` 值负责把它的网关发布到推理主机名上 |
-| **HAMi** | Controller · vgpu | 异构加速卡虚拟化：设备插件、按 Pod 的切分调度，以及 Controller 为共享 GPU 服务设置的 placement-policy 注解 |
+| **HAMi** | Controller · vgpu | 仅使用 GPU 切分能力：把一块物理 GPU 按显存 / 算力切分成多个切片供共享 GPU 服务使用，并输出 placement-policy 注解；暂未使用其异构卡纳管、设备插件与调度 |
 | **Volcano**（已实现） | Controller · batch | 通过每副本一个 PodGroup 为多 Pod 推理角色提供 Gang 调度与优先级抢占。可选组件：`controller.scheduling.schedulerName` 为空时使用集群默认调度器 |
 | **GPU / NPU Operator** | Controller · accelerator | 厂商驱动、设备插件、拓扑与健康状态；加速卡清单读取它们发布的节点标签 |
 | **可观测栈**（Prometheus · OpenTelemetry · Loki） | observability · tracing · 全部工作负载 | 指标、追踪与日志聚合；控制台的可观测页面读取平台已存储的聚合结果 |

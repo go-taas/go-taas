@@ -93,7 +93,7 @@ Go TaaS does not vendor these. Install them with their own charts and follow the
 | **JuiceFS CSI** (or any ReadWriteMany storage) | One model-weights filesystem shared by the control plane (downloads/uploads) and the inference pods (read-only mounts) | required for model download/upload; any RWX class works | [JuiceFS CSI driver](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor** (or another registry) | The platform's internal image registry: the image import/upload flow pushes engine images here and registers the local reference | optional; image import and upload are disabled while unset | [Harbor installation](https://goharbor.io/docs/2.11.0/install-config/) |
 | **kube-prometheus-stack** | Metrics pages read Prometheus; without it those pages fall back to the controller's own samples | optional | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| **HAMi** | vGPU slicing (shared GPUs) | optional | [HAMi (Helm)](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| **HAMi** | GPU slicing for shared GPUs. Only the slicing (vGPU partitioning) capability is used; its heterogeneous accelerator management, device plugin and scheduling are not used | optional | [HAMi (Helm)](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | **cert-manager** | Issues the TLS certificates for the console and inference hostnames | optional if you bring your own certificate | [cert-manager (Helm)](https://cert-manager.io/docs/installation/helm/) |
 
 ### 3.1 Gateway API and Envoy Gateway

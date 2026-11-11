@@ -173,7 +173,7 @@ Chart 部署平台本身，不部署其基础设施。以下组件需用各自�
 | JuiceFS CSI（或任意 ReadWriteMany 存储类） | 服务端与推理 Pod 共享的同一套模型权重 | `controller.config.controller.weights.storageClass`、`taasServer.extraVolumes` | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor（可选） | 镜像导入 / 上传到自有仓库 | `harbor`（或 `taasServer.harbor`） | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
 | kube-prometheus-stack（可选） | 指标与延迟页面 | `monitoring.prometheusURL` | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| HAMi（可选） | vGPU 切分 | `vgpu.hami.*`（配置文件） | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| HAMi（可选） | 仅 GPU 切分（vGPU 切分）；暂未使用其异构卡纳管、设备插件与调度 | `vgpu.hami.*`（配置文件） | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | cert-manager（可选） | 签发控制台与推理域名证书 | — | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
 
 默认值让必需项降为零：`dataPlane.enabled`、`gatewayPlugin.enabled` 为关闭，`harbor.hostname` 为空，

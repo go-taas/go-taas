@@ -253,7 +253,7 @@ separately, with their own charts and their own documentation:
 | JuiceFS CSI (or any ReadWriteMany class) | one model-weights filesystem shared by the server and the inference pods | `controller.config.controller.weights.storageClass`, `taasServer.extraVolumes` | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor (optional) | image import / upload into your own registry | `taasServer.harbor` | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
 | kube-prometheus-stack (optional) | the metrics and latency pages | `monitoring.prometheusURL` | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| HAMi (optional) | vGPU slicing | `vgpu.hami.*` (config file) | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| HAMi (optional) | GPU slicing only (vGPU partitioning); its heterogeneous accelerator management, device plugin and scheduler are not used | `vgpu.hami.*` (config file) | [HAMi](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | cert-manager (optional) | issuing the console and inference certificates | — | [cert-manager](https://cert-manager.io/docs/installation/helm/) |
 
 Defaults keep the requirements at zero: `dataPlane.enabled`, `gatewayPlugin.enabled`

@@ -261,7 +261,7 @@ quota:
 
 # Feature #52: vGPU slicing pools. The vgpu module owns the pool
 # configuration; membership and capacity are projections of the
-# accelerator-inventory snapshot and the HAMI-reported device state.
+# accelerator-inventory snapshot and the Controller's slice accounting.
 vgpu:
   # membershipInterval bounds the freshness of the pool membership and
   # capacity projection (the accelerator-inventory interval, AD12).

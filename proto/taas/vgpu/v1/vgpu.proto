@@ -7,7 +7,7 @@ import "taas/common/v1/common.proto";
 
 option go_package = "github.com/go-taas/go-taas/proto/taas/vgpu/v1;vgpuv1";
 
-// VGPUService manages the HAMI-based vGPU slicing pools (feature #52).
+// VGPUService manages the HAMi-based vGPU slicing pools (feature #52).
 // Pool CRUD is admin-surface (/api/v1/admin/vgpu-pools/*); the
 // tenant-visible pool list for the deploy form is user-surface
 // (/api/v1/vgpu-pools).

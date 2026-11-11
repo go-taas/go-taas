@@ -3,8 +3,8 @@
 | Attribute | Content |
 | --- | --- |
 | Feature point | HAMI-based vGPU slicing pool — designate multiple nodes as a vGPU slicing pool via a node label, allow multiple small inference jobs to co-schedule onto a single physical GPU (backlog row 52) |
-| Document scope | Requirement analysis, competitive research and the slicing-model decision (label-driven pool membership, slice templates, slice-aware scheduling hints), the admin-surface pages `/admin/vgpu-pools` and `/admin/vgpu-pools/:poolId` (pool CRUD, node membership, slice-template management, per-pool allocation), the end-user-surface vGPU-aware deploy mode and service-detail slice display, the page → API surface table, and numbered acceptance criteria |
-| Owning modules | `vgpu` (new module — pool membership, slice templates, capacity accounting, scheduling hints), `infer` (deploy-form vGPU fields, service slice assignment), `Controller` (turns scheduling hints into HAMI device requests), `k8s` (node labels, extended resources, HAMI annotations), `pkg/server` gateway (admin + user prefix bindings), `web` admin + end-user console |
+| Document scope | Requirement analysis, competitive research and the slicing-model decision (label-driven pool membership, slice templates, a pool-level placement policy), the admin-surface pages `/admin/vgpu-pools` and `/admin/vgpu-pools/:poolId` (pool CRUD, node membership, slice-template management, per-pool allocation), the end-user-surface vGPU-aware deploy mode and service-detail slice display, the page → API surface table, and numbered acceptance criteria |
+| Owning modules | `vgpu` (new module — pool membership, slice templates, capacity accounting, the pool placement policy), `infer` (deploy-form vGPU fields, service slice assignment), `Controller` (turns the slice request into HAMI GPU-slicing annotations), `k8s` (node labels, extended resources, HAMI annotations), `pkg/server` gateway (admin + user prefix bindings), `web` admin + end-user console |
 | Related documents | [Architecture Design](./architecture.md) — §2.3 heterogeneous compute, §2.4 `infer`, §2.7 Controller · [Accelerator Inventory & Health](./accelerator-inventory.md) — the per-node GPU fleet view this feature's pool nodes are a labeled subset of · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the deploy form this feature extends · [Inference Autoscaling](./inference-autoscaling.md) — slice-aware replica sizing · [Service Quota Management](./service-quota-management.md) — the resource dimension slice count is deferred from · [Multi-Cluster Management](./multi-cluster-management.md) — pool membership across clusters · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the masked-projection rule |
 | Status | Implemented |
 
@@ -18,16 +18,18 @@ The accelerator tier today allocates **whole physical GPUs** to inference servic
 
 The accelerator-inventory feature (#18) gave the operator the fleet picture — which nodes carry which GPUs, how many are allocated vs free — but it is **read-only** and does not change how a GPU is consumed. What is missing is the ability to **share** a physical GPU among several small inference jobs, so that a single `A800` can serve, say, three small chat models and two embedding models at once, each isolated in its own slice.
 
-This feature adds a **vGPU slicing pool**: the operator designates a set of nodes as a slicing pool via a node label, defines **slice templates** (memory fraction + compute fraction) that represent how a physical GPU is carved up, and inference services can opt into a **shared-GPU mode** that requests a slice instead of a whole card. The platform's Controller turns the slice request into HAMI device annotations, and HAMI (the CNCF-incubating heterogeneous GPU sharing middleware the platform already lists as an accelerator-tier inspiration) handles the actual device sharing, isolation, and scheduling.
+This feature adds a **vGPU slicing pool**: the operator designates a set of nodes as a slicing pool via a node label, defines **slice templates** (memory fraction + compute fraction) that represent how a physical GPU is carved up, and inference services can opt into a **shared-GPU mode** that requests a slice instead of a whole card. The platform's Controller turns the slice request into HAMI resource annotations, and HAMI (the CNCF-incubating GPU sharing middleware the platform already lists as an accelerator-tier inspiration) provides the **GPU slicing** — it partitions one physical GPU by memory and compute so several pods can share it.
+
+> **Scope of HAMi usage.** HAMi's core role in go-taas is **GPU slicing** (partitioning a physical GPU by memory and compute). The platform does **not** use HAMi's heterogeneous accelerator management, its device plugin, or its scheduler; workload placement stays with the cluster's own scheduler (Kubernetes / Volcano).
 
 ### 1.2 Access Pattern: Label-Driven Pool + Slice Templates vs the Alternatives
 
 | Pattern | What it is | Why we adopt / reject it |
 | --- | --- | --- |
-| **Label-driven pool membership + operator-defined slice templates + opt-in shared-GPU deploy mode** (adopted) | The operator labels nodes to join a pool; the pool defines slice templates (memory + compute fractions); a deploy can opt into shared-GPU mode and pick a slice template; the Controller emits HAMI annotations; HAMI shares the physical GPU. | The only pattern that keeps the **operator in control of capacity** (which nodes share, how they are carved) while giving **tenants a simple opt-in** (pick a slice, not a YAML). Matches the architecture's node-labeling model (§2.3) and the deploy form's guided-form philosophy (feature #2 D2). |
+| **Label-driven pool membership + operator-defined slice templates + opt-in shared-GPU deploy mode** (adopted) | The operator labels nodes to join a pool; the pool defines slice templates (memory + compute fractions); a deploy can opt into shared-GPU mode and pick a slice template; the Controller emits HAMI slice annotations; HAMI carves the physical GPU. | The only pattern that keeps the **operator in control of capacity** (which nodes share, how they are carved) while giving **tenants a simple opt-in** (pick a slice, not a YAML). Matches the architecture's node-labeling model (§2.3) and the deploy form's guided-form philosophy (feature #2 D2). |
 | Raw HAMI annotations in the deploy form | Expose `nvidia.com/gpumem` / `nvidia.com/gpucores` directly to the deployer. | Rejected: leaks HAMI internals and lets a tenant request arbitrary memory/compute fractions, defeating capacity planning. Slice templates are the bounded, operator-curated vocabulary (D3). |
 | Automatic slicing of every GPU | Every node is a pool; every deploy is shared by default. | Rejected: sharing has isolation and performance trade-offs (a noisy neighbor can degrade a co-tenant's latency). Sharing must be **opt-in** per service, and only on operator-designated nodes (D2). |
-| MIG partitioning as the slicing mechanism | Use NVIDIA MIG to carve physical GPUs into hardware-isolated instances. | Rejected as the *platform's* mechanism: MIG is NVIDIA-vendor-specific and requires specific card models; HAMI already abstracts MIG and non-NVIDIA accelerators behind one resource model. go-taas stays vendor-neutral (D4). |
+| MIG partitioning as the slicing mechanism | Use NVIDIA MIG to carve physical GPUs into hardware-isolated instances. | Rejected as the *platform's* mechanism: MIG is NVIDIA-vendor-specific and requires specific card models; go-taas keeps a vendor-neutral memory / compute slice model and delegates the carve-up to HAMi (D4). |
 | Per-tenant GPU isolation guarantees | Promise hard isolation between co-tenant slices. | Rejected for v1: HAMI provides memory/compute isolation where the backend supports it, but go-taas does not promise performance isolation (a shared GPU is a shared GPU). Documented as a shared-resource caveat (D6). |
 | Slice-level metering | Meter each slice's usage separately. | Rejected: metering stays per-request token-based (#4); the slice is a deployment-time resource, not a metering dimension. The pool's allocation view is capacity telemetry, not billing (D7). |
 
@@ -35,8 +37,8 @@ This feature adds a **vGPU slicing pool**: the operator designates a set of node
 
 | Product | GPU-sharing pattern | go-taas decision |
 | --- | --- | --- |
-| **HAMI (Project-HAMi)** | Kubernetes-native GPU virtualization: request a fraction of a physical accelerator by memory (`nvidia.com/gpumem`) and compute (`nvidia.com/gpucores`); node label (`gpu=on`) opts a node in; scheduler policies (binpack / spread / mutex / topology-aware); dynamic MIG; WebUI for cluster/device management | Adopt the **resource model** (memory + compute fraction on a physical GPU) and the **node-label opt-in**; adopt the **binpack/spread** scheduling vocabulary for the pool's placement policy; **reject** exposing raw annotations to tenants (D3) and **reject** building our own WebUI (the admin console is the surface, not a separate HAMI WebUI) |
-| **NVIDIA MIG** | Hardware partitioning of a physical GPU into isolated instances (e.g. 1g.5gb, 2g.10gb profiles); vendor-specific, requires supported cards | Adopt the **slice-template** idea (named, bounded carve-ups of a card) as the UI vocabulary; **reject** MIG as the platform mechanism (D4) — HAMI abstracts it |
+| **HAMI (Project-HAMi)** | Kubernetes-native GPU slicing: request a fraction of a physical accelerator by memory (`nvidia.com/gpumem`) and compute (`nvidia.com/gpucores`). HAMI also ships heterogeneous accelerator management, a device plugin, a scheduler (binpack / spread / mutex / topology-aware), dynamic MIG and a WebUI for cluster/device management | Adopt **only the GPU slicing resource model** (memory + compute fraction on a physical GPU) together with the **node-label opt-in**; **do not use** the heterogeneous accelerator management, device plugin or scheduler; keep the **binpack/spread** vocabulary as the pool's placement policy; **reject** exposing raw annotations to tenants (D3) and **reject** building our own WebUI (the admin console is the surface, not a separate HAMI WebUI) |
+| **NVIDIA MIG** | Hardware partitioning of a physical GPU into isolated instances (e.g. 1g.5gb, 2g.10gb profiles); vendor-specific, requires supported cards | Adopt the **slice-template** idea (named, bounded carve-ups of a card) as the UI vocabulary; **reject** MIG as the platform mechanism (D4) — the carve-up is delegated to HAMi's GPU slicing |
 | **NVIDIA vGPU (virtualization)** | Time-sliced / MIG-based virtual GPUs for VMs; licensing per vGPU | Reject: VM-oriented, licensing-heavy; go-taas is container-native via HAMI |
 | **RunPod** | GPU marketplace with fractional GPU options (e.g. "RTX 4090 24GB" or "A100 40GB" with memory tiers); per-pod GPU allocation | Adopt the **memory-tier picker** pattern (a small set of named slice sizes, not arbitrary values); **reject** the marketplace framing (go-taas pools are operator-curated, not a public market) |
 | **Vast.ai** | Per-host GPU cards with fractional allocation; utilization shown per host | Adopt the **per-pool utilization** view (how full is each pool / physical GPU); **reject** the marketplace framing |
@@ -50,9 +52,9 @@ This feature adds a **vGPU slicing pool**: the operator designates a set of node
 | D1 | **A pool is a named set of nodes designated by a node label.** The operator creates a pool, picks a label key/value (e.g. `go-taas.com/vgpu-pool=pool-a`), and any node carrying that label is a member. | Matches the architecture's node-labeling model (§2.3) and HAMI's own `gpu=on` opt-in; membership is declarative and survives node churn (a new labeled node joins automatically). |
 | D2 | **Sharing is opt-in per service, and only on pool nodes.** A deploy can choose "Shared GPU" mode; without it, the service gets a whole card as today. | Sharing has isolation/performance trade-offs; tenants and operators must choose it deliberately. Non-pool nodes never share. |
 | D3 | **Slice templates are the bounded vocabulary.** A pool defines named templates (e.g. `small` = 8 GiB / 25% compute, `medium` = 16 GiB / 50%, `large` = 24 GiB / 75%); a deploy picks a template, never raw memory/compute values. | Keeps capacity planning honest (the operator controls the carve-ups) and the deploy form simple (a dropdown, not two number fields). |
-| D4 | **HAMI is the sharing mechanism; go-taas stays vendor-neutral.** The Controller emits HAMI annotations; HAMI handles NVIDIA (incl. MIG), Iluvatar, MetaX and other backends behind one resource model. | The platform already lists HAMI as an accelerator-tier inspiration; delegating device sharing to HAMI keeps go-taas vendor-neutral and avoids reimplementing device virtualization. |
-| D5 | **The pool's placement policy is a pool-level setting** (binpack / spread / mutex), surfaced as a dropdown on the pool page and passed to HAMI as a scheduling hint. | HAMI's scheduling vocabulary maps directly; the operator chooses consolidation (binpack) vs isolation (spread/mutex) per pool. |
-| D6 | **No performance-isolation guarantee.** The pool page and the deploy form state that a shared GPU is a shared resource; memory/compute isolation is best-effort per HAMI backend. | Honest about the shared-resource trade-off; avoids over-promising to tenants. |
+| D4 | **HAMI provides GPU slicing; go-taas stays vendor-neutral.** The Controller emits the HAMI slice annotations (`nvidia.com/gpumem` / `nvidia.com/gpucores`) and HAMI carves the physical GPU. Only the slicing capability is used: heterogeneous accelerator management, the device plugin and the scheduler are out of scope. | The platform already lists HAMI as an accelerator-tier inspiration; delegating the slicing itself keeps go-taas vendor-neutral and avoids reimplementing device virtualization. |
+| D5 | **The pool's placement policy is a pool-level setting** (binpack / spread / mutex), surfaced as a dropdown on the pool page and recorded as the `hami.io/gpu-scheduler-policy` annotation. HAMI's scheduler is not used today, so the policy is a forward-looking hint rather than an active placement input. | Keeps the operator's consolidation (binpack) vs isolation (spread/mutex) intent attached to the pool, and stays compatible if HAMI's scheduler is adopted later. |
+| D6 | **No performance-isolation guarantee.** The pool page and the deploy form state that a shared GPU is a shared resource; memory isolation (and compute isolation where the backend enforces it) is best-effort. | Honest about the shared-resource trade-off; avoids over-promising to tenants. |
 | D7 | **Slice allocation is capacity telemetry, not metering.** The pool's allocation view shows how many slices of each template are allocated/free; billing stays per-request token-based (#4). | Keeps the metering chain untouched; the pool view is an operations surface. |
 | D8 | **Slice count as a quota dimension is deferred.** The service-quota feature (#51) ships three dimensions; a per-org slice-count quota is future work. | Keeps this feature focused on the sharing mechanism; quota integration is a clean follow-up. |
 
@@ -106,7 +108,7 @@ This feature adds a **vGPU slicing pool**: the operator designates a set of node
 
 - **FR3.1** The pool detail page shows, per physical GPU on each member node, the allocated slices (which template, which service) and the free capacity (remaining memory/compute). A physical GPU is `full` when no template fits in the remaining memory/compute.
 - **FR3.2** The pool list page shows aggregate allocation per template: "small: 12/20 allocated", "medium: 3/8", etc., plus a pool-level utilization bar (allocated memory / total pool memory).
-- **FR3.3** Capacity is a projection of HAMI's reported device state (collected by the Controller), not a separate database table (D7 — capacity telemetry).
+- **FR3.3** Capacity is a projection of the accelerator-inventory snapshot (the Controller's own slice accounting), not a separate database table (D7 — capacity telemetry).
 
 ### FR4 — vGPU-aware deployment (end-user)
 
@@ -197,8 +199,8 @@ flowchart TD
     F -- No --> G[Whole-card deploy as today]
     F -- Yes --> H[Picks pool and slice template]
     H --> I[CreateInferenceService with pool + template]
-    I --> J[Controller emits HAMI annotations]
-    J --> K[HAMI schedules onto a physical GPU slice]
+    I --> J[Controller emits HAMI slice annotations]
+    J --> K[HAMI carves the slice on the physical GPU]
     K --> L[Service detail shows the slice card]
 ```
 
@@ -219,8 +221,8 @@ sequenceDiagram
     Ten->>Deploy: Toggle Shared GPU, pick pool + template
     Deploy->>Inf: CreateInferenceService(pool, template)
     Inf->>Ctl: desired state with slice request
-    Ctl->>HAMI: emit HAMI device annotations
-    HAMI-->>Ctl: slice allocated on physical GPU
+    Ctl->>HAMI: emit HAMI slice annotations
+    HAMI-->>Ctl: slice available on the physical GPU
     Ctl-->>Inf: service running with slice
     Inf-->>Deploy: service_id, state=running
     Deploy-->>Ten: navigate to service detail, slice card shown
@@ -230,7 +232,7 @@ sequenceDiagram
 
 ## 6. API Surface Implications
 
-The vGPU RPCs live in a new **`vgpu`** module (admin surface) plus a small **`infer`** extension (user surface). The Controller turns slice requests into HAMI annotations; HAMI is out of repository scope — its contract (the `nvidia.com/gpumem` / `nvidia.com/gpucores` resource model and the `hami.io/*` annotations) is pinned here.
+The vGPU RPCs live in a new **`vgpu`** module (admin surface) plus a small **`infer`** extension (user surface). The Controller turns slice requests into HAMI slice annotations; HAMI is out of repository scope — only its GPU-slicing contract (the `nvidia.com/gpumem` / `nvidia.com/gpucores` resource model and the `hami.io/*` annotations) is pinned here.
 
 | RPC | Route | Prefix | Status | Purpose |
 | --- | --- | --- | --- | --- |
@@ -247,8 +249,8 @@ The vGPU RPCs live in a new **`vgpu`** module (admin surface) plus a small **`in
 
 1. The `vgpu` module owns pool membership (label selector), slice templates, and capacity accounting; it is a new service module with its own error block (134xx), not an extension of `infer` or `image`.
 2. Pool membership is **declarative**: the Controller watches nodes for the label selector and reports membership; a node that loses the label leaves the pool (its slices drain naturally as services finish).
-3. The Controller translates a slice request into HAMI annotations (`nvidia.com/gpumem` = template memory MiB, `nvidia.com/gpucores` = template compute, plus the pool's placement-policy annotation `hami.io/gpu-scheduler-policy`). HAMI's resource model is the pinned contract (FR5.4-style synthetic verification).
-4. Capacity accounting is a projection of HAMI's reported device state (collected by the Controller), not a new database table (D7).
+3. The Controller translates a slice request into HAMI slice annotations (`nvidia.com/gpumem` = template memory MiB, `nvidia.com/gpucores` = template compute, plus the pool's placement-policy annotation `hami.io/gpu-scheduler-policy`). Only this GPU-slicing resource model is in use; HAMI's heterogeneous accelerator management, device plugin and scheduler are not. The resource model is the pinned contract (FR5.4-style synthetic verification).
+4. Capacity accounting is a projection of the accelerator-inventory snapshot (the Controller's own slice accounting), not a new database table (D7).
 5. The tenant-visible `ListVGPUPools` must enforce org grants at the service layer (the caller's org from the session), never trusting a client-supplied org id.
 6. Serialization conventions unchanged: HTTP 200 on success, business errors as `{"code": <int>, "message": "..."}`, int64 fields as JSON strings.
 
@@ -290,7 +292,7 @@ Error codes (`pkg/errors/codes.go`):
 
 | Item | Where |
 | --- | --- |
-| MIG partitioning as the platform mechanism | Deliberately excluded (D4) — HAMI abstracts MIG and other backends |
+| MIG partitioning as the platform mechanism | Deliberately excluded (D4) — the carve-up is delegated to HAMi's GPU slicing |
 | Per-tenant GPU performance-isolation guarantees | Deliberately excluded (D6) — shared GPU is shared; best-effort isolation |
 | Slice-level metering / billing | Deliberately excluded (D7) — metering stays per-request token-based (#4) |
 | Per-org slice-count quota | Deferred — the service-quota feature (#51) ships three dimensions; slice quota is a clean follow-up (D8) |

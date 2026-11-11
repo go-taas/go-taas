@@ -53,7 +53,7 @@ subgraph L3["LAYER 03 · K8s cluster"]
     subgraph L3B["② Third-party dependencies · Helm Chart"]
         direction LR
         B1["Aibrix<br/>Distributed runtime, KV cache"]:::dp
-        B2["HAMI<br/>Heterogeneous accelerator management, device plugin, scheduling"]:::dp
+        B2["HAMi<br/>GPU slicing: partition a physical GPU by memory / compute"]:::dp
         B3["Volcano<br/>Gang scheduling and priority preemption"]:::dp
         B4["GPU / NPU Operator<br/>Drivers, device plugin, topology and health"]:::cell
         B5["Observability stack<br/>Prometheus / OTel / Loki"]:::cell
@@ -307,7 +307,7 @@ below with its responsibility boundary and the feature points it implements
 | 22 | `prompt` | Prompt library: create, version, organize, search, per-prompt usage counters, playground hand-off | #43 |
 | 23 | `evaluation` | Prompt evaluation suites: variable-based cases, scored runs, run comparison | #44 |
 | 24 | `fault` | Incident management: fault policies, detected faults, root-cause analysis and deployment correlation | — |
-| 25 | `vgpu` | vGPU slicing pools and slice templates over HAMi; slice accounting consumed by the deploy path | #52 |
+| 25 | `vgpu` | vGPU slicing pools and slice templates over HAMi's GPU slicing; slice accounting consumed by the deploy path | #52 |
 | 26 | `docs` | Curated user-realm API catalog served to the in-console API documentation explorer | #38 |
 
 
@@ -551,7 +551,7 @@ everything after metering is asynchronous and never blocks the response.
 | 3 | The server writes the deployment row (`PENDING`) plus an outbox event and returns a deployment id |
 | 4 | The outbox publisher delivers the event to the queue |
 | 5 | The controller reconciles: creates the workload objects, renders the Deployment, Service and autoscaling policy |
-| 6 | Kubernetes + HAMi + Volcano place devices; the image is pre-pulled; the model cache is mounted |
+| 6 | Kubernetes + Volcano place the workload; on shared-GPU pool nodes HAMi supplies the GPU slice resource model; the image is pre-pulled; the model cache is mounted |
 | 7 | Health checks and warmup pass; the state becomes `READY` and endpoints are registered |
 | 8 | The gateway refreshes routing; the model is callable; audit and notification complete |
 
@@ -707,7 +707,7 @@ topology diagram. It has four concerns:
 | Customer webhook endpoints (HTTPS) | webhook | Outbound event delivery with HMAC signing and retry policy |
 | Model hubs (ModelScope / HuggingFace) | model | Model weight download into the shared JuiceFS volume |
 | **AIBrix** | Controller · infer · runtime | Distributed inference runtime and the inference gateway: model deployment objects (`ModelClaim`, `PodAutoscaler`), KV-cache-aware routing, and the Envoy proxy that fronts the data plane. Installed as its own Helm release; the chart's `dataPlane` values publish its gateway under the inference hostname |
-| **HAMi** | Controller · vgpu | Heterogeneous accelerator virtualisation: device plugin, per-pod slice scheduling and the placement-policy annotation the controller sets for a shared-GPU service |
+| **HAMi** | Controller · vgpu | GPU slicing only: partition one physical GPU into memory / compute slices for shared-GPU services and emit the placement-policy annotation. Its heterogeneous accelerator management, device plugin and scheduler are **not** used |
 | **Volcano** (`implemented`) | Controller · batch | Gang scheduling and priority preemption for multi-pod inference roles through a PodGroup per replica. Optional: with `controller.scheduling.schedulerName` empty the cluster's default scheduler is used |
 | **GPU / NPU operators** | Controller · accelerator | Vendor driver, device plugin, topology and health; the accelerator inventory reads the node labels they publish |
 | **Observability stack** (Prometheus · OpenTelemetry · Loki) | observability · tracing · all workloads | Metrics, traces and log aggregation; the console's observability pages read the aggregates the platform already stores |

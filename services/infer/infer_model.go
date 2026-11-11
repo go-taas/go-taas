@@ -127,8 +127,8 @@ type InferenceService struct {
 	// (feature #52, AD2). Empty = whole card.
 	SliceTemplateID string `gorm:"column:slice_template_id;size:64;not null;default:''"`
 	// SliceNodeID is the physical node the service's slices landed on
-	// once HAMI schedules them (feature #52, AD14). Empty before
-	// scheduling.
+	// once the pods were placed on sliced GPUs (feature #52, AD14).
+	// Empty before scheduling.
 	SliceNodeID string `gorm:"column:slice_node_id;size:64;not null;default:''"`
 	// SliceGPUIndex is the physical GPU index the slices landed on
 	// (feature #52, AD14). -1 before scheduling.

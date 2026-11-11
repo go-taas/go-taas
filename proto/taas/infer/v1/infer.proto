@@ -776,8 +776,8 @@ message GetInferenceServiceResponse {
   // #16, FR3.2).
   AutoscalingStatus autoscaling_status = 5;
   // assigned_slice is the physical GPU the service's slices landed on
-  // once HAMI schedules them (feature #52, AD14). Nil for whole-card
-  // services or before scheduling.
+  // once the pods were placed on sliced GPUs (feature #52, AD14). Nil
+  // for whole-card services or before scheduling.
   AssignedSlice assigned_slice = 6;
   // engine_args are the serving-engine parameters the service runs with,
   // keyed by flag name without the leading dashes.
