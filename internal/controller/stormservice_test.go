@@ -224,7 +224,7 @@ func TestBuildStormServiceRolesShareSliceAnnotations(t *testing.T) {
 	evt.SliceComputePct = 50
 
 	r := testReconciler()
-	r.SetVGPUConfig("hami.io/vgpu-policy", "best-effort", map[string]string{"pool": "a"})
+	r.SetVGPUConfig("hami.io/vgpu-policy", "best-effort", "hami-scheduler")
 	storm, err := r.buildStormService(context.Background(), evt)
 	require.NoError(t, err)
 

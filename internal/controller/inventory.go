@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -25,6 +26,12 @@ const (
 	fallbackAcceleratorLabel = "gpu-vendor"
 	labelDriverVersion       = "go-taas.com/driver-version"
 	labelDevicePlugin        = "go-taas.com/device-plugin"
+
+	// platformLabelPrefix is the prefix of the platform's own node labels
+	// (accelerator vendor, driver version, vGPU pool membership). The
+	// inventory carries all of them so its consumers — the vGPU membership
+	// projection above all — see the operator's node classification.
+	platformLabelPrefix = "go-taas.com/"
 
 	// driverVersionLabelKeys are the labels a node may carry its GPU driver
 	// version on, most specific first.
@@ -72,6 +79,49 @@ type inventoryGPU struct {
 	Allocated bool   `json:"allocated"`
 	Free      bool   `json:"free"`
 	Note      string `json:"note"`
+}
+
+// hamiRegisterAnnotation is the node annotation HAMi's device plugin
+// rewrites every registration round with the physical cards it found:
+// one JSON object per card with its index, model, memory and health.
+// It is the only per-card source on a HAMi-managed node — after slicing
+// the node's nvidia.com/gpu allocatable counts vGPU units, not cards.
+const hamiRegisterAnnotation = "hami.io/node-nvidia-register"
+
+// hamiDevice is one card in the HAMi registration annotation.
+type hamiDevice struct {
+	ID      string `json:"id"`
+	Index   int64  `json:"index"`
+	Count   int64  `json:"count"`
+	DevMem  int64  `json:"devmem"`
+	DevCore int64  `json:"devcore"`
+	Type    string `json:"type"`
+	Mode    string `json:"mode"`
+	Health  bool   `json:"health"`
+}
+
+// hamiGPUs parses the HAMi registration annotation into per-card
+// inventory entries. A node without the annotation yields none.
+func hamiGPUs(annotations map[string]string) []inventoryGPU {
+	raw, ok := annotations[hamiRegisterAnnotation]
+	if !ok || strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var devices []hamiDevice
+	if err := json.Unmarshal([]byte(raw), &devices); err != nil {
+		return nil
+	}
+	out := make([]inventoryGPU, 0, len(devices))
+	for _, d := range devices {
+		out = append(out, inventoryGPU{
+			Index:     d.Index,
+			Model:     d.Type,
+			Allocated: !d.Health,
+			Free:      d.Health,
+			Note:      fmt.Sprintf("%d MiB, %d vGPU slots", d.DevMem, d.Count),
+		})
+	}
+	return out
 }
 
 // inventoryResource is one card type's allocatable vs allocated.
@@ -277,7 +327,7 @@ func nodeToInventory(n *corev1.Node, allocated map[corev1.ResourceName]int64) in
 		DriverVersion:     driverVersion,
 		DevicePluginState: devicePlugin,
 		Readiness:         readiness,
-		GPUs:              []inventoryGPU{},
+		GPUs:              hamiGPUs(n.Annotations),
 		Labels:            acceleratorLabels(labels),
 		Taints:            taints,
 		Resources:         resources,
@@ -436,12 +486,18 @@ func cardTypeFromResource(name corev1.ResourceName) (string, bool) {
 	}
 }
 
-// acceleratorLabels returns the accelerator-relevant node labels.
+// acceleratorLabels returns the accelerator-relevant node labels: the
+// vendor/driver/device-plugin facts the inventory needs, plus every
+// platform-owned label (go-taas.com/*). The latter carries the operator's
+// own node classification, of which the vGPU pool label
+// (go-taas.com/vgpu-pool) is what pool membership is derived from — a
+// projection that dropped it would show every pool as empty.
 func acceleratorLabels(labels map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range labels {
 		if k == labelAcceleratorVendor || k == labelDriverVersion || k == labelDevicePlugin ||
-			k == "nvidia.com/cuda.driver-version.full" || k == "nvidia.com/gpu.product" {
+			k == "nvidia.com/cuda.driver-version.full" || k == "nvidia.com/gpu.product" ||
+			strings.HasPrefix(k, platformLabelPrefix) {
 			out[k] = v
 		}
 	}

@@ -87,10 +87,16 @@ type changeEvent struct {
 	// SliceComputePct is the resolved slice compute percentage (feature
 	// #52, AD13). Set only for shared-GPU services.
 	SliceComputePct int64 `json:"slice_compute_pct,omitempty"`
-	// EngineArgs are the serving-engine parameters, keyed by flag name
-	// without the leading dashes (feature: engine parameters). A value of
-	// "flag:true" is a valueless switch.
-	EngineArgs map[string]string `json:"engine_args,omitempty"`
+	// SlicePoolLabelKey and SlicePoolLabelValue are the pool's
+	// node-label selector resolved at deploy time (feature #52, AD13).
+	// The Controller pins a shared-GPU pod to the pool's member nodes
+	// with them.
+	SlicePoolLabelKey   string `json:"slice_pool_label_key,omitempty"`
+	SlicePoolLabelValue string `json:"slice_pool_label_value,omitempty"`
+	// SlicePlacementPolicy is the pool's placement policy resolved at
+	// deploy time (feature #52, AD13).
+	SlicePlacementPolicy string            `json:"slice_placement_policy,omitempty"`
+	EngineArgs           map[string]string `json:"engine_args,omitempty"`
 	// ExtraArgs are free-form engine arguments appended after EngineArgs.
 	ExtraArgs []string `json:"extra_args,omitempty"`
 	// Env are the environment variables set on every engine container of
@@ -176,6 +182,9 @@ func buildChangeEvent(eventType string, svc *InferenceService, modelName, weight
 		SliceTemplateID:      svc.SliceTemplateID,
 		SliceMemoryMiB:       svc.SliceMemoryGiB * 1024,
 		SliceComputePct:      svc.SliceComputePct,
+		SlicePoolLabelKey:    svc.SlicePoolLabelKey,
+		SlicePoolLabelValue:  svc.SlicePoolLabelValue,
+		SlicePlacementPolicy: svc.SlicePlacementPolicy,
 		EngineArgs:           EngineArgsMap(svc.EngineArgs),
 		ExtraArgs:            ExtraArgsList(svc.ExtraArgs),
 		Env:                  EnvMap(svc.Env),

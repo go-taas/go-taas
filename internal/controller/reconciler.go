@@ -67,6 +67,14 @@ type changeEvent struct {
 	// SliceComputePct is the resolved slice compute percentage (feature
 	// #52, AD13). Set only for shared-GPU services.
 	SliceComputePct int64 `json:"slice_compute_pct,omitempty"`
+	// SlicePoolLabelKey and SlicePoolLabelValue are the pool's node-label
+	// selector resolved at deploy time (feature #52, AD13). A shared-GPU
+	// pod is pinned to the pool's member nodes with them.
+	SlicePoolLabelKey   string `json:"slice_pool_label_key,omitempty"`
+	SlicePoolLabelValue string `json:"slice_pool_label_value,omitempty"`
+	// SlicePlacementPolicy is the pool's placement policy resolved at
+	// deploy time (feature #52, AD13).
+	SlicePlacementPolicy string `json:"slice_placement_policy,omitempty"`
 	// EngineArgs are the serving-engine parameters, keyed by flag name
 	// without the leading dashes. A value of "flag:true" is a valueless
 	// switch.
@@ -164,10 +172,11 @@ type k8sReconciler struct {
 	// Feature #52 (AD13): the pinned HAMI contract names and the pool
 	// placement policy. policyAnnotation is the HAMI placement-policy
 	// annotation name; placementPolicy is the pool's scheduling hint;
-	// poolSelector is the pool's node label selector.
-	policyAnnotation string
-	placementPolicy  string
-	poolSelector     map[string]string
+	// hamiSchedulerName is the scheduler that places a shared-GPU pod
+	// (HAMi's scheduler, which owns device selection).
+	policyAnnotation  string
+	placementPolicy   string
+	hamiSchedulerName string
 	// schedulerName is the pod scheduler inference pods ask for. Empty uses
 	// the cluster default; "volcano" turns on gang scheduling and preemption
 	// (see podgroup.go).
@@ -289,12 +298,22 @@ func newReconcilerWithClientset(clientset kubernetes.Interface, dyn dynamic.Inte
 
 // SetVGPUConfig installs the vGPU slicing-pool HAMI contract (feature
 // #52, AD13): the placement-policy annotation name, the pool's
-// placement policy, and the pool's node label selector. It must be
-// called before serving.
-func (r *k8sReconciler) SetVGPUConfig(policyAnnotation, placementPolicy string, poolSelector map[string]string) {
+// placement policy, and the scheduler that places a shared-GPU pod.
+// An empty scheduler leaves shared-GPU pods on the cluster's configured
+// scheduler. It must be called before serving.
+func (r *k8sReconciler) SetVGPUConfig(policyAnnotation, placementPolicy, hamiSchedulerName string) {
 	r.policyAnnotation = policyAnnotation
 	r.placementPolicy = placementPolicy
-	r.poolSelector = poolSelector
+	r.hamiSchedulerName = strings.TrimSpace(hamiSchedulerName)
+}
+
+// hamiOwnsDevices reports whether HAMi's device plugin, rather than the
+// cluster's own, publishes the accelerator resource. When it does, only the
+// HAMi scheduler can place an accelerator pod (see buildPodTemplate) and gang
+// scheduling is unavailable for it — Volcano knows nothing about the
+// allocation annotation the device plugin reads.
+func (r *k8sReconciler) hamiOwnsDevices() bool {
+	return r.hamiSchedulerName != ""
 }
 
 // SetRDMAConfig installs the DRA DeviceClass used when a service requests RDMA
@@ -1091,9 +1110,17 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		}
 		// The gang the pods join. It is written before the pods can be
 		// admitted (the storm's own controller creates them), so Volcano
-		// never sees a gang member without a group.
-		if r.gangScheduling() {
+		// never sees a gang member without a group. A shared-GPU service is
+		// placed by HAMi's scheduler instead (see buildPodTemplate), so it
+		// joins no gang and a leftover group from an earlier whole-card
+		// deployment of the same name is removed.
+		if r.gangScheduling() && !usesSlice(evt) {
 			if err := applyPodGroup(ctx, r.dynamic, r.buildPodGroup(evt)); err != nil {
+				return r.reportFailure(ctx, evt, err)
+			}
+		} else if usesSlice(evt) {
+			if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, podGroupGVR, r.namespace,
+				podGroupName(evt), evt.ServiceID); err != nil {
 				return r.reportFailure(ctx, evt, err)
 			}
 		}
@@ -1447,16 +1474,47 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 	// split their parallelism across pods of this size, so the devices a
 	// container sees and the world size the engine is told always agree.
 	resources := r.podResources(evt)
-	if slice {
-		resources = sliceResources(evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
-		annotations[r.policyAnnotation] = r.placementPolicy
-		nodeSelector = mergeSelectors(nodeSelector, r.poolSelector)
-	}
 	// Volcano schedules the pods of one replica as a gang and preempts a
 	// lower priority gang for a higher one (see podgroup.go). Without a
 	// configured scheduler the cluster default places them one by one, which
 	// is the historical behaviour.
 	schedulerName := r.schedulerName
+	// HAMi's device plugin owns the accelerator resource on the nodes it
+	// manages: Allocate() reads the device list from the annotation only the
+	// HAMi scheduler writes, and fails with "device number not matched" when
+	// it is absent. So with HAMi installed, *every* accelerator pod — a
+	// slice or a whole card — has to be placed by the HAMi scheduler; one
+	// placed by Volcano stays Pending. See hamiOwnsDevices.
+	if r.hamiOwnsDevices() {
+		schedulerName = r.hamiSchedulerName
+	}
+	if slice {
+		resources = sliceResources(resources, evt.Accelerator, evt.SliceMemoryMiB, evt.SliceComputePct)
+		policy := evt.SlicePlacementPolicy
+		if policy == "" {
+			policy = r.placementPolicy
+		}
+		annotations[r.policyAnnotation] = policy
+		if evt.SlicePoolLabelKey != "" && evt.SlicePoolLabelValue != "" {
+			nodeSelector = mergeSelectors(nodeSelector,
+				map[string]string{evt.SlicePoolLabelKey: evt.SlicePoolLabelValue})
+		}
+	}
+	// A shared-GPU engine sizes its KV cache from the device it sees, which
+	// HAMi has already narrowed to the slice. vLLM's default 0.92 then leaves
+	// 8% headroom — less than the activation peak and CUDA-graph memory it
+	// also needs on a small slice, so the first big allocation trips HAMi's
+	// limit. 12% covers both for the smallest slice worth deploying.
+	args := evt
+	if slice && evt.Image.Engine == "vllm" {
+		if _, set := evt.EngineArgs["gpu-memory-utilization"]; !set {
+			args.EngineArgs = make(map[string]string, len(evt.EngineArgs)+1)
+			for k, v := range evt.EngineArgs {
+				args.EngineArgs[k] = v
+			}
+			args.EngineArgs["gpu-memory-utilization"] = sliceMemoryUtilization
+		}
+	}
 	priorityClass := r.priorityClassFor(evt.Priority)
 	spec := corev1.PodSpec{
 		SchedulerName:     schedulerName,
@@ -1474,7 +1532,7 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 			// directory (the whole JuiceFS filesystem is mounted
 			// at the weights mount path; the model lives in a
 			// subdirectory named by its weight path).
-			Command: engineCommand(evt, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), role),
+			Command: engineCommand(args, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), role),
 			// Operator-supplied environment variables. They apply to every
 			// topology; a PD or multi-machine role may override one for
 			// itself (see envForRole).
@@ -1614,25 +1672,41 @@ func (r *k8sReconciler) podResources(evt changeEvent) corev1.ResourceRequirement
 }
 
 // sliceResources returns the container resource requests for a
-// shared-GPU service (feature #52, AD13): the HAMI extended resources
-// (memory MiB + compute percentage) instead of a whole card. Unknown
-// accelerators get no resource request.
-func sliceResources(accelerator string, memMiB, computePct int64) corev1.ResourceRequirements {
+// shared-GPU service (feature #52, AD13): one vGPU unit of the
+// accelerator's device resource plus the HAMI memory MiB and compute
+// percentage. The device resource is what makes HAMi treat the pod as a
+// virtual-GPU request at all (without it the pod asks for resources no
+// node advertises and never schedules); the HAMi scheduler then picks
+// the physical card and the HAMi device plugin injects the slice. The
+// base requests (CPU, memory) are kept as they are. Unknown
+// accelerators get the base requests unchanged.
+func sliceResources(base corev1.ResourceRequirements, accelerator string, memMiB, computePct int64) corev1.ResourceRequirements {
 	memName := gpuMemResourceName(accelerator)
 	coreName := gpuCoreResourceName(accelerator)
-	if memName == "" || coreName == "" {
-		return corev1.ResourceRequirements{}
+	countName := gpuResourceName(accelerator)
+	if memName == "" || coreName == "" || countName == "" {
+		return base
 	}
-	return corev1.ResourceRequirements{
-		Limits: corev1.ResourceList{
-			corev1.ResourceName(memName):  resource.MustParse(fmt.Sprintf("%dMi", memMiB)),
-			corev1.ResourceName(coreName): resource.MustParse(fmt.Sprintf("%d", computePct)),
-		},
-		Requests: corev1.ResourceList{
-			corev1.ResourceName(memName):  resource.MustParse(fmt.Sprintf("%dMi", memMiB)),
-			corev1.ResourceName(coreName): resource.MustParse(fmt.Sprintf("%d", computePct)),
-		},
+	out := *base.DeepCopy()
+	if out.Limits == nil {
+		out.Limits = corev1.ResourceList{}
 	}
+	if out.Requests == nil {
+		out.Requests = corev1.ResourceList{}
+	}
+	one := resource.MustParse("1")
+	// HAMi reads nvidia.com/gpumem as a plain MiB count: a quantity with a
+	// binary suffix (6Gi) would be taken as 6 billion MiB and silently
+	// dropped to no limit at all.
+	mem := resource.MustParse(strconv.FormatInt(memMiB, 10))
+	cores := resource.MustParse(strconv.FormatInt(computePct, 10))
+	out.Limits[corev1.ResourceName(countName)] = one
+	out.Limits[corev1.ResourceName(memName)] = mem
+	out.Limits[corev1.ResourceName(coreName)] = cores
+	out.Requests[corev1.ResourceName(countName)] = one
+	out.Requests[corev1.ResourceName(memName)] = mem
+	out.Requests[corev1.ResourceName(coreName)] = cores
+	return out
 }
 
 // gpuMemResourceName maps an accelerator to the HAMI memory resource
@@ -1677,6 +1751,12 @@ func mergeSelectors(base, extra map[string]string) map[string]string {
 	}
 	return out
 }
+
+// sliceMemoryUtilization is the gpu_memory_utilization a shared-GPU vLLM
+// service is started with when the operator sets none: the slice is the
+// device, and 12% headroom absorbs the engine's own activation and
+// CUDA-graph memory.
+const sliceMemoryUtilization = "0.88"
 
 // rendezvousPort is the port the workers of a multi-pod role use to meet.
 // It is vLLM's default master port and is passed to SGLang as the

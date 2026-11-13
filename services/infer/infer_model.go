@@ -138,6 +138,17 @@ type InferenceService struct {
 	// SliceComputePct is the assigned slice compute percentage (feature
 	// #52, AD14).
 	SliceComputePct int64 `gorm:"column:slice_compute_pct;not null;default:0"`
+	// SlicePoolLabelKey is the pool's node-label key resolved at deploy
+	// time (feature #52, AD13). It pins the service's pods to the pool's
+	// member nodes; the Controller writes it into the pod nodeSelector.
+	SlicePoolLabelKey string `gorm:"column:slice_pool_label_key;size:128;not null;default:''"`
+	// SlicePoolLabelValue is the pool's node-label value resolved at
+	// deploy time (feature #52, AD13).
+	SlicePoolLabelValue string `gorm:"column:slice_pool_label_value;size:128;not null;default:''"`
+	// SlicePlacementPolicy is the pool's placement policy resolved at
+	// deploy time (feature #52, AD13). It is written as the HAMI
+	// GPU-scheduler-policy annotation of the service's pods.
+	SlicePlacementPolicy string `gorm:"column:slice_placement_policy;size:16;not null;default:''"`
 	// GPUPerPod is the number of accelerator devices one pod of the
 	// service requests. 0 reads as 1, which is what every service created
 	// before this column existed actually got.

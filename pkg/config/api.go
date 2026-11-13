@@ -1301,6 +1301,12 @@ type VGPUHAMIConfig struct {
 	CoreResource string `mapstructure:"coreResource"`
 	// PolicyAnnotation is the placement-policy annotation name.
 	PolicyAnnotation string `mapstructure:"policyAnnotation"`
+	// SchedulerName is the scheduler that places a shared-GPU pod. HAMi's
+	// scheduler is the only one that knows which card has room for a slice
+	// and writes the device-selection annotation the HAMi device plugin
+	// allocates from; an empty value leaves slice pods on the platform
+	// scheduler (they never bind). Default hami-scheduler.
+	SchedulerName string `mapstructure:"schedulerName"`
 	// PoolLabelPrefix is the default pool label key prefix.
 	PoolLabelPrefix string `mapstructure:"poolLabelPrefix"`
 }

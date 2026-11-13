@@ -272,6 +272,9 @@ vgpu:
     memResource: "nvidia.com/gpumem"
     coreResource: "nvidia.com/gpucores"
     policyAnnotation: "hami.io/gpu-scheduler-policy"
+    # schedulerName is the scheduler that places a shared-GPU pod: HAMi's
+    # scheduler owns device selection for vGPU slices.
+    schedulerName: "hami-scheduler"
     poolLabelPrefix: "go-taas.com/vgpu-pool"
 
 # Feature #53: fault diagnosis & automatic fault tolerance. The fault

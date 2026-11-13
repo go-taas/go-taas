@@ -20,7 +20,7 @@
 
 本功能新增**vGPU 切片池**：运营者通过节点标签把一组节点指定为切片池，定义**切片模板**（显存比例 + 算力比例）表示一块物理 GPU 如何被切分，推理服务可以选择**共享 GPU 模式**请求一个切片而非整卡。平台的 Controller 把切片请求转为 HAMI 资源注解，由 HAMI（平台已在加速器层列为灵感的 CNCF 孵化级 GPU 共享中间件）提供 **GPU 切分**能力 — 按显存与算力把一块物理 GPU 切开，供多个 Pod 共享。
 
-> **HAMi 使用范围。** HAMi 在 go-taas 中的核心作用是 **GPU 切分**（按显存与算力切分物理 GPU）。平台**暂未使用** HAMi 的异构卡纳管、设备插件与调度能力；工作负载放置仍由集群自身的调度器（Kubernetes / Volcano）负责。
+> **HAMi 使用范围。** HAMi 在 go-taas 中的核心作用是 **GPU 切分**（按显存与算力切分物理 GPU）。切片 Pod 由 HAMi 的调度器与设备插件负责选卡与注入（只有 HAMi 知道哪张卡还有余量，也只有它的设备插件会写分配结果）。**一旦 HAMi 的设备插件接管了节点上的加速器资源，整卡 Pod 也必须由 HAMi 调度器放置**——设备插件的 Allocate 只认它写的分配注解，别的调度器绑定的 Pod 会永远起不来；代价是这些 Pod 不再有 gang 调度（要同时保留两者需改用 HAMi 的 Volcano 集成）。HAMi 的异构卡纳管与 WebUI 不在范围内。
 
 ### 1.2 访问模式：标签驱动池 + 切片模板 vs 备选方案
 
@@ -53,7 +53,7 @@
 | D2 | **共享按服务可选，且只在池节点上。** 部署可选"共享 GPU"模式；不选则如今天一样拿整卡。 | 共享有隔离/性能权衡；租户与运营者必须刻意选择。非池节点永不共享。 |
 | D3 | **切片模板是有界词汇表。** 池定义命名模板（如 `small` = 8 GiB / 25% 算力、`medium` = 16 GiB / 50%、`large` = 24 GiB / 75%）；部署选模板，绝不选原始显存/算力值。 | 让容量规划诚实（运营者控制切分）且部署表单简单（下拉而非两个数字字段）。 |
 | D4 | **HAMI 提供 GPU 切分；go-taas 保持厂商中立。** Controller 发出 HAMI 切片注解（`nvidia.com/gpumem` / `nvidia.com/gpucores`），由 HAMi 切分物理 GPU。仅使用切分能力：异构卡纳管、设备插件与调度器不在范围内。 | 平台已把 HAMI 列为加速器层灵感；把切分本身委托给 HAMI 让 go-taas 保持厂商中立，避免重造设备虚拟化。 |
-| D5 | **池的放置策略是池级设置**（binpack / spread / mutex），在池页面以下拉呈现，并记录为 `hami.io/gpu-scheduler-policy` 注解。当前未启用 HAMI 调度器，因此该策略是面向后续的提示，而非实际生效的放置输入。 | 把运营者的整合（binpack）vs 隔离（spread/mutex）意图随池保存，并在后续采用 HAMI 调度器时保持兼容。 |
+| D5 | **池的放置策略是池级设置**（binpack / spread / mutex），在池页面以下拉呈现，并记录为 `hami.io/gpu-scheduler-policy` 注解。切片 Pod 由 HAMi 调度器放置，因此该注解对切片请求真实生效（`binpack` 优先填满一张卡，`spread` 铺开）。 | 把运营者的整合（binpack）vs 隔离（spread/mutex）意图随池保存，并在后续采用 HAMI 调度器时保持兼容。 |
 | D6 | **无性能隔离保证。** 池页面与部署表单都说明共享 GPU 是共享资源；显存隔离（以及后端支持的算力隔离）尽力而为。 | 对共享资源权衡诚实；避免向租户过度承诺。 |
 | D7 | **切片分配是容量遥测，不是计量。** 池的分配视图显示每个模板多少切片已分配/空闲；计费保持按请求 token 计（#4）。 | 不触碰计量链；池视图是运维表面。 |
 | D8 | **切片数作为配额维度延迟。** 服务配额功能（#51）交付三个维度；按组织切片数配额是后续工作。 | 让本功能聚焦共享机制；配额集成是干净的后续。 |
@@ -232,7 +232,7 @@ sequenceDiagram
 
 ## 6. API 表面影响
 
-vGPU RPC 位于新 **`vgpu`** 模块（管理面）外加一个小的 **`infer`** 扩展（用户面）。Controller 把切片请求转为 HAMI 切片注解；HAMI 在仓库范围之外 — 此处仅钉死其 GPU 切分契约（`nvidia.com/gpumem` / `nvidia.com/gpucores` 资源模型与 `hami.io/*` 注解）。
+vGPU RPC 位于新 **`vgpu`** 模块（管理面）外加一个小的 **`infer`** 扩展（用户面）。Controller 把切片请求转为 HAMI 资源请求；HAMI 在仓库范围之外 — 此处仅钉死其 GPU 切分契约（`nvidia.com/gpu` / `nvidia.com/gpumem` / `nvidia.com/gpucores` 资源模型与 `hami.io/*` 注解）。
 
 | RPC | 路由 | 前缀 | 状态 | 用途 |
 | --- | --- | --- | --- | --- |
@@ -249,7 +249,7 @@ vGPU RPC 位于新 **`vgpu`** 模块（管理面）外加一个小的 **`infer`*
 
 1. `vgpu` 模块拥有池成员（标签选择器）、切片模板与容量核算；它是带自有错误块（134xx）的新服务模块，不是 `infer` 或 `image` 的扩展。
 2. 池成员是**声明式**的：Controller 监视节点上的标签选择器并上报成员；失去标签的节点离开池（其切片随服务自然结束而排空）。
-3. Controller 把切片请求转为 HAMI 切片注解（`nvidia.com/gpumem` = 模板显存 MiB、`nvidia.com/gpucores` = 模板算力、外加池的放置策略注解 `hami.io/gpu-scheduler-policy`）。仅使用这套 GPU 切分资源模型；HAMI 的异构卡纳管、设备插件与调度器均未启用。该资源模型是钉死的契约（FR5.4 式合成验证）。
+3. Controller 把切片请求转为 HAMI 资源请求（`nvidia.com/gpu` = 1 个 vGPU、`nvidia.com/gpumem` = 模板显存 MiB、`nvidia.com/gpucores` = 模板算力，外加池的放置策略注解 `hami.io/gpu-scheduler-policy` 与池的节点标签选择器）。切片 Pod 由 HAMi 调度器放置、由 HAMi 设备插件分配；HAMI 的异构卡纳管未启用。资源与注解名称是钉死的契约（FR5.4 式合成验证）。
 4. 容量核算是对加速器清单快照（Controller 自身的切片账目）的投影，不是新数据库表（D7）。
 5. 租户可见的 `ListVGPUPools` 必须在服务层强制组织授权（会话中的调用者组织），绝不信任客户端提供的组织 id。
 6. 序列化约定不变：成功 HTTP 200，业务错误为 `{"code": <int>, "message": "..."}`，int64 字段为 JSON 字符串。

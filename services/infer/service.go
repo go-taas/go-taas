@@ -271,6 +271,14 @@ type SliceValidator interface {
 type SliceTemplateInfo struct {
 	MemoryGiB  int64
 	ComputePct int64
+	// PoolLabelKey and PoolLabelValue are the pool's node-label selector
+	// resolved with the template. They pin the service's pods to the
+	// pool's member nodes.
+	PoolLabelKey   string
+	PoolLabelValue string
+	// PlacementPolicy is the pool's binpack | spread | mutex policy,
+	// written as the pods' HAMi GPU-scheduler-policy annotation.
+	PlacementPolicy string
 }
 
 // ExternalModelProxy proxies a published external model on the metered path
@@ -1069,6 +1077,9 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		SliceGPUIndex:        -1,
 		SliceMemoryGiB:       sliceInfo.MemoryGiB,
 		SliceComputePct:      sliceInfo.ComputePct,
+		SlicePoolLabelKey:    sliceInfo.PoolLabelKey,
+		SlicePoolLabelValue:  sliceInfo.PoolLabelValue,
+		SlicePlacementPolicy: sliceInfo.PlacementPolicy,
 		GPUPerPod:            scheduling.GPUPerPod,
 		CPUMilli:             scheduling.CPUMilli,
 		MemoryMiB:            scheduling.MemoryMiB,

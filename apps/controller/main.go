@@ -86,7 +86,7 @@ func main() {
 	reconciler.SetVGPUConfig(
 		cfg.VGPU.HAMI.PolicyAnnotation,
 		"binpack",
-		map[string]string{cfg.VGPU.HAMI.PoolLabelPrefix: "pool-a"},
+		cfg.VGPU.HAMI.SchedulerName,
 	)
 	ctrl := controller.New(mqClient, reconciler)
 	// The periodic pod-failure scanner publishes a failed status for any

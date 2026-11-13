@@ -594,7 +594,13 @@ func (s *Service) ValidateSlice(ctx context.Context, orgID, poolID, templateID s
 	}
 	for _, t := range templates {
 		if t.Name == templateID {
-			return infer.SliceTemplateInfo{MemoryGiB: t.MemoryGiB, ComputePct: t.ComputePct}, nil
+			return infer.SliceTemplateInfo{
+				MemoryGiB:       t.MemoryGiB,
+				ComputePct:      t.ComputePct,
+				PoolLabelKey:    row.LabelKey,
+				PoolLabelValue:  row.LabelValue,
+				PlacementPolicy: row.PlacementPolicy,
+			}, nil
 		}
 	}
 	return infer.SliceTemplateInfo{}, apierrors.New(apierrors.CodeVGPUSliceUnavailable)

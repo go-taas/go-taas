@@ -185,8 +185,9 @@ func (r *k8sReconciler) buildStormService(ctx context.Context, evt changeEvent) 
 		roleAnnotationSet := mergeLabels(podAnnotations, roleAnnotations)
 		// A gang-scheduled pod joins its PodGroup through this annotation;
 		// without it Volcano schedules it on its own and the gang guarantee
-		// the group exists for is lost.
-		if r.gangScheduling() {
+		// the group exists for is lost. A shared-GPU pod is placed by HAMi's
+		// scheduler and joins no gang.
+		if r.gangScheduling() && !usesSlice(evt) {
 			roleAnnotationSet = mergeLabels(roleAnnotationSet,
 				map[string]string{podGroupAnnotation: podGroupName(evt)})
 		}

@@ -650,6 +650,9 @@ func (c *Configuration) applyDefaults() {
 	if c.VGPU.HAMI.PolicyAnnotation == "" {
 		c.VGPU.HAMI.PolicyAnnotation = "hami.io/gpu-scheduler-policy"
 	}
+	if c.VGPU.HAMI.SchedulerName == "" {
+		c.VGPU.HAMI.SchedulerName = "hami-scheduler"
+	}
 	if c.VGPU.HAMI.PoolLabelPrefix == "" {
 		c.VGPU.HAMI.PoolLabelPrefix = "go-taas.com/vgpu-pool"
 	}
