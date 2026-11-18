@@ -231,3 +231,35 @@ func TestUpdateEngineArgsValidation(t *testing.T) {
 	require.True(t, ok)
 	assert.Equal(t, apierrors.CodeInferServiceNotFound, ae.Code)
 }
+
+// TestStartReappliesAFailedService covers the recovery path: a service whose
+// apply failed cannot be stopped (it is not running) and starting it is the
+// only way to retry without touching its definition, so start re-publishes the
+// whole desired state and writes the object again.
+func TestStartReappliesAFailedService(t *testing.T) {
+	seedImageRegistry(t)
+	svc, client, db := newInferTestService(t)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	created, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "demo", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 1, Accelerator: "nvidia",
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&InferenceService{}).
+		Where("id = ?", created.GetServiceId()).
+		Update("state", StateFailed).Error)
+
+	client.published = nil
+	resp, err := svc.StartInferenceService(orgContext("org-1"),
+		&inferv1.StartInferenceServiceRequest{ServiceId: created.GetServiceId()})
+	require.NoError(t, err)
+	assert.Equal(t, StatePending, resp.GetState())
+
+	require.Len(t, client.published, 1, "a failed service is re-applied, not skipped")
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, EventTypeStart, evt.EventType)
+	assert.Equal(t, "ghcr.io/go-taas/vllm:v0.6.3", evt.Image.Reference,
+		"the re-applied event carries the engine image, not just the service identity")
+}

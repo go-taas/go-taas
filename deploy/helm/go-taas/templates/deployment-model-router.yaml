@@ -7,9 +7,13 @@
 {{- $podSC := $mr.podSecurityContext | default dict }}
 {{- $sc := $mr.securityContext | default dict }}
 {{- $dp := .Values.dataPlane | default dict }}
-{{- $backend := $dp.backend | default dict }}
-{{- $backendNamespace := $backend.namespace | default .Release.Namespace }}
-{{- $backendPort := $backend.port | default 80 }}
+{{- $gw := $dp.gateway | default dict }}
+{{- $gwName := $gw.name | default "taas-inference" }}
+{{- $gwHost := $gwName }}
+{{- with $gw.envoyNamespace }}{{ $gwHost = printf "%s.%s" $gwName . }}{{ end }}
+{{- $gwPort := 80 }}
+{{- $gp := .Values.gatewayPlugin | default dict }}
+{{- $inferNS := ((.Values.controller | default dict).config | default dict).controller.namespace | default "taas-infer" }}
 {{- $taasServer := .Values.taasServer | default dict }}
 {{- $serverSvc := $taasServer.service | default dict }}
 {{- $monitor := $serverSvc.monitor | default dict }}
@@ -67,10 +71,26 @@ spec:
                 secretKeyRef:
                   name: {{ include "go-taas.secretName" . }}
                   key: gateway-plugin-token
-            # Everything the router does not serve itself goes to the serving
-            # gateway, which routes it to the inference service.
+            # Inference traffic goes to a model's own workload Service. The
+            # Gateway URL below is the fallback for a model the control plane
+            # does not report: it is the data plane's internal listener, which
+            # is addressed by a fixed in-cluster hostname so the request never
+            # leaves the cluster through a public address.
             - name: TAAS_GATEWAY_URL
-              value: {{ printf "http://%s.%s.svc:%d" ($backend.name | default "aibrix-eg") $backendNamespace (int $backendPort) | quote }}
+              value: {{ printf "http://%s:%d" $gwHost (int $gwPort) | quote }}
+            - name: TAAS_INFER_NAMESPACE
+              value: {{ $inferNS | quote }}
+            - name: TAAS_INTERNAL_HOST
+              value: {{ $gp.internalHostname | default "taas-internal.invalid" | quote }}
+            # A self-hosted model is answered by the workload Service the
+            # serving stack creates for it: the router addresses
+            # "<service><suffix>.<namespace>.svc:<port>" directly, so routing
+            # does not depend on the Gateway serving a per-model route.
+            # Required: the router refuses to start without it.
+            - name: TAAS_WORKLOAD_SERVICE_SUFFIX
+              value: {{ $mr.workloadServiceSuffix | default "-kserve-workload-svc" | quote }}
+            - name: TAAS_WORKLOAD_SERVICE_PORT
+              value: {{ $mr.workloadServicePort | default 8000 | quote }}
             - name: TAAS_MODEL_REFRESH_SECONDS
               value: {{ include "go-taas.durationSeconds" (dict "value" ($mr.refreshInterval | default "30s") "fallback" 30) | quote }}
             - name: TAAS_REQUEST_TIMEOUT_SECONDS

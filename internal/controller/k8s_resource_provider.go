@@ -9,6 +9,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	metricsv1beta1 "k8s.io/metrics/pkg/apis/metrics/v1beta1"
 	metricsclientset "k8s.io/metrics/pkg/client/clientset/versioned"
@@ -27,6 +28,7 @@ const labelServiceID = "go-taas.com/service-id"
 // ResourceSampleProvider.
 type K8sResourceSampleProvider struct {
 	clientset      kubernetes.Interface
+	dyn            dynamic.Interface
 	metricsClient  metricsclientset.Interface
 	namespace      string
 	acceleratorSvc AcceleratorSignalReader
@@ -44,12 +46,13 @@ type AcceleratorSignalReader interface {
 
 // NewK8sResourceSampleProvider builds a K8sResourceSampleProvider over a
 // clientset, a metrics client and an accelerator signal reader.
-func NewK8sResourceSampleProvider(clientset kubernetes.Interface, metricsClient metricsclientset.Interface, namespace string, acceleratorSvc AcceleratorSignalReader) *K8sResourceSampleProvider {
+func NewK8sResourceSampleProvider(clientset kubernetes.Interface, dyn dynamic.Interface, metricsClient metricsclientset.Interface, namespace string, acceleratorSvc AcceleratorSignalReader) *K8sResourceSampleProvider {
 	if namespace == "" {
 		namespace = "taas-infer"
 	}
 	return &K8sResourceSampleProvider{
 		clientset:      clientset,
+		dyn:            dyn,
 		metricsClient:  metricsClient,
 		namespace:      namespace,
 		acceleratorSvc: acceleratorSvc,
@@ -60,9 +63,7 @@ func NewK8sResourceSampleProvider(clientset kubernetes.Interface, metricsClient 
 // per-container CPU/memory from the metrics-server and GPU utilization
 // from the accelerator signals.
 func (p *K8sResourceSampleProvider) SampleServices(ctx context.Context) ([]ResourceSample, error) {
-	pods, err := p.clientset.CoreV1().Pods(p.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelServiceID,
-	})
+	pods, err := p.clientset.CoreV1().Pods(p.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("list inference pods: %w", err)
 	}
@@ -104,9 +105,10 @@ func (p *K8sResourceSampleProvider) SampleServices(ctx context.Context) ([]Resou
 	})
 
 	samples := make([]ResourceSample, 0, len(ordered))
+	svcByWorkload := serviceIDsByWorkloadName(ctx, p.dyn, p.namespace)
 	for i := range ordered {
 		pod := &ordered[i]
-		serviceID := pod.Labels[labelServiceID]
+		serviceID := podServiceID(pod, svcByWorkload)
 		if serviceID == "" {
 			continue
 		}

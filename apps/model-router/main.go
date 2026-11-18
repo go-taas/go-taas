@@ -5,6 +5,11 @@
 // the platform sells from a provider) or to the serving gateway (for a model an
 // inference service serves). Authentication, rate limits and metering stay on
 // the gateway, which runs before this hop.
+//
+// A model's route is named after the service and the inference namespace, so
+// the router prefixes the namespace the public path leaves out and addresses
+// the gateway's internal listener, which is the listener a model's route
+// attaches to.
 package main
 
 import (
@@ -34,6 +39,10 @@ func main() {
 		ServerURL:       envOr("TAAS_SERVER_URL", ""),
 		ServerToken:     envOr("TAAS_SERVER_TOKEN", ""),
 		GatewayURL:      envOr("TAAS_GATEWAY_URL", ""),
+		InferNamespace:  envOr("TAAS_INFER_NAMESPACE", ""),
+		InternalHost:    envOr("TAAS_INTERNAL_HOST", ""),
+		WorkloadSuffix:  envOr("TAAS_WORKLOAD_SERVICE_SUFFIX", ""),
+		WorkloadPort:    envInt("TAAS_WORKLOAD_SERVICE_PORT", 8000),
 		RefreshInterval: time.Duration(envInt("TAAS_MODEL_REFRESH_SECONDS", 30)) * time.Second,
 		RequestTimeout:  time.Duration(envInt("TAAS_REQUEST_TIMEOUT_SECONDS", 600)) * time.Second,
 	}

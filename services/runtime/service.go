@@ -369,8 +369,8 @@ func (s *Service) GetServingScheme(ctx context.Context, _ *runtimev1.GetServingS
 }
 
 // UpdateServingScheme sets the scheme (AC3, AC11). It rejects an unknown
-// value with 12902, rejects switching to aibrix while the runtime is
-// unavailable with 12901, and is idempotent (no audit, no broadcast).
+// value with 12902, rejects switching to the KServe scheme while the runtime
+// is unavailable with 12901, and is idempotent (no audit, no broadcast).
 func (s *Service) UpdateServingScheme(ctx context.Context, req *runtimev1.UpdateServingSchemeRequest) (*runtimev1.UpdateServingSchemeResponse, error) {
 	if err := s.requireAdminRole(ctx); err != nil {
 		return nil, err
@@ -393,7 +393,7 @@ func (s *Service) UpdateServingScheme(ctx context.Context, req *runtimev1.Update
 	}
 	// FR2.5 / AD12: an operator cannot switch to a runtime that is not
 	// observed.
-	if scheme == SchemeAIBrix {
+	if scheme == SchemeKServe {
 		if avail := s.cache.Availability(); avail != AvailabilityAvailable {
 			return nil, apierrors.New(apierrors.CodeRuntimeUnavailable)
 		}
@@ -445,9 +445,9 @@ func (s *Service) ListRuntimeModels(ctx context.Context, req *runtimev1.ListRunt
 }
 
 // RegisterRuntimeModel registers a model with the runtime (AC5, AD8,
-// AD12). It validates the fields, requires the aibrix scheme with an
+// AD12). It validates the fields, requires the KServe scheme with an
 // available runtime, rejects duplicates, and publishes the desired-state
-// change the controller reconciles into a ModelClaim.
+// change the controller reconciles into the model's workload.
 func (s *Service) RegisterRuntimeModel(ctx context.Context, req *runtimev1.RegisterRuntimeModelRequest) (*runtimev1.RegisterRuntimeModelResponse, error) {
 	if err := s.requireAdminRole(ctx); err != nil {
 		return nil, err
@@ -471,7 +471,7 @@ func (s *Service) RegisterRuntimeModel(ctx context.Context, req *runtimev1.Regis
 	if err := validatePodSelector(req.GetPodSelector()); err != nil {
 		return nil, err
 	}
-	if err := s.requireActiveAIBrix(ctx); err != nil {
+	if err := s.requireActiveKServe(ctx); err != nil {
 		return nil, err
 	}
 	if _, found := s.cache.FindModel(name); found {
@@ -513,7 +513,7 @@ func (s *Service) RegisterRuntimeModel(ctx context.Context, req *runtimev1.Regis
 }
 
 // DeregisterRuntimeModel removes a model registration (AC6, AD12). It
-// requires the aibrix scheme with an available runtime and a known model,
+// requires the KServe scheme with an available runtime and a known model,
 // then publishes the delete the controller reconciles.
 func (s *Service) DeregisterRuntimeModel(ctx context.Context, req *runtimev1.DeregisterRuntimeModelRequest) (*runtimev1.DeregisterRuntimeModelResponse, error) {
 	if err := s.requireAdminRole(ctx); err != nil {
@@ -523,7 +523,7 @@ func (s *Service) DeregisterRuntimeModel(ctx context.Context, req *runtimev1.Der
 	if name == "" {
 		return nil, apierrors.New(apierrors.CodeRuntimeModelNameInvalid)
 	}
-	if err := s.requireActiveAIBrix(ctx); err != nil {
+	if err := s.requireActiveKServe(ctx); err != nil {
 		return nil, err
 	}
 	if _, found := s.cache.FindModel(name); !found {
@@ -547,9 +547,9 @@ func (s *Service) DeregisterRuntimeModel(ctx context.Context, req *runtimev1.Der
 	return &runtimev1.DeregisterRuntimeModelResponse{Response: okResponse()}, nil
 }
 
-// requireActiveAIBrix enforces AD12: register/deregister require the
-// aibrix scheme with an available runtime, else 12901.
-func (s *Service) requireActiveAIBrix(ctx context.Context) error {
+// requireActiveKServe enforces AD12: register/deregister require the KServe
+// scheme with an available runtime, else 12901.
+func (s *Service) requireActiveKServe(ctx context.Context) error {
 	repo, err := s.repository()
 	if err != nil {
 		return err
@@ -558,7 +558,7 @@ func (s *Service) requireActiveAIBrix(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if setting.Scheme != SchemeAIBrix {
+	if setting.Scheme != SchemeKServe {
 		return apierrors.New(apierrors.CodeRuntimeUnavailable)
 	}
 	if avail := s.cache.Availability(); avail != AvailabilityAvailable {

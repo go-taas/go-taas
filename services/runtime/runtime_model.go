@@ -12,8 +12,8 @@ import "time"
 const (
 	// SchemePlain is the default plain-Deployment serving scheme.
 	SchemePlain = "plain"
-	// SchemeAIBrix selects the AIBrix distributed serving scheme.
-	SchemeAIBrix = "aibrix"
+	// SchemeKServe selects the KServe distributed serving scheme.
+	SchemeKServe = "kserve"
 )
 
 // runtimeSettingID is the fixed singleton row id.
@@ -24,7 +24,7 @@ const runtimeSettingID = "runtime"
 type RuntimeSetting struct { //nolint:revive // runtime.RuntimeSetting is the documented domain name
 	// ID is the singleton row id (always "runtime").
 	ID string `gorm:"primaryKey;size:32"`
-	// Scheme is the persisted serving scheme (plain | aibrix).
+	// Scheme is the persisted serving scheme (plain | kserve).
 	Scheme string `gorm:"size:16;not null;default:'plain'"`
 	// UpdatedBy is the acting admin user id (empty in the transitional
 	// session-less path).
@@ -39,4 +39,4 @@ type RuntimeSetting struct { //nolint:revive // runtime.RuntimeSetting is the do
 func (RuntimeSetting) TableName() string { return "runtime_settings" }
 
 // validScheme reports whether s is a supported serving scheme.
-func validScheme(s string) bool { return s == SchemePlain || s == SchemeAIBrix }
+func validScheme(s string) bool { return s == SchemePlain || s == SchemeKServe }

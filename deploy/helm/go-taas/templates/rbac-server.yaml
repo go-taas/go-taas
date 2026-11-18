@@ -3,6 +3,8 @@
 {{- $existing := dig "rbac" "existingClusterRole" "" .Values.taasServer }}
 {{- $name := default (include "go-taas.server.name" .) (dig "rbac" "name" "" .Values.taasServer) }}
 {{- $dpName := $name }}
+{{- $mr := .Values.modelRouter | default dict }}
+{{- $mrNamespace := $mr.namespace | default .Release.Namespace }}
 {{/*
 The server reads the cluster it runs in (cluster discovery, the live node
 set used to validate image-warmup selectors) and container logs through
@@ -86,10 +88,10 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "go-taas.server.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
-{{- if and .Values.dataPlane.enabled (ne .Values.dataPlane.backend.namespace .Release.Namespace) }}
+{{- if and .Values.dataPlane.enabled (ne $mrNamespace .Release.Namespace) }}
 ---
 {{/*
-The route lives in the release namespace and points at the inference gateway
+The route lives in the release namespace and points at the model router
 Service in another one, which needs a ReferenceGrant there. Granting the write
 in exactly that namespace keeps the server from holding cluster-wide write
 access to Gateway API objects.
@@ -98,7 +100,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: Role
 metadata:
   name: {{ $dpName }}-referencegrant
-  namespace: {{ .Values.dataPlane.backend.namespace }}
+  namespace: {{ $mrNamespace }}
   labels:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: server
@@ -111,7 +113,7 @@ apiVersion: rbac.authorization.k8s.io/v1
 kind: RoleBinding
 metadata:
   name: {{ $dpName }}-referencegrant
-  namespace: {{ .Values.dataPlane.backend.namespace }}
+  namespace: {{ $mrNamespace }}
   labels:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: server

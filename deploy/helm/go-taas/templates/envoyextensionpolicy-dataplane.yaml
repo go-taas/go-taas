@@ -2,14 +2,14 @@
 {{/*
 The data-plane gateway plugin.
 
-It is attached to the server-owned data-plane HTTPRoute rather than to the
-AIBrix gateway, because that is the only Envoy in the chain go-taas owns: a
-policy in `aibrix-system` belongs to another Helm release and would be
-overwritten. Being first in the chain also means an unauthenticated request
-is rejected before it reaches the second proxy or a model pod.
+It is attached to the chart-owned data-plane HTTPRoute rather than to the
+Gateway itself, because the plugin chain runs on the route: a policy on the
+shared Gateway would belong to another release and could be overwritten, and
+attaching it to the route also means an unauthenticated request is rejected
+before it reaches the model router or a model pod.
 
 Auth and metering happen here (architecture Section 3.2.1, steps 01 and 04);
-routing stays with AIBrix.
+routing stays with the Gateway and the serving runtime.
 */}}
 apiVersion: gateway.envoyproxy.io/v1alpha1
 kind: EnvoyExtensionPolicy
@@ -55,7 +55,7 @@ spec:
         verify_timeout_ms: {{ include "go-taas.gatewayPluginMillis" (dict "value" (.Values.gatewayPlugin.verifyTimeout | default "500ms") "fallback" 500) | int64 }}
         max_body_bytes: {{ .Values.gatewayPlugin.maxBodyBytes | default 1048576 | int64 }}
         protected_prefixes:
-          {{- range (.Values.gatewayPlugin.protectedPrefixes | default (list "/v1/")) }}
+          {{- range (.Values.gatewayPlugin.protectedPrefixes | default (list "/")) }}
           - {{ . | quote }}
           {{- end }}
 ---

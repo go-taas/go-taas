@@ -5,7 +5,7 @@
 | 功能点 | 按 API Key 限制可调用的模型白名单，并在推理数据面强制执行（backlog 第 46 行） |
 | 文档范围 | 范围列与迁移、key 管理 API 端面、verdict 缓存传播、数据面强制执行顺序、用户控制台范围编辑、管理端只读可见性、审计、错误、安全、发布与实现职责 |
 | 所属模块 | `auth`（范围存储、verdict 缓存、VerifyAPIKey 强制执行、范围编辑 RPC、审计）；`model`（写入时校验的目录存在性检查）；`web/`（用户端 key 页面） |
-| 相关文档 | [需求分析与 UI/UX 设计](../design/api-key-model-scoping.zh-cn.md) · [架构设计](./architecture.zh-cn.md) §2.2（`auth`）与 §3.2（推理网关）· [API Key 管理](./api-key-management.zh-cn.md) — key 生命周期、加盐哈希存储、吊销 · [租户级模型授权](./model-authorization.zh-cn.md) — 本功能叠加其下的组织级门禁 · [每 Key 限流与组织消费限额](./rate-limits-spend-limits.zh-cn.md) · [控制台分离](./console-surface-separation.zh-cn.md) |
+| 相关文档 | [需求分析与 UI/UX 设计](../design/api-key-model-scoping.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) §2.2（`auth`）与 §3.2（推理网关）· [API Key 管理](./api-key-management.zh-cn.md) — key 生命周期、加盐哈希存储、吊销 · [租户级模型授权](./model-authorization.zh-cn.md) — 本功能叠加其下的组织级门禁 · [每 Key 限流与组织消费限额](./rate-limits-spend-limits.zh-cn.md) · [控制台分离](./console-surface-separation.zh-cn.md) |
 | 状态 | 已实现 |
 
 ## 1. 目标与非目标

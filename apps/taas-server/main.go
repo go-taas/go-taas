@@ -406,7 +406,7 @@ func main() {
 			// install works without hand-editing configuration.
 			if k8sClient, k8sErr := k8s.NewClient(&k8s.Config{Kubeconfig: cfg.Controller.Kubeconfig}); k8sErr == nil {
 				inferSvc.SetGatewayResolver(k8s.NewGatewayResolver(
-					k8sClient, cfg.Runtime.AIBrix.Gateway, cfg.Runtime.AIBrix.Namespace))
+					k8sClient, cfg.Runtime.Gateway.Name, cfg.Runtime.Gateway.Namespace))
 				// The inference hostname an administrator saves in the
 				// console is applied to the data-plane route, so the
 				// setting publishes the gateway instead of only changing

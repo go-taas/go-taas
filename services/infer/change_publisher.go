@@ -3,10 +3,12 @@ package infer
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
+	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/model"
 )
 
@@ -45,8 +47,8 @@ const (
 type changeEventModel struct {
 	ModelID string `json:"model_id"`
 	// Name is the catalog model name. Clients send it as the `model`
-	// field of an inference request, so the controller advertises it to
-	// AIBrix and passes it to the engine as its served model name.
+	// field of an inference request, so the workload advertises it and the
+	// engine serves under it.
 	Name       string `json:"name,omitempty"`
 	Version    string `json:"version"`
 	WeightPath string `json:"weight_path"`
@@ -109,7 +111,7 @@ type changeEvent struct {
 	// prefill and decode independently.
 	RoleEngineArgs []RoleEngineArgs `json:"role_engine_args,omitempty"`
 	// Topology is the serving layout: single, distributed or pd. The
-	// controller turns it into the AIBrix StormService roles.
+	// controller turns it into the object's roles.
 	Topology string `json:"topology,omitempty"`
 	// TensorParallelSize / PipelineParallelSize shape one replica's pod
 	// group (1 for a single-node deploy).
@@ -247,30 +249,47 @@ func publishChangeWithCompensation(
 	return nil
 }
 
-// routeFailoverLimit caps how many survivor services one teardown re-points
+// buildServiceEvent composes a service's complete desired state, the shape
+// every event that makes the controller write the object must have.
+//
+// The controller rebuilds the cluster object from the event alone: the pod
+// template's image, its command and its environment all come from here. An
+// event that leaves any of them out would write an object whose pods cannot
+// start, so a caller that only knows part of the state does not publish at
+// all: it resolves the rest first.
+func buildServiceEvent(ctx context.Context, models *model.Repository, row *InferenceService, eventType string) (changeEvent, error) {
+	version, err := models.FindVersion(ctx, row.ModelID, row.ModelVersion)
+	if err != nil {
+		return changeEvent{}, fmt.Errorf("resolve model version: %w", err)
+	}
+	img, err := image.Lookup(row.ImageID)
+	if err != nil {
+		return changeEvent{}, fmt.Errorf("resolve engine image: %w", err)
+	}
+	return buildChangeEvent(eventType, row, servedModelName(ctx, models, row),
+		version.WeightPath, img.Reference(), img.Engine), nil
+}
+
+// survivorLimit caps how many survivor services one teardown re-points
 // the model route at. One is enough to keep the model routable; the cap only
 // exists so a pathological fleet cannot turn one delete into a publish storm.
-const routeFailoverLimit = 5
+const survivorLimit = 5
 
-// publishRouteReconciliations re-publishes a route-reconciliation event for
-// every running service of the given model except the excluded one.
+// republishSurvivors re-states every running service of the given model
+// except the excluded one.
 //
-// It exists because the serving route is named after the *model*, not the
-// service: two services that serve the same model share one HTTPRoute, and
-// the route can only point at one backend. When one of them is torn down, the
-// route would otherwise be deleted with it and the survivor would stay
-// unroutable until an operator touched it — the gateway answers 503
-// (`httproutes ... not found`) for every request in the meantime.
+// A service's cluster state is written when its own change event is handled
+// and not touched again, so tearing one service down cannot disturb its
+// siblings — each owns its object. Re-publishing the survivors anyway is what
+// keeps a model that stays served converged after the teardown: the survivor
+// is re-applied from the catalog, so an object the teardown or the operator
+// damaged on the way is repaired on the spot instead of waiting for the next
+// converger tick.
 //
-// Publishing the survivor's reconciliation *before* the teardown event also
-// makes the controller's ownership check do the right thing: the route no
-// longer serves the stopping service, so the teardown leaves it alone instead
-// of deleting it and relying on a later recreate.
-//
-// Failures are logged, never returned: a missing survivor route must not fail
-// the stop/delete the operator asked for. The serving converger retries on its
-// next tick.
-func publishRouteReconciliations(
+// Failures are logged, never returned: a survivor that cannot be re-stated
+// must not fail the stop/delete the operator asked for. The serving converger
+// retries on its next tick.
+func republishSurvivors(
 	ctx context.Context,
 	client mq.Client,
 	repo *InferenceServiceRepository,
@@ -284,18 +303,19 @@ func publishRouteReconciliations(
 	if err != nil || row == nil || row.ModelID == "" {
 		return
 	}
-	survivors, err := repo.ListRunningByModel(ctx, row.ModelID, excludeServiceID, routeFailoverLimit)
+	survivors, err := repo.ListRunningByModel(ctx, row.ModelID, excludeServiceID, survivorLimit)
 	if err != nil {
 		logger.S().Warnw("infer: list model survivor services failed",
 			"service_id", excludeServiceID, "err", err)
 		return
 	}
 	for _, survivor := range survivors {
-		name := modelName
-		if name == "" {
-			name = servedModelName(ctx, models, survivor)
+		evt, err := buildServiceEvent(ctx, models, survivor, EventTypeReconcileRoute)
+		if err != nil {
+			logger.S().Warnw("infer: resolve survivor desired state failed",
+				"service_id", survivor.ID, "err", err)
+			continue
 		}
-		evt := buildChangeEvent(EventTypeReconcileRoute, survivor, name, "", "", "")
 		if err := publishChange(ctx, client, evt); err != nil {
 			logger.S().Warnw("infer: publish route reconciliation failed",
 				"service_id", survivor.ID, "err", err)

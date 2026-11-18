@@ -58,7 +58,7 @@ func availableCache(scheme string, models ...RegisteredModel) *ProjectionCache {
 		Availability: AvailabilityAvailable,
 		RuntimeName:  scheme,
 		Components: []Component{
-			{ComponentID: "aibrix-controller-manager", Name: "aibrix-controller-manager", Kind: KindControlPlane, Status: "ready"},
+			{ComponentID: "kserve-controller-manager", Name: "kserve-controller-manager", Kind: KindControlPlane, Status: "ready"},
 		},
 		Models:     models,
 		ReportedAt: time.Now().UTC(),
@@ -102,11 +102,11 @@ func TestUpdateServingSchemeInvalid(t *testing.T) {
 	assert.Equal(t, apierrors.CodeRuntimeSchemeInvalid, apierrors.CodeOf(err))
 }
 
-func TestUpdateServingSchemeAibrixUnavailable(t *testing.T) {
+func TestUpdateServingSchemeKServeUnavailable(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewForFVT(db, NewProjectionCache())
 
-	_, err := svc.UpdateServingScheme(context.Background(), &runtimev1.UpdateServingSchemeRequest{Scheme: SchemeAIBrix})
+	_, err := svc.UpdateServingScheme(context.Background(), &runtimev1.UpdateServingSchemeRequest{Scheme: SchemeKServe})
 	require.Error(t, err)
 	assert.Equal(t, apierrors.CodeRuntimeUnavailable, apierrors.CodeOf(err))
 }
@@ -126,13 +126,13 @@ func TestUpdateServingSchemeIdempotentNoAudit(t *testing.T) {
 func TestUpdateServingSchemeAuditsChange(t *testing.T) {
 	db := newTestDB(t)
 	rec := &fakeAudit{}
-	svc := NewForFVT(db, availableCache(SchemeAIBrix))
+	svc := NewForFVT(db, availableCache(SchemeKServe))
 	svc.SetAuditRecorder(rec)
 	svc.SetSessionUserResolver(fakeSessionUser{user: "admin-1"})
 
-	resp, err := svc.UpdateServingScheme(context.Background(), &runtimev1.UpdateServingSchemeRequest{Scheme: SchemeAIBrix})
+	resp, err := svc.UpdateServingScheme(context.Background(), &runtimev1.UpdateServingSchemeRequest{Scheme: SchemeKServe})
 	require.NoError(t, err)
-	assert.Equal(t, SchemeAIBrix, resp.Scheme.GetScheme())
+	assert.Equal(t, SchemeKServe, resp.Scheme.GetScheme())
 	require.Len(t, rec.events, 1)
 	assert.Equal(t, "runtime.scheme_changed", rec.events[0].Action)
 	assert.Equal(t, "admin-1", rec.events[0].ActorUserID)
@@ -152,7 +152,7 @@ func TestRegisterRuntimeModelValidation(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			db := newTestDB(t)
-			svc := NewForFVT(db, availableCache(SchemeAIBrix))
+			svc := NewForFVT(db, availableCache(SchemeKServe))
 			_, err := svc.RegisterRuntimeModel(context.Background(), tc.req)
 			require.Error(t, err)
 			assert.Equal(t, tc.wantCode, apierrors.CodeOf(err))
@@ -160,7 +160,7 @@ func TestRegisterRuntimeModelValidation(t *testing.T) {
 	}
 }
 
-func TestRegisterRuntimeModelRequiresActiveAIBrix(t *testing.T) {
+func TestRegisterRuntimeModelRequiresActiveKServe(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewForFVT(db, availableCache(SchemePlain))
 	_, err := svc.RegisterRuntimeModel(context.Background(), &runtimev1.RegisterRuntimeModelRequest{
@@ -172,8 +172,8 @@ func TestRegisterRuntimeModelRequiresActiveAIBrix(t *testing.T) {
 
 func TestRegisterRuntimeModelDuplicate(t *testing.T) {
 	db := newTestDB(t)
-	seedScheme(t, db, SchemeAIBrix)
-	svc := NewForFVT(db, availableCache(SchemeAIBrix, RegisteredModel{ModelName: "m1", Engine: "vllm"}))
+	seedScheme(t, db, SchemeKServe)
+	svc := NewForFVT(db, availableCache(SchemeKServe, RegisteredModel{ModelName: "m1", Engine: "vllm"}))
 	_, err := svc.RegisterRuntimeModel(context.Background(), &runtimev1.RegisterRuntimeModelRequest{
 		ModelName: "m1", Engine: "vllm", Replicas: 1, ArtifactUrl: "/w",
 	})
@@ -183,8 +183,8 @@ func TestRegisterRuntimeModelDuplicate(t *testing.T) {
 
 func TestRegisterRuntimeModelPublishesChange(t *testing.T) {
 	db := newTestDB(t)
-	seedScheme(t, db, SchemeAIBrix)
-	svc := NewForFVT(db, availableCache(SchemeAIBrix))
+	seedScheme(t, db, SchemeKServe)
+	svc := NewForFVT(db, availableCache(SchemeKServe))
 	rec := &fakeAudit{}
 	svc.SetAuditRecorder(rec)
 	client := mq.NewFake()
@@ -212,8 +212,8 @@ func TestRegisterRuntimeModelPublishesChange(t *testing.T) {
 
 func TestDeregisterRuntimeModel(t *testing.T) {
 	db := newTestDB(t)
-	seedScheme(t, db, SchemeAIBrix)
-	svc := NewForFVT(db, availableCache(SchemeAIBrix, RegisteredModel{ModelName: "m1", Engine: "vllm"}))
+	seedScheme(t, db, SchemeKServe)
+	svc := NewForFVT(db, availableCache(SchemeKServe, RegisteredModel{ModelName: "m1", Engine: "vllm"}))
 	client := mq.NewFake()
 	svc.SetPublisher(client)
 
@@ -225,7 +225,7 @@ func TestDeregisterRuntimeModel(t *testing.T) {
 	require.NoError(t, err)
 }
 
-func TestDeregisterRuntimeModelRequiresActiveAIBrix(t *testing.T) {
+func TestDeregisterRuntimeModelRequiresActiveKServe(t *testing.T) {
 	db := newTestDB(t)
 	svc := NewForFVT(db, availableCache(SchemePlain, RegisteredModel{ModelName: "m1"}))
 	_, err := svc.DeregisterRuntimeModel(context.Background(), &runtimev1.DeregisterRuntimeModelRequest{ModelName: "m1"})
@@ -235,7 +235,7 @@ func TestDeregisterRuntimeModelRequiresActiveAIBrix(t *testing.T) {
 
 func TestListRuntimeModelsFiltersAndPaginates(t *testing.T) {
 	db := newTestDB(t)
-	svc := NewForFVT(db, availableCache(SchemeAIBrix,
+	svc := NewForFVT(db, availableCache(SchemeKServe,
 		RegisteredModel{ModelName: "alpha", Engine: "vllm", Status: "ready"},
 		RegisteredModel{ModelName: "beta", Engine: "sglang", Status: "progressing"},
 		RegisteredModel{ModelName: "gamma", Engine: "vllm", Status: "ready"},
@@ -272,7 +272,7 @@ func TestHealthConsumerAppliesSnapshot(t *testing.T) {
 	client := mq.NewFake()
 	consumer := NewHealthConsumer(client, cache)
 
-	snap := HealthSnapshot{Scheme: SchemeAIBrix, Availability: AvailabilityAvailable, Components: []Component{{ComponentID: "c1"}}}
+	snap := HealthSnapshot{Scheme: SchemeKServe, Availability: AvailabilityAvailable, Components: []Component{{ComponentID: "c1"}}}
 	body, _ := json.Marshal(snap)
 	require.NoError(t, consumer.handle(mq.Message{Subject: mq.DefaultSubjects().RuntimeHealth, Body: body}))
 
@@ -289,7 +289,7 @@ func TestHealthConsumerAppliesSnapshot(t *testing.T) {
 func TestSchemeBroadcasterPublishesPersistedScheme(t *testing.T) {
 	db := newTestDB(t)
 	repo := NewRuntimeRepository(db)
-	_, err := repo.UpdateScheme(context.Background(), SchemeAIBrix, "admin")
+	_, err := repo.UpdateScheme(context.Background(), SchemeKServe, "admin")
 	require.NoError(t, err)
 
 	client := mq.NewFake()
@@ -305,7 +305,7 @@ func TestSchemeBroadcasterPublishesPersistedScheme(t *testing.T) {
 
 	b.publish(context.Background())
 	require.Len(t, got, 1)
-	assert.Equal(t, SchemeAIBrix, got[0].Scheme)
+	assert.Equal(t, SchemeKServe, got[0].Scheme)
 	assert.Equal(t, int64(1), got[0].Revision)
 }
 

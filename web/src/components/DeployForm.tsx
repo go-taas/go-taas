@@ -171,7 +171,7 @@ export default function DeployForm({
   const [acceleratorType, setAcceleratorType] = useState('');
   const [replicas, setReplicas] = useState('1');
   // Serving topology (single-node / distributed / PD). Every layout is one
-  // AIBrix StormService; the topology decides its roles.
+  // serving object; the topology decides its roles.
   const [topology, setTopology] = useState<ServingTopology>('single');
   const [tensorParallel, setTensorParallel] = useState('1');
   const [pipelineParallel, setPipelineParallel] = useState('1');

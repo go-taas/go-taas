@@ -1,9 +1,9 @@
 // Serving topology: how one inference service is laid out on the fleet.
 //
-// Every layout is realized by one AIBrix StormService (see the controller's
-// stormservice.go), so the topology is the only place the difference between
-// a single-node deploy, a distributed deploy and a PD-disaggregated deploy is
-// expressed in this module:
+// Every layout is realized by one KServe LLMInferenceService (see the
+// controller's serving.go), so the topology is the only place the difference
+// between a single-node deploy, a distributed deploy and a PD-disaggregated
+// deploy is expressed in this module:
 //
 //	single       one pod per replica; tensor/pipeline parallelism runs inside
 //	             that pod, so it owns TP x PP devices on one machine

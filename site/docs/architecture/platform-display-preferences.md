@@ -4,8 +4,8 @@
 | --- | --- |
 | Feature point | One system time zone, default language and currency for the whole installation; the model-download flow lives on the model catalog instead of its own page; external models are not deployable; the multi-machine layout and per-role engine parameters; the console's autoscaling labels |
 | Document scope | The `platform_settings` display columns and their projection, the dual-surface read endpoint, how the consoles consume the preferences, and the console changes that ride along |
-| Owning modules | `services/runtime` (settings model, validation, projection, RPC) · `services/infer` (external-model guard, per-role engine args) · `internal/controller` (multi-machine roles, stateful storm, rendezvous, per-role args) · `web` (`platform.tsx`, `display.ts`, `GatewaySettingsPage`, `ModelsPage`, `ModelDownloadsPanel`, `DeployForm`, locales) |
-| Related documents | [StormService Serving Topology](./stormservice-serving-topology.md) (the layout and per-role tuning) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the catalog page the download panel joined) · [Console Surface Separation](./console-surface-separation.md) |
+| Owning modules | `services/runtime` (settings model, validation, projection, RPC) · `services/infer` (external-model guard, per-role engine args) · `internal/controller` (multi-machine roles, leader-worker set, rendezvous, per-role args) · `web` (`platform.tsx`, `display.ts`, `GatewaySettingsPage`, `ModelsPage`, `ModelDownloadsPanel`, `DeployForm`, locales) |
+| Related documents | [LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md) (the layout and per-role tuning) · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) (the catalog page the download panel joined) · [Console Surface Separation](./console-surface-separation.md) |
 | Status | Implemented |
 
 ---
@@ -48,7 +48,7 @@ The download flow is no longer a navigation entry: `ModelDownloadsPage` became `
 
 ## 4. Multi-machine layout and per-role engine arguments
 
-The layout formerly called `distributed` is now **multi-machine**: one replica spans one pod per worker, each on its own device and machine, with the workers rendezvousing through the headless Service a stateful storm provides (see the topology document, AD1a–AD1c). `distributed` remains accepted on input as the pre-rename name, and the console normalizes either spelling.
+The layout formerly called `distributed` is now **multi-machine**: one replica spans one pod per worker, each on its own device and machine, with the workers rendezvousing through the headless Service a leader-worker set provides (see the topology document, AD1a–AD1c). `distributed` remains accepted on input as the pre-rename name, and the console normalizes either spelling.
 
 `role_engine_args` lets each role be tuned on its own: a role's flag overrides the shared value, the rest is inherited, and its extra arguments are appended. The deploy form renders one parameter section per role (`prefill`/`decode`, or `worker`), and `:update-topology` accepts a new override list while an omitted one keeps the stored values.
 
@@ -74,5 +74,5 @@ The autoscaling wording now reads **自动扩缩容** ("autoscaling") and **扩�
 - **AC5** A first-time visitor gets the default language; an explicit choice is never overridden.
 - **AC6** The model catalog hosts the download panel; the navigation has no download entry; the old URL redirects.
 - **AC7** The deploy picker lists no external model, and the API refuses one with 10106.
-- **AC8** Multi-machine serving creates one pod per worker in a stateful storm with the rendezvous flags; per-role engine arguments override the shared ones for their role only.
+- **AC8** Multi-machine serving creates one pod per worker in a leader-worker set with the rendezvous flags; per-role engine arguments override the shared ones for their role only.
 - **AC9** Autoscaling labels read 自动扩缩容 / 扩缩容.

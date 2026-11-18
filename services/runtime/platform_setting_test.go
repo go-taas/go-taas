@@ -52,13 +52,13 @@ func TestUpdatePlatformSettingsPersists(t *testing.T) {
 	_, err = svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
 		InferenceGatewayHostname:    "api.example.com:8443",
 		InferenceGatewayScheme:      "http",
-		InferenceGatewayInternalUrl: "http://gateway.aibrix-system.svc:80/",
+		InferenceGatewayInternalUrl: "http://gateway.kserve-system.svc:80/",
 	})
 	require.NoError(t, err)
 	got, err = svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
 	require.NoError(t, err)
 	assert.Equal(t, "http://api.example.com:8443/v1", got.GetSettings().GetInferenceBaseUrl())
-	assert.Equal(t, "http://gateway.aibrix-system.svc:80", got.GetSettings().GetInferenceGatewayInternalUrl())
+	assert.Equal(t, "http://gateway.kserve-system.svc:80", got.GetSettings().GetInferenceGatewayInternalUrl())
 
 	// Clearing the hostname drops the public URL.
 	_, err = svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{})
@@ -313,9 +313,9 @@ func enableDataPlane(t *testing.T) {
 	cfg.Runtime.DataPlane.RouteNamespace = "taas"
 	cfg.Runtime.DataPlane.ParentRefName = "gw"
 	cfg.Runtime.DataPlane.ParentRefNamespace = "gw-ns"
-	cfg.Runtime.DataPlane.BackendName = "inference-gateway"
-	cfg.Runtime.DataPlane.BackendNamespace = "gw-ns"
-	cfg.Runtime.DataPlane.BackendPort = 80
+	cfg.Runtime.DataPlane.ModelRouterName = "inference-gateway"
+	cfg.Runtime.DataPlane.ModelRouterNamespace = "gw-ns"
+	cfg.Runtime.DataPlane.ModelRouterPort = 8000
 	config.SetConfigForTest(cfg)
 	t.Cleanup(func() { config.SetConfigForTest(previous) })
 }

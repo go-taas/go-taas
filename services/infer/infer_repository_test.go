@@ -412,3 +412,31 @@ func TestPublishChangeWithCompensationRollsBack(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StateTerminated, row.State)
 }
+
+// TestListNeedingConvergence covers the retry window: a running service is
+// always re-stated (its object must exist after a wipe), while a service that
+// is not running is only re-stated once it has been left alone for the retry
+// window, so a failure that cannot be fixed is not retried on every tick.
+func TestListNeedingConvergence(t *testing.T) {
+	seedImageRegistry(t)
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+	now := time.Now().UTC().Add(-time.Minute)
+
+	live := seedService(t, repo, "org-1", "live", StateRunning, now)
+	freshFailure := seedService(t, repo, "org-1", "fresh-failure", StateFailed, now)
+	staleFailure := seedService(t, repo, "org-1", "stale-failure", StateFailed, now.Add(-time.Hour))
+	staleStarting := seedService(t, repo, "org-1", "stale-starting", StatePending, now.Add(-time.Hour))
+	parked := seedService(t, repo, "org-1", "parked", StateStopped, now.Add(-time.Hour))
+
+	rows, err := repo.ListNeedingConvergence(context.Background(), 0, now.Add(-servingRetryAfter))
+	require.NoError(t, err)
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		ids = append(ids, row.ID)
+	}
+	assert.ElementsMatch(t, []string{live.ID, staleFailure.ID, staleStarting.ID}, ids,
+		"a running service is always re-stated, a settled failure and a stale pending service are retried")
+	assert.NotContains(t, ids, freshFailure.ID, "a failure younger than the retry window is left alone")
+	assert.NotContains(t, ids, parked.ID, "a stopped service has no cluster object")
+}

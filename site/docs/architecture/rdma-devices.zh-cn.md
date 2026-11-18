@@ -5,7 +5,7 @@
 | 功能点 | 推理服务可以为自己的 Pod 申请 RDMA 网卡，让分布式与 PD 服务通过 RoCE/InfiniBand 而不是 TCP 交换张量与 KV 缓存。设备通过 Kubernetes DRA 分配；Helm Chart 创建 `DeviceClass`，控制器为每个服务写一个 `ResourceClaimTemplate` |
 | 文档范围 | 问题背景、DRA 模型、服务契约、校验、控制器的 Pod 装配、清理与同名复用、Chart 资源、控制台界面、错误码与验收标准 |
 | 归属模块 | `services/infer`（`rdma.go`、`infer_model.go`、`service.go`、`change_publisher.go`）· `internal/controller`（`rdma.go`、`reconciler.go`）· `proto/taas/infer/v1` · `deploy/helm/go-taas` · `web`（`DeployForm`、`ServiceDetailPage`） |
-| 相关文档 | [StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md)（多个角色共用同一个 Pod 模板，因此共用同一个 claim 模板）· [模型目录与部署](./model-catalog-deployment.zh-cn.md)（本文扩展的部署契约） |
+| 相关文档 | [LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.zh-cn.md)（多个角色共用同一个 Pod 模板，因此共用同一个 claim 模板）· [模型目录与部署](./model-catalog-deployment.zh-cn.md)（本文扩展的部署契约） |
 | 状态 | 已实现 |
 
 ---
@@ -34,7 +34,7 @@
 
 **AD1 —— `DeviceClass` 属于 Chart 基础设施，claim 模板属于工作负载产物。** 集群提供哪些设备是集群事实，与单个服务无关，因此由 Chart 创建一次。每个 Pod 用多少设备**是**服务属性，因此控制器按服务写 `ResourceClaimTemplate`，并随服务一起删除。若只在 Chart 里放一个共享模板，所有服务就只能用同一个设备数量。
 
-**AD2 —— 每个服务一个模板，而不是每个服务一个 claim。** `ResourceClaim` 是单次分配：多个 Pod 引用同一个 claim 会争抢同一组设备。`ResourceClaimTemplate` 正是 DRA 对此的答案——每个由它创建的 Pod 都会得到自己的 claim，这正是多副本 StormService 需要的（N 个副本 × 每个副本 M 个 Pod，各自独立）。
+**AD2 —— 每个服务一个模板，而不是每个服务一个 claim。** `ResourceClaim` 是单次分配：多个 Pod 引用同一个 claim 会争抢同一组设备。`ResourceClaimTemplate` 正是 DRA 对此的答案——每个由它创建的 Pod 都会得到自己的 claim，这正是多副本 LLMInferenceService 需要的（N 个副本 × 每个副本 M 个 Pod，各自独立）。
 
 ## 3. 契约
 
@@ -84,7 +84,7 @@ message RdmaConfig {
    `spec.resourceClaims[{name: rdma, resourceClaimTemplateName: <service>-rdma}]`，引擎容器获得 `resources.claims[{name: rdma}]`。
 2. **关闭** —— 删除模板，避免关闭 RDMA 后留下无用的设备申请。
 
-claim 引用加在 Storm 构建函数产出的 Pod 模板上，因此**所有拓扑、所有角色**都会带上：single、multinode、pd 都由同一个函数构建 Pod。
+claim 引用加在 服务对象构建函数产出的 Pod 模板上，因此**所有拓扑、所有角色**都会带上：single、multinode、pd 都由同一个函数构建 Pod。
 
 清理（`stop`/`delete`）按名删除模板（带归属校验），按 service-id 标签清扫 `resourceclaimtemplates` **与** `resourceclaims`，并在同名创建前回收旧模板。因此旧服务的迟到删除事件不会拆掉新服务的设备。
 
@@ -246,5 +246,5 @@ vLLM 仍会正常启动并初始化 NCCL，然后在第一次集合通信处永�
 **AD8 —— 同一节点内的多 Pod 副本不应通过 RDMA 承载副本内通信。** 同一节点上两个 Pod
 之间走的是 CNI 而不是 RDMA 网络，因此单节点多卡的做法是让一个 Pod 拥有全部设备：使用
 `single` 拓扑并设置 `TP × PP`，其卡数会自动推导（见
-[StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md) 的 AD3b）。当副本真正
+[LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.zh-cn.md) 的 AD3b）。当副本真正
 跨机器时才使用带 RDMA 的 multinode，并确保所用 DeviceClass 的 rail 一致。

@@ -69,9 +69,9 @@ type playgroundChatMessage struct {
 // deliberate: the call takes the same path as the user's real traffic, so
 // it exercises whatever the gateway enforces (model resolution, routing,
 // and — once the gateway verifies keys — authentication, per-key rate
-// limits and the model allow-list). The shipped AIBrix gateway does not
-// verify bearer tokens today, so a green result currently proves routing
-// and generation, not that the key is valid.
+// limits and the model allow-list). The gateway verifies the platform's own
+// API keys before the request reaches the model, so a green result covers the
+// key check, routing and generation.
 func (s *Service) playSelfHostedModel(ctx context.Context, req *inferv1.PlaygroundModelRequest, m *model.Model, orgID string) (*inferv1.PlaygroundModelResponse, error) {
 	apiKey := strings.TrimSpace(req.GetApiKey())
 	if apiKey == "" {

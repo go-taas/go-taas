@@ -430,7 +430,7 @@ function prioritySuffix(priority?: string): string {
 }
 
 // TopologyDialog changes the serving layout in place: the service keeps its
-// id and endpoints, and the controller rolls the StormService out with the
+// id and endpoints, and the controller re-applies the serving object with the
 // new roles. Editing is only meaningful for the layout fields, so replicas
 // are offered here too (a layout change restarts the pods anyway).
 function TopologyDialog({

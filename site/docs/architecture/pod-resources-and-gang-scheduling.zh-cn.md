@@ -4,8 +4,8 @@
 | --- | --- |
 | 功能点 | 所有推理拓扑都可以指定每个 Pod 的资源规格（加速卡数、CPU、内存）与优先级（高/中/低）；平台把一个副本的 Pod 作为 Volcano gang 整体调度，并允许高优先级抢占低优先级。角色参数改用 Tab 切换而非纵向堆叠 |
 | 文档范围 | 接口与存储字段、校验规则、控制器写入的 Pod 规格、Volcano PodGroup、优先级类、抢占、控制台表单与 Tab、配置、错误码与验收标准 |
-| 所属模块 | `services/infer`（`scheduling.go`、`service.go`、`change_publisher.go`） · `internal/controller`（`podgroup.go`、`reconciler.go`、`stormservice.go`） · `pkg/config`（`controller.scheduling`） · `web`（`DeployForm`、`ServiceDetailPage`） · helm（`rbac-controller`、values） |
-| 关联文档 | [StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md)（一个副本由哪些角色组成） · [加速卡清单](./accelerator-inventory.zh-cn.md)（请求所指的设备） · [推理引擎参数模板](./engine-parameter-templates.zh-cn.md)（部署表单的另一类输入） |
+| 所属模块 | `services/infer`（`scheduling.go`、`service.go`、`change_publisher.go`） · `internal/controller`（`podgroup.go`、`reconciler.go`、`serving.go`） · `pkg/config`（`controller.scheduling`） · `web`（`DeployForm`、`ServiceDetailPage`） · helm（`rbac-controller`、values） |
+| 关联文档 | [LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.zh-cn.md)（一个副本由哪些角色组成） · [加速卡清单](./accelerator-inventory.zh-cn.md)（请求所指的设备） · [推理引擎参数模板](./engine-parameter-templates.zh-cn.md)（部署表单的另一类输入） |
 | 状态 | 已实现 |
 
 ---

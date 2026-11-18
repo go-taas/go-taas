@@ -50,7 +50,7 @@ gatewayPlugin:
 | 承载 | `taas.<域名>` 与平台其他站点 | 仅推理域名 |
 | 地址 | 平台网关的地址 | 独立的 LoadBalancer 地址 |
 
-它使用 `aibrix-eg` GatewayClass，从而继承面向推理的 Envoy 调优，并且**不会**在监听器上固定推理域名：域名是
+它使用 Envoy Gateway 自带的 GatewayClass（`dataPlane.gateway.className`，默认 `eg`），并且**不会**在监听器上固定推理域名：域名是
 控制台的设置项，由服务端写入路由，因此修改域名无需 `helm upgrade`。
 
 运维需要提供两样东西：
@@ -168,7 +168,7 @@ Chart 部署平台本身，不部署其基础设施。以下组件需用各自�
 | 组件 | 用途 | 相关 values | 官方安装文档 |
 | --- | --- | --- | --- |
 | Gateway API CRD + Envoy Gateway | 通过 Gateway 暴露控制台；数据面网关插件 | `dataPlane.enabled`、`gatewayPlugin.enabled` | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
-| AIBrix | 推理服务（`StormService`、`ModelClaim`、`PodAutoscaler`、`aibrix-eg` 类） | `dataPlane.backend`、`controller.config.runtime.aibrix.*` | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| KServe | 推理服务：`LLMInferenceService`（模型副本、灰度发布、流量拆分） | `dataPlane.backend`、`controller.config.runtime.gateway.*` | [KServe](https://kserve.github.io/docs/) |
 | Volcano | Gang 调度与优先级抢占；values 中引用的 PriorityClass | `controller.config.controller.scheduling` | [Volcano](https://volcano.sh/en/docs/installation/) |
 | JuiceFS CSI（或任意 ReadWriteMany 存储类） | 服务端与推理 Pod 共享的同一套模型权重 | `controller.config.controller.weights.storageClass`、`taasServer.extraVolumes` | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor（可选） | 镜像导入 / 上传到自有仓库 | `harbor`（或 `taasServer.harbor`） | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
@@ -309,7 +309,7 @@ secrets:
    | `taasServer.secretConfig.image.harbor.password` | `CONFIG_IMAGE_HARBOR_PASSWORD`（来自 Secret） |
    | `controller.config.controller.namespace` | `CONFIG_CONTROLLER_NAMESPACE` |
    | `controller.config.controller.weights.storageClass` | `CONFIG_CONTROLLER_WEIGHTS_STORAGECLASS` |
-   | `controller.config.runtime.aibrix.namespace` | `CONFIG_RUNTIME_AIBRIX_NAMESPACE` |
+   | `controller.config.runtime.gateway.namespace` | `CONFIG_RUNTIME_GATEWAY_NAMESPACE` |
 
    在这些键下使用列表或字典会渲染失败，并提示改用 `configOverrides`。
 
@@ -368,7 +368,6 @@ secrets:
 | `harbor.uploadMaxArchiveBytes` | `0`（8 GiB） | 上传端点接受的镜像包大小上限 |
 | `dataPlane.enabled` / `hostname` | `false` / `""` | 通过 Chart 创建的 Gateway 以某个域名发布推理网关 |
 | `dataPlane.parentRef.name` / `namespace` / `sectionName` | `taas-inference` / 发布命名空间 / `https` | 为推理域名终止 TLS 的 Gateway |
-| `dataPlane.backend.name` / `namespace` / `port` | AIBrix Envoy Service / `yunzhi-system` / `80` | 数据面路由转发到的 Service |
 | `gatewayPlugin.enabled` / `failOpen` / `cacheTTL` / `verifyTimeout` | `false` / `false` / `30s` / `500ms` | 校验 API Key 并上报计量的 Wasm 过滤器 |
 | `monitoring.prometheusURL` | `""` | Prometheus 地址；为空时回退到控制器自身采集的样本 |
 | `monitoring.inferencePodMonitor.*` | 启用 | 抓取引擎自身指标的 PodMonitor（需要 Prometheus Operator CRD） |

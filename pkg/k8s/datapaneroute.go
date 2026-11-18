@@ -67,52 +67,32 @@ func (r *DataPlaneRouter) Ensure(ctx context.Context, hostname string, cfg confi
 	return r.apply(ctx, httpRouteGVR, route)
 }
 
-// dataPlaneRules renders the route's rules in match order.
+// dataPlaneRules renders the route rules.
 //
-// The chat endpoint goes to the model router when one is configured: the
-// router is the only component that can tell a model an inference service
-// serves from one the platform sells from a provider, and the gateway would
-// answer "model does not exist" for the latter. Every other path keeps going
-// straight to the inference gateway, so self-hosted traffic is unchanged.
-// Both rules stream, so both carry the long request timeout.
+// One rule, one backend: the model router. The router is the only component
+// that can tell a model the platform serves itself from one the platform
+// forwards to a provider, so the route cannot pick the backend from the
+// request path. A self-hosted request goes on from the router to the model's
+// own workload Service, where a replica answers it.
 func dataPlaneRules(cfg config.RuntimeDataPlaneConfig, routeNamespace string) []any {
-	rules := make([]any, 0, 2)
-	if cfg.ModelRouterName != "" && cfg.ModelRouterPort > 0 {
-		namespace := cfg.ModelRouterNamespace
-		if namespace == "" {
-			namespace = routeNamespace
-		}
-		rules = append(rules, map[string]any{
-			"matches": []any{map[string]any{
-				"path": map[string]any{"type": "PathPrefix", "value": DataPlaneChatPath},
-			}},
-			"backendRefs": []any{map[string]any{
-				"group":     "",
-				"kind":      "Service",
-				"name":      cfg.ModelRouterName,
-				"namespace": namespace,
-				"port":      int64(cfg.ModelRouterPort),
-				"weight":    int64(1),
-			}},
-			"timeouts": map[string]any{"request": "600s"},
-		})
+	namespace := cfg.ModelRouterNamespace
+	if namespace == "" {
+		namespace = routeNamespace
 	}
-	return append(rules, map[string]any{
+	return []any{map[string]any{
 		"matches": []any{map[string]any{
 			"path": map[string]any{"type": "PathPrefix", "value": "/"},
 		}},
 		"backendRefs": []any{map[string]any{
 			"group":     "",
 			"kind":      "Service",
-			"name":      cfg.BackendName,
-			"namespace": cfg.BackendNamespace,
-			"port":      int64(cfg.BackendPort),
+			"name":      cfg.ModelRouterName,
+			"namespace": namespace,
+			"port":      int64(cfg.ModelRouterPort),
 			"weight":    int64(1),
 		}},
-		// Inference answers stream; a short timeout would cut a long
-		// generation off mid-stream.
 		"timeouts": map[string]any{"request": "600s"},
-	})
+	}}
 }
 
 // ServedHostnames reports the hostnames the route currently serves, so the
@@ -165,6 +145,10 @@ func (r *DataPlaneRouter) apply(ctx context.Context, gvr schema.GroupVersionReso
 // cannot store a hostname that answers 404.
 func buildDataPlaneObjects(hostname string, cfg config.RuntimeDataPlaneConfig) (*unstructured.Unstructured, *unstructured.Unstructured, error) {
 	routeNamespace := cfg.RouteNamespace
+	routerNamespace := cfg.ModelRouterNamespace
+	if routerNamespace == "" {
+		routerNamespace = routeNamespace
+	}
 	switch {
 	case hostname == "":
 		return nil, nil, fmt.Errorf("k8s: data-plane route needs a hostname")
@@ -172,10 +156,8 @@ func buildDataPlaneObjects(hostname string, cfg config.RuntimeDataPlaneConfig) (
 		return nil, nil, fmt.Errorf("k8s: data-plane route needs a namespace (runtime.dataPlane.routeNamespace)")
 	case cfg.ParentRefName == "" || cfg.ParentRefNamespace == "":
 		return nil, nil, fmt.Errorf("k8s: data-plane route needs the parent Gateway (runtime.dataPlane.parentRefName/parentRefNamespace)")
-	case cfg.BackendName == "" || cfg.BackendNamespace == "":
-		return nil, nil, fmt.Errorf("k8s: data-plane route needs the inference gateway Service (runtime.dataPlane.backendName/backendNamespace)")
-	case cfg.BackendPort <= 0:
-		return nil, nil, fmt.Errorf("k8s: data-plane route needs a backend port (runtime.dataPlane.backendPort)")
+	case cfg.ModelRouterName == "" || cfg.ModelRouterPort <= 0:
+		return nil, nil, fmt.Errorf("k8s: data-plane route needs the model router Service (runtime.dataPlane.modelRouterName/modelRouterPort)")
 	}
 
 	parent := map[string]any{
@@ -204,15 +186,15 @@ func buildDataPlaneObjects(hostname string, cfg config.RuntimeDataPlaneConfig) (
 			"rules":      dataPlaneRules(cfg, routeNamespace),
 		},
 	}}
-	if routeNamespace == cfg.BackendNamespace {
+	if routeNamespace == routerNamespace {
 		return route, nil, nil
 	}
 	grant := &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "gateway.networking.k8s.io/v1beta1",
 		"kind":       "ReferenceGrant",
 		"metadata": map[string]any{
-			"name":      cfg.ParentRefNamespace + dataPlaneGrantSuffix + cfg.BackendNamespace,
-			"namespace": cfg.BackendNamespace,
+			"name":      cfg.ParentRefNamespace + dataPlaneGrantSuffix + routerNamespace,
+			"namespace": routerNamespace,
 			"labels":    map[string]any{"app.kubernetes.io/name": "go-taas"},
 		},
 		"spec": map[string]any{

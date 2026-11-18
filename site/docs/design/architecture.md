@@ -52,7 +52,7 @@ subgraph L3["LAYER 03 · K8s cluster"]
     end
     subgraph L3B["② Third-party dependencies · Helm Chart"]
         direction LR
-        B1["Aibrix<br/>Distributed runtime, KV cache"]:::dp
+        B1["KServe<br/>Distributed runtime, KV cache"]:::dp
         B2["HAMi<br/>GPU slicing: partition a physical GPU by memory / compute"]:::dp
         B3["Volcano<br/>Gang scheduling and priority preemption"]:::dp
         B4["GPU / NPU Operator<br/>Drivers, device plugin, topology and health"]:::cell
@@ -93,7 +93,7 @@ chart publishes both:
 | Plane | Workload | Entry point | Serves |
 | --- | --- | --- | --- |
 | Control | `taasServer` (Deployment) | the platform Gateway's route for the console hostname (e.g. `taas.example.com`) | `/api/v1/*`, `/api/v1/admin/*`, the console |
-| Data | AIBrix Envoy gateway (`aibrix-eg` Gateway → Envoy proxy Service) | the platform Gateway's route for the inference hostname (e.g. `api.example.com`) | `/v1/chat/completions`, `/v1/embeddings`, … |
+| Data | KServe Envoy gateway (`taas-inference` Gateway → Envoy proxy Service) | the platform Gateway's route for the inference hostname (e.g. `api.example.com`) | `/v1/chat/completions`, `/v1/embeddings`, … |
 
 `dataPlane.enabled` + `dataPlane.hostname` make the **server** create an
 `HTTPRoute` that forwards the inference hostname straight to the inference
@@ -289,7 +289,7 @@ below with its responsibility boundary and the feature points it implements
 | 4 | `model` | Model catalog, versioning and rollback, weight paths and model-hub download, per-tenant model authorization | #2, #13, #32 |
 | 5 | `image` | Inference engine image registry, versioning and import, node-level pre-pull tasks, model × engine × card-type compatibility matrix | #3, #19 |
 | 6 | `infer` | Inference service lifecycle (deploy, scale, upgrade, rollback), autoscaling, routing policies, playground (incl. side-by-side comparison), SDK quickstart, service logs, load testing | #2, #12, #16, #20, #21, #33, #35, #45 |
-| 7 | `runtime` | Platform serving scheme (plain Deployment vs AIBrix), runtime component health and registered-model projection | #47 |
+| 7 | `runtime` | Platform serving scheme (plain Deployment vs KServe), runtime component health and registered-model projection | #47 |
 | 8 | `routing` | Routing groups (virtual models) over real catalog candidates: weights, cost/latency strategies, intent rules, decision trail | #49 |
 | 9 | `provider` | External provider registry, encrypted write-only keys, upstream-model curation and publishing into the catalog, connectivity probes | #48 |
 | 10 | `metering` | Token metering and tamper-proof vouchers, usage records, request logs, usage dashboards, per-key usage analytics, error analysis | #4, #9, #12, #28, #31 |
@@ -460,7 +460,7 @@ Two trade-offs are deliberate:
 > plane must satisfy. The Wasm carrier now ships: a proxy-wasm filter on the
 > outer inference gateway performs step 01 (Auth) and step 04 (Meter), plus
 > the two limits whose contracts say the gateway enforces them locally
-> (`rate_limit_rpm` and the `max_tokens` cap). AIBrix's Go `ext_proc` plugin
+> (`rate_limit_rpm` and the `max_tokens` cap). KServe's Go `ext_proc` plugin
 > keeps step 03 (Route) — the filter picks no backend. Steps 02 (quota lease),
 > 05–07 and 08 are not in the Wasm carrier yet; see
 > [Data-Plane Gateway Plugin](../architecture/data-plane-gateway-plugin.md)
@@ -570,7 +570,7 @@ sequenceDiagram
     CGW->>GRPC: Validate parameters, write desired state, register deployment task
     GRPC->>MQ: Publish "deploy inference service" message
     MQ->>CTRL: Consume deployment message
-    CTRL->>K8s: Create AIBrix StormService and Service (mount shared weight volume)
+    CTRL->>K8s: Create LLMInferenceService and Service (mount shared weight volume)
     K8s-->>CTRL: Inference Pods ready
     CTRL->>K8s: Register service endpoints, mark inference service available
     CTRL-->>GRPC: Report deployment result
@@ -706,7 +706,7 @@ topology diagram. It has four concerns:
 | External identity providers (LDAP / OIDC / SAML / WeChat) | auth | Third-party SSO federated login and the source of user attributes |
 | Customer webhook endpoints (HTTPS) | webhook | Outbound event delivery with HMAC signing and retry policy |
 | Model hubs (ModelScope / HuggingFace) | model | Model weight download into the shared JuiceFS volume |
-| **AIBrix** | Controller · infer · runtime | Distributed inference runtime and the inference gateway: model deployment objects (`ModelClaim`, `PodAutoscaler`), KV-cache-aware routing, and the Envoy proxy that fronts the data plane. Installed as its own Helm release; the chart's `dataPlane` values publish its gateway under the inference hostname |
+| **KServe** | Controller · infer · runtime | Distributed inference runtime and the inference gateway: model deployment objects (`LLMInferenceService`, `autoscaling`), KV-cache-aware routing, and the Envoy proxy that fronts the data plane. Installed as its own Helm release; the chart's `dataPlane` values publish its gateway under the inference hostname |
 | **HAMi** | Controller · vgpu | GPU slicing only: partition one physical GPU into memory / compute slices for shared-GPU services and emit the placement-policy annotation. Its heterogeneous accelerator management, device plugin and scheduler are **not** used |
 | **Volcano** (`implemented`) | Controller · batch | Gang scheduling and priority preemption for multi-pod inference roles through a PodGroup per replica. Optional: with `controller.scheduling.schedulerName` empty the cluster's default scheduler is used |
 | **GPU / NPU operators** | Controller · accelerator | Vendor driver, device plugin, topology and health; the accelerator inventory reads the node labels they publish |
@@ -770,8 +770,8 @@ is easy to sign and impossible to settle.
 > **Current-status note.** CRD-as-source-of-truth is the target design. The
 > repository today publishes desired-state **change events** over the message
 > queue and the controller writes the Deployment, Service, autoscaler and
-> serving-gateway routing objects directly; `ModelClaim` is written as an
-> AIBrix CR. Moving the workload objects themselves behind a CRD is the
+> serving-gateway routing objects directly; `LLMInferenceService` is written as an
+> KServe CR. Moving the workload objects themselves behind a CRD is the
 > remaining step of this decision, tracked as a gap rather than described as
 > done.
 

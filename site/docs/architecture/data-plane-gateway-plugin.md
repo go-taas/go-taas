@@ -26,7 +26,7 @@ This feature builds the missing component.
 - Fail closed on authentication, fail open on metering.
 - One artifact per release, shipped with the server image.
 
-**Non-goals** (deferred, §8): cross-worker concurrency leases, token-per-minute limits, trace injection, result caching, degrade buffering, and replacing AIBrix's routing.
+**Non-goals** (deferred, §8): cross-worker concurrency leases, token-per-minute limits, trace injection, result caching, degrade buffering, and replacing KServe's routing.
 
 ### 1.1 Reading order of this document
 
@@ -44,9 +44,9 @@ Section 2 records the architecture decisions (AD1–AD9). Section 3 is the place
 | AD4 | **Fail closed on authentication, fail open on metering** | A verdict derived from a timeout is a guess, and guessing "allow" is an open door. Metering is the opposite: §3.2.1 states that a metering failure must never block inference, because refusing service when billing is down widens the blast radius from "the bill is off" to "everything is down". A dropped event is counted and logged so it is never silent |
 | AD5 | **Verification happens at the request-body phase, for `/v1/` paths only** | The model allow-list is part of the `VerifyAPIKey` contract, and the model name exists only in the body. Non-`/v1/` paths (health, discovery) stay open so Kubernetes probes work. The trade-off — the outer Envoy buffers request bodies — costs nothing because inference requests are not streamed upwards |
 | AD6 | **The plugin always observes the response tail and asks the engine for usage on a stream** | §3.4 makes the engine authoritative: a gateway tokenizer drifts under chat templates, tool-call framing and multimodal input. Reading the engine's `usage` is the only accurate count, and an OpenAI-compatible engine omits it from a stream unless the caller sets `stream_options.include_usage`. Only a bounded tail is retained, so a long generation costs a fixed amount of memory |
-| AD7 | **The verdict cache and the token bucket live in per-worker memory with a 30 s TTL** | Envoy gives a Wasm filter no state shared across worker threads. The cache is therefore per worker: with N workers the platform sees up to N verifications per TTL, which its own Redis cache makes cheap. This is an approximation and is documented as one rather than presented as a guarantee |
+| AD7 | **The verdict cache and the token bucket live in per-worker memory with a 5 s TTL** | Envoy gives a Wasm filter no state shared across worker threads. The cache is therefore per worker: with N workers the platform sees up to N verifications per TTL, which its own Redis cache makes cheap. This is an approximation and is documented as one rather than presented as a guarantee |
 | AD8 | **The artifact is built in the server's Docker image and served by the server, then loaded over HTTP** | One release produces exactly one plugin version, with no second image and no registry credentials for Envoy. The coupling is real — if the server is down when an Envoy pod starts, the filter cannot load — but it is the same availability the filter already has, since every cache miss calls the server. The digest pin is opt-in, because Helm applies the policy before the new pods serve the new artifact |
-| AD9 | **The policy attaches to the server-owned data-plane HTTPRoute, not to the AIBrix gateway** | It is the only Envoy in the chain that go-taas owns; a policy in `aibrix-system` belongs to another release and would be overwritten. Being first in the chain also means an unauthenticated request is rejected before the second proxy or a model pod sees it, and AIBrix's `ext_proc` router keeps working unchanged |
+| AD9 | **The policy attaches to the server-owned data-plane HTTPRoute, not to the KServe gateway** | It is the only Envoy in the chain that go-taas owns; a policy in `kserve-system` belongs to another release and would be overwritten. Being first in the chain also means an unauthenticated request is rejected before the second proxy or a model pod sees it, and KServe's `ext_proc` router keeps working unchanged |
 
 ---
 
@@ -64,15 +64,15 @@ The two planes do not share a proxy:
 | HTTP filters | none | the Wasm plugin |
 | Failure domain | console/API | inference |
 
-They were one proxy at first: inference entered through the platform's gateway and was forwarded to the AIBrix gateway, so an inference traffic spike added load to the console's proxy and a reload or a bad config there broke inference too. The data plane now has its own Gateway — same `aibrix-eg` class, so it inherits the inference-oriented Envoy tuning rather than the platform's, and its own lifecycle.
+They were one proxy at first: inference entered through the platform's gateway and was forwarded to the KServe gateway, so an inference traffic spike added load to the console's proxy and a reload or a bad config there broke inference too. The data plane now has its own Gateway — same `taas-inference` class, so it inherits the inference-oriented Envoy tuning rather than the platform's, and its own lifecycle.
 
 ```mermaid
 flowchart TD
-    C["Client (SDK / agent)"] --> GW["Gateway taas/taas-inference<br/>class aibrix-eg, own address<br/>TLS terminate"]
+    C["Client (SDK / agent)"] --> GW["Gateway taas/taas-inference<br/>class taas-inference, own address<br/>TLS terminate"]
     GW --> DP{"HTTPRoute taas/data-plane<br/>server-owned<br/>hostname = console setting"}
     DP --> WASM["Wasm filter<br/>auth + rate + clamp + meter"]
-    WASM --> AIB["aibrix-eg Envoy<br/>(model routing)"]
-    AIB --> EXT["ext_proc: aibrix-gateway-plugins"]
+    WASM --> AIB["taas-inference Envoy<br/>(model routing)"]
+    AIB --> EXT["ext_proc: gateway-plugin"]
     EXT --> POD["inference pod"]
     WASM -.->|POST /internal/gateway/verify| API["taas-server monitor :9092"]
     WASM -.->|POST /internal/gateway/usage| API
@@ -85,7 +85,7 @@ flowchart TD
 The policy attaches to `taas/data-plane` because:
 
 - it is the only Envoy in the chain go-taas owns (AD9), and now the only one in the inference path at all;
-- it sees each request before AIBrix buffers it, so the earliest possible rejection is the cheapest one;
+- it sees each request before KServe buffers it, so the earliest possible rejection is the cheapest one;
 - the route name is stable while the hostname is an operator setting, so the policy is Helm-owned without competing for the route's `spec.hostnames` — the conflict that previously made a Helm upgrade and a console save disagree.
 
 Two listener details matter:
@@ -132,7 +132,7 @@ A rejected key is a **200 with `allowed: false`** plus the business code and mes
  "status": "success", "error": ""}
 ```
 
-`model` is the **served name**, not a UUID: the plugin only knows what the caller typed. The server resolves it to the catalog id (and to the inference service that serves it), so identity resolution stays server-side and the plugin stays replaceable. A publish failure answers 503 and increments `taas_gateway_plugin_usage_dropped_total`; the plugin never retries, because the request has already been served and the gap is attributable by `request_id`.
+`model` is the **served name**, not a UUID: the plugin only knows what the caller typed. The server resolves it to the catalog id (and to the inference service that serves it), so identity resolution stays server-side and the plugin stays replaceable. A publish failure is logged and dropped; the plugin never retries and never fails the response, because the request has already been served and the gap is attributable by `request_id`.
 
 ### 4.3 `GET /internal/gateway/plugin.wasm`
 
@@ -142,17 +142,11 @@ The artifact, served with `Content-Type: application/wasm`. A build without it a
 
 ## 5. Data model
 
-None. The plugin stores nothing: verdicts live in per-worker memory for 30 s (AD7), and usage becomes a metering event on the queue, which the existing ledger persists. This is the point of the design — the data plane keeps no state that would need replicating, backing up or reconciling.
+None. The plugin stores nothing: verdicts live in per-worker memory for 5 s (AD7), and usage becomes a metering event on the queue, which the existing ledger persists. This is the point of the design — the data plane keeps no state that would need replicating, backing up or reconciling.
 
-Two Prometheus counters describe the plugin's own behaviour:
+The filter exports no metrics of its own. What it does is counted where the work is counted: the platform counts verifications and usage because every verify and usage call lands there, and Envoy's own per-route stats show this route's request count, response classes and upstream resets.
 
-| Metric | Meaning |
-| --- | --- |
-| `taas_gateway_plugin_verify_total{result}` | Verifications by outcome (`allowed`, `rejected`, `error`) |
-| `taas_gateway_plugin_usage_total` | Usage events recorded |
-| `taas_gateway_plugin_usage_dropped_total` | Usage events the platform could not record |
-
-A flat `usage_total` while inference traffic flows is the signal that the filter stopped reporting — nothing else would show it.
+A usage count that stays flat on the platform while inference traffic flows is the signal that the filter stopped reporting; the filter's own silence shows up as Envoy logging the failure and, with `failOpen: false`, as 403s that the console's error rate can see.
 
 ---
 
@@ -205,7 +199,7 @@ sequenceDiagram
 
 ### 7.2 A rejected request
 
-The plugin answers locally, so the request never reaches AIBrix or a model pod: no upstream connection, no container CPU, and the rejection costs one digest hash — or, when the credential is not even shaped like a key, nothing at all.
+The plugin answers locally, so the request never reaches KServe or a model pod: no upstream connection, no container CPU, and the rejection costs one digest hash — or, when the credential is not even shaped like a key, nothing at all.
 
 ### 7.3 Why the pause is where it is
 
@@ -227,7 +221,7 @@ The working arrangement is: continue at the headers (removing `Content-Length`, 
 | `traceparent` injection, latency phase marks | Orthogonal to auth and metering |
 | Result cache, prefix affinity | Changes billing semantics; needs its own decision |
 | Degrade + compensating replay | Today a dropped event is counted and logged; a replay queue is the follow-up |
-| Immediate revocation | A revocation is effective within the cache TTL (30 s). A control channel into Envoy is not worth it for that window |
+| Immediate revocation | A revocation is effective within the cache TTL (5 s). A control channel into Envoy is not worth it for that window |
 
 ---
 
@@ -239,7 +233,7 @@ The working arrangement is: continue at the headers (removing `Content-Length`, 
 | --- | --- | --- |
 | `enabled` | `false` | Serve the internal API. Off by default: enabling it makes the gateway start rejecting unverified traffic, a behaviour change an install must opt into |
 | `token` | `""` | Shared secret; empty disables the endpoints even when enabled |
-| `cacheTTL` | `30s` | Verdict lifetime (per worker) |
+| `cacheTTL` | `5s` | Verdict lifetime (per worker) |
 | `verifyTimeout` | `500ms` | Budget for one filter → server call |
 | `protectedPrefixes` | `["/v1/"]` | Paths that require a key |
 | `failOpen` | `false` | Passed to the policy |
@@ -271,7 +265,7 @@ Chart (`values.yaml` → `gatewayPlugin`): the same values plus `internalHostnam
 
 ## 12. Verification record
 
-Against a live cluster (`llm.sudoinfotech.com`, vLLM 0.28.0, one replica):
+Against a live cluster with one engine replica behind the gateway:
 
 | Check | Result |
 | --- | --- |

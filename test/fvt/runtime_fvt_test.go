@@ -194,28 +194,25 @@ func (e *runtimeFvtEnv) call(t *testing.T, method, path string, body any, header
 	return resp.StatusCode, out
 }
 
-// aibrixSnapshot builds an available aibrix snapshot with the five
-// control-plane components, the Envoy gateway, and the given models.
-func aibrixSnapshot(models ...runtimesvc.RegisteredModel) runtimesvc.HealthSnapshot {
-	components := make([]runtimesvc.Component, 0, 6)
-	for _, name := range []string{
-		"aibrix-controller-manager", "aibrix-gateway-plugins", "aibrix-gpu-optimizer",
-		"aibrix-metadata-service", "aibrix-redis-master",
-	} {
-		components = append(components, runtimesvc.Component{
-			ComponentID: name, Name: name, Kind: runtimesvc.KindControlPlane,
-			Namespace: "aibrix-system", Status: "ready", ReadyReplicas: 1, DesiredReplicas: 1,
-		})
+// kserveSnapshot builds an available KServe snapshot: the control plane and
+// the Envoy Gateway that fronts the model route, plus the given models.
+func kserveSnapshot(models ...runtimesvc.RegisteredModel) runtimesvc.HealthSnapshot {
+	components := []runtimesvc.Component{
+		{
+			ComponentID: "kserve-controller-manager", Name: "kserve-controller-manager",
+			Kind: runtimesvc.KindControlPlane, Namespace: "kserve", Status: "ready",
+			ReadyReplicas: 1, DesiredReplicas: 1,
+		},
+		{
+			ComponentID: "envoy-kserve-system-kserve-eg", Name: "envoy-kserve-system-kserve-eg",
+			Kind: runtimesvc.KindGateway, Namespace: "kserve", Status: "ready",
+			ReadyReplicas: 1, DesiredReplicas: 1,
+		},
 	}
-	components = append(components, runtimesvc.Component{
-		ComponentID: "envoy-aibrix-system-aibrix-eg", Name: "envoy-aibrix-system-aibrix-eg",
-		Kind: runtimesvc.KindGateway, Namespace: "aibrix-system", Status: "ready",
-		ReadyReplicas: 1, DesiredReplicas: 1,
-	})
 	return runtimesvc.HealthSnapshot{
-		Scheme:       runtimesvc.SchemeAIBrix,
+		Scheme:       runtimesvc.SchemeKServe,
 		Availability: runtimesvc.AvailabilityAvailable,
-		RuntimeName:  runtimesvc.SchemeAIBrix,
+		RuntimeName:  runtimesvc.SchemeKServe,
 		ClusterName:  "sd4090",
 		Components:   components,
 		Models:       models,
@@ -241,26 +238,26 @@ func plainFallbackSnapshot() runtimesvc.HealthSnapshot {
 
 // TestRuntimeFVTStatusAndComponents covers AC1 and AC2: the overview joins
 // the persisted scheme with the cached snapshot, and the component table
-// lists the five AIBrix control-plane components plus the Envoy gateway.
+// lists the KServe control plane and the Envoy Gateway that fronts it.
 func TestRuntimeFVTStatusAndComponents(t *testing.T) {
 	env := newRuntimeFvtEnv(t)
-	env.seedScheme(t, runtimesvc.SchemeAIBrix)
-	env.publish(t, aibrixSnapshot())
+	env.seedScheme(t, runtimesvc.SchemeKServe)
+	env.publish(t, kserveSnapshot())
 
 	code, body := env.call(t, http.MethodGet, "/api/v1/admin/runtime", nil, nil)
 	require.Equal(t, http.StatusOK, code)
 	overview, ok := body["runtime"].(map[string]any)
 	require.True(t, ok, "response has no runtime object: %v", body)
-	assert.Equal(t, runtimesvc.SchemeAIBrix, overview["scheme"])
+	assert.Equal(t, runtimesvc.SchemeKServe, overview["scheme"])
 	assert.Equal(t, runtimesvc.AvailabilityAvailable, overview["availability"])
 	assert.Equal(t, "sd4090", overview["clusterName"])
-	assert.Len(t, overview["components"], 6)
+	assert.Len(t, overview["components"], 2)
 
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/runtime/components", nil, nil)
 	require.Equal(t, http.StatusOK, code)
 	components, ok := body["components"].([]any)
 	require.True(t, ok)
-	assert.Len(t, components, 6)
+	assert.Len(t, components, 2)
 }
 
 // TestRuntimeFVTPlainFallbackComponents covers AC11: under the plain
@@ -288,23 +285,23 @@ func TestRuntimeFVTPlainFallbackComponents(t *testing.T) {
 }
 
 // TestRuntimeFVTSchemeSwitcher covers AC3, AC10 and AC11: switching is
-// audited, confirmed and idempotent; switching to aibrix while the
-// runtime is unavailable returns 12901; an unknown scheme returns 12902.
+// audited, confirmed and idempotent; switching while the runtime is not
+// observed returns 12901; an unknown scheme returns 12902.
 func TestRuntimeFVTSchemeSwitcher(t *testing.T) {
 	env := newRuntimeFvtEnv(t)
-	env.publish(t, aibrixSnapshot())
+	env.publish(t, kserveSnapshot())
 
 	code, body := env.call(t, http.MethodGet, "/api/v1/admin/runtime/scheme", nil, nil)
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, runtimesvc.SchemePlain, body["scheme"].(map[string]any)["scheme"])
 
-	code, body = env.call(t, http.MethodPut, "/api/v1/admin/runtime/scheme", map[string]any{"scheme": runtimesvc.SchemeAIBrix}, nil)
+	code, body = env.call(t, http.MethodPut, "/api/v1/admin/runtime/scheme", map[string]any{"scheme": runtimesvc.SchemeKServe}, nil)
 	require.Equal(t, http.StatusOK, code)
-	assert.Equal(t, runtimesvc.SchemeAIBrix, body["scheme"].(map[string]any)["scheme"])
+	assert.Equal(t, runtimesvc.SchemeKServe, body["scheme"].(map[string]any)["scheme"])
 	assert.Equal(t, []string{"runtime.scheme_changed"}, env.audit.actions())
 
 	// Idempotent: reapplying the current scheme is a no-op with no audit.
-	code, _ = env.call(t, http.MethodPut, "/api/v1/admin/runtime/scheme", map[string]any{"scheme": runtimesvc.SchemeAIBrix}, nil)
+	code, _ = env.call(t, http.MethodPut, "/api/v1/admin/runtime/scheme", map[string]any{"scheme": runtimesvc.SchemeKServe}, nil)
 	require.Equal(t, http.StatusOK, code)
 	assert.Equal(t, []string{"runtime.scheme_changed"}, env.audit.actions())
 
@@ -314,12 +311,12 @@ func TestRuntimeFVTSchemeSwitcher(t *testing.T) {
 	assert.EqualValues(t, apierrors.CodeRuntimeSchemeInvalid, body["code"])
 }
 
-// TestRuntimeFVTSwitchToAibrixUnavailable covers AC11: switching to aibrix
+// TestRuntimeFVTSwitchToKServeUnavailable covers AC11: switching to KServe
 // while the runtime is not observed returns 12901.
-func TestRuntimeFVTSwitchToAibrixUnavailable(t *testing.T) {
+func TestRuntimeFVTSwitchToKServeUnavailable(t *testing.T) {
 	env := newRuntimeFvtEnv(t)
 
-	code, body := env.call(t, http.MethodPut, "/api/v1/admin/runtime/scheme", map[string]any{"scheme": runtimesvc.SchemeAIBrix}, nil)
+	code, body := env.call(t, http.MethodPut, "/api/v1/admin/runtime/scheme", map[string]any{"scheme": runtimesvc.SchemeKServe}, nil)
 	assert.Equal(t, http.StatusInternalServerError, code)
 	assert.EqualValues(t, apierrors.CodeRuntimeUnavailable, body["code"])
 }
@@ -328,8 +325,8 @@ func TestRuntimeFVTSwitchToAibrixUnavailable(t *testing.T) {
 // engine/status filters and pagination.
 func TestRuntimeFVTModels(t *testing.T) {
 	env := newRuntimeFvtEnv(t)
-	env.seedScheme(t, runtimesvc.SchemeAIBrix)
-	env.publish(t, aibrixSnapshot(
+	env.seedScheme(t, runtimesvc.SchemeKServe)
+	env.publish(t, kserveSnapshot(
 		runtimesvc.RegisteredModel{ModelName: "alpha", Engine: "vllm", Replicas: 1, Status: "ready"},
 		runtimesvc.RegisteredModel{ModelName: "beta", Engine: "sglang", Replicas: 2, Status: "progressing"},
 		runtimesvc.RegisteredModel{ModelName: "gamma", Engine: "vllm", Replicas: 1, Status: "ready"},
@@ -354,8 +351,8 @@ func TestRuntimeFVTModels(t *testing.T) {
 // confirmation and the audit events.
 func TestRuntimeFVTRegisterAndDeregister(t *testing.T) {
 	env := newRuntimeFvtEnv(t)
-	env.seedScheme(t, runtimesvc.SchemeAIBrix)
-	env.publish(t, aibrixSnapshot(runtimesvc.RegisteredModel{ModelName: "alpha", Engine: "vllm", Status: "ready"}))
+	env.seedScheme(t, runtimesvc.SchemeKServe)
+	env.publish(t, kserveSnapshot(runtimesvc.RegisteredModel{ModelName: "alpha", Engine: "vllm", Status: "ready"}))
 
 	// Validation codes.
 	cases := []struct {

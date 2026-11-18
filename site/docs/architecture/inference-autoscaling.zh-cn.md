@@ -3,8 +3,8 @@
 | 属性 | 内容 |
 | --- | --- |
 | 特性点 | 推理自动扩缩容与缩容到零（backlog 第 16 行） |
-| 文档范围 | 推理服务自动水平扩缩容与缩容到零的架构与详细设计：自动扩缩容策略数据模型（全局默认 + 按服务）、admin `/api/v1/admin/*` API 面（策略 CRUD、按服务自动扩缩容配置、扩展的服务创建/列表/详情）、用户 `/api/v1/*` 只读面、Controller 的 AIBrix PodAutoscaler/缩容到零调和循环、两个控制台的前端页面、面/认证映射、错误处理、配置、安全、发布说明与分层函数级设计 |
-| 归属模块 | `infer`（推理服务上的自动扩缩容策略、策略 RPC、状态投影）、`model`（用户面自动扩缩容投影）、`internal/controller`（AIBrix PodAutoscaler 调和、缩容到零调度、自动扩缩容状态回报）、`pkg/errors`（10307）、`web/`（两个控制台） |
+| 文档范围 | 推理服务自动水平扩缩容与缩容到零的架构与详细设计：自动扩缩容策略数据模型（全局默认 + 按服务）、admin `/api/v1/admin/*` API 面（策略 CRUD、按服务自动扩缩容配置、扩展的服务创建/列表/详情）、用户 `/api/v1/*` 只读面、Controller 的 KServe autoscaling/缩容到零调和循环、两个控制台的前端页面、面/认证映射、错误处理、配置、安全、发布说明与分层函数级设计 |
+| 归属模块 | `infer`（推理服务上的自动扩缩容策略、策略 RPC、状态投影）、`model`（用户面自动扩缩容投影）、`internal/controller`（KServe autoscaling 调和、缩容到零调度、自动扩缩容状态回报）、`pkg/errors`（10307）、`web/`（两个控制台） |
 | 相关文档 | [需求分析与 UI/UX 设计](../design/inference-autoscaling.zh-cn.md) · [架构设计](../design/architecture.zh-cn.md) 第 2.4 节（`infer`）、第 2.7 节 Controller、第 4.2 节一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.zh-cn.md) — 本特性点所扩展的推理服务生命周期 · [控制台面分离](./console-surface-separation.zh-cn.md) — 本特性点遵循的双面规则与 realm 守卫 · [用量看板与按请求成本归因](./usage-dashboard.zh-cn.md) — 用户面模型列表模式 |
 | 状态 | 已实现 |
 
@@ -18,7 +18,7 @@
 - 实现 admin API 面：`GetAutoscalingPolicy` / `UpdateAutoscalingPolicy`（全局默认，同步）、`UpdateInferenceServiceAutoscaling`（按服务，经 MQ 异步），以及携带策略与实时自动扩缩容状态的扩展 `CreateInferenceService` / `ListInferenceServices` / `GetInferenceService`。
 - 实现用户只读面：扩展 `ListAvailableModels` 携带自动扩缩容投影，以及返回只读自动扩缩容摘要的新 `GetAvailableModel`。
 - 在 API 边界同步校验策略（设计 D10）：`min ≤ max`、`min = 0 ⟺ scale_to_zero`、目标 1–1000、冷却 0–3600 —— 在**任何消息发布之前**被拒绝。
-- Controller 把策略落成 **AIBrix `PodAutoscaler`**，扩缩容目标是服务的 `StormService`，指标为引擎每 Pod 的 `num_requests_running`。缩容到零通过同一对象的 `minReplicas: 0` 表达。
+- Controller 把策略落成服务自身对象上的上下界 `spec.scaling.minReplicas` 与 `spec.scaling.maxReplicas`，作用在服务运行时那个 `LLMInferenceService` 上；缩容到零就是该块里的 `minReplicas: 0`。
 - 自动扩缩容状态回传：Controller 把当前/期望副本数、当前并发与自动扩缩容状态（封闭枚举）回报给 `infer`，使两个控制台都能渲染实时状态与冷启动可见性。
 - 缩容到零调度：空闲服务在冷却窗口后缩容到零；对缩容到零服务的请求触发激活（冷启动），状态呈现为 `冷启动中`（admin）/ `预热中`（user）。
 - 交付上述能力所需的 schema、配置与框架改动，精确到函数级职责，实现者无需猜测。
@@ -43,18 +43,18 @@ AD1–AD10 把 UI/UX 设计的决策落实为实现级规则。**AD11–AD13 是
 
 | # | 决策 | 理由 |
 | --- | --- | --- |
-| AD1 | **自动扩缩容是推理服务上的策略**，不是新资源类型。策略是 `inference_services` 上的 JSON 列，外加一个全局默认单例行 | 设计 D1。契合 `infer` 模块的期望状态模型；Controller 把策略落成 AIBrix `PodAutoscaler`，保持控制台契约稳定 |
+| AD1 | **自动扩缩容是推理服务上的策略**，不是新资源类型。策略是 `inference_services` 上的 JSON 列，外加一个全局默认单例行 | 设计 D1。契合 `infer` 模块的期望状态模型并保持控制台契约稳定；策略到达集群时是服务自身对象的 `spec.scaling` 上下界，没有第二个对象要保持同步 |
 | AD2 | **策略字段恰好为六个**：`enabled`（bool）、`min_replicas`（0–max）、`max_replicas`（min–100）、`target_concurrency`（1–1000，默认 32）、`scale_to_zero`（bool，要求 min=0）、`cooldown_seconds`（0–3600，默认 300） | 设计 D2。以最小字段集映射业界「min/max + 目标 + 激活/冷却」契约；并发是在零副本时也成立的指标 |
 | AD3 | **缩容到零是独立开关，要求 `min_replicas = 0`**；启用时强制 min=0，停用时强制 min ≥ 1 | 设计 D3。KServe 的显式选择是最干净的交互；min=0 依赖是表单规则与同步校验规则，绝非隐藏约束 |
-| AD4 | **Controller 把策略落成 AIBrix `PodAutoscaler`，指标为引擎每 Pod 的 `num_requests_running`**（在 `:8000/metrics` 抓取）；缩容到零走 `PodAutoscaler` 的 `minReplicas: 0` 路径 | 设计 D4，由特性 #47 细化。引擎在单副本时也导出该指标，且 AIBrix 自动扩缩器理解 `StormService` 副本组；Kubernetes HPA 无法以 `StormService` 为目标 |
+| AD4 | **Controller 把策略落成服务自身对象的上下界**（`spec.scaling.minReplicas` 与 `spec.scaling.maxReplicas`），缩容到零为 `minReplicas: 0`；哪个指标移动副本是运行时自己的事 | 设计 D4，由特性 #47 细化。副本数是已在跑这个服务的那个对象上的字段，所以不需要第二个对象保持同步，Kubernetes HPA 也根本无法以 `LLMInferenceService` 为目标 |
 | AD5 | **自动扩缩容配置仅限 admin 面**；终端用户控制台按模型提供只读的自动扩缩容摘要 | 设计 D5。配置是操作员编排；租户消费模型，只需知道模型已自动扩缩容及其当前行为 |
 | AD6 | **admin 控制台在两处管理自动扩缩容**：全局默认策略（应用于新服务）与按服务策略（覆盖默认） | 设计 D6。全局默认让新部署无需逐服务配置即可合理；按服务覆盖让操作员在关键处掌控 |
 | AD7 | **终端用户控制台在模型层面展示自动扩缩容**，绝不在服务层面 | 设计 D7。租户经 OpenAI 兼容端点消费模型；服务是操作员内部编排产物 |
 | AD8 | **收到请求的缩容到零服务向操作员呈现 `冷启动中`、向租户呈现 `预热中`** | 设计 D8。冷启动是缩容到零唯一的交互成本；呈现它可避免「模型是不是挂了」的困惑 |
 | AD9 | **自动扩缩容变更是异步的，与部署一致**：更新立即返回，服务状态反映收敛，控制台轮询 | 设计 D9。契合 MQ + Controller 调和模型；阻塞等待自动扩缩器收敛会拖垮 HTTP 调用 |
 | AD10 | **策略在 API 边界同步校验**，任何消息发布前完成 | 设计 D10。无效策略绝不能到达 Controller（与特性 #2 部署校验同规则） |
-| AD11 | **细化设计 D4 —— 自动扩缩器是 AIBrix `PodAutoscaler` CRD。** Controller 拥有对象生命周期（与 `StormService` 一起创建/更新/删除）；自动扩缩器从每个引擎 Pod 抓取 `num_requests_running`。旧网关 `infer.services.concurrency` 主题保留用于服务当前并发投影与配额可见性，不用于自动扩缩容 | Kubernetes HPA 无法扩缩 `StormService`，且两个自动扩缩器会争抢副本数。AIBrix CRD 是唯一能扩缩 storm 副本组的机制；每次调和都会删除旧 Controller 留下的 HPA |
-| AD12 | **细化设计 D4 —— 策略保留六个字段，但 AIBrix 对象只携带 CRD 理解的字段。** `min_replicas`、`max_replicas`、`target_concurrency` 映射到 `minReplicas`、`maxReplicas` 与指标 `targetValue`；`cooldown_seconds` 仍是校验并存储的策略字段，当前对象不设置稳定窗口 | CRD 要求 `scalingStrategy`、`maxReplicas` 与指标源，没有稳定窗口字段。策略契约保持稳定，供未来能兑现冷却的控制器使用；当前对象不会编造 CRD 拒绝的字段 |
+| AD11 | **细化设计 D4 —— 自动扩缩器属于对象，而不是第二个对象。** Controller 在写对象其余部分的同一次 apply 里写上下界，自身不拥有任何扩缩器生命周期；遗留 HPA 每次调和都被删除。旧网关 `infer.services.concurrency` 主题保留用于服务当前并发投影与配额可见性，不用于自动扩缩容 | Kubernetes HPA 无法扩缩 `LLMInferenceService`，且一个工作负载上的两个扩缩器会争抢副本数 |
+| AD12 | **细化设计 D4 —— 策略保留六个字段，但只有上下界会落到对象上。** `min_replicas`/`max_replicas` 映射到 `spec.scaling.minReplicas`/`maxReplicas`；`target_concurrency` 与 `cooldown_seconds` 仍是校验并存储的策略字段，不写成平台自己编的触发器或稳定窗口 | 哪个指标移动副本是运行时自己的事，平台写死的查询会在运行时改指标名的那一刻过期。策略契约保持稳定，供未来能兑现冷却的控制器使用；对象上不会出现编造出来的字段 |
 | AD13 | **细化设计 §7.2 —— 用户面模型详情是新 `GetAvailableModel` RPC**（而非扩展 `GetModel`），自动扩缩容投影是新消息类型 `ModelAutoscaling`，由 `AvailableModel` 与 `GetAvailableModel` 共同携带 | 掩码用户目录（特性 #17 AD8/AD11）绝不能泄漏操作员字段（冷却、目标并发、服务标识）。独立 RPC 配独立、更小的消息使掩码成为结构性而非条件性的，正如 `ListAvailableModels` 已是如此 |
 
 ---
@@ -69,7 +69,7 @@ AD1–AD10 把 UI/UX 设计的决策落实为实现级规则。**AD11–AD13 是
 | **grpc-gateway mux** | 由 `google.api.http` 注解做路径 → RPC 路由 | 新增 `GetAutoscalingPolicy`、`UpdateAutoscalingPolicy`、`UpdateInferenceServiceAutoscaling`、`GetAvailableModel` 绑定；扩展 `CreateInferenceService`、`ListInferenceServices`、`GetInferenceService`、`ListAvailableModels` 绑定 |
 | **`infer`** | 推理服务生命周期、自动扩缩容策略、变更发布、状态消费、自动扩缩容状态投影 | 服务上的自动扩缩容策略字段；全局默认策略存储；策略 RPC；扩展的创建/列表/详情；自动扩缩容状态消费者；并发指标主题消费者 |
 | **`model`** | 模型目录、版本、租户授权授权、掩码用户目录 | 扩展 `ListAvailableModels` 携带自动扩缩容投影；新 `GetAvailableModel` |
-| **`internal/controller`** | Kubernetes 调和：`StormService`/Service/`PodAutoscaler`、缩容到零调度、自动扩缩容状态回报 | `PodAutoscaler` 创建/更新/删除；旧 HPA 清理；状态主题上的生命周期状态回报 |
+| **`internal/controller`** | Kubernetes 调和：带上下界的 `LLMInferenceService`、非 KServe 路径下的 Service；缩容到零调度、自动扩缩容状态回报 | 上下界、旧 HPA 清理、状态主题上的生命周期回报 |
 | **推理网关（数据面）** | Envoy + Wasm：认证、计量、路由 | 在既有主题上按服务上报在途并发；该投影用于展示与配额可见性，不用于自动扩缩容（AD11） |
 | **`pkg/errors`** | 各模块码块 | 新增一个 infer 码：**10307 `CodeAutoscalingPolicyInvalid`** |
 | **`web/`** | 两个控制台 | Admin：自动扩缩容页、按服务对话框、自动扩缩容列/状态块；User：模型列表自动扩缩容指示、模型详情自动扩缩容摘要 |
@@ -101,8 +101,8 @@ flowchart TD
     end
 
     subgraph ctrl["Controller"]
-        CTRL["Controller<br/>StormService/Service/PodAutoscaler 调和 + 缩容到零"]
-        K8S["Kubernetes<br/>StormService · Service · PodAutoscaler"]
+        CTRL["Controller<br/>LLMInferenceService/Service/autoscaling 调和 + 缩容到零"]
+        K8S["Kubernetes<br/>LLMInferenceService · Service · autoscaling"]
     end
 
     subgraph dp["数据面"]
@@ -145,7 +145,7 @@ flowchart TD
 | `model` 模块（`services/model`） | 扩展 `ListAvailableModels` 携带自动扩缩容投影；新 `GetAvailableModel` |
 | PostgreSQL | `inference_services` 新增自动扩缩容列；新 `autoscaling_policy` 单例表 |
 | 消息队列 | `infer.services.changes`（期望状态，携带策略）、`infer.services.status`（观测状态，可携带自动扩缩容状态块）、`infer.services.concurrency`（网关上报的在途并发，用于展示投影） |
-| Controller（`internal/controller`） | 解码变更事件，创建/更新/删除 `StormService`、Service 与 AIBrix `PodAutoscaler`，清理旧 HPA，通过自动扩缩器驱动缩容到零，回报生命周期状态 |
+| Controller（`internal/controller`） | 解码变更事件，创建/更新/删除 `LLMInferenceService`（非 KServe 路径下还有 Service），携带上下界、清理旧 HPA、驱动缩容到零并回报生命周期状态 |
 | 推理网关 | 在 `infer.services.concurrency` 上按服务上报在途并发；`infer` 消费者存储用于展示（AD11） |
 
 ---
@@ -164,7 +164,7 @@ flowchart TD
 
 - **`autoscaling` 为 `jsonb`**：策略是固定六字段对象（AD2）；JSON 让后续的按模型默认值与细粒度行为无需逐字段迁移即可扩展。GORM 模型以 `datatypes.JSON` 存储（与 `endpoints` 同模式）。
 - **空 `{}` 表示继承**：未带显式策略创建的服务存储 `{}`，读取时通过合并全局默认解析出有效策略。这让 `CreateInferenceService` 保持向后兼容（省略策略的既有调用方获得默认值），并让「既有服务不受影响，除非它们选择采用」（FR1.2）成为自然结果 —— 存储了策略的既有服务保留它；`{}` 的解析为当前全局默认。
-- **自动扩缩容下 `replicas` 语义**：启用自动扩缩容时，`replicas` 是 `PodAutoscaler` 管理的**期望**副本数（受其 `minReplicas`/`maxReplicas` 约束）。停用自动扩缩容时（FR2.5），`replicas` 是 `StormService` 运行的固定副本数。Controller 对两种情况都做调和。
+- **自动扩缩容下 `replicas` 语义**：启用自动扩缩容时，`replicas` 是受上下界约束的**期望**副本数（`minReplicas`/`maxReplicas`）。停用时（FR2.5），`replicas` 是 `LLMInferenceService` 实际运行的固定副本数。控制器对两种情况都做调和。
 
 ### 4.2 `autoscaling_policy` 表（新增，单例）
 
@@ -369,7 +369,7 @@ message GetAvailableModelResponse {
 
 ### 6.1 期望状态变更（`infer.services.changes`，扩展）
 
-既有变更事件（模型目录 §4.5.1）新增 `autoscaling` 对象。JSON body：
+既有变更事件（模型目录 §4.5.1）新增 缩放块。JSON body：
 
 ```json
 {
@@ -394,7 +394,7 @@ message GetAvailableModelResponse {
 }
 ```
 
-`autoscaling` 对象是**有效**策略（服务存储 `{}` 时从全局默认解析），因此 Controller 无需数据库往返。停用自动扩缩容时，`autoscaling.enabled = false` 且 `replicas` 为固定副本数。
+缩放块是**有效**策略（服务存储 `{}` 时从全局默认解析），因此 Controller 无需数据库往返。停用自动扩缩容时，`autoscaling.enabled = false` 且 `replicas` 为固定副本数。
 
 ### 6.2 状态回报（`infer.services.status`，扩展）
 
@@ -419,7 +419,7 @@ message GetAvailableModelResponse {
 }
 ```
 
-`infer` 消费该主题并在存在时应用该块。该字段**仅由 Controller 写入** —— 无 RPC 直接设置它；在线上只读。当前 AIBrix 调和器只发布生命周期状态与端点，不发布自动扩缩容块，因此除非某个 Controller 回报，`GetInferenceService` 的 `autoscaling_status` 为零值。
+`infer` 消费该主题并在存在时应用该块。该字段**仅由 Controller 写入** —— 无 RPC 直接设置它；在线上只读。当前 KServe 调和器只发布生命周期状态与端点，不发布自动扩缩容块，因此除非某个 Controller 回报，`GetInferenceService` 的 `autoscaling_status` 为零值。
 
 ### 6.3 网关并发投影（`infer.services.concurrency`）
 
@@ -433,36 +433,31 @@ message GetAvailableModelResponse {
 }
 ```
 
-`infer` 模块消费该主题并把 `in_flight` 存到服务行（`ApplyConcurrency`）。这是**展示与配额投影**，不是自动扩缩器的输入：AIBrix `PodAutoscaler` 直接从每个 Pod 抓取引擎自身的 `num_requests_running` 指标。主题注册位于 `mq.DefaultSubjects()` 的 `InferServiceConcurrency: "infer.services.concurrency"`。
+`infer` 模块消费该主题并把 `in_flight` 存到服务行（`ApplyConcurrency`）。这是**展示与配额投影**，不是自动扩缩器的输入：运行时的扩缩器直接监视每个 Pod 上引擎自身的 `num_requests_running` 指标。主题注册位于 `mq.DefaultSubjects()` 的 `InferServiceConcurrency: "infer.services.concurrency"`。
 
 ---
 
-## 7. Controller 设计（AIBrix PodAutoscaler 与缩容到零）
+## 7. Controller 设计（KServe autoscaling 与缩容到零）
 
-### 7.1 PodAutoscaler 调和
+### 7.1 自动扩缩容的调和
 
-Controller 与 `StormService`/Service 一起拥有 AIBrix `PodAutoscaler` 生命周期（AD11）。在 `upsert` 变更事件上：
+策略作为服务对象自身的一个字段到达集群，即 `spec.scaling`，不为它写第二个对象（AD11）。在 `upsert` 变更事件上：
 
-1. 与今天一样创建或更新 `StormService` 与 Service（模型目录 §10.5）。
-2. 每次调和都删除旧 Controller 留下的名为 `hpa-<service-name>` 的 `HorizontalPodAutoscaler`，避免它与 AIBrix 自动扩缩器竞争。
-3. 若 `autoscaling.enabled = true`，在 `reconcileNamespace` 中创建或更新 `autoscaling.aibrix.ai/v1alpha1` `PodAutoscaler`（名称仍用 `hpa-<service-name>`）：
-   - `spec.scaleTargetRef` → `orchestration.aibrix.ai/v1alpha1` 的 `StormService`。
-   - `spec.minReplicas` → `autoscaling.min_replicas`（缩容到零开启时为 0）。
-   - `spec.maxReplicas` → `autoscaling.max_replicas`。
-   - `spec.scalingStrategy` → `HPA`（CRD 枚举值，并不表示 Kubernetes HPA 对象）。
-   - `spec.metricsSources` → 一个 `metricSourceType: pod` 条目：`protocolType: http`、`port: "8000"`、`path: /metrics`、`targetMetric: num_requests_running`、`targetValue: <target_concurrency>`。
-4. 若 `autoscaling.enabled = false`，删除 `PodAutoscaler` 并把 `StormService` 副本固定为固定副本数（FR2.5）。
-5. 在 `delete` 变更事件上，与 `StormService` 和 Service 一起删除 `PodAutoscaler`。
+1. 按 §5 创建或更新 `LLMInferenceService`；在 KServe 之外还要更新 Service。
+2. 每次调和都删除旧控制器留下的名为 `hpa-<service-name>` 的 `HorizontalPodAutoscaler`，免得它与运行时的扩缩器抢同一个工作负载。
+3. 若 `autoscaling.enabled = true`，对象本身就带着上下界：`spec.scaling.minReplicas` 是策略的下界（`scale_to_zero` 打开时为 `0`），`spec.scaling.maxReplicas` 是上界，两者矛盾时把上界抬到下界。运行时在界内扩缩工作负载。
+4. 若 `autoscaling.enabled = false`，不写缩放块，控制器在每次 apply 之后用 merge patch 把 `spec.replicas` 钉成固定值（FR2.5），于是手动改的副本数就是最终生效的值。
+5. 在 `delete` 变更事件上，对象随服务一起被删除。
 
-自动扩缩器写入失败会回报 `failed`，而不是静默固定副本数；失败前先删除陈旧对象，避免任何东西继续按过期策略扩缩容。
+信号不是平台的。平台只写上下界就停手：哪个指标移动一个副本是运行时的事，平台写死的查询会成为那份契约的第二份拷贝，并在运行时改掉指标名的那一刻过期。策略里的 `target_concurrency` 会被校验、存储并展示，但它不会变成平台写的触发器——这是明说的局限，不是遗漏。
 
 ### 7.2 缩容到零调度
 
-缩容到零使用 `PodAutoscaler` 的 `minReplicas: 0` 路径（AD4、AD12）：
+缩容到零使用 `autoscaling` 的 `minReplicas: 0` 路径（AD4、AD12）：
 
-- **激活（0 → 1）**：自动扩缩器监视引擎每 Pod 的 `num_requests_running` 指标。请求到达 Pod 后指标高于目标，自动扩缩器把 storm 从零扩到一。
-- **缩容到零（1 → 0）**：AIBrix 在指标持续低于目标时缩容；具体稳定行为由 AIBrix 控制器决定。
-- **冷却**：`cooldown_seconds` 在策略中校验并存储（0–3600），但当前 `PodAutoscaler` 对象没有稳定窗口字段，因此适用 CRD 自身的缩容行为。该策略字段保留在契约中，供未来能兑现冷却的控制器使用。
+- **激活（0 → 1）**：自动扩缩器监视运行时自己带的信号——引擎每 Pod 的 `num_requests_running` 指标；请求到达该 Pod 后信号高于目标，工作负载从零扩到一。
+- **缩容到零（1 → 0）**：KServe 在指标持续低于目标时缩容；具体稳定行为由 KServe 控制器决定。
+- **冷却**：`cooldown_seconds` 在策略中校验并存储（0–3600），但当前缩放块没有稳定窗口字段，因此适用运行时自身的缩容行为。该策略字段保留在契约中，供未来能兑现冷却的控制器使用。
 
 ### 7.3 自动扩缩容状态回报
 
@@ -525,7 +520,7 @@ sequenceDiagram
     Infer-->>CGW: OK（停用时返回 fixed_replicas）
     CGW-->>UI: 行自动扩缩容列更新
     MQ->>CTRL: 消费变更事件
-    CTRL->>K8s: 创建/更新/删除 PodAutoscaler + StormService
+    CTRL->>K8s: 创建/更新/删除 autoscaling + LLMInferenceService
     CTRL->>MQ: 发布状态（自动扩缩容状态）
     MQ->>Infer: 消费状态
     Infer->>Infer: UPDATE 自动扩缩容状态
@@ -542,22 +537,22 @@ sequenceDiagram
     participant DGW as 推理网关
     participant MQ as 消息队列
     participant CTRL as Controller
-    participant PA as AIBrix PodAutoscaler
+    participant PA as KServe autoscaling
     participant SVC as 推理服务
 
     Note over PA,SVC: 服务空闲，已缩容到零
     Agent->>DGW: POST /v1/chat/completions（模型）
     PA->>SVC: 抓取 num_requests_running
     PA->>PA: 指标高于目标，激活
-    PA->>CTRL: storm 0 -> 1 扩容
+    PA->>CTRL: 工作负载 0 -> 1 扩容
     CTRL->>SVC: 创建副本（冷启动）
     CTRL->>MQ: 回报生命周期状态 starting
     SVC-->>CTRL: 就绪
     CTRL-->>DGW: 端点可用
     DGW-->>Agent: 转发请求（首个调用较慢）
-    Note over PA: 并发上升，PodAutoscaler 1 -> N 扩容
+    Note over PA: 并发上升，autoscaling 1 -> N 扩容
     Note over PA,SVC: 低于目标
-    PA->>CTRL: 缩容（AIBrix 行为）
+    PA->>CTRL: 缩容（KServe 行为）
 ```
 
 ### 8.4 自动扩缩容状态轮询（admin）
@@ -632,8 +627,8 @@ infer:
 - **面分离由 realm 守卫强制**（控制台面分离 AD2/AD3）：admin 自动扩缩容端点只存在于 `/api/v1/admin/*` 下，用户只读端点只存在于 `/api/v1/*` 下。错误 realm 会话以 10038 失败；两个控制台绝不共享会话 token。用户面**不**携带操作员字段（无冷却、无目标并发、无服务标识）—— 掩码投影（AD13）使掩码成为结构性。
 - **组织上下文优先来自会话**，仅在没有会话时回退到过渡期 `X-Organization-Id` 头。管理面 RPC 还会校验调用者的平台/组织角色（`RoleGuard` / `PlatformAdminGuard`）。
 - **消息中无机密**：变更、状态与并发消息只携带资源规格、URL 与指标值 —— 无凭据、无 API Key。
-- **策略同步校验**（AD10）：无效策略绝不到达 Controller，因此无法从坏请求创建畸形 `PodAutoscaler` 规格。
-- **Controller 权限**：controller 的 service account 需要平台命名空间中的 `StormService`/`PodAutoscaler` CRD 访问、Service CRUD 与 Pod 读取 —— 无 cluster-admin、无 secret 读取。
+- **策略同步校验**（AD10）：无效策略绝不到达 Controller，因此无法从坏请求创建畸形 `autoscaling` 规格。
+- **Controller 权限**：controller 的 service account 需要 `LLMInferenceService` 的读写（对象本身携带上下界）、非 KServe 路径下的 Service CRUD 与 Pod 读取 —— 无 cluster-admin、无 secret 读取。
 - **端点与状态披露**：推理服务是平台资产，任何已授权操作者都可读取服务状态；谁可以**使用**它由服务访问策略单独管理。跨 realm 调用由网关 realm 守卫拒绝。
 
 ---
@@ -644,7 +639,7 @@ infer:
 - **配置**：`infer.autoscaling` 区块出现在 `configs/config.yaml`、`configs/server.yaml`，以及（`statusReportInterval`）`configs/controller.yaml`。无该区块的自定义配置继续工作（零值默认）。
 - **Proto**：增量改动 —— 新消息、新 RPC、扩展消息。`make pbgen` 重新生成网关绑定。
 - **新主题**：`infer.services.concurrency` 是增量；broker 基于主题（RabbitMQ）故无迁移。
-- **Controller**：调和器在既有 `Reconciler` 接口后拥有 `PodAutoscaler` 生命周期与旧 HPA 清理 —— 无签名变更，基于 fake 的测试继续工作。
+- **Controller**：调和器在既有 `Reconciler` 接口后拥有上下界与旧 HPA 清理 —— 无签名变更，基于 fake 的测试继续工作。
 - **滚动更新顺序**：先部署 `taas-server`（它开始发布携带策略的变更并消费状态），再部署 controller。反向顺序也安全：controller 忽略无发布者的主题。
 - **特性开关**：无需 —— 新 RPC 是增量；`autoscaling = '{}'` 的既有服务继承全局默认，操作员编辑策略前既有行为不变。
 
@@ -699,12 +694,12 @@ infer:
 | | `autoscaling_service.go` | `GetAutoscalingPolicy`、`UpdateAutoscalingPolicy`、`UpdateInferenceServiceAutoscaling` RPC + 校验 |
 | | `infer_model.go` | `InferenceService` 新增 `Autoscaling datatypes.JSON` |
 | | `infer_repository.go` | 自动扩缩容列读写、有效策略解析 |
-| | `change_publisher.go` | 变更事件新增 `autoscaling` 对象 |
+| | `change_publisher.go` | 变更事件新增 缩放块 |
 | | `status_consumer.go` | 状态消费者应用自动扩缩容状态 |
 | | `concurrency_consumer.go` | 新 Runner：消费 `infer.services.concurrency`（用于状态投影） |
 | | `service.go` | 扩展 `CreateInferenceService`/`ListInferenceServices`/`GetInferenceService` |
 | `services/model` | `service.go` | 扩展 `ListAvailableModels`；新 `GetAvailableModel` |
-| `internal/controller` | `reconciler.go` | AIBrix PodAutoscaler 生命周期、旧 HPA 清理、生命周期状态回报 |
+| `internal/controller` | `reconciler.go` | KServe autoscaling 生命周期、旧 HPA 清理、生命周期状态回报 |
 | `pkg/mq` | `mq.go` | `InferServiceConcurrency` 主题新增 |
 | `pkg/errors` | `codes.go`/`messages.go` | 新 `CodeAutoscalingPolicyInvalid Code = 10307` + 规范消息 |
 | `pkg/config` | `api.go` | `InferAutoscalingConfig` 结构 + Validate 规则 |
@@ -747,9 +742,9 @@ type AutoscalingPolicy struct {
 - `UpdateAutoscalingPolicy`：校验（§5.3）；`UpsertDefault`；响应已保存策略。同步（FR1.4）。
 - `UpdateInferenceServiceAutoscaling`：作用域获取（10301）；terminated → 10303；校验（§5.3）；若 `enabled = false`，把当前期望副本数解析为固定副本数；`UpdateAutoscaling`；发布携带有效策略的 `upsert` 变更；停用时响应 `{fixed_replicas}`（FR2.5）。
 
-`change_publisher.go`：`buildChangeEvent` 新增 `autoscaling` 对象（有效策略，§6.1）。
+`change_publisher.go`：`buildChangeEvent` 新增 缩放块（有效策略，§6.1）。
 
-`status_consumer.go`：`StatusConsumer` 把 `autoscaling` 状态对象应用到服务行（仅由 Controller 写入）。
+`status_consumer.go`：`StatusConsumer` 把缩放块 状态对象应用到服务行（仅由 Controller 写入）。
 
 `concurrency_consumer.go`：新 `ConcurrencyConsumer` 实现 `server.Runner` —— 订阅 `infer.services.concurrency` 并更新服务的当前并发投影（供 `GetInferenceService` 使用）。在 `apps/taas-server/main.go` 经 `srv.AddRunner(...)` 注册。
 
@@ -781,9 +776,9 @@ type AutoscalingPolicy struct {
 `ApplyInferServiceChange(ctx, msg)` 新增自动扩缩容处理：
 
 1. 解码变更事件（现含 `autoscaling`，§6.1）；畸形 → 记录 + `mq.Permanent`。
-2. `delete` → 删除 `StormService`、Service、**`PodAutoscaler`** 与任何遗留 HPA（忽略 not-found）；返回。
-3. `upsert` / `update_version` / `rollback` → 发布状态 `queued`；构建并创建或更新 `StormService` 与 Service（如今天）；然后：
-   - 若 `autoscaling.enabled`：删除任何遗留 HPA 并创建或更新 AIBrix `PodAutoscaler`（§7.1）；否则删除 `PodAutoscaler` 并把 `StormService` 副本固定为固定副本数。
+2. `delete` → 删除 `LLMInferenceService` 与任何遗留 HPA（忽略 not-found）；返回。
+3. `upsert` / `update_version` / `rollback` → 发布状态 `queued`；构建并创建或更新 `LLMInferenceService` 与 Service（如今天）；然后：
+   - 若 `autoscaling.enabled`：删除任何遗留 HPA 并把上下界写进对象（§7.1）；否则把 `LLMInferenceService` 副本固定为固定副本数。
    - 观察 Pod 就绪；就绪后 → 发布状态 `running`，含端点与自动扩缩容状态块。
 4. 任一调和错误 → 发布状态 `failed`，含原因与 `autoscaling.state = error`。
 
@@ -812,7 +807,7 @@ Controller 侧没有并发消费者：自动扩缩器直接抓取引擎指标。
 | AC4 — 按服务更新异步，状态转为稳定 | §14.2 `UpdateInferenceServiceAutoscaling`、§7.3 状态回报 | FVT + E2E |
 | AC5 — 停用返回固定副本数，状态 disabled | §14.2 `UpdateInferenceServiceAutoscaling`（fixed_replicas）、§7.3 | FVT |
 | AC6 — 缩容到零服务收到请求时冷启动 | §7.2 激活、§8.3 时序 | FVT（故障/负载注入）+ E2E |
-| AC7 — 空闲服务保持零副本 | §7.2 `PodAutoscaler` 的 `minReplicas: 0` | FVT |
+| AC7 — 空闲服务保持零副本 | §7.2 `spec.scaling.minReplicas: 0` | FVT |
 | AC8 — admin 列表/详情显示自动扩缩容 | §13.1、§14.6 控制台契约 | E2E |
 | AC9 — 用户模型列表/详情只读摘要 | §13.1、§14.6 控制台契约 | E2E |
 | AC10 — 面分离（无跨前缀调用） | §5.5 realm 守卫、§13.1 路由/前缀表 | E2E（源码/网络断言） |

@@ -5,7 +5,7 @@
 | Feature point | An inference service can request RDMA network devices for its pods, so a distributed or PD workload exchanges tensors and KV cache over RoCE/InfiniBand instead of TCP. The devices are allocated through Kubernetes DRA; the helm chart creates the `DeviceClass`, the controller writes one `ResourceClaimTemplate` per service |
 | Document scope | The problem, the DRA model, the service contract, validation, the controller's pod wiring, teardown and name reuse, the chart resources, the console surface, error codes and acceptance criteria |
 | Owning modules | `services/infer` (`rdma.go`, `infer_model.go`, `service.go`, `change_publisher.go`) · `internal/controller` (`rdma.go`, `reconciler.go`) · `proto/taas/infer/v1` · `deploy/helm/go-taas` · `web` (`DeployForm`, `ServiceDetailPage`) |
-| Related documents | [StormService Serving Topology](./stormservice-serving-topology.md) (the roles that share one pod template and therefore one claim template) · [Model Catalog Deployment](./model-catalog-deployment.md) (the deploy contract this extends) |
+| Related documents | [LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md) (the roles that share one pod template and therefore one claim template) · [Model Catalog Deployment](./model-catalog-deployment.md) (the deploy contract this extends) |
 | Status | Implemented |
 
 ---
@@ -34,7 +34,7 @@ The fleet already runs a DRA network driver (`dra.net`, the NVIDIA DRA network d
 
 **AD1 — The `DeviceClass` is chart infrastructure; the claim template is workload output.** Which devices a fleet offers is a fact about the cluster, not about one service, so the chart creates the class once. The number of devices per pod *is* a service property, so the controller writes a per-service `ResourceClaimTemplate` and deletes it with the service. A single chart-level template would force every service to the same device count.
 
-**AD2 — One template per service, not one claim per service.** A `ResourceClaim` is a single allocation: every pod referencing the same claim would fight over one device set. A `ResourceClaimTemplate` is the DRA answer — every pod created from it gets its own generated claim, which is exactly what a replicated StormService needs (N replicas × M pods per replica, each with its own devices).
+**AD2 — One template per service, not one claim per service.** A `ResourceClaim` is a single allocation: every pod referencing the same claim would fight over one device set. A `ResourceClaimTemplate` is the DRA answer — every pod created from it gets its own generated claim, which is exactly what a replicated LLMInferenceService needs (N replicas × M pods per replica, each with its own devices).
 
 ## 3. The contract
 
@@ -84,7 +84,7 @@ On every `upsert`/`start`/`update_*` event ([`applyRdmaClaims`](../../../interna
    `spec.resourceClaims[{name: rdma, resourceClaimTemplateName: <service>-rdma}]` and the engine container gets `resources.claims[{name: rdma}]`.
 2. **Disabled** — delete the template so toggling RDMA off does not leave an unused device request behind.
 
-The claim reference is added to the pod template the storm builder produces, so **every topology and every role** gets it: single, multinode and pd all build their pods from the same function.
+The claim reference is added to the pod template the serving object's builder produces, so **every topology and every role** gets it: single, multinode and pd all build their pods from the same function.
 
 Teardown (`stop`/`delete`) deletes the template by name with an ownership check, sweeps `resourceclaimtemplates` **and** `resourceclaims` by the service-id label, and reclaims a stale template before a reused service name creates its own. A late delete for an old service therefore cannot detach a replacement's devices.
 
@@ -268,6 +268,6 @@ intra-replica traffic.** Two pods of one node exchange pipeline-parallel
 activations over the CNI, not over the fabric, so the layout for multi-GPU on a
 single node is one pod owning all the devices: the `single` topology with
 `TP × PP` set, which derives the pod's device count (see
-[StormService Serving Topology](./stormservice-serving-topology.md), AD3b). Use a
+[LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md), AD3b). Use a
 multinode replica with RDMA when the replica genuinely spans machines, and then
 make sure the class is rail-consistent.

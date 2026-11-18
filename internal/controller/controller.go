@@ -28,10 +28,6 @@ type Reconciler interface {
 	// (feature #52, AD13). It must be called before serving.
 	SetVGPUConfig(policyAnnotation, placementPolicy, hamiSchedulerName string)
 
-	// SetGatewayRouting names the AIBrix Gateway that model HTTPRoutes
-	// attach to. It must be called before serving.
-	SetGatewayRouting(namespace, gateway string)
-
 	// SetScheduling installs the pod-scheduling configuration: the
 	// scheduler inference pods ask for, the PriorityClass names a service
 	// priority maps onto, and the Volcano queue its PodGroup joins. It must
@@ -60,14 +56,11 @@ type Controller struct {
 	// (feature #37). Nil when not configured.
 	resourceSampler *ResourceSampler
 	// runtimeCollector is the optional distributed-inference-runtime
-	// component + ModelClaim collector (feature #47). Nil when not
+	// component + registered-model collector (feature #47). Nil when not
 	// configured.
 	runtimeCollector *RuntimeCollector
 	// runtimeScheme is the optional serving-scheme consumer (feature #47).
 	runtimeScheme *RuntimeSchemeConsumer
-	// runtimeModelChange is the optional model-change consumer
-	// (feature #47).
-	runtimeModelChange *RuntimeModelChangeConsumer
 	// clusterCollector is the optional per-cluster health collection
 	// loop (feature #40). Nil when not configured.
 	clusterCollector *ClusterCollector
@@ -104,12 +97,6 @@ func (c *Controller) SetRuntimeCollector(collector *RuntimeCollector) {
 // (feature #47). It must be called before Run.
 func (c *Controller) SetRuntimeSchemeConsumer(consumer *RuntimeSchemeConsumer) {
 	c.runtimeScheme = consumer
-}
-
-// SetRuntimeModelChangeConsumer installs the runtime model-change
-// consumer (feature #47). It must be called before Run.
-func (c *Controller) SetRuntimeModelChangeConsumer(consumer *RuntimeModelChangeConsumer) {
-	c.runtimeModelChange = consumer
 }
 
 // SetClusterCollector installs the per-cluster health collection loop
@@ -156,13 +143,6 @@ func (c *Controller) Run(ctx context.Context) error {
 	if c.runtimeScheme != nil {
 		go func() {
 			if err := c.runtimeScheme.Run(ctx); err != nil {
-				errCh <- err
-			}
-		}()
-	}
-	if c.runtimeModelChange != nil {
-		go func() {
-			if err := c.runtimeModelChange.Run(ctx); err != nil {
 				errCh <- err
 			}
 		}()

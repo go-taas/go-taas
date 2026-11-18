@@ -93,8 +93,8 @@ inference and management traffic do not share a proxy:
 | Serves | `taas.<domain>` and the platform's other sites | only the inference hostname |
 | Address | the platform gateway's | its own LoadBalancer address |
 
-It uses the `aibrix-eg` GatewayClass so it inherits the inference-oriented
-Envoy tuning, and it does **not** pin the inference hostname on its listener:
+It uses the Envoy Gateway GatewayClass (`dataPlane.gateway.className`, `eg` by
+default) and does **not** pin the inference hostname on its listener:
 the hostname is a console setting the server applies to the route, so changing
 it does not need a Helm upgrade.
 
@@ -248,7 +248,7 @@ separately, with their own charts and their own documentation:
 | Component | Needed for | Chart values that depend on it | Official installation guide |
 | --- | --- | --- | --- |
 | Gateway API CRDs + Envoy Gateway | exposing the console through a Gateway; the data-plane gateway plugin | `dataPlane.enabled`, `gatewayPlugin.enabled`, `modelRouter.enabled` | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
-| AIBrix | inference serving (`StormService`, `ModelClaim`, `PodAutoscaler`, the `aibrix-eg` class) | `dataPlane.backend`, `controller.config.runtime.aibrix.*` | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| KServe | inference serving: `LLMInferenceService` (model replicas, canary releases, traffic split) | `dataPlane.backend`, `controller.config.runtime.gateway.*` | [KServe](https://kserve.github.io/docs/) |
 | Volcano | gang scheduling and priority preemption; the PriorityClasses the values name | `controller.config.controller.scheduling` | [Volcano](https://volcano.sh/en/docs/installation/) |
 | JuiceFS CSI (or any ReadWriteMany class) | one model-weights filesystem shared by the server and the inference pods | `controller.config.controller.weights.storageClass`, `taasServer.extraVolumes` | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor (optional) | image import / upload into your own registry | `taasServer.harbor` | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
@@ -417,7 +417,7 @@ Three mechanisms, highest precedence first:
    | `taasServer.secretConfig.image.harbor.password` | `CONFIG_IMAGE_HARBOR_PASSWORD` (from the Secret) |
    | `controller.config.controller.namespace` | `CONFIG_CONTROLLER_NAMESPACE` |
    | `controller.config.controller.weights.storageClass` | `CONFIG_CONTROLLER_WEIGHTS_STORAGECLASS` |
-   | `controller.config.runtime.aibrix.namespace` | `CONFIG_RUNTIME_AIBRIX_NAMESPACE` |
+   | `controller.config.runtime.gateway.namespace` | `CONFIG_RUNTIME_GATEWAY_NAMESPACE` |
 
    A list or map under these keys fails the render with a pointer to
    `configOverrides`.
@@ -485,7 +485,6 @@ Three mechanisms, highest precedence first:
 | `harbor.uploadMaxArchiveBytes` | `0` (8 GiB) | largest image archive the upload endpoint accepts |
 | `dataPlane.enabled` / `hostname` | `false` / `""` | publish the inference gateway under a hostname through the chart-owned Gateway |
 | `dataPlane.parentRef.name` / `namespace` / `sectionName` | `taas-inference` / release ns / `https` | the Gateway that terminates TLS for the inference host |
-| `dataPlane.backend.name` / `namespace` / `port` | AIBrix Envoy Service / `yunzhi-system` / `80` | the Service the data-plane route forwards to |
 | `gatewayPlugin.enabled` / `failOpen` / `cacheTTL` / `verifyTimeout` | `false` / `false` / `30s` / `500ms` | the Wasm filter that verifies API keys and reports metered usage |
 | `modelRouter.enabled` / `replicaCount` / `refreshInterval` | `false` / `2` / `30s` | serves provider-backed models on the data plane by choosing between the provider and the inference gateway |
 | `monitoring.prometheusURL` | `""` | Prometheus base URL; empty falls back to the controller's own samples |

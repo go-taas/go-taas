@@ -51,7 +51,7 @@ console and is covered by an end-to-end test suite.
 | --- | --- |
 | Model catalog & one-click deployment | Register and version models, then deploy with one click from either console or the API; the platform provisions inference workloads through a message queue and a Kubernetes controller, with no hand-written YAML. Version history and rollback are built in. |
 | Inference image management | Register, version, and map engine images across the supported accelerator cards, with node-level pre-pulling to shorten cold starts. |
-| Distributed inference runtime | Platform-level serving scheme: run inference services as plain Deployments (default) or on an **AIBrix**-managed distributed runtime (StormService / RoleSet). The admin console inspects runtime component health and the models registered with the runtime. |
+| Distributed inference runtime | Platform-level serving: every inference service runs as a KServe **LLMInferenceService**, from a single replica to a multi-node prefill/decode pair with a router-managed pool. The admin console inspects runtime component health and the models registered with the runtime. |
 | vGPU slicing pools | **HAMI**-based GPU slicing: label nodes into slicing pools, define slice templates (memory / core percentages), and co-schedule multiple small inference jobs onto a single physical GPU with binpack or spread placement — pool utilization and per-service slice assignment visible in the admin console. HAMi is used **only** for GPU slicing; its heterogeneous accelerator management, device plugin and scheduling features are not used. |
 | OpenAI-compatible API | `/v1/chat/completions`, `/v1/completions`, and `/v1/embeddings` served by an Envoy-based gateway; authentication, metering, and routing run in Wasm plugins, so inference traffic never passes through business processes. |
 | External model providers | Register third-party LLM providers (DeepSeek / OpenAI / OpenAI-compatible), verify connectivity with a five-state probe (`ok` / `unauthorized` / `unreachable` / `error` / `unknown`), curate the upstream model list, and publish models into the catalog — write-only API keys encrypted at rest, and tenants consume them through the same metered OpenAI-compatible gateway. |
@@ -119,7 +119,7 @@ end
 subgraph L2["LAYER 02 · Gateways"]
     direction LR
     G1["TaaS Gateway (control plane)<br/>TLS · AuthN · RBAC · Rate limiting · Audit · Request validation · Routing to TaaS Server"]:::cp
-    G2["Aibrix Gateway + TaaS Plugin (data plane)<br/>OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace"]:::dp
+    G2["Gateway + TaaS Plugin (data plane)<br/>OpenAI API · model routing · prefix/queue-aware load balancing · same-model failover · metering · trace"]:::dp
     G1 ~~~ G2
 end
 
@@ -145,7 +145,7 @@ subgraph L3["LAYER 03 · K8s cluster"]
     end
     subgraph L3B["② Third-party dependencies · Helm Chart"]
         direction LR
-        B1["Aibrix<br/>Distributed runtime, KV cache"]:::dp
+        B1["KServe<br/>LLMInferenceService · InferencePool · prefill/decode, KV-cache routing"]:::dp
         B2["HAMi<br/>GPU slicing: partition a physical GPU by memory / compute"]:::dp
         B3["Volcano<br/>Gang scheduling, queues and fair sharing"]:::dp
         B4["GPU / NPU Operator<br/>Drivers, device plugin, topology and health"]:::cell
@@ -219,7 +219,7 @@ Install these with their own charts — the platform does not vendor them:
 | Component | Needed for | Official installation guide |
 | --- | --- | --- |
 | Gateway API CRDs + Envoy Gateway | exposing the console through a Gateway with TLS | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
-| AIBrix | inference serving (`StormService`, `ModelClaim`, `aibrix-eg`) | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| KServe | inference serving (`LLMInferenceService`, `InferencePool`, presets) | [KServe installation](https://kserve.github.io/docs/install/kserve) |
 | Volcano | gang scheduling + priority preemption | [Volcano](https://volcano.sh/en/docs/installation/) |
 | JuiceFS CSI (or any RWX storage) | model weights shared by the control plane and inference pods | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor (optional) | image import / upload into your own registry | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
@@ -420,7 +420,7 @@ feature backlog).
 | Phase 1 (MVP) | ✅ Shipped | Model catalog & one-click deployment, API Key lifecycle, control/inference gateway split, gateway-side auth and metering. |
 | Phase 2 | ✅ Shipped | Price matrix, balance/quota, tiered pricing, async settlement, usage/cost analytics, payments/invoices/auto-recharge, audit logging, RBAC, notifications. |
 | Phase 3 | ✅ Shipped | Accelerator inventory & health, multi-vendor engine and image adaptation, model × engine × card-type compatibility matrix. |
-| Phase 4 | ✅ Shipped | Autoscaling, routing policies, load testing, observability & tracing, webhooks, notification center, prompt library & evaluation, batch inference, multi-cluster management, API docs explorer, data export, distributed inference runtime (AIBrix), external model providers, intelligent model routing, cost optimization, service quota management, vGPU slicing pools (HAMI), fault diagnosis & auto-recovery. |
+| Phase 4 | ✅ Shipped | Autoscaling, routing policies, load testing, observability & tracing, webhooks, notification center, prompt library & evaluation, batch inference, multi-cluster management, API docs explorer, data export, distributed inference runtime (KServe), external model providers, intelligent model routing, cost optimization, service quota management, vGPU slicing pools (HAMI), fault diagnosis & auto-recovery. |
 | Next | 🚧 Planned | RDMA networking; community operations are tracked separately outside the feature backlog (Helm one-click install via `deploy/helm/go-taas`, project governance via [GOVERNANCE.md](./GOVERNANCE.md)). |
 
 ## Contributing
@@ -448,7 +448,7 @@ Go TaaS stands on the shoulders of the open-source community. We gratefully
 acknowledge:
 
 - [Kubernetes](https://kubernetes.io) — the container-orchestration foundation the whole platform runs on
-- [AIBrix](https://github.com/vllm-project/aibrix) — serving runtime and autoscaling building blocks integrated by the platform (ModelClaim, PodAutoscaler)
+- [KServe](https://github.com/kserve/kserve) — the serving runtime the platform builds inference services on (LLMInferenceService, InferencePool)
 - [Volcano](https://github.com/volcano-sh/volcano) — batch/gang scheduling reference for heterogeneous cluster workloads
 - [HAMi](https://github.com/Project-HAMi/HAMi) — GPU slicing & sharing (vGPU partitioning) inspiration for the accelerator tier
 

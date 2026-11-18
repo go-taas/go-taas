@@ -39,7 +39,7 @@ This feature adds a **deterministic, rule-based recommendation engine**: a new `
 | **Anthropic Console** | Usage by model with cost per model; no recommendations. | Confirms the gap this feature fills; the console pattern (model-attributed spend) is already covered by #29. |
 | **Together AI / SiliconFlow** | Model pages show price per 1M tokens side by side; the user does the comparison manually. | Adopt the **side-by-side price comparison inside the recommendation drawer** (current model vs suggested model, input/output/cache rates) — the drawer does the comparison the user would otherwise do by hand. |
 | **Modal / Baseten** | Per-deployment GPU-hour cost with idle detection ("this deployment has been idle for N hours"). | Adopt idle detection as the **idle-service rule** — go-taas's equivalent is a service with scale-to-zero disabled and near-zero traffic; the recommendation links to the autoscaling page (#16). |
-| **vLLM / AIBrix guidance** | Documentation-level advice: enable prefix caching, use shorter contexts, batch offline workloads. | Adopt the two measurable ones: **cache-hit improvement** (the metering voucher already records cached tokens) and **batch migration** (the batch API's 50% discount is a platform fact). Context-length advice is not measurable from settled data — excluded. |
+| **vLLM / KServe guidance** | Documentation-level advice: enable prefix caching, use shorter contexts, batch offline workloads. | Adopt the two measurable ones: **cache-hit improvement** (the metering voucher already records cached tokens) and **batch migration** (the batch API's 50% discount is a platform fact). Context-length advice is not measurable from settled data — excluded. |
 
 ### 1.4 The Advice-Only Invariant
 

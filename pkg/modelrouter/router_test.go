@@ -21,6 +21,7 @@ type upstreams struct {
 	gateway *httptest.Server
 
 	models     atomic.Value // []string
+	served     atomic.Value // map[string]string
 	modelCalls atomic.Int64
 	modelToken atomic.Value // string
 	chatBody   atomic.Value // string
@@ -37,6 +38,7 @@ func newUpstreams(t *testing.T) *upstreams {
 	t.Helper()
 	u := &upstreams{}
 	u.models.Store([]string{})
+	u.served.Store(map[string]string{})
 	u.modelToken.Store("")
 	u.gatewayPath.Store("")
 	u.gatewayBody.Store("")
@@ -57,6 +59,10 @@ func newUpstreams(t *testing.T) *upstreams {
 			w.Header().Set("Content-Type", "application/json")
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"id":"chatcmpl-provider","usage":{"prompt_tokens":9}}`))
+		case ServingModelsPath:
+			served, _ := u.served.Load().(map[string]string)
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(map[string]any{"models": served})
 		default:
 			w.WriteHeader(http.StatusNotFound)
 		}
@@ -84,6 +90,22 @@ func newRouter(t *testing.T, u *upstreams) *Router {
 		ServerURL:      u.server.URL,
 		ServerToken:    "shared-secret",
 		GatewayURL:     u.gateway.URL,
+		RequestTimeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	return r
+}
+
+// newRouterInNamespace builds a router that knows the inference namespace and
+// the internal listener host: the two things a model's route path needs.
+func newRouterInNamespace(t *testing.T, u *upstreams) *Router {
+	t.Helper()
+	r, err := New(Config{
+		ServerURL:      u.server.URL,
+		ServerToken:    "shared-secret",
+		GatewayURL:     u.gateway.URL,
+		InferNamespace: "taas-infer",
+		InternalHost:   "taas-internal.invalid",
 		RequestTimeout: 5 * time.Second,
 	})
 	require.NoError(t, err)
@@ -266,4 +288,157 @@ func TestRunStopsWithContext(t *testing.T) {
 func mustString(v any) string {
 	s, _ := v.(string)
 	return s
+}
+
+// TestServedModelPathNamesTheService covers the data plane's routing shape:
+// KServe writes a route per service under the model's namespace, so a caller
+// that names the model only in its body is forwarded to
+// /<namespace>/<service>/v1/chat/completions.
+func TestServedModelPathNamesTheService(t *testing.T) {
+	t.Helper()
+	u := newUpstreams(t)
+	u.served.Store(map[string]string{"qwen": "qwen2.5-0.5b"})
+	r := newRouterInNamespace(t, u)
+	require.NoError(t, r.Refresh(context.Background()))
+
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, chatRequest("qwen"))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "/taas-infer/qwen2.5-0.5b/v1/chat/completions", mustString(u.gatewayPath.Load()))
+}
+
+// TestUnknownServedModelKeepsThePublicPath covers a model the control plane
+// does not report: the namespace is still prefixed, so the Gateway answers its
+// own not-found rather than the router inventing a route.
+func TestUnknownServedModelKeepsThePublicPath(t *testing.T) {
+	t.Helper()
+	u := newUpstreams(t)
+	r := newRouterInNamespace(t, u)
+	require.NoError(t, r.Refresh(context.Background()))
+
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, chatRequest("qwen"))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "/taas-infer/v1/chat/completions", mustString(u.gatewayPath.Load()))
+}
+
+// TestAlreadyNamespacedPathIsLeftAlone covers a caller that addresses the
+// service itself: prefixing it again would name a route that does not exist.
+func TestAlreadyNamespacedPathIsLeftAlone(t *testing.T) {
+	t.Helper()
+	u := newUpstreams(t)
+	u.served.Store(map[string]string{"qwen": "qwen2.5-0.5b"})
+	r := newRouterInNamespace(t, u)
+	require.NoError(t, r.Refresh(context.Background()))
+
+	body := `{"model":"qwen","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/taas-infer/qwen2.5-0.5b/v1/chat/completions", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, req)
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "/taas-infer/qwen2.5-0.5b/v1/chat/completions", mustString(u.gatewayPath.Load()))
+}
+
+// TestDirectWorkloadServiceIsAddressed covers a model reached at its own
+// workload Service: the router addresses the Service the serving stack creates
+// for the model, so serving does not depend on the Gateway's capabilities.
+func TestDirectWorkloadServiceIsAddressed(t *testing.T) {
+	t.Helper()
+	u := newUpstreams(t)
+	u.served.Store(map[string]string{"qwen": "qwen-05b"})
+	r, err := New(Config{
+		ServerURL:      u.server.URL,
+		ServerToken:    "shared-secret",
+		GatewayURL:     u.gateway.URL,
+		InferNamespace: "taas-infer",
+		WorkloadSuffix: "-kserve-workload-svc",
+		WorkloadPort:   8000,
+		RequestTimeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	require.NoError(t, r.Refresh(context.Background()))
+
+	target := r.directTarget("qwen")
+	require.NotNil(t, target)
+	assert.Equal(t, "http://qwen-05b-kserve-workload-svc.taas-infer.svc:8000", target.url.String())
+}
+
+// TestStripServicePrefix covers the path the platform publishes: each service
+// gets "<host>/<service>/v1", and the workload it is forwarded to answers the
+// bare OpenAI path.
+func TestStripServicePrefix(t *testing.T) {
+	cases := []struct {
+		name    string
+		path    string
+		service string
+		want    string
+	}{
+		{"bare OpenAI path", "/v1/chat/completions", "qwen-05b", "/v1/chat/completions"},
+		{"service prefixed", "/qwen-05b/v1/chat/completions", "qwen-05b", "/v1/chat/completions"},
+		{"service and trailing slash", "/qwen-05b/", "qwen-05b", "/"},
+		{"service alone", "/qwen-05b", "qwen-05b", "/"},
+		{"another service is left alone", "/qwen-05b/v1/chat/completions", "llama", "/qwen-05b/v1/chat/completions"},
+		{"no service resolved", "/qwen-05b/v1/chat/completions", "", "/qwen-05b/v1/chat/completions"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, stripServicePrefix(c.path, c.service))
+		})
+	}
+}
+
+// roundTripFunc stands in for the transport, so a test can observe how a
+// request leaves the router without resolving a cluster DNS name.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(req *http.Request) (*http.Response, error) { return f(req) }
+
+// prefixedChatRequest builds a chat request on the endpoint a service page
+// publishes: "<host>/<service>/v1/chat/completions" — the same OpenAI path with
+// the service name as its first segment.
+func prefixedChatRequest(service string) *http.Request {
+	body := `{"model":"qwen-05b","messages":[{"role":"user","content":"hi"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/"+service+ChatCompletionsPath, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	return req
+}
+
+// TestServerPrefixedChatPathIsDropped covers the endpoint a service page
+// publishes: the service segment is dropped before the request leaves the
+// router, so the workload receives the bare OpenAI path it answers.
+func TestServerPrefixedChatPathIsDropped(t *testing.T) {
+	t.Helper()
+	u := newUpstreams(t)
+	u.served.Store(map[string]string{"qwen-05b": "qwen-05b"})
+	r, err := New(Config{
+		ServerURL:      u.server.URL,
+		ServerToken:    "shared-secret",
+		GatewayURL:     u.gateway.URL,
+		InferNamespace: "taas-infer",
+		WorkloadSuffix: "-kserve-workload-svc",
+		WorkloadPort:   8000,
+		RequestTimeout: 5 * time.Second,
+	})
+	require.NoError(t, err)
+	require.NoError(t, r.Refresh(context.Background()))
+
+	var seen atomic.Value
+	r.proxy.Transport = roundTripFunc(func(out *http.Request) (*http.Response, error) {
+		seen.Store(out.URL.Path)
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Header:     http.Header{},
+			Body:       io.NopCloser(strings.NewReader(`{"id":"chatcmpl-workload"}`)),
+		}, nil
+	})
+
+	rec := httptest.NewRecorder()
+	r.Handler().ServeHTTP(rec, prefixedChatRequest("qwen-05b"))
+
+	require.Equal(t, http.StatusOK, rec.Code)
+	assert.Equal(t, "/v1/chat/completions", mustString(seen.Load()))
 }

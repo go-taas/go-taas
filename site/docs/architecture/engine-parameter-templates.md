@@ -5,7 +5,7 @@
 | Feature point | An operator can save a set of serving-engine parameters as a named template together with the deployment context it applies to, and the deploy form loads the best-matching template instead of making the operator retype flags. Templates support create/read/update/delete plus bulk export and import |
 | Document scope | The template model and its context semantics, the seven RPCs, matching and ordering, validation rules, the export document and import strategies, the console surface, error codes and acceptance criteria |
 | Owning modules | `services/infer` (`template_model.go`, `template_repository.go`, `template_service.go`) · `proto/taas/infer/v1` · `web` (`EngineTemplatesPage`, `DeployForm`, `shells/nav`) |
-| Related documents | [StormService Serving Topology](./stormservice-serving-topology.md) (the topology and per-role engine arguments a template stores) · [Accelerator Inventory](./accelerator-inventory.md) (where the accelerator context values come from) |
+| Related documents | [LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md) (the topology and per-role engine arguments a template stores) · [Accelerator Inventory](./accelerator-inventory.md) (where the accelerator context values come from) |
 | Status | Implemented |
 
 ---
@@ -89,7 +89,7 @@ Ordering is `match_score DESC, name ASC`, so a tie is stable and the list does n
 - a `topology` outside `single` / `multinode` / `pd` (legacy `distributed` is normalised to `multinode`, as it is everywhere else);
 - an `engine_args` key that already carries leading dashes or a `=` — the key is the flag name alone, and the value is the argument;
 - a `role_engine_args` role outside `worker` / `prefill` / `decode`;
-- an `env` name that is not a POSIX variable name (`^[A-Za-z_][A-Za-z0-9_]*$`), longer than 128 characters, or reserved by Kubernetes / the storm controller (`HOSTNAME`, `POD_NAME`, `ROLESET_INDEX`, …) — overriding those breaks the distributed rendezvous;
+- an `env` name that is not a POSIX variable name (`^[A-Za-z_][A-Za-z0-9_]*$`), longer than 128 characters, or reserved by Kubernetes or the serving runtime (`HOSTNAME`, `POD_NAME`, …) — overriding those breaks the distributed rendezvous;
 - an `env` value longer than 4096 characters or containing a NUL byte;
 - an empty template: no `engine_args`, no `extra_args`, no `role_engine_args` and no `env`.
 

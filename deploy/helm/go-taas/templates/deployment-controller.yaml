@@ -54,6 +54,28 @@ spec:
             {{- with .Values.controller.config }}
             {{- include "go-taas.configEnv" (dict "prefix" "CONFIG" "values" . "indent" 12) }}
             {{- end }}
+            {{- /* Model routes are written in the inference namespace and
+                   attach to the data plane Gateway this chart creates in the
+                   release namespace, so the controller is told where that
+                   Gateway and its Envoy workload live rather than guessing. */}}
+            {{- $rtCfg := (dig "runtime" "gateway" dict (.Values.controller.config | default dict)) | default dict }}
+            {{- $rtGw := .Values.dataPlane.gateway | default dict }}
+            {{- if not (hasKey $rtCfg "namespace") }}
+            - name: CONFIG_RUNTIME_GATEWAY_NAMESPACE
+              value: {{ .Release.Namespace | quote }}
+            {{- end }}
+            {{- if not (hasKey $rtCfg "name") }}
+            - name: CONFIG_RUNTIME_GATEWAY_NAME
+              value: {{ $rtGw.name | default "taas-inference" | quote }}
+            {{- end }}
+            {{- if not (hasKey $rtCfg "deployment") }}
+            - name: CONFIG_RUNTIME_GATEWAY_DEPLOYMENT
+              value: {{ $rtGw.name | default "taas-inference" | quote }}
+            {{- end }}
+            {{- if not (hasKey $rtCfg "deploymentNamespace") }}
+            - name: CONFIG_RUNTIME_GATEWAY_DEPLOYMENTNAMESPACE
+              value: {{ $rtGw.envoyNamespace | default .Release.Namespace | quote }}
+            {{- end }}
             {{- with .Values.controller.secretConfig }}
             {{- include "go-taas.secretConfigEnv" (dict "prefix" "CONFIG" "values" . "secretName" $secretName "indent" 12) }}
             {{- end }}

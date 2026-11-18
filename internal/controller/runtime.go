@@ -22,22 +22,22 @@ import (
 // Serving scheme values (feature #47, AD3).
 const (
 	schemePlain  = "plain"
-	schemeAIBrix = "aibrix"
+	schemeKServe = "kserve"
 )
 
 // SchemeCache holds the latest serving scheme the controller has received
-// from the runtime service (AD6). It defaults to AIBrix: every inference
-// service is served through AIBrix (routing, model claims, autoscaling
-// policy), so a restarted controller must not silently fall back to a plain
-// Service path that skips them.
+// from the runtime service (AD6). It defaults to the KServe scheme: every
+// inference service is served as an LLMInferenceService, so a restarted
+// controller must not silently fall back to a plain Service path that skips
+// KServe's workload, route and inference pool.
 type SchemeCache struct {
 	mu     sync.RWMutex
 	scheme string
 }
 
-// NewSchemeCache constructs a scheme cache defaulting to AIBrix.
+// NewSchemeCache constructs a scheme cache defaulting to the KServe scheme.
 func NewSchemeCache() *SchemeCache {
-	return &SchemeCache{scheme: schemeAIBrix}
+	return &SchemeCache{scheme: schemeKServe}
 }
 
 // Scheme returns the cached scheme.
@@ -45,7 +45,7 @@ func (c *SchemeCache) Scheme() string {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	if c.scheme == "" {
-		return schemeAIBrix
+		return schemeKServe
 	}
 	return c.scheme
 }
@@ -53,7 +53,7 @@ func (c *SchemeCache) Scheme() string {
 // SetScheme caches a scheme, ignoring unknown values.
 func (c *SchemeCache) SetScheme(scheme string) {
 	switch scheme {
-	case schemePlain, schemeAIBrix:
+	case schemePlain, schemeKServe:
 		c.mu.Lock()
 		c.scheme = scheme
 		c.mu.Unlock()
@@ -66,17 +66,6 @@ type runtimeSchemeMessage struct {
 	Revision  int64  `json:"revision"`
 	UpdatedAt string `json:"updated_at"`
 	UpdatedBy string `json:"updated_by"`
-}
-
-// runtimeModelChange mirrors the runtime.models.changes payload (AD5).
-type runtimeModelChange struct {
-	EventType   string            `json:"event_type"`
-	ModelName   string            `json:"model_name"`
-	Engine      string            `json:"engine"`
-	Replicas    int64             `json:"replicas"`
-	ArtifactURL string            `json:"artifact_url"`
-	PodSelector map[string]string `json:"pod_selector"`
-	EngineArgs  map[string]string `json:"engine_args"`
 }
 
 // RuntimeSchemeConsumer subscribes to the runtime.scheme subject and
@@ -115,54 +104,6 @@ func (c *RuntimeSchemeConsumer) handle(msg mq.Message) error {
 	return nil
 }
 
-// RuntimeModelChangeConsumer subscribes to runtime.models.changes and
-// reconciles each registration into an AIBrix ModelClaim (AD5). Every
-// write is best-effort: a failure is logged and never blocks serving
-// (AD13).
-type RuntimeModelChangeConsumer struct {
-	client    mq.Client
-	dynamic   dynamic.Interface
-	namespace string
-}
-
-// NewRuntimeModelChangeConsumer builds a RuntimeModelChangeConsumer.
-func NewRuntimeModelChangeConsumer(client mq.Client, dyn dynamic.Interface, namespace string) *RuntimeModelChangeConsumer {
-	return &RuntimeModelChangeConsumer{client: client, dynamic: dyn, namespace: namespace}
-}
-
-// Run implements server.Runner: it subscribes to runtime.models.changes
-// until ctx is cancelled.
-func (c *RuntimeModelChangeConsumer) Run(ctx context.Context) error {
-	if c.client == nil {
-		return nil
-	}
-	return c.client.Subscribe(ctx, mq.DefaultSubjects().RuntimeModelChanges, c.handle)
-}
-
-// handle applies one model desired-state change.
-func (c *RuntimeModelChangeConsumer) handle(msg mq.Message) error {
-	var change runtimeModelChange
-	if err := json.Unmarshal(msg.Body, &change); err != nil {
-		logger.S().Warnw("controller: malformed runtime model change, skipping", "err", err)
-		return nil
-	}
-	if strings.TrimSpace(change.ModelName) == "" {
-		return nil
-	}
-	switch change.EventType {
-	case "delete":
-		if err := deleteModelClaim(context.Background(), c.dynamic, c.namespace, change.ModelName); err != nil {
-			logger.S().Warnw("controller: delete modelclaim failed", "model", change.ModelName, "err", err)
-		}
-	case "upsert":
-		claim := buildModelClaimFromChange(&change, c.namespace)
-		if err := applyModelClaim(context.Background(), c.dynamic, claim); err != nil {
-			logger.S().Warnw("controller: apply modelclaim failed", "model", change.ModelName, "err", err)
-		}
-	}
-	return nil
-}
-
 // runtimeComponent is one component in the published snapshot.
 type runtimeComponent struct {
 	ComponentID     string    `json:"component_id"`
@@ -175,7 +116,7 @@ type runtimeComponent struct {
 	LastCheckedAt   time.Time `json:"last_checked_at"`
 }
 
-// runtimeModelCondition is one ModelClaim status condition.
+// runtimeModelCondition is one registered-model status condition.
 type runtimeModelCondition struct {
 	Type               string    `json:"type"`
 	Status             string    `json:"status"`
@@ -184,7 +125,7 @@ type runtimeModelCondition struct {
 	LastTransitionTime time.Time `json:"last_transition_time"`
 }
 
-// runtimeModel is one ModelClaim projection in the snapshot.
+// runtimeModel is one registered-model projection in the snapshot.
 type runtimeModel struct {
 	ModelName       string                  `json:"model_name"`
 	Engine          string                  `json:"engine"`
@@ -214,28 +155,27 @@ type runtimeSnapshot struct {
 type RuntimeCollectorConfig struct {
 	// Interval is the collection period.
 	Interval time.Duration
-	// Namespace is the namespace ModelClaims are reconciled into (the
+	// Namespace is the namespace registered models are reconciled into (the
 	// controller namespace).
 	Namespace string
-	// AIBrixNamespace is the namespace of the AIBrix control plane.
-	AIBrixNamespace string
-	// Gateway is the Envoy AI Gateway Deployment name.
+	// ControlPlaneNamespace is the namespace of the KServe control plane.
+	ControlPlaneNamespace string
+	// Gateway is the Envoy Deployment backing the data plane Gateway.
 	Gateway string
+	// GatewayNamespace is the namespace that Deployment runs in.
+	GatewayNamespace string
 	// ClusterName is reported in the snapshot.
 	ClusterName string
 }
 
-// aibrixControlPlaneDeployments are the AIBrix control-plane Deployments
-// observed for health (AD4).
-var aibrixControlPlaneDeployments = []string{
-	"aibrix-controller-manager",
-	"aibrix-gateway-plugins",
-	"aibrix-gpu-optimizer",
-	"aibrix-metadata-service",
-	"aibrix-redis-master",
+// defaultControlPlaneDeployments are the control-plane Deployments observed for
+// health (AD4). A KServe install runs the controller manager, which hosts the
+// LLMInferenceService controller.
+var defaultControlPlaneDeployments = []string{
+	"kserve-controller-manager",
 }
 
-// RuntimeCollector lists runtime components and ModelClaims on an
+// RuntimeCollector lists runtime components and registered models on an
 // interval and publishes a full snapshot to runtime.health (AD4). It is
 // best-effort telemetry: transient Kubernetes errors are logged, the
 // last-known projection is retained, and the loop retries on the next
@@ -258,11 +198,11 @@ func NewRuntimeCollector(clientset kubernetes.Interface, dyn dynamic.Interface, 
 	if cfg.Interval <= 0 {
 		cfg.Interval = 30 * time.Second
 	}
-	if cfg.AIBrixNamespace == "" {
-		cfg.AIBrixNamespace = "aibrix-system"
+	if cfg.ControlPlaneNamespace == "" {
+		cfg.ControlPlaneNamespace = "kserve"
 	}
-	if cfg.Gateway == "" {
-		cfg.Gateway = "envoy-aibrix-system-aibrix-eg"
+	if cfg.GatewayNamespace == "" {
+		cfg.GatewayNamespace = cfg.Namespace
 	}
 	if scheme == nil {
 		scheme = NewSchemeCache()
@@ -292,8 +232,8 @@ func (c *RuntimeCollector) collectAndPublish(ctx context.Context) {
 	scheme := c.scheme.Scheme()
 	snap := runtimeSnapshot{Scheme: scheme, RuntimeName: scheme, ReportedAt: time.Now().UTC()}
 
-	if scheme == schemeAIBrix {
-		components, version, err := c.collectAIBrixComponents(ctx)
+	if scheme == schemeKServe {
+		components, version, err := c.collectKServeComponents(ctx)
 		if err != nil {
 			c.publishDegraded(ctx, scheme, err)
 			return
@@ -359,20 +299,20 @@ func (c *RuntimeCollector) publishDegraded(ctx context.Context, scheme string, c
 	c.publish(ctx, &snap)
 }
 
-// collectAIBrixComponents reads the AIBrix control-plane Deployments and
-// the Envoy AI Gateway Deployment (AD4).
-func (c *RuntimeCollector) collectAIBrixComponents(ctx context.Context) ([]runtimeComponent, string, error) {
+// collectKServeComponents reads the KServe control-plane Deployment and the
+// Envoy Gateway Deployment that fronts the data-plane route (AD4).
+func (c *RuntimeCollector) collectKServeComponents(ctx context.Context) ([]runtimeComponent, string, error) {
 	if c.clientset == nil {
 		return nil, "", fmt.Errorf("kubernetes clientset unavailable")
 	}
 	now := time.Now().UTC()
-	components := make([]runtimeComponent, 0, len(aibrixControlPlaneDeployments)+1)
+	components := make([]runtimeComponent, 0, len(defaultControlPlaneDeployments)+1)
 	version := ""
-	for _, name := range aibrixControlPlaneDeployments {
-		comp := c.deploymentComponent(ctx, c.cfg.AIBrixNamespace, name, "control_plane", now)
+	for _, name := range defaultControlPlaneDeployments {
+		comp := c.deploymentComponent(ctx, c.cfg.ControlPlaneNamespace, name, "control_plane", now)
 		components = append(components, comp)
-		if name == "aibrix-controller-manager" {
-			version = c.deploymentImageVersion(ctx, c.cfg.AIBrixNamespace, name)
+		if name == "kserve-controller-manager" {
+			version = c.deploymentImageVersion(ctx, c.cfg.ControlPlaneNamespace, name)
 		}
 	}
 	gateway := c.gatewayComponent(ctx, now)
@@ -380,25 +320,25 @@ func (c *RuntimeCollector) collectAIBrixComponents(ctx context.Context) ([]runti
 	return components, version, nil
 }
 
-// gatewayComponent reads the Envoy AI Gateway Deployment for the runtime
-// health snapshot (AD4). Envoy AI Gateway suffixes its generated
-// Deployment name with a hash and may live in the gateway controller's
-// own namespace, so when the configured name is not found in the AIBrix
-// namespace the collector falls back to a cluster-wide prefix match on
-// the configured name. The fallback keeps the composed component ID the
-// configured gateway name so the page shows a stable identity.
+// gatewayComponent reads the Envoy Gateway Deployment that fronts the model
+// route for the runtime health snapshot (AD4). Its generated Deployment name
+// carries a hash and it lives in the Gateway controller's namespace, so when
+// the configured name is not found next to the control plane the collector
+// falls back to a cluster-wide prefix match on the configured name. The
+// fallback keeps the composed component ID the configured gateway name so the
+// page shows a stable identity.
 func (c *RuntimeCollector) gatewayComponent(ctx context.Context, now time.Time) runtimeComponent {
 	name := c.cfg.Gateway
-	dep, err := c.clientset.AppsV1().Deployments(c.cfg.AIBrixNamespace).Get(ctx, name, metav1.GetOptions{})
+	dep, err := c.clientset.AppsV1().Deployments(c.cfg.ControlPlaneNamespace).Get(ctx, name, metav1.GetOptions{})
 	if err == nil {
 		return deploymentToComponent(dep, name, "gateway", now)
 	}
 	if !apierrors.IsNotFound(err) {
-		return unavailableComponent(name, name, "gateway", c.cfg.AIBrixNamespace, now)
+		return unavailableComponent(name, name, "gateway", c.cfg.ControlPlaneNamespace, now)
 	}
 	list, listErr := c.clientset.AppsV1().Deployments(metav1.NamespaceAll).List(ctx, metav1.ListOptions{})
 	if listErr != nil {
-		return unavailableComponent(name, name, "gateway", c.cfg.AIBrixNamespace, now)
+		return unavailableComponent(name, name, "gateway", c.cfg.ControlPlaneNamespace, now)
 	}
 	for i := range list.Items {
 		d := &list.Items[i]
@@ -406,7 +346,7 @@ func (c *RuntimeCollector) gatewayComponent(ctx context.Context, now time.Time) 
 			return deploymentToComponent(d, name, "gateway", now)
 		}
 	}
-	return unavailableComponent(name, name, "gateway", c.cfg.AIBrixNamespace, now)
+	return unavailableComponent(name, name, "gateway", c.cfg.ControlPlaneNamespace, now)
 }
 
 // deploymentComponent reads one Deployment and maps its replica state to a
@@ -488,52 +428,50 @@ func (c *RuntimeCollector) collectPlainComponents(ctx context.Context) ([]runtim
 	}, nil
 }
 
-// collectModels lists and projects ModelClaims (AD5). A list error is
-// returned so the caller publishes a degraded snapshot.
+// collectModels lists and projects the served models. Every model the platform
+// serves is one LLMInferenceService, so the runtime model list is the
+// LLMInferenceService set with its readiness taken from the object status.
 func (c *RuntimeCollector) collectModels(ctx context.Context) ([]runtimeModel, error) {
 	if c.dynamic == nil {
 		return nil, fmt.Errorf("dynamic client unavailable")
 	}
-	namespaces := []string{c.cfg.Namespace}
-	if c.cfg.AIBrixNamespace != "" && c.cfg.AIBrixNamespace != c.cfg.Namespace {
-		namespaces = append(namespaces, c.cfg.AIBrixNamespace)
+	list, err := c.dynamic.Resource(llmSVCGVR).Namespace(c.cfg.Namespace).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return nil, err
 	}
-	models := []runtimeModel{}
-	for _, ns := range namespaces {
-		list, err := c.dynamic.Resource(modelClaimGVR).Namespace(ns).List(ctx, metav1.ListOptions{})
-		if err != nil {
-			return nil, err
-		}
-		for i := range list.Items {
-			models = append(models, projectModelClaim(&list.Items[i]))
-		}
+	models := make([]runtimeModel, 0, len(list.Items))
+	for i := range list.Items {
+		models = append(models, projectLLMInferenceService(&list.Items[i]))
 	}
 	return models, nil
 }
 
-// projectModelClaim projects one ModelClaim into a runtime model.
-func projectModelClaim(obj *unstructured.Unstructured) runtimeModel {
+// projectLLMInferenceService projects one LLMInferenceService into a runtime
+// model.
+func projectLLMInferenceService(obj *unstructured.Unstructured) runtimeModel {
 	model := runtimeModel{
-		ModelName: nestedString(obj, "spec", "modelName"),
-		Engine:    nestedString(obj, "spec", "engine"),
+		ModelName: nestedString(obj, "spec", "model", "name"),
 		Origin:    obj.GetLabels()[mcLabelOrigin],
+	}
+	if model.ModelName == "" {
+		model.ModelName = obj.GetName()
 	}
 	if v, ok, _ := unstructured.NestedInt64(obj.Object, "spec", "replicas"); ok {
 		model.Replicas = v
 	}
+	if v, ok, _ := unstructured.NestedInt64(obj.Object, "status", "replicas"); ok {
+		model.ReadyReplicas = v
+	}
 	if ts := obj.GetCreationTimestamp(); !ts.IsZero() {
 		model.CreatedAt = ts.UTC()
 	}
-	if v, ok, _ := unstructured.NestedInt64(obj.Object, "status", "candidates"); ok {
-		model.ReadyCandidates = v
-	}
-	if v, ok, _ := unstructured.NestedInt64(obj.Object, "status", "readyReplicas"); ok {
-		model.ReadyReplicas = v
-	}
 	model.Conditions = nestedConditions(obj)
-	model.Status = deriveModelStatus(model.Conditions, model.ReadyCandidates)
+	model.Status = deriveModelStatus(model.Conditions)
 	return model
 }
+
+// mcLabelOrigin labels a served model with where its definition came from.
+const mcLabelOrigin = "go-taas.com/origin"
 
 // nestedConditions extracts status.conditions into the projection shape.
 func nestedConditions(obj *unstructured.Unstructured) []runtimeModelCondition {
@@ -553,9 +491,11 @@ func nestedConditions(obj *unstructured.Unstructured) []runtimeModelCondition {
 			Reason:  asString(m["reason"]),
 			Message: asString(m["message"]),
 		}
-		if t, ok := m["lastTransitionTime"].(string); ok {
-			if parsed, err := time.Parse(time.RFC3339, t); err == nil {
-				cond.LastTransitionTime = parsed.UTC()
+		if t, ok := m["lastTransitionTime"]; ok {
+			if s, ok := t.(string); ok {
+				if parsed, err := time.Parse(time.RFC3339, s); err == nil {
+					cond.LastTransitionTime = parsed.UTC()
+				}
 			}
 		}
 		out = append(out, cond)
@@ -563,25 +503,18 @@ func nestedConditions(obj *unstructured.Unstructured) []runtimeModelCondition {
 	return out
 }
 
-// deriveModelStatus maps the ModelClaim conditions to a model status.
-func deriveModelStatus(conditions []runtimeModelCondition, candidates int64) string {
-	hasReady := false
+// deriveModelStatus maps the LLMInferenceService conditions to a model status.
+func deriveModelStatus(conditions []runtimeModelCondition) string {
 	for _, c := range conditions {
 		if c.Type != "Ready" {
 			continue
 		}
-		hasReady = true
 		if strings.EqualFold(c.Status, "True") {
 			return "ready"
 		}
-		if strings.EqualFold(c.Status, "False") && c.Reason != "" {
+		if c.Reason != "" {
 			return "failed"
 		}
-	}
-	if !hasReady && candidates > 0 {
-		return "progressing"
-	}
-	if hasReady {
 		return "degraded"
 	}
 	return "unknown"

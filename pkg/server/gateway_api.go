@@ -252,6 +252,7 @@ func (s *commonServer) initGatewayAPI() {
 	// platform's provider credentials, so the caller has to be as trusted as
 	// the plugin itself.
 	s.initExternalModels(guard)
+	s.initServingModels(guard)
 	if sink != nil {
 		s.monitorMux.HandleFunc(gatewayUsagePath, guard(s.usageHandler(sink)))
 	}

@@ -33,7 +33,7 @@ const (
 // inert, so it is rejected instead of stored.
 var envNamePattern = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
 
-// reservedEnvNames are set by Kubernetes or by the AIBrix storm controller and
+// reservedEnvNames are set by Kubernetes or by the serving controller and
 // carry the pod's identity. Overriding them breaks the distributed rendezvous
 // (the rank is derived from HOSTNAME and ROLESET_INDEX), so a request naming
 // one is refused instead of producing a service that cannot start.
@@ -43,11 +43,11 @@ var reservedEnvNames = map[string]string{
 	"POD_NAMESPACE":      "the pod namespace is assigned by Kubernetes",
 	"POD_IP":             "the pod IP is assigned by Kubernetes",
 	"NODE_NAME":          "the node name is assigned by Kubernetes",
-	"STORM_SERVICE_NAME": "the storm name is assigned by the AIBrix controller",
-	"ROLESET_NAME":       "the role set name is assigned by the AIBrix controller",
+	"STORM_SERVICE_NAME": "the workload name is assigned by the serving controller",
+	"ROLESET_NAME":       "the role set name is assigned by the serving controller",
 	"ROLESET_INDEX":      "the role set index is what the engine uses as its rank",
-	"ROLE_NAME":          "the role name is assigned by the AIBrix controller",
-	"ROLE_TEMPLATE_HASH": "the role template hash is assigned by the AIBrix controller",
+	"ROLE_NAME":          "the role name is assigned by the serving controller",
+	"ROLE_TEMPLATE_HASH": "the role template hash is assigned by the serving controller",
 }
 
 // normalizeEnv validates the environment-variable map and returns it as the

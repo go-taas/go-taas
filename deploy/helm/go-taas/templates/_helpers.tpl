@@ -562,17 +562,13 @@ route; these are its install-time parts.
 {{- $overrides := deepCopy (.Values.configOverrides | default dict) -}}
 {{- $dp := .Values.dataPlane | default dict -}}
 {{- $parent := $dp.parentRef | default dict -}}
-{{- $backend := $dp.backend | default dict -}}
 {{- $dataPlane := dict
       "enabled" (ternary true false ($dp.enabled | default false))
       "hostname" ($dp.hostname | default "")
       "routeNamespace" .Release.Namespace
       "parentRefName" ($parent.name | default "")
       "parentRefNamespace" ($parent.namespace | default .Release.Namespace)
-      "parentRefSection" ($parent.sectionName | default "https")
-      "backendName" ($backend.name | default "")
-      "backendNamespace" ($backend.namespace | default "")
-      "backendPort" ($backend.port | default 80) -}}
+      "parentRefSection" ($parent.sectionName | default "https") -}}
 {{- $mr := .Values.modelRouter | default dict -}}
 {{- if $mr.enabled -}}
 {{- $_ := set $dataPlane "modelRouterName" (include "go-taas.modelRouter.name" .) -}}
@@ -589,7 +585,7 @@ route; these are its install-time parts.
       "cacheTTL" ($gp.cacheTTL | default "30s")
       "verifyTimeout" ($gp.verifyTimeout | default "500ms")
       "failOpen" (ternary true false ($gp.failOpen | default false))
-      "protectedPrefixes" ($gp.protectedPrefixes | default (list "/v1/"))
+      "protectedPrefixes" ($gp.protectedPrefixes | default (list "/"))
       "pluginPath" "/usr/local/bin/gateway-plugin.wasm" -}}
 {{- $_ := set $overrides "gatewayPlugin" $gatewayPlugin -}}
 {{- $monitoring := .Values.monitoring | default dict -}}

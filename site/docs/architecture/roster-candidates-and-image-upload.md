@@ -5,7 +5,7 @@
 | Feature point | Rosters add people by picking them from the accounts that may still join; the image catalog gains an upload path (a `docker save` archive pushed into Harbor) and loses registration; the invitations page names its organization; the cluster page groups its actions |
 | Document scope | The two roster-candidate RPCs and their eligibility rules, the account-directory seam, the multipart upload endpoint, the archive handling and its destination rule, the console interactions, error handling, configuration and acceptance criteria |
 | Owning modules | `services/tenancy` (candidate RPCs, membership filtering) · `services/auth` (`ListActiveUsers`) · `services/image` (`UploadImage`) · `pkg/registry` (archive reader, `skopeo copy docker-archive:`) · `pkg/server` (multipart endpoint, upload seam) · `web` (`MembersPage`, `ProjectMembersPage`, `InvitationsPage`, `ClustersPage`, `ImagesPage`, `UploadImageDialog`) |
-| Related documents | [Image Management](./image-management.md) (the catalog and warmup) · [Image Import](./image-management.md) (the registry-to-registry flow the upload mirrors) · [StormService Serving Topology](./stormservice-serving-topology.md) (the registry-config projection) |
+| Related documents | [Image Management](./image-management.md) (the catalog and warmup) · [Image Import](./image-management.md) (the registry-to-registry flow the upload mirrors) · [LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md) (the registry-config projection) |
 | Status | Implemented |
 
 ---

@@ -51,7 +51,7 @@
 | 模型目录与一键部署 | 登记并版本化模型，从任一控制台或 API 一键部署；平台经消息队列与 Kubernetes Controller 编排推理工作负载，无需手写 YAML，并内置版本历史与回滚。 |
 | 推理镜像管理 | 统一登记、版本化并维护各受支持加速卡的引擎镜像适配关系，节点级预热缩短冷启动。 |
 | OpenAI 兼容 API | `/v1/chat/completions`、`/v1/completions`、`/v1/embeddings` 由基于 Envoy 的网关承载；鉴权、计量与路由运行在 Wasm 插件中，推理流量不经过业务进程。 |
-| 分布式推理运行时 | 平台级服务形态：推理服务既可以普通 Deployment（默认）运行，也可以交由 **AIBrix** 分布式运行时（StormService / RoleSet）托管；管理控制台可查看运行时组件健康与被其纳管的模型。 |
+| 分布式推理运行时 | 平台级服务形态：每个推理服务都运行在 KServe **LLMInferenceService** 上，既可以是单副本单卡，也可以是多机 Prefill/Decode + 路由器托管的副本池；管理控制台可查看运行时组件健康与被其纳管的模型。 |
 | vGPU 切分池 | 基于 **HAMI** 的 GPU 切分：通过标签把节点划入切分池，定义切片模板（显存 / 算力百分比），让多个小推理作业以 binpack 或 spread 策略共调度到同一块物理 GPU；管理控制台可查看池利用率与每服务的切片分配。HAMi 仅用于 GPU 切分，暂未使用其异构卡纳管、设备插件与调度能力。 |
 | 外部模型提供方 | 登记第三方大模型提供方（DeepSeek / OpenAI / OpenAI 兼容），通过五态连通性探测（`ok` / `unauthorized` / `unreachable` / `error` / `unknown`）验证可用性，维护上游模型清单并发布到目录；API Key 只写不可读、加密落库，租户经同一套 OpenAI 兼容计费网关消费。 |
 | 路由与容灾 | **路由策略**按序使用健康部署，在同一模型内做有界故障转移与可重试失败分类，绝不静默替换模型或版本。 |
@@ -118,7 +118,7 @@ end
 subgraph L2["LAYER 02 · 网关层"]
     direction LR
     G1["TaaS Gateway（控制面）<br/>TLS · 认证 · RBAC · 限流 · 审计 · 请求校验 · 路由到 TaaS Server"]:::cp
-    G2["Aibrix Gateway + TaaS Plugin（数据面）<br/>OpenAI API · 模型路由 · Token 感知负载均衡 · 同模型 failover · 计量 · Trace"]:::dp
+    G2["Gateway + TaaS Plugin（数据面）<br/>OpenAI API · 模型路由 · 前缀/队列感知负载均衡 · 同模型 failover · 计量 · Trace"]:::dp
     G1 ~~~ G2
 end
 
@@ -144,7 +144,7 @@ subgraph L3["LAYER 03 · K8s 集群"]
     end
     subgraph L3B["② 第三方依赖 · Helm Chart"]
         direction LR
-        B1["Aibrix<br/>分布式运行时、KV Cache"]:::dp
+        B1["KServe<br/>LLMInferenceService · InferencePool · Prefill/Decode、KV Cache 路由"]:::dp
         B2["HAMi<br/>GPU 切分：按显存 / 算力切分物理 GPU"]:::dp
         B3["Volcano<br/>Gang Scheduling、队列与公平共享"]:::dp
         B4["GPU / NPU Operator<br/>驱动、设备插件、拓扑与健康"]:::cell
@@ -217,7 +217,7 @@ GPU 节点需安装 NVIDIA GPU Operator（或厂商 device plugin），使 `nvid
 | 组件 | 用途 | 官方安装文档 |
 | --- | --- | --- |
 | Gateway API CRD + Envoy Gateway | 通过 Gateway 以 TLS 暴露控制台 | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway](https://gateway.envoyproxy.io/docs/install/install-helm/) |
-| AIBrix | 推理服务（`StormService`、`ModelClaim`、`aibrix-eg`） | [AIBrix](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| KServe | 推理服务（`LLMInferenceService`、`InferencePool`、内置预设） | [KServe 安装](https://kserve.github.io/docs/install/kserve) |
 | Volcano | Gang 调度与优先级抢占 | [Volcano](https://volcano.sh/en/docs/installation/) |
 | JuiceFS CSI（或任意 RWX 存储） | 控制面与推理 Pod 共享的模型权重 | [JuiceFS CSI](https://juicefs.com/docs/csi/getting_started/) |
 | Harbor（可选） | 把外部镜像导入/上传到自有仓库 | [Harbor](https://goharbor.io/docs/2.11.0/install-config/) |
@@ -406,7 +406,7 @@ curl https://<your-taas-host>/v1/chat/completions \
 | Phase 1（MVP） | ✅ 已交付 | 模型目录与一键部署、API Key 生命周期、控制/推理网关分离、网关侧鉴权与计量。 |
 | Phase 2 | ✅ 已交付 | 价格矩阵、余额/额度、阶梯价、异步结算、用量/成本分析、支付/发票/自动充值、审计日志、RBAC、通知。 |
 | Phase 3 | ✅ 已交付 | 加速器清单与健康、多厂商引擎与镜像适配、模型 × 引擎 × 卡型兼容性矩阵。 |
-| Phase 4 | ✅ 已交付 | 弹性伸缩、路由策略、压测、可观测与链路追踪、Webhook、通知中心、提示词库与评测、批量推理、多集群管理、API 文档浏览器、数据导出、分布式推理运行时（AIBrix）、外部模型提供方、智能模型路由、成本优化、服务配额管理、vGPU 切分池（HAMI）、故障诊断与自动容错。 |
+| Phase 4 | ✅ 已交付 | 弹性伸缩、路由策略、压测、可观测与链路追踪、Webhook、通知中心、提示词库与评测、批量推理、多集群管理、API 文档浏览器、数据导出、分布式推理运行时（KServe）、外部模型提供方、智能模型路由、成本优化、服务配额管理、vGPU 切分池（HAMI）、故障诊断与自动容错。 |
 | 后续 | 🚧 规划中 | RDMA 网络；社区运营在特性待办之外单独跟踪（Helm 一键部署见 `deploy/helm/go-taas`，项目治理见 [GOVERNANCE.zh-cn.md](./GOVERNANCE.zh-cn.md)）。 |
 
 ## 参与贡献
@@ -433,7 +433,7 @@ curl https://<your-taas-host>/v1/chat/completions \
 Go TaaS 站在开源社区的肩膀上。感谢以下上游社区：
 
 - [Kubernetes](https://kubernetes.io) —— 整个平台运行的容器编排基座
-- [AIBrix](https://github.com/vllm-project/aibrix) —— 平台对接的推理服务运行时与弹性伸缩组件（ModelClaim、PodAutoscaler）
+- [KServe](https://github.com/kserve/kserve) —— 平台所有推理服务所基于的运行时（LLMInferenceService、InferencePool）
 - [Volcano](https://github.com/volcano-sh/volcano) —— 面向异构集群的批量/gang 调度实践参考
 - [HAMi](https://github.com/Project-HAMi/HAMi) —— GPU 切分与共享（vGPU 切分）思路参考
 

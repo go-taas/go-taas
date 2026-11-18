@@ -31,7 +31,7 @@
 | 镜像预拉取 / 预热编排 | 已实现（特性 #3） |
 | 按模型、按卡型计价展示 | 已实现（计价特性） |
 | 租户级模型授权（哪些组织可部署哪些模型） | 已实现（模型授权特性） |
-| 自动扩缩容策略 | 已用 AIBrix `PodAutoscaler` 实现（特性 #16/#47） |
+| 自动扩缩容策略 | 已用 KServe `autoscaling` 实现（特性 #16/#47） |
 | 灰度升级与蓝绿部署 | 未来特性点 |
 | 推理网关把 `/v1/chat/completions` 路由到已部署服务 | 已由服务网关/数据面轨道实现 |
 | 会话派生的组织身份（过渡期 `X-Organization-Id` 头保留为回退） | 已实现（特性 #7） |
@@ -67,7 +67,7 @@ flowchart TD
     subgraph ctrl["Controller"]
         direction TB
         CTRL["Controller<br/>调和 + 状态回报"]
-        K8S["Kubernetes<br/>StormService · Service"]
+        K8S["Kubernetes<br/>LLMInferenceService · Service"]
         CTRL --> K8s
     end
 
@@ -98,7 +98,7 @@ flowchart TD
 | `image` 模块（`services/image`） | 只读：`infer` 按 `image_id` 查询镜像以校验存在性与加速器兼容性。注册 UI 属特性 #3 |
 | PostgreSQL | `models`、`model_versions`、`inference_services` 三张表 |
 | 消息队列 | `infer.services.changes`（期望状态变更，Controller 消费）与新的 `infer.services.status`（观测状态，`infer` 消费） |
-| Controller（`internal/controller`） | 解码变更事件、创建/更新/删除 AIBrix `StormService`（以及启用对应方案时的 Kubernetes Service、`PodAutoscaler`、`ModelClaim`、`ModelRoute` 与 Volcano `PodGroup`）、在状态主题上回报观测状态与端点。只有在没有 dynamic client 的运行方式（无 CRD 安装、单元测试）下才回退到普通 `Deployment` |
+| Controller（`internal/controller`） | 解码变更事件、创建/更新/删除 KServe `LLMInferenceService`（以及启用对应方案时的 Kubernetes Service、`autoscaling`、`LLMInferenceService`、`ModelRoute` 与 Volcano `PodGroup`）、在状态主题上回报观测状态与端点。只有在没有 dynamic client 的运行方式（无 CRD 安装、单元测试）下才回退到普通 `Deployment` |
 | 推理网关 | 本特性**不涉及** —— 端点记录在控制面；数据面路由轨道稍后消费它们 |
 
 ---
@@ -298,7 +298,7 @@ stateDiagram-v2
 }
 ```
 
-Headers：`event_type`（与体字段重复，便于 broker 侧路由/调试）、`service_id`。Controller 的处理幂等：`upsert` 创建或更新 `StormService`（以及 Service、gang、自动扩缩器、ModelClaim 与 ModelRoute）至期望状态；`update_version` 与 `rollback` 以变更后的规格执行同样的操作；`delete` 拆除工作负载。消息携带**已解析**的模型名称、权重路径与镜像引用，以及拓扑、引擎参数、自动扩缩容策略与每 Pod 资源形态，Controller 无需回查数据库。
+Headers：`event_type`（与体字段重复，便于 broker 侧路由/调试）、`service_id`。Controller 的处理幂等：`upsert` 创建或更新 `LLMInferenceService`（以及 Service、gang、自动扩缩器、LLMInferenceService 与 ModelRoute）至期望状态；`update_version` 与 `rollback` 以变更后的规格执行同样的操作；`delete` 拆除工作负载。消息携带**已解析**的模型名称、权重路径与镜像引用，以及拓扑、引擎参数、自动扩缩容策略与每 Pod 资源形态，Controller 无需回查数据库。
 
 ### 4.5.2 状态回报（`infer.services.status`，新主题）
 
@@ -347,7 +347,7 @@ sequenceDiagram
     CGW-->>Console: 200，携带 service_id
     Console-->>Admin: 详情页轮询状态
     MQ->>CTRL: 消费变更事件
-    CTRL->>K8s: 创建或更新 StormService + Service（挂载权重）
+    CTRL->>K8s: 创建或更新 LLMInferenceService + Service（挂载权重）
     CTRL->>MQ: 发布状态 deploying
     K8s-->>CTRL: Pod 就绪
     CTRL->>MQ: 发布状态 running + 端点
@@ -377,7 +377,7 @@ sequenceDiagram
     Infer->>Infer: 语法检查通过（存在性归 Controller）
     Infer->>MQ: 发布 upsert
     MQ->>CTRL: 消费变更事件
-    CTRL->>K8s: 创建 StormService（挂载失败）
+    CTRL->>K8s: 创建 LLMInferenceService（挂载失败）
     K8s-->>CTRL: Pod 卡住 / 挂载错误
     CTRL->>MQ: 发布状态 failed 及原因
     MQ->>Infer: 消费状态
@@ -406,13 +406,13 @@ sequenceDiagram
     Infer->>DB: UPDATE replicas=4（仅规格，不动状态）
     Infer->>MQ: 发布 upsert（replicas=4）
     Infer-->>CGW: OK
-    MQ->>CTRL: 消费，扩缩 StormService
+    MQ->>CTRL: 消费，扩缩 LLMInferenceService
     Admin->>Console: 删除服务（已确认）
     Console->>CGW: DELETE /api/v1/admin/inference-services/{id}
     CGW->>Infer: DeleteInferenceService
     Infer->>DB: UPDATE state=terminated（幂等）
     Infer->>MQ: 发布 delete
-    MQ->>CTRL: 拆除 StormService + Service
+    MQ->>CTRL: 拆除 LLMInferenceService + Service
     Console-->>Admin: 行离开默认视图
 ```
 
@@ -464,7 +464,7 @@ infer:
 | `infer.endpointBaseURL` | `""` | Controller 组合端点 URL（`<base>/v1`）的 base。为空表示 Controller 记录集群内 Service DNS 名。 |
 | `infer.statusConsumer.enabled` | `true` | 状态消费者 Runner 的开关（事故排查时可关停）。 |
 | `infer.statusConsumer.workers` | `2` | 并发状态处理器数。 |
-| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | 旧网关并发消费者开关；当前自动扩缩器通过 AIBrix PodAutoscaler 读取引擎每 Pod 的 `num_requests_running` 指标。 |
+| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | 旧网关并发消费者开关；当前自动扩缩器通过 KServe autoscaling 读取引擎每 Pod 的 `num_requests_running` 指标。 |
 | `infer.autoscaling.statusReportInterval` | `5s` | 每服务自动扩缩容状态回报的最小间隔。 |
 
 规则（与 API Key 特性相同）：
@@ -481,7 +481,7 @@ infer:
 - **消息不含秘密**：变更与状态消息只携带资源规格与 URL —— 无凭据、无 API Key。
 - **权重路径穿越**：注册拒绝 `..` 段、前导 `/` 与反斜杠（FR1.3），恶意路径无法在挂载时逃出对象存储前缀。
 - **DNS 安全名称**：服务名校验为 DNS 安全，Controller 可直接用作 Kubernetes 资源名而无注入风险。
-- **Controller 权限**：controller 的 ServiceAccount 需要平台命名空间内服务 CRD（`StormService`、`PodAutoscaler`、`ModelClaim`、`ModelRoute`、`PodGroup`）、Service 与（回退）Deployment CRUD，以及读取 Pod 以完成就绪与日志查询 —— 无 cluster-admin、无 secret 读。
+- **Controller 权限**：controller 的 ServiceAccount 需要平台命名空间内服务 CRD（`LLMInferenceService`、`autoscaling`、`LLMInferenceService`、`ModelRoute`、`PodGroup`）、Service 与（回退）Deployment CRUD，以及读取 Pod 以完成就绪与日志查询 —— 无 cluster-admin、无 secret 读。
 - **端点披露**：推理服务是平台资产，任何已授权操作者都可读取；谁可以**使用**它由服务访问策略单独管理。跨 realm 调用由网关的 realm 守卫拒绝。
 
 ---
@@ -513,7 +513,7 @@ infer:
 | | `status_consumer.go` | 状态主题消费者（Runner） |
 | | `service.go` | RPC 实现 |
 | `services/image` | `registry.go` | 过渡期内存注册表（配置种子）+ 查询 |
-| `internal/controller` | `reconciler.go` | K8s 调和：StormService/Service/自动扩缩器/gang upsert + 状态发布 |
+| `internal/controller` | `reconciler.go` | K8s 调和：LLMInferenceService/Service/自动扩缩器/gang upsert + 状态发布 |
 | `pkg/mq` | `mq.go` | 新增 `InferServiceStatus` 主题 |
 | `pkg/config` | `api.go` | `InferConfig`、`ImageRegistryConfig` 结构体 + Validate 规则 |
 
@@ -623,8 +623,8 @@ type InferenceService struct {
 `ApplyInferServiceChange(ctx, msg)`：
 
 1. 解码变更事件（第 4.5.1 节）；畸形 → 日志 + `mq.Permanent`（永不重试）。
-2. `delete` → 删除 `StormService`、Service、`PodAutoscaler`、`ModelClaim`、`ModelRoute`、Volcano `PodGroup` 以及遗留 Deployment（忽略 not-found）；RPC 已置 `terminated`，无需状态回报；返回。
-3. `upsert` / `update_version` / `rollback` → 发布状态 `queued`；按拓扑构建 AIBrix `StormService`（single：一个 worker 角色；multinode：每个 TP×PP 分片一个 worker；PD：prefill + decode 角色）、Kubernetes Service、启用自动扩缩容时的 `PodAutoscaler`、AIBrix 方案启用时的 `ModelClaim`/`ModelRoute`，以及 gang 调度启用时的 Volcano `PodGroup`；经 dynamic client create-or-update；出错 → 发布状态 `failed` 及原因（AC7），不可重试错误（如权重路径缺失）返回 `mq.Permanent`，瞬时错误返回普通 error（broker 级重试）。没有 dynamic client 的 controller 回退到普通 Deployment。
+2. `delete` → 删除 `LLMInferenceService`、Service、`autoscaling`、`LLMInferenceService`、`ModelRoute`、Volcano `PodGroup` 以及遗留 Deployment（忽略 not-found）；RPC 已置 `terminated`，无需状态回报；返回。
+3. `upsert` / `update_version` / `rollback` → 发布状态 `queued`；按拓扑构建 KServe `LLMInferenceService`（single：一个 worker 角色；multinode：每个 TP×PP 分片一个 worker；PD：prefill + decode 角色）、Kubernetes Service、启用自动扩缩容时的 `autoscaling`、KServe 方案启用时的 `LLMInferenceService`/`ModelRoute`，以及 gang 调度启用时的 Volcano `PodGroup`；经 dynamic client create-or-update；出错 → 发布状态 `failed` 及原因（AC7），不可重试错误（如权重路径缺失）返回 `mq.Permanent`，瞬时错误返回普通 error（broker 级重试）。没有 dynamic client 的 controller 回退到普通 Deployment。
 4. 监视 Pod 就绪：Pod 已调度时发布 `starting`，只有引擎响应健康检查时才发布 `running`；端点由 `infer.endpointBaseURL`（或集群内 Service DNS 名）组合。
 
 `ApplyImageWarmup` 已由 image 模块的预热发布/消费链路实现（特性 #3）：Controller 解码预热任务、执行预拉取并回报状态。
@@ -665,7 +665,7 @@ type InferenceService struct {
 | 目录与部署表单中的按模型/卡型计价 | 已实现（计价特性） |
 | 租户级模型授权 | 已实现（模型授权特性） |
 | 会话派生组织身份（移除 `X-Organization-Id`） | 已实现；该头仅保留为过渡期回退 |
-| 自动扩缩容 | 已用 AIBrix `PodAutoscaler` 实现（特性 #16/#47） |
+| 自动扩缩容 | 已用 KServe `autoscaling` 实现（特性 #16/#47） |
 | 灰度 / 蓝绿 | 未来特性点 |
 | 联表单查 `ListModels`（避免逐行版本查询） | 优化 TODO，视目录规模 |
 | 网关中业务码 → HTTP 状态映射 | 平台级后续事项 |

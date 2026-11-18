@@ -15,7 +15,7 @@ import (
 // the tenant quickstart page works without hand-editing configuration.
 type GatewayResolver struct {
 	client *Client
-	// name is the configured gateway name prefix (runtime.aibrix.gateway).
+	// name is the configured gateway name prefix (runtime.gateway.name).
 	name string
 	// namespace optionally narrows the search.
 	namespace string

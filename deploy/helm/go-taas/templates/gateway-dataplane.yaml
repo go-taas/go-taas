@@ -1,20 +1,40 @@
 {{- if .Values.dataPlane.enabled }}
 {{- $dp := .Values.dataPlane | default dict }}
 {{- $gw := $dp.gateway | default dict }}
+{{- $ep := $gw.envoyProxy | default dict }}
+{{/*
+The EnvoyProxy API version. Envoy Gateway moved the resource from
+`gateway.envoyproxy.io` to `config.gateway.envoyproxy.io`; the installed CRD
+decides which one the API server accepts and the Gateway's parametersRef must
+name the same group, so both are derived from this one setting.
+*/}}
+{{- $epAPIVersion := $ep.apiVersion | default "config.gateway.envoyproxy.io/v1alpha1" }}
+{{- $epGroup := $epAPIVersion | splitList "/" | first }}
 {{/*
 The dedicated data-plane Gateway.
 
 Inference and management traffic must not share a proxy: the console is
 served by the platform's Gateway, and this one carries only inference. It has
 its own Envoy, its own addresses and its own lifecycle, so a control-plane
-traffic spike, a reload or a bad config cannot take inference down — and the
-reverse. The class is `aibrix-eg` so the gateway inherits the
-inference-oriented Envoy tuning instead of the platform's.
+traffic spike, a reload or a bad config cannot take inference down - and the
+reverse.
 
-The HTTPS listener deliberately declares no hostname. The hostname is an
-operator setting in the console, and the route the server owns carries it;
-pinning it here would make every console change require a Helm upgrade, and a
-mismatch between the two would silently stop serving.
+Two listeners, and the split is what keeps the cluster's own routes private:
+
+  https     the only public listener. It terminates TLS for the hostname the
+            console publishes and accepts routes from this namespace alone:
+            the platform's data-plane route, which fronts the model router.
+  internal  serves the routes that are not public but must be reachable from
+            inside the cluster, such as the server's own internal API. It
+            accepts routes from any namespace - but it is bound to a hostname
+            in no DNS zone and has no certificate, so it is only reachable
+            from inside the cluster. It must not be exposed by the
+            LoadBalancer; `docs/` states that as a deployment prerequisite.
+
+The EnvoyProxy pins the Envoy Service and Deployment names. The data-plane
+route names that Service as its backend, and the runtime view reads the
+Deployment by name; the Gateway reports only an address, which would leave the
+route without a backend to name and the component unreported.
 */}}
 apiVersion: gateway.networking.k8s.io/v1
 kind: Gateway
@@ -25,9 +45,13 @@ metadata:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: data-plane
 spec:
-  gatewayClassName: {{ $gw.className | default "aibrix-eg" }}
+  gatewayClassName: {{ $gw.className | default "eg" }}
+  infrastructure:
+    parametersRef:
+      group: {{ $epGroup }}
+      kind: EnvoyProxy
+      name: {{ $gw.name | default "taas-inference" }}
   listeners:
-    # Inference, TLS-terminated. The route's hostname decides what is served.
     - name: https
       port: 443
       protocol: HTTPS
@@ -40,18 +64,33 @@ spec:
       allowedRoutes:
         namespaces:
           from: Same
-    # The data-plane gateway plugin's own internal endpoint.
-    #
-    # Envoy needs a configured cluster for a Wasm HTTP call, and clusters come
-    # from routes, so the plugin's call needs a listener a route can attach to.
-    # It is pinned to a hostname that is in no DNS zone and no certificate: a
-    # request that does reach this port with any other Host is rejected, so
-    # this listener cannot serve inference traffic or anything else.
     - name: internal
       port: 80
       protocol: HTTP
       hostname: {{ .Values.gatewayPlugin.internalHostname | default "taas-internal.invalid" | quote }}
       allowedRoutes:
         namespaces:
-          from: Same
+          from: All
+---
+apiVersion: {{ $epAPIVersion }}
+kind: EnvoyProxy
+metadata:
+  name: {{ $gw.name | default "taas-inference" }}
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: data-plane
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        name: {{ $gw.name | default "taas-inference" }}
+        {{- with $gw.envoyService }}
+        {{- with .loadBalancerIP }}
+        loadBalancerIP: {{ . | quote }}
+        {{- end }}
+        {{- end }}
+      envoyDeployment:
+        name: {{ $gw.name | default "taas-inference" }}
 {{- end }}

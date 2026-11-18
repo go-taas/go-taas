@@ -163,8 +163,9 @@ type k8sReconciler struct {
 	// weights configures the shared model-weights filesystem mounted
 	// into inference pods (feature: JuiceFS-backed weights).
 	weights WeightsConfig
-	// dynamic is the dynamic client used to write AIBrix ModelClaims and
-	// PodAutoscalers (feature #47, AD5). Nil disables the AIBrix path.
+	// dynamic is the dynamic client the serving path writes the KServe
+	// LLMInferenceService through. Nil selects the plain Deployment path
+	// (unit tests, a CRD-less install).
 	dynamic dynamic.Interface
 	// scheme is the shared serving-scheme cache (feature #47, AD6). Nil
 	// defaults to plain.
@@ -198,12 +199,6 @@ type k8sReconciler struct {
 	// cardTypeLabelKeys caches card model -> node label key ("" = no node
 	// reports that card).
 	cardTypeLabelKeys map[string]string
-	// gatewayNamespace is the namespace holding the AIBrix Gateway and the
-	// per-model HTTPRoutes. Empty uses defaultAIBrixNamespace.
-	gatewayNamespace string
-	// gatewayName is the AIBrix Gateway object model routes attach to.
-	// Empty uses defaultAIBrixGateway.
-	gatewayName string
 	// engineProber answers "does the engine at this address serve
 	// traffic?". Nil uses the HTTP health probe. Tests inject a stub so
 	// they never reach the network.
@@ -345,16 +340,6 @@ func (r *k8sReconciler) SetScheduling(schedulerName, highClass, normalClass, low
 	r.queueName = strings.TrimSpace(queue)
 }
 
-// SetGatewayRouting names the AIBrix Gateway that model HTTPRoutes attach
-// to. The namespace is also where the routes are written, because Gateway
-// API only routes to a backend in another namespace through a route in the
-// Gateway's own namespace plus a ReferenceGrant. Empty values keep the
-// shipped defaults.
-func (r *k8sReconciler) SetGatewayRouting(namespace, gateway string) {
-	r.gatewayNamespace = namespace
-	r.gatewayName = gateway
-}
-
 // SetServiceStateProvider installs the desired-state reader used to abort a
 // reconcile promptly when the service is stopped or deleted while it waits for
 // its engine. It must be called before serving.
@@ -400,20 +385,6 @@ func (r *k8sReconciler) serviceStateSnapshot(ctx context.Context, serviceID stri
 	return state, false
 }
 
-// gatewayRouteTarget returns the namespace and Gateway name model routes
-// are written against, applying the shipped defaults.
-func (r *k8sReconciler) gatewayRouteTarget() (string, string) {
-	namespace := r.gatewayNamespace
-	if namespace == "" {
-		namespace = defaultAIBrixNamespace
-	}
-	gateway := r.gatewayName
-	if gateway == "" {
-		gateway = defaultAIBrixGateway
-	}
-	return namespace, gateway
-}
-
 // ApplyInferServiceChange implements Reconciler.
 func (r *k8sReconciler) ApplyInferServiceChange(ctx context.Context, msg mq.Message) error {
 	var evt changeEvent
@@ -454,12 +425,14 @@ func (r *k8sReconciler) ApplyInferServiceChange(ctx context.Context, msg mq.Mess
 		// spec, so the engine-args event reuses it.
 		return r.applyUpsert(ctx, evt)
 	case "reconcile_route":
-		// Route-only reconciliation: re-write the model's serving route
-		// without touching the workload. The platform publishes it for a
-		// running service whose route may have gone missing, and for a
-		// survivor when a sibling service of the same model is torn down
-		// (the route is named after the model, so the two share it).
-		return r.applyModelRoute(ctx, evt)
+		// Re-state the service: the object carries the model's route, so
+		// re-applying the is what restores the route of a service whose object
+		// was removed or edited out of band. The spec is unchanged when
+		// nothing was touched, so no pod is recreated.
+		//
+		// The event carries the whole desired state, exactly like every other
+		// event: the object is composed from it, not merged into it.
+		return r.applyUpsert(ctx, evt)
 	default:
 		return mq.Permanent(fmt.Errorf("controller: unknown event_type %q", evt.EventType))
 	}
@@ -815,19 +788,8 @@ func (r *k8sReconciler) teardown(ctx context.Context, evt changeEvent) error {
 	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
 		errs = append(errs, err)
 	}
-	if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, stormServiceGVR, r.namespace,
-		stormServiceName(evt), evt.ServiceID); err != nil {
-		errs = append(errs, fmt.Errorf("controller: delete stormservice %s: %w", evt.Name, err))
-	}
-	if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, modelClaimGVR, r.namespace,
-		modelClaimName(evt.Name), evt.ServiceID); err != nil {
-		errs = append(errs, fmt.Errorf("controller: delete modelclaim %s: %w", evt.Name, err))
-	}
-	if err := r.deleteModelRoute(ctx, evt); err != nil {
-		errs = append(errs, fmt.Errorf("controller: delete model route %s: %w", evt.Name, err))
-	}
-	if err := deletePodAutoscalerOwnedBy(ctx, r.dynamic, r.namespace, evt.Name, evt.ServiceID); err != nil {
-		errs = append(errs, fmt.Errorf("controller: delete podautoscaler %s: %w", evt.Name, err))
+	if err := deleteLLMInferenceService(ctx, r.dynamic, r.namespace, llmSVCName(evt)); err != nil {
+		errs = append(errs, fmt.Errorf("controller: delete llminferenceservice %s: %w", evt.Name, err))
 	}
 	if err := deleteUnstructuredOwnedBy(ctx, r.dynamic, podGroupGVR, r.namespace,
 		podGroupName(evt), evt.ServiceID); err != nil {
@@ -909,10 +871,11 @@ func (r *k8sReconciler) deleteService(ctx context.Context, name string) error {
 // names the current controller would use, so anything an older controller
 // named differently (or left behind after a failed delete) is removed here.
 //
-// The sweep covers every resource a service can own: Services, Deployments,
-// StatefulSets, Pods, StormServices, PodGroups, ModelClaims and the model
-// HTTPRoute in the gateway namespace. A blank service id is a no-op (never
-// sweep the whole namespace).
+// The sweep covers every resource a service can own: the Services,
+// Deployments, StatefulSets and Pods carrying its label, and the dynamic
+// resources the platform writes for it (the serving object, its PodGroup and
+// the data-plane route). A blank service id is a no-op (never sweep the whole
+// namespace).
 func (r *k8sReconciler) sweepByServiceID(ctx context.Context, serviceID string) error {
 	if strings.TrimSpace(serviceID) == "" {
 		return nil
@@ -938,8 +901,8 @@ func (r *k8sReconciler) sweepByServiceID(ctx context.Context, serviceID string) 
 			}
 		}
 	}
-	// A stale StatefulSet (created by the storm controller) would keep its
-	// pods alive after the StormService is gone.
+	// A stale StatefulSet would keep its pods alive after the object that
+	// owned it is gone.
 	if sets, err := r.clientset.AppsV1().StatefulSets(r.namespace).List(ctx, metav1.ListOptions{LabelSelector: selector}); err != nil {
 		errs = append(errs, fmt.Errorf("controller: list statefulsets for %s: %w", serviceID, err))
 	} else {
@@ -972,8 +935,7 @@ func (r *k8sReconciler) sweepByServiceID(ctx context.Context, serviceID string) 
 }
 
 // sweepDynamicByServiceID deletes the dynamic-client resources labeled for
-// the service. The HTTPRoute lives in the gateway namespace, not the
-// workload namespace, so it is swept there.
+// the service.
 func (r *k8sReconciler) sweepDynamicByServiceID(ctx context.Context, serviceID, selector string) error {
 	var errs []error
 	targets := []struct {
@@ -981,17 +943,9 @@ func (r *k8sReconciler) sweepDynamicByServiceID(ctx context.Context, serviceID, 
 		namespace string
 		gvr       schema.GroupVersionResource
 	}{
-		{"stormservice", r.namespace, stormServiceGVR},
-		{"modelclaim", r.namespace, modelClaimGVR},
+		{"llminferenceservice", r.namespace, llmSVCGVR},
 		{"podgroup", r.namespace, podGroupGVR},
-		{"podautoscaler", r.namespace, podAutoscalerGVR},
 	}
-	gatewayNamespace, _ := r.gatewayRouteTarget()
-	targets = append(targets, struct {
-		kind      string
-		namespace string
-		gvr       schema.GroupVersionResource
-	}{"httproute", gatewayNamespace, httpRouteGVR})
 	// RDMA claims: the template and the claims DRA generated from it. A
 	// generated claim outlives its pod only if the pod was force-deleted,
 	// which is exactly the leak this sweep exists for.
@@ -1046,11 +1000,22 @@ func (r *k8sReconciler) deleteLegacyDeployment(ctx context.Context, name string)
 	return nil
 }
 
-// applyUpsert reports deploying, creates or updates the Deployment,
-// Service and (when autoscaling is enabled) the HPA, then reports
-// running with endpoints. Any reconcile failure reports failed with the
-// reason (AC7).
+// applyUpsert reports deploying, creates or updates the service's cluster
+// object and, when autoscaling is allowed, pins its replica count.
+//
+// A failure to converge reports failed with the reason (AC7).
 func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error {
+	// The object is composed from the event alone, so an event without the
+	// engine image would write a pod template that cannot start: KServe would
+	// fall back to the preset's image, and the service would run a different
+	// engine than the one the operator chose. Every publisher resolves the
+	// image before it publishes, so a missing one is a bug on the publishing
+	// side, not something to apply.
+	if strings.TrimSpace(evt.Image.Reference) == "" {
+		return mq.Permanent(fmt.Errorf(
+			"controller: %q event for service %s carries no engine image", evt.EventType, evt.Name))
+	}
+
 	// A stop/delete may have been applied before this (stale) change was
 	// delivered, e.g. an update event published just before the operator
 	// deleted the service. Recreating its resources would resurrect a
@@ -1096,16 +1061,17 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		return r.reportFailure(ctx, evt, err)
 	}
 
-	// Serving is an AIBrix StormService: one object per service whose roles
-	// express the topology (single-node, distributed, PD). The plain
-	// Deployment path is only used by a controller started without a dynamic
-	// client (unit tests, a CRD-less install).
+	// Serving is one KServe LLMInferenceService per service: its template
+	// carries the pod the engine runs in and its role set carries the topology
+	// (single-node, multi-node, PD). The plain Deployment path is only used by a
+	// controller started without a dynamic client (unit tests, a CRD-less
+	// install).
 	if r.dynamic != nil {
-		storm, err := r.buildStormService(ctx, evt)
+		storm, err := r.buildLLMInferenceService(ctx, evt)
 		if err != nil {
 			return r.reportFailure(ctx, evt, err)
 		}
-		if err := applyStormService(ctx, r.dynamic, storm); err != nil {
+		if err := applyLLMInferenceService(ctx, r.dynamic, storm); err != nil {
 			return r.reportFailure(ctx, evt, err)
 		}
 		// The gang the pods join. It is written before the pods can be
@@ -1135,64 +1101,33 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 		if err := r.createOrUpdateDeployment(ctx, deployment); err != nil {
 			return r.reportFailure(ctx, evt, err)
 		}
-	}
-	svc := r.buildService(evt)
-	if err := r.createOrUpdateService(ctx, svc); err != nil {
-		return r.reportFailure(ctx, evt, err)
-	}
-
-	// The serving gateway refuses every request for a model it cannot
-	// resolve to a route, so a service is unroutable until its model route
-	// exists. The write is best-effort: a failure (Gateway API CRDs absent
-	// or dynamic client unavailable) is logged and the plain serving path
-	// continues unchanged.
-	if err := r.applyModelRoute(ctx, evt); err != nil {
-		logger.S().Warnw("controller: aibrix model route write failed, continuing on the plain path",
-			"service_id", evt.ServiceID, "name", evt.Name, "err", err)
-	}
-
-	// Feature #47 (AD5, AD13): when the serving scheme is aibrix, register
-	// the model with AIBrix by creating or updating a ModelClaim through
-	// the dynamic client. The write is best-effort: a failure (CRD absent
-	// or dynamic client unavailable) is logged and the plain serving path
-	// continues unchanged.
-	if r.aibrixScheme() {
-		claim := buildModelClaimFromEvent(evt, r.namespace, r.weights.MountPath)
-		if err := applyModelClaim(ctx, r.dynamic, claim); err != nil {
-			logger.S().Warnw("controller: aibrix modelclaim write failed, continuing on the plain path",
-				"service_id", evt.ServiceID, "name", evt.Name, "err", err)
+		svc := r.buildService(evt)
+		if err := r.createOrUpdateService(ctx, svc); err != nil {
+			return r.reportFailure(ctx, evt, err)
 		}
 	}
 
-	// Autoscaling is the AIBrix PodAutoscaler, never a Kubernetes HPA: the
-	// HPA cannot target a StormService, and two autoscalers on one workload
-	// fight over the replica count. A failure to write it is reported as a
-	// failure instead of silently pinning the replica count, so the console
-	// never shows "autoscaled" for a service nothing is scaling.
-	//
-	// Stale HPAs from an older controller are deleted on every reconcile:
-	// leaving one behind would compete with the PodAutoscaler.
+	// A service keeps a fixed replica count. KServe rejects a scaling block
+	// that names no autoscaler, and it rejects replicas next to one, so a
+	// cluster without KEDA or WVA cannot honor a policy. KServe owns the
+	// workload's replica count here; a leftover Kubernetes HPA from an older
+	// controller is removed, so nothing else competes with it.
 	if err := r.deleteLegacyHPA(ctx, evt.Name); err != nil {
 		return r.reportFailure(ctx, evt, err)
 	}
 	if evt.Autoscaling != nil && evt.Autoscaling.Enabled {
-		if err := r.applyAIBrixAutoscaler(ctx, evt); err != nil {
-			// Drop the stale object before reporting: leaving it behind
-			// keeps the AIBrix controller scaling the storm with a policy
-			// nobody asked for.
-			deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-			return r.reportFailure(ctx, evt, err)
-		}
+		// Say why the policy is not applied, once per service, then keep the
+		// fixed count so the service is serveable rather than rejected.
+		notePinnedReplicas(evt)
+	}
+	var err error
+	if r.dynamic != nil {
+		err = r.pinLLMInferenceReplicas(ctx, evt)
 	} else {
-		deletePodAutoscaler(ctx, r.dynamic, r.namespace, evt.Name)
-		// Pin the workload to the fixed replica count (FR2.5).
-		if r.dynamic != nil {
-			if err := r.pinStormServiceReplicas(ctx, evt); err != nil {
-				return r.reportFailure(ctx, evt, err)
-			}
-		} else if err := r.pinDeploymentReplicas(ctx, evt); err != nil {
-			return r.reportFailure(ctx, evt, err)
-		}
+		err = r.pinDeploymentReplicas(ctx, evt)
+	}
+	if err != nil {
+		return r.reportFailure(ctx, evt, err)
 	}
 
 	// Follow the pods: "starting" once the scheduler placed them on a node,
@@ -1209,7 +1144,13 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 	}
 
 	endpoints := []string{r.endpointFor(evt.Name)}
-	if err := r.publishStatus(ctx, evt.ServiceID, "running", endpoints, nil); err != nil {
+	// The replica count is pinned, so the served count is what the cluster
+	// reports: a running service with one ready pod says 1 of the 1..N range,
+	// not 0. It is reported through the autoscaling block because that is where
+	// the console reads the observed count from, and the state is left empty
+	// because no autoscaler is measuring this service.
+	serving := &autoscalingStatus{CurrentReplicas: r.readyReplicaCount(ctx, evt), DesiredReplicas: evt.Replicas}
+	if err := r.publishStatusWithAutoscaling(ctx, evt.ServiceID, "running", endpoints, nil, serving); err != nil {
 		logger.S().Warnw("controller: publish running status failed",
 			"service_id", evt.ServiceID, "err", err)
 	}
@@ -1219,9 +1160,9 @@ func (r *k8sReconciler) applyUpsert(ctx context.Context, evt changeEvent) error 
 }
 
 // deleteLegacyHPA deletes a Kubernetes HPA an older controller created for
-// the same service, ignoring not-found. Autoscaling is the AIBrix
-// PodAutoscaler now; a leftover HPA would compete with it for the replica
-// count, so it is swept on every reconcile.
+// the same service, ignoring not-found. Autoscaling lives on the
+// LLMInferenceService now; a leftover HPA would compete with it for the
+// replica count, so it is swept on every reconcile.
 func (r *k8sReconciler) deleteLegacyHPA(ctx context.Context, name string) error {
 	err := r.clientset.AutoscalingV2().HorizontalPodAutoscalers(r.namespace).
 		Delete(ctx, autoscalerName(name), metav1.DeleteOptions{})
@@ -1229,34 +1170,6 @@ func (r *k8sReconciler) deleteLegacyHPA(ctx context.Context, name string) error 
 		return fmt.Errorf("controller: delete legacy hpa %s: %w", name, err)
 	}
 	return nil
-}
-
-// aibrixScheme reports whether the cached serving scheme is aibrix.
-func (r *k8sReconciler) aibrixScheme() bool {
-	return r.scheme != nil && r.scheme.Scheme() == schemeAIBrix
-}
-
-// applyAIBrixAutoscaler creates or updates the AIBrix PodAutoscaler for a
-// change event with autoscaling enabled (feature #47, §13.5). The
-// min/max replicas come from the effective autoscaling policy.
-func (r *k8sReconciler) applyAIBrixAutoscaler(ctx context.Context, evt changeEvent) error {
-	policy := evt.Autoscaling
-	if policy == nil {
-		policy = &autoscalingPolicy{Enabled: true, MinReplicas: 1, MaxReplicas: 10, TargetConcurrency: 32}
-	}
-	minReplicas := clampReplicas(policy.MinReplicas)
-	if minReplicas < 0 {
-		minReplicas = 0
-	}
-	maxReplicas := clampReplicas(policy.MaxReplicas)
-	if maxReplicas < 1 {
-		maxReplicas = 1
-	}
-	target := clampReplicas(policy.TargetConcurrency)
-	if target < 1 {
-		target = 32
-	}
-	return applyPodAutoscalerForService(ctx, r.dynamic, r.namespace, stormServiceName(evt), evt.ServiceID, minReplicas, maxReplicas, target)
 }
 
 // pinDeploymentReplicas sets the Deployment's replicas to the fixed
@@ -1418,16 +1331,12 @@ func (r *k8sReconciler) ensureWeightsPVC(ctx context.Context) error {
 // image, replicas, weight-volume mount and accelerator node selector.
 func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *appsv1.Deployment {
 	labels := resourceLabels(evt)
-	spec, annotations := r.buildPodTemplate(ctx, evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
-	// The serving gateway discovers which model a workload serves from the
-	// workload's own metadata, so both the Deployment (which the gateway
-	// derives the model route from) and its pods (which receive the
-	// routed traffic) carry the model name, port and backing Service.
-	modelName := servedModelName(evt)
-	routeLabels := routingLabels(modelName)
-	routeAnnotations := routingAnnotations(modelName, serviceName(evt.Name))
-	deploymentLabels := mergeLabels(labels, routeLabels)
-	deploymentAnnotations := mergeLabels(annotations, routeAnnotations)
+	spec, annotations := r.buildPodTemplate(ctx, evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
+	// The Deployment keeps the shared labels on both the object and its pods:
+	// the platform Service selects the pods by them, and the plain path has no
+	// route to derive anything from.
+	deploymentLabels := labels
+	deploymentAnnotations := annotations
 	podLabels := deploymentLabels
 	podAnnotations := deploymentAnnotations
 	return &appsv1.Deployment{
@@ -1456,7 +1365,7 @@ func (r *k8sReconciler) buildDeployment(ctx context.Context, evt changeEvent) *a
 // PD-disaggregated role; it decides the role-specific engine flags. The
 // returned annotations are the pod-level ones the container needs (the HAMI
 // placement policy for a shared-GPU service).
-func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, role stormRole) (corev1.PodSpec, map[string]string) {
+func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, role serveRole) (corev1.PodSpec, map[string]string) {
 	// Feature #52 (AD13): a shared-GPU service requests a HAMI slice
 	// instead of a whole card. The engine container requests the HAMI
 	// extended resources, the pod carries the placement-policy
@@ -1522,7 +1431,7 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 		Containers: []corev1.Container{{
 			Name:  "engine",
 			Image: evt.Image.Reference,
-			Ports: []corev1.ContainerPort{{ContainerPort: 8000, Name: "http"}},
+			Ports: []corev1.ContainerPort{{ContainerPort: rolePort(role), Name: "http"}},
 			// The engine container requests the accelerator's
 			// extended resource so the scheduler places it on a
 			// node with free capacity and the device plugin
@@ -1773,7 +1682,7 @@ const rendezvousPort = 29501
 // overridden by the role's own), the PD role marker, and whether the pod has
 // to rendezvous with sibling pods (a multi-machine or PD role spans several
 // pods, one per machine).
-func engineCommand(evt changeEvent, mountPath, weightPath, servedName string, role stormRole) []string {
+func engineCommand(evt changeEvent, mountPath, weightPath, servedName string, role serveRole) []string {
 	engineArgs, extraArgs := evt.argsForRole(role.Name)
 	multiPod := role.PodGroupSize > 1
 
@@ -1783,14 +1692,14 @@ func engineCommand(evt changeEvent, mountPath, weightPath, servedName string, ro
 		base = []string{
 			"python3", "-m", "vllm.entrypoints.openai.api_server",
 			"--model", modelDir(mountPath, weightPath),
-			"--port", strconv.Itoa(enginePort),
+			"--port", strconv.Itoa(int(rolePort(role))),
 			"--host", "0.0.0.0",
 		}
 	case "sglang":
 		base = []string{
 			"python3", "-m", "sglang.launch_server",
 			"--model-path", modelDir(mountPath, weightPath),
-			"--port", strconv.Itoa(enginePort),
+			"--port", strconv.Itoa(int(rolePort(role))),
 			"--host", "0.0.0.0",
 		}
 	default:
@@ -1822,7 +1731,7 @@ func engineCommand(evt changeEvent, mountPath, weightPath, servedName string, ro
 // The engine arguments are passed as positional parameters (sh -c script name
 // arg...) so their quoting - JSON values such as a kv-transfer-config - is
 // never re-parsed.
-func rendezvousCommand(evt changeEvent, base []string, role stormRole) []string {
+func rendezvousCommand(evt changeEvent, base []string, role serveRole) []string {
 	nnodes := strconv.Itoa(int(role.PodGroupSize))
 	master := fmt.Sprintf(`"${HOSTNAME%%-*}-0.%s"`, evt.Name)
 	script := `rank="${HOSTNAME##*-}"; master=` + master + `; exec "$0" "$@" ` +
@@ -1849,7 +1758,7 @@ func rendezvousCommand(evt changeEvent, base []string, role stormRole) []string 
 //
 // Every one of them is skipped when the role's engine arguments already set
 // the flag, so the explicit arguments stay authoritative.
-func topologyEngineArgs(engine string, role stormRole, engineArgs map[string]string, evt changeEvent) []string {
+func topologyEngineArgs(engine string, role serveRole, engineArgs map[string]string, evt changeEvent) []string {
 	// A single-node replica only needs the flags when it shards: spreading
 	// the model across one device's worth of memory needs nothing.
 	if !isMultiNode(evt.Topology) && evt.Topology != topologyPD &&
@@ -1886,7 +1795,7 @@ func topologyEngineArgs(engine string, role stormRole, engineArgs map[string]str
 			return args
 		}
 		kvRole := "kv_producer"
-		if role.EngineRole == stormRoleDecode {
+		if role.EngineRole == serveRoleDecode {
 			kvRole = "kv_consumer"
 		}
 		config, err := json.Marshal(map[string]any{
@@ -1981,7 +1890,6 @@ func (r *k8sReconciler) buildService(evt changeEvent) *corev1.Service {
 			Selector: labels,
 			// The engine port is exposed next to the plain HTTP port because
 			// the serving gateway's model route addresses the backend by the
-			// engine's own port (model.aibrix.ai/port).
 			Ports: []corev1.ServicePort{
 				{
 					Name:       "http",
@@ -1998,9 +1906,9 @@ func (r *k8sReconciler) buildService(evt changeEvent) *corev1.Service {
 	}
 }
 
-// autoscalerName is the Kubernetes resource name of a service's
-// PodAutoscaler. The historical "hpa-" prefix is kept so an object created
-// before the move to the AIBrix autoscaler is updated (not duplicated).
+// autoscalerName is the resource name of a HorizontalPodAutoscaler an
+// older controller created for a service. The "hpa-" prefix is kept so the
+// leftover object is found and deleted on a reconcile.
 func autoscalerName(name string) string { return "hpa-" + name }
 
 // parallelCards is how many devices one replica needs: the product of the
@@ -2231,12 +2139,46 @@ func hasNodeLabel(nodes []corev1.Node, key string) bool {
 }
 
 // endpointFor composes the endpoint URL for a service: the configured
-// base URL, or the in-cluster Service DNS name when unset.
+// base URL, or the in-cluster address of the workload when unset.
+//
+// KServe names the workload's Service after the LLMInferenceService with a
+// suffix, so the platform's own service name is not a DNS name under KServe.
+// The in-cluster address has to name the workload Service and the port the
+// engine listens on.
 func (r *k8sReconciler) endpointFor(name string) string {
 	if r.endpointBaseURL != "" {
 		return strings.TrimSuffix(r.endpointBaseURL, "/") + "/" + name + "/v1"
 	}
-	return fmt.Sprintf("http://%s.%s.svc.cluster.local/v1", serviceName(name), r.namespace)
+	if r.dynamic == nil {
+		return fmt.Sprintf("http://%s.%s.svc.cluster.local/v1", serviceName(name), r.namespace)
+	}
+	return fmt.Sprintf("http://%s%s.%s.svc.cluster.local:%d/v1", name, kserveWorkloadSuffix, r.namespace, enginePort)
+}
+
+// readyReplicaCount is how many engine pods of the service are ready right
+// now. The platform pins the replica count itself, so the served count is
+// observed from the pods rather than requested: a pod that is still loading or
+// has dropped out of the replica set is not serving, and the difference is what
+// the console shows.
+func (r *k8sReconciler) readyReplicaCount(ctx context.Context, evt changeEvent) int {
+	pods, err := r.clientset.CoreV1().Pods(r.namespace).
+		List(ctx, metav1.ListOptions{LabelSelector: r.enginePodSelector(evt)})
+	if err != nil {
+		return 0
+	}
+	ready := 0
+	for _, pod := range pods.Items {
+		if pod.DeletionTimestamp != nil {
+			continue
+		}
+		for _, cond := range pod.Status.Conditions {
+			if cond.Type == corev1.PodReady && cond.Status == corev1.ConditionTrue {
+				ready++
+				break
+			}
+		}
+	}
+	return ready
 }
 
 // publishStatus publishes an observed-state report on the status

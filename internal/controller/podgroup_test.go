@@ -33,21 +33,21 @@ func schedulingReconciler() *k8sReconciler {
 func TestPodSchedulingSetsSchedulerAndPriority(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
 	evt.Priority = "high"
-	spec, _ := schedulingReconciler().buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ := schedulingReconciler().buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	assert.Equal(t, SchedulerVolcano, spec.SchedulerName)
 	assert.Equal(t, "high-priority", spec.PriorityClassName)
 
 	evt.Priority = "low"
-	spec, _ = schedulingReconciler().buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ = schedulingReconciler().buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	assert.Equal(t, "low-priority", spec.PriorityClassName)
 
 	// An empty priority is normal, not "no class".
 	evt.Priority = ""
-	spec, _ = schedulingReconciler().buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ = schedulingReconciler().buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	assert.Equal(t, "normal-priority", spec.PriorityClassName)
 
 	// Without a configured scheduler the pod keeps the cluster default.
-	plain, _ := testReconciler().buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	plain, _ := testReconciler().buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	assert.Empty(t, plain.SchedulerName)
 	assert.Empty(t, plain.PriorityClassName)
 }
@@ -59,7 +59,7 @@ func TestPodResourcesRequestsCardsCPUAndMemory(t *testing.T) {
 	evt.CPUMilli = 4500
 	evt.MemoryMiB = 16384
 
-	spec, _ := testReconciler().buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ := testReconciler().buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	res := spec.Containers[0].Resources
 	assert.Equal(t, resource.MustParse("2"), res.Limits[corev1.ResourceName("nvidia.com/gpu")])
 	assert.True(t, res.Requests[corev1.ResourceCPU].Equal(resource.MustParse("4500m")))
@@ -71,7 +71,7 @@ func TestPodResourcesRequestsCardsCPUAndMemory(t *testing.T) {
 
 	// Zero CPU/memory means "no request", which is the historical shape.
 	plain := testChangeEvent("upsert", "demo")
-	spec, _ = testReconciler().buildPodTemplate(context.Background(), plain, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ = testReconciler().buildPodTemplate(context.Background(), plain, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	res = spec.Containers[0].Resources
 	_, hasCPU := res.Requests[corev1.ResourceCPU]
 	assert.False(t, hasCPU)
@@ -101,19 +101,21 @@ func TestWorkerPodsSplitsByGPUPerPod(t *testing.T) {
 // needs to bind them into their group.
 func TestGangPodsJoinTheirPodGroup(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
-	storm, err := schedulingReconciler().buildStormService(context.Background(), evt)
+	storm, err := schedulingReconciler().buildLLMInferenceService(context.Background(), evt)
 	require.NoError(t, err)
 
-	roles := stormRolesOf(t, storm)
+	roles := serveRolesOf(t, storm)
 	require.NotEmpty(t, roles)
-	annotations := roles[0]["template"].(map[string]any)["metadata"].(map[string]any)["annotations"].(map[string]any)
+	annotations, ok := roles[0]["annotations"].(map[string]any)
+	require.True(t, ok)
 	assert.Equal(t, "demo", annotations[podGroupAnnotation])
 
 	// Without Volcano the annotation would point at a group nobody reads.
-	plain, err := testReconciler().buildStormService(context.Background(), evt)
+	plain, err := testReconciler().buildLLMInferenceService(context.Background(), evt)
 	require.NoError(t, err)
-	roles = stormRolesOf(t, plain)
-	if ann, ok := roles[0]["template"].(map[string]any)["metadata"].(map[string]any)["annotations"].(map[string]any); ok {
+	roles = serveRolesOf(t, plain)
+	ann, ok := roles[0]["annotations"].(map[string]any)
+	if ok {
 		_, present := ann[podGroupAnnotation]
 		assert.False(t, present)
 	}
@@ -175,4 +177,21 @@ func TestPriorityClassForUnknownPriority(t *testing.T) {
 	assert.Equal(t, "high-priority", r.priorityClassFor("high"))
 	assert.Empty(t, r.priorityClassFor("normal"), "an unmapped class leaves the cluster default")
 	assert.Empty(t, r.priorityClassFor("nonsense"))
+}
+
+// serveRolesOf exposes the pod templates of a built serving object in the
+// shape these tests walk: a list whose first element holds the mesh-wide pod
+// spec under "template" and the pod metadata beside it, where a KServe
+// workload keeps its labels and annotations.
+func serveRolesOf(t *testing.T, obj *unstructured.Unstructured) []map[string]any {
+	t.Helper()
+	spec, ok := obj.Object["spec"].(map[string]any)
+	require.True(t, ok)
+	tmpl, ok := spec["template"].(map[string]any)
+	require.True(t, ok)
+	role := map[string]any{"template": tmpl}
+	if annotations, ok := spec["annotations"].(map[string]any); ok {
+		role["annotations"] = annotations
+	}
+	return []map[string]any{role}
 }

@@ -111,7 +111,7 @@ func (c *TeardownConverger) runOnce(ctx context.Context) {
 		// Re-point the model route at a running sibling first: the route is
 		// named after the model, so the replay below would otherwise remove
 		// it from under a service that is still serving that model.
-		publishRouteReconciliations(ctx, c.pub, c.repo, c.models, modelName, row.ID)
+		republishSurvivors(ctx, c.pub, c.repo, c.models, modelName, row.ID)
 		evt := buildChangeEvent(eventType, row, modelName, "", "", "")
 		if err := publishChange(ctx, c.pub, evt); err != nil {
 			logger.S().Warnw("infer: teardown converger publish failed",

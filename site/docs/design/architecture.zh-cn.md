@@ -52,7 +52,7 @@ subgraph L3["LAYER 03 · K8s 集群"]
     end
     subgraph L3B["② 第三方依赖 · Helm Chart"]
         direction LR
-        B1["Aibrix<br/>分布式运行时、KV Cache"]:::dp
+        B1["KServe<br/>分布式运行时、KV Cache"]:::dp
         B2["HAMi<br/>GPU 切分：按显存 / 算力切分物理 GPU"]:::dp
         B3["Volcano<br/>Gang 调度与优先级抢占"]:::dp
         B4["GPU / NPU Operator<br/>驱动、设备插件、拓扑与健康"]:::cell
@@ -92,7 +92,7 @@ classDef mw fill:#fff7ec,stroke:#eec796,color:#4a3410
 | 平面 | 工作负载 | 入口 | 承载 |
 | --- | --- | --- | --- |
 | 控制面 | `taasServer`（Deployment） | 平台 Gateway 上控制台主机名的路由（如 `taas.example.com`） | `/api/v1/*`、`/api/v1/admin/*`、控制台 |
-| 数据面 | AIBrix Envoy 网关（`aibrix-eg` Gateway → Envoy 代理 Service） | 平台 Gateway 上推理主机名的路由（如 `api.example.com`） | `/v1/chat/completions`、`/v1/embeddings` 等 |
+| 数据面 | KServe Envoy 网关（`taas-inference` Gateway → Envoy 代理 Service） | 平台 Gateway 上推理主机名的路由（如 `api.example.com`） | `/v1/chat/completions`、`/v1/embeddings` 等 |
 
 打开 `dataPlane.enabled` 并设置 `dataPlane.hostname` 后，会由**服务端**创建一条 `HTTPRoute`，
 把推理主机名直接转发到推理网关的 Service，并创建跨命名空间后端所需的 `ReferenceGrant`。
@@ -268,7 +268,7 @@ flowchart TD
 | 4 | `model` | 模型目录、版本管理与回滚、权重路径与模型仓库下载、租户级模型授权 | #2、#13、#32 |
 | 5 | `image` | 推理引擎镜像的登记/版本/导入、节点级预热任务、模型 × 引擎 × 卡型兼容性矩阵 | #3、#19 |
 | 6 | `infer` | 推理服务生命周期（部署、扩缩容、升级、回滚）、弹性伸缩、路由策略、playground（含多模型对比）、SDK 快速开始、服务日志、压测 | #2、#12、#16、#20、#21、#33、#35、#45 |
-| 7 | `runtime` | 平台服务形态（普通 Deployment 与 AIBrix）、运行时组件健康与被纳管模型投影 | #47 |
+| 7 | `runtime` | 平台服务形态（普通 Deployment 与 KServe）、运行时组件健康与被纳管模型投影 | #47 |
 | 8 | `routing` | 路由组（虚拟模型）与真实目录模型候选：权重、成本/时延策略、意图规则、决策轨迹 | #49 |
 | 9 | `provider` | 外部提供方注册表、加密只写密钥、上游模型治理与发布入目录、连通性探测 | #48 |
 | 10 | `metering` | Token 计量与防篡改凭单、用量记录、请求日志、用量看板、按 Key 用量分析、错误分析 | #4、#9、#12、#28、#31 |
@@ -429,7 +429,7 @@ flowchart TD
 
 > **实现载体。** 上述插件契约是数据面必须满足的能力。Wasm 载体已经交付：外层推理网关上的
 > proxy-wasm 过滤器执行第 01 步（Auth）与第 04 步（Meter），以及两项契约本就写明由网关执行
-> 的限制（`rate_limit_rpm` 与 `max_tokens` 上限）。AIBrix 的 Go `ext_proc` 插件保留第 03 步
+> 的限制（`rate_limit_rpm` 与 `max_tokens` 上限）。KServe 的 Go `ext_proc` 插件保留第 03 步
 > （Route）—— 过滤器不选择后端。第 02 步（配额租约）、05–07 以及 08 尚未进入 Wasm 载体；已实现、
 > 按 worker 近似的部分与延后项见[数据面网关插件](../architecture/data-plane-gateway-plugin.zh-cn.md)。
 
@@ -534,7 +534,7 @@ sequenceDiagram
     CGW->>GRPC: 校验参数、写入期望状态、登记部署任务
     GRPC->>MQ: 投递「部署推理服务」消息
     MQ->>CTRL: 消费部署消息
-    CTRL->>K8s: 创建 AIBrix StormService 与 Service（挂载权重共享卷）
+    CTRL->>K8s: 创建 LLMInferenceService 与 Service（挂载权重共享卷）
     K8s-->>CTRL: 推理 Pod 就绪
     CTRL->>K8s: 登记服务端点，标记推理服务可用
     CTRL-->>GRPC: 回报部署结果
@@ -660,7 +660,7 @@ sequenceDiagram
 | 外部身份提供方（LDAP / OIDC / SAML / 微信） | auth | 第三方 SSO 联邦登录与用户属性来源 |
 | 客户 Webhook 端点（HTTPS） | webhook | 带 HMAC 签名与重试策略的出站事件投递 |
 | 模型仓库（ModelScope / HuggingFace） | model | 模型权重下载到共享 JuiceFS 卷 |
-| **AIBrix** | Controller · infer · runtime | 分布式推理运行时与推理网关：模型部署对象（`ModelClaim`、`PodAutoscaler`）、KV Cache 感知路由，以及数据面背后的 Envoy 代理。以独立 Helm release 安装；Chart 的 `dataPlane` 值负责把它的网关发布到推理主机名上 |
+| **KServe** | Controller · infer · runtime | 分布式推理运行时与推理网关：模型部署对象（`LLMInferenceService`、`autoscaling`）、KV Cache 感知路由，以及数据面背后的 Envoy 代理。以独立 Helm release 安装；Chart 的 `dataPlane` 值负责把它的网关发布到推理主机名上 |
 | **HAMi** | Controller · vgpu | 仅使用 GPU 切分能力：把一块物理 GPU 按显存 / 算力切分成多个切片供共享 GPU 服务使用，并输出 placement-policy 注解；暂未使用其异构卡纳管、设备插件与调度 |
 | **Volcano**（已实现） | Controller · batch | 通过每副本一个 PodGroup 为多 Pod 推理角色提供 Gang 调度与优先级抢占。可选组件：`controller.scheduling.schedulerName` 为空时使用集群默认调度器 |
 | **GPU / NPU Operator** | Controller · accelerator | 厂商驱动、设备插件、拓扑与健康状态；加速卡清单读取它们发布的节点标签 |
@@ -715,8 +715,8 @@ sequenceDiagram
 | **选择无聊的技术。** Go + PostgreSQL + Redis + RabbitMQ + Kubernetes。 | 创新留给推理优化与验证矩阵，而不是底座本身 |
 
 > **现状说明。** CRD 作为唯一真源是目标设计。仓库目前通过消息队列发布期望状态**变更事件**，
-> Controller 直接写 Deployment、Service、弹性策略与服务网关路由对象；其中 `ModelClaim`
-> 是以 AIBrix CR 形式写入的。把工作负载对象本身也收敛到 CRD，是这条决策尚未完成的一步，
+> Controller 直接写 Deployment、Service、弹性策略与服务网关路由对象；其中 `LLMInferenceService`
+> 是以 KServe CR 形式写入的。把工作负载对象本身也收敛到 CRD，是这条决策尚未完成的一步，
 > 按「差距」记录，而不是当作已完成来描述。
 
 ## 8. 仓库结构

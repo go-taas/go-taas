@@ -199,11 +199,18 @@ export default function InferenceServicesPage() {
                           label: t('services.scale'),
                           onClick: () => setScaleTarget(s),
                         },
-                        ...(s.state === 'stopped'
+                        // A failed service is not running: it offers the same
+                        // re-apply action as a stopped one, plus stop so the
+                        // leftover workload can be torn down without deleting
+                        // the service definition.
+                        ...(s.state === 'stopped' || s.state === 'failed'
                           ? [
                               {
                                 key: `start-${s.name}`,
-                                label: t('services.start'),
+                                label:
+                                  s.state === 'failed'
+                                    ? t('services.retry')
+                                    : t('services.start'),
                                 onClick: () => setStartTarget(s),
                               },
                             ]
@@ -214,6 +221,15 @@ export default function InferenceServicesPage() {
                                 onClick: () => setStopTarget(s),
                               },
                             ]),
+                        ...(s.state === 'failed'
+                          ? [
+                              {
+                                key: `stop-${s.name}`,
+                                label: t('services.stop'),
+                                onClick: () => setStopTarget(s),
+                              },
+                            ]
+                          : []),
                         {
                           key: `delete-${s.name}`,
                           label: t('common.delete'),

@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做目录与一键部署
 
-go-taas 是 Token-as-a-Service 平台：售卖的是推理 token，而 token 只能由运行中的推理服务产出。目录是供给侧的起点 —— 管理员将开源大模型（Qwen、DeepSeek、LLaMA 等）连同其对象存储中的权重路径注册进来；一键部署则把已注册的模型变成智能体可通过推理网关调用的服务端点。架构已固定了机制（第 4.2 节）：控制台调用控制面，变更发布到消息队列，由 Controller 落成 AIBrix StormService 与 Service。本特性点定义的是用户看到什么、做什么。
+go-taas 是 Token-as-a-Service 平台：售卖的是推理 token，而 token 只能由运行中的推理服务产出。目录是供给侧的起点 —— 管理员将开源大模型（Qwen、DeepSeek、LLaMA 等）连同其对象存储中的权重路径注册进来；一键部署则把已注册的模型变成智能体可通过推理网关调用的服务端点。架构已固定了机制（第 4.2 节）：控制台调用控制面，变更发布到消息队列，由 Controller 落成 LLMInferenceService 与 Service。本特性点定义的是用户看到什么、做什么。
 
 ### 1.2 竞品如何实现目录与部署
 
@@ -211,7 +211,7 @@ sequenceDiagram
     CGW-->>Console: 201，携带 service_id
     Console-->>Admin: 详情页轮询状态
     MQ->>CTRL: 消费部署消息
-    CTRL->>K8s: 创建 StormService 与 Service（挂载共享权重）
+    CTRL->>K8s: 创建 LLMInferenceService 与 Service（挂载共享权重）
     K8s-->>CTRL: Pod 就绪
     CTRL->>Infer: 上报结果，注册端点
     Note over Console,Infer: 控制台轮询 GET /api/v1/admin/inference-services/{service_id}
@@ -291,7 +291,7 @@ flowchart TD
 | 镜像预拉取 / 预热编排与冷启动优化 | 已实现（特性 #3） |
 | 目录与部署表单中的按模型、按卡型计价展示 | 已实现（计价特性） |
 | 租户级模型授权（哪些租户可部署哪些模型） | 已实现（模型授权特性） |
-| 自动扩缩容策略 | 已用 AIBrix `PodAutoscaler` 实现（特性 #16/#47） |
+| 自动扩缩容策略 | 已用 KServe `autoscaling` 实现（特性 #16/#47） |
 | 灰度升级与蓝绿部署 | 未来特性点 |
 | 微调流程与权重路径注册之外的自定义模型接入 | 未来特性点 |
 

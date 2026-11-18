@@ -5,8 +5,8 @@
 | Feature point | End-to-end installation of the Go TaaS platform: cluster prerequisites, third-party components, the Helm release, console exposure with DNS and TLS, the initial administrator password, and the first-run checklist that ends with a working console login |
 | Document scope | The supported installation path, the third-party dependencies and their official installation links, the cluster preparation steps the chart cannot do for you, the production values file, three ways to expose the console, the data plane and inference hostname, upgrade/uninstall, and the failure modes seen in practice with their fixes |
 | Owning modules | `deploy/helm/go-taas` (chart) · `apps/taas-server`, `apps/controller` (images) · `internal/controller` (inference resources) · `site/docs` (this guide) |
-| Related documents | Chart README (full values reference, in the repository at `deploy/helm/go-taas/README.md`) · [Architecture Design](../design/architecture.md) (control plane / data plane split) · [StormService Serving Topology](../architecture/stormservice-serving-topology.md) (what the controller creates for a deployment) |
-| Status | Implemented — the reference deployment runs on a single-node RKE2 cluster (Kubernetes v1.36, Helm 4.3, AIBrix 0.7, Volcano 1.15, Envoy Gateway 1.8, JuiceFS CSI 0.32); every snippet here is validated against the chart (see section 13) |
+| Related documents | Chart README (full values reference, in the repository at `deploy/helm/go-taas/README.md`) · [Architecture Design](../design/architecture.md) (control plane / data plane split) · [LLMInferenceService Serving Topology](../architecture/llminferenceservice-serving-topology.md) (what the controller creates for a deployment) |
+| Status | Implemented — the reference deployment runs on a single-node RKE2 cluster (Kubernetes v1.36, Helm 4.3, KServe 0.15, Volcano 1.15, Envoy Gateway 1.8, JuiceFS CSI 0.32); every snippet here is validated against the chart (see section 13) |
 
 ---
 
@@ -34,7 +34,7 @@ The platform is two deployments: `taas-server` (gRPC 9090, REST gateway + both c
 | Step | Required? | Time | You can skip it when |
 | --- | --- | --- | --- |
 | [1. Kubernetes](#2-step-1--kubernetes-optional) | only if you have no cluster | 10–20 min | you already have a cluster and a `kubectl` context pointing at it |
-| [2. Third-party components](#3-step-2--third-party-components) | Gateway API + Envoy Gateway and AIBrix for inference; JuiceFS for model weights | 30–60 min | you only want the console up (steps 3–5 are enough) |
+| [2. Third-party components](#3-step-2--third-party-components) | Gateway API + Envoy Gateway, KServe for inference, Volcano for gang scheduling; JuiceFS for model weights | 30–60 min | you only want the console up (steps 3–5 are enough) |
 | [3. Cluster preparation](#4-step-3--cluster-preparation) | yes | 10 min | never — these are the inputs the chart cannot guess |
 | [4. Install the platform](#5-step-4--install-the-platform) | yes | 5 min | never |
 | [5. Expose the console](#6-step-5--expose-the-console) | yes, one of the three options | 5 min | never — you need an address to log in to |
@@ -88,7 +88,7 @@ Go TaaS does not vendor these. Install them with their own charts and follow the
 | Component | Why the platform needs it | Required | Official installation guide |
 | --- | --- | --- | --- |
 | **Gateway API CRDs** + **Envoy Gateway** | Provides the `Gateway`/`HTTPRoute` API and the GatewayClass the console route and the data-plane route attach to | required to expose the console through a Gateway (option B in step 5) | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway (Helm)](https://gateway.envoyproxy.io/docs/install/install-helm/) |
-| **AIBrix** | Inference orchestration: the `StormService` (roles/pods), `ModelClaim` and `PodAutoscaler` CRDs, plus the `aibrix-eg` GatewayClass that fronts the models | required for inference (not for the console) | [AIBrix installation](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| **KServe** | The serving runtime: every service is one `LLMInferenceService`, whose controllers write the workload `Deployment` and the `Service` the platform routes to | required for inference (not for the console) | [KServe installation](https://kserve.github.io/docs/install/kserve) |
 | **Volcano** | Gang scheduling (one replica's pods are placed together) and priority preemption; supplies the scheduler the controller targets | recommended; needed only if you set `controller.scheduling.schedulerName: volcano` | [Volcano installation](https://volcano.sh/en/docs/installation/) |
 | **JuiceFS CSI** (or any ReadWriteMany storage) | One model-weights filesystem shared by the control plane (downloads/uploads) and the inference pods (read-only mounts) | required for model download/upload; any RWX class works | [JuiceFS CSI driver](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor** (or another registry) | The platform's internal image registry: the image import/upload flow pushes engine images here and registers the local reference | optional; image import and upload are disabled while unset | [Harbor installation](https://goharbor.io/docs/2.11.0/install-config/) |
@@ -139,30 +139,24 @@ kubectl apply -f platform-gateway.yaml
 kubectl -n envoy-gateway-system get gateway envoy-gateway   # ADDRESS is the entry point
 ```
 
-### 3.2 AIBrix
+### 3.2 KServe
 
-AIBrix ships release manifests; install them in the documented order (dependencies, CRDs, then
-components), which is also what its README prescribes:
+KServe ships a Helm chart. The platform needs the controller **and** the LLM
+serving runtime and its presets:
 
 ```bash
-export AIBRIX_VERSION=v0.7.0     # the reference deployment runs 0.7.0; newer releases work
-
-# dependencies (Envoy Gateway, KubeRay, ...)
-kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-dependency-${AIBRIX_VERSION}.yaml" --server-side
-# CRDs ship separately so uninstalling the operator does not delete user resources
-kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-crds-${AIBRIX_VERSION}.yaml" --server-side
-# the operator and its data plane
-kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-${AIBRIX_VERSION}.yaml"
-
-kubectl -n aibrix-system get pods
-kubectl get gatewayclass                      # expect aibrix-eg, Accepted=True
+helm install kserve oci://ghcr.io/kserve/charts/kserve-resources --version v0.21.0 \
+  --namespace kserve --create-namespace --wait
+kubectl -n kserve get pods
+kubectl get llminferenceservices -A    # CRD is installed by the chart
 ```
 
-AIBrix also publishes a Helm chart; the
-[installation guide](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html)
-documents both routes.
-
-AIBrix installs its own Envoy data plane; the Service it creates is what the platform routes inference traffic to (step 9 discovers its exact name).
+KServe needs no separate gateway to serve a model: the platform's chart installs
+the Envoy Gateway that carries inference traffic, and the model router inside
+the cluster forwards a request to the workload Service KServe creates for the
+model. KServe's own ingress and its model route are therefore left off — the
+platform writes no per-model route, and a model is reached at its workload
+Service.
 
 ### 3.3 Volcano
 
@@ -575,21 +569,18 @@ The service state machine is `queued → starting → running`; `running` means 
 
 An API caller needs a hostname that reaches the engine. Two configurations are supported; the second is what the reference deployment uses.
 
-### 9.1 Through the AIBrix gateway only
+### 9.1 What the public path looks like
 
-Call the AIBrix Envoy address directly (its Service is a `LoadBalancer`):
-
-```bash
-kubectl -n aibrix-system get svc \
-  -l gateway.envoyproxy.io/owning-gateway-name=aibrix-eg
-curl -s http://<address>/v1/models
-```
-
-No API-key enforcement and no metering on this path — every caller is anonymous.
+One hostname serves every model. A model call is
+`POST https://<dataPlane.hostname>/<service>/v1/chat/completions`, and the
+service name in the path is the first segment, so nothing else has to be
+configured to reach a model. Authentication and metering happen before the
+request reaches the model router; there is no unauthenticated path in. See
+[serving runtime](../guides/serving-runtime.md) for the hops in between.
 
 ### 9.2 Through the platform data plane (API keys + metering)
 
-Enable the data plane in the chart. It creates a Gateway named `taas-inference` (class `aibrix-eg`) in the TaaS namespace, terminates TLS with `taas-inference-tls`, and the server publishes the `taas-data-plane` route on it; the Wasm plugin in front enforces API keys and reports token usage.
+Enable the data plane in the chart. It creates a Gateway named `taas-inference` (class `eg`) in the TaaS namespace, terminates TLS with `taas-inference-tls`, and the server publishes the `taas-data-plane` route on it; the Wasm plugin in front enforces API keys and reports token usage.
 
 ```yaml
 # continue in taas-values.yaml
@@ -598,20 +589,12 @@ dataPlane:
   hostname: llm.example.com        # what users call
   gateway:
     name: taas-inference
-    className: aibrix-eg
+    className: eg
     tlsSecretName: taas-inference-tls
   parentRef:
     name: taas-inference           # the Gateway this chart creates
     namespace: ""                  # empty = the release namespace
     sectionName: https
-  backend:
-    # The AIBrix Envoy Service the route forwards to. Discover it first:
-    #   kubectl -n aibrix-system get svc \
-    #     -l gateway.envoyproxy.io/owning-gateway-name=aibrix-eg \
-    #     -o jsonpath='{.items[0].metadata.name}{"\n"}'
-    name: envoy-aibrix-system-aibrix-eg-903790dc
-    namespace: aibrix-system
-    port: 80
 
 gatewayPlugin:
   enabled: true                    # API-key auth + metering at the gateway
@@ -674,7 +657,7 @@ The release Secret and the inference namespace (`taas-infer`, annotated `keep`) 
 | Login rejected with the seeded password | the seed only fills a missing password; a previous install may have set one | `exec` into the server and check `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`, or reset through the profile of another platform administrator |
 | Inference pod `Pending`, `0/N nodes are unavailable: Insufficient nvidia.com/gpu` | no free GPU, or the node lacks the requested card | free a device, or pick another accelerator; `kubectl get node -o jsonpath='{.status.allocatable}'` |
 | Inference pod running but the engine logs "weights not found" | the server and the inference namespace do not share the weights filesystem | both PVCs must be created from the same RWX/JuiceFS volume (step 3.4), and `model.weightsDir` must be `/data/weights` |
-| Inference host returns 404 while `/v1/models` works on the AIBrix address | the data-plane route's hostname differs from the DNS record | set the same hostname in 平台 → 网关设置 and in DNS |
+| Inference host returns 404 while a direct pod address answers | the data-plane route's hostname differs from the DNS record | set the same hostname in 平台 → 网关设置 and in DNS |
 | Requests to the inference host return `401 invalid api_key` with a key that works in the console | the plugin checked a different key store, or the key was revoked/expired | issue a fresh key for the right organization; the plugin caches verdicts for `gatewayPlugin.cacheTTL` (30s) |
 | Gateway settings page warns the hostname "is not published by any route" | the data-plane route has not converged, or `dataPlane.enabled` is false | enable the data plane, wait for `PROGRAMMED=True`, then re-save the setting |
 | Model download fails immediately | `model.weightsDir` is not mounted, or the hub is unreachable | mount the shared PVC (step 4.4) and set `taasServer.config.model.weightsDir` |
@@ -685,7 +668,7 @@ Useful diagnostics:
 kubectl -n taas logs deploy/taas-go-taas-server --tail=100
 kubectl -n taas logs deploy/taas-go-taas-controller --tail=100
 kubectl -n taas get events --sort-by=.lastTimestamp | tail -20
-kubectl -n taas-infer get pods,stormservices,podgroups
+kubectl -n taas-infer get pods,llminferenceservices,podgroups
 ```
 
 ## 12. How this guide is verified
@@ -693,7 +676,7 @@ kubectl -n taas-infer get pods,stormservices,podgroups
 | Claim | How it was checked |
 | --- | --- |
 | The values file in 5.1 (and the data-plane block in 9.2) is valid and reaches the containers | extracted from this document verbatim and rendered with `helm template taas deploy/helm/go-taas -f …`: 5 Deployments, both ConfigMap/Secret paths, and the expected `CONFIG_IMAGE_HARBOR_URL`, `CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME`, `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`, `CONFIG_MODEL_WEIGHTSDIR` values |
-| Default install needs no third-party component | the default render contains only Deployments, Services, PVCs, RBAC, a Namespace and a Secret — no Gateway API or AIBrix objects |
+| Default install needs no third-party component | the default render contains only Deployments, Services, PVCs, RBAC, a Namespace and a Secret — no Gateway API, KServe or Volcano objects |
 | The PriorityClass snippet is accepted by the API | `kubectl apply --dry-run=client` against the reference cluster |
 | The catalog/console navigation paths, `/healthz` port and login response are accurate | checked against the running reference deployment (console snapshots, `POST /api/v1/auth/login`, chart probes on 9092) |
 | A fresh, empty database seeds the administrator and accepts the documented login | a server built from this commit was started against an empty PostgreSQL/Redis/RabbitMQ with `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD` set: `POST /api/v1/auth/login` returned `realm: "admin"` and a session token, the wrong password returned `10002 invalid credentials`, `GET /api/v1/admin/auth/users` answered with the seeded `admin`, and `/healthz` on 9092 returned `ok` while 9091 answered with the console page |
@@ -706,7 +689,7 @@ kubectl -n taas-infer get pods,stormservices,podgroups
 | --- | --- |
 | Every chart value, external PostgreSQL/Redis/RabbitMQ, existing Secrets, labels | Chart README — `deploy/helm/go-taas/README.md` in the repository |
 | Control plane / data plane split, module responsibilities | [Architecture Design](../design/architecture.md) |
-| What the controller creates for a deployment (roles, pods, gang groups) | [StormService Serving Topology](../architecture/stormservice-serving-topology.md) |
+| What the controller creates for a deployment (roles, pods, gang groups) | [LLMInferenceService Serving Topology](../architecture/llminferenceservice-serving-topology.md) |
 | Engine parameter templates, per-role tabs | [Engine Parameter Templates](../architecture/engine-parameter-templates.md) |
 | Local model upload | [Local Model Upload](../architecture/local-model-upload.md) |
 | Display preferences (time zone, language, currency) | [Platform Display Preferences](../architecture/platform-display-preferences.md) |

@@ -31,7 +31,7 @@
 | Image pre-pull / warmup orchestration | Implemented (feature #3) |
 | Per-model and per-card pricing display | Implemented (pricing feature) |
 | Tenant-level model authorization (which organizations may deploy which models) | Implemented (model-authorization feature) |
-| Autoscaling policies | Implemented with the AIBrix `PodAutoscaler` (features #16/#47) |
+| Autoscaling policies | Implemented with the KServe `autoscaling` (features #16/#47) |
 | Canary upgrades and blue-green deployment | Future feature point |
 | The Inference Gateway routing of `/v1/chat/completions` to deployed services | Implemented by the serving-gateway/data-plane track |
 | Session-derived organization identity (the transitional `X-Organization-Id` header remains as a fallback) | Implemented (feature #7) |
@@ -67,7 +67,7 @@ flowchart TD
     subgraph ctrl["Controller"]
         direction TB
         CTRL["Controller<br/>reconcile + status report"]
-        K8S["Kubernetes<br/>StormService · Service"]
+        K8S["Kubernetes<br/>LLMInferenceService · Service"]
         CTRL --> K8s
     end
 
@@ -98,7 +98,7 @@ flowchart TD
 | `image` module (`services/image`) | Read-only: `infer` looks images up by `image_id` to validate existence and accelerator compatibility. Registration UI is feature #3 |
 | PostgreSQL | `models`, `model_versions`, `inference_services` tables |
 | Message Queue | `infer.services.changes` (desired-state changes, consumed by the Controller) and the new `infer.services.status` (observed state, consumed by `infer`) |
-| Controller (`internal/controller`) | Decodes change events, creates/updates/deletes the AIBrix `StormService` (and the Kubernetes Service, `PodAutoscaler`, `ModelClaim`, `ModelRoute` and Volcano `PodGroup` when the corresponding scheme is enabled), reports observed state and endpoints on the status subject. A plain `Deployment` is only used when the controller runs without a dynamic client (CRD-less installs, unit tests) |
+| Controller (`internal/controller`) | Decodes change events, creates/updates/deletes the KServe `LLMInferenceService` (and the Kubernetes Service, `autoscaling`, `LLMInferenceService`, `ModelRoute` and Volcano `PodGroup` when the corresponding scheme is enabled), reports observed state and endpoints on the status subject. A plain `Deployment` is only used when the controller runs without a dynamic client (CRD-less installs, unit tests) |
 | Inference Gateway | **Not involved** in this feature — endpoints are recorded in the control plane; the data-plane routing track consumes them later |
 
 ---
@@ -298,7 +298,7 @@ Published by `infer` after the desired state is durably written. JSON body:
 }
 ```
 
-Headers: `event_type` (duplicate of the body field for broker-side routing/debugging), `service_id`. The Controller's handler is idempotent: `upsert` creates or updates the `StormService` (and the Service, gang, autoscaler, ModelClaim and ModelRoute) to match the desired state; `update_version` and `rollback` do the same with a changed spec; `delete` tears the workload down. The message carries the **resolved** model name, weight path and image reference, plus the topology, engine arguments, autoscaling policy and per-pod resource shape, so the Controller never needs a database round-trip.
+Headers: `event_type` (duplicate of the body field for broker-side routing/debugging), `service_id`. The Controller's handler is idempotent: `upsert` creates or updates the `LLMInferenceService` (and the Service, gang, autoscaler, LLMInferenceService and ModelRoute) to match the desired state; `update_version` and `rollback` do the same with a changed spec; `delete` tears the workload down. The message carries the **resolved** model name, weight path and image reference, plus the topology, engine arguments, autoscaling policy and per-pod resource shape, so the Controller never needs a database round-trip.
 
 ### 4.5.2 Status Report (`infer.services.status`, new subject)
 
@@ -347,7 +347,7 @@ sequenceDiagram
     CGW-->>Console: 200 with service_id
     Console-->>Admin: Detail page polls state
     MQ->>CTRL: Consume change event
-    CTRL->>K8s: Create or update StormService + Service (mount weights)
+    CTRL->>K8s: Create or update LLMInferenceService + Service (mount weights)
     CTRL->>MQ: Publish status queued
     K8s-->>CTRL: Pods ready
     CTRL->>MQ: Publish status running + endpoints
@@ -377,7 +377,7 @@ sequenceDiagram
     Infer->>Infer: Syntax checks pass (existence is the Controller's job)
     Infer->>MQ: Publish upsert
     MQ->>CTRL: Consume change event
-    CTRL->>K8s: Create StormService (mount fails)
+    CTRL->>K8s: Create LLMInferenceService (mount fails)
     K8s-->>CTRL: Pod stuck / mount error
     CTRL->>MQ: Publish status failed with reason
     MQ->>Infer: Consume status
@@ -406,13 +406,13 @@ sequenceDiagram
     Infer->>DB: UPDATE replicas=4 (spec only, state untouched)
     Infer->>MQ: Publish upsert (replicas=4)
     Infer-->>CGW: OK
-    MQ->>CTRL: Consume, scale StormService
+    MQ->>CTRL: Consume, scale LLMInferenceService
     Admin->>Console: Delete service (confirmed)
     Console->>CGW: DELETE /api/v1/admin/inference-services/{id}
     CGW->>Infer: DeleteInferenceService
     Infer->>DB: UPDATE state=terminated (idempotent)
     Infer->>MQ: Publish delete
-    MQ->>CTRL: Tear down StormService + Service
+    MQ->>CTRL: Tear down LLMInferenceService + Service
     Console-->>Admin: Row leaves default view
 ```
 
@@ -464,7 +464,7 @@ infer:
 | `infer.endpointBaseURL` | `""` | Base URL the Controller uses to compose endpoint URLs (`<base>/v1`). Empty means the Controller records the in-cluster Service DNS name instead. |
 | `infer.statusConsumer.enabled` | `true` | Kill switch for the status consumer Runner (operators can disable it during incident triage). |
 | `infer.statusConsumer.workers` | `2` | Concurrent status handlers. |
-| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | Kill switch for the legacy gateway-concurrency consumer; the current autoscaler reads the engine's per-pod `num_requests_running` metric through the AIBrix PodAutoscaler. |
+| `infer.autoscaling.concurrencyConsumer.enabled` | `true` | Kill switch for the legacy gateway-concurrency consumer; the current autoscaler reads the engine's per-pod `num_requests_running` metric through the KServe autoscaling. |
 | `infer.autoscaling.statusReportInterval` | `5s` | Minimum interval between autoscaling status reports per service. |
 
 Rules (same as the API Key feature):
@@ -481,7 +481,7 @@ Rules (same as the API Key feature):
 - **No secrets in messages**: change and status messages carry only resource specs and URLs — no credentials, no API keys.
 - **Weight-path traversal**: registration rejects `..` segments, leading `/`, and backslashes (FR1.3), so a malicious path cannot escape the object-storage prefix at mount time.
 - **DNS-safe names**: service names are validated DNS-safe, so the Controller can use them directly as Kubernetes resource names without injection.
-- **Controller privilege**: the controller's service account needs the serving CRDs (`StormService`, `PodAutoscaler`, `ModelClaim`, `ModelRoute`, `PodGroup`), Service and (fallback) Deployment CRUD in the platform namespace, plus read access to pods for readiness and logs — no cluster-admin, no secret read.
+- **Controller privilege**: the controller's service account needs the serving CRDs (`LLMInferenceService`, `autoscaling`, `LLMInferenceService`, `ModelRoute`, `PodGroup`), Service and (fallback) Deployment CRUD in the platform namespace, plus read access to pods for readiness and logs — no cluster-admin, no secret read.
 - **Endpoint disclosure**: inference services are platform assets, so any authorized operator may read a service; who may *use* it is governed separately by the service access policy. Cross-realm callers are rejected by the gateway's realm guard.
 
 ---
@@ -513,7 +513,7 @@ Rules (same as the API Key feature):
 | | `status_consumer.go` | Status subject consumer (Runner) |
 | | `service.go` | RPC implementations |
 | `services/image` | `registry.go` | Transitional in-memory registry (config-seeded) + lookup |
-| `internal/controller` | `reconciler.go` | K8s reconcile: StormService/Service/autoscaler/gang upsert + status publish |
+| `internal/controller` | `reconciler.go` | K8s reconcile: LLMInferenceService/Service/autoscaler/gang upsert + status publish |
 | `pkg/mq` | `mq.go` | `InferServiceStatus` subject addition |
 | `pkg/config` | `api.go` | `InferConfig`, `ImageRegistryConfig` structs + Validate rules |
 
@@ -623,8 +623,8 @@ Service RPCs (`service.go`):
 `ApplyInferServiceChange(ctx, msg)`:
 
 1. Decode the change event (Section 4.5.1); malformed → log + `mq.Permanent` (never retried).
-2. `delete` → delete the `StormService`, Service, `PodAutoscaler`, `ModelClaim`, `ModelRoute`, Volcano `PodGroup` and any legacy Deployment (ignore not-found); the RPC already set `terminated`, so no status report is needed; return.
-3. `upsert` / `update_version` / `rollback` → publish status `queued`; build the AIBrix `StormService` from the topology (single: one worker role; multinode: one worker per TP×PP shard; PD: prefill + decode roles), the Kubernetes Service, the `PodAutoscaler` when autoscaling is enabled, the AIBrix `ModelClaim`/`ModelRoute` when the AIBrix scheme is active, and the Volcano `PodGroup` when gang scheduling is enabled; create-or-update through the dynamic client; on error → publish status `failed` with the reason (AC7) and return `mq.Permanent` for non-retryable errors (e.g. weight path missing) or a plain error for transient ones (broker-level retry). A controller without a dynamic client falls back to a plain Deployment.
+2. `delete` → delete the `LLMInferenceService`, Service, `autoscaling`, `LLMInferenceService`, `ModelRoute`, Volcano `PodGroup` and any legacy Deployment (ignore not-found); the RPC already set `terminated`, so no status report is needed; return.
+3. `upsert` / `update_version` / `rollback` → publish status `queued`; build the KServe `LLMInferenceService` from the topology (single: one worker role; multinode: one worker per TP×PP shard; PD: prefill + decode roles), the Kubernetes Service, the `autoscaling` when autoscaling is enabled, the KServe `LLMInferenceService`/`ModelRoute` when the KServe scheme is active, and the Volcano `PodGroup` when gang scheduling is enabled; create-or-update through the dynamic client; on error → publish status `failed` with the reason (AC7) and return `mq.Permanent` for non-retryable errors (e.g. weight path missing) or a plain error for transient ones (broker-level retry). A controller without a dynamic client falls back to a plain Deployment.
 4. Watch pod readiness: publish `starting` when a pod is scheduled and `running` only when the engine answers its health endpoint; compose endpoints from `infer.endpointBaseURL` (or the in-cluster Service DNS name).
 
 `ApplyImageWarmup` is implemented by the image module's warmup publisher/consumer pair (feature #3): the controller decodes a warmup task, runs the pre-pull and reports status.
@@ -665,7 +665,7 @@ The console is a separate deliverable; this design pins its contract: the seven-
 | Per-model / per-card pricing in catalog and deploy form | Implemented (pricing feature) |
 | Tenant-level model authorization | Implemented (model-authorization feature) |
 | Session-derived organization identity (removes `X-Organization-Id`) | Implemented; the header remains only as a transitional fallback |
-| Autoscaling | Implemented with the AIBrix `PodAutoscaler` (feature #16/#47) |
+| Autoscaling | Implemented with the KServe `autoscaling` (feature #16/#47) |
 | Canary / blue-green | Future feature point |
 | Joined single-query `ListModels` (avoid per-row version lookup) | Optimization TODO, catalog scale permitting |
 | Business-code → HTTP status mapping in the gateway | Platform-wide follow-up |

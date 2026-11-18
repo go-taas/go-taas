@@ -17,14 +17,14 @@ import (
 
 func testDataPlaneConfig() config.RuntimeDataPlaneConfig {
 	return config.RuntimeDataPlaneConfig{
-		Enabled:            true,
-		RouteNamespace:     "taas",
-		ParentRefName:      "envoy-gateway",
-		ParentRefNamespace: "yunzhi",
-		ParentRefSection:   "https",
-		BackendName:        "envoy-aibrix",
-		BackendNamespace:   "yunzhi-system",
-		BackendPort:        80,
+		Enabled:              true,
+		RouteNamespace:       "taas",
+		ParentRefName:        "envoy-gateway",
+		ParentRefNamespace:   "yunzhi",
+		ParentRefSection:     "https",
+		ModelRouterName:      "taas-model-router",
+		ModelRouterNamespace: "gw",
+		ModelRouterPort:      8000,
 	}
 }
 
@@ -55,14 +55,14 @@ func TestDataPlaneRouterEnsureCreatesRouteAndGrant(t *testing.T) {
 	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
 	require.Len(t, rules, 1)
 	backends := rules[0].(map[string]any)["backendRefs"].([]any)
-	assert.Equal(t, "envoy-aibrix", backends[0].(map[string]any)["name"])
-	assert.Equal(t, int64(80), backends[0].(map[string]any)["port"])
+	assert.Equal(t, "taas-model-router", backends[0].(map[string]any)["name"])
+	assert.Equal(t, int64(8000), backends[0].(map[string]any)["port"])
 	// Inference streams, so the request timeout must not be short.
 	timeouts := rules[0].(map[string]any)["timeouts"].(map[string]any)
 	assert.Equal(t, "600s", timeouts["request"])
 
-	grant, err := dyn.Resource(referenceGrantGVR).Namespace("yunzhi-system").
-		Get(context.Background(), "yunzhi-reserved-referencegrant-in-yunzhi-system", metav1.GetOptions{})
+	grant, err := dyn.Resource(referenceGrantGVR).Namespace("gw").
+		Get(context.Background(), "yunzhi-reserved-referencegrant-in-gw", metav1.GetOptions{})
 	require.NoError(t, err)
 	from := grant.Object["spec"].(map[string]any)["from"].([]any)
 	assert.Equal(t, "taas", from[0].(map[string]any)["namespace"])
@@ -91,7 +91,7 @@ func TestDataPlaneRouterEnsureFollowsTheHostname(t *testing.T) {
 func TestDataPlaneRouterSkipsTheGrantInOneNamespace(t *testing.T) {
 	dyn := newRouteFake()
 	cfg := testDataPlaneConfig()
-	cfg.BackendNamespace = cfg.RouteNamespace
+	cfg.ModelRouterNamespace = cfg.RouteNamespace
 	require.NoError(t, NewDataPlaneRouter(dyn).Ensure(context.Background(), "api.example.com", cfg))
 
 	grants, err := dyn.Resource(referenceGrantGVR).List(context.Background(), metav1.ListOptions{})
@@ -111,8 +111,8 @@ func TestBuildDataPlaneObjectsRejectsIncompleteConfig(t *testing.T) {
 		{"no hostname", "", func(*config.RuntimeDataPlaneConfig) {}, "needs a hostname"},
 		{"no namespace", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.RouteNamespace = "" }, "needs a namespace"},
 		{"no parent gateway", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.ParentRefName = "" }, "parent Gateway"},
-		{"no backend", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.BackendName = "" }, "inference gateway Service"},
-		{"no port", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.BackendPort = 0 }, "backend port"},
+		{"no model router", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.ModelRouterName = "" }, "modelRouterName"},
+		{"no model router port", "a.example.com", func(c *config.RuntimeDataPlaneConfig) { c.ModelRouterPort = 0 }, "modelRouterPort"},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -146,47 +146,35 @@ func TestDataPlaneRouterWithoutClientFails(t *testing.T) {
 	assert.Contains(t, err.Error(), "no dynamic client")
 }
 
-// TestDataPlaneRouteSendsChatToTheModelRouter covers the provider-model fix:
-// with a router configured the chat endpoint is matched first, so a model with
-// no inference service can be answered, and every other path keeps going to
-// the inference gateway.
-func TestDataPlaneRouteSendsChatToTheModelRouter(t *testing.T) {
+// TestDataPlaneRouteSendsEveryCallToTheModelRouter pins the single rule: the
+// model router is the only backend, because only the router can tell a model
+// the platform serves itself from one it forwards to a provider.
+func TestDataPlaneRouteSendsEveryCallToTheModelRouter(t *testing.T) {
 	dyn := newRouteFake()
-	router := NewDataPlaneRouter(dyn)
 	cfg := testDataPlaneConfig()
-	cfg.ModelRouterName = "taas-model-router"
-	cfg.ModelRouterNamespace = "taas"
 	cfg.ModelRouterPort = 8080
-	require.NoError(t, router.Ensure(context.Background(), "llm.example.com", cfg))
+	require.NoError(t, NewDataPlaneRouter(dyn).Ensure(context.Background(), "llm.example.com", cfg))
 
 	route, err := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), DataPlaneRouteName, metav1.GetOptions{})
 	require.NoError(t, err)
 	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
-	require.Len(t, rules, 2)
-
-	chat := rules[0].(map[string]any)
-	matches := chat["matches"].([]any)
-	path := matches[0].(map[string]any)["path"].(map[string]any)
-	assert.Equal(t, DataPlaneChatPath, path["value"])
-	chatBackends := chat["backendRefs"].([]any)
-	assert.Equal(t, "taas-model-router", chatBackends[0].(map[string]any)["name"])
-	assert.Equal(t, int64(8080), chatBackends[0].(map[string]any)["port"])
-
-	rest := rules[1].(map[string]any)
-	restMatches := rest["matches"].([]any)
-	assert.Equal(t, "/", restMatches[0].(map[string]any)["path"].(map[string]any)["value"])
-	assert.Equal(t, "envoy-aibrix", rest["backendRefs"].([]any)[0].(map[string]any)["name"])
+	require.Len(t, rules, 1, "one rule, one owner: the model router")
+	rule, _ := rules[0].(map[string]any)
+	matches, _ := rule["matches"].([]any)
+	path, _ := matches[0].(map[string]any)["path"].(map[string]any)
+	assert.Equal(t, "/", path["value"], "every model call is a router call")
+	backends, _ := rule["backendRefs"].([]any)
+	assert.Equal(t, "taas-model-router", backends[0].(map[string]any)["name"])
+	assert.Equal(t, int64(8080), backends[0].(map[string]any)["port"])
 }
 
-// TestDataPlaneRouteWithoutRouterIsUnchanged covers the default install: no
-// router means the single catch-all rule the data plane always had.
-func TestDataPlaneRouteWithoutRouterIsUnchanged(t *testing.T) {
-	dyn := newRouteFake()
-	router := NewDataPlaneRouter(dyn)
-	require.NoError(t, router.Ensure(context.Background(), "llm.example.com", testDataPlaneConfig()))
+// TestDataPlaneRouteWithoutRouterIsRejected proves the route is refused
+// rather than published: with no router it would have no backend at all.
+func TestDataPlaneRouteWithoutRouterIsRejected(t *testing.T) {
+	cfg := testDataPlaneConfig()
+	cfg.ModelRouterName = ""
 
-	route, err := dyn.Resource(httpRouteGVR).Namespace("taas").Get(context.Background(), DataPlaneRouteName, metav1.GetOptions{})
-	require.NoError(t, err)
-	rules, _, _ := unstructured.NestedSlice(route.Object, "spec", "rules")
-	require.Len(t, rules, 1)
+	err := NewDataPlaneRouter(newRouteFake()).Ensure(context.Background(), "llm.example.com", cfg)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "modelRouterName")
 }

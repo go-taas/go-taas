@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做部署历史与审计
 
-go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2），并已在通用审计主干（`audit_events`，特性 #15）中记录每个控制面变更。控制台仍然无法回答部署特定的问题：*这个推理服务在其生命周期内发生了什么？* 通用审计日志记录 `infer.service.create` / `infer.service.scale` / `infer.service.delete` 事件，但它不携带**差异**（到底改了什么 —— 副本 2→4、版本 A→B），也不提供**从历史回滚**（把服务恢复到先前期望状态）。运营者必须从审计元数据重建变更并手动重新应用。
+go-taas 将推理服务作为 LLMInferenceService 运行（model-catalog-deployment §4.2），并已在通用审计主干（`audit_events`，特性 #15）中记录每个控制面变更。控制台仍然无法回答部署特定的问题：*这个推理服务在其生命周期内发生了什么？* 通用审计日志记录 `infer.service.create` / `infer.service.scale` / `infer.service.delete` 事件，但它不携带**差异**（到底改了什么 —— 副本 2→4、版本 A→B），也不提供**从历史回滚**（把服务恢复到先前期望状态）。运营者必须从审计元数据重建变更并手动重新应用。
 
 本特性新增**部署历史与审计**面：按服务的部署审计轨迹（创建/更新/扩缩容/回滚事件）含时间戳、操作者与差异，并支持从历史回滚。这是 Phase 4 运维面中最小可独立交付的增量：它把「服务变了」变成「副本数在 14:03 由 `admin@example.com` 从 2 变为 4，我可以一键回滚到先前状态」。
 

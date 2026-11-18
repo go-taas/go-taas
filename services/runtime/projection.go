@@ -34,7 +34,7 @@ type Component struct {
 	LastCheckedAt   time.Time `json:"last_checked_at"`
 }
 
-// ModelCondition mirrors an AIBrix ModelClaim status condition.
+// ModelCondition mirrors a condition on the model's workload.
 type ModelCondition struct {
 	Type               string    `json:"type"`
 	Status             string    `json:"status"`

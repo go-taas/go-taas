@@ -30,7 +30,7 @@ func TestSlicePodShape(t *testing.T) {
 	r := testReconciler()
 	r.SetVGPUConfig("hami.io/gpu-scheduler-policy", "binpack", "hami-scheduler")
 
-	spec, annotations := r.buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, annotations := r.buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	require.Len(t, spec.Containers, 1)
 	res := spec.Containers[0].Resources
 
@@ -63,7 +63,7 @@ func TestWholeCardPodStaysOnPlatformScheduler(t *testing.T) {
 	r := testReconciler()
 	r.SetScheduling(SchedulerVolcano, "", "", "", "")
 
-	spec, annotations := r.buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, annotations := r.buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	res := spec.Containers[0].Resources
 	q := res.Limits["nvidia.com/gpu"]
 	assert.Equal(t, "1", q.String())
@@ -84,7 +84,7 @@ func TestWholeCardPodUsesHAMiSchedulerWhenHAMiOwnsTheDevice(t *testing.T) {
 	r.SetScheduling(SchedulerVolcano, "", "", "", "")
 	r.SetVGPUConfig("hami.io/gpu-scheduler-policy", "binpack", "hami-scheduler")
 
-	spec, annotations := r.buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, annotations := r.buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	assert.Equal(t, "hami-scheduler", spec.SchedulerName)
 	assert.Empty(t, annotations["hami.io/gpu-scheduler-policy"], "a whole card has no placement policy")
 }
@@ -115,11 +115,11 @@ func TestSlicePodReservesEngineHeadroom(t *testing.T) {
 	r := testReconciler()
 	r.SetVGPUConfig("hami.io/gpu-scheduler-policy", "binpack", "hami-scheduler")
 
-	spec, _ := r.buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ := r.buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	assert.Contains(t, strings.Join(spec.Containers[0].Command, " "), "--gpu-memory-utilization 0.88")
 
 	evt.EngineArgs = map[string]string{"gpu-memory-utilization": "0.70"}
-	spec, _ = r.buildPodTemplate(context.Background(), evt, stormRole{Name: stormRoleWorker, PodGroupSize: 1})
+	spec, _ = r.buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
 	cmd := strings.Join(spec.Containers[0].Command, " ")
 	assert.Contains(t, cmd, "--gpu-memory-utilization 0.70")
 	assert.NotContains(t, cmd, "0.88")

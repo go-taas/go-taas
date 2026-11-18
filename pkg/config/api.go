@@ -975,11 +975,11 @@ type EvaluationRetentionConfig struct {
 }
 
 // RuntimeConfig holds the distributed-inference-runtime settings (feature
-// #47, Section 9). The controller consumes collectInterval, the scheme and
-// model-change consumers, and the aibrix block; the server consumes the
-// remaining consumers.
+// #47, Section 9). The controller consumes collectInterval and the scheme
+// consumer, and reports the serving runtime's components and registered
+// models; the server consumes the remaining consumers.
 type RuntimeConfig struct {
-	// CollectInterval is the controller's runtime-component and ModelClaim
+	// CollectInterval is the controller's runtime-component and registered-model
 	// collection period; the full snapshot is published on this interval
 	// (AD4). Default 30s.
 	CollectInterval time.Duration `mapstructure:"collectInterval"`
@@ -991,11 +991,9 @@ type RuntimeConfig struct {
 	SchemeConsumer RuntimeConsumerConfig `mapstructure:"schemeConsumer"`
 	// HealthConsumer configures the runtime service's snapshot consumer.
 	HealthConsumer RuntimeHealthConsumerConfig `mapstructure:"healthConsumer"`
-	// ModelChangeConsumer configures the controller's model-change consumer.
-	ModelChangeConsumer RuntimeConsumerConfig `mapstructure:"modelChangeConsumer"`
-	// AIBrix names the installed AIBrix control plane's namespace and the
-	// Envoy AI Gateway Deployment observed for health.
-	AIBrix RuntimeAIBrixConfig `mapstructure:"aibrix"`
+	// Gateway names the data plane Gateway that terminates the inference
+	// hostname and the Envoy Deployment that backs it.
+	Gateway RuntimeGatewayConfig `mapstructure:"gateway"`
 	// DataPlane describes the HTTPRoute the platform publishes for
 	// inference traffic: the parent Gateway that terminates TLS, and the
 	// inference gateway Service the route forwards to. The hostname itself
@@ -1021,23 +1019,30 @@ type RuntimeHealthConsumerConfig struct {
 	Workers int `mapstructure:"workers"`
 }
 
-// RuntimeAIBrixConfig names the installed AIBrix control plane.
-type RuntimeAIBrixConfig struct {
-	// Namespace is the namespace of the AIBrix control-plane Deployments.
-	// Default "aibrix-system".
+// RuntimeGatewayConfig names the data plane Gateway.
+type RuntimeGatewayConfig struct {
+	// Namespace is the namespace the Gateway lives in, which is the release
+	// namespace: the chart creates it there and the data-plane route in the
+	// inference namespace references it across namespaces.
 	Namespace string `mapstructure:"namespace"`
-	// Gateway is the Envoy AI Gateway Deployment observed for health.
-	// Default "envoy-aibrix-system-aibrix-eg".
-	Gateway string `mapstructure:"gateway"`
-	// GatewayName is the Gateway API Gateway object the model HTTPRoutes
-	// attach to. Default "aibrix-eg".
-	GatewayName string `mapstructure:"gatewayName"`
+	// Name is the Gateway the data-plane route attaches to. Default
+	// "taas-inference".
+	Name string `mapstructure:"name"`
+	// Deployment is the Envoy Deployment backing that Gateway. The Gateway
+	// itself reports only addresses, so runtime health reads the workload.
+	// Default "taas-inference".
+	Deployment string `mapstructure:"deployment"`
+	// DeploymentNamespace is the namespace that Envoy Deployment runs in.
+	// Envoy Gateway creates the proxy workload in its own controller
+	// namespace, not next to the Gateway, so it can differ from Namespace.
+	// Empty uses Namespace.
+	DeploymentNamespace string `mapstructure:"deploymentNamespace"`
 }
 
-// RuntimeDataPlaneConfig describes the data-plane HTTPRoute the server
-// owns. Inference traffic enters through the inference gateway, never
-// through the control plane, so the route is an install-time fact plus one
-// runtime setting (the hostname).
+// RuntimeDataPlaneConfig describes the data-plane HTTPRoute the server owns.
+// Inference traffic enters through the data plane Gateway, never through the
+// control plane, so the route is an install-time fact plus one runtime setting
+// (the hostname).
 type RuntimeDataPlaneConfig struct {
 	// Enabled turns publishing on. When false the server never writes the
 	// route, and saving a hostname in the console fails with 12909.
@@ -1054,16 +1059,11 @@ type RuntimeDataPlaneConfig struct {
 	ParentRefNamespace string `mapstructure:"parentRefNamespace"`
 	// ParentRefSection is the Gateway listener name, for example "https".
 	ParentRefSection string `mapstructure:"parentRefSection"`
-	// BackendName and BackendNamespace identify the inference gateway
-	// Service the route forwards to.
-	BackendName      string `mapstructure:"backendName"`
-	BackendNamespace string `mapstructure:"backendNamespace"`
-	// BackendPort is the gateway's HTTP port. Default 80.
-	BackendPort int32 `mapstructure:"backendPort"`
 	// ModelRouterName and ModelRouterNamespace identify the data-plane model
-	// router Service. When set, the route sends the chat endpoint there first
-	// and everything else to the inference gateway, so a model the platform
-	// sells from a provider can be answered.
+	// router Service. The route forwards every request there: the router
+	// answers a provider-backed model itself and forwards a self-hosted one to
+	// the Gateway's internal listener, which is the only component that knows
+	// which service serves a model.
 	ModelRouterName      string `mapstructure:"modelRouterName"`
 	ModelRouterNamespace string `mapstructure:"modelRouterNamespace"`
 	// ModelRouterPort is the router's HTTP port.

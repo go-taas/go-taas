@@ -68,10 +68,6 @@ func main() {
 	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
 	// placement-policy annotation, the pool's scheduling hint, and the
 	// pool's node label selector are config-driven.
-	// The serving gateway resolves a request's model to an HTTPRoute in its
-	// own namespace, so the controller writes model routes next to the
-	// Gateway the AIBrix install declares.
-	reconciler.SetGatewayRouting(cfg.Runtime.AIBrix.Namespace, cfg.Runtime.AIBrix.GatewayName)
 	reconciler.SetScheduling(
 		cfg.Controller.Scheduling.SchedulerName,
 		cfg.Controller.Scheduling.PriorityClassHigh,
@@ -93,32 +89,26 @@ func main() {
 	// running service whose pod has a terminal failure, keeping the k8s
 	// resources for diagnosis.
 	ctrl.SetPodFailureDetector(controller.NewPodFailureDetector(
-		k8sClient.Clientset(), cfg.Controller.Namespace, cfg.Controller.PodFailureDetector.Interval, mqClient,
+		k8sClient.Clientset(), k8sClient.Dynamic(), cfg.Controller.Namespace, cfg.Controller.PodFailureDetector.Interval, mqClient,
 	))
 	// Feature #18: the accelerator inventory collector lists nodes and
 	// publishes the full snapshot on the configured interval.
 	ctrl.SetInventoryCollector(controller.NewInventoryCollector(
 		k8sClient.Clientset(), mqClient, cfg.Accelerator.CollectInterval,
 	))
-	// Feature #47: the distributed-inference-runtime consumer of the
-	// serving scheme, the model-change consumer that reconciles AIBrix
-	// ModelClaims, and the component + ModelClaim collector that publishes
-	// the runtime.health snapshot.
+	// Feature #47: the runtime collector publishes the control-plane and
+	// served-model snapshot. The scheme consumer only caches the scheme the
+	// console selects, which the reconciler reads when it builds an object.
 	if cfg.Runtime.SchemeConsumer.Enabled {
 		ctrl.SetRuntimeSchemeConsumer(controller.NewRuntimeSchemeConsumer(mqClient, schemeCache))
-	}
-	if cfg.Runtime.ModelChangeConsumer.Enabled {
-		ctrl.SetRuntimeModelChangeConsumer(controller.NewRuntimeModelChangeConsumer(
-			mqClient, k8sClient.Dynamic(), cfg.Controller.Namespace,
-		))
 	}
 	ctrl.SetRuntimeCollector(controller.NewRuntimeCollector(
 		k8sClient.Clientset(), k8sClient.Dynamic(), mqClient,
 		controller.RuntimeCollectorConfig{
-			Interval:        cfg.Runtime.CollectInterval,
-			Namespace:       cfg.Controller.Namespace,
-			AIBrixNamespace: cfg.Runtime.AIBrix.Namespace,
-			Gateway:         cfg.Runtime.AIBrix.Gateway,
+			Interval:         cfg.Runtime.CollectInterval,
+			Namespace:        cfg.Controller.Namespace,
+			GatewayNamespace: cfg.Runtime.Gateway.DeploymentNamespace,
+			Gateway:          cfg.Runtime.Gateway.Deployment,
 		},
 		schemeCache,
 	))
@@ -149,7 +139,7 @@ func main() {
 			ctrl.SetResourceSampler(controller.NewResourceSampler(
 				db,
 				controller.NewK8sResourceSampleProvider(
-					k8sClient.Clientset(), metricsClient, cfg.Controller.Namespace, nil,
+					k8sClient.Clientset(), k8sClient.Dynamic(), metricsClient, cfg.Controller.Namespace, nil,
 				),
 				cfg.Controller.ResourceMetrics.SampleInterval,
 			))

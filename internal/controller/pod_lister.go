@@ -6,7 +6,6 @@ import (
 	"sort"
 
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
 	"github.com/go-taas/go-taas/pkg/k8s"
 	"github.com/go-taas/go-taas/services/resourcemetrics"
@@ -33,24 +32,22 @@ func NewPodLister(client *k8s.Client, namespace string) resourcemetrics.PodListe
 
 // ServicePods implements resourcemetrics.PodLister.
 func (l *podLister) ServicePods(ctx context.Context, serviceID string) ([]resourcemetrics.ServicePod, error) {
-	pods, err := l.client.Clientset().CoreV1().Pods(l.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: serviceLabelKey + "=" + serviceID,
-	})
+	pods, err := listServicePods(ctx, l.client.Clientset(), l.client.Dynamic(), l.namespace, serviceID)
 	if err != nil {
 		return nil, fmt.Errorf("controller: list pods for service %s: %w", serviceID, err)
 	}
 	// The same ordering the log viewer uses, so "replica-2" is one pod on
 	// every page.
-	sort.Slice(pods.Items, func(i, j int) bool {
-		if pods.Items[i].CreationTimestamp.Equal(&pods.Items[j].CreationTimestamp) {
-			return pods.Items[i].Name < pods.Items[j].Name
+	sort.Slice(pods, func(i, j int) bool {
+		if pods[i].CreationTimestamp.Equal(&pods[j].CreationTimestamp) {
+			return pods[i].Name < pods[j].Name
 		}
-		return pods.Items[i].CreationTimestamp.Before(&pods.Items[j].CreationTimestamp)
+		return pods[i].CreationTimestamp.Before(&pods[j].CreationTimestamp)
 	})
 
-	out := make([]resourcemetrics.ServicePod, 0, len(pods.Items))
-	for i := range pods.Items {
-		pod := &pods.Items[i]
+	out := make([]resourcemetrics.ServicePod, 0, len(pods))
+	for i := range pods {
+		pod := &pods[i]
 		if pod.Status.Phase != corev1.PodRunning {
 			continue
 		}

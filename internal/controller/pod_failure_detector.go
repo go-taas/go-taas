@@ -7,6 +7,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/go-taas/go-taas/pkg/logger"
@@ -23,14 +24,15 @@ import (
 // The detector only reports failures; it never deletes resources, so a
 // failed service keeps its StormService and pods for diagnosis.
 type PodFailureDetector struct {
-	clientset        kubernetes.Interface
-	namespace        string
-	interval         time.Duration
-	statusPublisher  mq.Client
+	clientset       kubernetes.Interface
+	dyn             dynamic.Interface
+	namespace       string
+	interval        time.Duration
+	statusPublisher mq.Client
 }
 
 // NewPodFailureDetector builds a PodFailureDetector.
-func NewPodFailureDetector(clientset kubernetes.Interface, namespace string, interval time.Duration, statusPublisher mq.Client) *PodFailureDetector {
+func NewPodFailureDetector(clientset kubernetes.Interface, dyn dynamic.Interface, namespace string, interval time.Duration, statusPublisher mq.Client) *PodFailureDetector {
 	if namespace == "" {
 		namespace = "taas-infer"
 	}
@@ -39,6 +41,7 @@ func NewPodFailureDetector(clientset kubernetes.Interface, namespace string, int
 	}
 	return &PodFailureDetector{
 		clientset:       clientset,
+		dyn:             dyn,
 		namespace:       namespace,
 		interval:        interval,
 		statusPublisher: statusPublisher,
@@ -68,21 +71,21 @@ func (d *PodFailureDetector) scanOnce(ctx context.Context) {
 	if d.statusPublisher == nil {
 		return
 	}
-	pods, err := d.clientset.CoreV1().Pods(d.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: labelServiceID,
-	})
+	pods, err := d.clientset.CoreV1().Pods(d.namespace).List(ctx, metav1.ListOptions{})
 	if err != nil {
 		logger.S().Warnw("controller: pod failure scan failed", "err", err)
 		return
 	}
-	// Group pods by service id.
+	// Group pods by service id. A KServe pod carries no id of its own, so the
+	// index resolves it from the KServe workload's name.
+	byName := serviceIDsByWorkloadName(ctx, d.dyn, d.namespace)
 	byService := map[string][]corev1.Pod{}
-	for _, pod := range pods.Items {
-		svcID := pod.Labels[labelServiceID]
+	for i := range pods.Items {
+		svcID := podServiceID(&pods.Items[i], byName)
 		if svcID == "" {
 			continue
 		}
-		byService[svcID] = append(byService[svcID], pod)
+		byService[svcID] = append(byService[svcID], pods.Items[i])
 	}
 	for svcID, svcPods := range byService {
 		if reason := terminalPodFailureIn(svcPods); reason != "" {

@@ -29,8 +29,6 @@ func (f *fakeReconciler) ApplyImageWarmup(_ context.Context, msg mq.Message) err
 
 func (f *fakeReconciler) SetVGPUConfig(string, string, string) {}
 
-func (f *fakeReconciler) SetGatewayRouting(string, string) {}
-
 func (f *fakeReconciler) SetScheduling(_, _, _, _, _ string) {}
 
 func (f *fakeReconciler) SetServiceStateProvider(ServiceStateProvider) {}

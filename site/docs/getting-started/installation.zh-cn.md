@@ -5,8 +5,8 @@
 | 功能点 | Go TaaS 平台的端到端安装：集群前置条件、第三方组件、Helm 发布、带域名与证书的控制台暴露、初始管理员密码，以及以「成功登录控制台」为终点的首次使用清单 |
 | 文档范围 | 受支持的安装路径、第三方依赖及官方安装链接、Chart 无法代劳的集群准备步骤、生产 values 文件、控制台的三种暴露方式、数据面与推理域名、升级与卸载，以及实践中遇到的故障及其解决办法 |
 | 所属模块 | `deploy/helm/go-taas`（Chart） · `apps/taas-server`、`apps/controller`（镜像） · `internal/controller`（推理资源） · `site/docs`（本文档） |
-| 关联文档 | Chart README（完整 values 参考，仓库内 `deploy/helm/go-taas/README.zh-cn.md`） · [架构设计](../design/architecture.zh-cn.md)（控制面 / 数据面划分） · [StormService 服务拓扑](../architecture/stormservice-serving-topology.zh-cn.md)（控制器为一次部署创建什么） |
-| 状态 | 已实现 —— 参考部署运行在单节点 RKE2 集群（Kubernetes v1.36、Helm 4.3、AIBrix 0.7、Volcano 1.15、Envoy Gateway 1.8、JuiceFS CSI 0.32）；本文档每个片段都已针对 Chart 校验（见第 12 节） |
+| 关联文档 | Chart README（完整 values 参考，仓库内 `deploy/helm/go-taas/README.zh-cn.md`） · [架构设计](../design/architecture.zh-cn.md)（控制面 / 数据面划分） · [LLMInferenceService 服务拓扑](../architecture/llminferenceservice-serving-topology.zh-cn.md)（控制器为一次部署创建什么） |
+| 状态 | 已实现 —— 参考部署运行在单节点 RKE2 集群（Kubernetes v1.36、Helm 4.3、KServe 0.15、Volcano 1.15、Envoy Gateway 1.8、JuiceFS CSI 0.32）；本文档每个片段都已针对 Chart 校验（见第 12 节） |
 
 ---
 
@@ -34,7 +34,7 @@
 | 步骤 | 是否必需 | 耗时 | 何时可以跳过 |
 | --- | --- | --- | --- |
 | [1. Kubernetes](#2-步骤-1--kubernetes可选) | 仅在没有集群时需要 | 10–20 分钟 | 已有集群，且 `kubectl` 已指向它 |
-| [2. 第三方组件](#3-步骤-2--第三方组件) | 推理需要 Gateway API + Envoy Gateway 与 AIBrix；模型权重需要 JuiceFS | 30–60 分钟 | 只想先把控制台跑起来（做完步骤 3–5 即可） |
+| [2. 第三方组件](#3-步骤-2--第三方组件) | 推理需要 Gateway API + Envoy Gateway、KServe 与 Volcano；模型权重需要 JuiceFS | 30–60 分钟 | 只想先把控制台跑起来（做完步骤 3–5 即可） |
 | [3. 集群准备](#4-步骤-3--集群准备) | 必需 | 10 分钟 | 不可跳过 —— 这些是 Chart 无法猜测的输入 |
 | [4. 安装平台](#5-步骤-4--安装平台) | 必需 | 5 分钟 | 不可跳过 |
 | [5. 暴露控制台](#6-步骤-5--暴露控制台) | 必需，三选一 | 5 分钟 | 不可跳过 —— 你需要一个地址来登录 |
@@ -87,7 +87,7 @@ Go TaaS 不内置这些组件。请使用它们各自的 Chart 安装，并遵�
 | 组件 | 平台为何需要 | 是否必需 | 官方安装文档 |
 | --- | --- | --- | --- |
 | **Gateway API CRD** + **Envoy Gateway** | 提供 `Gateway`/`HTTPRoute` API，以及控制台路由与数据面路由挂载所需的 GatewayClass | 通过 Gateway 暴露控制台（步骤 5 方案 B）时必需 | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway（Helm）](https://gateway.envoyproxy.io/docs/install/install-helm/) |
-| **AIBrix** | 推理编排：`StormService`（角色/Pod）、`ModelClaim` 与 `PodAutoscaler` CRD，以及为模型提供前置代理的 `aibrix-eg` GatewayClass | 推理必需（控制台不需要） | [AIBrix 安装](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html) |
+| **KServe** | 推理运行时：每个推理服务都是一份 `LLMInferenceService`，由它写工作负载 `Deployment` 与平台路由指向的 `Service` | 推理必需（控制台不需要） | [KServe 安装](https://kserve.github.io/docs/install/kserve) |
 | **Volcano** | Gang 调度（一个副本的 Pod 整体放置）与优先级抢占；提供控制器所指向的调度器 | 推荐；仅当设置 `controller.scheduling.schedulerName: volcano` 时需要 | [Volcano 安装](https://volcano.sh/en/docs/installation/) |
 | **JuiceFS CSI**（或任意 ReadWriteMany 存储） | 控制面（下载/上传）与推理 Pod（只读挂载）共享的同一套模型权重文件系统 | 模型下载/上传必需；任何 RWX 存储类均可 | [JuiceFS CSI 驱动](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor**（或其他镜像仓库） | 平台内部镜像仓库：镜像导入/上传流程把引擎镜像推到这里并注册本地引用 | 可选；未设置时镜像导入与上传功能关闭 | [Harbor 安装](https://goharbor.io/docs/2.11.0/install-config/) |
@@ -138,28 +138,18 @@ kubectl apply -f platform-gateway.yaml
 kubectl -n envoy-gateway-system get gateway envoy-gateway   # ADDRESS 即入口地址
 ```
 
-### 3.2 AIBrix
+### 3.2 KServe
 
-AIBrix 以发布清单形式分发；请按其 README 的顺序安装（先依赖，再 CRD，最后组件）：
+平台需要 KServe 控制器，以及 LLM 推理运行时与其预设：
 
 ```bash
-export AIBRIX_VERSION=v0.7.0     # 参考部署使用 0.7.0；更高版本同样可用
-
-# 依赖（Envoy Gateway、KubeRay 等）
-kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-dependency-${AIBRIX_VERSION}.yaml" --server-side
-# CRD 单独发布，这样卸载 operator 不会删除用户资源
-kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-crds-${AIBRIX_VERSION}.yaml" --server-side
-# operator 及其数据面
-kubectl apply -f "https://github.com/vllm-project/aibrix/releases/download/${AIBRIX_VERSION}/aibrix-core-${AIBRIX_VERSION}.yaml"
-
-kubectl -n aibrix-system get pods
-kubectl get gatewayclass                      # 应看到 aibrix-eg，Accepted=True
+helm install kserve oci://ghcr.io/kserve/charts/kserve-resources --version v0.21.0 \
+  --namespace kserve --create-namespace --wait
+kubectl -n kserve get pods
+kubectl get llminferenceservices -A    # CRD 由 Chart 安装
 ```
 
-AIBrix 同时提供 Helm Chart；
-[官方安装文档](https://aibrix.readthedocs.io/latest/getting_started/installation/installation.html)对两种方式都有说明。
-
-AIBrix 会自带 Envoy 数据面；它创建的 Service 就是平台转发推理流量指向的目标（步骤 9 会说明如何确定其名称）。
+KServe 不需要单独再装网关：平台的 Chart 会安装承载推理流量的 Envoy Gateway，集群内的模型路由把请求转给 KServe 为该模型创建的工作负载 Service。因此平台的交付不要求 KServe 写它自己的路由（那条路由的后端是 `InferencePool`，没有 Inference Extension 的网关会拒掉），也就不需要 `ingressGateway.*` 指向哪里。
 
 ### 3.3 Volcano
 
@@ -570,21 +560,15 @@ docker.io/vllm/vllm-openai:v0.6.3   →   hub.example.com/taas/vllm-openai:v0.6.
 
 API 调用方需要一个能到达引擎的域名。支持两种配置；参考部署使用第二种。
 
-### 9.1 仅通过 AIBrix 网关
+### 9.1 公开路径长什么样
 
-直接调用 AIBrix Envoy 地址（其 Service 为 `LoadBalancer`）：
-
-```bash
-kubectl -n aibrix-system get svc \
-  -l gateway.envoyproxy.io/owning-gateway-name=aibrix-eg
-curl -s http://<address>/v1/models
-```
-
-该路径没有 API Key 校验，也没有计量 —— 任何调用方都是匿名的。
+一个域名承载全部模型：一次模型调用就是
+`POST https://<dataPlane.hostname>/<服务名>/v1/chat/completions`。路径里的第一个段就是服务名，因此不需要额外配置就能访问到某个模型。鉴权与计量发生在请求进入模型路由器之前，管道里没有免鉴权的旁路；
+中间经过的两次跳转见[服务运行时](../guides/serving-runtime.md)。
 
 ### 9.2 通过平台数据面（API Key + 计量）
 
-在 Chart 中启用数据面。它会在 TaaS 命名空间创建名为 `taas-inference` 的 Gateway（class `aibrix-eg`），用 `taas-inference-tls` 终止 TLS，并由服务端在其上发布 `taas-data-plane` 路由；前置的 Wasm 插件负责校验 API Key 并上报词元用量。
+在 Chart 中启用数据面。它会在发布命名空间创建名为 `taas-inference` 的 Gateway（class `eg`），用 `taas-inference-tls` 终止 TLS，并由服务端在其上发布 `taas-data-plane` 路由；前置的 Wasm 插件负责校验 API Key 并上报词元用量。
 
 ```yaml
 # 继续写在 taas-values.yaml 中
@@ -593,30 +577,16 @@ dataPlane:
   hostname: llm.example.com        # 用户调用的域名
   gateway:
     name: taas-inference
-    className: aibrix-eg
+    className: eg
     tlsSecretName: taas-inference-tls
   parentRef:
     name: taas-inference           # Chart 创建的 Gateway
     namespace: ""                  # 留空 = 发布的命名空间
     sectionName: https
-  backend:
-    # 路由转发到的 AIBrix Envoy Service，先查询其名称：
-    #   kubectl -n aibrix-system get svc \
-    #     -l gateway.envoyproxy.io/owning-gateway-name=aibrix-eg \
-    #     -o jsonpath='{.items[0].metadata.name}{"\n"}'
-    name: envoy-aibrix-system-aibrix-eg-903790dc
-    namespace: aibrix-system
-    port: 80
 
 gatewayPlugin:
   enabled: true                    # 在网关处做 API Key 校验与计量
   failOpen: false
-```
-
-```bash
-helm upgrade taas deploy/helm/go-taas -n taas --reuse-values -f taas-values.yaml
-kubectl -n taas get gateway taas-inference -o wide      # 等待 PROGRAMMED=True
-kubectl -n taas get httproute                           # 出现 taas-data-plane
 ```
 
 随后：
@@ -669,7 +639,7 @@ helm uninstall taas -n taas
 | 用初始化密码登录被拒 | 初始化只会填充「缺失」的密码，之前的安装可能已设置过 | `exec` 进服务端查看 `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`，或通过另一位平台管理员重置 |
 | 推理 Pod `Pending`，`0/N nodes are unavailable: Insufficient nvidia.com/gpu` | 没有空闲 GPU，或节点缺少所选卡型 | 释放设备或改选其他加速卡；`kubectl get node -o jsonpath='{.status.allocatable}'` |
 | 推理 Pod 已运行但引擎日志报 "weights not found" | 服务端与推理命名空间未共享权重文件系统 | 两个 PVC 必须来自同一个 RWX/JuiceFS 卷（步骤 3.4），且 `model.weightsDir` 必须为 `/data/weights` |
-| 在 AIBrix 地址上 `/v1/models` 正常，但推理域名返回 404 | 数据面路由域名与 DNS 记录不一致 | 在 平台 → 网关设置 与 DNS 中设为同一域名 |
+| 推理域名返回 404、但直连某个 Pod 可用 | 数据面路由域名与 DNS 记录不一致 | 在 平台 → 网关设置 与 DNS 中设为同一域名 |
 | 用控制台可用的 Key 调用推理域名返回 `401 invalid api_key` | 插件查询的是另一套 Key 存储，或 Key 已吊销/过期 | 为正确的组织签发新 Key；插件会缓存判定 `gatewayPlugin.cacheTTL`（默认 30s） |
 | 网关设置页提示域名「未由任何路由发布」 | 数据面路由尚未收敛，或 `dataPlane.enabled` 为 false | 启用数据面，等待 `PROGRAMMED=True` 后重新保存设置 |
 | 模型下载立即失败 | `model.weightsDir` 未挂载，或 Hub 不可达 | 挂载共享 PVC（步骤 4.4）并设置 `taasServer.config.model.weightsDir` |
@@ -680,7 +650,7 @@ helm uninstall taas -n taas
 kubectl -n taas logs deploy/taas-go-taas-server --tail=100
 kubectl -n taas logs deploy/taas-go-taas-controller --tail=100
 kubectl -n taas get events --sort-by=.lastTimestamp | tail -20
-kubectl -n taas-infer get pods,stormservices,podgroups
+kubectl -n taas-infer get pods,llminferenceservices,podgroups
 ```
 
 ## 12. 本文档的验证方式
@@ -688,7 +658,7 @@ kubectl -n taas-infer get pods,stormservices,podgroups
 | 结论 | 验证方式 |
 | --- | --- |
 | 5.1 的 values 文件（以及 9.2 的数据面片段）合法且能生效 | 从本文档原样抽取后用 `helm template taas deploy/helm/go-taas -f …` 渲染：得到 5 个 Deployment、ConfigMap/Secret 路径，以及预期的 `CONFIG_IMAGE_HARBOR_URL`、`CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME`、`CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`、`CONFIG_MODEL_WEIGHTSDIR` 取值 |
-| 默认安装不需要任何第三方组件 | 默认渲染结果只有 Deployment、Service、PVC、RBAC、Namespace 与 Secret —— 没有 Gateway API 或 AIBrix 对象 |
+| 默认安装不需要任何第三方组件 | 默认渲染结果只有 Deployment、Service、PVC、RBAC、Namespace 与 Secret —— 没有 Gateway API 或 KServe 对象 |
 | PriorityClass 片段能被 API 接受 | 对参考集群执行 `kubectl apply --dry-run=client` |
 | 控制台导航路径、`/healthz` 端口与登录响应准确 | 对照运行中的参考部署（控制台快照、`POST /api/v1/auth/login`、Chart 在 9092 上的探针） |
 | 全新空库会初始化管理员，并接受文档中的登录 | 用本提交构建的服务端连接空的 PostgreSQL/Redis/RabbitMQ，并设置 `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`：`POST /api/v1/auth/login` 返回 `realm: "admin"` 与会话令牌，错误密码返回 `10002 invalid credentials`，`GET /api/v1/admin/auth/users` 返回 seed 的 `admin`，9092 的 `/healthz` 返回 `ok`，而 9091 返回控制台页面 |
@@ -701,7 +671,7 @@ kubectl -n taas-infer get pods,stormservices,podgroups
 | --- | --- |
 | 全部 Chart values、外接 PostgreSQL/Redis/RabbitMQ、已有 Secret、标签 | Chart README —— 仓库内 `deploy/helm/go-taas/README.zh-cn.md` |
 | 控制面 / 数据面划分与模块职责 | [架构设计](../design/architecture.zh-cn.md) |
-| 控制器为一次部署创建什么（角色、Pod、gang 组） | [StormService 服务拓扑](../architecture/stormservice-serving-topology.zh-cn.md) |
+| 控制器为一次部署创建什么（角色、Pod、gang 组） | [LLMInferenceService 服务拓扑](../architecture/llminferenceservice-serving-topology.zh-cn.md) |
 | 引擎参数模板与按角色 Tab | [推理引擎参数模板](../architecture/engine-parameter-templates.zh-cn.md) |
 | 本地模型上传 | [本地模型上传](../architecture/local-model-upload.zh-cn.md) |
 | 显示偏好（时区、语言、货币） | [平台显示偏好](../architecture/platform-display-preferences.zh-cn.md) |

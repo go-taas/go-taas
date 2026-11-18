@@ -14,7 +14,7 @@
 
 ### 1.1 为什么现在做日志查看器
 
-go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，推理引擎（vLLM 等）把日志写入容器的 stdout/stderr。请求追踪特性（第 27 行）解释了*请求内部发生了什么*（TTFT、生成、span），但它无法回答运营者的原始问题：*推理引擎打印了什么？* 当部署无法收敛、请求出错或引擎记录警告时，运营者必须离开控制台对 Pod 执行 `kubectl logs` —— 这是控制台应当拥有的运营者编排逃生通道。
+go-taas 将推理服务作为 LLMInferenceService 运行（model-catalog-deployment §4.2）：Controller 创建 LLMInferenceService 与 Service，推理引擎（vLLM 等）把日志写入容器的 stdout/stderr。请求追踪特性（第 27 行）解释了*请求内部发生了什么*（TTFT、生成、span），但它无法回答运营者的原始问题：*推理引擎打印了什么？* 当部署无法收敛、请求出错或引擎记录警告时，运营者必须离开控制台对 Pod 执行 `kubectl logs` —— 这是控制台应当拥有的运营者编排逃生通道。
 
 本特性新增**推理服务日志查看器**：在控制台中查看推理服务 Pod 的容器日志，支持级别/时间过滤、实时跟随与日志搜索。这是 Phase 4 运维面中最小可独立交付的增量：它把「引擎打印了东西」变成「运营者在控制台里按级别和时间过滤地读取引擎 stdout，无需离开平台」。
 

@@ -19,8 +19,8 @@ package main
 // It implements steps 01 (Auth) and 04 (Meter) of the ordered pipeline in
 // architecture Section 3.2.1, plus the two limits whose contracts say the
 // gateway enforces them locally (rate_limit_rpm and
-// max_output_tokens_per_request). Routing stays with AIBrix: this filter sits
-// on the outer gateway and never picks a backend.
+// max_output_tokens_per_request). Model selection is not decided here: the
+// filter sits on the outer gateway and never picks a backend.
 //
 // Two rules shape the whole file:
 //

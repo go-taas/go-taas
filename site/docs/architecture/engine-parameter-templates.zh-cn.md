@@ -5,7 +5,7 @@
 | 功能点 | 运维人员可以把一组推理引擎参数连同其适用的部署上下文保存为具名模板，部署表单直接载入最匹配的模板，无需重复输入参数；模板支持增删改查以及批量导入导出 |
 | 文档范围 | 模板模型与上下文语义、七个 RPC、匹配与排序、校验规则、导出文档与导入策略、控制台交互、错误码与验收标准 |
 | 所属模块 | `services/infer`（`template_model.go`、`template_repository.go`、`template_service.go`） · `proto/taas/infer/v1` · `web`（`EngineTemplatesPage`、`DeployForm`、`shells/nav`） |
-| 关联文档 | [StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md)（模板保存的拓扑与按角色参数） · [加速卡清单](./accelerator-inventory.zh-cn.md)（上下文取值的来源） |
+| 关联文档 | [LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.zh-cn.md)（模板保存的拓扑与按角色参数） · [加速卡清单](./accelerator-inventory.zh-cn.md)（上下文取值的来源） |
 | 状态 | 已实现 |
 
 ---
@@ -89,7 +89,7 @@ AND (accelerator_type = :accelerator_type OR accelerator_type = '')
 - 不在 `single` / `multinode` / `pd` 内的 `topology`（历史值 `distributed` 会像其他地方一样归一化为 `multinode`）；
 - 已带前缀横线或含 `=` 的 `engine_args` 键 —— 键是参数名本身，值是参数值；
 - 不在 `worker` / `prefill` / `decode` 内的 `role_engine_args` 角色；
-- `env` 名称不符合 POSIX 变量名（`^[A-Za-z_][A-Za-z0-9_]*$`）、超过 128 字符，或被 Kubernetes / 调度控制器保留（`HOSTNAME`、`POD_NAME`、`ROLESET_INDEX` 等）——覆盖它们会破坏分布式 rendezvous；
+- `env` 名称不符合 POSIX 变量名（`^[A-Za-z_][A-Za-z0-9_]*$`）、超过 128 字符，或被 Kubernetes 或运行时保留（`HOSTNAME`、`POD_NAME` 等）——覆盖它们会破坏分布式 rendezvous；
 - `env` 值超过 4096 字符或包含 NUL 字节；
 - 空模板：既没有 `engine_args`，也没有 `extra_args`、`role_engine_args` 与 `env`。
 

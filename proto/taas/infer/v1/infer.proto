@@ -58,7 +58,7 @@ service InferServiceService {
   // UpdateInferenceServiceTopology changes a service's serving topology
   // (single-node, distributed or PD-disaggregated) and the parallelism it
   // runs with, keeping the same service_id. The controller rolls the
-  // AIBrix StormService out with the new roles.
+  // new layout out in place.
   // Admin-surface API: served under /api/v1/admin.
   rpc UpdateInferenceServiceTopology(UpdateInferenceServiceTopologyRequest) returns (UpdateInferenceServiceTopologyResponse) {
     option (google.api.http) = {
@@ -164,8 +164,9 @@ service InferServiceService {
   }
 
   // StopInferenceService stops a running inference service: the
-  // controller deletes its Kubernetes resources (StormService, Service,
-  // autoscaler) while keeping the catalog row so it can be started again.
+  // controller deletes its Kubernetes resources (the LLMInferenceService,
+  // the workload and the route) while keeping the catalog row so it can be
+  // started again.
   // Admin-surface API: served under /api/v1/admin.
   rpc StopInferenceService(StopInferenceServiceRequest) returns (StopInferenceServiceResponse) {
     option (google.api.http) = {
@@ -439,7 +440,7 @@ message CreateInferenceServiceRequest {
   // "single" (one pod per replica), "multinode" (one pod per worker, spread
   // across machines) or "pd" (separate prefill and decode roles). Empty
   // reads as "single". "distributed" is accepted as the pre-rename name of
-  // "multinode". Every layout is realized by an AIBrix StormService.
+  // "multinode". Every layout is realized by one LLMInferenceService.
   string topology = 14;
   // tensor_parallel_size is the number of GPUs one replica shards the
   // model across (distributed and PD topologies).
@@ -662,7 +663,7 @@ message ImportEngineParamTemplatesResponse {
   int32 skipped = 4;
 }
 
-// RoleEngineArgs carries the engine arguments of one storm role.
+// RoleEngineArgs carries the engine arguments of one serving role.
 message RoleEngineArgs {
   // role is "worker" (single-node and multi-machine), "prefill" or
   // "decode".
@@ -861,7 +862,7 @@ message UpdateInferenceServiceVersionResponse {
 // UpdateInferenceServiceTopology changes the serving layout of an
 // existing service in place. It is a spec change like a scale: the
 // service keeps its identity and its endpoints, and the controller rolls
-// the storm out with the new roles.
+// the workload out with the new roles.
 message UpdateInferenceServiceTopologyRequest {
   string service_id = 1; // path
   // topology is "single", "multinode" or "pd" (legacy "distributed" is accepted).

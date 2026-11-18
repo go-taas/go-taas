@@ -20,7 +20,7 @@ func TestGatewayURLFromServices(t *testing.T) {
 			Spec: corev1.ServiceSpec{ClusterIP: "10.0.0.1", Ports: []corev1.ServicePort{{Port: 80}}},
 		},
 		{
-			ObjectMeta: metav1.ObjectMeta{Name: "envoy-aibrix-system-aibrix-eg-903790dc"},
+			ObjectMeta: metav1.ObjectMeta{Name: "envoy-kserve-system-kserve-eg-903790dc"},
 			Spec: corev1.ServiceSpec{
 				ClusterIP: "10.43.253.124",
 				Ports: []corev1.ServicePort{
@@ -32,18 +32,18 @@ func TestGatewayURLFromServices(t *testing.T) {
 	}
 	// Port 80 is the default and is omitted from the URL.
 	assert.Equal(t, "http://10.43.253.124",
-		gatewayURLFromServices(svcs, "envoy-aibrix-system-aibrix-eg"))
+		gatewayURLFromServices(svcs, "envoy-kserve-system-kserve-eg"))
 
 	// A load-balancer address wins: the quickstart snippet is copied by a
 	// tenant outside the cluster.
 	svcs[1].Status.LoadBalancer.Ingress = []corev1.LoadBalancerIngress{{IP: "10.86.56.191"}}
 	assert.Equal(t, "http://10.86.56.191",
-		gatewayURLFromServices(svcs, "envoy-aibrix-system-aibrix-eg"))
+		gatewayURLFromServices(svcs, "envoy-kserve-system-kserve-eg"))
 
 	// A non-default port is kept.
 	svcs[1].Spec.Ports = []corev1.ServicePort{{Name: "http", Port: 8080}}
 	assert.Equal(t, "http://10.86.56.191:8080",
-		gatewayURLFromServices(svcs, "envoy-aibrix-system-aibrix-eg"))
+		gatewayURLFromServices(svcs, "envoy-kserve-system-kserve-eg"))
 	assert.Empty(t, gatewayURLFromServices(svcs, "no-such-gateway"))
 	// A headless Service has no routable address.
 	assert.Empty(t, gatewayURLFromServices([]corev1.Service{{
@@ -55,14 +55,14 @@ func TestGatewayURLFromServices(t *testing.T) {
 // TestGatewayResolverFindsService verifies discovery through the API.
 func TestGatewayResolverFindsService(t *testing.T) {
 	svc := &corev1.Service{
-		ObjectMeta: metav1.ObjectMeta{Name: "envoy-aibrix-system-aibrix-eg-abc", Namespace: "yunzhi-system"},
+		ObjectMeta: metav1.ObjectMeta{Name: "envoy-kserve-system-kserve-eg-abc", Namespace: "yunzhi-system"},
 		Spec: corev1.ServiceSpec{
 			ClusterIP: "10.43.253.124",
 			Ports:     []corev1.ServicePort{{Port: 80}},
 		},
 	}
 	client := &Client{clientset: fake.NewSimpleClientset(svc)}
-	resolver := NewGatewayResolver(client, "envoy-aibrix-system-aibrix-eg", "aibrix-system")
+	resolver := NewGatewayResolver(client, "envoy-kserve-system-kserve-eg", "kserve-system")
 	assert.Equal(t, "http://10.43.253.124", resolver.InferenceGatewayURL(context.Background()))
 
 	// An empty gateway name disables discovery.

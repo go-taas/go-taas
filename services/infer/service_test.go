@@ -38,6 +38,7 @@ func seedImageRegistry(t *testing.T) {
 	for _, s := range []*image.Summary{
 		{ImageID: "img-vllm-nvidia", Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3", Accelerator: "nvidia", Engine: "vllm"},
 		{ImageID: "img-vllm-iluvatar", Name: "ghcr.io/go-taas/vllm-iluvatar", Tag: "v0.6.3", Accelerator: "iluvatar", Engine: "vllm"},
+		{ImageID: "img-1", Name: "ghcr.io/go-taas/vllm-test", Tag: "v0.6.3", Accelerator: "nvidia", Engine: "vllm"},
 	} {
 		require.NoError(t, repo.CreateImage(context.Background(), &image.Image{
 			ID: s.ImageID, Name: s.Name, Tag: s.Tag, Accelerator: s.Accelerator, Engine: s.Engine,

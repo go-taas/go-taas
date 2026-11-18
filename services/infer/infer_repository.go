@@ -217,6 +217,30 @@ func (r *InferenceServiceRepository) ListRunning(ctx context.Context, limit int)
 	return rows, nil
 }
 
+// ListNeedingConvergence returns the services that should have their cluster
+// object re-stated: the running ones, plus the ones that are not running yet
+// and have not been re-stated since before retryBefore (a settled failure or a
+// change event that never reached the controller). The age gate is what keeps
+// a service that genuinely cannot start from being re-applied on every tick:
+// each attempt publishes a failed status, which bumps updated_at, so the next
+// attempt only happens once the retry window has passed again.
+func (r *InferenceServiceRepository) ListNeedingConvergence(ctx context.Context, limit int, retryBefore time.Time) ([]*InferenceService, error) {
+	if limit <= 0 {
+		limit = 200
+	}
+	var rows []*InferenceService
+	err := r.DB(ctx).
+		Where("state = ? OR (state IN ? AND updated_at < ?)",
+			StateRunning, []string{StateFailed, StatePending}, retryBefore).
+		Order("updated_at DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return nil, err
+	}
+	return rows, nil
+}
+
 // ListRunningByModel returns the running services of one model, excluding
 // excludeServiceID, newest first, capped at limit. The model route is named
 // after the model rather than the service, so two services of one model share

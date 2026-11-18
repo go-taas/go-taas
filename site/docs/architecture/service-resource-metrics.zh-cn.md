@@ -12,7 +12,7 @@
 
 ## 1. 概述与目标
 
-go-taas 将推理服务作为 AIBrix StormService 运行（model-catalog-deployment §4.2）：Controller 创建 StormService 与 Service，推理引擎（vLLM 等）在容器内运行。模型可观测性功能（第 24 行）从 `request_logs` 解释*模型表现如何*（延迟、吞吐、错误率、token/秒），服务日志查看器（第 33 行）展示*引擎打印了什么*。而运维人员仍无法回答的基础设施问题是：*这个服务是否真的用到了分配给它的资源？* 当服务变慢时，运维人员无法判断它是 CPU 受限、内存受限还是 GPU 饥饿，除非离开控制台对 Pod 运行 `kubectl top` 或查询指标端点。
+go-taas 将推理服务作为 LLMInferenceService 运行（model-catalog-deployment §4.2）：Controller 创建 LLMInferenceService 与 Service，推理引擎（vLLM 等）在容器内运行。模型可观测性功能（第 24 行）从 `request_logs` 解释*模型表现如何*（延迟、吞吐、错误率、token/秒），服务日志查看器（第 33 行）展示*引擎打印了什么*。而运维人员仍无法回答的基础设施问题是：*这个服务是否真的用到了分配给它的资源？* 当服务变慢时，运维人员无法判断它是 CPU 受限、内存受限还是 GPU 饥饿，除非离开控制台对 Pod 运行 `kubectl top` 或查询指标端点。
 
 本功能新增一个**推理服务资源指标**页面：按服务查看 CPU / 内存 / GPU 利用率随时间变化，支持时间范围筛选与资源使用图表。它是 Phase 4 运维面最小且有独立价值的增量：把"服务很慢"变成"服务在过去一小时 CPU 饱和 95% 而 GPU 只有 20% —— 瓶颈在计算而非加速器"。这是一个**只读**聚合层 —— 推理、计量或计费管线均无改动。
 

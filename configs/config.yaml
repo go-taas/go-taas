@@ -121,14 +121,14 @@ metering:
     enabled: true
     workers: 2
 
-# Distributed inference runtime (feature #47). The platform serving scheme
-# (plain | aibrix) plus the runtime component + registered-model
-# projections. The controller consumes collectInterval, the scheme and
-# model-change consumers, and the aibrix block; the server consumes the
-# snapshot consumer.
+# Distributed inference runtime (feature #47). The platform serving runtime
+# (KServe) plus the runtime component + registered-model projections. The
+# controller consumes collectInterval, the scheme and the data-plane gateway
+# block; the server consumes the snapshot consumer.
 runtime:
-  # collectInterval is the Controller's runtime-component and ModelClaim
-  # collection period; the full snapshot is published on this interval.
+  # collectInterval is the Controller's runtime-component and
+  # LLMInferenceService collection period; the full snapshot is published on
+  # this interval.
   collectInterval: 30s
   # schemeBroadcastInterval is how often the runtime service re-broadcasts
   # the persisted scheme so a restarted Controller reconverges.
@@ -140,16 +140,13 @@ runtime:
   healthConsumer:
     enabled: true
     workers: 1
-  # modelChangeConsumer configures the Controller's model-change consumer.
-  modelChangeConsumer:
-    enabled: true
-  # aibrix names the installed AIBrix control plane's namespace, the Envoy
-  # AI Gateway Deployment observed for health, and the Gateway API Gateway
-  # object the per-model HTTPRoutes attach to.
-  aibrix:
-    namespace: aibrix-system
-    gateway: envoy-aibrix-system-aibrix-eg
-    gatewayName: aibrix-eg
+  # gateway names the data-plane Gateway a model route attaches to, the
+  # namespace it lives in, and the Envoy Deployment that backs it (the
+  # Deployment name is pinned to the Gateway name by the chart).
+  gateway:
+    namespace: taas-system
+    name: taas-inference
+    deployment: taas-inference
 
 # External model providers (feature #48). The provider module owns the
 # third-party LLM provider registry, the encrypted write-only API keys,

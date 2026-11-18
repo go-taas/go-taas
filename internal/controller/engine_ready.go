@@ -12,7 +12,9 @@ import (
 	"time"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 
 	"github.com/go-taas/go-taas/pkg/logger"
 )
@@ -86,7 +88,7 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 			}
 		}
 		pods, err := r.clientset.CoreV1().Pods(r.namespace).
-			List(ctx, metav1.ListOptions{LabelSelector: serviceLabelKey + "=" + evt.ServiceID})
+			List(ctx, metav1.ListOptions{LabelSelector: r.enginePodSelector(evt)})
 		if err != nil {
 			if ctx.Err() != nil {
 				return r.engineTimeoutError(ctx, evt)
@@ -134,7 +136,22 @@ func (r *k8sReconciler) awaitEngineReady(ctx context.Context, evt changeEvent) e
 		// decode role), and which one it is is the engine's business, so the
 		// first pod that answers is enough; polling the wrong rank forever
 		// would report a healthy service as failed.
-		if r.anyPodAnswers(ctx, pods.Items, port) {
+		//
+		// A KServe workload reports its own readiness: the Ready condition is
+		// true once the engine answers the preset's health probe and the
+		// route is written, which is the same fact observed from the object
+		// that owns the workload rather than from a pod the platform does not
+		// label.
+		ready := false
+		if r.dynamic != nil {
+			ready, err = r.llmInferenceServiceReady(ctx, evt)
+			if err != nil {
+				return err
+			}
+		} else {
+			ready = r.anyPodAnswers(ctx, pods.Items, port)
+		}
+		if ready {
 			return nil
 		}
 
@@ -208,7 +225,7 @@ func (r *k8sReconciler) engineTimeoutError(ctx context.Context, evt changeEvent)
 	detail := r.deployBlockedReason(quiet, evt.Name)
 	if detail == "" || strings.HasPrefix(detail, "pod phase ") {
 		detail = "the engine did not answer its health endpoint"
-		if hint := r.engineLastLogLine(quiet, evt.ServiceID); hint != "" {
+		if hint := r.engineLastLogLine(quiet, evt); hint != "" {
 			detail += "; last engine log: " + hint
 		}
 	}
@@ -219,9 +236,9 @@ func (r *k8sReconciler) engineTimeoutError(ctx context.Context, evt changeEvent)
 // engineLastLogLine returns the last non-empty line the busiest pod's engine
 // container wrote, trimmed to a size that fits a failure reason. It is a
 // diagnostic aid: every failure path of the log read falls back to "".
-func (r *k8sReconciler) engineLastLogLine(ctx context.Context, serviceID string) string {
+func (r *k8sReconciler) engineLastLogLine(ctx context.Context, evt changeEvent) string {
 	pods, err := r.clientset.CoreV1().Pods(r.namespace).List(ctx,
-		metav1.ListOptions{LabelSelector: serviceLabelKey + "=" + serviceID})
+		metav1.ListOptions{LabelSelector: r.enginePodSelector(evt)})
 	if err != nil || len(pods.Items) == 0 {
 		return ""
 	}
@@ -340,4 +357,57 @@ func terminalPodFailure(pod corev1.Pod) string {
 		}
 	}
 	return ""
+}
+
+// llmInferenceServiceReady reports whether the model a service serves can
+// answer.
+//
+// The verdict is the LLMInferenceService's own MainWorkloadReady condition:
+// KServe marks it when the model's workload has its minimum replicas serving
+// the preset's readiness probe, and that probe is the model's own health
+// endpoint, so a ready workload has loaded the model. The overall Ready
+// condition is not used because it also requires KServe's own model route to be
+// accepted by the cluster's Gateway, which needs the Gateway API Inference
+// Extension; the platform's data plane reaches a model's workload Service
+// directly, so its readiness does not depend on it.
+func (r *k8sReconciler) llmInferenceServiceReady(ctx context.Context, evt changeEvent) (bool, error) {
+	svc, err := r.dynamic.Resource(llmSVCGVR).Namespace(r.namespace).
+		Get(ctx, llmSVCName(evt), metav1.GetOptions{})
+	if apierrors.IsNotFound(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("controller: read LLMInferenceService %s: %w", evt.Name, err)
+	}
+	conditions, found, err := unstructured.NestedSlice(svc.Object, "status", "conditions")
+	if err != nil || !found {
+		return false, err
+	}
+	for _, raw := range conditions {
+		condition, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		if condition["type"] == "MainWorkloadReady" {
+			return condition["status"] == "True", nil
+		}
+	}
+	return false, nil
+}
+
+// enginePodSelector is the label selector of a service's engine pods.
+//
+// A pod the platform's own workload creates carries the service id. A KServe
+// workload does not: KServe owns the pod template's metadata, so the pod is
+// found by the name, part-of and component labels KServe stamps on it
+// instead. The component label matters: the router-scheduler pod KServe starts
+// beside the engine carries the same name and part-of labels, so matching on
+// those alone would count the router as a serving replica.
+func (r *k8sReconciler) enginePodSelector(evt changeEvent) string {
+	if r.dynamic == nil {
+		return serviceLabelKey + "=" + evt.ServiceID
+	}
+	return "app.kubernetes.io/name=" + evt.Name +
+		",app.kubernetes.io/part-of=llminferenceservice" +
+		",app.kubernetes.io/component=llminferenceservice-workload"
 }

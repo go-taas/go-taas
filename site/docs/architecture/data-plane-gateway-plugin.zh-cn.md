@@ -26,7 +26,7 @@
 - 鉴权失败即关闭，计量失败不阻塞。
 - 每个 release 一个产物，随 server 镜像发布。
 
-**非目标**（延后，§8）：跨 worker 的并发租约、每分钟 token 限制、追踪注入、结果缓存、降级缓冲，以及取代 AIBrix 的路由。
+**非目标**（延后，§8）：跨 worker 的并发租约、每分钟 token 限制、追踪注入、结果缓存、降级缓冲，以及取代 KServe 的路由。
 
 ### 1.1 本文阅读顺序
 
@@ -44,9 +44,9 @@
 | AD4 | **鉴权失败即关闭，计量失败即放行** | 由超时推导出的裁决只是猜测，而猜"允许"就是敞开大门。计量相反：§3.2.1 明确计量故障绝不能阻塞推理，因为计费故障时拒绝服务会把影响面从"账单略有偏差"扩大到"全线不可用"。被丢弃的事件会被计数并记录日志，因此绝不静默 |
 | AD5 | **校验发生在请求体阶段，仅针对 `/v1/` 路径** | 模型白名单是 `VerifyAPIKey` 契约的一部分，而模型名只存在于请求体中。非 `/v1/` 路径（健康检查、发现）保持开放，Kubernetes 探针才能工作。代价是外层 Envoy 会缓冲请求体 —— 但推理请求本来就是向上不流式的，因此没有实际成本 |
 | AD6 | **插件始终观察响应尾部，并在流式响应上向引擎索取 usage** | §3.4 规定引擎是权威：网关自行分词会受 chat template、tool-call 框架与多模态输入影响而漂移。读取引擎的 `usage` 是唯一准确的计数方式，而 OpenAI 兼容引擎在流式响应中除非调用方设置 `stream_options.include_usage` 否则不会输出 usage。只保留有界尾部，因此长文本生成的内存开销是固定的 |
-| AD7 | **裁决缓存与令牌桶放在按 worker 的内存中，TTL 30 秒** | Envoy 不给 Wasm 过滤器任何跨 worker 线程的共享状态。因此缓存是按 worker 的：N 个 worker 在每个 TTL 内最多让平台看到 N 次校验，而其下的 Redis 缓存让每次都很便宜。这是近似，文档如实说明为近似，而不是包装成保证 |
+| AD7 | **裁决缓存与令牌桶放在按 worker 的内存中，TTL 5 秒** | Envoy 不给 Wasm 过滤器任何跨 worker 线程的共享状态。因此缓存是按 worker 的：N 个 worker 在每个 TTL 内最多让平台看到 N 次校验，而其下的 Redis 缓存让每次都很便宜。这是近似，文档如实说明为近似，而不是包装成保证 |
 | AD8 | **产物在 server 的 Docker 镜像中构建、由 server 提供下载，再经 HTTP 加载** | 一个 release 只产生一个插件版本，不需要第二个镜像，也不需要 Envoy 的仓库凭据。耦合是真实存在的 —— 如果 Envoy Pod 启动时 server 不可用，过滤器无法加载 —— 但这与过滤器本身的可用性相同（每次缓存未命中都要调用 server）。摘要锁定是可选的，因为 Helm 会在新 Pod 提供新产物之前就应用策略 |
-| AD9 | **策略挂到 server 自有的数据面 HTTPRoute，而不是 AIBrix 网关** | 它是整条链路上唯一由 go-taas 拥有的 Envoy；`aibrix-system` 中的策略属于另一个 release，会被覆盖。位于链路最前也意味着未鉴权请求在第二个代理或模型 Pod 看到它之前就被拒绝，同时 AIBrix 的 `ext_proc` 路由保持不动 |
+| AD9 | **策略挂到 server 自有的数据面 HTTPRoute，而不是 KServe 网关** | 它是整条链路上唯一由 go-taas 拥有的 Envoy；`kserve-system` 中的策略属于另一个 release，会被覆盖。位于链路最前也意味着未鉴权请求在第二个代理或模型 Pod 看到它之前就被拒绝，同时 KServe 的 `ext_proc` 路由保持不动 |
 
 ---
 
@@ -64,15 +64,15 @@
 | HTTP 过滤器 | 无 | Wasm 插件 |
 | 故障域 | 控制台/API | 推理 |
 
-最初它们是同一个代理：推理流量从平台网关进入，再转发到 AIBrix 网关，因此推理流量高峰会给控制台所在的代理加压，而该代理的一次 reload 或配置错误也会同时打断推理。现在数据面有自己的 Gateway —— 同一个 `aibrix-eg` 类，因此继承的是面向推理的 Envoy 调优而非平台的，并且有自己的生命周期。
+最初它们是同一个代理：推理流量从平台网关进入，再转发到 KServe 网关，因此推理流量高峰会给控制台所在的代理加压，而该代理的一次 reload 或配置错误也会同时打断推理。现在数据面有自己的 Gateway —— 同一个 `taas-inference` 类，因此继承的是面向推理的 Envoy 调优而非平台的，并且有自己的生命周期。
 
 ```mermaid
 flowchart TD
-    C["客户端（SDK / agent）"] --> GW["Gateway taas/taas-inference<br/>class aibrix-eg，独立地址<br/>TLS 终止"]
+    C["客户端（SDK / agent）"] --> GW["Gateway taas/taas-inference<br/>class taas-inference，独立地址<br/>TLS 终止"]
     GW --> DP{"HTTPRoute taas/data-plane<br/>server 自有<br/>hostname = 控制台设置"}
     DP --> WASM["Wasm 过滤器<br/>鉴权 + 限速 + 截断 + 计量"]
-    WASM --> AIB["aibrix-eg Envoy<br/>（模型路由）"]
-    AIB --> EXT["ext_proc: aibrix-gateway-plugins"]
+    WASM --> AIB["taas-inference Envoy<br/>（模型路由）"]
+    AIB --> EXT["ext_proc: gateway-plugin"]
     EXT --> POD["推理 Pod"]
     WASM -.->|POST /internal/gateway/verify| API["taas-server 监控 :9092"]
     WASM -.->|POST /internal/gateway/usage| API
@@ -85,7 +85,7 @@ flowchart TD
 策略挂在 `taas/data-plane` 上的原因：
 
 - 它是整条链路上唯一由 go-taas 拥有的 Envoy（AD9），现在也是推理链路上唯一的代理；
-- 它在 AIBrix 缓冲请求之前就看到每一个请求，因此最早的拒绝也是最便宜的拒绝；
+- 它在 KServe 缓冲请求之前就看到每一个请求，因此最早的拒绝也是最便宜的拒绝；
 - 路由名是稳定的，而主机名是运维设置项，因此策略可以由 Helm 拥有，而不去争夺路由的 `spec.hostnames` —— 那正是过去让 Helm 升级与控制台保存互相矛盾的冲突。
 
 两个监听器细节很重要：
@@ -132,7 +132,7 @@ flowchart TD
  "status": "success", "error": ""}
 ```
 
-`model` 是**服务名**，不是 UUID：插件只知道调用方写了什么。服务端把它解析为目录 id（以及承载它的推理服务），因此身份解析留在服务端，插件保持可替换。发布失败返回 503 并递增 `taas_gateway_plugin_usage_dropped_total`；插件从不重试，因为请求已经被服务完毕，缺口可以通过 `request_id` 归因。
+`model` 是**服务名**，不是 UUID：插件只知道调用方写了什么。服务端把它解析为目录 id（以及承载它的推理服务），因此身份解析留在服务端，插件保持可替换。发布失败时只记录并丢弃；插件从不重试也不让该请求失败，因为请求已经被服务完毕，缺口可以通过 `request_id` 归因。
 
 ### 4.3 `GET /internal/gateway/plugin.wasm`
 
@@ -142,17 +142,11 @@ flowchart TD
 
 ## 5. 数据模型
 
-没有。插件不存储任何东西：裁决在按 worker 的内存中存活 30 秒（AD7），用量变成队列上的计量事件，由既有账本持久化。这正是设计的要点 —— 数据面不保留任何需要复制、备份或核对的状态。
+没有。插件不存储任何东西：裁决在按 worker 的内存中存活 5 秒（AD7），用量变成队列上的计量事件，由既有账本持久化。这正是设计的要点 —— 数据面不保留任何需要复制、备份或核对的状态。
 
-两个 Prometheus 计数器描述插件自身行为：
+插件自身不导出任何指标。它做的事在计数的地方看得到：平台统计校验次数与用量，因为每次校验与用量调用都落在平台上；Envoy 自身的按路由统计则显示该路由的请求数、响应类别与上游重置。
 
-| 指标 | 含义 |
-| --- | --- |
-| `taas_gateway_plugin_verify_total{result}` | 按结果的校验次数（`allowed`、`rejected`、`error`） |
-| `taas_gateway_plugin_usage_total` | 已记录的用量事件 |
-| `taas_gateway_plugin_usage_dropped_total` | 平台未能记录的用量事件 |
-
-推理流量持续而 `usage_total` 不动，就是过滤器停止上报的信号 —— 没有别的指标会显示这一点。
+推理流量持续而平台侧用量计数不动，就是过滤器停止上报的信号；过滤器自身的沉默则表现为 Envoy 记录失败，并且在 `failOpen: false` 时表现为 403 —— 控制台的错误率能看到。
 
 ---
 
@@ -205,7 +199,7 @@ sequenceDiagram
 
 ### 7.2 一个被拒绝的请求
 
-插件本地应答，因此请求永远到不了 AIBrix 或模型 Pod：没有上游连接、没有容器 CPU，拒绝的代价只是一次摘要哈希 —— 而当凭据连 Key 的形状都不具备时，代价为零。
+插件本地应答，因此请求永远到不了 KServe 或模型 Pod：没有上游连接、没有容器 CPU，拒绝的代价只是一次摘要哈希 —— 而当凭据连 Key 的形状都不具备时，代价为零。
 
 ### 7.3 为什么暂停在这个位置
 
@@ -227,7 +221,7 @@ sequenceDiagram
 | `traceparent` 注入、延迟阶段标记 | 与鉴权和计量正交 |
 | 结果缓存、前缀亲和 | 改变计费语义，需要独立决策 |
 | 降级 + 补偿重放 | 目前被丢弃的事件会被计数并记录；重放队列是后续工作 |
-| 立即吊销 | 吊销在缓存 TTL（30 秒）内生效。为此建立通往 Envoy 的控制通道不值得 |
+| 立即吊销 | 吊销在缓存 TTL（5 秒）内生效。为此建立通往 Envoy 的控制通道不值得 |
 
 ---
 
@@ -239,7 +233,7 @@ sequenceDiagram
 | --- | --- | --- |
 | `enabled` | `false` | 提供内部 API。默认关闭：启用后网关会开始拒绝未校验流量，这是必须由安装方主动选择的行为变更 |
 | `token` | `""` | 共享机密；为空时即使启用也不提供端点 |
-| `cacheTTL` | `30s` | 裁决存活时间（按 worker） |
+| `cacheTTL` | `5s` | 裁决存活时间（按 worker） |
 | `verifyTimeout` | `500ms` | 过滤器 → 服务端单次调用预算 |
 | `protectedPrefixes` | `["/v1/"]` | 需要 Key 的路径 |
 | `failOpen` | `false` | 传给策略 |
@@ -271,7 +265,7 @@ Chart（`values.yaml` → `gatewayPlugin`）：同样的值，外加 `internalHo
 
 ## 12. 验证记录
 
-在真实集群上（`llm.sudoinfotech.com`、vLLM 0.28.0、单副本）：
+在真实集群上，网关后面挂一个引擎副本：
 
 | 检查 | 结果 |
 | --- | --- |

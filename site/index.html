@@ -240,7 +240,7 @@
               <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2v6M12 16v6M2 12h6M16 12h6"/><circle cx="12" cy="12" r="4"/></svg>
             </div>
             <h3 data-i18n="features.f17.t">Distributed Inference Runtime</h3>
-            <p data-i18n="features.f17.d">Choose the platform serving scheme — plain Kubernetes Deployments (default) or an AIBrix-managed distributed runtime — and inspect runtime component health and the models registered with the runtime.</p>
+            <p data-i18n="features.f17.d">Choose the platform serving scheme — plain Kubernetes Deployments (default) or a KServe-managed LLMInferenceService runtime — and inspect runtime component health and the models registered with the runtime.</p>
           </article>
           <article class="card" data-reveal>
             <div class="card-icon" aria-hidden="true">
@@ -318,7 +318,7 @@
               <div class="alabel"><span class="ln">LAYER 02</span><strong data-i18n="arch.l2.name">Gateway layer</strong></div>
               <div class="abody"><div class="arow two">
                 <div class="abox hi"><div class="t" data-i18n="arch.l2.cp.t">TaaS Gateway (control plane)</div><div class="d" data-i18n="arch.l2.cp.d">TLS · AuthN · RBAC · Rate limiting · Audit · Request validation · Routing to TaaS Server</div></div>
-                <div class="abox em"><div class="t" data-i18n="arch.l2.dp.t">Aibrix Gateway + TaaS Plugin (data plane)</div><div class="d" data-i18n="arch.l2.dp.d">OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace</div></div>
+                <div class="abox em"><div class="t" data-i18n="arch.l2.dp.t">Envoy Gateway + TaaS Plugin (data plane)</div><div class="d" data-i18n="arch.l2.dp.d">OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace</div></div>
               </div></div>
             </div>
             <div class="abar"><span data-i18n="arch.l2.bar1">Control flow: REST / gRPC</span><span class="arr">▼</span><span data-i18n="arch.l2.bar2">Data flow: OpenAI /v1 · SSE</span></div>
@@ -341,7 +341,7 @@
                 <div class="agroup">
                   <div class="aglabel" data-i18n="arch.l3.g2">② Third-party dependencies · Helm Chart</div>
                   <div class="arow five">
-                    <div class="abox em"><div class="t">Aibrix</div><div class="d" data-i18n="arch.l3.aibrix.d">Distributed runtime, KV cache</div></div>
+                    <div class="abox em"><div class="t">KServe</div><div class="d" data-i18n="arch.l3.kserve.d">LLMInferenceService serving, canary releases and traffic split</div></div>
                     <div class="abox em"><div class="t">HAMi</div><div class="d" data-i18n="arch.l3.hami.d">GPU slicing: partition a physical GPU by memory / compute</div></div>
                     <div class="abox em"><div class="t">Volcano</div><div class="d" data-i18n="arch.l3.volcano.d">Gang scheduling, queues and fair sharing</div></div>
                     <div class="abox"><div class="t">GPU / NPU Operator</div><div class="d" data-i18n="arch.l3.gpu.d">Drivers, device plugin, topology and health</div></div>
@@ -422,7 +422,7 @@ cd go-taas</code></pre>
             <pre class="code-block"><code>make helm-lint      # lint the chart
 make helm-template  # render templates
 helm uninstall taas # remove the release</code></pre>
-            <p class="qs-note" data-i18n="qs.mirror">For cluster prerequisites, third-party components (Gateway API, AIBrix, Volcano, JuiceFS, Harbor) and TLS, read the installation guide.</p>
+            <p class="qs-note" data-i18n="qs.mirror">For cluster prerequisites, third-party components (Gateway API, KServe, Volcano, JuiceFS, Harbor) and TLS, read the installation guide.</p>
             <p class="qs-note"><a href="docs.html?doc=getting-started/installation" data-i18n="qs.guide">Installation guide →</a></p>
           </div>
         </div>
@@ -482,7 +482,7 @@ print(resp.choices[0].message.content)</code></pre>
     <section class="section built-section">
       <div class="container built-inner" data-reveal>
         <p class="built-line" data-i18n="footer.made">Built with Go and Kubernetes</p>
-        <p class="built-ack" data-i18n-html="footer.ack">Standing on the shoulders of the <a href="https://kubernetes.io" target="_blank" rel="noopener">Kubernetes</a>, <a href="https://github.com/vllm-project/aibrix" target="_blank" rel="noopener">AIBrix</a>, <a href="https://github.com/volcano-sh/volcano" target="_blank" rel="noopener">Volcano</a>, and <a href="https://github.com/Project-HAMi/HAMi" target="_blank" rel="noopener">HAMi</a> communities.</p>
+        <p class="built-ack" data-i18n-html="footer.ack">Standing on the shoulders of the <a href="https://kubernetes.io" target="_blank" rel="noopener">Kubernetes</a>, <a href="https://github.com/volcano-sh/volcano" target="_blank" rel="noopener">Volcano</a>, and <a href="https://github.com/Project-HAMi/HAMi" target="_blank" rel="noopener">HAMi</a> communities.</p>
       </div>
     </section>
   </main>

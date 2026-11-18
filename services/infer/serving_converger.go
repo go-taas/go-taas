@@ -13,27 +13,42 @@ import (
 	"github.com/go-taas/go-taas/services/model"
 )
 
-// servingConvergerLimit caps how many running services one pass reconciles.
+// servingConvergerLimit caps how many services one pass reconciles.
 // The list is newest-first, so a larger fleet still converges over several
 // passes instead of holding the runner for a long time.
 const servingConvergerLimit = 200
 
-// ServingConverger periodically asks the controller to re-apply the serving
-// route of every running service.
+// servingRetryAfter is how long a service that is not running waits before the
+// converger re-states it. A failure the controller reports is a snapshot, not a
+// verdict: the engine may come up a moment later (a slow weights load, a crash
+// loop that has since recovered), and nothing else re-states the object. The
+// wait keeps a service that genuinely cannot start from being re-applied on
+// every tick.
+const servingRetryAfter = 5 * time.Minute
+
+// ServingConverger periodically re-states the cluster object of every service
+// that should be serving: the running ones, and the ones that are not running
+// yet and have not been re-stated since before the retry window (a settled
+// failure, or a change whose event never reached the controller).
 //
-// A route is named after the served model, and the controller can only write
-// it when it handles a change event. Nothing re-applies it afterwards, so a
-// route deleted out of band — by a manual cleanup, by another service of the
-// same model being torn down, or by a failed write — leaves a running service
-// that looks healthy in the console and answers 503 at the gateway
-// (`httproutes.gateway.networking.k8s.io "<model>-router" not found`) until an
-// operator happens to scale or update it.
+// A service's cluster state — its LLMInferenceService and the workload, route
+// and inference pool KServe derives from it — is written when the controller
+// handles a change event, and nothing re-applies it afterwards. An object
+// removed out of band (a manual cleanup, a namespace wipe, a failed write)
+// otherwise leaves a service that looks healthy in the console but serves
+// nothing until an operator happens to scale or update it, and a failure the
+// controller reported stays on the row even after the engine recovers.
 //
-// This runner is the missing heartbeat: it publishes a route-only
-// reconciliation event per running service, which the controller answers by
-// re-writing the route (and nothing else). It is cheap — one event per service
-// per interval, no pod churn — and idempotent, because the route write is an
-// apply.
+// This runner is that heartbeat: it publishes the service's complete desired
+// state once per interval, and the controller answers it with an apply. The
+// event carries everything a change event carries — the engine image, the
+// engine's arguments and the model's weights — because the controller
+// rebuilds the whole object from it. A partial event would make the apply
+// write an incomplete object, so it must never be sent: the object is not a
+// merge of what happens to be in the message.
+//
+// It is idempotent: an apply of the state the object already holds changes
+// nothing, so no pod is recreated and no model is reloaded.
 //
 // It implements server.Runner.
 type ServingConverger struct {
@@ -101,23 +116,35 @@ func (c *ServingConverger) Run(ctx context.Context) error {
 	}
 }
 
-// runOnce publishes one route reconciliation per running service. Publish
-// errors are logged; the next tick retries.
+// runOnce re-states every running service once. Publish errors are logged;
+// the next tick retries.
 func (c *ServingConverger) runOnce(ctx context.Context) {
 	if c.repo == nil || c.pub == nil {
 		return
 	}
-	rows, err := c.repo.ListRunning(ctx, servingConvergerLimit)
+	rows, err := c.repo.ListNeedingConvergence(ctx, servingConvergerLimit, time.Now().UTC().Add(-servingRetryAfter))
 	if err != nil {
 		logger.S().Warnw("infer: serving converger query failed", "err", err)
 		return
 	}
 	for _, row := range rows {
-		name := servedModelName(ctx, c.models, row)
-		evt := buildChangeEvent(EventTypeReconcileRoute, row, name, "", "", "")
+		evt, err := c.desiredState(ctx, row)
+		if err != nil {
+			logger.S().Warnw("infer: serving converger resolve failed",
+				"service_id", row.ID, "err", err)
+			continue
+		}
 		if err := publishChange(ctx, c.pub, evt); err != nil {
 			logger.S().Warnw("infer: serving converger publish failed",
 				"service_id", row.ID, "err", err)
 		}
 	}
+}
+
+// desiredState is the service's complete desired state, rebuilt from the
+// catalog. The controller composes the cluster object from the event alone, so
+// it carries every resolved part: the model's weights, the engine image and
+// the engine's arguments.
+func (c *ServingConverger) desiredState(ctx context.Context, row *InferenceService) (changeEvent, error) {
+	return buildServiceEvent(ctx, c.models, row, EventTypeReconcileRoute)
 }

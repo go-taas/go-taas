@@ -368,8 +368,8 @@ export interface InferenceServiceSummary {
   accelerator?: string;
   acceleratorType?: string;
   // Serving topology: single (one pod per replica), distributed (one pod
-  // group per replica) or pd (separate prefill/decode roles). Every layout
-  // is realized by an AIBrix StormService.
+  // group per replica) or pd (separate prefill/decode roles). The topology
+  // decides the roles the serving object asks for.
   topology?: ServingTopology;
   tensorParallelSize?: number;
   pipelineParallelSize?: number;

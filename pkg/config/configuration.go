@@ -448,7 +448,6 @@ func (c *Configuration) applyDefaults() {
 	}
 	// Feature #47: distributed-inference-runtime defaults (Section 9).
 	// The collection and scheme-broadcast intervals default to 30s and the
-	// AIBrix control plane defaults to the shipped namespace/gateway.
 	if c.Runtime.CollectInterval == 0 {
 		c.Runtime.CollectInterval = 30 * time.Second
 	}
@@ -457,9 +456,6 @@ func (c *Configuration) applyDefaults() {
 	}
 	if c.Runtime.HealthConsumer.Workers == 0 {
 		c.Runtime.HealthConsumer.Workers = 1
-	}
-	if c.Runtime.AIBrix.Namespace == "" {
-		c.Runtime.AIBrix.Namespace = "aibrix-system"
 	}
 	if c.ResourceMetrics.PrometheusTimeout <= 0 {
 		c.ResourceMetrics.PrometheusTimeout = 10 * time.Second
@@ -512,11 +508,17 @@ func (c *Configuration) applyDefaults() {
 	if c.Runtime.DataPlane.ParentRefSection == "" {
 		c.Runtime.DataPlane.ParentRefSection = "https"
 	}
-	if c.Runtime.DataPlane.BackendPort == 0 {
-		c.Runtime.DataPlane.BackendPort = 80
+	// The data plane Gateway the route attaches to. It lives in the release
+	// namespace, which is not necessarily the namespace inference services are
+	// created in, so the name and namespace are both install-time facts.
+	if c.Runtime.Gateway.Namespace == "" {
+		c.Runtime.Gateway.Namespace = c.Controller.Namespace
 	}
-	if c.Runtime.AIBrix.GatewayName == "" {
-		c.Runtime.AIBrix.GatewayName = "aibrix-eg"
+	if c.Runtime.Gateway.Name == "" {
+		c.Runtime.Gateway.Name = "taas-inference"
+	}
+	if c.Runtime.Gateway.Deployment == "" {
+		c.Runtime.Gateway.Deployment = c.Runtime.Gateway.Name
 	}
 	// Feature #54: the data-plane gateway plugin. The defaults are the
 	// values the shipped Wasm filter assumes, so an operator who sets only
@@ -528,10 +530,7 @@ func (c *Configuration) applyDefaults() {
 		c.GatewayPlugin.VerifyTimeout = 500 * time.Millisecond
 	}
 	if len(c.GatewayPlugin.ProtectedPrefixes) == 0 {
-		c.GatewayPlugin.ProtectedPrefixes = []string{"/v1/"}
-	}
-	if c.Runtime.AIBrix.Gateway == "" {
-		c.Runtime.AIBrix.Gateway = "envoy-aibrix-system-aibrix-eg"
+		c.GatewayPlugin.ProtectedPrefixes = []string{"/"}
 	}
 	// Feature #48: external-model-provider defaults (Section 9). The probe
 	// worker's enabled flag ships as true in configs/config.yaml (the

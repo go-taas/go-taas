@@ -16,8 +16,8 @@ type SchemeMessage struct {
 }
 
 // ModelChangeMessage is the runtime.models.changes payload (AD5): the
-// desired-state registration change the controller reconciles into an
-// AIBrix ModelClaim.
+// desired-state registration change the controller reconciles into the
+// model's workload.
 type ModelChangeMessage struct {
 	EventType   string            `json:"event_type"` // upsert | delete
 	ModelName   string            `json:"model_name"`

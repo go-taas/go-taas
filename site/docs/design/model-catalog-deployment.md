@@ -14,7 +14,7 @@
 
 ### 1.1 Why the Catalog and One-Click Deployment Come Now
 
-go-taas is a Token-as-a-Service platform: the value it sells is inference tokens, and tokens can only be produced by running inference services. The catalog is where the supply side starts — an administrator registers open-source LLMs (Qwen, DeepSeek, LLaMA, …) with their weight paths in object storage — and one-click deployment is how a registered model becomes a serving endpoint that Agents can call through the Inference Gateway. The architecture already fixes the mechanics (Section 4.2): the console calls the control plane, the change is published to the message queue, and the Controller turns it into AIBrix StormServices and Services. This feature point defines what the user sees and does.
+go-taas is a Token-as-a-Service platform: the value it sells is inference tokens, and tokens can only be produced by running inference services. The catalog is where the supply side starts — an administrator registers open-source LLMs (Qwen, DeepSeek, LLaMA, …) with their weight paths in object storage — and one-click deployment is how a registered model becomes a serving endpoint that Agents can call through the Inference Gateway. The architecture already fixes the mechanics (Section 4.2): the console calls the control plane, the change is published to the message queue, and the Controller turns it into LLMInferenceServices and Services. This feature point defines what the user sees and does.
 
 ### 1.2 How Comparable Products Implement Catalogs and Deployment
 
@@ -211,7 +211,7 @@ sequenceDiagram
     CGW-->>Console: 201 with service_id
     Console-->>Admin: Detail page polls state
     MQ->>CTRL: Consume deploy message
-    CTRL->>K8s: Create StormService and Service (mount shared weights)
+    CTRL->>K8s: Create LLMInferenceService and Service (mount shared weights)
     K8s-->>CTRL: Pods ready
     CTRL->>Infer: Report result, register endpoints
     Note over Console,Infer: Console polls GET /api/v1/admin/inference-services/{service_id}
@@ -291,7 +291,7 @@ Constraints on the contract:
 | Image pre-pull / warmup orchestration and cold-start optimization | Implemented (feature #3) |
 | Per-model and per-card pricing display in the catalog and deploy form | Implemented (pricing feature) |
 | Tenant-level model authorization (which tenants may deploy which models) | Implemented (model-authorization feature) |
-| Autoscaling policies | Implemented with the AIBrix `PodAutoscaler` (features #16/#47) |
+| Autoscaling policies | Implemented with the KServe `autoscaling` (features #16/#47) |
 | Canary upgrades and blue-green deployment | Future feature point |
 | Fine-tuning flows and custom model onboarding beyond weight-path registration | Future feature point |
 

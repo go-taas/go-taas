@@ -76,7 +76,7 @@ func TestK8sResourceSampleProvider(t *testing.T) {
 	})
 
 	accel := &fakeAcceleratorReader{util: 42, has: true}
-	provider := NewK8sResourceSampleProvider(clientset, metricsClient, "taas-infer", accel)
+	provider := NewK8sResourceSampleProvider(clientset, nil, metricsClient, "taas-infer", accel)
 
 	samples, err := provider.SampleServices(context.Background())
 	require.NoError(t, err)
@@ -111,7 +111,7 @@ func TestK8sResourceSampleProviderNoGPU(t *testing.T) {
 		},
 	})
 	// No accelerator reader -> GPU is nil.
-	provider := NewK8sResourceSampleProvider(clientset, metricsClient, "taas-infer", nil)
+	provider := NewK8sResourceSampleProvider(clientset, nil, metricsClient, "taas-infer", nil)
 
 	samples, err := provider.SampleServices(context.Background())
 	require.NoError(t, err)
@@ -129,7 +129,7 @@ func TestK8sResourceSampleProviderSkipsNonRunning(t *testing.T) {
 		Status: corev1.PodStatus{Phase: corev1.PodPending},
 	})
 	metricsClient := newMetricsClient(nil)
-	provider := NewK8sResourceSampleProvider(clientset, metricsClient, "taas-infer", nil)
+	provider := NewK8sResourceSampleProvider(clientset, nil, metricsClient, "taas-infer", nil)
 
 	samples, err := provider.SampleServices(context.Background())
 	require.NoError(t, err)

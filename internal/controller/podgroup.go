@@ -56,7 +56,7 @@ func podGroupName(evt changeEvent) string { return evt.Name }
 // roles' pod group sizes (one role for single/multi-machine, two for PD).
 func podsPerReplica(evt changeEvent) int32 {
 	total := int32(0)
-	for _, role := range stormRoles(evt) {
+	for _, role := range serveRoles(evt) {
 		if role.PodGroupSize < 1 {
 			total++
 			continue

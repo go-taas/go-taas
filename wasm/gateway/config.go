@@ -52,7 +52,7 @@ type config struct {
 
 // defaultProtectedPrefixes are the paths that require a verified key when the
 // configuration does not say otherwise.
-var defaultProtectedPrefixes = []string{"/v1/"}
+var defaultProtectedPrefixes = []string{"/"}
 
 // defaultCacheTTLMs matches the platform's own funds-decision cache (5s).
 // A cached verdict skips re-verification entirely, so a longer window is a

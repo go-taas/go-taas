@@ -87,7 +87,7 @@
       "features.f16.t": "Data Governance",
       "features.f16.d": "Audit logging and activity export, deployment history & audit, and GDPR-style data export of usage, billing, and request logs as JSON / CSV.",
       "features.f17.t": "Distributed Inference Runtime",
-      "features.f17.d": "Choose the platform serving scheme — plain Kubernetes Deployments (default) or an AIBrix-managed distributed runtime — and inspect runtime component health and the models registered with the runtime.",
+      "features.f17.d": "Choose the platform serving scheme — plain Kubernetes Deployments (default) or a KServe-managed LLMInferenceService runtime — and inspect runtime component health and the models registered with the runtime.",
       "features.f18.t": "External Model Providers",
       "features.f18.d": "Register third-party providers (DeepSeek / OpenAI / OpenAI-compatible), probe connectivity with five states (ok / unauthorized / unreachable / error / unknown), curate upstream models, and publish them into the catalog — consumed through the same metered gateway.",
       "features.f19.t": "Intelligent Model Routing",
@@ -113,7 +113,7 @@
       "arch.l2.name": "Gateway layer",
       "arch.l2.cp.t": "TaaS Gateway (control plane)",
       "arch.l2.cp.d": "TLS · AuthN · RBAC · Rate limiting · Audit · Request validation · Routing to TaaS Server",
-      "arch.l2.dp.t": "Aibrix Gateway + TaaS Plugin (data plane)",
+      "arch.l2.dp.t": "Envoy Gateway + TaaS Plugin (data plane)",
       "arch.l2.dp.d": "OpenAI API · Model routing · Token-aware load balancing · Same-model failover · Metering · Trace",
       "arch.l2.bar1": "Control flow: REST / gRPC",
       "arch.l2.bar2": "Data flow: OpenAI /v1 · SSE",
@@ -127,7 +127,7 @@
       "arch.l3.pg.d": "Source of truth: tenants, models, deployments, prices, usage ledger, audit",
       "arch.l3.redis.d": "Cache, rate-limit counters, quota reservations, distributed locks, routing table",
       "arch.l3.mq.d": "Deployment jobs, metering ingestion, settlement, batch processing, notifications; retries + DLQ",
-      "arch.l3.aibrix.d": "Distributed runtime, KV cache",
+      "arch.l3.kserve.d": "LLMInferenceService serving, canary releases and traffic split",
       "arch.l3.hami.d": "GPU slicing: partition a physical GPU by memory / compute (heterogeneous management, device plugin, scheduler unused)",
       "arch.l3.volcano.d": "Gang scheduling, queues and fair sharing",
       "arch.l3.gpu.d": "Drivers, device plugin, topology and health",
@@ -158,7 +158,7 @@
       "qs.port2": "gRPC",
       "qs.port3": "metrics / healthz",
       "qs.more": "More commands",
-      "qs.mirror": "For cluster prerequisites, third-party components (Gateway API, AIBrix, Volcano, JuiceFS, Harbor) and TLS, read the installation guide.",
+      "qs.mirror": "For cluster prerequisites, third-party components (Gateway API, KServe, Volcano, JuiceFS, Harbor) and TLS, read the installation guide.",
       "qs.guide": "Installation guide →",
 
       "usage.title": "Usage",
@@ -172,7 +172,7 @@
       "footer.arch": "Architecture",
       "footer.contributing": "Contributing",
       "footer.made": "Built with Go and Kubernetes",
-      "footer.ack": "Standing on the shoulders of the <a href='https://kubernetes.io' target='_blank' rel='noopener'>Kubernetes</a>, <a href='https://github.com/vllm-project/aibrix' target='_blank' rel='noopener'>AIBrix</a>, <a href='https://github.com/volcano-sh/volcano' target='_blank' rel='noopener'>Volcano</a>, and <a href='https://github.com/Project-HAMi/HAMi' target='_blank' rel='noopener'>HAMi</a> communities."
+      "footer.ack": "Standing on the shoulders of the <a href='https://kubernetes.io' target='_blank' rel='noopener'>Kubernetes</a>, <a href='https://github.com/volcano-sh/volcano' target='_blank' rel='noopener'>Volcano</a>, and <a href='https://github.com/Project-HAMi/HAMi' target='_blank' rel='noopener'>HAMi</a> communities."
     },
 
     "zh-CN": {
@@ -258,7 +258,7 @@
       "features.f16.t": "数据治理",
       "features.f16.d": "审计日志与活动导出、部署历史审计，以及符合 GDPR 的用量、账单、请求日志 JSON / CSV 数据导出。",
       "features.f17.t": "分布式推理运行时",
-      "features.f17.d": "选择平台服务形态 —— 普通 Kubernetes Deployment（默认）或 AIBrix 托管的分布式运行时 —— 并查看运行时组件健康与其纳管的模型。",
+      "features.f17.d": "选择平台服务形态 —— 普通 Kubernetes Deployment（默认）或由 KServe 托管的 LLMInferenceService 运行时 —— 并查看运行时组件健康与其纳管的模型。",
       "features.f18.t": "外部模型提供方",
       "features.f18.d": "登记第三方提供方（DeepSeek / OpenAI / OpenAI 兼容），以五态结果（ok / unauthorized / unreachable / error / unknown）探测连通性，治理上游模型并发布到目录，经同一套计费网关消费。",
       "features.f19.t": "智能模型路由",
@@ -284,7 +284,7 @@
       "arch.l2.name": "网关层",
       "arch.l2.cp.t": "TaaS Gateway（控制面）",
       "arch.l2.cp.d": "TLS · 认证 · RBAC · 限流 · 审计 · 请求校验 · 路由到 TaaS Server",
-      "arch.l2.dp.t": "Aibrix Gateway + TaaS Plugin（数据面）",
+      "arch.l2.dp.t": "Envoy Gateway + TaaS Plugin（数据面）",
       "arch.l2.dp.d": "OpenAI API · 模型路由 · Token 感知负载均衡 · 同模型 failover · 计量 · Trace",
       "arch.l2.bar1": "控制流：REST / gRPC",
       "arch.l2.bar2": "数据流：OpenAI /v1 · SSE",
@@ -298,7 +298,7 @@
       "arch.l3.pg.d": "业务真源：租户、模型、部署、价格、用量账本、审计",
       "arch.l3.redis.d": "缓存、限流计数、配额预留、分布式锁、路由表",
       "arch.l3.mq.d": "部署任务、计量摄取、结算、批处理、通知；重试 + DLQ",
-      "arch.l3.aibrix.d": "分布式运行时、KV Cache",
+      "arch.l3.kserve.d": "LLMInferenceService 服务、灰度发布与流量拆分",
       "arch.l3.hami.d": "GPU 切分：按显存 / 算力切分物理 GPU（暂未使用异构卡纳管、设备插件与调度）",
       "arch.l3.volcano.d": "Gang Scheduling、队列与公平共享",
       "arch.l3.gpu.d": "驱动、设备插件、拓扑与健康",
@@ -329,7 +329,7 @@
       "qs.port2": "gRPC",
       "qs.port3": "metrics / healthz",
       "qs.more": "更多命令",
-      "qs.mirror": "集群前置条件、第三方组件（Gateway API、AIBrix、Volcano、JuiceFS、Harbor）与 TLS 配置见安装指南。",
+      "qs.mirror": "集群前置条件、第三方组件（Gateway API、KServe、Volcano、JuiceFS、Harbor）与 TLS 配置见安装指南。",
       "qs.guide": "安装指南 →",
 
       "usage.title": "使用示例",
@@ -343,7 +343,7 @@
       "footer.arch": "架构设计",
       "footer.contributing": "参与贡献",
       "footer.made": "基于 Go 与 Kubernetes 构建",
-      "footer.ack": "站在 <a href='https://kubernetes.io' target='_blank' rel='noopener'>Kubernetes</a>、<a href='https://github.com/vllm-project/aibrix' target='_blank' rel='noopener'>AIBrix</a>、<a href='https://github.com/volcano-sh/volcano' target='_blank' rel='noopener'>Volcano</a>、<a href='https://github.com/Project-HAMi/HAMi' target='_blank' rel='noopener'>HAMi</a> 社区的肩膀上。"
+      "footer.ack": "站在 <a href='https://kubernetes.io' target='_blank' rel='noopener'>Kubernetes</a>、<a href='https://github.com/volcano-sh/volcano' target='_blank' rel='noopener'>Volcano</a>、<a href='https://github.com/Project-HAMi/HAMi' target='_blank' rel='noopener'>HAMi</a> 社区的肩膀上。"
     }
   };
 

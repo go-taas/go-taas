@@ -17,8 +17,8 @@ service RuntimeService {
     option (google.api.http) = {get: "/api/v1/admin/runtime"};
   }
 
-  // ListRuntimeComponents returns the runtime components (AIBrix control
-  // plane + Envoy AI Gateway under the aibrix scheme, the Controller +
+  // ListRuntimeComponents returns the runtime components (the KServe control
+  // plane + the Envoy Gateway under the kserve scheme, the Controller +
   // Kubernetes API fallback under the plain scheme).
   rpc ListRuntimeComponents(ListRuntimeComponentsRequest) returns (ListRuntimeComponentsResponse) {
     option (google.api.http) = {get: "/api/v1/admin/runtime/components"};
@@ -29,26 +29,26 @@ service RuntimeService {
     option (google.api.http) = {get: "/api/v1/admin/runtime/scheme"};
   }
 
-  // UpdateServingScheme sets the scheme to plain or aibrix. It is audited
-  // and idempotent; a non-{plain,aibrix} value returns 12902.
+  // UpdateServingScheme sets the scheme to plain or kserve. It is audited
+  // and idempotent; a non-{plain,kserve} value returns 12902.
   rpc UpdateServingScheme(UpdateServingSchemeRequest) returns (UpdateServingSchemeResponse) {
     option (google.api.http) = {put: "/api/v1/admin/runtime/scheme" body: "*"};
   }
 
-  // ListRuntimeModels returns the ModelClaim projection with pagination,
+  // ListRuntimeModels returns the registered-model projection with pagination,
   // name search, and engine/status filters.
   rpc ListRuntimeModels(ListRuntimeModelsRequest) returns (ListRuntimeModelsResponse) {
     option (google.api.http) = {get: "/api/v1/admin/runtime/models"};
   }
 
-  // RegisterRuntimeModel registers a model with the runtime (publishes a
-  // desired-state change the Controller reconciles into a ModelClaim).
+  // RegisterRuntimeModel registers a model with the platform (publishes a
+  // desired-state change the Controller reconciles into the serving object).
   rpc RegisterRuntimeModel(RegisterRuntimeModelRequest) returns (RegisterRuntimeModelResponse) {
     option (google.api.http) = {post: "/api/v1/admin/runtime/models" body: "*"};
   }
 
-  // DeregisterRuntimeModel removes a model registration (deletes the
-  // ModelClaim). An unknown model_name returns 12903.
+  // DeregisterRuntimeModel removes a model registration (its serving object is
+  // deleted). An unknown model_name returns 12903.
   rpc DeregisterRuntimeModel(DeregisterRuntimeModelRequest) returns (DeregisterRuntimeModelResponse) {
     option (google.api.http) = {delete: "/api/v1/admin/runtime/models/{model_name}"};
   }
@@ -137,10 +137,10 @@ message GetRuntimeStatusResponse {
 }
 
 message RuntimeStatus {
-  string scheme = 1;          // plain | aibrix
+  string scheme = 1;          // plain | kserve
   string availability = 2;    // available | degraded | unavailable | unknown
-  string runtime_name = 3;    // plain | aibrix
-  string runtime_version = 4; // optional, reported by AIBrix
+  string runtime_name = 3;    // plain | kserve
+  string runtime_version = 4; // optional, reported by the runtime
   string cluster_name = 5;
   int64 last_checked_at = 6;
   string reason = 7;
@@ -173,13 +173,13 @@ message GetServingSchemeResponse {
 }
 
 message ServingScheme {
-  string scheme = 1;   // plain | aibrix
+  string scheme = 1;   // plain | kserve
   int64 updated_at = 2;
   string updated_by = 3;
 }
 
 message UpdateServingSchemeRequest {
-  string scheme = 1;   // plain | aibrix
+  string scheme = 1;   // plain | kserve
 }
 
 message UpdateServingSchemeResponse {

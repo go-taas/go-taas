@@ -17,6 +17,7 @@ import (
 // that restores a model route deleted out of band: every running service gets
 // a route-reconciliation event, and nothing else does.
 func TestServingConvergerPublishesRoutesForRunningServices(t *testing.T) {
+	seedImageRegistry(t)
 	db := newInferTestDB(t)
 	repo := NewInferenceServiceRepository(db)
 	modelID := seedModel(t, db, "qwen-3b", "v1")
@@ -33,7 +34,7 @@ func TestServingConvergerPublishesRoutesForRunningServices(t *testing.T) {
 	converger := NewServingConverger(repo, model.NewRepository(db), client, time.Minute)
 	converger.runOnce(context.Background())
 
-	require.Len(t, client.published, 1, "only the running service needs its route re-applied")
+	require.Len(t, client.published, 1, "only the running service needs its state re-applied")
 	var evt changeEvent
 	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
 	assert.Equal(t, EventTypeReconcileRoute, evt.EventType)
@@ -41,6 +42,47 @@ func TestServingConvergerPublishesRoutesForRunningServices(t *testing.T) {
 	// The route is named after the model, so the event must carry the catalog
 	// name rather than the service name.
 	assert.Equal(t, "qwen-3b", evt.Model.Name)
+
+	// The event makes the controller rebuild the whole object, so it carries
+	// the resolved engine image as well. An event without it would write a pod
+	// template with no image, and the engine would fall back to the preset's.
+	assert.Equal(t, "ghcr.io/go-taas/vllm-test:v0.6.3", evt.Image.Reference)
+	assert.Equal(t, "vllm", evt.Image.Engine)
+}
+
+// TestServingConvergerRetriesASettledFailure covers the recovery half of the
+// heartbeat: a service the controller gave up on is re-stated once the retry
+// window has passed, so an engine that came up after the failure (a slow
+// weights load, a crash loop that recovered) is picked up without an operator
+// touching the service. A failure younger than the window is left alone.
+func TestServingConvergerRetriesASettledFailure(t *testing.T) {
+	seedImageRegistry(t)
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	stale := seedService(t, repo, "org-1", "stale", StateFailed, time.Now().UTC())
+	fresh := seedService(t, repo, "org-1", "fresh", StateFailed, time.Now().UTC())
+	for _, row := range []*InferenceService{stale, fresh} {
+		require.NoError(t, db.Model(&InferenceService{}).Where("id = ?", row.ID).
+			Update("model_id", modelID).Error)
+	}
+	// seedService writes the row "now"; age the settled failure past the retry
+	// window so the converger picks it up. UpdateColumn skips the updated_at
+	// bump GORM would otherwise apply.
+	require.NoError(t, db.Model(&InferenceService{}).Where("id = ?", stale.ID).
+		UpdateColumn("updated_at", time.Now().UTC().Add(-2*time.Hour)).Error)
+
+	client := &recordingClient{}
+	converger := NewServingConverger(repo, model.NewRepository(db), client, time.Minute)
+	converger.runOnce(context.Background())
+
+	require.Len(t, client.published, 1, "only the settled failure is retried")
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, stale.ID, evt.ServiceID)
+	assert.Equal(t, "ghcr.io/go-taas/vllm-test:v0.6.3", evt.Image.Reference,
+		"the retry re-states the whole desired state, not just the route")
 }
 
 // TestServingConvergerWithoutComponentsIsANoOp covers a server started without
@@ -168,6 +210,7 @@ func TestStopWithoutSiblingKeepsOneEvent(t *testing.T) {
 // model's real one. Its replay must now name the model and re-point the route
 // at a running sibling before it tears anything down.
 func TestTeardownConvergerCarriesTheModelName(t *testing.T) {
+	seedImageRegistry(t)
 	db := newInferTestDB(t)
 	repo := NewInferenceServiceRepository(db)
 	modelID := seedModel(t, db, "qwen-3b", "v1")

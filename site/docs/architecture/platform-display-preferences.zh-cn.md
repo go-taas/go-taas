@@ -4,8 +4,8 @@
 | --- | --- |
 | 功能点 | 为整个平台设置一个系统时区、默认语言与货币单位；模型下载并入模型页面；外部模型不可部署；多机推理与按角色的引擎参数；控制台自动扩缩容文案 |
 | 文档范围 | `platform_settings` 的显示列与投影、双端可读的查询接口、控制台如何消费这些偏好，以及随附的控制台调整 |
-| 所属模块 | `services/runtime`（设置模型、校验、投影、接口） · `services/infer`（外部模型拦截、按角色引擎参数） · `internal/controller`（多机角色、stateful storm、会合参数、按角色参数） · `web`（`platform.tsx`、`display.ts`、`GatewaySettingsPage`、`ModelsPage`、`ModelDownloadsPanel`、`DeployForm`、文案） |
-| 关联文档 | [StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md)（形态与按角色调参） · [控制台分端](./console-surface-separation.zh-cn.md) |
+| 所属模块 | `services/runtime`（设置模型、校验、投影、接口） · `services/infer`（外部模型拦截、按角色引擎参数） · `internal/controller`（多机角色、leader-worker set、会合参数、按角色参数） · `web`（`platform.tsx`、`display.ts`、`GatewaySettingsPage`、`ModelsPage`、`ModelDownloadsPanel`、`DeployForm`、文案） |
+| 关联文档 | [LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.zh-cn.md)（形态与按角色调参） · [控制台分端](./console-surface-separation.zh-cn.md) |
 | 状态 | 已实现 |
 
 ---
@@ -48,7 +48,7 @@
 
 ## 4. 多机推理与按角色引擎参数
 
-原 `distributed` 形态更名为**多机推理**：一个副本每个 worker 一个 Pod，各占一张卡、各在一台机器上，worker 之间通过 stateful storm 提供的 headless Service 会合（见拓扑文档 AD1a–AD1c）。`distributed` 作为旧名称仍然接受，控制台对两种写法都做归一化。
+原 `distributed` 形态更名为**多机推理**：一个副本每个 worker 一个 Pod，各占一张卡、各在一台机器上，worker 之间通过 leader-worker set 提供的 headless Service 会合（见拓扑文档 AD1a–AD1c）。`distributed` 作为旧名称仍然接受，控制台对两种写法都做归一化。
 
 `role_engine_args` 让每种角色单独调参：角色显式设置的参数覆盖共享值，其余继承，额外参数追加。部署表单为每个角色渲染一个参数区块（`prefill`/`decode` 或 `worker`）；`:update-topology` 可接收新的覆盖列表，未提供时保留已存值。
 
@@ -74,5 +74,5 @@
 - **AC5** 首次访问者获得默认语言；用户显式选择不会被覆盖。
 - **AC6** 模型页面承载下载面板；导航不再有下载入口；旧地址自动重定向。
 - **AC7** 部署选择列表不含外部模型，接口对之返回 10106。
-- **AC8** 多机推理以 stateful storm 为每个 worker 创建 Pod 并带上会合参数；按角色的引擎参数只覆盖对应角色。
+- **AC8** 多机推理以 leader-worker set 为每个 worker 创建 Pod 并带上会合参数；按角色的引擎参数只覆盖对应角色。
 - **AC9** 自动扩缩相关文案显示为「自动扩缩容 / 扩缩容」。

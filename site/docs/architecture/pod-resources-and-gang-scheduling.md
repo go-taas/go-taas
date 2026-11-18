@@ -4,8 +4,8 @@
 | --- | --- |
 | Feature point | Every inference topology can be given a per-pod resource shape (accelerator cards, CPU, memory) and a priority (high/normal/low); the platform schedules the pods of one replica as a Volcano gang and lets a higher priority preempt a lower one. Role parameters switch through tabs instead of stacking |
 | Document scope | The wire and stored shape, validation, the pod spec the controller writes, the Volcano PodGroup, priority classes, preemption, the console forms and tabs, configuration, errors and acceptance criteria |
-| Owning modules | `services/infer` (`scheduling.go`, `service.go`, `change_publisher.go`) · `internal/controller` (`podgroup.go`, `reconciler.go`, `stormservice.go`) · `pkg/config` (`controller.scheduling`) · `web` (`DeployForm`, `ServiceDetailPage`) · helm (`rbac-controller`, values) |
-| Related documents | [StormService Serving Topology](./stormservice-serving-topology.md) (the roles a replica is made of) · [Accelerator Inventory](./accelerator-inventory.md) (the devices the requests name) · [Engine Parameter Templates](./engine-parameter-templates.md) (the other deploy-form input) |
+| Owning modules | `services/infer` (`scheduling.go`, `service.go`, `change_publisher.go`) · `internal/controller` (`podgroup.go`, `reconciler.go`, `serving.go`) · `pkg/config` (`controller.scheduling`) · `web` (`DeployForm`, `ServiceDetailPage`) · helm (`rbac-controller`, values) |
+| Related documents | [LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md) (the roles a replica is made of) · [Accelerator Inventory](./accelerator-inventory.md) (the devices the requests name) · [Engine Parameter Templates](./engine-parameter-templates.md) (the other deploy-form input) |
 | Status | Implemented |
 
 ---

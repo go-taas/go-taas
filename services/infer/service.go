@@ -365,10 +365,10 @@ func (s *Service) SetRoleGuard(g RoleGuard) { s.roleGuard = g }
 // so the org guard can be exercised on its own.
 func (s *Service) SetPlatformAdminGuard(g PlatformAdminGuard) { s.platformAdminGuard = g }
 
-// GatewayResolver discovers the in-cluster base URL of the serving
-// gateway (e.g. the AIBrix Envoy gateway), "http://host:port" or "" when
-// none is discoverable. It is implemented in the server wiring layer,
-// which owns the Kubernetes client.
+// GatewayResolver discovers the in-cluster base URL of the serving gateway
+// (the data plane's Envoy Gateway), "http://host:port" or "" when none is
+// discoverable. It is implemented in the server wiring layer, which owns the
+// Kubernetes client.
 type GatewayResolver interface {
 	InferenceGatewayURL(ctx context.Context) string
 }
@@ -757,8 +757,8 @@ func (s *Service) modelRepository() (*model.Repository, error) {
 
 // servedModelName resolves the catalog name of the model an inference
 // service runs. Change events carry it because clients address the served
-// endpoint by that name and AIBrix routes on it. A lookup failure falls
-// back to the service name, which is always a valid serving name.
+// endpoint by that name and the workload advertises it. A lookup failure
+// falls back to the service name, which is always a valid serving name.
 func servedModelName(ctx context.Context, repo *model.Repository, svc *InferenceService) string {
 	if repo == nil || svc.ModelID == "" {
 		return svc.Name
@@ -872,8 +872,8 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 		return nil, err
 	}
 	// The catalog name is the name clients pass as `model`; the change
-	// event carries it so the controller advertises it to AIBrix and the
-	// engine serves under it.
+	// event carries it so the workload advertises it and the engine serves
+	// under it.
 	modelRow, err := modelRepo.GetModel(ctx, req.GetModelId())
 	if err != nil {
 		return nil, err
@@ -1436,7 +1436,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	if row.State == StateTerminated {
 		// Same model-route failover as the stop path (see below).
 		modelRepo, _ := s.modelRepository()
-		publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
+		republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
 		if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish delete change failed",
 				"service_id", req.GetServiceId(), "err", err)
@@ -1451,7 +1451,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	// Keep the model routable through the teardown: another running service
 	// of the same model takes over the model-scoped route.
 	modelRepo, _ := s.modelRepository()
-	publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
+	republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
 
 	// A publish failure only logs: the row is already terminated, so the
 	// service is hidden from lists and the controller's periodic resync
@@ -1515,7 +1515,7 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 		// A model we no longer serve may still be served by a sibling
 		// service: re-point its route before this service's teardown runs.
 		modelRepo, _ := s.modelRepository()
-		publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
+		republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
 		if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish stop change failed",
 				"service_id", req.GetServiceId(), "err", err)
@@ -1536,7 +1536,7 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 	// service's resources. Otherwise the survivor would answer 503 until
 	// something reconciled it.
 	modelRepo, _ := s.modelRepository()
-	publishRouteReconciliations(ctx, client, repo, modelRepo, modelName, row.ID)
+	republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
 
 	// A publish failure only logs: the row is already stopped, so the
 	// service is hidden from the running set and the controller's periodic
@@ -1591,9 +1591,12 @@ func (s *Service) StartInferenceService(ctx context.Context, req *inferv1.StartI
 	if row.State == StateTerminated {
 		return nil, apierrors.New(apierrors.CodeInferServiceStateInvalid)
 	}
-	// Only a stopped service can be started. A running service is
-	// idempotent: starting it again succeeds.
-	if row.State != StateStopped {
+	// Start is the recovery action: a stopped service is started, and a failed
+	// one is re-applied from the catalog (its object is rewritten, so a load
+	// that never came up, or an object edited out of band, is repaired). A
+	// service that is already being brought up, or is already serving, is
+	// idempotent: starting it again succeeds without republishing.
+	if row.State != StateStopped && row.State != StateFailed {
 		return &inferv1.StartInferenceServiceResponse{
 			Response:  okResponse(),
 			ServiceId: req.GetServiceId(),
@@ -1738,8 +1741,7 @@ func (s *Service) UpdateInferenceServiceVersion(ctx context.Context, req *inferv
 // UpdateInferenceServiceTopology changes the serving layout of an existing
 // service in place: single-node, distributed (tensor/pipeline parallelism)
 // or PD-disaggregated. The service keeps its identity and endpoints and
-// returns to pending, so the controller rolls the AIBrix StormService out
-// with the new roles.
+// returns to pending, so the controller rolls the new layout out in place.
 //
 // Validation order: service exists (10301), state updatable (10303), image
 // readable, topology valid (10319). Nothing is written when a check fails.

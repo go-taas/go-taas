@@ -1,11 +1,10 @@
 {{- if and .Values.controller.enabled .Values.controller.rbac.create }}
 {{- $name := default (include "go-taas.controller.name" .) .Values.controller.rbac.name }}
 {{/*
-The controller drives Kubernetes directly: it creates the inference
-Deployments/Services/HPAs and the shared model-weights PVC, runs one-shot
-image-warmup pods, reads pod logs and metrics, and observes the AIBrix
-control plane (which lives in its own namespace, hence the cluster-wide
-permissions).
+The controller drives Kubernetes directly: it writes the LLMInferenceService,
+PodGroups, the shared model-weights PVC, runs one-shot image-warmup pods, and
+reads pod logs, pods and metrics of the workloads the serving stack writes in
+the inference namespace, hence the cluster-wide read permissions.
 */}}
 {{- if not .Values.controller.rbac.existingClusterRole }}
 apiVersion: rbac.authorization.k8s.io/v1
@@ -30,10 +29,10 @@ rules:
   - apiGroups: [""]
     resources: ["services", "persistentvolumeclaims"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # Inference workloads and their autoscalers. Deployments are also listed
-  # cluster-wide to locate the AIBrix gateway. StatefulSets are swept during
-  # teardown: the storm controller creates one for a stateful topology, and a
-  # stale set would keep its pods alive after the StormService is gone.
+  # Workloads and their autoscalers. Deployments are also listed cluster-wide
+  # to find the workload a model is reported ready on, wherever the serving
+  # stack put it (usually the inference namespace). StatefulSets are swept to
+  # not leave a stale set behind after the service is gone.
   - apiGroups: ["apps"]
     resources: ["deployments", "statefulsets"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
@@ -44,26 +43,23 @@ rules:
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods"]
     verbs: ["get", "list"]
-  # AIBrix serving scheme: ModelClaims, StormServices and PodAutoscalers. A
-  # StormService is the serving object (its RoleSets and Pods are created by
-  # the AIBrix controller, which already owns those permissions).
-  - apiGroups: ["model.aibrix.ai"]
-    resources: ["modelclaims"]
+  # KServe serving scheme. An LLMInferenceService is the serving object; its
+  # InferencePool, PodGroup and workload objects are created by the KServe
+  # controller, which already owns those permissions.
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["llminferenceservices"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["orchestration.aibrix.ai"]
-    resources: ["stormservices"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  - apiGroups: ["autoscaling.aibrix.ai"]
-    resources: ["podautoscalers"]
-    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["llminferenceservices/status", "llminferenceservices/finalizers"]
+    verbs: ["get", "update", "patch"]
   # Volcano gang groups: one PodGroup per inference service, so the pods of a
   # replica are placed together and a higher priority may preempt a lower one.
   - apiGroups: ["scheduling.volcano.sh"]
     resources: ["podgroups"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
-  # The per-model HTTPRoute lives in the AIBrix gateway namespace and points
-  # at the inference Service in the controller's own namespace, which the
-  # ReferenceGrant authorises.
+  # The controller publishes the data-plane HTTPRoute that fronts the model
+  # router. It is the only route the platform writes: a model's own workload is
+  # reached through the Service the serving stack creates for it.
   - apiGroups: ["gateway.networking.k8s.io"]
     resources: ["httproutes", "referencegrants"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]

@@ -12,6 +12,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
 	"github.com/go-taas/go-taas/pkg/k8s"
@@ -24,6 +25,7 @@ import (
 // Kubernetes API, exactly as kubectl logs does.
 type logFetcher struct {
 	clientset kubernetes.Interface
+	dyn       dynamic.Interface
 	namespace string
 }
 
@@ -33,7 +35,7 @@ func NewLogFetcher(client *k8s.Client, namespace string) infer.LogFetcher {
 	if namespace == "" {
 		namespace = defaultInferenceNamespace
 	}
-	return &logFetcher{clientset: client.Clientset(), namespace: namespace}
+	return &logFetcher{clientset: client.Clientset(), dyn: client.Dynamic(), namespace: namespace}
 }
 
 // defaultInferenceNamespace is where inference pods run when the
@@ -48,18 +50,16 @@ const serviceLabelKey = "go-taas.com/service-id"
 // returns each pod's containers and phase, masked as replica-N indices
 // (feature #33, AD3).
 func (f *logFetcher) ListServiceLogPods(ctx context.Context, serviceID string) ([]infer.LogPod, error) {
-	pods, err := f.clientset.CoreV1().Pods(f.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: serviceLabelKey + "=" + serviceID,
-	})
+	pods, err := listServicePods(ctx, f.clientset, f.dyn, f.namespace, serviceID)
 	if err != nil {
 		return nil, fmt.Errorf("controller: list pods for service %s: %w", serviceID, err)
 	}
 	// Sort by creation time so replica indices are stable.
-	sort.Slice(pods.Items, func(i, j int) bool {
-		return pods.Items[i].CreationTimestamp.Before(&pods.Items[j].CreationTimestamp)
+	sort.Slice(pods, func(i, j int) bool {
+		return pods[i].CreationTimestamp.Before(&pods[j].CreationTimestamp)
 	})
-	out := make([]infer.LogPod, 0, len(pods.Items))
-	for i, pod := range pods.Items {
+	out := make([]infer.LogPod, 0, len(pods))
+	for i, pod := range pods {
 		replica := "replica-" + strconv.Itoa(i+1)
 		for _, c := range pod.Spec.Containers {
 			out = append(out, infer.LogPod{
@@ -77,14 +77,12 @@ func (f *logFetcher) ListServiceLogPods(ctx context.Context, serviceID string) (
 // next_offset cursor (feature #33, AD4).
 func (f *logFetcher) GetServiceLogs(ctx context.Context, serviceID, pod, container string, tail int, since string, _ string) (infer.LogWindow, error) {
 	// Resolve the replica index to a pod name.
-	pods, err := f.clientset.CoreV1().Pods(f.namespace).List(ctx, metav1.ListOptions{
-		LabelSelector: serviceLabelKey + "=" + serviceID,
-	})
+	pods, err := listServicePods(ctx, f.clientset, f.dyn, f.namespace, serviceID)
 	if err != nil {
 		return infer.LogWindow{}, fmt.Errorf("controller: list pods for service %s: %w", serviceID, err)
 	}
-	sort.Slice(pods.Items, func(i, j int) bool {
-		return pods.Items[i].CreationTimestamp.Before(&pods.Items[j].CreationTimestamp)
+	sort.Slice(pods, func(i, j int) bool {
+		return pods[i].CreationTimestamp.Before(&pods[j].CreationTimestamp)
 	})
 	// A caller that names no pod wants the logs of the service, not an
 	// error: default to the first replica. Without this, the very first
@@ -93,19 +91,19 @@ func (f *logFetcher) GetServiceLogs(ctx context.Context, serviceID, pod, contain
 	if strings.TrimSpace(pod) == "" {
 		pod = replicaLabel(1)
 	}
-	if len(pods.Items) == 0 {
+	if len(pods) == 0 {
 		return infer.LogWindow{}, fmt.Errorf("controller: service %s has no pods", serviceID)
 	}
 	replicaIdx := replicaIndex(pod)
-	if replicaIdx < 1 || replicaIdx > len(pods.Items) {
+	if replicaIdx < 1 || replicaIdx > len(pods) {
 		return infer.LogWindow{}, fmt.Errorf("controller: unknown replica %q for service %s", pod, serviceID)
 	}
-	podName := pods.Items[replicaIdx-1].Name
+	podName := pods[replicaIdx-1].Name
 	if container == "" {
-		if len(pods.Items[replicaIdx-1].Spec.Containers) == 0 {
+		if len(pods[replicaIdx-1].Spec.Containers) == 0 {
 			return infer.LogWindow{}, fmt.Errorf("controller: pod %s has no containers", podName)
 		}
-		container = pods.Items[replicaIdx-1].Spec.Containers[0].Name
+		container = pods[replicaIdx-1].Spec.Containers[0].Name
 	}
 
 	// Build the PodLogs options: tail lines and/or since time.

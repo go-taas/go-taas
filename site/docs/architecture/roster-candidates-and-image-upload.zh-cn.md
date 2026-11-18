@@ -5,7 +5,7 @@
 | 功能点 | 成员名单改为从「还能加入的账号」中挑选；镜像清单增加上传能力（把 `docker save` 的镜像包推送到 Harbor），并去掉注册；邀请页以组织显示名描述；集群页操作按钮成组 |
 | 文档范围 | 两个成员候选接口及其资格规则、账号目录 seam、multipart 上传端点、镜像包处理与目标命名规则、控制台交互、错误码、配置与验收标准 |
 | 所属模块 | `services/tenancy`（候选接口、成员过滤） · `services/auth`（`ListActiveUsers`） · `services/image`（`UploadImage`） · `pkg/registry`（镜像包解析、`skopeo copy docker-archive:`） · `pkg/server`（multipart 端点与上传 seam） · `web`（`MembersPage`、`ProjectMembersPage`、`InvitationsPage`、`ClustersPage`、`ImagesPage`、`UploadImageDialog`） |
-| 关联文档 | [镜像管理](./image-management.zh-cn.md)（镜像清单与预热） · [StormService 服务拓扑](./stormservice-serving-topology.zh-cn.md)（仓库配置投影） |
+| 关联文档 | [镜像管理](./image-management.zh-cn.md)（镜像清单与预热） · [LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.zh-cn.md)（仓库配置投影） |
 | 状态 | 已实现 |
 
 ---

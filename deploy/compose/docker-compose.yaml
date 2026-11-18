@@ -232,12 +232,12 @@ services:
       # consumer maintains the in-memory runtime projection the admin
       # runtime page reads; the scheme broadcaster re-publishes the
       # persisted serving scheme so the DB-less controller reconverges.
-      # The AIBrix namespace/gateway default to the shipped cluster's
+      # The runtime namespace/gateway default to the shipped cluster's
       # control plane.
       CONFIG_RUNTIME_SCHEMEBROADCASTINTERVAL: ${RUNTIME_SCHEME_BROADCAST_INTERVAL:-30s}
       CONFIG_RUNTIME_HEALTHCONSUMER_ENABLED: ${RUNTIME_HEALTH_CONSUMER_ENABLED:-true}
-      CONFIG_RUNTIME_AIBRIX_NAMESPACE: ${RUNTIME_AIBRIX_NAMESPACE:-aibrix-system}
-      CONFIG_RUNTIME_AIBRIX_GATEWAY: ${RUNTIME_AIBRIX_GATEWAY:-envoy-aibrix-system-aibrix-eg}
+      CONFIG_RUNTIME_GATEWAY_NAMESPACE: ${RUNTIME_GATEWAY_NAMESPACE:-taas-system}
+      CONFIG_RUNTIME_GATEWAY_DEPLOYMENT: ${RUNTIME_GATEWAY_DEPLOYMENT:-taas-inference}
       # Feature #49: intelligent model routing. The decision-log
       # retention runner is enabled by default; the retention window
       # and the latency_priority sampling window are read from the
@@ -302,15 +302,15 @@ services:
       CONFIG_DB_MASTER_PASSWORD: taas
       CONFIG_DB_MASTER_SSLMODE: disable
       # Feature #47: the runtime collector publishes the component +
-      # ModelClaim snapshot the admin runtime page reads, and the scheme
-      # and model-change consumers reconcile the serving scheme and the
-      # registered models into AIBrix ModelClaims. The AIBrix
+      # registered-model snapshot the admin runtime page reads; the scheme
+      # consumer applies the persisted scheme and the model-change consumer
+      # reconciles the registered models into serving objects. The runtime
       # namespace/gateway name the observed control plane.
       CONFIG_RUNTIME_COLLECTINTERVAL: ${RUNTIME_COLLECT_INTERVAL:-30s}
       CONFIG_RUNTIME_SCHEMECONSUMER_ENABLED: ${RUNTIME_SCHEME_CONSUMER_ENABLED:-true}
-      CONFIG_RUNTIME_MODELCHANGECONSUMER_ENABLED: ${RUNTIME_MODEL_CHANGE_CONSUMER_ENABLED:-true}
-      CONFIG_RUNTIME_AIBRIX_NAMESPACE: ${RUNTIME_AIBRIX_NAMESPACE:-aibrix-system}
-      CONFIG_RUNTIME_AIBRIX_GATEWAY: ${RUNTIME_AIBRIX_GATEWAY:-envoy-aibrix-system-aibrix-eg}
+      CONFIG_RUNTIME_GATEWAY_NAME: ${RUNTIME_GATEWAY_NAME:-taas-inference}
+      CONFIG_RUNTIME_GATEWAY_NAMESPACE: ${RUNTIME_GATEWAY_NAMESPACE:-taas-system}
+      CONFIG_RUNTIME_GATEWAY_DEPLOYMENT: ${RUNTIME_GATEWAY_DEPLOYMENT:-taas-inference}
     volumes:
       - ${KUBECONFIG:-$HOME/.kube/config}:/etc/taas/kubeconfig:ro
 

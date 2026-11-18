@@ -139,14 +139,14 @@ type Subjects struct {
 	// consumes (feature #45, §9). It is not consumed by the controller.
 	InferRoutingPolicies string
 	// RuntimeHealth carries the controller's runtime component +
-	// ModelClaim full snapshot (feature #47, AD4). The runtime service
+	// registered-model full snapshot (feature #47, AD4). The runtime service
 	// consumes it to maintain its in-memory projection cache.
 	RuntimeHealth string
 	// RuntimeScheme carries the persisted serving scheme broadcast so the
 	// DB-less controller reconverges after a restart (feature #47, AD6).
 	RuntimeScheme string
 	// RuntimeModelChanges carries runtime model registration desired-state
-	// changes the controller reconciles into AIBrix ModelClaims
+	// changes the controller reconciles into KServe serving objects
 	// (feature #47, AD5).
 	RuntimeModelChanges string
 	// QuotaOrgsConcurrency carries per-org in-flight request counts

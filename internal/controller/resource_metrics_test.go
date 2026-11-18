@@ -8,9 +8,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
-	"k8s.io/client-go/kubernetes/fake"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"k8s.io/client-go/kubernetes/fake"
 )
 
 // fakeSampleProvider returns a fixed set of samples.
@@ -151,6 +151,6 @@ func TestNewK8sResourceSampleProviderDefaultNamespace(t *testing.T) {
 	clientset := fake.NewSimpleClientset()
 	metricsClient := newMetricsClient(nil)
 	// An empty namespace falls back to "taas-infer".
-	provider := NewK8sResourceSampleProvider(clientset, metricsClient, "", nil)
+	provider := NewK8sResourceSampleProvider(clientset, nil, metricsClient, "", nil)
 	assert.Equal(t, "taas-infer", provider.namespace)
 }
