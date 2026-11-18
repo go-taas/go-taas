@@ -1,3 +1,15 @@
+# [1.119.0](https://github.com/go-taas/go-taas/compare/v1.118.1...v1.119.0) (2026-11-18)
+
+
+### Bug Fixes
+
+* **vgpu:** make a shared-GPU service actually run on a HAMi slice ([1bcc932](https://github.com/go-taas/go-taas/commit/1bcc932e653528b2a2a211f487ca4f6b778913b3))
+
+
+### Features
+
+* **serve:** serve models through KServe and route by model ([62b5719](https://github.com/go-taas/go-taas/commit/62b5719b7a8720ad7f5e2b28be5198c0037710b8))
+
 ## [1.118.1](https://github.com/go-taas/go-taas/compare/v1.118.0...v1.118.1) (2026-11-09)
 
 
