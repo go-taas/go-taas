@@ -418,6 +418,10 @@ export const en: Record<string, string> = {
   'account.switchNoPermission': 'You do not have permission to switch to admin.',
   'account.switchIncomplete': 'Switch did not complete. Try again.',
 
+  // ---- Theme ----
+  'theme.switchToLight': 'Switch to light theme',
+  'theme.switchToDark': 'Switch to dark theme',
+
   // ---- Org switcher ----
   'org.none': 'No organization',
   'org.project': 'Project',

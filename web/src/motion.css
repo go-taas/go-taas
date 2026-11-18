@@ -1,0 +1,525 @@
+/* ============================================================
+   Go TaaS console — shared motion layer
+   ------------------------------------------------------------
+   Loaded after both skins, so every effect here works in the
+   dark and the light theme. The colour of each effect comes from
+   the skin variables below, keeping both themes cohesive.
+
+   Motion rules:
+   - ambient, slow movement lives behind the content
+   - interactive movement is short and only on hover/focus/entry
+   - nothing loops faster than ~2s in the reading area
+   - everything collapses under prefers-reduced-motion
+   ============================================================ */
+
+:root {
+  --fx-grid: rgba(34, 211, 238, 0.05);
+  --fx-glow-a: rgba(34, 211, 238, 0.12);
+  --fx-glow-b: rgba(59, 130, 246, 0.10);
+  --fx-glow-c: rgba(124, 58, 237, 0.08);
+  --fx-card-shadow: 0 20px 38px -28px rgba(34, 211, 238, 0.38);
+  --fx-accent-2: #3b82f6;
+  --fx-focus: rgba(34, 211, 238, 0.24);
+}
+
+html[data-theme='light'] {
+  --fx-grid: rgba(14, 116, 144, 0.045);
+  --fx-glow-a: rgba(8, 145, 178, 0.09);
+  --fx-glow-b: rgba(59, 130, 246, 0.07);
+  --fx-glow-c: rgba(124, 58, 237, 0.05);
+  --fx-card-shadow: 0 20px 38px -28px rgba(16, 24, 40, 0.26);
+  --fx-accent-2: #06b6d4;
+  --fx-focus: rgba(14, 116, 144, 0.18);
+}
+
+/* ------------------------------------------------------------
+   Ambient canvas: a very faint engineering grid and two slow
+   aurora fields. The app and login sit above them.
+   ------------------------------------------------------------ */
+
+.app,
+.login {
+  position: relative;
+  z-index: 1;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--fx-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--fx-grid) 1px, transparent 1px);
+  background-size: 42px 42px;
+  -webkit-mask-image: radial-gradient(ellipse 92% 76% at 52% 0%, #000 10%, rgba(0, 0, 0, 0.55) 46%, transparent 80%);
+  mask-image: radial-gradient(ellipse 92% 76% at 52% 0%, #000 10%, rgba(0, 0, 0, 0.55) 46%, transparent 80%);
+  animation: grid-drift 38s linear infinite;
+}
+
+body::after {
+  content: '';
+  position: fixed;
+  inset: -12% -8%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(420px 420px at 10% 8%, var(--fx-glow-a), transparent 68%),
+    radial-gradient(380px 380px at 90% 18%, var(--fx-glow-b), transparent 70%),
+    radial-gradient(460px 460px at 76% 92%, var(--fx-glow-c), transparent 72%);
+  filter: blur(10px);
+  animation: aurora-drift 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+/* The login/register/scope screens are opaque, so they get their own
+   moving field above their background but below the form content. */
+.login {
+  isolation: isolate;
+}
+
+.login::before {
+  content: '';
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--fx-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--fx-grid) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: radial-gradient(ellipse 56% 62% at 50% 46%, #000 8%, rgba(0, 0, 0, 0.45) 52%, transparent 78%);
+  mask-image: radial-gradient(ellipse 56% 62% at 50% 46%, #000 8%, rgba(0, 0, 0, 0.45) 52%, transparent 78%);
+  animation: grid-drift 34s linear infinite;
+}
+
+.login::after {
+  content: '';
+  display: block;
+  position: fixed;
+  inset: -30%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(460px 460px at 34% 32%, var(--fx-glow-a), transparent 68%),
+    radial-gradient(400px 400px at 66% 60%, var(--fx-glow-b), transparent 70%);
+  filter: blur(18px);
+  animation: login-halo 14s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.login > *:not(.floating-theme-toggle) {
+  position: relative;
+  z-index: 1;
+}
+
+.login .floating-theme-toggle {
+  position: fixed;
+  z-index: 20;
+}
+
+/* ------------------------------------------------------------
+   Top bar: a travelling signal along the bottom edge, a
+   breathing mark and a pulsing active pill.
+   ------------------------------------------------------------ */
+
+.topbar::after {
+  content: '';
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent 0%, var(--primary) 34%, var(--fx-accent-2) 50%, var(--primary) 66%, transparent 100%);
+  background-size: 220% 100%;
+  opacity: 0.72;
+  animation: topbar-flow 9s linear infinite;
+}
+
+.topbar-brand .brand-logo {
+  animation: logo-breathe 6s ease-in-out infinite;
+  transform-origin: center;
+}
+
+.topbar-nav-item {
+  position: relative;
+}
+
+.topbar-nav-item.active::after {
+  content: '';
+  position: absolute;
+  left: 13px;
+  right: 13px;
+  bottom: 4px;
+  height: 1px;
+  border-radius: 1px;
+  background: currentColor;
+  opacity: 0.55;
+  animation: nav-pulse 3s ease-in-out infinite;
+  pointer-events: none;
+}
+
+.topbar-nav-item:hover svg {
+  transform: translateY(-1px) scale(1.06);
+}
+
+.topbar-nav-item svg,
+.nav-item svg {
+  transition: transform 0.18s ease, color 0.14s ease;
+}
+
+/* ------------------------------------------------------------
+   Sidebar rail: a slow light running down the edge and a
+   breathing marker on the active destination.
+   ------------------------------------------------------------ */
+
+.sidebar::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: -1px;
+  width: 1px;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent 0%, var(--primary) 40%, var(--fx-accent-2) 58%, transparent 100%);
+  background-size: 100% 220%;
+  opacity: 0.45;
+  animation: rail-flow 11s linear infinite;
+}
+
+.nav-item.active::before {
+  animation: marker-breathe 3.2s ease-in-out infinite;
+}
+
+.nav-item:hover svg {
+  transform: translateX(1px) scale(1.06);
+}
+
+/* ------------------------------------------------------------
+   Page entry and card/panel micro-motion
+   ------------------------------------------------------------ */
+
+.page {
+  animation: page-in 0.4s cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+
+/* Most pages render a bare div as their route root rather than the
+   optional `.page` wrapper; animate that first node too. */
+.main > :first-child {
+  animation: page-in 0.4s cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+
+.dashboard-card,
+.card {
+  transition: transform 0.22s ease, box-shadow 0.22s ease, border-color 0.22s ease, background 0.22s ease;
+  animation: card-in 0.46s cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+
+.dashboard-cards .dashboard-card:nth-child(2),
+.cards .card:nth-child(2) {
+  animation-delay: 0.05s;
+}
+
+.dashboard-cards .dashboard-card:nth-child(3),
+.cards .card:nth-child(3) {
+  animation-delay: 0.1s;
+}
+
+.dashboard-cards .dashboard-card:nth-child(4),
+.cards .card:nth-child(4) {
+  animation-delay: 0.15s;
+}
+
+.dashboard-cards .dashboard-card:nth-child(5) {
+  animation-delay: 0.2s;
+}
+
+.dashboard-cards .dashboard-card:nth-child(6) {
+  animation-delay: 0.25s;
+}
+
+.dashboard-card:hover,
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--fx-card-shadow);
+}
+
+/* A narrow highlight crosses the top edge of a hovered metric card. */
+.dashboard-card::after,
+.card::after {
+  content: '';
+  display: block;
+  position: absolute;
+  top: 0;
+  left: -40%;
+  width: 40%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  opacity: 0;
+}
+
+.dashboard-card:hover::after,
+.card:hover::after {
+  opacity: 0.9;
+  animation: card-sweep 2.2s ease-in-out infinite;
+}
+
+.panel {
+  transition: border-color 0.22s ease, box-shadow 0.22s ease;
+}
+
+.panel::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg, transparent, var(--primary), transparent);
+  background-size: 200% 100%;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.panel:hover::after {
+  opacity: 0.7;
+  animation: seam-travel 4.2s linear infinite;
+}
+
+/* ------------------------------------------------------------
+   Controls: lift, press, icon turn and focus feedback
+   ------------------------------------------------------------ */
+
+button:not(.icon-button):not(.theme-toggle):not(.notification-bell):not(.lang-switch):not(.account-action):not(.row-actions-item):not(.lang-menu-item):not(.tab):not(.sortable):not(.scope-card):not(.segmented) {
+  transition: transform 0.15s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+}
+
+button:not(.icon-button):not(.theme-toggle):not(.notification-bell):not(.lang-switch):not(.account-action):not(.row-actions-item):not(.lang-menu-item):not(.tab):not(.sortable):not(.scope-card):not(.segmented):hover {
+  transform: translateY(-1px);
+}
+
+button:not(.icon-button):not(.theme-toggle):not(.notification-bell):not(.lang-switch):not(.account-action):not(.row-actions-item):not(.lang-menu-item):not(.tab):not(.sortable):not(.scope-card):not(.segmented):active {
+  transform: translateY(0) scale(0.985);
+}
+
+.theme-toggle svg {
+  transition: transform 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+  animation: theme-icon-in 0.32s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.theme-toggle:hover svg {
+  transform: rotate(18deg) scale(1.08);
+}
+
+.theme-toggle:active svg {
+  transform: rotate(-8deg) scale(0.94);
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  animation: focus-bloom 0.45s ease-out;
+}
+
+/* ------------------------------------------------------------
+   Data visualisation: bars grow, lines and live dots breathe
+   ------------------------------------------------------------ */
+
+.usage-chart-bar,
+[data-testid='observability-chart'] svg rect {
+  transform-box: fill-box;
+  transform-origin: center bottom;
+  animation: bar-rise 0.65s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+}
+
+.usage-chart-bar:hover,
+[data-testid='observability-chart'] svg rect:hover {
+  opacity: 1;
+}
+
+.chart-line,
+.usage-chart-line {
+  animation: line-breathe 5s ease-in-out infinite;
+}
+
+.chart-dot,
+.usage-chart-dot {
+  animation: dot-breathe 2.8s ease-in-out infinite;
+}
+
+.progress-fill,
+.quota-bar-fill,
+.metrics-ratio > span,
+.progress-bar.indeterminate {
+  background-image: linear-gradient(90deg, var(--primary), var(--fx-accent-2), var(--primary));
+  background-size: 200% 100%;
+  animation: bar-flow 3.2s linear infinite;
+}
+
+/* ------------------------------------------------------------
+   Login: the mark and the title get a slower, softer rhythm
+   ------------------------------------------------------------ */
+
+.login-brand {
+  animation: mark-float 5.5s ease-in-out infinite;
+}
+
+.login h1 {
+  background-image: linear-gradient(100deg, currentColor 20%, var(--primary) 50%, currentColor 80%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: title-shimmer 7s linear infinite;
+}
+
+.login .custom-login-form {
+  animation: form-rise 0.5s cubic-bezier(0.2, 0.75, 0.25, 1) backwards;
+}
+
+/* ------------------------------------------------------------
+   Keyframes
+   ------------------------------------------------------------ */
+
+@keyframes grid-drift {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 42px 42px, 42px 42px; }
+}
+
+@keyframes aurora-drift {
+  0% { transform: translate3d(-1%, 0, 0) scale(1); }
+  50% { transform: translate3d(1.5%, -1.2%, 0) scale(1.03); }
+  100% { transform: translate3d(-0.5%, 1.4%, 0) scale(1.01); }
+}
+
+@keyframes login-halo {
+  0% { transform: translate3d(-2%, -1%, 0) scale(0.98); opacity: 0.75; }
+  50% { transform: translate3d(2%, 1.5%, 0) scale(1.03); opacity: 1; }
+  100% { transform: translate3d(-1%, 2%, 0) scale(1.01); opacity: 0.85; }
+}
+
+@keyframes topbar-flow {
+  from { background-position: 200% 0; }
+  to { background-position: -40% 0; }
+}
+
+@keyframes rail-flow {
+  from { background-position: 0 180%; }
+  to { background-position: 0 -120%; }
+}
+
+@keyframes logo-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.055); }
+}
+
+@keyframes nav-pulse {
+  0%, 100% { opacity: 0.32; transform: scaleX(0.72); }
+  50% { opacity: 0.9; transform: scaleX(1); }
+}
+
+@keyframes marker-breathe {
+  0%, 100% { opacity: 0.5; box-shadow: none; }
+  50% { opacity: 1; box-shadow: 0 0 10px var(--primary); }
+}
+
+@keyframes page-in {
+  from { opacity: 0; translate: 0 8px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes card-in {
+  from { opacity: 0; translate: 0 7px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes card-sweep {
+  0% { left: -40%; }
+  70%, 100% { left: 100%; }
+}
+
+@keyframes seam-travel {
+  from { background-position: 200% 0; }
+  to { background-position: -40% 0; }
+}
+
+@keyframes focus-bloom {
+  0% { box-shadow: 0 0 0 0 var(--fx-focus); }
+  100% { box-shadow: 0 0 0 3px var(--fx-focus); }
+}
+
+@keyframes bar-rise {
+  from { transform: scaleY(0); opacity: 0.35; }
+  to { transform: scaleY(1); opacity: 1; }
+}
+
+@keyframes line-breathe {
+  0%, 100% { opacity: 0.88; }
+  50% { opacity: 1; }
+}
+
+@keyframes dot-breathe {
+  0%, 100% { opacity: 0.7; }
+  50% { opacity: 1; }
+}
+
+@keyframes bar-flow {
+  from { background-position: 0% 0; }
+  to { background-position: 200% 0; }
+}
+
+@keyframes mark-float {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-1.6deg); }
+}
+
+@keyframes title-shimmer {
+  from { background-position: 180% 0; }
+  to { background-position: -80% 0; }
+}
+
+@keyframes form-rise {
+  from { opacity: 0; translate: 0 10px; }
+  to { opacity: 1; translate: 0 0; }
+}
+
+@keyframes theme-icon-in {
+  from { opacity: 0.3; transform: rotate(-32deg) scale(0.75); }
+  to { opacity: 1; transform: rotate(0deg) scale(1); }
+}
+
+/* ------------------------------------------------------------
+   Reduced motion: keep the layout and colours, stop the loops.
+   ------------------------------------------------------------ */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  body::before,
+  body::after,
+  .login::before,
+  .login::after {
+    animation: none !important;
+  }
+}
+
+/* A 1px rounding sliver from the fixed ambient layer on narrow screens. */
+@media (max-width: 900px) {
+  html {
+    overflow-x: hidden;
+  }
+}

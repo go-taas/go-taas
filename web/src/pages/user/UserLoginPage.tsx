@@ -8,6 +8,7 @@ import { navigate } from '../../router';
 import { setSessionToken, type Realm } from '../../api';
 import { realmCustomLoginPath, realmHome } from '../../surface-routes';
 import { useI18n } from '../../i18n';
+import ThemeToggle from '../../components/ThemeToggle';
 import brandLogo from '../../assets/brand/logo.svg';
 import { useResendCooldown, windowSeconds } from '../../hooks/useResendCooldown';
 
@@ -181,11 +182,17 @@ export default function UserLoginPage() {
   };
 
   if (loading) {
-    return <div className="login" data-testid="login-loading">{t('login.loading')}</div>;
+    return (
+      <div className="login" data-testid="login-loading">
+        <ThemeToggle testId="login-theme-toggle" className="floating-theme-toggle" />
+        {t('login.loading')}
+      </div>
+    );
   }
 
   return (
     <div className="login" data-testid="sso-login-list">
+      <ThemeToggle testId="login-theme-toggle" className="floating-theme-toggle" />
       <div className="login-brand" aria-hidden="true">
         <img src={brandLogo} alt="" className="login-brand-logo" />
       </div>

@@ -415,6 +415,10 @@ export const zh: Record<string, string> = {
   'account.switchNoPermission': '您没有切换到管理端的权限。',
   'account.switchIncomplete': '切换未完成，请重试。',
 
+  // ---- Theme ----
+  'theme.switchToLight': '切换到浅色主题',
+  'theme.switchToDark': '切换到深色主题',
+
   // ---- Org switcher ----
   'org.none': '未加入组织',
   'org.project': '项目',

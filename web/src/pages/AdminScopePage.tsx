@@ -7,6 +7,7 @@ import { Buildings, Folder, SquaresFour } from '@phosphor-icons/react';
 import { navigate } from '../router';
 import { useI18n } from '../i18n';
 import { ErrorBanner } from '../components';
+import ThemeToggle from '../components/ThemeToggle';
 import { scopeHome, scopeTypeLabelKey, useAdminScope } from '../admin-scope';
 import { getSessionToken, type AdminScope } from '../api';
 import { useRealm } from '../surface';
@@ -48,6 +49,7 @@ export default function AdminScopePage() {
 
   return (
     <div className="page" data-testid="admin-scope-page">
+      <ThemeToggle testId="scope-theme-toggle" className="floating-theme-toggle" />
       <h1>{t('adminScope.title')}</h1>
       <p className="subtitle">{t('adminScope.subtitle')}</p>
       {error && <ErrorBanner message={error} />}

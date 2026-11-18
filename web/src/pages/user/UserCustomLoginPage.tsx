@@ -10,6 +10,7 @@ import { setSessionToken, type Realm } from '../../api';
 import { navigate } from '../../router';
 import { realmCustomLoginPath, realmHome } from '../../surface-routes';
 import { useI18n } from '../../i18n';
+import ThemeToggle from '../../components/ThemeToggle';
 import brandLogo from '../../assets/brand/logo.svg';
 
 interface PasswordLoginResponse {
@@ -74,6 +75,7 @@ export default function UserCustomLoginPage({ providerId }: { providerId: string
 
   return (
     <div className="login" data-testid="custom-login-form">
+      <ThemeToggle testId="custom-login-theme-toggle" className="floating-theme-toggle" />
       <div className="login-brand" aria-hidden="true">
         <img src={brandLogo} alt="" className="login-brand-logo" />
       </div>

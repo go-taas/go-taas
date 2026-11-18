@@ -13,6 +13,7 @@ import QuotaBar from '../pages/user/quotas/QuotaBar';
 import { useI18n } from '../i18n';
 import NotificationBell from '../components/NotificationBell';
 import LanguageSwitcher from '../components/LanguageSwitcher';
+import ThemeToggle from '../components/ThemeToggle';
 import brandLogo from '../assets/brand/logo.svg';
 import { Avatar, ErrorBoundary } from '../components';
 import { useAvatar, useProfile } from '../profile';
@@ -136,6 +137,7 @@ export function UserShell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="topbar-actions">
+          <ThemeToggle testId="user-theme-toggle" />
           <NotificationBell path="/api/v1/notifications" testId="user-bell-badge" />
           <LanguageSwitcher testId="user-lang-switcher" />
         </div>

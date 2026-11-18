@@ -11,6 +11,7 @@ import { setSessionToken, type Realm } from '../api';
 import { navigate } from '../router';
 import { realmHome } from '../surface-routes';
 import { useI18n } from '../i18n';
+import ThemeToggle from '../components/ThemeToggle';
 import brandLogo from '../assets/brand/logo.svg';
 import { useResendCooldown, windowSeconds } from '../hooks/useResendCooldown';
 
@@ -130,6 +131,7 @@ export default function RegisterPage() {
 
   return (
     <div className="login" data-testid="register-page">
+      <ThemeToggle testId="register-theme-toggle" className="floating-theme-toggle" />
       <div className="login-brand" aria-hidden="true">
         <img src={brandLogo} alt="" className="login-brand-logo" />
       </div>
