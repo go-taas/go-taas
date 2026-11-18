@@ -1,3 +1,10 @@
+# [1.120.0](https://github.com/go-taas/go-taas/compare/v1.119.0...v1.120.0) (2026-11-18)
+
+
+### Features
+
+* **web:** add light theme toggle and animated console ([2a09fda](https://github.com/go-taas/go-taas/commit/2a09fda1db6ac573f5748e26567b7a78e30be2b2))
+
 # [1.119.0](https://github.com/go-taas/go-taas/compare/v1.118.1...v1.119.0) (2026-11-18)
 
 
