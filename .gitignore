@@ -35,8 +35,8 @@ go.work.sum
 .env.*.local
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
 
 # OS artifacts
 .DS_Store
