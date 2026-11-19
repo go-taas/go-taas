@@ -248,7 +248,7 @@ func TestServiceDeleteUserRepositoryErrors(t *testing.T) {
 	blocker := "test:block_user_delete"
 	require.NoError(t, db.Callback().Delete().Before("gorm:delete").Register(blocker, func(tx *gorm.DB) {
 		if tx.Statement.Table == "users" {
-			tx.AddError(errors.New("injected delete failure"))
+			_ = tx.AddError(errors.New("injected delete failure"))
 		}
 	}))
 	t.Cleanup(func() { _ = db.Callback().Delete().Remove(blocker) })
