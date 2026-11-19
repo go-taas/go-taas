@@ -139,6 +139,38 @@ kubectl apply -f platform-gateway.yaml
 kubectl -n envoy-gateway-system get gateway envoy-gateway   # ADDRESS is the entry point
 ```
 
+The gateway must preserve the browser's source address: audit logs, request logs, and
+login events all record it, and a SNAT through a multi-node tunnel rewrites it to the
+node's pod-network address. Envoy Gateway defaults to `externalTrafficPolicy: Local`
+for this reason; confirm it with:
+
+```bash
+kubectl -n envoy-gateway-system get service -l gateway.envoyproxy.io/owning-gateway-name=envoy-gateway \
+  -o jsonpath='{.items[*].spec.externalTrafficPolicy}'
+```
+
+If it reports `Cluster`, patch the EnvoyProxy (so it survives reconciliation) and the
+generated Service:
+
+```yaml
+# envoy-proxy-config.yaml
+apiVersion: config.gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-gateway-proxy-config
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        externalTrafficPolicy: Local
+```
+
+With `Local`, traffic must land on a node running an Envoy pod; with a single Envoy
+replica also make sure the service is reachable from that node, or run enough Envoy
+replicas to cover every node that can receive the address.
+
 ### 3.2 KServe
 
 KServe ships a Helm chart. The platform needs the controller **and** the LLM

@@ -138,6 +138,32 @@ kubectl apply -f platform-gateway.yaml
 kubectl -n envoy-gateway-system get gateway envoy-gateway   # ADDRESS 即入口地址
 ```
 
+网关必须保留下浏览器的来源地址：审计日志、请求日志和登录事件都会记录它，而经过多节点隧道时发生的 SNAT 会把它改写成节点的 Pod 网段地址。Envoy Gateway 默认即为 `externalTrafficPolicy: Local`，可用下面的命令确认：
+
+```bash
+kubectl -n envoy-gateway-system get service -l gateway.envoyproxy.io/owning-gateway-name=envoy-gateway \
+  -o jsonpath='{.items[*].spec.externalTrafficPolicy}'
+```
+
+若输出为 `Cluster`，请同时修改 EnvoyProxy（以保证协调后不回退）和已生成的 Service：
+
+```yaml
+# envoy-proxy-config.yaml
+apiVersion: config.gateway.envoyproxy.io/v1alpha1
+kind: EnvoyProxy
+metadata:
+  name: envoy-gateway-proxy-config
+  namespace: envoy-gateway-system
+spec:
+  provider:
+    type: Kubernetes
+    kubernetes:
+      envoyService:
+        externalTrafficPolicy: Local
+```
+
+使用 `Local` 后，流量必须落到运行 Envoy Pod 的节点上；若只运行一个 Envoy 副本，请确保入口地址能从该节点访问，或者把 Envoy 副本扩到每个可能接流量的节点，否则会出现访问不通。
+
 ### 3.2 KServe
 
 平台需要 KServe 控制器，以及 LLM 推理运行时与其预设：
