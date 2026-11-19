@@ -271,8 +271,10 @@ func (e *optimizationEnv) seedOptCharges(t *testing.T, modelA string) {
 // test: all requests outside the peak window with large prompts.
 func (e *optimizationEnv) seedOptRequestLogs(t *testing.T, modelA string) {
 	t.Helper()
-	// 03:00 UTC on a fixed past day — outside 09:00-18:00.
-	offPeak := time.Date(2026, 10, 10, 3, 0, 0, 0, time.UTC)
+	// 03:00 UTC yesterday — outside the 09:00-18:00 peak window while
+	// staying inside the engine's rolling 30-day window.
+	now := time.Now().UTC()
+	offPeak := time.Date(now.Year(), now.Month(), now.Day(), 3, 0, 0, 0, time.UTC).AddDate(0, 0, -1)
 	for i := 0; i < 20; i++ {
 		require.NoError(t, e.db.Create(&metering.RequestLog{
 			ID: fmt.Sprintf("log-%d", i), RequestID: fmt.Sprintf("req-%d", i),
