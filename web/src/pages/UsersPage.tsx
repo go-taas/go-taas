@@ -107,6 +107,8 @@ export default function UsersPage() {
         setActionError(t('users.deleteProtected'));
       } else if (e instanceof ApiError && e.code === 10047) {
         setActionError(t('users.disableProtected'));
+      } else if (e instanceof ApiError && e.code === 10048) {
+        setActionError(t('users.revokeProtected'));
       } else {
         setActionError(e instanceof ApiError ? e.message : t('users.stateFailed'));
       }
@@ -230,10 +232,13 @@ export default function UsersPage() {
                           onClick: () => setOrgTarget(user),
                         },
                         // Only an active account can hold the role, so a
-                        // disabled one offers no grant. Revoking is always
-                        // offered: the server refuses self-revocation and the
-                        // last administrator, and the console must not hide
-                        // the action that explains why.
+                        // disabled one offers no grant. Revoking stays visible
+                        // for the other administrators: the server refuses
+                        // self-revocation and the last administrator, and the
+                        // console must not hide the action that explains why.
+                        // The bootstrap admin keeps the role as the installation's
+                        // recovery path, so its entry is disabled and explains
+                        // itself instead of failing after the confirmation.
                         ...(user.platformAdmin
                           ? [
                               {
@@ -241,6 +246,11 @@ export default function UsersPage() {
                                 label: t('users.revokePlatformAdmin'),
                                 group: 'role',
                                 danger: true,
+                                disabled: user.username === 'admin',
+                                title:
+                                  user.username === 'admin'
+                                    ? t('users.revokeProtected')
+                                    : undefined,
                                 onClick: () => openConfirm({ user, action: 'revokeAdmin' }),
                               },
                             ]

@@ -504,7 +504,7 @@ function EditProjectDialog({
 
   return (
     <Dialog
-      title={t('projects.editTitle', { projectId: project.projectId })}
+      title={t('projects.editTitle', { name: project.displayName || project.projectId })}
       onClose={onClose}
       testId="edit-project-dialog"
     >
@@ -590,7 +590,7 @@ function ConfirmStateDialog({
   return (
     <Dialog
       title={t(action === 'disable' ? 'projects.disableTitle' : 'projects.enableTitle', {
-        projectId: project.projectId,
+        name: project.displayName || project.projectId,
       })}
       onClose={onClose}
       testId="project-confirm-dialog"
@@ -733,7 +733,7 @@ function ProjectMembersDialog({
 
   return (
     <Dialog
-      title={t('projects.membersTitle', { projectId: project.projectId })}
+      title={t('projects.membersTitle', { name: project.displayName || project.projectId })}
       onClose={onClose}
       testId="project-members-dialog"
     >
@@ -921,7 +921,7 @@ function ProjectQuotaDialog({
 
   return (
     <Dialog
-      title={t('projects.quotaTitle', { projectId: project.projectId })}
+      title={t('projects.quotaTitle', { name: project.displayName || project.projectId })}
       onClose={onClose}
       testId="project-quota-dialog"
     >
