@@ -346,6 +346,27 @@ make helm-lint        # lint Chart（含 values schema）
 make helm-template    # 用默认 values 渲染全部模板
 ```
 
+### 离线 / 气隙安装
+
+平台可在完全无外网的环境中安装与运行。在联网的中转主机上构建或拉取镜像并推入自有仓库、打包
+Helm Chart 并准备权重；进入气隙环境后从本地 Chart 安装。运行期平台不会自行发起任何公网下载：
+模型权重既可以归档上传到共享权重目录，也可以由显式触发的任务从网络可达的模型中心获取。
+
+```bash
+# 联网中转主机：构建并推送平台镜像
+make docker-build docker-push IMAGE_REPO=hub.sudoinfotech.com/taas IMAGE_TAG=<version>
+helm package deploy/helm/go-taas          # 把 .tgz 带入气隙环境
+
+# 气隙环境：从打包好的 Chart 安装
+helm install taas ./go-taas-<version>.tgz \
+  --namespace taas --create-namespace -f taas-offline-values.yaml
+```
+
+完整流程 —— 仓库导出/推送与拉取密钥、第三方 Chart 与镜像的镜像方式、构建期语言镜像源、共享权重
+目录布局、两条模型导入路径、离线 values 文件与验证 —— 见
+**[离线 / 气隙部署](./site/docs/deployment/offline-air-gap.zh-cn.md)**
+（[English](./site/docs/deployment/offline-air-gap.md)）。
+
 ## 使用示例
 
 ### Python（OpenAI SDK）
@@ -388,10 +409,15 @@ curl https://<your-taas-host>/v1/chat/completions \
 | [Installation and deployment guide](./site/docs/getting-started/installation.md) | English |
 | [Architecture Design](./site/docs/design/architecture.md) | English |
 | [架构设计文档](./site/docs/design/architecture.zh-cn.md) | 中文 |
+| [离线 / 气隙部署](./site/docs/deployment/offline-air-gap.zh-cn.md) | 中文 |
+| [Offline and Air-Gapped Deployment](./site/docs/deployment/offline-air-gap.md) | English |
+| [致谢与开源项目](./site/docs/getting-started/acknowledgements.zh-cn.md) | 中文 |
+| [Acknowledgements and Open-Source Projects](./site/docs/getting-started/acknowledgements.md) | English |
 
 [`site/docs/`](./site/docs) 目录包含完整文档集，浏览器渲染的正是这些文件：
 
 - [`site/docs/getting-started/`](./site/docs/getting-started) —— 安装与部署指南（英文 + `zh-cn`）。
+- [`site/docs/deployment/`](./site/docs/deployment) —— 基础安装之外的部署文档，首篇为离线 / 气隙部署（英文 + `zh-cn`）。
 - [`site/docs/design/`](./site/docs/design) —— 每个特性点的产品/UI 设计文档（英文 + `zh-cn`）。
 - [`site/docs/architecture/`](./site/docs/architecture) —— 每个特性点的架构与详细设计文档（英文 + `zh-cn`）。
 - `site/docs/api/` —— 按服务生成的 OpenAPI/Swagger 规范（auth、model、infer、billing 等），由 `make pbgen` 生成，不入库。
@@ -432,10 +458,17 @@ curl https://<your-taas-host>/v1/chat/completions \
 
 Go TaaS 站在开源社区的肩膀上。感谢以下上游社区：
 
-- [Kubernetes](https://kubernetes.io) —— 整个平台运行的容器编排基座
-- [KServe](https://github.com/kserve/kserve) —— 平台所有推理服务所基于的运行时（LLMInferenceService、InferencePool）
-- [Volcano](https://github.com/volcano-sh/volcano) —— 面向异构集群的批量/gang 调度实践参考
-- [HAMi](https://github.com/Project-HAMi/HAMi) —— GPU 切分与共享（vGPU 切分）思路参考
+- **平台基础：** [Kubernetes](https://kubernetes.io) —— 整个平台运行的容器编排基座；[KServe](https://github.com/kserve/kserve) —— 推理服务所基于的服务运行时（`LLMInferenceService`、`InferencePool`）；[Envoy Gateway](https://gateway.envoyproxy.io) 与 [Gateway API](https://gateway-api.sigs.k8s.io) —— 控制台/数据面入口与 TLS；[Volcano](https://volcano.sh) —— gang 调度与优先级抢占；[HAMi](https://project-hami.io) —— 加速器层的 GPU 切分（vGPU 切分）；[cert-manager](https://cert-manager.io) —— 证书签发
+- **推理引擎：** [vLLM](https://github.com/vllm-project/vllm) 与 [SGLang](https://github.com/sgl-project/sglang) —— 平台部署与弹性伸缩的 OpenAI 兼容推理运行时
+- **模型与存储：** [Hugging Face Hub](https://huggingface.co/docs/hub) 与 [ModelScope](https://modelscope.cn) —— 模型权重与元数据；[JuiceFS](https://juicefs.com) —— 共享模型权重文件系统；[MinIO](https://min.io) —— JuiceFS 后端对象存储；[Harbor](https://goharbor.io) —— 镜像导入流程推送的目标内部镜像仓库
+- **状态与消息：** [PostgreSQL](https://www.postgresql.org) —— 系统记录库；[Redis](https://redis.io) —— 缓存、配额与限流；[RabbitMQ](https://www.rabbitmq.com) —— 控制面消息总线；[Keycloak](https://www.keycloak.org) —— 可选 OIDC 单点登录
+- **Go 依赖：** [gRPC](https://grpc.io) 与 [grpc-gateway](https://grpc-ecosystem.github.io/grpc-gateway) —— API 契约、HTTP/JSON 转码与 OpenAPI；[GORM](https://gorm.io) —— 持久化；[Prometheus client_golang](https://github.com/prometheus/client_golang)、[client-go](https://github.com/kubernetes/client-go) 与 [Zap](https://github.com/uber-go/zap)
+- **Web 控制台：** [React](https://react.dev)、[TypeScript](https://www.typescriptlang.org)、[Vite](https://vite.dev) 与 [Phosphor Icons](https://phosphoricons.com)
+- **可观测性：** [Prometheus](https://prometheus.io)、[OpenTelemetry](https://opentelemetry.io)，以及可选的 [Grafana](https://grafana.com)
+
+每个项目的官方主页、平台具体依赖它的部分以及依赖声明所在文件，见
+**[致谢与开源项目](./site/docs/getting-started/acknowledgements.zh-cn.md)**
+（[English](./site/docs/getting-started/acknowledgements.md)）。
 
 ## 许可证
 
