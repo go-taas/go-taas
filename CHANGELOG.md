@@ -1,3 +1,10 @@
+# [1.123.0](https://github.com/go-taas/go-taas/compare/v1.122.0...v1.123.0) (2026-11-19)
+
+
+### Features
+
+* **console:** paginate every platform admin list page ([f406aea](https://github.com/go-taas/go-taas/commit/f406aea17b4ec5f159da76d676e391097d0e21e4))
+
 # [1.122.0](https://github.com/go-taas/go-taas/compare/v1.121.0...v1.122.0) (2026-11-19)
 
 
