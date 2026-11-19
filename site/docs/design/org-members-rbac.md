@@ -363,16 +363,23 @@ resurrected from storage.
 `ListJoinableOrganizations` (`GET /api/v1/tenancy/joinable-organizations`) and
 `ListJoinableProjects` (`GET /api/v1/tenancy/joinable-projects`) return the
 targets a user may apply to join, excluding the dedicated platform
-organization and any target with a pending request. The end-user "Join
-requests" page renders these as dropdowns, so a user selects from a list
-instead of typing an id.
+organization, any target the user already belongs to, and any target with a
+pending request. The project list spans every organization the caller belongs
+to. The end-user "Join requests" page renders these as dropdowns, so a user
+selects from a list instead of typing an id.
 
 ### 9.4 Membership rules
 
-- One organization: a user belongs to at most one tenant organization. The
-  dedicated platform organization is a system artifact and does not count.
-- One project: a user belongs to at most one project.
-Both rules are enforced on request creation and again on approval.
+- Multi-organization: a user may belong to several tenant organizations.
+  Joining a new organization adds a membership and leaves the existing ones
+  untouched. The dedicated platform organization is a system artifact and does
+  not count as an affiliation.
+- Multi-project: a user may belong to several projects. Joining a new project
+  adds a membership and leaves the existing ones untouched.
+- Duplicate memberships are refused on request creation and again on approval
+  as well as on the direct roster add (10029 `MEMBER_EXISTS`).
+- Deleting an account removes its organization and project roster rows, so no
+  roster keeps pointing at a user that no longer exists.
 
 ### 9.5 Authorization
 
@@ -449,8 +456,9 @@ existing admin/owner (organization) and project-admin gates.
 - **User directory columns.** A row shows the organization and project the
   account belongs to, by display name, instead of a membership count; both
   render as `-` when the account has joined neither. The dedicated platform
-  organization is never reported as an affiliation, and an account belongs to
-  at most one organization and one project, so a single pair is enough.
+  organization is never reported as an affiliation. An account may belong to
+  several organizations and projects; the single pair shows the oldest
+  membership of each.
 
 ### 9.9 Projects in the organization console
 

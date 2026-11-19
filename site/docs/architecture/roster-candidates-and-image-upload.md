@@ -12,12 +12,12 @@
 
 ## 1. Roster pick-lists
 
-A person belongs to at most one organization and one project (requirement 5 of the RBAC increment), so "who may I add" is not a free-text question: it is exactly the accounts that have not joined yet.
+A person may belong to several organizations and several projects, so "who may I add" is not a free-text question: it is the accounts that have not joined **this particular** roster yet.
 
 | Roster | Candidate set |
 | --- | --- |
-| organization | active accounts that belong to **no** organization |
-| project | active accounts of the project's **owning organization** that belong to **no** project |
+| organization | active accounts that are not members of **this** organization |
+| project | active accounts of the project's **owning organization** that are not on **this** project's roster |
 
 Two RPCs return that set:
 
@@ -30,9 +30,10 @@ rpc ListProjectMemberCandidates(...) // GET /api/v1/admin/tenancy/projects/{id}/
 
 **AD1 — Tenancy filters, auth supplies.** The membership tables (`org_members`, `project_members`) live in the tenancy module; the account rows live in `auth`. The tenancy service therefore takes a `CandidateUserDirectory` seam (`ListActiveUsers`), implemented by `auth.ListActiveUsers`, and does the subtraction itself:
 
-- `AllOrgMemberUserIDs` — every user that belongs to any organization;
-- `OrgMemberUserIDs(orgID)` — one organization's roster;
-- `AllProjectMemberUserIDs` — every user that belongs to any project.
+- `OrgMemberUserIDs(orgID)` — the organization's roster, subtracted from the
+  organization candidate list;
+- `ProjectMemberUserIDs(projectID)` — the project's roster, subtracted from the
+  project candidate list.
 
 A nil seam yields an empty list rather than a wrong one, so a partially wired build cannot leak accounts.
 
@@ -79,24 +80,21 @@ Passing a form reference as a selector fails with `Tag "…" not found` — the 
 - **Invitations** names the organization by display name (`organizationLabel`, falling back to the console scope's name) instead of printing its UUID.
 - **Clusters** groups *discover / refresh / register* into one `.toolbar`, because the page header distributes its direct children with `space-between` — three sibling buttons were pushed to opposite edges.
 
-## 3b. Joining is a move
+## 3b. Joining adds a membership
 
-The roster pick-lists assume the invariant "an account belongs to at most one organization and one project". It used to be documentation only: `AddOrgMember` inserted the new row and left the old one, and the directory — which resolves the *oldest* membership — kept reporting the organization the user had just left. Moving someone between organizations therefore looked like it did nothing.
-
-`MoveUserToOrg` (`AddOrgMember`) and `MoveUserToProject` (`AddProjectMember`) make it true at write time, in one transaction with the insert that follows:
+A person may belong to several organizations and several projects. `AddOrgMember` and `AddProjectMember` therefore only insert the new roster row; they never delete the memberships the account already holds:
 
 | Rule | Effect |
 | --- | --- |
-| other organizations cleared | `DELETE FROM org_members WHERE user_id = ? AND organization_id <> ? AND organization_id <> 'platform'` |
-| projects of other organizations cleared | a member of org B cannot hold a project of org A, so those `project_members` rows go too |
-| the platform anchor is spared | `platform` is the tenancy anchor of the platform, not an affiliation a person joins |
-| the target organization's projects are kept | a project inside the organization being joined survives |
-| other projects cleared (project add) | an account belongs to at most one project |
-| a duplicate join is refused first | adding someone who is already in that organization answers 10029 *before* anything is deleted, so a request that returns an error has not moved the account in the meantime |
+| existing organizations kept | joining org B leaves the org A membership untouched |
+| existing projects kept | joining project B leaves the project A membership untouched, in either organization |
+| the platform anchor is never touched | `platform` is the tenancy anchor of the platform, not an affiliation a person joins |
+| a duplicate join is refused first | adding someone who is already in that organization or project answers 10029 without changing anything |
+| roles are never downgraded by a join | an existing owner stays owner; a second membership carries its own role |
 
-**An owner is not movable.** An organization must keep an owner, and the roster already refuses to remove one (10032). The move refuses the same way instead of finding a loophole through the platform directory: an owner must hand ownership over first.
+Deleting an account removes its `org_members` and `project_members` rows through the membership resolver, so a roster never keeps a reference to a user row that no longer exists.
 
-The console reflects this: the users page's dialog opens on the account's current organization, shows a warning naming the organization it will leave (and that its projects there go with it), and — when the organization does not change — sends a role update (`PATCH`) instead of a duplicate "add" that would answer 10029.
+The console reflects this: the users page's "Add to organization" dialog picks an organization and a role. When the account is already a member of the chosen organization the dialog sends a role update (`PATCH`) instead of a duplicate add.
 
 ## 4. Errors
 
