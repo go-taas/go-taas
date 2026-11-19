@@ -456,6 +456,9 @@ export const zh: Record<string, string> = {
   'login.captcha': '图片验证码',
   'login.refreshCaptcha': '换一张',
   'login.errorCaptcha': '图片验证码错误或已过期，请重试。',
+  'login.errorUserDisabled': '该账号已被禁用，请联系平台管理员。',
+  'login.errorInvalidEmail': '请输入合法的邮箱地址，例如 name@example.com。',
+  'login.errorSendFailed': '验证邮件发送失败，请检查邮箱地址后重试。',
 
   // ---- Register ----
   'register.title': '注册本地账号',
@@ -474,6 +477,10 @@ export const zh: Record<string, string> = {
   'register.errorBadCode': '验证码错误或已过期。',
   'register.errorCooldown': '请稍候再发送验证码。',
   'register.errorSendCode': '发送验证码失败。',
+  'register.errorSendFailed': '验证邮件发送失败，请检查邮箱地址后重试。',
+  'register.errorInvalidEmail': '请输入合法的邮箱地址，例如 name@example.com。',
+  'register.passwordRuleLength': '至少 8 个字符',
+  'register.passwordRuleClasses': '至少包含大写字母、小写字母、数字、特殊符号中的三类',
   'register.confirmPassword': '确认密码',
   'register.passwordMismatch': '两次输入的密码不一致。',
   'common.showPassword': '显示密码',
@@ -1223,6 +1230,10 @@ export const zh: Record<string, string> = {
   'users.revokeAdminTitle': '取消平台管理员',
   'users.revokeAdminBody': '确定取消 {username} 的平台管理员角色？该账号仍保留组织成员身份，并会立即被登出。你无法取消自己的角色，最后一名平台管理员也不能被取消。',
   'users.loadFailed': '加载用户失败',
+  'users.grantAdminSuccess': '已将 {username} 设为平台管理员。',
+  'users.revokeAdminSuccess': '已取消 {username} 的平台管理员角色。',
+  'users.deleteSuccess': '已删除用户 {username}。',
+  'users.deleteProtected': '平台管理员账号不能被删除。',
 
   // ---- Billing Payments ----
   'payments.title': '支付',
@@ -3156,6 +3167,8 @@ export const zh: Record<string, string> = {
   'profile.sendCode': '发送验证码',
   'profile.codeSent': '验证码已发送到新邮箱，5 分钟内有效。',
   'profile.codeFailed': '发送验证码失败。',
+  'profile.emailInvalid': '请输入合法的邮箱地址，例如 name@example.com。',
+  'profile.emailSendFailed': '验证邮件发送失败，请检查邮箱地址后重试。',
   'profile.emailHint': '修改邮箱需要先向新邮箱发送验证码。',
   'profile.emailCode': '验证码',
   'profile.emailCodePlaceholder': '6 位验证码',

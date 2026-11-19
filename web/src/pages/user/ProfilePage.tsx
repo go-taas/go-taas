@@ -10,6 +10,7 @@ import { useApi } from '../../surface';
 import { useOrg } from '../../org';
 import { useRealm } from '../../surface';
 import { useI18n } from '../../i18n';
+import { isValidEmail } from '../../email';
 import { profilePath, useProfile, type UserProfile } from '../../profile';
 import { useResendCooldown, windowSeconds } from '../../hooks/useResendCooldown';
 
@@ -114,6 +115,10 @@ export default function ProfilePage() {
   // sendEmailCode asks the platform to mail a code to the new address.
   const sendEmailCode = async () => {
     if (!email.trim() || codeSending || !cooldown.ready) return;
+    if (!isValidEmail(email)) {
+      setError(t('profile.emailInvalid'));
+      return;
+    }
     setCodeSending(true);
     setError('');
     setSaved(false);
@@ -125,7 +130,14 @@ export default function ProfilePage() {
       cooldown.start(windowSeconds(data));
       setCodeSent(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('profile.codeFailed'));
+      const code = (e as { code?: number }).code;
+      if (code === 10044) {
+        setError(t('profile.emailInvalid'));
+      } else if (code === 10045) {
+        setError(t('profile.emailSendFailed'));
+      } else {
+        setError(e instanceof Error ? e.message : t('profile.codeFailed'));
+      }
     } finally {
       setCodeSending(false);
     }

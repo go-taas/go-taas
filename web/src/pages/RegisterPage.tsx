@@ -14,6 +14,7 @@ import { useI18n } from '../i18n';
 import ThemeToggle from '../components/ThemeToggle';
 import brandLogo from '../assets/brand/logo.svg';
 import { useResendCooldown, windowSeconds } from '../hooks/useResendCooldown';
+import { isValidEmail } from '../email';
 
 interface RegisterResponse {
   userId?: string;
@@ -60,7 +61,7 @@ export default function RegisterPage() {
     username.trim().length > 0 &&
     passwordPolicyOK(password) &&
     passwordsMatch &&
-    email.trim().length > 0 &&
+    isValidEmail(email) &&
     emailCode.trim().length > 0 &&
     !submitting;
 
@@ -70,6 +71,10 @@ export default function RegisterPage() {
         return t('register.errorExists');
       case 10014:
         return t('register.errorPasswordPolicy');
+      case 10044:
+        return t('register.errorInvalidEmail');
+      case 10045:
+        return t('register.errorSendFailed');
       case 10002:
         return t('register.errorBadCode');
       default:
@@ -79,6 +84,10 @@ export default function RegisterPage() {
 
   const sendCode = async () => {
     if (!email.trim() || sendingCode || !cooldown.ready) return;
+    if (!isValidEmail(email)) {
+      setError(t('register.errorInvalidEmail'));
+      return;
+    }
     setSendingCode(true);
     setError('');
     try {
@@ -89,7 +98,15 @@ export default function RegisterPage() {
       cooldown.start(windowSeconds(data));
     } catch (e) {
       const code = (e as { code?: number }).code;
-      setError(code === 10037 ? t('register.errorCooldown') : t('register.errorSendCode'));
+      if (code === 10037) {
+        setError(t('register.errorCooldown'));
+      } else if (code === 10044) {
+        setError(t('register.errorInvalidEmail'));
+      } else if (code === 10045) {
+        setError(t('register.errorSendFailed'));
+      } else {
+        setError(t('register.errorSendCode'));
+      }
     } finally {
       setSendingCode(false);
     }
@@ -155,6 +172,7 @@ export default function RegisterPage() {
             <input
               id="register-email"
               data-testid="register-email"
+              type="email"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -177,6 +195,11 @@ export default function RegisterPage() {
                   : t('register.sendCode')}
             </button>
           </div>
+          {email.trim().length > 0 && !isValidEmail(email) && (
+            <div className="field-error" data-testid="register-email-invalid">
+              {t('register.errorInvalidEmail')}
+            </div>
+          )}
         </div>
         <div className="field">
           <label htmlFor="register-code">{t('register.code')}</label>
@@ -210,6 +233,14 @@ export default function RegisterPage() {
               {showPassword ? <EyeSlash size={18} /> : <Eye size={18} />}
             </button>
           </div>
+          <ul className="password-rules" data-testid="register-password-rules">
+            <li className={password.length >= 8 ? 'ok' : ''}>
+              {t('register.passwordRuleLength')}
+            </li>
+            <li className={password.length > 0 && passwordPolicyOK(password) ? 'ok' : ''}>
+              {t('register.passwordRuleClasses')}
+            </li>
+          </ul>
         </div>
         <div className="field">
           <label htmlFor="register-confirm-password">{t('register.confirmPassword')}</label>

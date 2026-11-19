@@ -459,6 +459,9 @@ export const en: Record<string, string> = {
   'login.captcha': 'Image code',
   'login.refreshCaptcha': 'Refresh',
   'login.errorCaptcha': 'The image code is incorrect or expired. Try again.',
+  'login.errorUserDisabled': 'This account has been disabled. Contact your platform administrator.',
+  'login.errorInvalidEmail': 'Enter a valid email address, for example name@example.com.',
+  'login.errorSendFailed': 'The verification email could not be sent. Check the address and try again.',
 
   // ---- Register ----
   'register.title': 'Register a local account',
@@ -477,6 +480,10 @@ export const en: Record<string, string> = {
   'register.errorBadCode': 'Invalid or expired verification code.',
   'register.errorCooldown': 'Please wait before requesting another code.',
   'register.errorSendCode': 'Failed to send the code.',
+  'register.errorSendFailed': 'The verification email could not be sent. Check the address and try again.',
+  'register.errorInvalidEmail': 'Enter a valid email address, for example name@example.com.',
+  'register.passwordRuleLength': 'At least 8 characters',
+  'register.passwordRuleClasses': 'At least three of: uppercase, lowercase, digit, special character',
   'register.confirmPassword': 'Confirm password',
   'register.passwordMismatch': 'Passwords do not match.',
   'common.showPassword': 'Show password',
@@ -1230,6 +1237,10 @@ export const en: Record<string, string> = {
   'users.revokeAdminTitle': 'Revoke platform administrator',
   'users.revokeAdminBody': 'Remove the platform administrator role from {username}? The account keeps its organization memberships and is signed out at once. You cannot revoke your own role, and the last administrator cannot be revoked at all.',
   'users.loadFailed': 'failed to load users',
+  'users.grantAdminSuccess': '{username} is now a platform administrator.',
+  'users.revokeAdminSuccess': 'The platform administrator role was removed from {username}.',
+  'users.deleteSuccess': 'User {username} was deleted.',
+  'users.deleteProtected': 'The platform administrator account cannot be deleted.',
 
   // ---- Billing Payments ----
   'payments.title': 'Payments',
@@ -3191,6 +3202,8 @@ export const en: Record<string, string> = {
   'profile.sendCode': 'Send code',
   'profile.codeSent': 'A verification code was sent to the new address. It expires in 5 minutes.',
   'profile.codeFailed': 'Failed to send the verification code.',
+  'profile.emailInvalid': 'Enter a valid email address, for example name@example.com.',
+  'profile.emailSendFailed': 'The verification email could not be sent. Check the address and try again.',
   'profile.emailHint':
     'Changing the address requires a verification code sent to the new address.',
   'profile.emailCode': 'Verification code',

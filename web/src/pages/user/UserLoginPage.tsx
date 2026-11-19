@@ -11,6 +11,7 @@ import { useI18n } from '../../i18n';
 import ThemeToggle from '../../components/ThemeToggle';
 import brandLogo from '../../assets/brand/logo.svg';
 import { useResendCooldown, windowSeconds } from '../../hooks/useResendCooldown';
+import { isValidEmail } from '../../email';
 
 interface PublicProvider {
   providerId: string;
@@ -120,6 +121,10 @@ export default function UserLoginPage() {
 
   const sendCode = async () => {
     if (!email.trim() || sendingCode || !cooldown.ready) return;
+    if (!isValidEmail(email)) {
+      setError(t('login.errorInvalidEmail'));
+      return;
+    }
     setSendingCode(true);
     setError('');
     try {
@@ -130,7 +135,15 @@ export default function UserLoginPage() {
       cooldown.start(windowSeconds(data));
     } catch (e) {
       const code = (e as { code?: number }).code;
-      setError(code === 10037 ? t('login.errorCooldown') : t('login.errorSendCode'));
+      if (code === 10037) {
+        setError(t('login.errorCooldown'));
+      } else if (code === 10044) {
+        setError(t('login.errorInvalidEmail'));
+      } else if (code === 10045) {
+        setError(t('login.errorSendFailed'));
+      } else {
+        setError(t('login.errorSendCode'));
+      }
     } finally {
       setSendingCode(false);
     }
@@ -143,7 +156,7 @@ export default function UserLoginPage() {
   const canLogin =
     !!username.trim() &&
     !!password &&
-    (requiresEmailCode ? !!email.trim() && !!emailCode.trim() : true) &&
+    (requiresEmailCode ? isValidEmail(email) && !!emailCode.trim() : true) &&
     (!captchaImage || !!captchaCode.trim());
 
   const localLogin = async () => {
@@ -170,6 +183,12 @@ export default function UserLoginPage() {
       const code = (e as { code?: number }).code;
       if (code === 10043) {
         setError(t('login.errorCaptcha'));
+      } else if (code === 10040) {
+        setError(t('login.errorUserDisabled'));
+      } else if (code === 10044) {
+        setError(t('login.errorInvalidEmail'));
+      } else if (code === 10045) {
+        setError(t('login.errorSendFailed'));
       } else {
         setError(code === 10002 ? t('login.errorBadCredentials') : t('login.errorIncomplete'));
       }
@@ -217,6 +236,7 @@ export default function UserLoginPage() {
             <input
               id="login-email"
               data-testid="login-email"
+              type="email"
               value={email}
               onChange={(e) => {
                 setEmail(e.target.value);
@@ -239,6 +259,11 @@ export default function UserLoginPage() {
                   : t('login.sendCode')}
             </button>
           </div>
+          {email.trim().length > 0 && !isValidEmail(email) && (
+            <div className="field-error" data-testid="login-email-invalid">
+              {t('login.errorInvalidEmail')}
+            </div>
+          )}
         </div>
         )}
         {requiresEmailCode && (
