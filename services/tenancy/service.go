@@ -340,10 +340,13 @@ func (s *Service) CreateOrganization(ctx context.Context, req *tenancyv1.CreateO
 	if err != nil {
 		return nil, err
 	}
-	// Feature #15: record the successful creation best-effort.
+	// Feature #15: record the successful creation best-effort. The actor
+	// is the authenticated caller, never a placeholder label: the audit
+	// console resolves that id back to a display name.
+	actor, _ := s.sessionUserID(ctx)
 	s.recordAudit(ctx, &audit.AuditEvent{
 		OrganizationID: summary.GetOrganizationId(),
-		ActorUserID:    "admin",
+		ActorUserID:    actor,
 		ActorType:      "user",
 		Action:         "organization.create",
 		ResourceType:   "organization",
@@ -432,10 +435,12 @@ func (s *Service) UpdateOrganization(ctx context.Context, req *tenancyv1.UpdateO
 	if err != nil {
 		return nil, err
 	}
-	// Feature #15: record the successful update best-effort.
+	// Feature #15: record the successful update best-effort with the
+	// authenticated caller as the actor.
+	actor, _ := s.sessionUserID(ctx)
 	s.recordAudit(ctx, &audit.AuditEvent{
 		OrganizationID: summary.GetOrganizationId(),
-		ActorUserID:    "admin",
+		ActorUserID:    actor,
 		ActorType:      "user",
 		Action:         "organization.update",
 		ResourceType:   "organization",

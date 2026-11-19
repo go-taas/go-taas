@@ -16,6 +16,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/config"
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/services/audit"
 )
 
 // newTestService wires a Service against an in-memory SQLite database.
@@ -70,6 +71,40 @@ func TestServiceCreateOrganization(t *testing.T) {
 		DisplayName:    "",
 	})
 	assert.EqualValues(t, apierrors.CodeTenancyInvalid, apierrors.CodeOf(err))
+}
+
+// recordingAuditRecorder captures the events a mutation records, so the
+// actor identity on an organization change is asserted against the caller
+// rather than a hard-coded label.
+type recordingAuditRecorder struct {
+	events []*audit.AuditEvent
+}
+
+func (r *recordingAuditRecorder) Record(_ context.Context, ev *audit.AuditEvent) {
+	r.events = append(r.events, ev)
+}
+
+func TestOrganizationAuditRecordsTheCaller(t *testing.T) {
+	svc := newTestService(t)
+	svc.SetSessionResolver(&fakeSessionResolver{userID: "user-42", email: "ops@example.com"})
+	recorder := &recordingAuditRecorder{}
+	svc.SetAuditRecorder(recorder)
+	ctx := context.Background()
+
+	_, err := svc.CreateOrganization(ctx, &tenancyv1.CreateOrganizationRequest{
+		OrganizationId: "org-audit",
+		DisplayName:    "Audit Org",
+	})
+	require.NoError(t, err)
+	_, err = svc.UpdateOrganization(ctx, &tenancyv1.UpdateOrganizationRequest{
+		OrganizationId: "org-audit",
+		DisplayName:    "Audit Org Renamed",
+	})
+	require.NoError(t, err)
+
+	require.Len(t, recorder.events, 2)
+	assert.Equal(t, "user-42", recorder.events[0].ActorUserID, "organization.create records the caller")
+	assert.Equal(t, "user-42", recorder.events[1].ActorUserID, "organization.update records the caller")
 }
 
 func TestServiceListAndGetOrganization(t *testing.T) {
