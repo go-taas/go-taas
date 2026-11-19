@@ -30,6 +30,10 @@ export default function UsersPage() {
   const [state, setState] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  // actionError belongs inside the confirm dialog: a refused revoke must be
+  // readable while the dialog is open, not hidden behind its backdrop.
+  const [actionError, setActionError] = useState('');
   const [confirmTarget, setConfirmTarget] = useState<{
     user: UserSummary;
     action: 'disable' | 'enable' | 'delete' | 'grantAdmin' | 'revokeAdmin';
@@ -63,9 +67,21 @@ export default function UsersPage() {
     void load();
   }, [load]);
 
+  const openConfirm = (target: NonNullable<typeof confirmTarget>) => {
+    setActionError('');
+    setNotice('');
+    setConfirmTarget(target);
+  };
+
+  const closeConfirm = () => {
+    setConfirmTarget(null);
+    setActionError('');
+  };
+
   const setStateAction = async () => {
     if (!confirmTarget) return;
-    setError('');
+    setActionError('');
+    setNotice('');
     try {
       const { user, action } = confirmTarget;
       if (action === 'delete') {
@@ -80,10 +96,18 @@ export default function UsersPage() {
           {},
         );
       }
-      setConfirmTarget(null);
+      const name = confirmTarget.user.username || confirmTarget.user.userId;
+      if (action === 'grantAdmin') setNotice(t('users.grantAdminSuccess', { username: name }));
+      else if (action === 'revokeAdmin') setNotice(t('users.revokeAdminSuccess', { username: name }));
+      else if (action === 'delete') setNotice(t('users.deleteSuccess', { username: name }));
       await load();
+      setConfirmTarget(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : t('users.stateFailed'));
+      if (e instanceof ApiError && e.code === 10046) {
+        setActionError(t('users.deleteProtected'));
+      } else {
+        setActionError(e instanceof ApiError ? e.message : t('users.stateFailed'));
+      }
     }
   };
 
@@ -97,6 +121,11 @@ export default function UsersPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      {notice && (
+        <div className="success-banner" data-testid="users-toast">
+          {notice}
+        </div>
+      )}
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <select
@@ -151,11 +180,19 @@ export default function UsersPage() {
                   </td>
                   <td data-testid={`user-role-cell-${user.userId}`}>
                     {user.platformAdmin ? (
-                      <span className="badge" data-testid={`user-platform-admin-badge-${user.userId}`}>
+                      <span
+                        className="badge role-admin"
+                        data-testid={`user-platform-admin-badge-${user.userId}`}
+                      >
                         {t('users.platformAdmin')}
                       </span>
                     ) : (
-                      <span className="muted small">{t('users.roleUser')}</span>
+                      <span
+                        className="badge role-user"
+                        data-testid={`user-standard-badge-${user.userId}`}
+                      >
+                        {t('users.roleUser')}
+                      </span>
                     )}
                   </td>
                   {/* A platform administrator places people into an
@@ -202,7 +239,7 @@ export default function UsersPage() {
                                 label: t('users.revokePlatformAdmin'),
                                 group: 'role',
                                 danger: true,
-                                onClick: () => setConfirmTarget({ user, action: 'revokeAdmin' }),
+                                onClick: () => openConfirm({ user, action: 'revokeAdmin' }),
                               },
                             ]
                           : user.state === 'active'
@@ -211,7 +248,7 @@ export default function UsersPage() {
                                   key: `user-grant-admin-${user.userId}`,
                                   label: t('users.grantPlatformAdmin'),
                                   group: 'role',
-                                  onClick: () => setConfirmTarget({ user, action: 'grantAdmin' }),
+                                  onClick: () => openConfirm({ user, action: 'grantAdmin' }),
                                 },
                               ]
                             : []),
@@ -221,21 +258,29 @@ export default function UsersPage() {
                               label: t('common.disable'),
                               group: 'lifecycle',
                               danger: true,
-                              onClick: () => setConfirmTarget({ user, action: 'disable' }),
+                              onClick: () => openConfirm({ user, action: 'disable' }),
                             }
                           : {
                               key: `user-enable-${user.userId}`,
                               label: t('common.enable'),
                               group: 'lifecycle',
-                              onClick: () => setConfirmTarget({ user, action: 'enable' }),
+                              onClick: () => openConfirm({ user, action: 'enable' }),
                             },
-                        {
-                          key: `user-delete-${user.userId}`,
-                          label: t('common.delete'),
-                          group: 'lifecycle',
-                          danger: true,
-                          onClick: () => setConfirmTarget({ user, action: 'delete' }),
-                        },
+                        // The admin account and every platform administrator
+                        // are administrative identities the server refuses to
+                        // delete; the row must not offer an action that can
+                        // only fail.
+                        ...(user.platformAdmin || user.username === 'admin'
+                          ? []
+                          : [
+                              {
+                                key: `user-delete-${user.userId}`,
+                                label: t('common.delete'),
+                                group: 'lifecycle',
+                                danger: true,
+                                onClick: () => openConfirm({ user, action: 'delete' }),
+                              },
+                            ]),
                       ]}
                     />
                   </td>
@@ -275,7 +320,7 @@ export default function UsersPage() {
                 ? 'users.revokeAdminTitle'
                 : 'users.stateTitle',
           )}
-          onClose={() => setConfirmTarget(null)}
+          onClose={closeConfirm}
           testId="user-state-dialog"
         >
           {confirmTarget.action === 'grantAdmin' ? (
@@ -300,11 +345,16 @@ export default function UsersPage() {
               }}
             />
           )}
+          {actionError && (
+            <div data-testid="user-state-error">
+              <ErrorBanner message={actionError} />
+            </div>
+          )}
           <div className="dialog-actions">
             <button
               className="secondary"
               data-testid="user-state-cancel"
-              onClick={() => setConfirmTarget(null)}
+              onClick={closeConfirm}
             >
               {t('common.cancel')}
             </button>

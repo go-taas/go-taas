@@ -1340,6 +1340,16 @@ table.table tbody tr:hover {
   letter-spacing: 0.2px;
 }
 
+.badge.role-admin {
+  background: var(--badge-primary-bg);
+  color: var(--primary-strong);
+}
+
+.badge.role-user {
+  background: var(--badge-neutral-bg);
+  color: var(--muted-strong);
+}
+
 .badge.pending {
   background: var(--badge-warn-bg);
   color: var(--warn);
