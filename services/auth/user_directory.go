@@ -118,6 +118,21 @@ func (s *Service) DeleteUser(ctx context.Context, req *authv1.DeleteUserRequest)
 	if err != nil {
 		return nil, err
 	}
+	target, err := repo.FindUser(ctx, req.GetUserId())
+	if isRecordNotFound(err) {
+		return nil, apierrors.New(apierrors.CodeUserNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	// The bootstrap admin is the installation's recovery path and every
+	// platform administrator is an administrative identity: deleting one
+	// can strand the platform or silently remove a privileged account.
+	// The guard is on the server, not only in the console, because the
+	// API is reachable without the console.
+	if target.Username == seedAdminUsername || target.PlatformAdmin {
+		return nil, apierrors.New(apierrors.CodeUserProtected)
+	}
 	if err := repo.DeleteUser(ctx, req.GetUserId()); err != nil {
 		if isRecordNotFound(err) {
 			return nil, apierrors.New(apierrors.CodeUserNotFound)

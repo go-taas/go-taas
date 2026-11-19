@@ -199,6 +199,7 @@ func TestSeedComposeProviderAndAdminDisabled(t *testing.T) {
 	assert.EqualValues(t, 1, userCount, "the local admin is still seeded")
 	assert.EqualValues(t, 0, bindingCount, "no binding when seed disabled")
 }
+
 // TestSeedLocalAdminPassword verifies the seeded admin gets a hashed
 // local password from config, and can log in with it.
 func TestSeedLocalAdminPassword(t *testing.T) {
@@ -267,4 +268,28 @@ func TestRetireSeedOrganizations(t *testing.T) {
 	var remaining []string
 	require.NoError(t, db.Model(&tenancy.Organization{}).Pluck("id", &remaining).Error)
 	assert.ElementsMatch(t, []string{"acme"}, remaining)
+}
+
+// TestSeedRestoresDeletedAdmin verifies the recovery path the platform relies
+// on: a bootstrap admin removed by mistake is recreated, platform-flagged, and
+// signed in with the configured initial password on the next migrate/start.
+func TestSeedRestoresDeletedAdmin(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+	require.NoError(t, db.Where("username = ?", seedAdminUsername).Delete(&User{}).Error)
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+	var admin User
+	require.NoError(t, db.First(&admin, "username = ?", seedAdminUsername).Error)
+	assert.True(t, admin.PlatformAdmin)
+	assert.True(t, VerifyPassword(seedAdminLocalPassword, admin.PasswordHash))
+
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{
+		Username: seedAdminUsername, Password: seedAdminLocalPassword,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, RealmAdmin, resp.Realm)
 }

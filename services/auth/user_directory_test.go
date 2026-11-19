@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -9,6 +10,8 @@ import (
 
 	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
+
+	"gorm.io/gorm"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/services/tenancy"
@@ -206,4 +209,54 @@ func TestResolveUserLabels(t *testing.T) {
 	empty, err := svc.ResolveUserLabels(ctx, nil)
 	require.NoError(t, err)
 	assert.Empty(t, empty)
+}
+
+// The bootstrap admin and every platform administrator are protected: the
+// API refuses the delete and leaves the row in place. A plain user stays
+// deletable, so the guard is narrow.
+func TestServiceDeleteUserProtectsAdministrators(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	require.NoError(t, db.Create(&User{ID: "admin-1", Username: seedAdminUsername, Email: "admin@x.com"}).Error)
+	require.NoError(t, db.Create(&User{ID: "ops-1", Username: "ops", Email: "ops@x.com", PlatformAdmin: true}).Error)
+	require.NoError(t, db.Create(&User{ID: "user-1", Username: "alice", Email: "a@x.com"}).Error)
+
+	for _, id := range []string{"admin-1", "ops-1"} {
+		_, err := svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: id})
+		assert.EqualValues(t, apierrors.CodeUserProtected, apierrors.CodeOf(err), "id %s", id)
+		var count int64
+		require.NoError(t, db.Model(&User{}).Where("id = ?", id).Count(&count).Error)
+		assert.EqualValues(t, 1, count, "protected user %s must remain", id)
+	}
+
+	_, err := svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "user-1"})
+	require.NoError(t, err)
+}
+
+// A repository that cannot be reached surfaces as an error, and a failed
+// delete is returned rather than reported as success.
+func TestServiceDeleteUserRepositoryErrors(t *testing.T) {
+	ctx := context.Background()
+
+	// No database component wired.
+	_, err := (&Service{}).DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "user-1"})
+	require.Error(t, err)
+
+	svc, db := newSSOService(t)
+	require.NoError(t, db.Create(&User{ID: "user-1", Username: "alice", Email: "a@x.com"}).Error)
+	blocker := "test:block_user_delete"
+	require.NoError(t, db.Callback().Delete().Before("gorm:delete").Register(blocker, func(tx *gorm.DB) {
+		if tx.Statement.Table == "users" {
+			tx.AddError(errors.New("injected delete failure"))
+		}
+	}))
+	t.Cleanup(func() { _ = db.Callback().Delete().Remove(blocker) })
+
+	_, err = svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "user-1"})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "injected delete failure")
+	var count int64
+	require.NoError(t, db.Model(&User{}).Where("id = ?", "user-1").Count(&count).Error)
+	assert.EqualValues(t, 1, count)
 }
