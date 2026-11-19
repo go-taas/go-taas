@@ -34,7 +34,12 @@ fi
 MINIO_BUCKET="${JUICE_FS_BUCKET##*/}"
 MINIO_ACCESS_KEY="${JUICE_FS_ACCESS_KEY}"
 MINIO_SECRET_KEY="${JUICE_FS_SECRET_KEY}"
-IN_CLUSTER_META_URL="${JUICE_FS_META_URL//10.86.56.47:30379/yunzhi-redis-headless.yunzhi.svc.cluster.local:6379}"
+# Derive the in-cluster service address from the configured URL (see
+# cluster-up.sh) so no environment-specific host is baked into the script.
+META_HOST="${JUICE_FS_META_URL#*://}"
+META_HOST="${META_HOST#*@}"
+META_HOST="${META_HOST%%/*}"
+IN_CLUSTER_META_URL="${JUICE_FS_META_URL//${META_HOST}/yunzhi-redis-headless.yunzhi.svc.cluster.local:6379}"
 
 echo ">> [cluster-down] removing accelerator node labels"
 # Remove the current prefix and the two legacy prefixes (taas.go-taas.github.io
@@ -123,7 +128,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: mc
-          image: hub.sudoinfotech.com/library/mc:RELEASE.2025-08-13T08-35-41Z
+          image: hub.example.com/library/mc:RELEASE.2025-08-13T08-35-41Z
           command:
             - /bin/sh
             - -c

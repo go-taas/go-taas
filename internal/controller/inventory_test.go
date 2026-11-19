@@ -207,7 +207,7 @@ func TestInventoryCollectorSkipsOnListError(t *testing.T) {
 
 // A node that advertises the NVIDIA device-plugin signals but has no
 // go-taas.com/accelerator label is classified as nvidia, not unspecified
-// (the sd4090 scenario).
+// (the node01 scenario).
 func TestNodeToInventoryInfersVendorFromDevicePlugin(t *testing.T) {
 	cases := []struct {
 		name   string
@@ -266,7 +266,7 @@ func TestNodeToInventoryInfersVendorFromDevicePlugin(t *testing.T) {
 	}
 }
 
-// The sd4090 node's allocatable nvidia.com/gpu counts as a gpu card type.
+// The node01 node's allocatable nvidia.com/gpu counts as a gpu card type.
 func TestCardTypeFromResourceVendors(t *testing.T) {
 	for _, name := range []string{
 		"nvidia.com/gpu", "iluvatar.ai/gpu", "iluvatar.com/gpu",
@@ -287,7 +287,7 @@ func TestCardTypeFromResourceVendors(t *testing.T) {
 func TestNodeToInventoryCardModel(t *testing.T) {
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name: "sd4090",
+			Name: "node01",
 			UID:  "uid-4090",
 			Labels: map[string]string{
 				"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
@@ -424,7 +424,7 @@ func TestAllocatedByNodeSumming(t *testing.T) {
 func TestNodeToInventoryReportsRealAllocation(t *testing.T) {
 	node := &corev1.Node{
 		ObjectMeta: metav1.ObjectMeta{
-			Name:   "sd4090",
+			Name:   "node01",
 			Labels: map[string]string{labelAcceleratorVendor: "nvidia", "nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090"},
 		},
 		Status: corev1.NodeStatus{

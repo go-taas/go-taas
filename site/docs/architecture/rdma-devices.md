@@ -172,7 +172,7 @@ by the NVIDIA runtime (CDI on this fleet). Its device set includes
 the default. The nodes are created inside the container's own `/dev` tmpfs —
 there is no `/dev/infiniband` mount to see in `mountinfo`.
 
-**Measured on the `sd4090` node (six NICs, two GPUs).**
+**Measured on the `node01` node (six NICs, two GPUs).**
 
 | Pod requests | `/dev/infiniband` | `ibv_get_device_list` |
 | --- | --- | --- |
@@ -212,16 +212,16 @@ guaranteed and the request is auditable; the visible set is the node's".
 
 A NIC port is not a fabric by itself. A **rail is one L3 network**, and a
 multi-port card usually puts each port on a different one — so the two ports of
-the granted card on the `sd4090` node reach two subnets that cannot see each
+the granted card on the `node01` node reach two subnets that cannot see each
 other. The DRA driver publishes the address it gave each port, which is what
 makes the rails visible:
 
 | Port | netdev in the pod | pod address | rail |
 | --- | --- | --- | --- |
-| `0000:0f:00.0` | `ens1f0np0` | `172.16.30.12/24` | 30 |
-| `0000:0f:00.1` | `ens1f1np1` | `172.16.40.12/24` | 40 |
-| `0000:87:00.0` | `ens3f0np0` | `172.16.50.12/24` | 50 |
-| `0000:87:00.1` | `ens3f1np1` | `172.16.60.12/24` | 60 |
+| `0000:0f:00.0` | `ens1f0np0` | `198.51.100.12/24` | 30 |
+| `0000:0f:00.1` | `ens1f1np1` | `203.0.113.12/24` | 40 |
+| `0000:87:00.0` | `ens3f0np0` | `192.0.2.12/24` | 50 |
+| `0000:87:00.1` | `ens3f1np1` | `198.18.0.12/24` | 60 |
 
 That host offers four rails with exactly one port each. Its two remaining
 RDMA-capable ports (`0000:0a:00.0`, `0000:0a:00.1`, ConnectX-6 Lx, 1500 MTU) are
@@ -229,7 +229,7 @@ RDMA-capable ports (`0000:0a:00.0`, `0000:0a:00.1`, ConnectX-6 Lx, 1500 MTU) are
 classes — which is also why a class selector must never assume the granted port
 is the *first* RDMA device: the index moves with the link state.
 
-Nothing routes between `172.16.30.0/24` and `172.16.40.0/24` from inside a pod
+Nothing routes between `198.51.100.0/24` and `203.0.113.0/24` from inside a pod
 (a connect attempt times out on the default `eth0` route). When a `multinode`
 replica's pods are granted ports from *different* rails, vLLM still starts and
 initialises NCCL, and then blocks forever in its first collective: the pods are

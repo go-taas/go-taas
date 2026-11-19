@@ -598,7 +598,7 @@ type ImageUploadConfig struct {
 // used by the image import flow.
 type HarborConfig struct {
 	// URL is the internal Harbor registry host (e.g.
-	// hub.sudoinfotech.com). Empty disables the image import flow.
+	// hub.example.com). Empty disables the image import flow.
 	URL string `mapstructure:"url"`
 	// Username is the Harbor account used to push imported images.
 	Username string `mapstructure:"username"`

@@ -215,7 +215,7 @@ export default function GatewaySettingsPage() {
                 id="settings-gateway-internal"
                 data-testid="settings-gateway-internal"
                 value={internalUrl}
-                placeholder="http://10.43.253.124"
+                placeholder="http://10.0.0.10"
                 onChange={(e) => setInternalUrl(e.target.value)}
               />
               <div className="hint">{t('settings.internalHint')}</div>

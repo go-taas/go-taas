@@ -21,7 +21,7 @@ spec:
       restartPolicy: Never
       containers:
         - name: mc
-          image: hub.sudoinfotech.com/library/mc:RELEASE.2025-08-13T08-35-41Z
+          image: hub.example.com/library/mc:RELEASE.2025-08-13T08-35-41Z
           command:
             - /bin/sh
             - -c

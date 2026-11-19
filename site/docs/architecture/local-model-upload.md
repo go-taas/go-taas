@@ -110,4 +110,4 @@ All upload failures answer the unified envelope. Business codes keep their meani
 8. Deleting the uploaded model removes its weight directories.
 9. An installation without a weights directory refuses the upload with a clear message instead of accepting bytes it cannot store.
 
-Verified live on https://taas.sudoinfotech.com: a `.tar.gz` smoke model uploaded through the console endpoint (`files: 3`, `weightPath: Upload-Smoke-Test/v2/`), the extracted files present under `/data/weights/Upload-Smoke-Test/v2/` with `0644` permissions, the catalog row listed, and the model deleted again with its weights.
+Verified live on https://taas.example.com: a `.tar.gz` smoke model uploaded through the console endpoint (`files: 3`, `weightPath: Upload-Smoke-Test/v2/`), the extracted files present under `/data/weights/Upload-Smoke-Test/v2/` with `0644` permissions, the catalog row listed, and the model deleted again with its weights.

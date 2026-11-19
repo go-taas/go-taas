@@ -24,10 +24,10 @@ go-taas 的 Controller 为每个推理服务创建 **KServe `LLMInferenceService
 
 | 候选 | 是什么 | 与 go-taas 的契合度 | 结论 |
 | --- | --- | --- | --- |
-| **KServe**（`github.com/kserve/kserve`） | Kubernetes 原生的模型服务栈：一个控制面（`kserve-controller-manager`）加一个 Envoy AI Gateway 数据面。提供 `LLMInferenceService` CRD：`spec.model{name,uri}`、`spec.replicas`、`spec.template`、`spec.worker`、`spec.prefill`、`spec.parallelism.data`、`spec.router{gateway.refs,scheduler}`、`spec.scaling` 与 `spec.storageInitializer`，并由预置（preset）持有引擎的端口、探针与参数。 | **已部署在目标集群 `sd4090`**（`kserve-system` 命名空间）。Apache-2.0。go-taas 的主引擎是 `ghcr.io/go-taas/vllm:v0.6.3`，且这套预置把该引擎的容器作为合并目标。它与 go-taas 自己的控制面/数据面拆分同形（控制网关 + 控制器 + MQ，数据面 Envoy + Wasm）。 | **采纳** |
+| **KServe**（`github.com/kserve/kserve`） | Kubernetes 原生的模型服务栈：一个控制面（`kserve-controller-manager`）加一个 Envoy AI Gateway 数据面。提供 `LLMInferenceService` CRD：`spec.model{name,uri}`、`spec.replicas`、`spec.template`、`spec.worker`、`spec.prefill`、`spec.parallelism.data`、`spec.router{gateway.refs,scheduler}`、`spec.scaling` 与 `spec.storageInitializer`，并由预置（preset）持有引擎的端口、探针与参数。 | **已部署在目标集群 `node01`**（`kserve-system` 命名空间）。Apache-2.0。go-taas 的主引擎是 `ghcr.io/go-taas/vllm:v0.6.3`，且这套预置把该引擎的容器作为合并目标。它与 go-taas 自己的控制面/数据面拆分同形（控制网关 + 控制器 + MQ，数据面 Envoy + Wasm）。 | **采纳** |
 | **llm-d** | Gateway API Inference Extension（EPP）加 Helm chart，仅 Kubernetes。 | 繁重的 GAIE CRD 依赖，**仅 Kubernetes 且无 compose 路径**，没有托管控制面能触达开发笔记本的 compose 栈。 | 拒绝 |
 
-**采纳**（KServe）：`LLMInferenceService` CRD（模型、模板、副本、角色、路由与 `spec.scaling`）、引擎字段的预置集合、控制面/数据面拆分，以及 vLLM 项目血统。由于 KServe 已安装在 `sd4090`，本特性作为对既有运行时的薄控制面交付，而非安装新运行时。
+**采纳**（KServe）：`LLMInferenceService` CRD（模型、模板、副本、角色、路由与 `spec.scaling`）、引擎字段的预置集合、控制面/数据面拆分，以及 vLLM 项目血统。由于 KServe 已安装在 `node01`，本特性作为对既有运行时的薄控制面交付，而非安装新运行时。
 
 **拒绝**（llm-d）：沉重的额外依赖（GAIE CRD；Knative + Istio），它们重复 go-taas 自身的部署与自动扩缩容控制回路，且无 compose 栈路径。go-taas 保持 Controller 为唯一 reconciler，把 KServe 作为分布式服务后端。
 
@@ -47,7 +47,7 @@ go-taas 的 Controller 为每个推理服务创建 **KServe `LLMInferenceService
 | --- | --- | --- |
 | D1 | **本特性仅管理面**：`/admin/runtime` + `/api/v1/admin/runtime/*`。**无终端用户面** — 运行时组件、服务方案与 `LLMInferenceService` 注册是运营者编排（特性 #17 的掩码投影规则）。租户经网关消费模型，仅看到模型可用性 | 运行时内部信息是运营者编排，与仅管理面的加速器清单（#18）、系统状态（#30）、多集群（#40）面一致 |
 | D2 | **新增 `runtime` 模块**（`services/runtime`）拥有服务方案设置以及运行时健康与已注册模型投影，带自有错误块 **129xx**。`infer` 仍拥有推理服务，Controller 仍拥有 Kubernetes 调和 | 运行时是独立关注点（平台级方案加控制面投影），有自己的注册表与设置；专用模块把它与按租户的推理生命周期分离 |
-| D3 | **KServe 是分布式服务方案**，优于 llm-d 与 KServe（§1.2）。服务方案是**平台级设置**，取值 `plain`（朴素部署，默认）与 `kserve` | KServe 已部署在 `sd4090`，是 vLLM 项目的 Apache-2.0 成果，镜像 go-taas 的控制/数据面拆分，并自带本特性所需的 CRD |
+| D3 | **KServe 是分布式服务方案**，优于 llm-d 与 KServe（§1.2）。服务方案是**平台级设置**，取值 `plain`（朴素部署，默认）与 `kserve` | KServe 已部署在 `node01`，是 vLLM 项目的 Apache-2.0 成果，镜像 go-taas 的控制/数据面拆分，并自带本特性所需的 CRD |
 | D4 | **运行时组件健康是集群 Kubernetes 状态的投影，由 Controller 采集并经 `runtime` 模块提供** — Controller 轮询 `kserve-system` 中 KServe 控制面 Deployment（`kserve-controller-manager`、`gateway-plugin`、`kserve-controller-manager`、`kserve-controller-manager`、`kserve-controller-manager`）与 Envoy AI Gateway（`envoy-taas-inference`），并向新 `runtime.health` MQ subject 发布完整快照；`runtime` 模块维护内存投影缓存（accelerator-inventory AD1 模式） | Controller 是唯一持有 Kubernetes 客户端的组件（accelerator-inventory AD1、service-logs AD2）；投影模式保持健康视图依赖精简且自愈（移除的组件从下一快照消失） |
 | D5 | **切换服务方案是持久化的平台设置**，并作为 `runtime.scheme_changed` 审计，带 actor、before/after 与时间戳。切换**不拆除既有服务**；它应用于新建或下次更新的推理服务 | 方案变更是重大平台配置，必须可归因；不拆除运行中服务使切换安全可逆，并限定增量范围（无就地迁移引擎） |
 | D6 | **已注册模型列表是 `LLMInferenceService` 投影，掩码呈现** — 模型名、引擎、副本、就绪候选、conditions 与 age。从不展示原始 Pod 名、端点密钥与容器参数 | 控制台展示运营者相关的模型标识与状态，而非原始 CRD 内部信息（§1.3 的拒绝项） |

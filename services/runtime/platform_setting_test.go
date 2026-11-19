@@ -37,16 +37,16 @@ func TestUpdatePlatformSettingsPersists(t *testing.T) {
 	svc := NewForFVT(db, nil)
 
 	resp, err := svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
-		InferenceGatewayHostname: "API.Sudoinfotech.com.",
+		InferenceGatewayHostname: "API.Example.com.",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, "api.sudoinfotech.com", resp.GetSettings().GetInferenceGatewayHostname())
-	assert.Equal(t, "https://api.sudoinfotech.com/v1", resp.GetSettings().GetInferenceBaseUrl())
+	assert.Equal(t, "api.example.com", resp.GetSettings().GetInferenceGatewayHostname())
+	assert.Equal(t, "https://api.example.com/v1", resp.GetSettings().GetInferenceBaseUrl())
 
 	// The value survives a fresh read.
 	got, err := svc.GetPlatformSettings(context.Background(), &runtimev1.GetPlatformSettingsRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, "api.sudoinfotech.com", got.GetSettings().GetInferenceGatewayHostname())
+	assert.Equal(t, "api.example.com", got.GetSettings().GetInferenceGatewayHostname())
 
 	// A port and an http scheme are kept as given.
 	_, err = svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
@@ -180,7 +180,7 @@ func TestInferenceGatewaySeam(t *testing.T) {
 	_, err := svc.UpdatePlatformSettings(context.Background(), &runtimev1.UpdatePlatformSettingsRequest{
 		InferenceGatewayHostname:    "api.example.com",
 		InferenceGatewayScheme:      "https",
-		InferenceGatewayInternalUrl: "http://10.43.253.124",
+		InferenceGatewayInternalUrl: "http://10.0.0.10",
 	})
 	require.NoError(t, err)
 
@@ -188,7 +188,7 @@ func TestInferenceGatewaySeam(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "api.example.com", hostname)
 	assert.Equal(t, "https", scheme)
-	assert.Equal(t, "http://10.43.253.124", internalURL)
+	assert.Equal(t, "http://10.0.0.10", internalURL)
 }
 
 // fakeUserLabels resolves ids like the auth module does.
@@ -473,7 +473,7 @@ func TestUpdatePlatformDisplaySettingsKeepsGateway(t *testing.T) {
 	_, err := svc.UpdatePlatformSettings(ctx, &runtimev1.UpdatePlatformSettingsRequest{
 		InferenceGatewayHostname:    "api.example.com",
 		InferenceGatewayScheme:      "https",
-		InferenceGatewayInternalUrl: "http://10.43.253.124",
+		InferenceGatewayInternalUrl: "http://10.0.0.10",
 		Timezone:                    "UTC",
 		DefaultLanguage:             "en",
 		Currency:                    "USD",
@@ -494,7 +494,7 @@ func TestUpdatePlatformDisplaySettingsKeepsGateway(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "api.example.com", full.GetSettings().GetInferenceGatewayHostname(),
 		"a display save must not blank the gateway hostname")
-	assert.Equal(t, "http://10.43.253.124", full.GetSettings().GetInferenceGatewayInternalUrl())
+	assert.Equal(t, "http://10.0.0.10", full.GetSettings().GetInferenceGatewayInternalUrl())
 }
 
 // TestUpdatePlatformDisplaySettingsCreatesTheRow verifies a fresh install has

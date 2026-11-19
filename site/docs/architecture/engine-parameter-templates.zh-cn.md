@@ -163,4 +163,4 @@ AND (accelerator_type = :accelerator_type OR accelerator_type = '')
 8. 部署表单可把当前填写的参数保存为模板；只保存已填写的值，除选择「任意模型」外会带上当前模型，空模板被拒绝。
 9. 保存模板不会触发部署，也不改变正在创建的服务。
 
-已在 https://taas.sudoinfotech.com 实际验证：通过 API 完成模板的列表/创建/匹配/导出，模板页面正常渲染，部署表单载入模板后 `max-model-len` 填入 8192、`gpu-memory-utilization` 填入 0.9，并出现 `--enable-chunked-prefill` 一行。
+已在 https://taas.example.com 实际验证：通过 API 完成模板的列表/创建/匹配/导出，模板页面正常渲染，部署表单载入模板后 `max-model-len` 填入 8192、`gpu-memory-utilization` 填入 0.9，并出现 `--enable-chunked-prefill` 一行。

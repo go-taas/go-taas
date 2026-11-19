@@ -813,8 +813,8 @@ rdma:
   labels: {}
   # One extra DeviceClass per rail, for a fleet whose NIC ports sit on separate
   # L3 networks. A rail is one network, not one card: the two ports of a
-  # dual-port card usually land on two different subnets (on `sd4090`,
-  # 0000:0f:00.0 is 172.16.30.12 and 0000:0f:00.1 is 172.16.40.12), so a class
+  # dual-port card usually land on two different subnets (on `node01`,
+  # 0000:0f:00.0 is 198.51.100.12 and 0000:0f:00.1 is 203.0.113.12), so a class
   # that accepts both ports hands a replica devices that cannot reach each
   # other. Pods of one replica must allocate from the same rail: a cross-rail
   # collective blocks forever instead of failing, which shows up as a service

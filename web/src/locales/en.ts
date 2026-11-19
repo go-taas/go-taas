@@ -366,7 +366,7 @@ export const en: Record<string, string> = {
   'settings.schemeLabel': 'Scheme',
   'settings.schemeHint': 'https is recommended for anything reachable from outside the cluster.',
   'settings.internalLabel': 'In-cluster gateway URL',
-  'settings.internalHint': 'The address the platform itself calls, for example http://10.43.253.124. Empty discovers it. Set it when the public hostname is not resolvable from inside the cluster.',
+  'settings.internalHint': 'The address the platform itself calls, for example http://10.0.0.10. Empty discovers it. Set it when the public hostname is not resolvable from inside the cluster.',
   'settings.previewLabel': 'Address users will see',
   'settings.savedValueLabel': 'Currently saved',
   'settings.updatedByLabel': 'Last changed by',

@@ -47,8 +47,16 @@ MINIO_SECRET_KEY="${JUICE_FS_SECRET_KEY}"
 # The in-cluster metadata URL (the compose stack reaches the same Redis
 # through the NodePort; the Jobs run inside the cluster and use the
 # headless service directly).
-IN_CLUSTER_META_URL="${JUICE_FS_META_URL//10.86.56.47:30379/yunzhi-redis-headless.yunzhi.svc.cluster.local:6379}"
-IN_CLUSTER_BUCKET="${JUICE_FS_BUCKET//10.86.56.47:9000/minio-api.yunzhi:9000}"
+# Derive the in-cluster service addresses from the configured URLs instead of
+# hard-coding a host: a deployment may use any reachable address for the same
+# Redis and MinIO.
+META_HOST="${JUICE_FS_META_URL#*://}"
+META_HOST="${META_HOST#*@}"
+META_HOST="${META_HOST%%/*}"
+BUCKET_HOST="${JUICE_FS_BUCKET#*://}"
+BUCKET_HOST="${BUCKET_HOST%%/*}"
+IN_CLUSTER_META_URL="${JUICE_FS_META_URL//${META_HOST}/yunzhi-redis-headless.yunzhi.svc.cluster.local:6379}"
+IN_CLUSTER_BUCKET="${JUICE_FS_BUCKET//${BUCKET_HOST}/minio-api.yunzhi:9000}"
 
 echo ">> [cluster-up] creating MinIO bucket '${MINIO_BUCKET}'"
 env \

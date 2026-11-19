@@ -37,7 +37,7 @@
 //   - AC12 the healthy state renders without an unavailable notice and
 //          survives a Refresh
 //
-// The compose controller observes the real cluster `sd4090`, so the
+// The compose controller observes the real cluster `node01`, so the
 // AIBrix control plane, the Envoy AI Gateway and the ModelClaim projection
 // are the real integration surface. Runtime availability is a projection
 // of the cluster state published on a ~30s interval, so the suite polls

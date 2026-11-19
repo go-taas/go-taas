@@ -364,7 +364,7 @@ export const zh: Record<string, string> = {
   'settings.schemeLabel': '协议',
   'settings.schemeHint': '对外暴露建议使用 https。',
   'settings.internalLabel': '集群内网关地址',
-  'settings.internalHint': '平台自身调用网关时使用的地址，例如 http://10.43.253.124。留空则自动发现；当公网主机名在集群内无法解析时请填写。',
+  'settings.internalHint': '平台自身调用网关时使用的地址，例如 http://10.0.0.10。留空则自动发现；当公网主机名在集群内无法解析时请填写。',
   'settings.previewLabel': '用户将看到的地址',
   'settings.savedValueLabel': '当前已保存',
   'settings.updatedByLabel': '最近修改人',

@@ -612,7 +612,7 @@ Then:
 1. Point `llm.example.com` at the `taas-inference` Gateway's address
    (`kubectl -n taas get gateway taas-inference -o jsonpath='{.status.addresses[0].value}'`).
    This address is **different** from the console's; pointing the inference host at the console Gateway returns 404.
-2. In the console open **平台 → 网关设置** and set the same hostname (the route's hostname is a console setting, not a chart value), plus the in-cluster gateway URL the server calls (the backend Service's `ClusterIP`, e.g. `http://10.43.253.124`).
+2. In the console open **平台 → 网关设置** and set the same hostname (the route's hostname is a console setting, not a chart value), plus the in-cluster gateway URL the server calls (the backend Service's `ClusterIP`, e.g. `http://10.0.0.10`).
 3. Create an API key in the end-user console and call the endpoint:
 
 ```bash

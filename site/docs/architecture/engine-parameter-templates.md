@@ -164,4 +164,4 @@ The deploy form (`DeployForm`) has a **parameter template** picker above the eng
 8. The deploy form saves the currently entered parameters as a template; only filled values are stored, the selected model is included unless "any model" is chosen, and a template with nothing in it is refused.
 9. Saving a template does not deploy anything and does not change the service being created.
 
-Verified live on https://taas.sudoinfotech.com: template list/create/match/export over the API, the templates page rendering, and the deploy form filling `max-model-len` = 8192, `gpu-memory-utilization` = 0.9 and an `--enable-chunked-prefill` row from a loaded template.
+Verified live on https://taas.example.com: template list/create/match/export over the API, the templates page rendering, and the deploy form filling `max-model-len` = 8192, `gpu-memory-utilization` = 0.9 and an `--enable-chunked-prefill` row from a loaded template.

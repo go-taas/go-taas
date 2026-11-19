@@ -110,4 +110,4 @@ POST /api/v1/admin/models:upload     (multipart/form-data)
 8. 删除上传的模型会同时删除其权重目录。
 9. 未配置权重目录的安装会给出明确错误，而不是接收无法保存的字节。
 
-已在 https://taas.sudoinfotech.com 实际验证：通过控制台端点上传 `.tar.gz` 冒烟模型（`files: 3`，`weightPath: Upload-Smoke-Test/v2/`），`/data/weights/Upload-Smoke-Test/v2/` 下出现解压后的文件且权限为 `0644`，模型列表出现该记录，随后删除模型并清理权重。
+已在 https://taas.example.com 实际验证：通过控制台端点上传 `.tar.gz` 冒烟模型（`files: 3`，`weightPath: Upload-Smoke-Test/v2/`），`/data/weights/Upload-Smoke-Test/v2/` 下出现解压后的文件且权限为 `0644`，模型列表出现该记录，随后删除模型并清理权重。

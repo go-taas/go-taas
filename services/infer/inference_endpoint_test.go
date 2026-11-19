@@ -69,10 +69,10 @@ func TestGetInferenceEndpointDiscoversGateway(t *testing.T) {
 	config.SetConfigForTest(&config.Configuration{})
 	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
 
-	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.43.253.124/"})
+	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.0.0.10/"})
 	resp, err := svc.GetInferenceEndpoint(context.Background(), &inferv1.GetInferenceEndpointRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, "http://10.43.253.124/v1", resp.GetBaseUrl())
+	assert.Equal(t, "http://10.0.0.10/v1", resp.GetBaseUrl())
 
 	// An explicit configuration wins over discovery.
 	cfg := &config.Configuration{}
@@ -110,7 +110,7 @@ func TestGetInferenceEndpointUsesPlatformSettings(t *testing.T) {
 	config.SetConfigForTest(cfg)
 	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
 
-	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.43.253.124"})
+	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.0.0.10"})
 	svc.SetPlatformSettings(fakePlatformSettings{
 		hostname: "api.example.com", scheme: "https", internalURL: "",
 	})
@@ -122,7 +122,7 @@ func TestGetInferenceEndpointUsesPlatformSettings(t *testing.T) {
 
 	// The server's own calls prefer the in-cluster gateway, not the
 	// public hostname (which a pod may not resolve).
-	assert.Equal(t, "http://10.43.253.124", svc.servingGatewayBaseURL(context.Background()))
+	assert.Equal(t, "http://10.0.0.10", svc.servingGatewayBaseURL(context.Background()))
 
 	// An explicit internal URL wins over discovery.
 	svc.SetPlatformSettings(fakePlatformSettings{
@@ -149,10 +149,10 @@ func TestGetInferenceEndpointUsesPlatformSettings(t *testing.T) {
 
 	// An empty hostname clears the override and falls back.
 	svc.SetPlatformSettings(fakePlatformSettings{})
-	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.43.253.124"})
+	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.0.0.10"})
 	resp, err = svc.GetInferenceEndpoint(context.Background(), &inferv1.GetInferenceEndpointRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, "http://10.43.253.124/v1", resp.GetBaseUrl())
+	assert.Equal(t, "http://10.0.0.10/v1", resp.GetBaseUrl())
 }
 
 // TestGetInferenceEndpointSurvivesSettingsFailure keeps a settings-store
@@ -163,8 +163,8 @@ func TestGetInferenceEndpointSurvivesSettingsFailure(t *testing.T) {
 	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
 
 	svc.SetPlatformSettings(fakePlatformSettings{err: apierrors.New(apierrors.CodeInternal)})
-	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.43.253.124"})
+	svc.SetGatewayResolver(fakeGatewayResolver{url: "http://10.0.0.10"})
 	resp, err := svc.GetInferenceEndpoint(context.Background(), &inferv1.GetInferenceEndpointRequest{})
 	require.NoError(t, err)
-	assert.Equal(t, "http://10.43.253.124/v1", resp.GetBaseUrl())
+	assert.Equal(t, "http://10.0.0.10/v1", resp.GetBaseUrl())
 }

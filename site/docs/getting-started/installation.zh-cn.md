@@ -594,7 +594,7 @@ gatewayPlugin:
 1. 把 `llm.example.com` 指向 `taas-inference` Gateway 的地址
    （`kubectl -n taas get gateway taas-inference -o jsonpath='{.status.addresses[0].value}'`）。
    该地址与**控制台地址不同**；把推理域名指到控制台 Gateway 会返回 404。
-2. 在控制台打开 **平台 → 网关设置**，设置同一个域名（路由域名是控制台设置项，不是 Chart 值），并填写服务端调用的集群内网关地址（上述 backend Service 的 `ClusterIP`，例如 `http://10.43.253.124`）。
+2. 在控制台打开 **平台 → 网关设置**，设置同一个域名（路由域名是控制台设置项，不是 Chart 值），并填写服务端调用的集群内网关地址（上述 backend Service 的 `ClusterIP`，例如 `http://10.0.0.10`）。
 3. 在用户控制台创建 API Key 并调用：
 
 ```bash
