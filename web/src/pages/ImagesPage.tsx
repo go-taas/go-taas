@@ -13,7 +13,7 @@ import {
   type PageMeta,
 } from '../api';
 import { useOrg } from '../org';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
@@ -41,6 +41,7 @@ export default function ImagesPage() {
   const [engine, setEngine] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [uploadOpen, setUploadOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ImageSummary | null>(null);
@@ -113,6 +114,7 @@ export default function ImagesPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="images-toast" />
 
       <div className="panel" style={{ marginBottom: 14 }} data-testid="image-registry-card">
         <h3 style={{ marginTop: 0 }}>{t('images.registryTitle')}</h3>
@@ -265,6 +267,7 @@ export default function ImagesPage() {
           onClose={() => setUploadOpen(false)}
           onDone={() => {
             setUploadOpen(false);
+            setNotice(t('images.uploadSuccess'));
             void load();
           }}
         />
@@ -277,6 +280,7 @@ export default function ImagesPage() {
           onClose={() => setImportOpen(false)}
           onDone={() => {
             setImportOpen(false);
+            setNotice(t('images.importSuccess'));
             void load();
           }}
         />
@@ -288,7 +292,9 @@ export default function ImagesPage() {
           image={editTarget}
           onClose={() => setEditTarget(null)}
           onDone={() => {
+            const name = editTarget.name;
             setEditTarget(null);
+            setNotice(t('images.updateSuccess', { name }));
             void load();
           }}
         />
@@ -300,7 +306,9 @@ export default function ImagesPage() {
           image={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDone={() => {
+            const name = deleteTarget.name;
             setDeleteTarget(null);
+            setNotice(t('images.deleteSuccess', { name }));
             void load();
           }}
         />
@@ -312,7 +320,9 @@ export default function ImagesPage() {
           image={warmupTarget}
           onClose={() => setWarmupTarget(null)}
           onDone={() => {
+            const name = warmupTarget.name;
             setWarmupTarget(null);
+            setNotice(t('images.warmupSuccess', { name }));
             void load();
           }}
         />

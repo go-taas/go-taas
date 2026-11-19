@@ -156,7 +156,7 @@ func (e *modelAuthEnv) call(t *testing.T, method, path string, body any, org str
 func (e *modelAuthEnv) registerModel(t *testing.T, name, org string) string {
 	t.Helper()
 	code, body := e.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": name, "version": "v1", "weightPath": fmt.Sprintf("models/%s/v1", name),
+		"name": name, "hubModelId": "fvt/" + name, "version": "v1", "weightPath": fmt.Sprintf("models/%s/v1", name),
 	}, org)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	id, _ := body["modelId"].(string)

@@ -157,6 +157,11 @@ type Service struct {
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
 
+	// userLabelResolver resolves user ids to display labels, so the
+	// deployment-event trail shows who acted instead of an opaque id.
+	// Nil until wired: the raw actor id is reported.
+	userLabelResolver UserLabelResolver
+
 	// compatibilityChecker resolves the compatibility status of a
 	// (model, engine, card_type) combination for deploy-time enforcement
 	// (feature #19, AD13). Nil until wired: no matrix check is applied.
@@ -404,6 +409,16 @@ func (s *Service) SetPlatformAdminResolver(r PlatformAdminResolver) { s.platform
 // SetAuditRecorder injects the best-effort audit recorder (feature #15,
 // AD3). Production wires the audit module; unit tests may inject a fake.
 func (s *Service) SetAuditRecorder(r AuditRecorder) { s.auditRecorder = r }
+
+// UserLabelResolver resolves user ids to display labels. It is the auth
+// module's ResolveUserLabels injected at wiring time, so the deployment
+// history can show a readable actor name.
+type UserLabelResolver interface {
+	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
+// SetUserLabelResolver injects the actor display-name resolver.
+func (s *Service) SetUserLabelResolver(r UserLabelResolver) { s.userLabelResolver = r }
 
 // SetSliceValidator injects the vGPU slice validator (feature #52,
 // AD13). Production wires the vgpu module; unit tests may inject a fake.
@@ -2158,6 +2173,35 @@ func (s *Service) GetServiceLogs(ctx context.Context, req *inferv1.GetServiceLog
 	}, nil
 }
 
+// actorLabels resolves the distinct actor ids of a page to display names.
+// A failed or unavailable resolver leaves the ids in place rather than
+// failing the history read.
+func (s *Service) actorLabels(ctx context.Context, rows []*DeploymentEvent) map[string]string {
+	if s.userLabelResolver == nil || len(rows) == 0 {
+		return nil
+	}
+	seen := make(map[string]struct{}, len(rows))
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.Actor == "" {
+			continue
+		}
+		if _, ok := seen[row.Actor]; ok {
+			continue
+		}
+		seen[row.Actor] = struct{}{}
+		ids = append(ids, row.Actor)
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	labels, err := s.userLabelResolver.ResolveUserLabels(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return labels
+}
+
 // ListDeploymentEvents returns the deployment event trail, newest first,
 // with field-level diffs, filtered by service/event type/actor/time range
 // (feature #34, AC1). Unknown service_id → 10301; invalid range → 10404.
@@ -2205,17 +2249,19 @@ func (s *Service) ListDeploymentEvents(ctx context.Context, req *inferv1.ListDep
 	if err != nil {
 		return nil, err
 	}
+	actorLabels := s.actorLabels(ctx, rows)
 	events := make([]*inferv1.DeploymentEvent, 0, len(rows))
 	for _, row := range rows {
 		events = append(events, &inferv1.DeploymentEvent{
-			EventId:     row.ID,
-			ServiceId:   row.ServiceID,
-			ServiceName: row.ServiceName,
-			EventType:   row.EventType,
-			Actor:       row.Actor,
-			Before:      string(row.Before),
-			After:       string(row.After),
-			CreatedAt:   row.CreatedAt.Unix(),
+			EventId:         row.ID,
+			ServiceId:       row.ServiceID,
+			ServiceName:     row.ServiceName,
+			EventType:       row.EventType,
+			Actor:           row.Actor,
+			ActorDisplayName: actorLabels[row.Actor],
+			Before:          string(row.Before),
+			After:           string(row.After),
+			CreatedAt:       row.CreatedAt.Unix(),
 		})
 	}
 	return &inferv1.ListDeploymentEventsResponse{

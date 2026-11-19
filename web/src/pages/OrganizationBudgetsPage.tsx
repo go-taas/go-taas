@@ -22,7 +22,7 @@ import {
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, usePolling } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu, Toast, usePolling } from '../components';
 import { formatMoney, displayCurrencyLabel } from '../display';
 
 /** ProjectBudget is one project's budget row, with what it has consumed. */
@@ -46,6 +46,7 @@ export default function OrganizationBudgetsPage() {
   const [projects, setProjects] = useState<ProjectBudget[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [editing, setEditing] = useState<ProjectBudget | null>(null);
 
   const loadBalance = useCallback(async () => {
@@ -128,6 +129,7 @@ export default function OrganizationBudgetsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="budgets-toast" />
       {!orgId && (
         <div className="empty-state" data-testid="budgets-no-org">
           {t('budgets.noOrg')}
@@ -226,13 +228,19 @@ export default function OrganizationBudgetsPage() {
                           {limit > 0 ? formatMoney(project.remainingCents, currency) : '—'}
                         </td>
                         <td>
-                          <button
-                            className="link"
-                            data-testid={`budget-edit-${project.projectId}`}
-                            onClick={() => setEditing(project)}
-                          >
-                            {t('budgets.setBudget')}
-                          </button>
+                          <RowActionsMenu
+                            label={t('common.actionsFor', {
+                              name: project.displayName || project.projectId,
+                            })}
+                            testId={`budget-actions-${project.projectId}`}
+                            actions={[
+                              {
+                                key: `budget-edit-${project.projectId}`,
+                                label: t('budgets.setBudget'),
+                                onClick: () => setEditing(project),
+                              },
+                            ]}
+                          />
                         </td>
                       </tr>
                     );
@@ -250,8 +258,9 @@ export default function OrganizationBudgetsPage() {
           orgId={orgId}
           project={editing}
           onClose={() => setEditing(null)}
-          onDone={() => {
+          onDone={(name) => {
             setEditing(null);
+            setNotice(t('budgets.saveSuccess', { name }));
             void loadProjects();
           }}
         />
@@ -276,7 +285,7 @@ function ProjectBudgetDialog({
   orgId: string;
   project: ProjectBudget;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const api = useApi();
   const { t } = useI18n();
@@ -295,7 +304,7 @@ function ProjectBudgetDialog({
       await api.patch(`/api/v1/admin/tenancy/projects/${project.projectId}/quota`, orgId, {
         monthlySpendLimitCents: Number.isFinite(cents) && cents > 0 ? cents : 0,
       });
-      onDone();
+      onDone(project.displayName);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('budgets.saveFailed'));
     } finally {

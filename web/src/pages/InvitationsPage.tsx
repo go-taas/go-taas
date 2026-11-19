@@ -7,7 +7,7 @@ import { api, ApiError, type Invitation } from '../api';
 import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu, StateBadge, Toast } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
@@ -28,6 +28,7 @@ export default function InvitationsPage() {
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [inviteOpen, setInviteOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
@@ -56,33 +57,38 @@ export default function InvitationsPage() {
 
   const createInvite = async () => {
     setError('');
+    setNotice('');
     setNewToken('');
+    const email = inviteEmail.trim();
     try {
       const data = await api.post<{ response: { code: number; message: string }; token: string }>(
         `/api/v1/admin/tenancy/organizations/${orgId}/invitations`,
         orgId,
-        { email: inviteEmail, role: inviteRole },
+        { email, role: inviteRole },
       );
       setNewToken(data.token);
       setInviteOpen(false);
       setInviteEmail('');
       setInviteRole('member');
+      setNotice(t('invitations.createSuccess', { email }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('invitations.createFailed'));
     }
   };
 
-  const resend = async (invitationId: string) => {
+  const resend = async (invitation: Invitation) => {
     setError('');
+    setNotice('');
     setNewToken('');
     try {
       const data = await api.post<{ response: { code: number; message: string }; token: string }>(
-        `/api/v1/admin/tenancy/invitations/${invitationId}:resend`,
+        `/api/v1/admin/tenancy/invitations/${invitation.invitationId}:resend`,
         orgId,
         {},
       );
       setNewToken(data.token);
+      setNotice(t('invitations.resendSuccess', { email: invitation.email }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('invitations.resendFailed'));
@@ -92,6 +98,8 @@ export default function InvitationsPage() {
   const revoke = async () => {
     if (!revokeTarget) return;
     setError('');
+    setNotice('');
+    const email = revokeTarget.email;
     try {
       await api.post(
         `/api/v1/admin/tenancy/invitations/${revokeTarget.invitationId}:revoke`,
@@ -99,6 +107,7 @@ export default function InvitationsPage() {
         {},
       );
       setRevokeTarget(null);
+      setNotice(t('invitations.revokeSuccess', { email }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('invitations.revokeFailed'));
@@ -131,6 +140,7 @@ export default function InvitationsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="invitations-toast" />
       {newToken && (
         <div
           className="notice"
@@ -177,7 +187,7 @@ export default function InvitationsPage() {
                           {
                             key: `invite-resend-${inv.invitationId}`,
                             label: t('invitations.resend'),
-                            onClick: () => void resend(inv.invitationId),
+                            onClick: () => void resend(inv),
                           },
                           {
                             key: `invite-revoke-${inv.invitationId}`,
@@ -197,7 +207,11 @@ export default function InvitationsPage() {
       </div>
 
       {inviteOpen && (
-        <Dialog title={t('invitations.inviteTitle')} onClose={() => setInviteOpen(false)}>
+        <Dialog
+          title={t('invitations.inviteTitle')}
+          onClose={() => setInviteOpen(false)}
+          testId="invite-dialog"
+        >
           <div className="form">
             <label>
               {t('invitations.fieldEmail')}
@@ -222,6 +236,15 @@ export default function InvitationsPage() {
                 ))}
               </select>
             </label>
+          </div>
+          <div className="dialog-actions">
+            <button
+              className="secondary"
+              data-testid="invite-cancel"
+              onClick={() => setInviteOpen(false)}
+            >
+              {t('common.cancel')}
+            </button>
             <button data-testid="invite-save" onClick={() => void createInvite()}>
               {t('invitations.invite')}
             </button>
@@ -230,19 +253,32 @@ export default function InvitationsPage() {
       )}
 
       {revokeTarget && (
-        <Dialog title={t('invitations.revokeTitle')} onClose={() => setRevokeTarget(null)}>
+        <Dialog
+          title={t('invitations.revokeTitle')}
+          onClose={() => setRevokeTarget(null)}
+          testId="invite-revoke-dialog"
+        >
           <p
             dangerouslySetInnerHTML={{
               __html: t('invitations.revokeBody', { email: revokeTarget.email }),
             }}
           />
-          <button
-            className="danger"
-            data-testid="invite-revoke-confirm"
-            onClick={() => void revoke()}
-          >
-            {t('invitations.revoke')}
-          </button>
+          <div className="dialog-actions">
+            <button
+              className="secondary"
+              data-testid="invite-revoke-cancel"
+              onClick={() => setRevokeTarget(null)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              className="danger"
+              data-testid="invite-revoke-confirm"
+              onClick={() => void revoke()}
+            >
+              {t('invitations.revoke')}
+            </button>
+          </div>
         </Dialog>
       )}
     </div>

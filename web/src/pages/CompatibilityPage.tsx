@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, Toast, usePolling } from '../components';
 import { useI18n } from '../i18n';
 
 interface CompatibilityCell {
@@ -104,6 +104,7 @@ export default function CompatibilityPage() {
   const [view, setView] = useState<'grid' | 'table'>('grid');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [stale, setStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -182,12 +183,18 @@ export default function CompatibilityPage() {
 
   const saveCell = async (status: string, note: string) => {
     if (!editCell) return;
+    const cell = editCell;
     await api.put<{ response: { code: number; message: string }; cell: CompatibilityCell }>(
-      `/api/v1/admin/compatibility/${editCell.modelId}/${editCell.engine}/${editCell.cardType}`,
+      `/api/v1/admin/compatibility/${cell.modelId}/${cell.engine}/${cell.cardType}`,
       orgId,
       { status, note },
     );
     setEditCell(null);
+    setNotice(
+      t('compat.saveSuccess', {
+        name: `${cell.modelName} · ${cell.engine} · ${cell.cardType}`,
+      }),
+    );
     void load(false);
   };
 
@@ -202,6 +209,7 @@ export default function CompatibilityPage() {
     );
     setBulkOpen(false);
     setSelected(new Set());
+    setNotice(t('compat.bulkSuccess', { count: refs.length }));
     void load(false);
   };
 
@@ -246,6 +254,7 @@ export default function CompatibilityPage() {
           <ErrorBanner message={error} />
         </div>
       )}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="compatibility-toast" />
       {stale && (
         <div className="warning-banner" data-testid="compatibility-stale-banner">
           {t('common.staleData')}{' '}

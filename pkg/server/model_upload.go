@@ -8,7 +8,8 @@
 //	POST /api/v1/admin/models:upload   (multipart/form-data)
 //	  file         the archive (.tar, .tar.gz, .tgz or .zip)
 //	  name         the catalog model name
-//	  version      the catalog version (optional)
+//	  hubModelId   the "<vendor>/<model>" hub identity (required, unique)
+//	  version      the internal catalog version (optional; legacy)
 //	  description  the model description (optional)
 //
 // The server streams the archive to a temp file, then hands the path to the
@@ -46,6 +47,7 @@ type ModelUploadRequest struct {
 	ArchivePath  string
 	OriginalName string
 	Name         string
+	HubModelID   string
 	Version      string
 	Description  string
 }
@@ -157,6 +159,7 @@ func (s *commonServer) modelUploadHandler(w http.ResponseWriter, r *http.Request
 		ArchivePath:  archivePath,
 		OriginalName: originalName,
 		Name:         fields["name"],
+		HubModelID:   fields["hubModelId"],
 		Version:      fields["version"],
 		Description:  fields["description"],
 	})

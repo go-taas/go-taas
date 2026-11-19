@@ -7,7 +7,7 @@ import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta } fr
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import { navigate } from '../router';
 
 interface ListResponse {
@@ -32,6 +32,7 @@ export default function OrganizationsPage() {
   const [state, setState] = useState('all');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<OrganizationSummary | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{
@@ -79,6 +80,7 @@ export default function OrganizationsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="orgs-toast" />
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <select
@@ -138,7 +140,7 @@ export default function OrganizationsPage() {
                           key: `org-members-${org.organizationId}`,
                           label: t('orgs.members'),
                           group: 'people',
-                          onClick: () => navigate(`/admin/members?org=${encodeURIComponent(org.organizationId)}`),
+                          onClick: () => navigate(`/admin/organizations/members?org=${encodeURIComponent(org.organizationId)}`),
                         },
                         {
                           key: `org-edit-${org.organizationId}`,
@@ -194,8 +196,9 @@ export default function OrganizationsPage() {
         <CreateOrgDialog
           orgId={orgId}
           onClose={() => setCreateOpen(false)}
-          onDone={() => {
+          onDone={(name) => {
             setCreateOpen(false);
+            setNotice(t('orgs.createSuccess', { name }));
             void load();
           }}
         />
@@ -206,8 +209,9 @@ export default function OrganizationsPage() {
           orgId={orgId}
           org={editTarget}
           onClose={() => setEditTarget(null)}
-          onDone={() => {
+          onDone={(name) => {
             setEditTarget(null);
+            setNotice(t('orgs.updateSuccess', { name }));
             void load();
           }}
         />
@@ -218,8 +222,9 @@ export default function OrganizationsPage() {
           orgId={orgId}
           org={deleteTarget}
           onClose={() => setDeleteTarget(null)}
-          onDone={() => {
+          onDone={(name) => {
             setDeleteTarget(null);
+            setNotice(t('orgs.deleteSuccess', { name }));
             void load();
           }}
         />
@@ -231,8 +236,13 @@ export default function OrganizationsPage() {
           org={confirmTarget.org}
           action={confirmTarget.action}
           onClose={() => setConfirmTarget(null)}
-          onDone={() => {
+          onDone={(name) => {
             setConfirmTarget(null);
+            setNotice(
+              t(confirmTarget.action === 'disable' ? 'orgs.disableSuccess' : 'orgs.enableSuccess', {
+                name,
+              }),
+            );
             void load();
           }}
         />
@@ -248,7 +258,7 @@ function CreateOrgDialog({
 }: {
   orgId: string;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState('');
@@ -268,7 +278,7 @@ function CreateOrgDialog({
         displayName: name.trim(),
         description: description.trim(),
       });
-      onDone();
+      onDone(name.trim());
     } catch (e) {
       // 10015: the organization id already exists.
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('orgs.createFailed'));
@@ -335,7 +345,7 @@ function EditOrgDialog({
   orgId: string;
   org: OrganizationSummary;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [name, setName] = useState(org.displayName);
@@ -359,7 +369,7 @@ function EditOrgDialog({
           description: description.trim(),
         },
       );
-      onDone();
+      onDone(name.trim());
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('orgs.updateFailed'));
     } finally {
@@ -368,7 +378,11 @@ function EditOrgDialog({
   };
 
   return (
-    <Dialog title={t('orgs.editTitle', { orgId: org.organizationId })} onClose={onClose} testId="edit-org-dialog">
+    <Dialog
+      title={t('orgs.editTitle', { name: org.displayName || org.organizationId })}
+      onClose={onClose}
+      testId="edit-org-dialog"
+    >
       <div className="form-grid">
         <div className="form-field full">
           <FieldLabel
@@ -425,7 +439,7 @@ function ConfirmStateDialog({
   org: OrganizationSummary;
   action: 'disable' | 'enable';
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
@@ -439,7 +453,7 @@ function ConfirmStateDialog({
         `/api/v1/admin/tenancy/organizations/${org.organizationId}:${action}`,
         orgId,
       );
-      onDone();
+      onDone(org.displayName || org.organizationId);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('orgs.actionFailed', { action }));
     } finally {
@@ -449,7 +463,9 @@ function ConfirmStateDialog({
 
   return (
     <Dialog
-      title={t(action === 'disable' ? 'orgs.disableTitle' : 'orgs.enableTitle', { orgId: org.organizationId })}
+      title={t(action === 'disable' ? 'orgs.disableTitle' : 'orgs.enableTitle', {
+        name: org.displayName || org.organizationId,
+      })}
       onClose={onClose}
       testId="org-confirm-dialog"
     >
@@ -488,7 +504,7 @@ function DeleteOrgDialog({
   orgId: string;
   org: OrganizationSummary;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
@@ -501,7 +517,7 @@ function DeleteOrgDialog({
     try {
       const path = `/api/v1/admin/tenancy/organizations/${org.organizationId}`;
       await api.del(force ? `${path}?force=true` : path, orgId);
-      onDone();
+      onDone(org.displayName || org.organizationId);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('orgs.deleteFailed'));
     } finally {

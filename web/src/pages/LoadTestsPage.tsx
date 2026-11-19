@@ -8,7 +8,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { formatPercent, formatRate, formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast, usePolling } from '../components';
 import { navigate } from '../router';
 import { useI18n } from '../i18n';
 
@@ -70,7 +70,7 @@ function NewLoadTestDialog({
 }: {
   services: ServiceSummary[];
   onClose: () => void;
-  onCreated: (loadTestId: string) => void;
+  onCreated: (loadTestId: string, serviceName: string) => void;
 }) {
   const api = useApi();
   const { orgId } = useOrg();
@@ -126,7 +126,8 @@ function NewLoadTestDialog({
           max_tokens: Number(maxTokens),
         },
       );
-      onCreated(res.loadTestId);
+      const serviceName = services.find((s) => s.serviceId === serviceId)?.name || serviceId;
+      onCreated(res.loadTestId, serviceName);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('loadtests.createFailed'));
     } finally {
@@ -234,6 +235,7 @@ export default function LoadTestsPage() {
   const [services, setServices] = useState<ServiceSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [stale, setStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -303,18 +305,20 @@ export default function LoadTestsPage() {
 
   const activeRuns = runs.filter((r) => r.state === 'pending' || r.state === 'running');
 
-  const stopRun = async (id: string) => {
+  const stopRun = async (id: string, name: string) => {
     try {
       await api.post(`/api/v1/admin/load-tests/${id}:stop`, orgId, {});
+      setNotice(t('loadtests.stopSuccess', { name }));
       await load(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('loadtests.stopFailed'));
     }
   };
 
-  const deleteRun = async (id: string) => {
+  const deleteRun = async (id: string, name: string) => {
     try {
       await api.del(`/api/v1/admin/load-tests/${id}`, orgId);
+      setNotice(t('loadtests.deleteSuccess', { name }));
       await load(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('loadtests.deleteFailed'));
@@ -365,6 +369,7 @@ export default function LoadTestsPage() {
           </button>
         </div>
       )}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="loadtests-toast" />
 
       {activeRuns.length > 0 && (
         <div className="panel" style={{ marginBottom: 16 }} data-testid="load-tests-active">
@@ -399,13 +404,18 @@ export default function LoadTestsPage() {
                   <td>{r.concurrency}</td>
                   <td>{formatTime(r.startedAt)}</td>
                   <td>
-                    <button
-                      className="link"
-                      onClick={() => void stopRun(r.loadTestId)}
-                      data-testid={`load-test-stop-${r.loadTestId}`}
-                    >
-                      {t('loadtest.stop')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: r.serviceName })}
+                      testId={`load-test-actions-${r.loadTestId}`}
+                      actions={[
+                        {
+                          key: `load-test-stop-${r.loadTestId}`,
+                          label: t('loadtest.stop'),
+                          danger: true,
+                          onClick: () => void stopRun(r.loadTestId, r.serviceName),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -488,23 +498,29 @@ export default function LoadTestsPage() {
                     <td>{formatPercent(r.errorRate)}</td>
                     <td>{formatTime(r.startedAt || r.completedAt)}</td>
                     <td>
-                      {r.state === 'pending' || r.state === 'running' ? (
-                        <button
-                          className="link"
-                          onClick={() => void stopRun(r.loadTestId)}
-                          data-testid={`load-test-stop-${r.loadTestId}`}
-                        >
-                          {t('loadtest.stop')}
-                        </button>
-                      ) : (
-                        <button
-                          className="link danger"
-                          onClick={() => void deleteRun(r.loadTestId)}
-                          data-testid={`load-test-delete-${r.loadTestId}`}
-                        >
-                          {t('common.delete')}
-                        </button>
-                      )}
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: r.serviceName })}
+                        testId={`load-test-actions-${r.loadTestId}`}
+                        actions={
+                          r.state === 'pending' || r.state === 'running'
+                            ? [
+                                {
+                                  key: `load-test-stop-${r.loadTestId}`,
+                                  label: t('loadtest.stop'),
+                                  danger: true,
+                                  onClick: () => void stopRun(r.loadTestId, r.serviceName),
+                                },
+                              ]
+                            : [
+                                {
+                                  key: `load-test-delete-${r.loadTestId}`,
+                                  label: t('common.delete'),
+                                  danger: true,
+                                  onClick: () => void deleteRun(r.loadTestId, r.serviceName),
+                                },
+                              ]
+                        }
+                      />
                     </td>
                   </tr>
                 ))}
@@ -519,8 +535,9 @@ export default function LoadTestsPage() {
         <NewLoadTestDialog
           services={services}
           onClose={() => setDialogOpen(false)}
-          onCreated={(id) => {
+          onCreated={(id, serviceName) => {
             setDialogOpen(false);
+            setNotice(t('loadtests.createSuccess', { name: serviceName }));
             navigate(`/admin/load-tests/${id}`);
           }}
         />

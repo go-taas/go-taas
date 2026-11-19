@@ -9,7 +9,7 @@ import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { navigate } from '../router';
 import { ApiError, formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import SecretRevealDialog from '../components/SecretRevealDialog';
 
 export interface Webhook {
@@ -59,6 +59,7 @@ export default function WebhooksPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [createOpen, setCreateOpen] = useState(false);
@@ -101,6 +102,9 @@ export default function WebhooksPage() {
       await api.post(`/api/v1/admin/webhooks/${wh.webhookId}:set-enabled`, orgId, {
         enabled: !wh.enabled,
       });
+      setNotice(
+        t(wh.enabled ? 'webhooks.disableSuccess' : 'webhooks.enableSuccess', { name: wh.name }),
+      );
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('webhooks.updateFailed'));
@@ -114,6 +118,7 @@ export default function WebhooksPage() {
     setBusyId(wh.webhookId);
     try {
       await api.del(`/api/v1/admin/webhooks/${wh.webhookId}`, orgId);
+      setNotice(t('webhooks.deleteSuccess', { name: wh.name }));
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('webhooks.deleteFailed'));
@@ -140,6 +145,7 @@ export default function WebhooksPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="webhooks-toast" />
 
       <div className="panel" data-testid="webhook-catalog">
         <h3>{t('webhooks.catalogTitle')}</h3>
@@ -222,7 +228,7 @@ export default function WebhooksPage() {
                   <td>{formatTime(wh.createdAt)}</td>
                   <td>
                     <RowActionsMenu
-                      label={t('common.actionsFor', { name: wh.url || wh.webhookId })}
+                      label={t('common.actionsFor', { name: wh.name || wh.webhookId })}
                       testId={`webhook-actions-${wh.webhookId}`}
                       actions={[
                         {
@@ -262,6 +268,7 @@ export default function WebhooksPage() {
           onClose={() => setCreateOpen(false)}
           onCreated={(res) => {
             setCreateOpen(false);
+            setNotice(t('webhooks.createSuccess', { name: res.webhook.name || res.webhook.url }));
             setCreatedSecret(res.plaintextSecret);
             setCreatedId(res.webhook.webhookId);
             void load();

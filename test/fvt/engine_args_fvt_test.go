@@ -12,7 +12,7 @@ import (
 func registerFVTCreateModel(t *testing.T, env *modelInferEnv, name string) string {
 	t.Helper()
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": name, "version": "v1", "weightPath": name + "/v1/",
+		"name": name, "hubModelId": "fvt/" + name, "version": "v1", "weightPath": name + "/v1/",
 	}, "")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	id, _ := body["modelId"].(string)

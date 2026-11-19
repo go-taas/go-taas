@@ -15,7 +15,7 @@ import {
 } from '../api';
 import { candidateLabel } from '../candidates';
 import { useOrg } from '../org';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import { MemberQuotaDialog } from './ProjectMembersPage';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
@@ -49,6 +49,7 @@ export default function ProjectsPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<ProjectSummary | null>(null);
   const [membersTarget, setMembersTarget] = useState<ProjectSummary | null>(null);
@@ -115,6 +116,7 @@ export default function ProjectsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="projects-toast" />
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         {!scopedOrgId && (
@@ -256,8 +258,9 @@ export default function ProjectsPage() {
           orgs={orgs}
           fixedOrganizationId={scopedOrgId}
           onClose={() => setCreateOpen(false)}
-          onDone={() => {
+          onDone={(name) => {
             setCreateOpen(false);
+            setNotice(t('projects.createSuccess', { name }));
             void load();
           }}
         />
@@ -268,8 +271,9 @@ export default function ProjectsPage() {
           orgId={orgId}
           project={editTarget}
           onClose={() => setEditTarget(null)}
-          onDone={() => {
+          onDone={(name) => {
             setEditTarget(null);
+            setNotice(t('projects.updateSuccess', { name }));
             void load();
           }}
         />
@@ -280,6 +284,10 @@ export default function ProjectsPage() {
           orgId={orgId}
           project={quotaTarget}
           onClose={() => setQuotaTarget(null)}
+          onDone={(name) => {
+            setNotice(t('quota.saveSuccess', { name }));
+            void load();
+          }}
         />
       )}
 
@@ -288,6 +296,7 @@ export default function ProjectsPage() {
           orgId={orgId}
           project={membersTarget}
           onClose={() => setMembersTarget(null)}
+          onNotice={setNotice}
         />
       )}
 
@@ -297,7 +306,9 @@ export default function ProjectsPage() {
           project={deleteTarget}
           onClose={() => setDeleteTarget(null)}
           onDone={() => {
+            const name = deleteTarget.displayName || deleteTarget.projectId;
             setDeleteTarget(null);
+            setNotice(t('projects.deleteSuccess', { name }));
             void load();
           }}
         />
@@ -310,7 +321,17 @@ export default function ProjectsPage() {
           action={confirmTarget.action}
           onClose={() => setConfirmTarget(null)}
           onDone={() => {
+            const name =
+              confirmTarget.project.displayName || confirmTarget.project.projectId;
             setConfirmTarget(null);
+            setNotice(
+              t(
+                confirmTarget.action === 'disable'
+                  ? 'projects.disableSuccess'
+                  : 'projects.enableSuccess',
+                { name },
+              ),
+            );
             void load();
           }}
         />
@@ -332,7 +353,7 @@ function CreateProjectDialog({
    * organization, so the dialog neither asks for one nor offers another. */
   fixedOrganizationId?: string;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const [organizationId, setOrganizationId] = useState(fixedOrganizationId);
   const [name, setName] = useState('');
@@ -364,7 +385,7 @@ function CreateProjectDialog({
         displayName: name.trim(),
         description: description.trim(),
       });
-      onDone();
+      onDone(name.trim());
     } catch (e) {
       // 10016: the project id already exists; 10017: the org is disabled.
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('projects.createFailed'));
@@ -470,7 +491,7 @@ function EditProjectDialog({
   orgId: string;
   project: ProjectSummary;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const [name, setName] = useState(project.displayName);
   const [description, setDescription] = useState(project.description || '');
@@ -494,7 +515,7 @@ function EditProjectDialog({
           description: description.trim(),
         },
       );
-      onDone();
+      onDone(name.trim());
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('projects.updateFailed'));
     } finally {
@@ -624,10 +645,12 @@ function ProjectMembersDialog({
   orgId,
   project,
   onClose,
+  onNotice,
 }: {
   orgId: string;
   project: ProjectSummary;
   onClose: () => void;
+  onNotice?: (message: string) => void;
 }) {
   const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<ProjectMember[]>([]);
@@ -689,6 +712,8 @@ function ProjectMembersDialog({
 
   const addMember = async () => {
     setError('');
+    const candidate = candidates.find((c) => c.userId === addUserId);
+    const name = candidate ? candidateLabel(candidate) : addUserId;
     try {
       await api.post(
         `/api/v1/admin/tenancy/projects/${project.projectId}/members`,
@@ -698,6 +723,7 @@ function ProjectMembersDialog({
       setAddOpen(false);
       setAddUserId('');
       setAddRole('member');
+      onNotice?.(t('projectMembers.addSuccess', { name }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('projects.membersAddFailed'));
@@ -706,11 +732,16 @@ function ProjectMembersDialog({
 
   const changeRole = async (userId: string, role: string) => {
     setError('');
+    const name =
+      members.find((m) => m.userId === userId)?.displayName || userId;
     try {
       await api.patch(
         `/api/v1/admin/tenancy/projects/${project.projectId}/members/${userId}`,
         orgId,
         { role },
+      );
+      onNotice?.(
+        t('projectMembers.roleSuccess', { name, role: t(`state.${role}`) }),
       );
       await load();
     } catch (e) {
@@ -720,11 +751,14 @@ function ProjectMembersDialog({
 
   const removeMember = async (userId: string) => {
     setError('');
+    const name =
+      members.find((m) => m.userId === userId)?.displayName || userId;
     try {
       await api.del(
         `/api/v1/admin/tenancy/projects/${project.projectId}/members/${userId}`,
         orgId,
       );
+      onNotice?.(t('projectMembers.removeSuccess', { name }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('projects.membersRemoveFailed'));
@@ -808,6 +842,7 @@ function ProjectMembersDialog({
           projectId={project.projectId}
           member={quotaTarget}
           onClose={() => setQuotaTarget(null)}
+          onSaved={(name) => onNotice?.(t('quota.saveSuccess', { name }))}
         />
       )}
       {addOpen && (
@@ -871,10 +906,12 @@ function ProjectQuotaDialog({
   orgId,
   project,
   onClose,
+  onDone,
 }: {
   orgId: string;
   project: ProjectSummary;
   onClose: () => void;
+  onDone?: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [maxConcurrent, setMaxConcurrent] = useState('');
@@ -911,6 +948,7 @@ function ProjectQuotaDialog({
         maxOutputTokensPerRequest: maxTokens || '0',
         monthlySpendLimitCents: maxSpend || '0',
       });
+      onDone?.(project.displayName || project.projectId);
       onClose();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('projects.quotaSaveFailed'));

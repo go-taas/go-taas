@@ -70,6 +70,13 @@ func (r *Repository) ListModels(ctx context.Context, offset, limit int) ([]*Mode
 	return r.Paginate(ctx, offset, limit, nil, "created_at DESC", "id DESC")
 }
 
+// ListSelfHostedModels returns one page of the models the platform itself
+// serves, newest first. External models are curated on their provider page
+// and have no weights, so the model catalog does not list them.
+func (r *Repository) ListSelfHostedModels(ctx context.Context, offset, limit int) ([]*Model, int64, error) {
+	return r.Paginate(ctx, offset, limit, []any{"external = ?", false}, "created_at DESC", "id DESC")
+}
+
 // GetModel returns the model with the given id. A miss maps to
 // CodeModelNotFound. A non-UUID id can never match the uuid-typed
 // primary key (Postgres rejects the comparison with SQLSTATE 22P02),

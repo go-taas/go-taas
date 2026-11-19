@@ -8,7 +8,7 @@ import { api, ApiError, formatTime, type ModelSummary, type PageMeta } from '../
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 import UploadModelDialog from '../components/UploadModelDialog';
 
@@ -29,6 +29,7 @@ export default function ModelsPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
   const [registerOpen, setRegisterOpen] = useState(false);
   // Model downloads live on this page: importing a model and browsing the
@@ -46,8 +47,10 @@ export default function ModelsPage() {
     setDeleting(true);
     setDeleteError('');
     try {
+      const deletedName = deleteTarget.name;
       await api.del(`/api/v1/admin/models/${deleteTarget.modelId}`, orgId);
       setDeleteTarget(null);
+      setNotice(t('models.deleteSuccess', { name: deletedName }));
       await load();
     } catch (e) {
       // 10101 with a service name means the model is still deployed.
@@ -112,14 +115,20 @@ export default function ModelsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="models-toast" />
 
-      {downloadsOpen && <ModelDownloadsPanel defaultOpen />}
+      {downloadsOpen && (
+        <div className="downloads-section">
+          <ModelDownloadsPanel defaultOpen />
+        </div>
+      )}
 
       {uploadOpen && (
         <UploadModelDialog
           onClose={() => setUploadOpen(false)}
           onDone={() => {
             setUploadOpen(false);
+            setNotice(t('models.upload.success'));
             void load();
           }}
         />
@@ -148,7 +157,6 @@ export default function ModelsPage() {
               <tr>
                 <th>{t('models.colName')}</th>
                 <th>{t('models.colHubModelId')}</th>
-                <th>{t('models.colLatestVersion')}</th>
                 <th>{t('models.colWeightPath')}</th>
                 <th>{t('models.colCreated')}</th>
                 <th className="col-actions">{t('common.actions')}</th>
@@ -164,28 +172,14 @@ export default function ModelsPage() {
                 >
                   <td>
                     <strong>{m.name}</strong>
-                    {m.external && (
-                      <span className="badge external" data-testid="model-external-badge">
-                        {t('modeldetail.external')}
-                      </span>
-                    )}
                   </td>
                   <td className="mono muted" data-testid={`model-hub-id-${m.name}`}>
                     {m.hubModelId || '—'}
                   </td>
-                  <td className="mono">{m.external ? '—' : m.latestVersion}</td>
-                  <td className="mono muted">{m.external ? `${m.providerName} · ${m.upstreamModelId}` : m.weightPath}</td>
+                  <td className="mono muted">{m.weightPath}</td>
                   <td>{formatTime(m.createdAt)}</td>
                   <td onClick={(e) => e.stopPropagation()}>
-                    {/* An external model is served by its provider's API:
-                        there is nothing to deploy on this platform and no
-                        weights to delete, so the row offers neither. */}
-                    {m.external ? (
-                      <span className="muted small" data-testid={`external-model-${m.name}`}>
-                        {t('models.externalManaged')}
-                      </span>
-                    ) : (
-                      <RowActionsMenu
+                    <RowActionsMenu
                       label={t('common.actionsFor', { name: m.name })}
                       testId={`model-actions-${m.name}`}
                       actions={[
@@ -209,7 +203,6 @@ export default function ModelsPage() {
                         },
                       ]}
                     />
-                    )}
                   </td>
                 </tr>
               ))}
@@ -230,8 +223,9 @@ export default function ModelsPage() {
         <RegisterDialog
           orgId={orgId}
           onClose={() => setRegisterOpen(false)}
-          onRegistered={() => {
+          onRegistered={(name) => {
             setRegisterOpen(false);
+            setNotice(t('models.registerSuccess', { name }));
             void load();
           }}
         />
@@ -276,10 +270,9 @@ function RegisterDialog({
 }: {
   orgId: string;
   onClose: () => void;
-  onRegistered: () => void;
+  onRegistered: (name: string) => void;
 }) {
   const [name, setName] = useState('');
-  const [version, setVersion] = useState('');
   const [weightPath, setWeightPath] = useState('');
   const [description, setDescription] = useState('');
   // The hub id binds the model to its identity on a public hub; weights
@@ -290,21 +283,22 @@ function RegisterDialog({
   const { t } = useI18n();
 
   const submit = async () => {
-    // FR1.1 validation: name 1-128, version 1-64, weight path required.
+    // FR1.1 validation: name 1-128, hub model id required and unique,
+    // weight path required. Version is not a catalog concept any more.
     if (!name.trim() || name.trim().length > 128) {
       setError(t('models.validationName'));
       return;
     }
-    if (!version.trim() || version.trim().length > 64) {
-      setError(t('models.validationVersion'));
+    if (!hubModelId.trim()) {
+      setError(t('models.validationHubModelIdRequired'));
+      return;
+    }
+    if (!/^[^/\s]+\/[^/\s]+$/.test(hubModelId.trim())) {
+      setError(t('models.validationHubModelId'));
       return;
     }
     if (!weightPath.trim()) {
       setError(t('models.validationWeightPath'));
-      return;
-    }
-    if (hubModelId.trim() && !/^[^/\s]+\/[^/\s]+$/.test(hubModelId.trim())) {
-      setError(t('models.downloads.validationHubModelId'));
       return;
     }
     setSubmitting(true);
@@ -312,15 +306,12 @@ function RegisterDialog({
     try {
       const body: Record<string, string> = {
         name: name.trim(),
-        version: version.trim(),
         description: description.trim(),
+        weightPath: weightPath.trim(),
+        hubModelId: hubModelId.trim(),
       };
-      body.weightPath = weightPath.trim();
-      if (hubModelId.trim()) {
-        body.hubModelId = hubModelId.trim();
-      }
       await api.post('/api/v1/admin/models', orgId, body);
-      onRegistered();
+      onRegistered(name.trim());
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('models.registerFailed'));
     } finally {
@@ -332,7 +323,7 @@ function RegisterDialog({
   // missing value is visible before the round trip.
   const missing = [
     !name.trim() && t('models.fieldName'),
-    !version.trim() && t('models.fieldVersion'),
+    !hubModelId.trim() && t('models.fieldHubModelId'),
     !weightPath.trim() && t('models.fieldWeightPath'),
   ].filter((entry): entry is string => Boolean(entry));
 
@@ -358,26 +349,11 @@ function RegisterDialog({
               placeholder={t('models.placeholderName')}
             />
           </div>
-          <div className="form-field">
-            <FieldLabel
-              htmlFor="model-version"
-              text={t('models.fieldVersion')}
-              requirement="required"
-            />
-            <input
-              id="model-version"
-              data-testid="model-version-input"
-              value={version}
-              maxLength={64}
-              onChange={(e) => setVersion(e.target.value)}
-              placeholder={t('models.placeholderVersion')}
-            />
-          </div>
           <div className="form-field full">
             <FieldLabel
               htmlFor="model-hub-id"
               text={t('models.fieldHubModelId')}
-              requirement="optional"
+              requirement="required"
             />
             <input
               id="model-hub-id"

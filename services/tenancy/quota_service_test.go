@@ -298,3 +298,37 @@ func TestConcurrencyConsumerMalformed(t *testing.T) {
 }
 
 func int64Ptr(v int64) *int64 { return &v }
+
+// fakeQuotaUserLabels resolves the seeded caller to a readable name.
+type fakeQuotaUserLabels map[string]string
+
+func (f fakeQuotaUserLabels) ResolveUserLabels(_ context.Context, ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		if label, ok := f[id]; ok {
+			out[id] = label
+		}
+	}
+	return out, nil
+}
+
+// TestGetOrganizationQuotaHistoryResolvesOperator covers the readable
+// operator column: the history reports the caller's display name next to
+// the raw id.
+func TestGetOrganizationQuotaHistoryResolvesOperator(t *testing.T) {
+	env := newQuotaTestEnv(t, true)
+	env.svc.SetUserLabelResolver(fakeQuotaUserLabels{
+		"11111111-1111-1111-1111-111111111111": "Operator One",
+	})
+	_, err := env.svc.UpdateOrganizationQuota(env.ctx, &tenancyv1.UpdateOrganizationQuotaRequest{
+		OrganizationId:        env.orgID,
+		MaxConcurrentRequests: int64Ptr(50),
+	})
+	require.NoError(t, err)
+
+	resp, err := env.svc.GetOrganizationQuota(env.ctx, &tenancyv1.GetOrganizationQuotaRequest{OrganizationId: env.orgID})
+	require.NoError(t, err)
+	require.Len(t, resp.GetChanges(), 1)
+	assert.Equal(t, "Operator One", resp.GetChanges()[0].GetOperatorDisplayName())
+	assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.GetChanges()[0].GetOperator())
+}

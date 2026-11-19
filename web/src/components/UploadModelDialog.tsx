@@ -5,7 +5,7 @@
 // checkpoint, an offline installation or a model no hub carries had no way in,
 // so this is that way: pick an archive of the model directory, say what to call
 // it, and the platform streams it to the weights filesystem, extracts it and
-// registers the version.
+// registers the catalog entry.
 //
 // The transfer is an XMLHttpRequest rather than the api client: a model
 // archive is gigabytes, and only the browser's own upload progress events can
@@ -46,7 +46,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
   const { t } = useI18n();
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
-  const [version, setVersion] = useState('');
+  const [hubModelId, setHubModelId] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -67,7 +67,6 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
     setFile(picked);
     if (picked && !name.trim()) {
       const base = picked.name.replace(/\.(tar\.gz|tgz|tar|zip)$/i, '');
-      setVersion((prev) => prev);
       setName(base.slice(0, 128));
     }
   };
@@ -81,6 +80,14 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
       setError(t('models.upload.validationName'));
       return;
     }
+    if (!hubModelId.trim()) {
+      setError(t('models.validationHubModelIdRequired'));
+      return;
+    }
+    if (!/^[^/\s]+\/[^/\s]+$/.test(hubModelId.trim())) {
+      setError(t('models.validationHubModelId'));
+      return;
+    }
     setSubmitting(true);
     setError('');
     setProgress(0);
@@ -89,7 +96,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
     const form = new FormData();
     form.append('file', file);
     form.append('name', name.trim());
-    if (version.trim()) form.append('version', version.trim());
+    form.append('hubModelId', hubModelId.trim());
     if (description.trim()) form.append('description', description.trim());
 
     const path = `${apiPrefix('admin')}/models:upload`;
@@ -198,20 +205,20 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
           </div>
           <div className="form-field">
             <FieldLabel
-              htmlFor="upload-model-version"
-              text={t('models.upload.version')}
-              requirement="optional"
-              flag={t('form.reqDerived')}
+              htmlFor="upload-model-hub-id"
+              text={t('models.fieldHubModelId')}
+              requirement="required"
             />
             <input
-              id="upload-model-version"
-              data-testid="upload-model-version"
-              value={version}
-              maxLength={64}
+              id="upload-model-hub-id"
+              data-testid="upload-model-hub-id"
+              value={hubModelId}
+              maxLength={255}
               disabled={submitting}
-              onChange={(e) => setVersion(e.target.value)}
-              placeholder={t('models.upload.versionPlaceholder')}
+              onChange={(e) => setHubModelId(e.target.value)}
+              placeholder={t('models.placeholderHubModelId')}
             />
+            <div className="field-hint">{t('models.hubModelIdHint')}</div>
           </div>
           <div className="form-field full">
             <FieldLabel
@@ -251,6 +258,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
           missing={[
             !file && t('models.upload.archive'),
             !name.trim() && t('models.upload.name'),
+            !hubModelId.trim() && t('models.fieldHubModelId'),
           ].filter((entry): entry is string => Boolean(entry))}
         />
         <button className="secondary" data-testid="upload-model-cancel" onClick={onClose} disabled={submitting}>

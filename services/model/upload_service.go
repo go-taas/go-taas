@@ -55,6 +55,10 @@ type UploadModelRequest struct {
 	OriginalName string
 	// Name is the catalog model name (required).
 	Name string
+	// HubModelID is the model's "<vendor>/<model>" identity on a public
+	// hub. It is required and unique platform-wide, the same identity a
+	// downloaded model carries.
+	HubModelID string
 	// Version is the catalog version; empty derives one from the upload
 	// time.
 	Version string
@@ -95,6 +99,14 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
 			"model: name must be 1-128 characters")
 	}
+	hubModelID := strings.TrimSpace(req.HubModelID)
+	if hubModelID == "" {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: hub model id is required (\"<vendor>/<model>\")")
+	}
+	if err := validateHubModelID(hubModelID); err != nil {
+		return nil, err
+	}
 	version := strings.TrimSpace(req.Version)
 	if version == "" {
 		version = "upload-" + time.Now().UTC().Format("20060102-150405")
@@ -121,8 +133,9 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 		return nil, err
 	}
 	// Refuse an upload that can never register, before unpacking gigabytes:
-	// a model of that name bound to a hub id is a different thing entirely.
-	if err := s.checkHubBinding(ctx, repo, name, ""); err != nil {
+	// a model of that name bound to a different hub id, or the same hub id
+	// already bound to another catalog entry, is a different thing entirely.
+	if err := s.checkHubBinding(ctx, repo, name, hubModelID); err != nil {
 		return nil, err
 	}
 
@@ -171,7 +184,7 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 	}
 
 	weightPath := rel + "/"
-	modelID, err := repo.RegisterModelOrCreateVersion(ctx, name, description, "", version, weightPath)
+	modelID, err := repo.RegisterModelOrCreateVersion(ctx, name, description, hubModelID, version, weightPath)
 	if err != nil {
 		// The registration was refused (a duplicate version, most likely):
 		// the extracted bytes belong to nobody, so they go.

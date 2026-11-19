@@ -18,7 +18,7 @@ import {
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
-import { Dialog, ErrorBanner, RowActionsMenu } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu, Toast } from '../components';
 import { engineParams } from '../components/engineParams';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
@@ -56,7 +56,7 @@ export default function EngineTemplatesPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [saved, setSaved] = useState('');
+  const [notice, setNotice] = useState('');
   const [editTarget, setEditTarget] = useState<EngineParamTemplate | 'new' | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<EngineParamTemplate | null>(null);
   const [ioOpen, setIoOpen] = useState(false);
@@ -92,9 +92,12 @@ export default function EngineTemplatesPage() {
 
   const remove = async () => {
     if (!deleteTarget) return;
+    setNotice('');
     try {
+      const name = deleteTarget.name;
       await api.del(`/api/v1/admin/engine-param-templates/${deleteTarget.templateId}`, orgId);
       setDeleteTarget(null);
+      setNotice(t('engineTemplates.deleteSuccess', { name }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('engineTemplates.deleteFailed'));
@@ -119,7 +122,7 @@ export default function EngineTemplatesPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
-      {saved && <div className="success-banner" data-testid="engine-template-saved">{saved}</div>}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="engine-templates-toast" />
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <input
@@ -210,7 +213,7 @@ export default function EngineTemplatesPage() {
           onClose={() => setEditTarget(null)}
           onSaved={(message) => {
             setEditTarget(null);
-            setSaved(message);
+            setNotice(message);
             void load();
           }}
         />
@@ -234,7 +237,7 @@ export default function EngineTemplatesPage() {
           onClose={() => setIoOpen(false)}
           onImported={(message) => {
             setIoOpen(false);
-            setSaved(message);
+            setNotice(message);
             void load();
           }}
         />
@@ -342,10 +345,10 @@ function TemplateDialog({
     try {
       if (template) {
         await api.patch(`/api/v1/admin/engine-param-templates/${template.templateId}`, orgId, payload);
-        onSaved(t('engineTemplates.updated'));
+        onSaved(t('engineTemplates.updateSuccess', { name: payload.name }));
       } else {
         await api.post('/api/v1/admin/engine-param-templates', orgId, payload);
-        onSaved(t('engineTemplates.created'));
+        onSaved(t('engineTemplates.createSuccess', { name: payload.name }));
       }
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('engineTemplates.saveFailed'));
@@ -662,7 +665,7 @@ function TemplateIODialog({
   return (
     <Dialog title={t('engineTemplates.importExport')} onClose={onClose} testId="engine-template-io-dialog">
       <p className="muted">{t('engineTemplates.ioHint')}</p>
-      <div className="dialog-actions" style={{ justifyContent: 'flex-start' }}>
+      <div className="toolbar" style={{ marginBottom: 14 }}>
         <button className="secondary" data-testid="tpl-export" disabled={busy} onClick={() => void exportAll()}>
           {t('engineTemplates.export')}
         </button>

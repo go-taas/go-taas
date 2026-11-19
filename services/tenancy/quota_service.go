@@ -258,14 +258,23 @@ func (s *Service) GetOrganizationQuota(ctx context.Context, req *tenancyv1.GetOr
 	if err != nil {
 		return nil, err
 	}
+	// Resolve each distinct operator once, so the history reads as names
+	// instead of opaque account ids.
+	operatorLabels := make(map[string]string)
+	for _, ch := range changes {
+		if _, seen := operatorLabels[ch.Operator]; !seen {
+			operatorLabels[ch.Operator] = s.userLabel(ctx, ch.Operator)
+		}
+	}
 	entries := make([]*tenancyv1.QuotaChangeEntry, 0, len(changes))
 	for _, ch := range changes {
 		entries = append(entries, &tenancyv1.QuotaChangeEntry{
-			ChangedAt: ch.ChangedAt.Unix(),
-			Operator:  ch.Operator,
-			Dimension: ch.Dimension,
-			OldValue:  ch.OldValue,
-			NewValue:  ch.NewValue,
+			ChangedAt:          ch.ChangedAt.Unix(),
+			Operator:           ch.Operator,
+			OperatorDisplayName: operatorLabels[ch.Operator],
+			Dimension:          ch.Dimension,
+			OldValue:           ch.OldValue,
+			NewValue:           ch.NewValue,
 		})
 	}
 	return &tenancyv1.GetOrganizationQuotaResponse{

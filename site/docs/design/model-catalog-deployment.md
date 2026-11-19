@@ -49,18 +49,18 @@ Pitfalls to avoid:
 
 | # | Decision | Rationale |
 | --- | --- | --- |
-| D1 | The catalog is the list of models registered through `RegisterModel` (name, version, weight path, description); the console shows one card per model with its latest version and a version list on the detail page | Matches the `model` module's metadata role (architecture Section 2.2); no marketplace or external registry sync in this feature point |
+| D1 | The catalog is the list of models registered through `RegisterModel` (name, hub model id, weight path, description). The console manages one entry per model: a different model version is a different entry with its own id, so neither the list nor the detail page shows a version selector | Matches the `model` module's metadata role (architecture Section 2.2); no marketplace or external registry sync in this feature point |
 | D2 | One-click deployment is a single guided form with exactly: **Service name**, **Model + version** (picked from the catalog), **Accelerator** (the vendors the fleet reports, plus `cpu`), **Card type** (`accelerator_type`), **Image** (filtered to the chosen accelerator), **Replicas** (1–100) | Mirrors `CreateInferenceService` fields one-to-one; no YAML, no Kubernetes concepts exposed |
 | D3 | Deployment is asynchronous: the create call returns immediately with `state=pending`; the observed states are `pending → queued → starting → running`, with `failed` on a reconcile error and `terminated` after deletion (`deploying` is the legacy phase written by spec-change RPCs); the console polls the service list/detail | Matches architecture Section 4.2 (MQ + Controller reconciliation); blocking on pod readiness would time out the HTTP call |
 | D4 | The image dropdown is filtered by the selected accelerator; images incompatible with the chosen card type are hidden, not merely disabled | The `image` module owns the adaptation matrix (architecture Section 2.3); wrong combinations must be impossible to submit |
 | D5 | Scaling (replica count change) is an in-place operation on the service row; any other change (model, version, image, card type) requires delete + recreate | Matches `ScaleInferenceService` (replicas only); avoids half-updatable state |
 | D6 | The service detail page shows the OpenAI-compatible endpoint(s) with a copy button and a "try it" curl snippet | The endpoint is the user's actual deliverable; Agents call it through the Inference Gateway with an API Key |
 | D7 | Deletion requires a confirmation dialog naming the service and warning that Agents calling its endpoints will immediately receive errors; deleted services keep `state=terminated` in the list until filtered out | Prevents accidental destruction of serving endpoints while keeping the list actionable |
-| D8 | Model registration (catalog entry creation) is an administrator action with a form symmetric to the API: name, version, weight path, description; duplicate name+version is rejected | Keeps console and API parity; the weight path must already exist in object storage (validated syntactically, existence is the Controller's job at deploy time) |
+| D8 | Model registration (catalog entry creation) is an administrator action with a form symmetric to the API: name, hub model id, weight path, description. The hub model id is required and unique platform-wide; the version is an internal detail defaulted by the server, not an operator field | Keeps console and API parity; the weight path must already exist in object storage (validated syntactically, existence is the Controller's job at deploy time) |
 
 ### 1.4 Scope Boundary
 
-**In scope**: model registration and catalog browsing (list, detail with versions), one-click deployment of a registered model as an inference service (create, list, detail with endpoints, scale, delete), deployment state visibility, and image selection constrained by accelerator.
+**In scope**: model registration and catalog browsing (flat list and detail, no version management), one-click deployment of a registered model as an inference service (create, list, detail with endpoints, scale, delete), deployment state visibility, and image selection constrained by accelerator.
 
 **Out of scope** (tracked by other feature points; most are now implemented): image registration, versioning, and the full image×card adaptation matrix UI (#3), image pre-pull/warmup orchestration (#3), per-model pricing display (#5), tenant-level model authorization (#6), autoscaling policies (#16/#47), canary upgrades, and fine-tuning flows.
 
@@ -82,9 +82,9 @@ Pitfalls to avoid:
 
 | # | As a… | I want to… | So that… |
 | --- | --- | --- | --- |
-| US1 | Platform administrator | register a model with its name, version, weight path, and description | the model appears in the catalog and becomes deployable |
-| US2 | Platform administrator | browse the catalog with search and see each model's latest version and description | I can find the right model quickly without leaving the console |
-| US3 | Platform administrator | open a model and see all its registered versions | I can pick the exact version to deploy and know what changed |
+| US1 | Platform administrator | register a model with its name, hub model id, weight path, and description | the model appears in the catalog and becomes deployable |
+| US2 | Platform administrator | browse the catalog with search and see each model's hub id and weight path | I can find the right model quickly without leaving the console |
+| US3 | Platform administrator | open a model and see its metadata and deploy it | I can confirm what is registered and start a deployment |
 | US4 | Platform administrator | deploy a model with one guided form (model, image, accelerator, card type, replicas) | I get a serving endpoint without writing any Kubernetes YAML |
 | US5 | Platform administrator | watch the deployment go through pending / queued / starting / running and see the reason if it fails | I know when the service is actually usable and what to fix if it is not |
 | US6 | Platform administrator | copy the endpoint URL and a ready-made curl snippet from the service detail page | I can hand the endpoint to Agents immediately |
@@ -99,15 +99,15 @@ Pitfalls to avoid:
 ### FR1 — Register Model (catalog entry)
 
 - **FR1.1** The console provides a "Register Model" action on the Models page, opening a form with: **Name** (required, 1–128 chars), **Version** (required, 1–64 chars), **Weight path** (required, object-storage path, e.g. `models/qwen2.5-32b/`), **Description** (optional, ≤ 1024 chars).
-- **FR1.2** Registering a name+version that already exists returns a clear conflict error; registering a new version of an existing name adds that version to the model's version list and updates `latest_version` if it is the newest.
+- **FR1.2** The hub model id is required (`<vendor>/<model>`) and unique platform-wide: registering an id already bound to another catalog entry returns a clear conflict error. The console does not ask for a version; the server stores an internal one so deployments and pods keep a stable version string.
 - **FR1.3** The weight path is validated syntactically (non-empty, no `..` segments); actual existence in MinIO/JuiceFS is checked at deployment time by the Controller, and a missing weight path surfaces as a `failed` deployment with that reason.
 - **FR1.4** Deleting a model requires confirmation and is blocked with an actionable error while any non-terminated inference service still references it.
 
 ### FR2 — Catalog browsing
 
-- **FR2.1** The Models page lists registered models as cards/table rows: **Name**, **Latest version**, **Description** (truncated), **Created**, and a "Deploy" action.
+- **FR2.1** The Models page lists registered models as table rows: **Name**, **Hub model ID**, **Weight path**, **Created**, and a "Deploy" action.
 - **FR2.2** The list is paginated (`offset`/`limit`, default 20, max 100) and searchable by name (client-side filter over the current page plus server-side query when the API supports it).
-- **FR2.3** The model detail page shows the model's metadata (weight path, description) and the full version list, each version with a "Deploy this version" action.
+- **FR2.3** The model detail page shows the model's metadata (hub model id, weight path, description) and a deploy action; there is no version list.
 
 ### FR3 — One-click deployment (create inference service)
 
@@ -149,8 +149,8 @@ Pitfalls to avoid:
 | Page / component | Purpose |
 | --- | --- |
 | **Models page** (`/models`) | Catalog: registered models with search, pagination, register action, per-card deploy action |
-| **Register Model dialog** | Name, version, weight path, description |
-| **Model detail page** (`/models/{model_id}`) | Metadata + version list, per-version deploy action |
+| **Register Model dialog** | Name, hub model ID, weight path, description |
+| **Model detail page** (`/models/{model_id}`) | Metadata and deploy action |
 | **Inference Services page** (`/inference-services`) | Service list with state badges, scale and delete actions |
 | **Deploy form** | The one-click deployment form (FR3): six numbered, rule-separated blocks whose fields are badged Required / Default / Optional (FR3.5) |
 | **Service detail page** (`/inference-services/{service_id}`) | State, spec, endpoints with copy + curl snippet, failure reason |
@@ -160,21 +160,21 @@ Pitfalls to avoid:
 ```mermaid
 flowchart TD
     A["Administrator opens Models page"] --> B["Click Register Model"]
-    B --> C["Form: name, version, weight path, description"]
+    B --> C["Form: name, hub model id, weight path, description"]
     C --> D{Submit}
     D -->|Validation error| C
     D -->|OK| E["POST /api/v1/models"]
-    E --> F{Name + version exists?}
+    E --> F{Hub model id already bound?}
     F -->|Yes| G["Inline conflict error"]
     G --> C
-    F -->|No| H["Model appears in catalog with latest version"]
+    F -->|No| H["Model appears in catalog"]
 ```
 
 ### 5.3 One-Click Deployment Flow
 
 ```mermaid
 flowchart TD
-    A["Administrator clicks Deploy on a model card or version"] --> B["Deploy dialog pre-filled with model + version"]
+    A["Administrator clicks Deploy on a model row"] --> B["Deploy dialog pre-filled with model"]
     B --> C["Choose accelerator (fleet-reported vendors + cpu)"]
     C --> D["Image dropdown filtered by accelerator"]
     D --> E["Enter service name, card type, replicas"]
@@ -243,9 +243,9 @@ The design spans three proto services, all served as HTTP via the Control Gatewa
 
 | RPC | HTTP | Purpose | Notes |
 | --- | --- | --- | --- |
-| `RegisterModel` (`taas.model.v1`) | `POST /api/v1/admin/models` | Register a model version | `name` + `version` unique; `weight_path` required |
+| `RegisterModel` (`taas.model.v1`) | `POST /api/v1/admin/models` | Register a catalog model | `name` required; `hub_model_id` required and unique; `weight_path` required |
 | `ListModels` (`taas.model.v1`) | `GET /api/v1/admin/models` | Paginated catalog list | Returns `ModelSummary` (model_id, name, latest_version, weight_path) |
-| `GetModel` (`taas.model.v1`) | `GET /api/v1/admin/models/{model_id}` | Model detail with version list | Drives the detail page |
+| `GetModel` (`taas.model.v1`) | `GET /api/v1/admin/models/{model_id}` | Model detail; the internal version fields remain for compatibility | Drives the detail page |
 | `DeleteModel` (`taas.model.v1`) | `DELETE /api/v1/admin/models/{model_id}` | Remove a catalog entry | Blocked while referenced by live services |
 | `CreateInferenceService` (`taas.infer.v1`) | `POST /api/v1/admin/inference-services` | One-click deploy | Returns `service_id`, `state=pending`; async via MQ |
 | `ListInferenceServices` (`taas.infer.v1`) | `GET /api/v1/admin/inference-services` | Service list with states | Drives the list page and polling |
@@ -269,7 +269,7 @@ Constraints on the contract:
 | # | Criterion | Verification |
 | --- | --- | --- |
 | AC1 | `RegisterModel` with a new name+version succeeds and the model appears in `ListModels` with the correct `latest_version`; registering the same name+version again returns a conflict error | FVT |
-| AC2 | `GetModel` returns the model's metadata and its full version list; versions are ordered with the latest first | FVT |
+| AC2 | `GetModel` returns the model's metadata; the response still carries the legacy version fields for compatibility, but the console does not render them | FVT |
 | AC3 | `DeleteModel` on a model referenced by a non-terminated inference service returns an error naming the blocking service; after that service is deleted, the same call succeeds | FVT |
 | AC4 | `CreateInferenceService` with a valid model, image, accelerator, and replicas returns immediately (no blocking on pods) with a `service_id` and `state=pending` | FVT (latency bound: < 2 s) |
 | AC5 | `CreateInferenceService` with an unknown `model_id`, an out-of-range `replicas` (0 or 101), or an image whose `accelerator` differs from the request's accelerator returns a validation error and publishes nothing to the message queue | Unit test + FVT |

@@ -9,7 +9,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { formatMicros } from '../display';
 import { navigate } from '../router';
-import { ErrorBanner, Pagination } from '../components';
+import { ErrorBanner, Pagination, Toast } from '../components';
 import UsageKeysChart, { type UsageKeysMetric } from '../components/UsageKeysChart';
 import UsageKeysCards from '../components/UsageKeysCards';
 import TopKeysList from '../components/TopKeysList';
@@ -64,6 +64,7 @@ export default function UsageKeysPage() {
   const [data, setData] = useState<GetUsageKeysOverviewResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [stale, setStale] = useState(false);
   const [offset, setOffset] = useState(0);
   const [sortKey, setSortKey] = useState('totalCostCents');
@@ -151,6 +152,7 @@ export default function UsageKeysPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="usage-keys-toast" />
       {stale && data && (
         <div className="error-banner" data-testid="usage-keys-stale-banner">
           {t('usageKeys.staleData')}
@@ -312,13 +314,17 @@ export default function UsageKeysPage() {
                     <td>{k.p95LatencyMs || '0'} ms</td>
                     <td>{k.dataThrough ? formatTime(k.dataThrough) : '—'}</td>
                     <td>
-                      <button
+                      <a
                         className="link"
+                        href={`/admin/usage/keys/${k.apiKeyId}`}
                         data-testid={`usage-keys-view-${k.apiKeyId}`}
-                        onClick={() => navigate(`/admin/usage/keys/${k.apiKeyId}`)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          navigate(`/admin/usage/keys/${k.apiKeyId}`);
+                        }}
                       >
                         {t('usageKeys.view')}
-                      </button>
+                      </a>
                     </td>
                   </tr>
                 ))}

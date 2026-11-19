@@ -1802,12 +1802,16 @@ button.primary:hover {
   font-weight: 700;
 }
 
+/* The section hint belongs to its title, not to the far edge of the form:
+   a description pushed to the right of a wide dialog reads as a separate
+   column. It sits on its own line directly under the heading instead. */
 .form-section-hint {
-  margin-left: auto;
+  flex-basis: 100%;
+  margin-left: 32px;
   font-size: 12px;
   font-weight: 500;
   color: var(--muted);
-  text-align: right;
+  text-align: left;
 }
 
 .deploy-actions {
@@ -3943,4 +3947,58 @@ button.primary:hover {
 
 .model-name .icon-button:hover {
   color: var(--primary-strong);
+}
+
+/* ---- field label + control rhythm (org picker and friends) ---- */
+/* A plain <label class="field"> stacks its caption above the control. Without
+   this, the caption and the <select> collapse onto one baseline with no gap. */
+.field {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 7px;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--muted-strong);
+}
+
+.field > span {
+  line-height: 1.2;
+}
+
+/* ---- breadcrumb trail above a nested list page ---- */
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 10px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.breadcrumb-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.breadcrumb a {
+  color: var(--primary);
+  text-decoration: none;
+}
+
+.breadcrumb a:hover {
+  text-decoration: underline;
+}
+
+.breadcrumb-separator {
+  color: var(--border-strong);
+}
+
+/* A downloads section is a full-width block between the page header and the
+   catalog: a rule and breathing room keep the two lists from reading as one. */
+.downloads-section {
+  margin-bottom: 24px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border);
 }

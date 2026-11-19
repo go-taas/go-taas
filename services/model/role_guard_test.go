@@ -49,6 +49,7 @@ func TestListModelVersionsRoleGuard(t *testing.T) {
 	svc := newModelTestService(t)
 	reg, err := svc.RegisterModel(context.Background(), &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -75,6 +76,7 @@ func TestActivateModelVersionRoleGuard(t *testing.T) {
 	svc := newModelTestService(t)
 	reg, err := svc.RegisterModel(context.Background(), &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -105,6 +107,7 @@ func TestModelVersionRoleGuardNoop(t *testing.T) {
 	svc := newModelTestService(t)
 	reg, err := svc.RegisterModel(context.Background(), &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -139,6 +142,7 @@ func TestModelVersionPlatformAdminOnly(t *testing.T) {
 	svc := newModelTestService(t)
 	reg, err := svc.RegisterModel(context.Background(), &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 

@@ -37,7 +37,6 @@ import SSOProvidersPage from './pages/SSOProvidersPage';
 import IdentityBindingsPage from './pages/IdentityBindingsPage';
 import ModelsPage from './pages/ModelsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
-import ModelVersionsPage from './pages/ModelVersionsPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import ClustersPage from './pages/ClustersPage';
@@ -94,6 +93,7 @@ import CostAnalyticsPage from './pages/CostAnalyticsPage';
 import CostDetailPage from './pages/CostDetailPage';
 import ForecastPage from './pages/ForecastPage';
 import QuotasPage from './pages/QuotasPage';
+import QuotaHistoryPage from './pages/QuotaHistoryPage';
 import OrgSettingsPage from './pages/OrgSettingsPage';
 import ProjectMembersPage from './pages/ProjectMembersPage';
 import UserQuotasAdminPage from './pages/UserQuotasAdminPage';
@@ -248,6 +248,7 @@ function AdminSurface() {
           <AdminShell>
             <Routes>
               <Route path="/admin/organizations" element={<OrganizationsPage />} />
+              <Route path="/admin/organizations/members" element={<MembersPage />} />
               <Route path="/admin/users" element={<UsersPage />} />
               <Route path="/admin/projects" element={<ProjectsPage />} />
               <Route path="/admin/members" element={<MembersPage />} />
@@ -257,7 +258,6 @@ function AdminSurface() {
               <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
               <Route path="/admin/models" element={<ModelsPage />} />
               <Route path="/admin/models/:id" element={<ModelDetailPage />} />
-              <Route path="/admin/models/:id/versions" element={<ModelVersionsPage />} />
               <Route path="/admin/images" element={<ImagesPage />} />
               <Route path="/admin/engine-templates" element={<EngineTemplatesPage />} />
               <Route path="/admin/images/:id" element={<ImageDetailPage />} />
@@ -305,6 +305,7 @@ function AdminSurface() {
               <Route path="/admin/cost/:dimension/:value" element={<CostDetailPage />} />
               <Route path="/admin/forecast" element={<ForecastPage />} />
               <Route path="/admin/quotas" element={<QuotasPage />} />
+              <Route path="/admin/quotas/:orgId/history" element={<QuotaHistoryPage />} />
               <Route path="/admin/org-settings" element={<OrgSettingsPage />} />
               <Route path="/admin/project-members" element={<ProjectMembersPage />} />
               <Route path="/admin/user-quotas" element={<UserQuotasAdminPage />} />

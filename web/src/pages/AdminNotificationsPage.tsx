@@ -9,7 +9,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { navigate } from '../router';
 import { formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import { notifyUnreadChanged } from '../notificationsBus';
 
 export interface Notification {
@@ -88,6 +88,7 @@ export default function AdminNotificationsPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [eventFilter, setEventFilter] = useState('');
   const [prefs, setPrefs] = useState<NotificationPreference[]>([]);
@@ -169,6 +170,7 @@ export default function AdminNotificationsPage() {
     try {
       await api.post(`/api/v1/admin/notifications/${n.notificationId}:mark-read`, orgId, {});
       notifyUnreadChanged();
+      setNotice(t('notifications.markReadSuccess', { name: n.title || n.notificationId }));
       if (n.link) navigate(n.link);
       void loadInbox();
     } catch (e) {
@@ -183,6 +185,7 @@ export default function AdminNotificationsPage() {
     try {
       await api.post('/api/v1/admin/notifications:mark-all-read', orgId, {});
       notifyUnreadChanged();
+      setNotice(t('notifications.markAllReadSuccess'));
       void loadInbox();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('notifications.updateFailed'));
@@ -196,6 +199,7 @@ export default function AdminNotificationsPage() {
     setBusyId(n.notificationId);
     try {
       await api.del(`/api/v1/admin/notifications/${n.notificationId}`, orgId);
+      setNotice(t('notifications.deleteSuccess', { name: n.title || n.notificationId }));
       void loadInbox();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('notifications.deleteFailed'));
@@ -210,6 +214,8 @@ export default function AdminNotificationsPage() {
       await api.put('/api/v1/admin/notifications/preferences', orgId, {
         preferences: prefs,
       });
+      setNotice(t('notifications.preferencesSaveSuccess'));
+      void loadPrefs();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('notifications.updateFailed'));
     } finally {
@@ -262,6 +268,11 @@ export default function AdminNotificationsPage() {
         await api.post('/api/v1/admin/notifications/thresholds', orgId, body);
       }
       setDialogOpen(false);
+      setNotice(
+        t(editing ? 'notifications.thresholdUpdateSuccess' : 'notifications.thresholdCreateSuccess', {
+          name: dialogName.trim() || editing?.thresholdId || '',
+        }),
+      );
       void loadThresholds();
     } catch (e) {
       const code = e && (e as { code?: number }).code;
@@ -277,6 +288,11 @@ export default function AdminNotificationsPage() {
       await api.put(`/api/v1/admin/notifications/thresholds/${th.thresholdId}`, orgId, {
         enabled: !th.enabled,
       });
+      setNotice(
+        t(th.enabled ? 'notifications.thresholdDisableSuccess' : 'notifications.thresholdEnableSuccess', {
+          name: th.name || th.thresholdId,
+        }),
+      );
       void loadThresholds();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('notifications.updateFailed'));
@@ -290,6 +306,7 @@ export default function AdminNotificationsPage() {
     setBusyId(th.thresholdId);
     try {
       await api.del(`/api/v1/admin/notifications/thresholds/${th.thresholdId}`, orgId);
+      setNotice(t('notifications.thresholdDeleteSuccess', { name: th.name || th.thresholdId }));
       void loadThresholds();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('notifications.deleteFailed'));
@@ -320,6 +337,7 @@ export default function AdminNotificationsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="admin-notifications-toast" />
 
       <div className="tabs" data-testid="notifications-tabs">
         <button

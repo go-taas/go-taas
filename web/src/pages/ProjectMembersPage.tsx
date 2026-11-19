@@ -7,7 +7,7 @@ import { api, ApiError, type MemberCandidate } from '../api';
 import { useApi } from '../surface';
 import { formatMoney, quotaRemaining } from '../display';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, RowActionsMenu } from '../components';
+import { Dialog, ErrorBanner, RowActionsMenu, Toast } from '../components';
 import { useAdminScope } from '../admin-scope';
 import { candidateLabel } from '../candidates';
 
@@ -30,6 +30,7 @@ export default function ProjectMembersPage() {
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [userId, setUserId] = useState('');
   const [role, setRole] = useState('member');
   // Adding a member is a dialog, exactly like the organization roster: the
@@ -96,6 +97,8 @@ export default function ProjectMembersPage() {
   const add = async () => {
     if (!userId.trim()) return;
     setError('');
+    const candidate = candidates.find((c) => c.userId === userId);
+    const name = candidate ? candidateLabel(candidate) : userId;
     try {
       await api.post(`/api/v1/admin/tenancy/projects/${projectId}/members`, '', {
         userId: userId.trim(),
@@ -103,6 +106,7 @@ export default function ProjectMembersPage() {
       });
       setUserId('');
       setAddOpen(false);
+      setNotice(t('projectMembers.addSuccess', { name }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('projectMembers.addFailed'));
@@ -111,11 +115,16 @@ export default function ProjectMembersPage() {
 
   const changeRole = async (memberId: string, nextRole: string) => {
     setError('');
+    const name =
+      members.find((m) => m.userId === memberId)?.displayName || memberId;
     try {
       await api.patch(
         `/api/v1/admin/tenancy/projects/${projectId}/members/${memberId}`,
         '',
         { role: nextRole },
+      );
+      setNotice(
+        t('projectMembers.roleSuccess', { name, role: t(`state.${nextRole}`) }),
       );
       await load();
     } catch (e) {
@@ -125,8 +134,11 @@ export default function ProjectMembersPage() {
 
   const remove = async (memberId: string) => {
     setError('');
+    const name =
+      members.find((m) => m.userId === memberId)?.displayName || memberId;
     try {
       await api.del(`/api/v1/admin/tenancy/projects/${projectId}/members/${memberId}`, '');
+      setNotice(t('projectMembers.removeSuccess', { name }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('projectMembers.removeFailed'));
@@ -145,6 +157,7 @@ export default function ProjectMembersPage() {
         </button>
       </div>
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="project-members-toast" />
 
       <div className="panel">
         {loading ? (
@@ -223,6 +236,10 @@ export default function ProjectMembersPage() {
           projectId={projectId}
           member={quotaTarget}
           onClose={() => setQuotaTarget(null)}
+          onSaved={(name) => {
+            setNotice(t('quota.saveSuccess', { name }));
+            void load();
+          }}
         />
       )}
 
@@ -299,10 +316,12 @@ export function MemberQuotaDialog({
   projectId,
   member,
   onClose,
+  onSaved,
 }: {
   projectId: string;
   member: ProjectMember;
   onClose: () => void;
+  onSaved?: (name: string) => void;
 }) {
   const api = useApi();
   const { t } = useI18n();
@@ -361,6 +380,7 @@ export function MemberQuotaDialog({
         },
       );
       if (res.quota?.effective) setEffective(res.quota.effective);
+      onSaved?.(member.displayName || member.userId);
       onClose();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('memberQuota.saveFailed'));

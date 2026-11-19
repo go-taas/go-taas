@@ -1943,6 +1943,8 @@ export interface QuotaUsage {
 export interface QuotaChangeEntry {
   changedAt: string;
   operator: string;
+  /** operatorDisplayName is the operator's readable name, when resolvable. */
+  operatorDisplayName?: string;
   dimension: string;
   oldValue: string;
   newValue: string;

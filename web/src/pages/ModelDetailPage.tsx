@@ -1,10 +1,9 @@
-// Model detail page: metadata + full version list with per-version deploy.
+// Model detail page: metadata and deploy entry point.
 // Implements docs/design/model-catalog-deployment.md FR2.3, AC2, and
 // docs/design/model-authorization.md FR1, FR2, FR5.1 (AC12, AC13): the
 // "Authorized organizations" panel and the "Restricted" badge.
 
 import { useCallback, useEffect, useState } from 'react';
-import { navigate } from '../router';
 import { api, formatTime, type ModelSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -79,17 +78,6 @@ export default function ModelDetailPage() {
             )}
           </div>
         </div>
-        <a
-          className="secondary"
-          data-testid="model-versions-link"
-          href={`/admin/models/${model.model.modelId}/versions`}
-          onClick={(e) => {
-            e.preventDefault();
-            navigate(`/admin/models/${model.model.modelId}/versions`);
-          }}
-        >
-          {t('modelversions.title')}
-        </a>
       </div>
 
       <div className="panel" style={{ marginBottom: 16 }}>
@@ -99,12 +87,6 @@ export default function ModelDetailPage() {
             <div className="label">{t('modeldetail.hubModelId')}</div>
             <div className="value mono" data-testid="model-hub-model-id">
               {model.model.hubModelId || '—'}
-            </div>
-          </div>
-          <div className="detail-item">
-            <div className="label">{t('modeldetail.latestVersion')}</div>
-            <div className="value mono" data-testid="model-latest-version">
-              {model.model.latestVersion}
             </div>
           </div>
           <div className="detail-item">
@@ -122,43 +104,6 @@ export default function ModelDetailPage() {
             </div>
           )}
         </div>
-      </div>
-
-      <div className="panel">
-        <h3 style={{ marginTop: 0 }}>{t('modeldetail.versions')}</h3>
-        {model.versions.length === 0 ? (
-          <div className="empty-state">{t('modeldetail.versionsEmpty')}</div>
-        ) : (
-          <table className="data" data-testid="model-versions-table">
-            <thead>
-              <tr>
-                <th>{t('modeldetail.colVersion')}</th>
-                <th>{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {model.versions.map((v) => (
-                <tr key={v} data-testid={`model-version-row-${v}`}>
-                  <td className="mono">{v}</td>
-                  <td>
-                    <button
-                      className="link"
-                      data-testid={`deploy-version-${v}`}
-                      onClick={() =>
-                        navigate(
-                          `/admin/inference-services?create=1&modelId=${encodeURIComponent(model.model.modelId)}` +
-                            `&version=${encodeURIComponent(v)}`,
-                        )
-                      }
-                    >
-                      {t('modeldetail.deployVersion')}
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
       </div>
 
     </div>

@@ -21,7 +21,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast, usePolling } from '../components';
 
 const PAGE_SIZE = 20;
 const RANGE_PRESETS = [
@@ -108,6 +108,7 @@ export default function BillingReportsPage() {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [tab, setTab] = useState<'reports' | 'schedules'>('reports');
+  const [notice, setNotice] = useState('');
 
   // Reports state.
   const [reports, setReports] = useState<Report[]>([]);
@@ -229,11 +230,12 @@ export default function BillingReportsPage() {
       setReportsError(t('reports.rangeInvalid'));
       return;
     }
+    const name = reportName.trim();
     setGenerating(true);
     setReportsError('');
     try {
       const body: Record<string, unknown> = {
-        name: reportName.trim(),
+        name,
         dimension: `REPORT_DIMENSION_${reportDimension.toUpperCase()}`,
         since: range.since,
         until: range.until,
@@ -245,6 +247,7 @@ export default function BillingReportsPage() {
       setGeneratingId(data.report.reportId);
       setReportName('');
       setBuilderOpen(false);
+      setNotice(t('reports.generateSuccess', { name }));
       void loadReports(0);
     } catch (e) {
       setReportsError(e instanceof Error ? e.message : t('reports.generateFailed'));
@@ -252,13 +255,14 @@ export default function BillingReportsPage() {
     }
   };
 
-  const download = async (reportId: string) => {
+  const download = async (reportId: string, name: string) => {
     try {
       const data = await api.get<DownloadReportResponse>(
         `/api/v1/admin/billing/reports/${reportId}/download`,
         orgId,
       );
       downloadCSV(data.csv, data.filename || `billing-report-${reportId}.csv`);
+      setNotice(t('reports.downloadSuccess', { name }));
     } catch (e) {
       setReportsError(e instanceof Error ? e.message : t('reports.downloadFailed'));
     }
@@ -269,11 +273,12 @@ export default function BillingReportsPage() {
       setSchedulesError(t('reports.nameRequired'));
       return;
     }
+    const name = scheduleName.trim();
     setCreatingSchedule(true);
     setSchedulesError('');
     try {
       const body: Record<string, unknown> = {
-        name: scheduleName.trim(),
+        name,
         dimension: `REPORT_DIMENSION_${scheduleDimension.toUpperCase()}`,
         relativeRange: `RELATIVE_RANGE_${scheduleRelativeRange.toUpperCase()}`,
         granularity: `REPORT_GRANULARITY_${scheduleGranularity.toUpperCase()}`,
@@ -283,6 +288,7 @@ export default function BillingReportsPage() {
       if (scheduleOrg) body.organizationId = scheduleOrg;
       await api.post<CreateScheduleResponse>('/api/v1/admin/billing/reports/schedules', orgId, body);
       setScheduleName('');
+      setNotice(t('reports.scheduleCreateSuccess', { name }));
       void loadSchedules(0);
     } catch (e) {
       setSchedulesError(e instanceof Error ? e.message : t('reports.scheduleCreateFailed'));
@@ -315,6 +321,7 @@ export default function BillingReportsPage() {
     setSchedulesError('');
     try {
       await api.del(`/api/v1/admin/billing/reports/schedules/${deleteTarget.scheduleId}`, orgId);
+      setNotice(t('reports.scheduleDeleteSuccess', { name: deleteTarget.name }));
       setDeleteTarget(null);
       void loadSchedules(0);
     } catch (e) {
@@ -345,6 +352,8 @@ export default function BillingReportsPage() {
           {t('reports.newReport')}
         </button>
       </div>
+
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="reports-toast" />
 
       <div className="segmented" data-testid="reports-tabs">
         <button
@@ -538,14 +547,20 @@ export default function BillingReportsPage() {
                       <td data-testid={`report-rows-${r.reportId}`}>{r.rowCount}</td>
                       <td>{formatTime(r.createdAt)}</td>
                       <td>
-                        <button
-                          className="link"
-                          data-testid={`report-download-${r.reportId}`}
-                          disabled={r.status !== 'ready'}
-                          onClick={() => void download(r.reportId)}
-                        >
-                          {t('reports.download')}
-                        </button>
+                        <RowActionsMenu
+                          label={t('common.actionsFor', { name: r.name || r.reportId })}
+                          testId={`report-actions-${r.reportId}`}
+                          actions={[
+                            {
+                              key: `report-download-${r.reportId}`,
+                              label: t('reports.download'),
+                              disabled: r.status !== 'ready',
+                              title:
+                                r.status !== 'ready' ? t('reports.downloadNotReady') : undefined,
+                              onClick: () => void download(r.reportId, r.name),
+                            },
+                          ]}
+                        />
                       </td>
                     </tr>
                   ))}
@@ -759,11 +774,11 @@ export default function BillingReportsPage() {
       {deleteTarget && (
         <Dialog title={t('reports.deleteTitle')} onClose={() => setDeleteTarget(null)} testId="delete-schedule-dialog">
           <p dangerouslySetInnerHTML={{ __html: t('reports.deleteBody', { name: deleteTarget.name }) }} />
-          <div>
+          <div className="dialog-actions">
             <button className="secondary" onClick={() => setDeleteTarget(null)}>
               {t('common.cancel')}
             </button>
-            <button className="primary danger" data-testid="confirm-delete-schedule" disabled={deleting} onClick={() => void confirmDelete()}>
+            <button className="danger" data-testid="confirm-delete-schedule" disabled={deleting} onClick={() => void confirmDelete()}>
               {deleting ? t('common.deleting') : t('common.delete')}
             </button>
           </div>
@@ -797,20 +812,31 @@ export default function BillingReportsPage() {
                     </td>
                     <td>{r.rowCount}</td>
                     <td>
-                      <button
-                        className="link"
-                        data-testid={`run-download-${r.reportId}`}
-                        disabled={r.status !== 'ready'}
-                        onClick={() => void download(r.reportId)}
-                      >
-                        {t('reports.download')}
-                      </button>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: r.name || runsSchedule.name })}
+                        testId={`run-actions-${r.reportId}`}
+                        actions={[
+                          {
+                            key: `run-download-${r.reportId}`,
+                            label: t('reports.download'),
+                            disabled: r.status !== 'ready',
+                            title:
+                              r.status !== 'ready' ? t('reports.downloadNotReady') : undefined,
+                            onClick: () => void download(r.reportId, r.name || runsSchedule.name),
+                          },
+                        ]}
+                      />
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           )}
+          <div className="dialog-actions">
+            <button className="secondary" onClick={() => setRunsSchedule(null)}>
+              {t('common.close')}
+            </button>
+          </div>
         </Dialog>
       )}
     </div>

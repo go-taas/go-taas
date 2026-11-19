@@ -16,7 +16,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { useFleetAccelerators } from '../hooks/useFleetAccelerators';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast, usePolling } from '../components';
 
 interface PricesResponse {
   response: { code: number; message: string };
@@ -59,6 +59,7 @@ export default function PricingPage() {
   const [editTarget, setEditTarget] = useState<PriceEntry | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<PriceEntry | null>(null);
   const [busy, setBusy] = useState('');
+  const [notice, setNotice] = useState('');
   // The catalog resolves a price row's model id to a readable name; the same
   // list fills the dialog's model picker.
   const [models, setModels] = useState<ModelSummary[]>([]);
@@ -102,6 +103,12 @@ export default function PricingPage() {
     try {
       await api.del(`/api/v1/admin/billing/prices/${price.priceId}`, orgId);
       setDeleteTarget(null);
+      setNotice(
+        t('pricing.deleteSuccess', {
+          model: modelName(price.modelId),
+          card: price.acceleratorType,
+        }),
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('pricing.deleteFailed'));
@@ -131,6 +138,7 @@ export default function PricingPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="pricing-toast" />
 
       <div className="toolbar" style={{ marginBottom: 14 }} data-testid="pricing-view-toggle">
         <button
@@ -238,8 +246,11 @@ export default function PricingPage() {
           orgId={orgId}
           models={models}
           onClose={() => setDialogOpen(false)}
-          onSaved={() => {
+          onSaved={(savedModelId, card) => {
             setDialogOpen(false);
+            setNotice(
+              t('pricing.createSuccess', { model: modelName(savedModelId), card }),
+            );
             void load();
           }}
         />
@@ -251,8 +262,11 @@ export default function PricingPage() {
           models={models}
           existing={editTarget}
           onClose={() => setEditTarget(null)}
-          onSaved={() => {
+          onSaved={(savedModelId, card) => {
             setEditTarget(null);
+            setNotice(
+              t('pricing.updateSuccess', { model: modelName(savedModelId), card }),
+            );
             void load();
           }}
         />
@@ -301,7 +315,7 @@ function SetPriceDialog({
   models: ModelSummary[];
   existing?: PriceEntry;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (modelId: string, card: string) => void;
 }) {
   const { t } = useI18n();
   const edit = Boolean(existing);
@@ -355,7 +369,7 @@ function SetPriceDialog({
       // second version instead of correcting this one.
       if (edit && existing) body.effectiveFrom = existing.effectiveFrom;
       await api.put<SetPriceResponse>('/api/v1/admin/billing/prices', orgId, body);
-      onSaved();
+      onSaved(modelId.trim(), card.trim());
     } catch (e) {
       setError(e instanceof Error ? e.message : t('pricing.saveFailed'));
     } finally {

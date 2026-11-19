@@ -245,21 +245,21 @@ func TestFVTModelCatalogAndDeployment(t *testing.T) {
 
 	// AC1: register a model, then a new version of it.
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1", "description": "Qwen 3B",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1", "description": "Qwen 3B",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	modelID, _ := body["modelId"].(string)
 	require.NotEmpty(t, modelID)
 
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v2", "weightPath": "qwen/3b/v2",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v2", "weightPath": "qwen/3b/v2",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Equal(t, modelID, body["modelId"])
 
 	// AC1: duplicate (model, version) is rejected.
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
 	}, "org-fvt")
 	assert.NotEqual(t, http.StatusOK, code, "duplicate must be rejected: %v", body)
 
@@ -394,7 +394,7 @@ func TestFVTInferenceServiceIsPlatformAsset(t *testing.T) {
 	env := newModelInferEnv(t)
 
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
 	}, "org-a")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	modelID, _ := body["modelId"].(string)
@@ -443,7 +443,7 @@ func TestFVTInferenceServiceAccessPolicy(t *testing.T) {
 	env := newModelInferEnv(t)
 
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
 	}, "org-a")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	modelID, _ := body["modelId"].(string)

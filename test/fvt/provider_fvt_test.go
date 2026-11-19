@@ -322,15 +322,27 @@ func TestProviderFVTCurationAndPublish(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, code)
 	assert.EqualValues(t, apierrors.CodeProviderInUse, body["code"])
 
-	// AC6: the admin catalog shows the external marker + provider fields.
+	// AC6/console: the admin model catalog is self-hosted only, so an
+	// external provider model is managed (and shown) under its provider.
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/models", nil, nil)
 	require.Equal(t, http.StatusOK, code)
-	summary := findModel(t, body["models"], catalogID)
-	require.NotNil(t, summary)
-	assert.Equal(t, true, summary["external"])
-	assert.Equal(t, "curate", summary["providerName"])
-	assert.Equal(t, id, summary["providerId"])
-	assert.Equal(t, "gpt-4o", summary["upstreamModelId"])
+	assert.Nil(t, findModel(t, body["models"], catalogID), "external models belong to the provider, not the model catalog")
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/providers/"+id+"/models", nil, nil)
+	require.Equal(t, http.StatusOK, code)
+	models, _ := body["models"].([]any)
+	require.Len(t, models, 2)
+	var curated map[string]any
+	for _, m := range models {
+		row, _ := m.(map[string]any)
+		if row["modelId"] == modelID {
+			curated = row
+		}
+	}
+	require.NotNil(t, curated)
+	assert.Equal(t, "gpt-4o", curated["upstreamModelId"])
+	assert.Equal(t, "GPT-4o", curated["displayName"])
+	assert.Equal(t, true, curated["published"])
+	assert.Equal(t, catalogID, curated["catalogModelId"])
 
 	// AC7: unpublish hides it from the tenant catalog and fails closed.
 	code, _ = env.call(t, http.MethodPost, "/api/v1/admin/providers/"+id+"/models/"+modelID+":unpublish", nil, nil)

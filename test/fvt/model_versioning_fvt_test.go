@@ -18,14 +18,14 @@ func TestFVTModelVersioning(t *testing.T) {
 
 	// Register a model with two versions.
 	code, body := env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v1", "weightPath": "qwen/3b/v1",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	modelID, _ := body["modelId"].(string)
 	require.NotEmpty(t, modelID)
 
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/models", map[string]any{
-		"name": "qwen-3b", "version": "v2", "weightPath": "qwen/3b/v2",
+		"name": "qwen-3b", "hubModelId": "qwen/qwen-3b", "version": "v2", "weightPath": "qwen/3b/v2",
 	}, "org-fvt")
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 

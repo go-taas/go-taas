@@ -4,7 +4,7 @@
 // project's requests.
 
 import { useCallback, useEffect, useState } from 'react';
-import { ErrorBanner, RowActionsMenu, StateBadge } from '../components';
+import { ErrorBanner, RowActionsMenu, StateBadge, Toast } from '../components';
 import { api } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -37,6 +37,7 @@ export default function JoinRequestsPage() {
   const [status, setStatus] = useState('pending');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     if (!targetId.trim()) {
@@ -74,10 +75,15 @@ export default function JoinRequestsPage() {
     void load();
   }, [load]);
 
-  const decide = async (id: string, action: 'approve' | 'reject') => {
+  const decide = async (request: JoinRequest, action: 'approve' | 'reject') => {
     setError('');
+    setNotice('');
+    const name = request.displayName || request.userId || request.requestId;
     try {
-      await api.post(`/api/v1/admin/tenancy/join-requests/${id}:${action}`, orgId, {});
+      await api.post(`/api/v1/admin/tenancy/join-requests/${request.requestId}:${action}`, orgId, {});
+      setNotice(
+        t(action === 'approve' ? 'joinreq.approveSuccess' : 'joinreq.rejectSuccess', { name }),
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('joinreq.decideFailed'));
@@ -93,6 +99,7 @@ export default function JoinRequestsPage() {
         </div>
       </div>
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="join-requests-toast" />
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <select
@@ -164,13 +171,13 @@ export default function JoinRequestsPage() {
                           {
                             key: `joinreq-approve-${r.requestId}`,
                             label: t('joinreq.approve'),
-                            onClick: () => void decide(r.requestId, 'approve'),
+                            onClick: () => void decide(r, 'approve'),
                           },
                           {
                             key: `joinreq-reject-${r.requestId}`,
                             label: t('joinreq.reject'),
                             danger: true,
-                            onClick: () => void decide(r.requestId, 'reject'),
+                            onClick: () => void decide(r, 'reject'),
                           },
                         ]}
                       />

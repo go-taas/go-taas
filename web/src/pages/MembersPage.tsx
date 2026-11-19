@@ -6,8 +6,9 @@ import { api, ApiError, type MemberCandidate, type OrgMember } from '../api';
 import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, StateBadge } from '../components';
+import { Breadcrumb, Dialog, ErrorBanner, RowActionsMenu, StateBadge, Toast } from '../components';
 import { candidateLabel } from '../candidates';
+import { useRoute } from '../router';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
 
@@ -26,6 +27,10 @@ export default function MembersPage() {
   // The roster is described by the organization's name, never by its id.
   // The directory supplies it; the console scope carries one as a fallback
   // while the directory call is still in flight.
+  // The platform console reaches this roster through an organization row:
+  // it is then a sub-page of the organization list, with a breadcrumb back.
+  const route = useRoute();
+  const isOrgSubpage = route.startsWith('/admin/organizations/members');
   const orgName = organizationLabel(
     orgs,
     orgId,
@@ -35,6 +40,7 @@ export default function MembersPage() {
   const [members, setMembers] = useState<OrgMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [addOpen, setAddOpen] = useState(false);
   const [addUserId, setAddUserId] = useState('');
   const [addRole, setAddRole] = useState('member');
@@ -92,6 +98,7 @@ export default function MembersPage() {
   const addMember = async () => {
     setError('');
     try {
+      const added = candidates.find((c) => c.userId === addUserId);
       await api.post(
         `/api/v1/admin/tenancy/organizations/${orgId}/members`,
         orgId,
@@ -100,6 +107,11 @@ export default function MembersPage() {
       setAddOpen(false);
       setAddUserId('');
       setAddRole('member');
+      setNotice(
+        t('members.addSuccess', {
+          name: added ? candidateLabel(added) : addUserId,
+        }),
+      );
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('members.addFailed'));
@@ -113,6 +125,13 @@ export default function MembersPage() {
         `/api/v1/admin/tenancy/organizations/${orgId}/members/${userId}`,
         orgId,
         { role },
+      );
+      const member = members.find((m) => m.userId === userId);
+      setNotice(
+        t('members.roleSuccess', {
+          name: member?.displayName || userId,
+          role: tEnum('state', role),
+        }),
       );
       await load();
     } catch (e) {
@@ -128,7 +147,9 @@ export default function MembersPage() {
         `/api/v1/admin/tenancy/organizations/${orgId}/members/${removeTarget.userId}`,
         orgId,
       );
+      const removedName = removeTarget.displayName || removeTarget.userId;
       setRemoveTarget(null);
+      setNotice(t('members.removeSuccess', { name: removedName }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('members.removeFailed'));
@@ -137,6 +158,14 @@ export default function MembersPage() {
 
   return (
     <div>
+      {isOrgSubpage && (
+        <Breadcrumb
+          items={[
+            { label: t('nav.organizations'), to: '/admin/organizations' },
+            { label: t('members.title') },
+          ]}
+        />
+      )}
       <div className="page-header">
         <div>
           <h1>{t('members.title')}</h1>
@@ -161,6 +190,7 @@ export default function MembersPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="members-toast" />
 
       <div className="panel">
         {loading ? (
@@ -216,13 +246,18 @@ export default function MembersPage() {
                   <td>{new Date(parseInt(m.joinedAt, 10) * 1000).toLocaleString()}</td>
                   <td>
                     {m.role !== 'owner' && (
-                      <button
-                        className="link danger"
-                        data-testid={`member-remove-${m.userId}`}
-                        onClick={() => setRemoveTarget(m)}
-                      >
-                        {t('members.remove')}
-                      </button>
+                      <RowActionsMenu
+                        label={t('common.actionsFor', { name: m.displayName || m.userId })}
+                        testId={`member-actions-${m.userId}`}
+                        actions={[
+                          {
+                            key: `member-remove-${m.userId}`,
+                            label: t('members.remove'),
+                            danger: true,
+                            onClick: () => setRemoveTarget(m),
+                          },
+                        ]}
+                      />
                     )}
                   </td>
                 </tr>
@@ -289,7 +324,11 @@ export default function MembersPage() {
       )}
 
       {removeTarget && (
-        <Dialog title={t('members.removeTitle')} onClose={() => setRemoveTarget(null)}>
+        <Dialog
+          title={t('members.removeTitle')}
+          onClose={() => setRemoveTarget(null)}
+          testId="member-remove-dialog"
+        >
           <p
             dangerouslySetInnerHTML={{
               __html: t('members.removeBody', {
@@ -298,13 +337,22 @@ export default function MembersPage() {
               }),
             }}
           />
-          <button
-            className="danger"
-            data-testid="member-remove-confirm"
-            onClick={() => void removeMember()}
-          >
-            {t('members.remove')}
-          </button>
+          <div className="dialog-actions">
+            <button
+              className="secondary"
+              data-testid="member-remove-cancel"
+              onClick={() => setRemoveTarget(null)}
+            >
+              {t('common.cancel')}
+            </button>
+            <button
+              className="danger"
+              data-testid="member-remove-confirm"
+              onClick={() => void removeMember()}
+            >
+              {t('members.remove')}
+            </button>
+          </div>
         </Dialog>
       )}
     </div>

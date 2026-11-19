@@ -1,14 +1,15 @@
 // QuotasPage is the admin console service-quota page (feature #51,
 // design §5.3): the org table with live usage columns, a filter bar
 // (name search, limit state, pagination), an edit dialog with tier
-// presets and inline validation, and a change-history drawer.
+// presets, inline validation, and a link to the change-history page.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { formatTime, type GetOrganizationQuotaResponse, type ListOrganizationQuotasResponse, type OrganizationQuotaRow } from '../api';
+import { navigate } from '../router';
+import { formatTime, type ListOrganizationQuotasResponse, type OrganizationQuotaRow } from '../api';
 
 const PAGE_SIZE = 20;
 
@@ -35,7 +36,7 @@ export default function QuotasPage() {
   const [error, setError] = useState('');
   const [permissionDenied, setPermissionDenied] = useState(false);
   const [editTarget, setEditTarget] = useState<OrganizationQuotaRow | null>(null);
-  const [historyTarget, setHistoryTarget] = useState<OrganizationQuotaRow | null>(null);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -84,6 +85,7 @@ export default function QuotasPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="quota-toast" />
 
       <div className="filter-bar">
         <input
@@ -168,7 +170,8 @@ export default function QuotasPage() {
                         {
                           key: `quota-history-${q.organizationId}`,
                           label: t('quota.history'),
-                          onClick: () => setHistoryTarget(row),
+                          onClick: () =>
+                            navigate(`/admin/quotas/${encodeURIComponent(q.organizationId)}/history`),
                         },
                       ]}
                     />
@@ -186,15 +189,12 @@ export default function QuotasPage() {
         <QuotaEditDialog
           row={editTarget}
           onClose={() => setEditTarget(null)}
-          onSaved={() => {
+          onSaved={(name) => {
             setEditTarget(null);
+            setNotice(t('quota.saveSuccess', { name }));
             void load();
           }}
         />
-      )}
-
-      {historyTarget && (
-        <QuotaHistoryDrawer row={historyTarget} onClose={() => setHistoryTarget(null)} />
       )}
     </div>
   );
@@ -218,7 +218,7 @@ function QuotaEditDialog({
 }: {
   row: OrganizationQuotaRow;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (name: string) => void;
 }) {
   const api = useApi();
   const { orgId } = useOrg();
@@ -261,7 +261,7 @@ function QuotaEditDialog({
       const body: Record<string, number> = {};
       for (const dim of DIMENSIONS) body[dim] = parseInt(values[dim], 10);
       await api.patch(`/api/v1/admin/quotas/${row.quota.organizationId}`, orgId, body);
-      onSaved();
+      onSaved(row.quota.organizationName || row.quota.organizationId);
     } catch (e: any) {
       if (e?.code === 13305) {
         setErrors({ maxConcurrentRequests: e?.message || t('quota.invalidValue') });
@@ -299,7 +299,7 @@ function QuotaEditDialog({
           )}
         </label>
       ))}
-      <div className="filter-bar">
+      <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>
           {t('common.cancel')}
         </button>
@@ -308,73 +308,5 @@ function QuotaEditDialog({
         </button>
       </div>
     </Dialog>
-  );
-}
-
-function QuotaHistoryDrawer({ row, onClose }: { row: OrganizationQuotaRow; onClose: () => void }) {
-  const api = useApi();
-  const { orgId } = useOrg();
-  const { t } = useI18n();
-  const [changes, setChanges] = useState<GetOrganizationQuotaResponse['changes']>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    let active = true;
-    (async () => {
-      try {
-        const data = await api.get<GetOrganizationQuotaResponse>(`/api/v1/admin/quotas/${row.quota.organizationId}`, orgId);
-        if (active) setChanges(data.changes || []);
-      } catch {
-        // keep empty
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, [api, orgId, row.quota.organizationId]);
-
-  return (
-    <div className="dialog-backdrop" onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className="dialog drawer" data-testid="quota-history-drawer">
-        <h2>{t('quota.historyTitle')}</h2>
-        <p className="muted">{row.quota.organizationName}</p>
-        {loading ? (
-          <div className="loading">{t('common.loading')}</div>
-        ) : changes.length === 0 ? (
-          <div className="empty-state">{t('quota.historyEmpty')}</div>
-        ) : (
-          <table className="data">
-            <thead>
-              <tr>
-                <th>{t('quota.colTime')}</th>
-                <th>{t('quota.colOperator')}</th>
-                <th>{t('quota.colDimension')}</th>
-                <th>{t('quota.colChange')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {changes.map((ch, i) => (
-                <tr key={i} data-testid={`quota-history-entry-${i}`}>
-                  <td>{formatTime(ch.changedAt)}</td>
-                  <td>{ch.operator}</td>
-                  <td>{t(`quota.dimension.${ch.dimension}`)}</td>
-                  <td>
-                    {ch.oldValue} → {ch.newValue}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        <p className="muted">{t('quota.propagationNote')}</p>
-        <div className="filter-bar">
-          <button className="secondary" onClick={onClose}>
-            {t('common.close')}
-          </button>
-        </div>
-      </div>
-    </div>
   );
 }

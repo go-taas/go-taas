@@ -131,6 +131,7 @@ func main() {
 				ArchivePath:  req.ArchivePath,
 				OriginalName: req.OriginalName,
 				Name:         req.Name,
+				HubModelID:   req.HubModelID,
 				Version:      req.Version,
 				Description:  req.Description,
 			})
@@ -389,6 +390,7 @@ func main() {
 			// model-version/service-log/deployment and the user-realm
 			// compare RPCs by the caller's role (AD).
 			inferSvc.SetSessionUserResolver(authSvc)
+			inferSvc.SetUserLabelResolver(authSvc)
 			inferSvc.SetRoleGuard(roleGuard)
 			// The inference fleet belongs to the platform.
 			inferSvc.SetPlatformAdminGuard(tenancySvc)

@@ -81,23 +81,16 @@ func TestExternalProjections(t *testing.T) {
 	cm, err := svc.CreateExternalModel(ctx, "external-gpt", "prov-1", "gpt-4o")
 	require.NoError(t, err)
 
-	// Admin ListModels carries the external marker + provider fields.
+	// The model catalog lists only self-hosted models: an external model
+	// is curated on its provider page instead.
 	resp, err := svc.ListModels(ctx, &modelv1.ListModelsRequest{})
 	require.NoError(t, err)
-	var admin *modelv1.ModelSummary
 	for _, m := range resp.GetModels() {
-		if m.GetModelId() == cm.ID {
-			admin = m
-		}
+		assert.NotEqual(t, cm.ID, m.GetModelId(), "external models are not in the model catalog")
 	}
-	require.NotNil(t, admin)
-	assert.True(t, admin.GetExternal())
-	assert.Equal(t, "acme", admin.GetProviderName())
-	assert.Equal(t, "prov-1", admin.GetProviderId())
-	assert.Equal(t, "gpt-4o", admin.GetUpstreamModelId())
-	assert.Empty(t, admin.GetLatestVersion(), "an external model has no version row")
 
-	// Admin GetModel carries the same marker.
+	// Admin GetModel still carries the external marker + provider fields,
+	// which is what the provider page links to.
 	got, err := svc.GetModel(ctx, &modelv1.GetModelRequest{ModelId: cm.ID})
 	require.NoError(t, err)
 	assert.True(t, got.GetModel().GetExternal())

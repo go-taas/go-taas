@@ -103,6 +103,7 @@ func TestServiceListAvailableModelsTenancyGuard(t *testing.T) {
 	assert.NotNil(t, resp)
 	_ = tenancy.StateActive
 }
+
 // fakePriceLookup is an injected PriceLookup double: it answers with the
 // rates it was given, keyed by model id.
 type fakePriceLookup struct {

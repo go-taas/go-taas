@@ -121,6 +121,7 @@ func TestFVTUserCatalogCarriesPricing(t *testing.T) {
 	for _, name := range []string{"priced-model", "unpriced-model"} {
 		_, err := env.modelSvc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 			Name: name, Version: "v1", WeightPath: "models/" + name + "/v1",
+			HubModelId: name + "/hub",
 		})
 		require.NoError(t, err)
 	}

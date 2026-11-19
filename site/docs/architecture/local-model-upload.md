@@ -24,7 +24,8 @@ The API is gRPC-JSON transcoded, and transcoding cannot carry a binary body. A m
 POST /api/v1/admin/models:upload     (multipart/form-data)
   file         the archive (.tar, .tar.gz, .tgz or .zip)
   name         catalog model name (required)
-  version      catalog version (optional)
+  hubModelId   "<vendor>/<model>" hub identity (required, unique)
+  version      internal catalog version (optional, legacy)
   description  model description (optional)
 ```
 
@@ -69,7 +70,7 @@ Safety rules, each of which fails the whole upload rather than skipping an entry
 
 ## 5. Registration
 
-`RegisterModelOrCreateVersion(name, description, "", version, weightPath)` — the same call the download job uses:
+`RegisterModelOrCreateVersion(name, description, hubModelID, version, weightPath)` — the same call the download job uses. The hub model id is required and unique platform-wide, exactly as in `RegisterModel`:
 
 - no model of that name → create the model and its first version;
 - model exists, version new → append the version;

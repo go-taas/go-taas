@@ -9,7 +9,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, formatTime, type InferenceServiceSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 
 interface DeploymentEvent {
   eventId: string;
@@ -17,6 +17,7 @@ interface DeploymentEvent {
   serviceName: string;
   eventType: string;
   actor: string;
+  actorDisplayName?: string;
   before: string;
   after: string;
   createdAt: string;
@@ -153,7 +154,7 @@ export default function DeploymentHistoryPage() {
         { eventId: rollbackEvent.eventId },
       );
       setRollbackEvent(null);
-      setNotice(t('deployhistory.rollbackSuccess'));
+      setNotice(t('deployhistory.rollbackSuccess', { service: rollbackEvent.serviceName }));
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('deployhistory.rollbackFailed'));
@@ -190,7 +191,11 @@ export default function DeploymentHistoryPage() {
         </button>
       </div>
 
-      {notice && <div className="notice" data-testid="deploy-history-notice">{notice}</div>}
+      <Toast
+        message={notice}
+        onDismiss={() => setNotice('')}
+        testId="deploy-history-notice"
+      />
       {error && (
         <div>
           <ErrorBanner message={error} />
@@ -284,17 +289,28 @@ export default function DeploymentHistoryPage() {
                       {ev.eventType}
                     </span>
                   </td>
-                  <td>{ev.actor}</td>
+                  <td data-testid={`deploy-history-actor-${i}`}>
+                    {ev.actorDisplayName || ev.actor}
+                  </td>
                   <td className="mono">{diffSummary(ev.before, ev.after)}</td>
                   <td>
-                    <button
-                      className="link danger"
-                      data-testid={`deploy-history-rollback-${i}`}
-                      disabled={!ev.before || ev.before === '{}'}
-                      onClick={() => setRollbackEvent(ev)}
-                    >
-                      {t('deployhistory.rollback')}
-                    </button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: ev.serviceName })}
+                      testId={`deploy-history-actions-${i}`}
+                      actions={[
+                        {
+                          key: `rollback-${i}`,
+                          label: t('deployhistory.rollback'),
+                          danger: true,
+                          disabled: !ev.before || ev.before === '{}',
+                          title:
+                            !ev.before || ev.before === '{}'
+                              ? t('deployhistory.rollbackUnavailable')
+                              : undefined,
+                          onClick: () => setRollbackEvent(ev),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}

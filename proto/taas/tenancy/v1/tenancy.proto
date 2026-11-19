@@ -832,6 +832,10 @@ message QuotaUsage {
 message QuotaChangeEntry {
   int64 changed_at = 1; // unix seconds
   string operator = 2; // acting user id
+  // operator_display_name is the operator's readable display name (or
+  // username when no display name is set), empty when it cannot be
+  // resolved.
+  string operator_display_name = 6;
   string dimension = 3; // max_concurrent_requests | max_batch_jobs_per_day | max_output_tokens_per_request
   int64 old_value = 4;
   int64 new_value = 5;

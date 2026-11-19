@@ -125,6 +125,9 @@ service ModelService {
 
 message RegisterModelRequest {
   string name = 1;
+  // version is legacy: the console manages one catalog item per model,
+  // so the server stores an internal version and this field is no longer
+  // required. Distinct model versions are distinct catalog items.
   string version = 2;
   // weight_path is the object-storage path of the model weights, mounted
   // by inference pods through the shared filesystem. When source is set,
@@ -141,10 +144,9 @@ message RegisterModelRequest {
   string source_model_id = 6;
   // hub_model_id is the model's id on the public model hub, in the
   // "<vendor>/<model>" form the hubs use (e.g.
-  // "MiniMax/MiniMax-M3.1-Flash"). It is globally unique across the
-  // catalog: a hub id already bound to another model is rejected.
-  // Optional; it defaults to source_model_id when source is set, and may
-  // also be set for weights uploaded outside a hub.
+  // "MiniMax/MiniMax-M3.1-Flash"). Required and globally unique across
+  // the catalog: a hub id already bound to another model is rejected.
+  // It defaults to source_model_id when source is set.
   string hub_model_id = 7;
 }
 

@@ -1290,6 +1290,9 @@ message DeploymentEvent {
   string service_name = 3;
   string event_type = 4;
   string actor = 5;
+  // actor_display_name is the actor's readable display name (or username
+  // when no display name is set), empty when it cannot be resolved.
+  string actor_display_name = 9;
   // before / after are the field-level diff (mutable spec fields).
   string before = 6;
   string after = 7;

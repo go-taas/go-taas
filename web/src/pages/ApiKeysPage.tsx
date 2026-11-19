@@ -21,6 +21,7 @@ import {
   Pagination,
   RowActionsMenu,
   StateBadge,
+  Toast,
 } from '../components';
 
 interface ListResponse {
@@ -67,6 +68,7 @@ export default function ApiKeysPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const [createOpen, setCreateOpen] = useState(false);
   const [created, setCreated] = useState<{ keyId: string; apiKey: string } | null>(null);
@@ -100,6 +102,7 @@ export default function ApiKeysPage() {
     setError('');
     try {
       await api.post(`/api/v1/admin/auth/api-keys/${key.keyId}:restore`, orgId, {});
+      setNotice(t('apikeys.restoreSuccess', { name: key.name || key.keyId }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.restoreFailed'));
@@ -113,6 +116,7 @@ export default function ApiKeysPage() {
     try {
       await api.del(`/api/v1/admin/auth/api-keys/${key.keyId}`, orgId);
       setDeleteTarget(null);
+      setNotice(t('apikeys.deleteSuccess', { name: key.name || key.keyId }));
       await load();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.deleteFailed'));
@@ -136,6 +140,7 @@ export default function ApiKeysPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="api-keys-toast" />
 
       <div className="panel">
         {loading ? (
@@ -246,10 +251,11 @@ export default function ApiKeysPage() {
         <CreateDialog
           orgId={orgId}
           onClose={() => setCreateOpen(false)}
-          onCreated={(res) => {
+          onCreated={(res, name) => {
             setCreateOpen(false);
             setCreated(res);
             setSavedConfirmed(false);
+            setNotice(t('apikeys.createSuccess', { name }));
             void load();
           }}
         />
@@ -269,8 +275,9 @@ export default function ApiKeysPage() {
           apiKey={revokeTarget}
           orgId={orgId}
           onClose={() => setRevokeTarget(null)}
-          onRevoked={() => {
+          onRevoked={(name) => {
             setRevokeTarget(null);
+            setNotice(t('apikeys.revokeSuccess', { name }));
             void load();
           }}
         />
@@ -281,8 +288,9 @@ export default function ApiKeysPage() {
           apiKey={editTarget}
           orgId={orgId}
           onClose={() => setEditTarget(null)}
-          onUpdated={() => {
+          onUpdated={(name) => {
             setEditTarget(null);
+            setNotice(t('apikeys.updateSuccess', { name }));
             void load();
           }}
         />
@@ -293,8 +301,9 @@ export default function ApiKeysPage() {
           apiKey={transferTarget}
           orgId={orgId}
           onClose={() => setTransferTarget(null)}
-          onTransferred={() => {
+          onTransferred={(name) => {
             setTransferTarget(null);
+            setNotice(t('apikeys.transferSuccess', { name }));
             void load();
           }}
         />
@@ -337,7 +346,7 @@ function TransferDialog({
   apiKey: ApiKeySummary;
   orgId: string;
   onClose: () => void;
-  onTransferred: () => void;
+  onTransferred: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [ownerUserId, setOwnerUserId] = useState(apiKey.ownerUserId || '');
@@ -366,7 +375,7 @@ function TransferDialog({
         projectId,
         shared,
       });
-      onTransferred();
+      onTransferred(apiKey.name || apiKey.keyId);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.transferFailed'));
     } finally {
@@ -426,7 +435,7 @@ function CreateDialog({
 }: {
   orgId: string;
   onClose: () => void;
-  onCreated: (res: CreateResponse) => void;
+  onCreated: (res: CreateResponse, name: string) => void;
 }) {
   const [name, setName] = useState('');
   const [expiryDays, setExpiryDays] = useState('never');
@@ -460,7 +469,7 @@ function CreateDialog({
         orgId,
         body,
       );
-      onCreated(res);
+      onCreated(res, name.trim());
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.createFailed'));
     } finally {
@@ -592,7 +601,7 @@ function EditDialog({
   apiKey: ApiKeySummary;
   orgId: string;
   onClose: () => void;
-  onUpdated: () => void;
+  onUpdated: (name: string) => void;
 }) {
   const [name, setName] = useState(apiKey.name);
   const [rpm, setRpm] = useState(apiKey.rateLimitRpm || '');
@@ -613,7 +622,7 @@ function EditDialog({
       if (rpm.trim() !== '') body.rateLimitRpm = String(parseInt(rpm, 10));
       if (tpm.trim() !== '') body.rateLimitTpm = String(parseInt(tpm, 10));
       await api.put(`/api/v1/admin/auth/api-keys/${apiKey.keyId}`, orgId, body);
-      onUpdated();
+      onUpdated(name.trim());
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.updateFailed'));
     } finally {
@@ -738,7 +747,7 @@ function RevokeDialog({
   apiKey: ApiKeySummary;
   orgId: string;
   onClose: () => void;
-  onRevoked: () => void;
+  onRevoked: (name: string) => void;
 }) {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
@@ -749,7 +758,7 @@ function RevokeDialog({
     setError('');
     try {
       await api.post(`/api/v1/admin/auth/api-keys/${apiKey.keyId}:revoke`, orgId);
-      onRevoked();
+      onRevoked(apiKey.name || apiKey.keyId);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('apikeys.revokeFailed'));
     } finally {

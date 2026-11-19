@@ -31,6 +31,7 @@ func TestServiceRegisterModel(t *testing.T) {
 
 	resp, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name:        "qwen-3b",
+		HubModelId:  "qwen-3b/hub",
 		Version:     "v1",
 		WeightPath:  "qwen/3b/v1",
 		Description: "Qwen 3B",
@@ -41,6 +42,7 @@ func TestServiceRegisterModel(t *testing.T) {
 	// Same model, new version: same model id.
 	resp2, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name:       "qwen-3b",
+		HubModelId: "qwen-3b/hub",
 		Version:    "v2",
 		WeightPath: "qwen/3b/v2",
 	})
@@ -50,6 +52,7 @@ func TestServiceRegisterModel(t *testing.T) {
 	// Duplicate (model, version): 10102.
 	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name:       "qwen-3b",
+		HubModelId: "qwen-3b/hub",
 		Version:    "v1",
 		WeightPath: "qwen/3b/v1",
 	})
@@ -67,16 +70,16 @@ func TestServiceRegisterModelValidation(t *testing.T) {
 		name string
 		req  *modelv1.RegisterModelRequest
 	}{
-		{"empty name", &modelv1.RegisterModelRequest{Name: "", Version: "v1", WeightPath: "qwen/v1"}},
-		{"name too long", &modelv1.RegisterModelRequest{Name: strings.Repeat("a", 129), Version: "v1", WeightPath: "qwen/v1"}},
-		{"empty version", &modelv1.RegisterModelRequest{Name: "m", Version: "", WeightPath: "qwen/v1"}},
-		{"version too long", &modelv1.RegisterModelRequest{Name: "m", Version: strings.Repeat("a", 65), WeightPath: "qwen/v1"}},
-		{"empty weight path", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: ""}},
-		{"weight path too long", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: strings.Repeat("a", 513)}},
-		{"absolute weight path", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: "/abs/path"}},
-		{"backslash weight path", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: "a\\b"}},
-		{"dotdot weight path", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: "a/../b"}},
-		{"description too long", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: "qwen/v1", Description: strings.Repeat("d", 1025)}},
+		{"empty name", &modelv1.RegisterModelRequest{Name: "", HubModelId: "vendor/empty", Version: "v1", WeightPath: "qwen/v1"}},
+		{"name too long", &modelv1.RegisterModelRequest{Name: strings.Repeat("a", 129), HubModelId: "vendor/long", Version: "v1", WeightPath: "qwen/v1"}},
+		{"missing hub model id", &modelv1.RegisterModelRequest{Name: "m", Version: "v1", WeightPath: "qwen/v1"}},
+		{"version too long", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: strings.Repeat("a", 65), WeightPath: "qwen/v1"}},
+		{"empty weight path", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: "v1", WeightPath: ""}},
+		{"weight path too long", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: "v1", WeightPath: strings.Repeat("a", 513)}},
+		{"absolute weight path", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: "v1", WeightPath: "/abs/path"}},
+		{"backslash weight path", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: "v1", WeightPath: "a\\b"}},
+		{"dotdot weight path", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: "v1", WeightPath: "a/../b"}},
+		{"description too long", &modelv1.RegisterModelRequest{Name: "m", HubModelId: "vendor/m", Version: "v1", WeightPath: "qwen/v1", Description: strings.Repeat("d", 1025)}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -89,6 +92,22 @@ func TestServiceRegisterModelValidation(t *testing.T) {
 	}
 }
 
+// TestServiceRegisterModelDefaultsVersion covers the console change: the
+// catalog is one entry per model, so a registration without a version is
+// accepted and the server stores one internally.
+func TestServiceRegisterModelDefaultsVersion(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+
+	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", HubModelId: "vendor/qwen-3b", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	got, err := svc.GetModel(ctx, &modelv1.GetModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	assert.Equal(t, []string{"qwen-3b"}, got.GetVersions())
+}
+
 func TestServiceListModels(t *testing.T) {
 	svc := newModelTestService(t)
 	ctx := context.Background()
@@ -96,6 +115,7 @@ func TestServiceListModels(t *testing.T) {
 	for _, name := range []string{"alpha", "beta", "gamma"} {
 		_, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 			Name: name, Version: "v1", WeightPath: "p/v1",
+			HubModelId: name + "/hub",
 		})
 		require.NoError(t, err)
 	}
@@ -124,10 +144,12 @@ func TestServiceGetModel(t *testing.T) {
 
 	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1", Description: "Qwen 3B",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v2", WeightPath: "qwen/v2",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -154,10 +176,12 @@ func TestServiceListModelVersions(t *testing.T) {
 
 	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v2", WeightPath: "qwen/v2",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -188,10 +212,12 @@ func TestServiceActivateModelVersion(t *testing.T) {
 
 	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v2", WeightPath: "qwen/v2",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -241,6 +267,7 @@ func TestServiceDeleteModel(t *testing.T) {
 
 	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -258,6 +285,7 @@ func TestServiceDeleteModelGuardBlocks(t *testing.T) {
 
 	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "qwen/v1",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -500,10 +528,12 @@ func TestServiceDeleteModelRemovesWeights(t *testing.T) {
 
 	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v1", WeightPath: "Qwen/Qwen2.5-0.5B-Instruct/",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-3b", Version: "v2", WeightPath: "Qwen/Qwen2.5-0.5B-Instruct/",
+		HubModelId: "qwen-3b/hub",
 	})
 	require.NoError(t, err)
 
@@ -554,10 +584,12 @@ func TestServiceDeleteModelKeepsSharedWeights(t *testing.T) {
 
 	first, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-a", Version: "v1", WeightPath: shared,
+		HubModelId: "qwen-a/hub",
 	})
 	require.NoError(t, err)
 	_, err = svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
 		Name: "qwen-b", Version: "v1", WeightPath: shared,
+		HubModelId: "qwen-b/hub",
 	})
 	require.NoError(t, err)
 

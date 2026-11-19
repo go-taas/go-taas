@@ -21,7 +21,7 @@ import {
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast, usePolling } from '../components';
 import { formatMoney, displayCurrencyLabel } from '../display';
 
 const PAGE_SIZE = 20;
@@ -48,6 +48,7 @@ export default function OrganizationBalancesPage() {
   const [error, setError] = useState('');
   const [fund, setFund] = useState<{ balance: OrganizationBalance; direction: 'credit' | 'debit' } | null>(null);
   const [ledger, setLedger] = useState<OrganizationBalance | null>(null);
+  const [notice, setNotice] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -96,6 +97,7 @@ export default function OrganizationBalancesPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="org-balances-toast" />
 
       <div className="summary-strip" data-testid="org-balances-summary">
         <span>
@@ -228,6 +230,7 @@ export default function OrganizationBalancesPage() {
                           key: `org-ledger-${row.organizationId}`,
                           label: t('orgBalances.ledger'),
                           disabled: !row.hasAccount,
+                          title: !row.hasAccount ? t('orgBalances.noAccount') : undefined,
                           onClick: () => setLedger(row),
                         },
                       ]}
@@ -249,8 +252,18 @@ export default function OrganizationBalancesPage() {
           balance={fund.balance}
           direction={fund.direction}
           onClose={() => setFund(null)}
-          onDone={() => {
+          onDone={(amountCents) => {
+            const name = fund.balance.organizationName || fund.balance.organizationId;
+            const amount = formatMoney(amountCents, fund.balance.currency);
             setFund(null);
+            setNotice(
+              t(
+                fund.direction === 'credit'
+                  ? 'orgBalances.rechargeSuccess'
+                  : 'orgBalances.debitSuccess',
+                { name, amount },
+              ),
+            );
             void load();
           }}
         />
@@ -279,7 +292,7 @@ function FundDialog({
   balance: OrganizationBalance;
   direction: 'credit' | 'debit';
   onClose: () => void;
-  onDone: () => void;
+  onDone: (amountCents: number) => void;
 }) {
   const api = useApi();
   const { t } = useI18n();
@@ -306,7 +319,7 @@ function FundDialog({
         note: note.trim(),
         source,
       });
-      onDone();
+      onDone(cents);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : t('orgBalances.fundFailed'));
     } finally {

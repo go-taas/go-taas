@@ -80,6 +80,7 @@ func TestUploadModelExtractsAndRegisters(t *testing.T) {
 		ArchivePath:  archive,
 		OriginalName: "model.tar.gz",
 		Name:         "Qwen Upload",
+		HubModelID:   "acme/qwen-upload",
 		Version:      "v1",
 		Description:  "a local checkpoint",
 	})
@@ -119,6 +120,7 @@ func TestUploadModelZip(t *testing.T) {
 		ArchivePath:  archive,
 		OriginalName: "model.zip",
 		Name:         "zipped",
+		HubModelID:   "acme/zipped",
 	})
 	require.NoError(t, err)
 	assert.Equal(t, 2, res.Files)
@@ -137,6 +139,7 @@ func TestUploadModelRejectsEscapingArchive(t *testing.T) {
 		ArchivePath:  archive,
 		OriginalName: "model.tar",
 		Name:         "escaping",
+		HubModelID:   "acme/escaping",
 	})
 	require.Error(t, err)
 
@@ -155,6 +158,7 @@ func TestUploadModelRejectsUnknownFormat(t *testing.T) {
 		ArchivePath:  filepath.Join(t.TempDir(), "model.rar"),
 		OriginalName: "model.rar",
 		Name:         "rar",
+		HubModelID:   "acme/rar",
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), ".tar")
@@ -170,6 +174,7 @@ func TestUploadModelRequiresWeightsDir(t *testing.T) {
 		ArchivePath:  "/tmp/x.tar",
 		OriginalName: "x.tar",
 		Name:         "x",
+		HubModelID:   "acme/x",
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "weights directory")
@@ -185,12 +190,12 @@ func TestUploadModelDuplicateVersionRejected(t *testing.T) {
 	archive := tarArchive(t, map[string]string{"config.json": "{}"}, false)
 
 	_, err := svc.UploadModel(ctx, UploadModelRequest{
-		ArchivePath: archive, OriginalName: "m.tar", Name: "dup", Version: "v1",
+		ArchivePath: archive, OriginalName: "m.tar", Name: "dup", HubModelID: "acme/dup", Version: "v1",
 	})
 	require.NoError(t, err)
 
 	_, err = svc.UploadModel(ctx, UploadModelRequest{
-		ArchivePath: archive, OriginalName: "m.tar", Name: "dup", Version: "v1",
+		ArchivePath: archive, OriginalName: "m.tar", Name: "dup", HubModelID: "acme/dup", Version: "v1",
 	})
 	require.Error(t, err)
 
@@ -207,7 +212,7 @@ func TestUploadModelEmptyArchiveRejected(t *testing.T) {
 
 	archive := tarArchive(t, map[string]string{}, false)
 	_, err := svc.UploadModel(context.Background(), UploadModelRequest{
-		ArchivePath: archive, OriginalName: "empty.tar", Name: "empty",
+		ArchivePath: archive, OriginalName: "empty.tar", Name: "empty", HubModelID: "acme/empty",
 	})
 	require.Error(t, err)
 }
@@ -225,4 +230,40 @@ func TestSafeJoin(t *testing.T) {
 		_, err := safeJoin(root, name)
 		require.Error(t, err, name)
 	}
+}
+
+// TestUploadModelRequiresHubModelID makes the catalog identity mandatory for
+// local uploads too: every model has a "<vendor>/<model>" hub id, so the
+// legal and uploaded paths cannot diverge.
+func TestUploadModelRequiresHubModelID(t *testing.T) {
+	db := newModelTestDB(t)
+	svc := New(&fakeComponents{db: db})
+	svc.SetWeightsDir(t.TempDir())
+
+	_, err := svc.UploadModel(context.Background(), UploadModelRequest{
+		ArchivePath: tarArchive(t, map[string]string{"config.json": "{}"}, false), OriginalName: "m.tar", Name: "no-hub",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "hub model id is required")
+}
+
+// TestUploadModelRejectsDuplicateHubModelID keeps one repository model bound
+// to one catalog entry.
+func TestUploadModelRejectsDuplicateHubModelID(t *testing.T) {
+	db := newModelTestDB(t)
+	svc := New(&fakeComponents{db: db})
+	svc.SetWeightsDir(t.TempDir())
+	ctx := context.Background()
+	archive := tarArchive(t, map[string]string{"config.json": "{}"}, false)
+
+	_, err := svc.UploadModel(ctx, UploadModelRequest{
+		ArchivePath: archive, OriginalName: "a.tar", Name: "first", HubModelID: "acme/shared",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.UploadModel(ctx, UploadModelRequest{
+		ArchivePath: archive, OriginalName: "b.tar", Name: "second", HubModelID: "acme/shared",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "already bound")
 }

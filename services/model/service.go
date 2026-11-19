@@ -641,8 +641,14 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	if name == "" || len(name) > 128 {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: name must be 1-128 characters")
 	}
-	if version == "" || len(version) > 64 {
-		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: version must be 1-64 characters")
+	// The catalog is one entry per model (a different version is a
+	// different model), so the version is internal: default it to the
+	// model name instead of asking the operator for it.
+	if version == "" {
+		version = name
+	}
+	if len(version) > 64 {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: version must be at most 64 characters")
 	}
 	if len(description) > 1024 {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: description must be at most 1024 characters")
@@ -654,20 +660,24 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	if hubModelID == "" && source != "" {
 		hubModelID = sourceModelID
 	}
+	// The hub id is the model's identity: it is required so every
+	// catalog entry is traceable to a repository model, and unique so
+	// two entries cannot claim the same repository model.
+	if hubModelID == "" {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: hub model id is required (\"<vendor>/<model>\")")
+	}
 	if err := validateHubModelID(hubModelID); err != nil {
 		return nil, err
 	}
-	// Fail fast before a multi-gigabyte download: a hub id owned by
-	// another model can never be registered.
-	if hubModelID != "" {
-		bound, err := repo.FindByHubModelID(ctx, hubModelID)
-		if err != nil && apierrors.CodeOf(err) != apierrors.CodeModelNotFound {
-			return nil, err
-		}
-		if err == nil && bound.Name != name {
-			return nil, apierrors.Newf(apierrors.CodeModelExists,
-				"model: hub model id %q is already bound to model %q", hubModelID, bound.Name)
-		}
+	// Fail fast before a multi-gigabyte download: a hub id owned by a
+	// different catalog entry can never be registered. The same entry may
+	// keep adding internal versions, which is what the version RPCs use.
+	if bound, err := repo.FindByHubModelID(ctx, hubModelID); err == nil && bound.Name != name {
+		return nil, apierrors.Newf(apierrors.CodeModelExists,
+			"model: hub model id %q is already bound to model %q", hubModelID, bound.Name)
+	} else if err != nil && apierrors.CodeOf(err) != apierrors.CodeModelNotFound {
+		return nil, err
 	}
 
 	// Source-based registration downloads the weights from a model hub
@@ -800,7 +810,7 @@ func (s *Service) ListModels(ctx context.Context, req *modelv1.ListModelsRequest
 	if orgID := strings.TrimSpace(req.GetOrganizationId()); orgID != "" {
 		rows, total, err = repo.ListModelsForOrganization(ctx, orgID, offset, limit)
 	} else {
-		rows, total, err = repo.ListModels(ctx, offset, limit)
+		rows, total, err = repo.ListSelfHostedModels(ctx, offset, limit)
 	}
 	if err != nil {
 		return nil, err

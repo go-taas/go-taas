@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type ClusterSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { BackLink, ErrorBanner, StateBadge } from '../components';
+import { BackLink, ErrorBanner, StateBadge, Toast } from '../components';
 import { navigate } from '../router';
 
 const STATE_FILTERS = ['', 'active', 'disabled'];
@@ -22,6 +22,7 @@ export default function ClustersPage() {
   const [healthFilter, setHealthFilter] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [stale, setStale] = useState(false);
 
   // Register dialog.
@@ -79,6 +80,7 @@ export default function ClustersPage() {
         region: regRegion,
         kubeconfigRef: regKubeconfig,
       });
+      setNotice(t('clusters.registerSuccess', { name: regName.trim() }));
       setRegOpen(false);
       setRegName('');
       setRegRegion('');
@@ -136,6 +138,8 @@ export default function ClustersPage() {
           </button>
         </div>
       )}
+
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="clusters-toast" />
 
       <div className="filter-bar" data-testid="clusters-filter-bar">
         <label>
@@ -214,13 +218,17 @@ export default function ClustersPage() {
                   <td>{c.serviceCount}</td>
                   <td>{c.lastCheckedAt ? new Date(parseInt(c.lastCheckedAt, 10) * 1000).toLocaleString() : '—'}</td>
                   <td>
-                    <button
+                    <a
                       className="link"
+                      href={`/admin/clusters/${c.clusterId}`}
                       data-testid={`clusters-view-${c.clusterId}`}
-                      onClick={() => navigate(`/admin/clusters/${c.clusterId}`)}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        navigate(`/admin/clusters/${c.clusterId}`);
+                      }}
                     >
                       {t('clusters.view')}
-                    </button>
+                    </a>
                   </td>
                 </tr>
               ))}

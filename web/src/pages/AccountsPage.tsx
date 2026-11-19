@@ -13,7 +13,7 @@ import {
 import { displayCurrencyLabel, formatMoney } from '../display';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast, usePolling } from '../components';
 
 interface AccountsResponse {
   response: { code: number; message: string };
@@ -40,6 +40,7 @@ export default function AccountsPage() {
   const [accounts, setAccounts] = useState<BillingAccount[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [rechargeFor, setRechargeFor] = useState<BillingAccount | null>(null);
   const [quotaFor, setQuotaFor] = useState<BillingAccount | null>(null);
   const [detail, setDetail] = useState<BillingAccount | null>(null);
@@ -77,6 +78,7 @@ export default function AccountsPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="accounts-toast" />
 
       <div className="panel">
         {loading ? (
@@ -177,8 +179,9 @@ export default function AccountsPage() {
         <CreateAccountDialog
           orgId={orgId}
           onClose={() => setCreating(false)}
-          onCreated={() => {
+          onCreated={(name) => {
             setCreating(false);
+            setNotice(t('accounts.createSuccess', { name }));
             void load();
           }}
         />
@@ -188,8 +191,9 @@ export default function AccountsPage() {
           orgId={orgId}
           account={rechargeFor}
           onClose={() => setRechargeFor(null)}
-          onDone={() => {
+          onDone={(name) => {
             setRechargeFor(null);
+            setNotice(t('accounts.rechargeSuccess', { name }));
             void load();
           }}
         />
@@ -199,8 +203,9 @@ export default function AccountsPage() {
           orgId={orgId}
           account={quotaFor}
           onClose={() => setQuotaFor(null)}
-          onDone={() => {
+          onDone={(name) => {
             setQuotaFor(null);
+            setNotice(t('accounts.updateSuccess', { name }));
             void load();
           }}
         />
@@ -224,7 +229,7 @@ function CreateAccountDialog({
 }: {
   orgId: string;
   onClose: () => void;
-  onCreated: () => void;
+  onCreated: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [mode, setMode] = useState('prepaid');
@@ -252,8 +257,12 @@ function CreateAccountDialog({
       if (spendLimit !== '') {
         body.monthlySpendLimitCents = Math.round(parseFloat(spendLimit) * 100);
       }
-      await api.post('/api/v1/admin/billing/accounts', orgId, body);
-      onCreated();
+      const res = await api.post<{ account?: BillingAccount }>(
+        '/api/v1/admin/billing/accounts',
+        orgId,
+        body,
+      );
+      onCreated(res.account?.accountId || orgId);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('accounts.createFailed'));
     } finally {
@@ -354,7 +363,7 @@ function RechargeDialog({
   orgId: string;
   account: BillingAccount;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [amount, setAmount] = useState('');
@@ -375,7 +384,7 @@ function RechargeDialog({
           note,
         },
       );
-      onDone();
+      onDone(account.accountId);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('accounts.rechargeFailed'));
     } finally {
@@ -441,7 +450,7 @@ function QuotaDialog({
   orgId: string;
   account: BillingAccount;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [mode, setMode] = useState(account.mode);
@@ -463,7 +472,7 @@ function QuotaDialog({
         monthlyQuotaCents: Math.round(parseFloat(quota || '0') * 100),
         overdrawPolicy: policy,
       });
-      onDone();
+      onDone(account.accountId);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('accounts.updateFailed'));
     } finally {
@@ -673,6 +682,11 @@ function AccountDetailDialog({
       {total > PAGE_SIZE && (
         <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
       )}
+      <div className="dialog-actions">
+        <button className="secondary" onClick={onClose}>
+          {t('common.close')}
+        </button>
+      </div>
     </Dialog>
   );
 }

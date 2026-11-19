@@ -6,7 +6,7 @@ import { api, ApiError, type PageMeta, type SSOProvider } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -25,6 +25,7 @@ export default function SSOProvidersPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [editTarget, setEditTarget] = useState<SSOProvider | null>(null);
   const [confirmTarget, setConfirmTarget] = useState<{
@@ -70,6 +71,7 @@ export default function SSOProvidersPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="sso-toast" />
 
       <div className="panel">
         {loading ? (
@@ -154,8 +156,9 @@ export default function SSOProvidersPage() {
         <CreateProviderDialog
           orgId={orgId}
           onClose={() => setCreateOpen(false)}
-          onDone={() => {
+          onDone={(name) => {
             setCreateOpen(false);
+            setNotice(t('sso.createSuccess', { name }));
             void load();
           }}
         />
@@ -166,8 +169,9 @@ export default function SSOProvidersPage() {
           orgId={orgId}
           provider={editTarget}
           onClose={() => setEditTarget(null)}
-          onDone={() => {
+          onDone={(name) => {
             setEditTarget(null);
+            setNotice(t('sso.updateSuccess', { name }));
             void load();
           }}
         />
@@ -179,8 +183,18 @@ export default function SSOProvidersPage() {
           provider={confirmTarget.provider}
           action={confirmTarget.action}
           onClose={() => setConfirmTarget(null)}
-          onDone={() => {
+          onDone={(name) => {
             setConfirmTarget(null);
+            setNotice(
+              t(
+                confirmTarget.action === 'delete'
+                  ? 'sso.deleteSuccess'
+                  : confirmTarget.action === 'enable'
+                    ? 'sso.enableSuccess'
+                    : 'sso.disableSuccess',
+                { name },
+              ),
+            );
             void load();
           }}
         />
@@ -467,7 +481,7 @@ function CreateProviderDialog({
 }: {
   orgId: string;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [provider, setProvider] = useState<Partial<SSOProvider>>({ type: 'oidc' });
@@ -486,7 +500,7 @@ function CreateProviderDialog({
       await api.post('/api/v1/admin/auth/sso/providers', orgId, {
         provider: { ...provider, providerId: id.trim() },
       });
-      onDone();
+      onDone(provider.displayName || id.trim());
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('sso.createFailed'));
     } finally {
@@ -538,7 +552,7 @@ function EditProviderDialog({
   orgId: string;
   provider: SSOProvider;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [fields, setFields] = useState<Partial<SSOProvider>>({ ...provider });
@@ -554,7 +568,7 @@ function EditProviderDialog({
         orgId,
         { provider: fields },
       );
-      onDone();
+      onDone(fields.displayName || provider.providerId);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('sso.updateFailed'));
     } finally {
@@ -563,7 +577,11 @@ function EditProviderDialog({
   };
 
   return (
-    <Dialog title={t('sso.editTitle', { providerId: provider.providerId })} onClose={onClose} testId="edit-sso-provider-dialog">
+    <Dialog
+      title={t('sso.editTitle', { providerId: provider.displayName || provider.providerId })}
+      onClose={onClose}
+      testId="edit-sso-provider-dialog"
+    >
       <ProviderFields provider={fields} setProvider={setFields} />
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
@@ -594,7 +612,7 @@ function ConfirmDialog({
   provider: SSOProvider;
   action: 'enable' | 'disable' | 'delete';
   onClose: () => void;
-  onDone: () => void;
+  onDone: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [submitting, setSubmitting] = useState(false);
@@ -613,7 +631,7 @@ function ConfirmDialog({
           orgId,
         );
       }
-      onDone();
+      onDone(provider.displayName || provider.providerId);
     } catch (e) {
       if (e instanceof ApiError && e.code === 10026) {
         setBlocked(true);
@@ -629,10 +647,10 @@ function ConfirmDialog({
     <Dialog
       title={
         action === 'delete'
-          ? t('sso.deleteTitle', { providerId: provider.providerId })
+          ? t('sso.deleteTitle', { providerId: provider.displayName || provider.providerId })
           : action === 'enable'
-            ? t('sso.enableTitle', { providerId: provider.providerId })
-            : t('sso.disableTitle', { providerId: provider.providerId })
+            ? t('sso.enableTitle', { providerId: provider.displayName || provider.providerId })
+            : t('sso.disableTitle', { providerId: provider.displayName || provider.providerId })
       }
       onClose={onClose}
       testId="sso-provider-confirm-dialog"

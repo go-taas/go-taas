@@ -417,3 +417,39 @@ func TestLifecycleEventRecording(t *testing.T) {
 	assert.Contains(t, deleteEvt.GetBefore(), "replicas")
 	assert.Equal(t, "{}", deleteEvt.GetAfter())
 }
+
+// fakeActorLabels resolves actor ids to display names.
+type fakeActorLabels map[string]string
+
+func (f fakeActorLabels) ResolveUserLabels(_ context.Context, ids []string) (map[string]string, error) {
+	out := map[string]string{}
+	for _, id := range ids {
+		if label, ok := f[id]; ok {
+			out[id] = label
+		}
+	}
+	return out, nil
+}
+
+// TestListDeploymentEventsResolvesActorName covers the readable actor
+// column: the trail carries the actor's display name next to the id.
+func TestListDeploymentEventsResolvesActorName(t *testing.T) {
+	seedImageRegistry(t)
+	svc, _, db := newInferTestService(t)
+	svc.SetUserLabelResolver(fakeActorLabels{"org-1": "Alice Admin"})
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+
+	resp, err := svc.CreateInferenceService(orgContext("org-1"), &inferv1.CreateInferenceServiceRequest{
+		Name: "demo-svc", ModelId: modelID, ModelVersion: "v1",
+		ImageId: "img-vllm-nvidia", Replicas: 2, Accelerator: "nvidia",
+	})
+	require.NoError(t, err)
+
+	listResp, err := svc.ListDeploymentEvents(orgContext("org-1"), &inferv1.ListDeploymentEventsRequest{
+		ServiceId: resp.GetServiceId(),
+	})
+	require.NoError(t, err)
+	require.Len(t, listResp.GetEvents(), 1)
+	assert.Equal(t, "org-1", listResp.GetEvents()[0].GetActor())
+	assert.Equal(t, "Alice Admin", listResp.GetEvents()[0].GetActorDisplayName())
+}

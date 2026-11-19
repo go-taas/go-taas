@@ -8,7 +8,7 @@ import { navigate } from '../router';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { formatTime, type PageMeta } from '../api';
-import { ErrorBanner, Pagination, usePolling } from '../components';
+import { ErrorBanner, Pagination, Toast, usePolling } from '../components';
 import { useI18n } from '../i18n';
 
 interface AcceleratorNodeSummary {
@@ -91,6 +91,7 @@ export default function AcceleratorsPage() {
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [stale, setStale] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<number | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -193,6 +194,8 @@ export default function AcceleratorsPage() {
           </button>
         </div>
       )}
+
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="accelerators-toast" />
 
       {cpuNodeCount > 0 && (
         <div className="info-banner" data-testid="accelerators-cpu-nodes">

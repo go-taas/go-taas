@@ -48,7 +48,6 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
   const [source, setSource] = useState('modelscope');
   const [hubModelId, setHubModelId] = useState('');
   const [name, setName] = useState('');
-  const [version, setVersion] = useState('');
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
@@ -106,12 +105,10 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
         source,
         hubModelId: id,
         name: name.trim(),
-        version: version.trim(),
         description: description.trim(),
       });
       setHubModelId('');
       setName('');
-      setVersion('');
       setDescription('');
       setOffset(0);
       await load();
@@ -196,7 +193,7 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
           </div>
         </FormSection>
 
-        {/* The catalog name and version are derived from the hub id when
+        {/* The catalog name is derived from the hub id when
             left empty, which is why the whole block is optional rather than
             required: an operator who just wants the model registered types
             one field. */}
@@ -224,23 +221,6 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
                 placeholder={t('models.downloads.modelNamePlaceholder')}
               />
               <div className="field-hint">{t('models.downloads.modelNameDerivedHint')}</div>
-            </div>
-            <div className="form-field">
-              <FieldLabel
-                htmlFor="download-version"
-                text={t('models.downloads.modelVersion')}
-                requirement="optional"
-                flag={t('form.reqDerived')}
-              />
-              <input
-                id="download-version"
-                data-testid="download-version"
-                value={version}
-                maxLength={64}
-                onChange={(e) => setVersion(e.target.value)}
-                placeholder={t('models.downloads.modelVersionPlaceholder')}
-              />
-              <div className="field-hint">{t('models.downloads.modelVersionDerivedHint')}</div>
             </div>
             <div className="form-field full">
               <FieldLabel
@@ -305,7 +285,6 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
                   </td>
                   <td className="mono">
                     {d.name}
-                    <div className="muted small">{d.version}</div>
                   </td>
                   <td className="download-state">
                     <span className={`badge ${stateBadgeClass(d.state)}`}>

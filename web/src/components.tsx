@@ -353,6 +353,48 @@ export function Pagination({
   );
 }
 
+/**
+ * Breadcrumb is the trail above a sub-page that lives under a list page.
+ * The last item is the current page and is not a link.
+ */
+export function Breadcrumb({
+  items,
+  testId = 'breadcrumb',
+}: {
+  items: { label: string; to?: string }[];
+  testId?: string;
+}) {
+  return (
+    <nav className="breadcrumb" aria-label="Breadcrumb" data-testid={testId}>
+      {items.map((item, i) => {
+        const last = i === items.length - 1;
+        return (
+          <span key={`${item.label}-${i}`} className="breadcrumb-item">
+            {i > 0 && (
+              <span className="breadcrumb-separator" aria-hidden="true">
+                /
+              </span>
+            )}
+            {item.to && !last ? (
+              <a
+                href={item.to}
+                onClick={(e) => {
+                  e.preventDefault();
+                  navigate(item.to!);
+                }}
+              >
+                {item.label}
+              </a>
+            ) : (
+              <span aria-current={last ? 'page' : undefined}>{item.label}</span>
+            )}
+          </span>
+        );
+      })}
+    </nav>
+  );
+}
+
 export function BackLink({ to, label }: { to: string; label: string }) {
   return (
     <a

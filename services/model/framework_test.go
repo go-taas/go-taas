@@ -35,7 +35,12 @@ type fakeDBComponent struct{ db any }
 func (d *fakeDBComponent) GormDB() any { return d.db }
 
 func registerModelReq(name, version, weightPath string) *modelv1.RegisterModelRequest {
-	return &modelv1.RegisterModelRequest{Name: name, Version: version, WeightPath: weightPath}
+	return &modelv1.RegisterModelRequest{
+		Name:       name,
+		Version:    version,
+		HubModelId: name + "/hub",
+		WeightPath: weightPath,
+	}
 }
 
 func TestServiceFrameworkIntegration(t *testing.T) {

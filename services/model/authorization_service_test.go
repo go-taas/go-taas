@@ -49,6 +49,7 @@ func registerOne(t *testing.T, svc *Service, name string) string {
 	t.Helper()
 	resp, err := svc.RegisterModel(context.Background(), &modelv1.RegisterModelRequest{
 		Name: name, Version: "v1", WeightPath: name + "/v1",
+		HubModelId: name + "/hub",
 	})
 	require.NoError(t, err)
 	return resp.GetModelId()

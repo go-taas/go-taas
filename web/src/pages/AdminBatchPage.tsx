@@ -8,7 +8,7 @@ import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { navigate } from '../router';
 import { formatTime, type PageMeta } from '../api';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import { formatMoney } from '../display';
 import type { BatchJob } from './user/UserBatchPage';
 
@@ -40,6 +40,7 @@ export default function AdminBatchPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [busyId, setBusyId] = useState('');
   const [cancelTarget, setCancelTarget] = useState<BatchJob | null>(null);
 
@@ -69,6 +70,7 @@ export default function AdminBatchPage() {
     try {
       await api.post(`/api/v1/admin/batch/${job.batchId}/cancel`, orgId, {});
       setCancelTarget(null);
+      setNotice(t('batch.cancelSuccess', { name: job.batchId }));
       void load();
     } catch (e) {
       setError(e instanceof Error ? e.message : t('batch.cancelFailed'));
@@ -92,6 +94,7 @@ export default function AdminBatchPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="admin-batch-toast" />
 
       <div className="panel">
         {loading ? (
@@ -159,6 +162,9 @@ export default function AdminBatchPage() {
                           label: t('common.cancel'),
                           danger: true,
                           disabled: !canCancel(job.status) || busyId === job.batchId,
+                          title: !canCancel(job.status)
+                            ? t('batch.cancelUnavailable')
+                            : undefined,
                           onClick: () => setCancelTarget(job),
                         },
                       ]}
@@ -182,11 +188,11 @@ export default function AdminBatchPage() {
         >
           <p>{t('batch.cancelConfirm')}</p>
           <div className="dialog-actions">
-            <button className="danger" data-testid="admin-batch-cancel-confirm" onClick={() => void cancelJob(cancelTarget)}>
-              {t('batch.cancelJob')}
-            </button>
             <button className="secondary" onClick={() => setCancelTarget(null)}>
               {t('batch.keepJob')}
+            </button>
+            <button className="danger" data-testid="admin-batch-cancel-confirm" onClick={() => void cancelJob(cancelTarget)}>
+              {t('batch.cancelJob')}
             </button>
           </div>
         </Dialog>

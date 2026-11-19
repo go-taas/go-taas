@@ -19,6 +19,7 @@ import {
   Pagination,
   RowActionsMenu,
   StateBadge,
+  Toast,
   usePolling,
 } from '../components';
 import { useI18n } from '../i18n';
@@ -42,6 +43,7 @@ export default function InferenceServicesPage() {
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [scaleTarget, setScaleTarget] = useState<InferenceServiceSummary | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<InferenceServiceSummary | null>(null);
   const [stopTarget, setStopTarget] = useState<InferenceServiceSummary | null>(null);
@@ -112,6 +114,7 @@ export default function InferenceServicesPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="inference-services-toast" />
 
       {createOpen && (
         <DeployForm
@@ -120,10 +123,12 @@ export default function InferenceServicesPage() {
           modelName={createModel.name}
           initialVersion={createModel.version}
           onCancel={() => setCreateOpen(false)}
-          onDeployed={() => {
+          onDeployed={(serviceId) => {
             // Collapse the form: the list is the page once the service
             // exists.
+            const name = createModel.name || createModel.id || serviceId;
             setCreateOpen(false);
+            setNotice(t('services.deploySuccess', { name }));
             void load();
           }}
         />
@@ -260,7 +265,9 @@ export default function InferenceServicesPage() {
           orgId={orgId}
           onClose={() => setScaleTarget(null)}
           onScaled={() => {
+            const name = scaleTarget.name;
             setScaleTarget(null);
+            setNotice(t('services.scaleSuccess', { name }));
             void load();
           }}
         />
@@ -272,7 +279,9 @@ export default function InferenceServicesPage() {
           orgId={orgId}
           onClose={() => setDeleteTarget(null)}
           onDeleted={() => {
+            const name = deleteTarget.name;
             setDeleteTarget(null);
+            setNotice(t('services.deleteSuccess', { name }));
             void load();
           }}
         />
@@ -284,7 +293,9 @@ export default function InferenceServicesPage() {
           orgId={orgId}
           onClose={() => setStopTarget(null)}
           onStopped={() => {
+            const name = stopTarget.name;
             setStopTarget(null);
+            setNotice(t('services.stopSuccess', { name }));
             void load();
           }}
         />
@@ -296,7 +307,9 @@ export default function InferenceServicesPage() {
           orgId={orgId}
           onClose={() => setStartTarget(null)}
           onStarted={() => {
+            const name = startTarget.name;
             setStartTarget(null);
+            setNotice(t('services.startSuccess', { name }));
             void load();
           }}
         />
@@ -308,7 +321,9 @@ export default function InferenceServicesPage() {
           orgId={orgId}
           onClose={() => setAutoscalingTarget(null)}
           onSaved={() => {
+            const name = autoscalingTarget.name;
             setAutoscalingTarget(null);
+            setNotice(t('services.autoscalingSuccess', { name }));
             void load();
           }}
         />

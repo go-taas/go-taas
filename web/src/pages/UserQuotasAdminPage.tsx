@@ -7,7 +7,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, ApiError, type PageMeta, type UserQuota } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 
 const PAGE_SIZE = 20;
 
@@ -33,6 +33,7 @@ export default function UserQuotasPage() {
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
   const [editTarget, setEditTarget] = useState<UserQuota | null>(null);
 
   const load = useCallback(async () => {
@@ -78,6 +79,7 @@ export default function UserQuotasPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="quotas-toast" />
 
       <div className="panel">
         {loading ? (
@@ -107,8 +109,17 @@ export default function UserQuotasPage() {
                   <td>{unlimitedOr(t, row.maxOutputTokensPerRequest)}</td>
                   <td>{unlimitedOr(t, row.monthlySpendLimitCents)}</td>
                   <td>
-                    <button className="link" data-testid={`edit-user-quota-${row.userId}`}
-                      onClick={() => setEditTarget(row)}>{t('common.edit')}</button>
+                    <RowActionsMenu
+                      label={t('common.actionsFor', { name: row.displayName || row.userId })}
+                      testId={`user-quota-actions-${row.userId}`}
+                      actions={[
+                        {
+                          key: `edit-user-quota-${row.userId}`,
+                          label: t('common.edit'),
+                          onClick: () => setEditTarget(row),
+                        },
+                      ]}
+                    />
                   </td>
                 </tr>
               ))}
@@ -125,7 +136,11 @@ export default function UserQuotasPage() {
           quota={editTarget}
           orgId={orgId}
           onClose={() => setEditTarget(null)}
-          onSaved={() => { setEditTarget(null); void load(); }}
+          onSaved={(name) => {
+            setEditTarget(null);
+            setNotice(t('quotas.saveSuccess', { name }));
+            void load();
+          }}
         />
       )}
     </div>
@@ -148,7 +163,7 @@ function QuotaDialog({
   quota: UserQuota;
   orgId: string;
   onClose: () => void;
-  onSaved: () => void;
+  onSaved: (name: string) => void;
 }) {
   const { t } = useI18n();
   const [values, setValues] = useState<Record<string, string>>(() => {
@@ -167,7 +182,7 @@ function QuotaDialog({
         organizationId: orgId,
         ...values,
       });
-      onSaved();
+      onSaved(quota.displayName || quota.userId);
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('quotas.saveFailed'));
     } finally {
