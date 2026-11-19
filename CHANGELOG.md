@@ -1,3 +1,17 @@
+# [1.122.0](https://github.com/go-taas/go-taas/compare/v1.121.0...v1.122.0) (2026-11-19)
+
+
+### Bug Fixes
+
+* **audit:** paginate the admin audit log and prefer human actor identities ([f07eaf2](https://github.com/go-taas/go-taas/commit/f07eaf2fe9d8b31e480d14e65117210b501ef32d))
+* **audit:** resolve actor names past non-uuid actor ids ([d4431b9](https://github.com/go-taas/go-taas/commit/d4431b9ec66935ef7cd778c7e25390ab30e52b10))
+* **tenancy:** attribute organization changes to the real caller ([15800e6](https://github.com/go-taas/go-taas/commit/15800e618944c3f72d7a8844f4b7d12137774517))
+
+
+### Features
+
+* **platform:** streamline admin console and model catalog ([2c5b256](https://github.com/go-taas/go-taas/commit/2c5b256fab7de88c306dfdb7a577cf37d88f4785))
+
 # [1.121.0](https://github.com/go-taas/go-taas/compare/v1.120.0...v1.121.0) (2026-11-19)
 
 
