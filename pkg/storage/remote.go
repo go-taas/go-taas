@@ -228,14 +228,16 @@ func CopyDir(ctx context.Context, src, dst string) (int64, error) {
 		}
 		target := filepath.Join(dst, rel)
 		if info.IsDir() {
-			return os.MkdirAll(target, 0o750)
+			return os.MkdirAll(target, 0o755) //nolint:gosec // weights must be readable by non-root serving runtimes
 		}
 		in, err := os.Open(path) //nolint:gosec // src is a validated root
 		if err != nil {
 			return err
 		}
 		defer func() { _ = in.Close() }()
-		out, err := os.Create(target) //nolint:gosec // target is under the destination root
+		// Model weights are read by serving runtimes that do not share the
+		// transfer pod's uid, so the copy is world-readable.
+		out, err := os.OpenFile(target, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644) //nolint:gosec // target is under the destination root
 		if err != nil {
 			return err
 		}

@@ -256,7 +256,7 @@ func (s *Service) startDownloadTransfer(ctx context.Context, job *DownloadJob) b
 		TargetURI:     targetURI,
 		WeightPath:    weightPath,
 		State:         transfer.StateQueued,
-		DownloadID:    job.ID,
+		DownloadID:    &job.ID,
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	}
@@ -284,7 +284,10 @@ func (s *Service) completeDownloadTransfer(ctx context.Context, row *ModelTransf
 		return
 	}
 	var job DownloadJob
-	if err := db.WithContext(ctx).Where("id = ?", row.DownloadID).First(&job).Error; err != nil {
+	if row.DownloadID == nil {
+		return
+	}
+	if err := db.WithContext(ctx).Where("id = ?", *row.DownloadID).First(&job).Error; err != nil {
 		return
 	}
 	if status.State != transfer.StateSucceeded {
@@ -469,7 +472,7 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 		// was already loaded above, so there is nothing left to report.
 		return nil
 	}
-	if row.Operation == transfer.OperationDownload && row.DownloadID != "" && transfer.Terminal(status.State) {
+	if row.Operation == transfer.OperationDownload && row.DownloadID != nil && transfer.Terminal(status.State) {
 		s.completeDownloadTransfer(ctx, row, status)
 	}
 	return nil

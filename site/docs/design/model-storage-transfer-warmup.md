@@ -95,6 +95,18 @@ filesystem backend and `s3://<bucket>/<prefix>/<weightPath>` for an object
 store. `delivery.cache` rewrites the KServe source to the cache URI and
 records the source so the cache can be rebuilt after eviction.
 
+**Serving scope.** The controller mounts the platform's default filesystem
+backend into inference pods: `app/controller` resolves that backend and uses
+its claim and mount path for the weights volume and the engine's model
+directory. Per-version backend selection and the object-store `download` and
+node-local `cache` delivery paths are not yet applied to the serving pod; a
+version stored in a non-default backend is served only after it is copied to
+the default backend (or after the backend is declared as the default).
+Object-store warmup likewise relies on the KServe local-model agent having
+S3 credentials; the controller's PVC seed Job covers `pvc://` sources only.
+Both gaps are tracked as follow-ups and do not change the transfer,
+warmup-resource or warm-affinity behaviour described below.
+
 ## 4. Stateless transfer jobs
 
 ### 4.1 Flow
@@ -174,7 +186,7 @@ collected with the same TTL or by an operator policy.
 | --- | --- | --- |
 | `LocalModelNodeGroup` | controller, from `warmup.nodeGroups` | one node pool that can hold cached weights, with a storage limit and a hostPath/PVC volume |
 | `LocalModelCache` | controller, from a `WarmModel` request | one model to copy onto the group's nodes |
-| `LocalModelNode` | KServe `localmodelnode` agent | per-node status: which models are downloaded |
+| `LocalModelNode` | KServe localmodel controller (per-node status maintained by the agent) | per-node status: which models are downloaded |
 | `LLMInferenceService` | controller | receives the injected `nodeAffinity` |
 
 `WarmModel` validates the model version and its resolved source URI, writes
@@ -182,6 +194,20 @@ a `model_cache_entries` row in `queued`, and publishes `model.warmups`. The
 controller ensures the node groups and the cache, then reports state
 (`queued` → `warming` → `ready`, or `failed`/`cancelled`) with warmed node
 names, total nodes and bytes.
+
+KServe's storage initializer accepts object-store, HTTP and Hugging Face
+URIs, not `pvc://`. For a filesystem backend the controller therefore
+pre-populates the node itself: on every cache scan it finds the
+`LocalModelNode` entries for the cache, runs a one-shot `taas-transfer` Job
+pinned to that node (source PVC mounted read-only at `/source`, the group
+hostPath mounted at `/target`), copies the weights to
+`/target/models/<storageKey>`, and only then marks the node's
+`status.modelStatus[cacheName]` as `ModelDownloaded`. The storage key is the
+first 16 hex characters of SHA-256 of the source URI, matching KServe's own
+layout. The seed Job runs as root because uploaded weights can be owned by an
+arbitrary uid with mode 0750; it writes world-readable files so non-root
+serving runtimes can read them. Object-store and HTTP sources continue to use the
+KServe path.
 
 ### 5.2 Scheduling
 

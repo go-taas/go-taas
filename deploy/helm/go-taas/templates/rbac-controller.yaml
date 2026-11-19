@@ -69,7 +69,12 @@ rules:
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   - apiGroups: ["serving.kserve.io"]
     resources: ["localmodelnodes"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "update", "patch"]
+  # The controller marks a node-local copy as downloaded after its own
+  # PVC seed Job succeeds; the KServe agent then stops downloading it.
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["localmodelnodes/status"]
+    verbs: ["get", "update", "patch"]
   # Volcano gang groups: one PodGroup per inference service, so the pods of a
   # replica are placed together and a higher priority may preempt a lower one.
   - apiGroups: ["scheduling.volcano.sh"]

@@ -33,7 +33,7 @@ DOCKERFILE ?= build/docker/Dockerfile
 # "taas-console" is the standalone nginx image of the console (the Vite
 # bundle), deployed separately by the Helm chart; the server image is
 # API-only and does not embed the frontend.
-IMAGE_TARGETS ?= taas-server taas-controller taas-console
+IMAGE_TARGETS ?= taas-server taas-controller taas-transfer taas-console
 
 # Network build-args for image builds. Override on the command line for
 # restricted networks, e.g.:

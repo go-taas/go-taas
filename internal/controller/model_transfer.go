@@ -209,6 +209,7 @@ func (r *ModelTransferReconciler) buildJob(spec *transfer.Spec, name string) (*b
 	volumes := []corev1.Volume{}
 	mounts := []corev1.VolumeMount{}
 	seenClaim := map[string]string{}
+	seenMount := map[string]bool{}
 	for role, backendName := range map[string]string{"SOURCE": spec.SourceBackend, "TARGET": spec.TargetBackend} {
 		if backendName == "" {
 			continue
@@ -235,13 +236,17 @@ func (r *ModelTransferReconciler) buildJob(spec *transfer.Spec, name string) (*b
 				},
 			})
 		}
-		mounts = append(mounts, corev1.VolumeMount{Name: volumeName, MountPath: backend.Filesystem.MountPath})
+		mountKey := volumeName + "|" + backend.Filesystem.MountPath
+		if !seenMount[mountKey] {
+			seenMount[mountKey] = true
+			mounts = append(mounts, corev1.VolumeMount{Name: volumeName, MountPath: backend.Filesystem.MountPath})
+		}
 	}
 	container := corev1.Container{
 		Name:            transferContainerName,
 		Image:           r.image,
 		ImagePullPolicy: corev1.PullIfNotPresent,
-		Command:         []string{"/taas-transfer"},
+		Command:         []string{"/usr/local/bin/taas-transfer"},
 		Env:             env,
 		VolumeMounts:    mounts,
 	}

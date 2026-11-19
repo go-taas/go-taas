@@ -80,7 +80,7 @@ func TestApplyModelTransferCreatesJob(t *testing.T) {
 	require.Len(t, job.Spec.Template.Spec.Volumes, 1)
 	assert.Equal(t, "model-weights", job.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
 	container := job.Spec.Template.Spec.Containers[0]
-	assert.Equal(t, "/taas-transfer", container.Command[0])
+	assert.Equal(t, "/usr/local/bin/taas-transfer", container.Command[0])
 	env := map[string]corev1.EnvVar{}
 	for _, item := range container.Env {
 		env[item.Name] = item

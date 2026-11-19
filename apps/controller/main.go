@@ -61,11 +61,27 @@ func main() {
 	// controller reconverges without a database.
 	schemeCache := controller.NewSchemeCache()
 
-	reconciler := controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, controller.WeightsConfig{
+	// Serving reads the weights through the default storage backend, so the
+	// backend's claim and mount path win over the legacy controller.weights
+	// settings. With no storage.backends the normalized default is the
+	// legacy filesystem backend, which keeps the values identical.
+	weights := controller.WeightsConfig{
 		StorageClass: cfg.Controller.Weights.StorageClass,
 		PVCName:      cfg.Controller.Weights.PVCName,
 		MountPath:    cfg.Controller.Weights.MountPath,
-	}, schemeCache, cfg.Controller.AcceleratorLabelKey)
+	}
+	if backend, err := cfg.Storage.Resolve(""); err == nil {
+		if claim := backend.Filesystem.ExistingClaim; claim != "" {
+			weights.PVCName = claim
+		}
+		if mount := backend.Filesystem.MountPath; mount != "" {
+			weights.MountPath = mount
+		}
+		if class := backend.Filesystem.Provision.StorageClass; class != "" {
+			weights.StorageClass = class
+		}
+	}
+	reconciler := controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, weights, schemeCache, cfg.Controller.AcceleratorLabelKey)
 	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
 	// placement-policy annotation, the pool's scheduling hint, and the
 	// pool's node label selector are config-driven.
@@ -106,6 +122,13 @@ func main() {
 	if cfg.Warmup.Enabled {
 		ctrl.SetModelWarmupReconciler(controller.NewModelWarmupReconciler(
 			k8sClient.Dynamic(), mqClient, cfg.Warmup, cfg.Controller.Namespace,
+			controller.WarmupSeedConfig{
+				Image:          cfg.Transfer.Image,
+				Namespace:      cfg.Transfer.Namespace,
+				ServiceAccount: cfg.Transfer.ServiceAccount,
+				NodeSelector:   cfg.Transfer.NodeSelector,
+				Tolerations:    cfg.Transfer.Tolerations,
+			},
 		))
 	}
 	// The periodic pod-failure scanner publishes a failed status for any

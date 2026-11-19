@@ -154,6 +154,25 @@ func TestWarmModelAndStatus(t *testing.T) {
 	assert.Equal(t, []string{"node-1"}, list.GetCaches()[0].GetWarmedNodes())
 }
 
+func TestWarmModelIsIdempotentWhileCacheLive(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	svc.SetTransferPublisher(&recordingPublisher{})
+	svc.SetWarmupSettings(true, []WarmupNodeGroupSettings{{Name: "gpu", StorageLimit: "10Gi"}})
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-idem", HubModelId: "qwen/hub", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	first, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	second, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	assert.Equal(t, first.GetCache().GetCacheId(), second.GetCache().GetCacheId())
+
+	list, err := svc.ListModelCacheEntries(adminCtx(), &modelv1.ListModelCacheEntriesRequest{})
+	require.NoError(t, err)
+	assert.Len(t, list.GetCaches(), 1)
+}
+
 func TestCompleteDownloadTransferRegistersModel(t *testing.T) {
 	svc, source, _ := storageTestService(t)
 	svc.SetTransferPublisher(&recordingPublisher{})
@@ -175,7 +194,7 @@ func TestCompleteDownloadTransferRegistersModel(t *testing.T) {
 	// transfer registers the catalog entry and settles the job row.
 	row := &ModelTransfer{
 		ID: "transfer-1", Operation: transfer.OperationDownload, ModelName: "qwen",
-		Version: "v1", WeightPath: "qwen/v1/", DownloadID: job.ID,
+		Version: "v1", WeightPath: "qwen/v1/", DownloadID: &job.ID,
 		State: transfer.StateRunning,
 	}
 	require.NoError(t, db.Create(row).Error)

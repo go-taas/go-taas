@@ -60,6 +60,8 @@
 
 文件系统后端声明 `provision.enabled` 时由 chart 创建 PVC，否则必须给出 `existingClaim`；两者皆无时在渲染期拒绝。版本逻辑 URI 对文件系统为 `pvc://<claim>/<weightPath>`，对对象存储为 `s3://<bucket>/<prefix>/<weightPath>`。`cache` 交付会把 KServe 源改为缓存 URI 并记录源，以便缓存被驱逐后重建。
 
+**服务侧范围。** Controller 把平台的默认文件系统后端挂载进推理 Pod：`app/controller` 解析该后端，并用它的 claim 与挂载路径作为权重的 volume 和引擎模型目录。按版本选择后端、对象存储的 `download` 交付与节点本地 `cache` 交付尚未接入服务 Pod；存放在非默认后端的版本需要先复制到默认后端（或把该后端声明为默认）才能服务。对象存储预热同样依赖 KServe local-model agent 具备 S3 凭据，Controller 的 PVC 种子 Job 只覆盖 `pvc://` 源。两处缺口作为后续工作跟踪，不影响下文描述的搬运、预热资源与 warm-aware 调度行为。
+
 ## 4. 无状态搬运 Job
 
 ### 4.1 流程
@@ -115,10 +117,12 @@ model 服务 <----------------------+
 | --- | --- | --- |
 | `LocalModelNodeGroup` | Controller，来自 `warmup.nodeGroups` | 可缓存权重的节点池，含容量与 hostPath/PVC |
 | `LocalModelCache` | Controller，来自 `WarmModel` 请求 | 一个待复制到节点组的模型 |
-| `LocalModelNode` | KServe `localmodelnode` agent | 每节点已下载模型状态 |
+| `LocalModelNode` | KServe localmodel controller（节点状态由 agent 维护） | 每节点已下载模型状态 |
 | `LLMInferenceService` | Controller | 接收注入的 `nodeAffinity` |
 
 `WarmModel` 校验模型版本与解析后的源 URI，写入 `model_cache_entries`（`queued`）并发布 `model.warmups`。Controller 确保节点组与缓存存在，随后回报 `queued` → `warming` → `ready`（或 `failed`/`cancelled`），携带已预热节点、节点总数与字节数。
+
+KServe storage-initializer 支持对象存储、HTTP 与 Hugging Face，但不支持 `pvc://`。因此文件系统后端的预热由 Controller 自己完成：每轮扫描缓存时找到该缓存对应的 `LocalModelNode`，在目标节点上运行一次性 `taas-transfer` Job（源 PVC 只读挂载到 `/source`，节点组 hostPath 挂载到 `/target`），把权重复制到 `/target/models/<storageKey>`，成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。对象存储与 HTTP 源仍走 KServe 原生路径。
 
 ### 5.2 调度
 

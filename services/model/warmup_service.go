@@ -3,11 +3,13 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"gorm.io/gorm"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/mq"
@@ -94,6 +96,23 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 	}
 	db, err := s.gormDB()
 	if err != nil {
+		return nil, err
+	}
+	// A model version can only have one live cache. KServe rejects a second
+	// LocalModelCache with the same source URI, so re-warming an already
+	// queued/warming/ready version returns the existing request instead of
+	// creating a row the controller can never satisfy.
+	var existing ModelCacheEntry
+	err = db.WithContext(ctx).
+		Where("model_id = ? AND version = ? AND backend = ? AND source_uri = ? AND state NOT IN ?",
+			row.ID, version.Version, backend.Name, sourceURI,
+			[]string{warmup.StateFailed, warmup.StateCancelled}).
+		Order("created_at DESC").
+		First(&existing).Error
+	if err == nil {
+		return &modelv1.WarmModelResponse{Response: okResponse(), Cache: cacheProjection(&existing)}, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
 	}
 	if err := db.WithContext(ctx).Create(entry).Error; err != nil {

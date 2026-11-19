@@ -13,7 +13,7 @@ type ModelTransfer struct { //nolint:revive // the name is part of the model pac
 	Operation string `gorm:"size:16;not null;index"`
 	// ModelID is the catalog model the transfer belongs to. Empty for a
 	// transfer that only moves bytes.
-	ModelID string `gorm:"type:uuid;not null;default:'';index"`
+	ModelID string `gorm:"type:uuid;not null;index"`
 	// ModelName is the catalog name denormalized for the console listing.
 	ModelName string `gorm:"size:128;not null;default:''"`
 	// Version is the model version being moved.
@@ -37,8 +37,9 @@ type ModelTransfer struct { //nolint:revive // the name is part of the model pac
 	// JobName is the Kubernetes Job the controller created.
 	JobName string `gorm:"size:255;not null;default:''"`
 	// DownloadID links a download transfer to the model_downloads row it
-	// completes. Empty for copy/delete transfers.
-	DownloadID string `gorm:"type:uuid;not null;default:'';index"`
+	// completes. Nil for copy/delete transfers, which keeps the uuid
+	// column nullable instead of writing an invalid empty string.
+	DownloadID *string `gorm:"type:uuid;index"`
 	// CreatedAt is the enqueue time (UTC).
 	CreatedAt time.Time `gorm:"index:idx_model_transfers_created,priority:1,sort:DESC"`
 	// UpdatedAt is the last state/progress update (UTC).
