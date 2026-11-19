@@ -1065,7 +1065,7 @@ html[data-theme='light'] .dialog h2 {
 
 html[data-theme='light'] .dialog .dialog-actions,
 html[data-theme='light'] .dialog > .dialog-actions {
-  background: #ffffff;
+  background: transparent;
   border-top-color: #e3e8ef;
 }
 

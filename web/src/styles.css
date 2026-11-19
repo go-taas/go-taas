@@ -2147,24 +2147,45 @@ button.primary:hover {
   margin-top: 18px;
 }
 
-/* A dialog taller than the viewport scrolls, and the action row is where the
-   "still empty" checklist lives: leaving it below the fold defeats the point
-   of the checklist. Sticking it to the bottom keeps the buttons and the
-   outstanding-field line visible while the fields scroll. The negative
-   offsets cancel the dialog's own padding so the row sits flush with the
-   frame instead of floating above it. */
+/* The dialog itself is the scroll container. The action row is a normal
+   block inside it: negative offsets or sticky positioning here made a short
+   dialog scroll and pushed the buttons into the frame's padding. */
 .dialog > .dialog-actions {
-  position: sticky;
-  bottom: -24px;
-  margin-bottom: -24px;
-  padding: 12px 0 24px;
+  margin: 18px 0 0;
+  padding: 14px 0 0;
   border-top: 1px solid var(--border);
-  background: #fcfdff;
+  background: transparent;
 }
 
 /* ============================================================
    Misc
    ============================================================ */
+
+.password-rules {
+  list-style: none;
+  margin: 7px 0 0;
+  padding: 0;
+  display: grid;
+  gap: 3px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.password-rules li::before {
+  content: '○';
+  display: inline-block;
+  width: 16px;
+  color: var(--muted);
+}
+
+.password-rules li.ok {
+  color: var(--ok);
+}
+
+.password-rules li.ok::before {
+  content: '✓';
+  color: var(--ok);
+}
 
 .error-banner {
   background: var(--danger-soft);

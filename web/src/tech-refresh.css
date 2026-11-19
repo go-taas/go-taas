@@ -1996,15 +1996,17 @@ code {
 
 .dialog .dialog-actions,
 .dialog > .dialog-actions {
+  position: static;
+  inset: auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   justify-content: flex-end;
   gap: 8px;
-  margin-top: 16px;
+  margin: 16px 0 0;
   padding: 12px 0 0;
   border-top: 1px solid #222228;
-  background: #101014;
+  background: transparent;
 }
 
 .lang-menu,
