@@ -3,7 +3,7 @@
 // recommendation list, refresh-now, dismiss/restore lifecycle.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ErrorBanner, usePolling } from '../components';
+import { ErrorBanner, Pagination, usePolling } from '../components';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -21,6 +21,7 @@ import RecommendationDrawer from '../components/optimization/RecommendationDrawe
 import DismissDialog, { type DismissReason } from '../components/optimization/DismissDialog';
 
 const RULES = ['r1_substitution', 'r2_batch', 'r3_idle_service', 'r4_cache'] as const;
+const PAGE_SIZE = 20;
 
 export default function OptimizationPage() {
   const { t } = useI18n();
@@ -40,6 +41,8 @@ export default function OptimizationPage() {
   const [organization, setOrganization] = useState('');
   const [model, setModel] = useState('');
   const [minSaving, setMinSaving] = useState('');
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
 
   const [selected, setSelected] = useState<OptimizationRecommendation | null>(null);
   const [dismissTarget, setDismissTarget] = useState<OptimizationRecommendation | null>(null);
@@ -51,8 +54,10 @@ export default function OptimizationPage() {
     if (organization) q.set('organization_id', organization);
     if (model) q.set('model_id', model);
     if (minSaving) q.set('min_saving', minSaving);
+    q.set('page.offset', String(offset));
+    q.set('page.limit', String(PAGE_SIZE));
     return q.toString();
-  }, [rule, status, organization, model, minSaving]);
+  }, [rule, status, organization, model, minSaving, offset]);
 
   const load = useCallback(async () => {
     if (!orgId) return;
@@ -68,6 +73,7 @@ export default function OptimizationPage() {
       ]);
       setOverview(ov.overview);
       setRecommendations(list.recommendations || []);
+      setTotal(parseInt(list.pageMeta?.total || '0', 10) || 0);
       setStale(false);
       setPermissionDenied(false);
     } catch (e: any) {
@@ -81,6 +87,10 @@ export default function OptimizationPage() {
       setLoading(false);
     }
   }, [api, orgId, query, t]);
+
+  useEffect(() => {
+    setOffset(0);
+  }, [rule, status, organization, model, minSaving]);
 
   useEffect(() => {
     void load();
@@ -244,6 +254,10 @@ export default function OptimizationPage() {
             <RecommendationCard key={rec.recommendationId} rec={rec} onOpen={() => setSelected(rec)} />
           ))}
         </div>
+      )}
+
+      {total > PAGE_SIZE && (
+        <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
       )}
 
       {selected && (
