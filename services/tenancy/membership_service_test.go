@@ -369,10 +369,10 @@ func seedOrganization(t *testing.T, svc *Service, orgID, displayName string) {
 	}))
 }
 
-// TestAddOrgMemberMovesTheUserAcrossOrganizations covers the single-organization
-// rule at write time: joining a second organization removes the first, and with
-// it any project membership the user held inside the organization they left.
-func TestAddOrgMemberMovesTheUserAcrossOrganizations(t *testing.T) {
+// TestAddOrgMemberKeepsExistingOrganizations covers the multi-organization
+// rule at write time: joining a second organization adds a membership and
+// leaves the first organization, and its project memberships, untouched.
+func TestAddOrgMemberKeepsExistingOrganizations(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()
 
@@ -392,34 +392,34 @@ func TestAddOrgMemberMovesTheUserAcrossOrganizations(t *testing.T) {
 	require.NoError(t, err)
 
 	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
-	// The old organization membership is gone.
+	// The previous organization membership is kept.
 	old, err := repo.FindMember(ctx, "org-a", "u-2")
 	require.NoError(t, err)
-	assert.Nil(t, old, "joining org-b must remove the org-a membership")
+	require.NotNil(t, old, "joining org-b must keep the org-a membership")
+	assert.Equal(t, RoleMember, old.Role)
 
-	// The new one exists.
-	moved, err := repo.FindMember(ctx, "org-b", "u-2")
+	// The new one exists too.
+	added, err := repo.FindMember(ctx, "org-b", "u-2")
 	require.NoError(t, err)
-	require.NotNil(t, moved)
-	assert.Equal(t, RoleMember, moved.Role)
+	require.NotNil(t, added)
+	assert.Equal(t, RoleMember, added.Role)
 
-	// The project of the organization they left is no longer theirs.
+	// The project of the first organization is still theirs.
 	pm, err := repo.FindProjectMember(ctx, "proj-a", "u-2")
 	require.NoError(t, err)
-	assert.Nil(t, pm, "a project of the previous organization must not survive the move")
+	require.NotNil(t, pm, "a project of the previous organization must survive the join")
 
-	// The directory resolves the new organization.
+	// The directory still resolves the oldest organization.
 	resolver := NewMembershipResolver(svc.repo.db.DB(ctx))
 	affiliation, err := resolver.UserAffiliation(ctx, "u-2")
 	require.NoError(t, err)
-	assert.Equal(t, "org-b", affiliation.OrganizationID)
-	assert.Equal(t, "Org B", affiliation.OrganizationName)
-	assert.Empty(t, affiliation.ProjectID)
+	assert.Equal(t, "org-a", affiliation.OrganizationID)
+	assert.Equal(t, "Org A", affiliation.OrganizationName)
 }
 
-// TestAddOrgMemberKeepsProjectsOfTheTargetOrganization proves the move does not
-// take away a project the user already holds inside the organization they are
-// joining.
+// TestAddOrgMemberKeepsProjectsOfTheTargetOrganization proves adding an
+// organization membership does not take away a project the user already holds
+// inside the organization they are joining.
 func TestAddOrgMemberKeepsProjectsOfTheTargetOrganization(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()
@@ -470,9 +470,9 @@ func TestAddOrgMemberKeepsThePlatformMembership(t *testing.T) {
 	assert.NotNil(t, anchor, "the platform anchor membership is never cleared by a move")
 }
 
-// TestAddProjectMemberMovesTheUserAcrossProjects covers the same rule at the
-// project level: an account belongs to at most one project.
-func TestAddProjectMemberMovesTheUserAcrossProjects(t *testing.T) {
+// TestAddProjectMemberKeepsExistingProjects covers the same rule at the project
+// level: an account may belong to several projects.
+func TestAddProjectMemberKeepsExistingProjects(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()
 
@@ -490,17 +490,17 @@ func TestAddProjectMemberMovesTheUserAcrossProjects(t *testing.T) {
 	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
 	first, err := repo.FindProjectMember(ctx, "proj-1", "u-2")
 	require.NoError(t, err)
-	assert.Nil(t, first, "joining a second project must remove the first membership")
+	require.NotNil(t, first, "joining a second project must keep the first membership")
 
 	second, err := repo.FindProjectMember(ctx, "proj-2", "u-2")
 	require.NoError(t, err)
 	require.NotNil(t, second)
 }
 
-// TestAddOrgMemberRefusesToMoveAnOwner keeps an organization from losing its
-// last owner through the platform directory: the move is refused with 10032,
-// the same code the roster returns when removing an owner.
-func TestAddOrgMemberRefusesToMoveAnOwner(t *testing.T) {
+// TestAddOrgMemberKeepsOwnerRoleInPreviousOrganization proves adding a second
+// organization membership never downgrades or removes an existing role, so an
+// organization cannot lose its last owner through the platform directory.
+func TestAddOrgMemberKeepsOwnerRoleInPreviousOrganization(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()
 
@@ -513,21 +513,23 @@ func TestAddOrgMemberRefusesToMoveAnOwner(t *testing.T) {
 	_, err := svc.AddOrgMember(ctx, &tenancyv1.AddOrgMemberRequest{
 		OrganizationId: "org-b", UserId: "u-owner", Role: RoleMember,
 	})
-	ae, ok := apierrors.As(err)
-	require.True(t, ok)
-	assert.Equal(t, apierrors.CodeOwnerProtected, ae.Code)
+	require.NoError(t, err)
 
-	// Nothing moved.
 	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
 	still, err := repo.FindMember(ctx, "org-a", "u-owner")
 	require.NoError(t, err)
-	require.NotNil(t, still, "a refused move must leave the owner in place")
-	assert.Equal(t, RoleOwner, still.Role)
+	require.NotNil(t, still, "the previous organization membership must remain")
+	assert.Equal(t, RoleOwner, still.Role, "an existing owner role must not be downgraded")
+
+	added, err := repo.FindMember(ctx, "org-b", "u-owner")
+	require.NoError(t, err)
+	require.NotNil(t, added)
+	assert.Equal(t, RoleMember, added.Role)
 }
 
 // TestAddOrgMemberRejectsDuplicateWithoutMoving proves a rejected duplicate
-// leaves the account where it was: the request returned an error, so it must
-// not have deleted the membership it was asked to replace.
+// leaves the account untouched: the request returned an error, so it must not
+// have deleted any membership it was asked to replace.
 func TestAddOrgMemberRejectsDuplicateWithoutMoving(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()

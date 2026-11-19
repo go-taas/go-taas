@@ -13,10 +13,10 @@ import (
 )
 
 // CreateJoinRequest submits a request to join an organization or a
-// project. A user belongs to exactly one organization, so an
-// organization request is rejected when the user is already a member of
-// any organization. A project request requires membership of the
-// project's owning organization.
+// project. A user may belong to several organizations and several
+// projects, so the only limits are that the target is real, that the
+// caller is not already a member of it, and, for a project, that the
+// caller belongs to the project's owning organization.
 func (s *Service) CreateJoinRequest(ctx context.Context, req *tenancyv1.CreateJoinRequestRequest) (*tenancyv1.CreateJoinRequestResponse, error) {
 	userID, err := s.sessionUserID(ctx)
 	if err != nil {
@@ -33,16 +33,6 @@ func (s *Service) CreateJoinRequest(ctx context.Context, req *tenancyv1.CreateJo
 	}
 	switch targetType {
 	case JoinTargetOrganization:
-		// One-org rule: a user may belong to exactly one organization.
-		// The dedicated platform org is a system artifact and does not
-		// count as tenant membership.
-		orgs, err := repo.ListMemberOrgs(ctx, userID)
-		if err != nil {
-			return nil, err
-		}
-		if len(realOrgMemberships(orgs)) > 0 {
-			return nil, apierrors.New(apierrors.CodeMemberExists)
-		}
 		orgRepo, err := s.repository()
 		if err != nil {
 			return nil, err
@@ -55,13 +45,16 @@ func (s *Service) CreateJoinRequest(ctx context.Context, req *tenancyv1.CreateJo
 			// The platform org is not joinable.
 			return nil, apierrors.New(apierrors.CodeOrganizationNotFound)
 		}
-	case JoinTargetProject:
-		// One-project rule: a user may belong to exactly one project.
-		projects, err := repo.ListMemberProjects(ctx, userID)
-		if err != nil {
+		// Already a member of this organization: nothing to request.
+		if member, err := repo.FindMember(ctx, targetID, userID); err != nil {
 			return nil, err
+		} else if member != nil {
+			return nil, apierrors.New(apierrors.CodeMemberExists)
 		}
-		if len(projects) > 0 {
+	case JoinTargetProject:
+		if member, err := repo.FindProjectMember(ctx, targetID, userID); err != nil {
+			return nil, err
+		} else if member != nil {
 			return nil, apierrors.New(apierrors.CodeMemberExists)
 		}
 		if err := s.requireOrgMembershipOfProject(ctx, targetID, userID); err != nil {
@@ -152,15 +145,9 @@ func (s *Service) ApproveJoinRequest(ctx context.Context, req *tenancyv1.Approve
 	}
 	switch j.TargetType {
 	case JoinTargetOrganization:
-		// Re-check the one-org rule: the user may have joined another
-		// organization while the request was pending.
-		orgs, err := repo.ListMemberOrgs(ctx, j.UserID)
-		if err != nil {
-			return nil, err
-		}
-		if len(realOrgMemberships(orgs)) > 0 {
-			return nil, apierrors.New(apierrors.CodeMemberExists)
-		}
+		// A duplicate membership is refused by AddMember (10029): the
+		// applicant may already belong to another organization, which is
+		// allowed, but not to this one.
 		if err := repo.AddMember(ctx, &OrgMember{
 			OrganizationID: j.TargetID,
 			UserID:         j.UserID,
@@ -170,14 +157,6 @@ func (s *Service) ApproveJoinRequest(ctx context.Context, req *tenancyv1.Approve
 			return nil, err
 		}
 	case JoinTargetProject:
-		// Re-check the one-project rule.
-		projects, err := repo.ListMemberProjects(ctx, j.UserID)
-		if err != nil {
-			return nil, err
-		}
-		if len(projects) > 0 {
-			return nil, apierrors.New(apierrors.CodeMemberExists)
-		}
 		if err := repo.AddProjectMember(ctx, &ProjectMember{
 			ProjectID: j.TargetID,
 			UserID:    j.UserID,

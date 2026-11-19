@@ -111,11 +111,8 @@ func (s *Service) AddProjectMember(ctx context.Context, req *tenancyv1.AddProjec
 	if err != nil {
 		return nil, err
 	}
-	// Symmetric with the organization roster: an account belongs to at most
-	// one project, so joining one moves it rather than adding a second row.
-	if err := repo.MoveUserToProject(ctx, projectID, userID); err != nil {
-		return nil, err
-	}
+	// A person may belong to more than one project: adding this membership
+	// leaves the project memberships they already hold untouched.
 	m := &ProjectMember{
 		ProjectID: projectID,
 		UserID:    userID,

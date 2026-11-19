@@ -1,12 +1,12 @@
 // Roster candidates: the accounts an administrator may still add.
 //
-// A person belongs to at most one organization and one project, so the
-// pick-list for a roster is exactly the set of accounts that has not joined
-// one yet:
+// A person may belong to several organizations and several projects, so the
+// pick-list for a roster is the accounts that have not joined that particular
+// roster yet:
 //
-//	organization roster   active accounts with no organization
-//	project roster        active accounts of that project's organization
-//	                      with no project
+//	organization roster   active accounts that are not members of this org
+//	project roster        active members of the owning organization that
+//	                      are not members of this project
 //
 // The membership tables live in this module; the account rows live in the
 // auth module, so the directory is an injected seam (see
@@ -54,7 +54,7 @@ func (s *Service) candidateUsers(ctx context.Context) ([]CandidateUser, error) {
 }
 
 // ListOrgMemberCandidates returns the accounts that may still join the
-// organization (active accounts with no organization).
+// organization (active accounts that are not members of it yet).
 func (s *Service) ListOrgMemberCandidates(ctx context.Context, req *tenancyv1.ListOrgMemberCandidatesRequest) (*tenancyv1.ListOrgMemberCandidatesResponse, error) {
 	orgID := req.GetOrganizationId()
 	if err := s.requireRosterAdmin(ctx, orgID); err != nil {
@@ -64,7 +64,7 @@ func (s *Service) ListOrgMemberCandidates(ctx context.Context, req *tenancyv1.Li
 	if err != nil {
 		return nil, err
 	}
-	taken, err := repo.AllOrgMemberUserIDs(ctx)
+	taken, err := repo.OrgMemberUserIDs(ctx, orgID)
 	if err != nil {
 		return nil, err
 	}
@@ -86,8 +86,8 @@ func (s *Service) ListOrgMemberCandidates(ctx context.Context, req *tenancyv1.Li
 }
 
 // ListProjectMemberCandidates returns the organization's members that may
-// still join the project (active accounts of the owning organization with no
-// project).
+// still join the project (active accounts of the owning organization that are
+// not on this project's roster yet).
 func (s *Service) ListProjectMemberCandidates(ctx context.Context, req *tenancyv1.ListProjectMemberCandidatesRequest) (*tenancyv1.ListProjectMemberCandidatesResponse, error) {
 	projectID := strings.TrimSpace(req.GetProjectId())
 	if projectID == "" {
@@ -105,7 +105,7 @@ func (s *Service) ListProjectMemberCandidates(ctx context.Context, req *tenancyv
 	if err != nil {
 		return nil, err
 	}
-	inProject, err := repo.AllProjectMemberUserIDs(ctx)
+	inProject, err := repo.ProjectMemberUserIDs(ctx, project.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func (s *Service) ListProjectMemberCandidates(ctx context.Context, req *tenancyv
 	candidates := make([]*tenancyv1.MemberCandidate, 0, len(users))
 	for _, u := range users {
 		// Only the owning organization's members can join its projects, and
-		// a person belongs to at most one project.
+		// someone already on this project's roster is not a candidate.
 		if !orgMembers[u.UserID] || inProject[u.UserID] {
 			continue
 		}

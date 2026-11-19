@@ -110,9 +110,9 @@ func (s *Service) GetMyAdminScopes(ctx context.Context, _ *tenancyv1.GetMyAdminS
 }
 
 // ListJoinableOrganizations returns the active organizations the caller
-// may apply to join (requirement 5). The list is empty once the caller
-// belongs to an organization, so the one-organization rule is offered as
-// a pick-list rather than free text.
+// may apply to join (requirement 5). A person may belong to several
+// organizations, so the pick-list offers every tenant organization the
+// caller is not already a member of.
 func (s *Service) ListJoinableOrganizations(ctx context.Context, _ *tenancyv1.ListJoinableOrganizationsRequest) (*tenancyv1.ListJoinableOrganizationsResponse, error) {
 	userID, err := s.sessionUserID(ctx)
 	if err != nil {
@@ -130,11 +130,9 @@ func (s *Service) ListJoinableOrganizations(ctx context.Context, _ *tenancyv1.Li
 	if err != nil {
 		return nil, err
 	}
+	joined := make(map[string]bool, len(memberOrgs))
 	for _, m := range memberOrgs {
-		if m.OrganizationID != platformOrgID {
-			// Already in an organization: nothing to join.
-			return &tenancyv1.ListJoinableOrganizationsResponse{Response: okResponse()}, nil
-		}
+		joined[m.OrganizationID] = true
 	}
 	// Exclude targets with an open request so the pick-list does not
 	// offer a duplicate.
@@ -154,7 +152,7 @@ func (s *Service) ListJoinableOrganizations(ctx context.Context, _ *tenancyv1.Li
 	}
 	out := make([]*tenancyv1.JoinableOrganization, 0, len(rows))
 	for _, org := range rows {
-		if org.ID == platformOrgID || pending[org.ID] {
+		if org.ID == platformOrgID || joined[org.ID] || pending[org.ID] {
 			continue
 		}
 		out = append(out, &tenancyv1.JoinableOrganization{
@@ -166,8 +164,10 @@ func (s *Service) ListJoinableOrganizations(ctx context.Context, _ *tenancyv1.Li
 }
 
 // ListJoinableProjects returns the active projects of the caller's
-// organization they may apply to join (requirement 5). The list is empty
-// once the caller belongs to a project.
+// organizations they may apply to join (requirement 5). A person may
+// belong to several organizations and several projects, so the pick-list
+// offers every project the caller is not already a member of, across all
+// organizations they belong to.
 func (s *Service) ListJoinableProjects(ctx context.Context, req *tenancyv1.ListJoinableProjectsRequest) (*tenancyv1.ListJoinableProjectsResponse, error) {
 	userID, err := s.sessionUserID(ctx)
 	if err != nil {
@@ -181,23 +181,32 @@ func (s *Service) ListJoinableProjects(ctx context.Context, req *tenancyv1.ListJ
 	if err != nil {
 		return nil, err
 	}
+	memberOrgs, err := mrepo.ListMemberOrgs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	requested := strings.TrimSpace(req.GetOrganizationId())
+	orgIDs := make([]string, 0, len(memberOrgs))
+	for _, m := range memberOrgs {
+		if m.OrganizationID == platformOrgID {
+			continue
+		}
+		if requested != "" && m.OrganizationID != requested {
+			continue
+		}
+		orgIDs = append(orgIDs, m.OrganizationID)
+	}
+	if len(orgIDs) == 0 {
+		// Not in an organization yet: no projects to join.
+		return &tenancyv1.ListJoinableProjectsResponse{Response: okResponse()}, nil
+	}
 	memberProjects, err := mrepo.ListMemberProjects(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
-	if len(memberProjects) > 0 {
-		return &tenancyv1.ListJoinableProjectsResponse{Response: okResponse()}, nil
-	}
-	orgID := strings.TrimSpace(req.GetOrganizationId())
-	if orgID == "" {
-		orgID, err = s.userOrganizationID(ctx, userID, mrepo)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if orgID == "" {
-		// Not in an organization yet: no projects to join.
-		return &tenancyv1.ListJoinableProjectsResponse{Response: okResponse()}, nil
+	joined := make(map[string]bool, len(memberProjects))
+	for _, m := range memberProjects {
+		joined[m.ProjectID] = true
 	}
 	pending := make(map[string]bool)
 	requests, err := mrepo.ListJoinRequestsByUser(ctx, userID)
@@ -209,51 +218,24 @@ func (s *Service) ListJoinableProjects(ctx context.Context, req *tenancyv1.ListJ
 			pending[r.TargetID] = true
 		}
 	}
-	rows, _, err := repo.ListProjects(ctx, ProjectFilter{OrganizationID: orgID, State: StateActive}, 0, listMaxLimit)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]*tenancyv1.JoinableProject, 0, len(rows))
-	for _, p := range rows {
-		if pending[p.ID] {
-			continue
+	out := make([]*tenancyv1.JoinableProject, 0, len(orgIDs))
+	for _, orgID := range orgIDs {
+		rows, _, err := repo.ListProjects(ctx, ProjectFilter{OrganizationID: orgID, State: StateActive}, 0, listMaxLimit)
+		if err != nil {
+			return nil, err
 		}
-		out = append(out, &tenancyv1.JoinableProject{
-			ProjectId:      p.ID,
-			OrganizationId: p.OrganizationID,
-			DisplayName:    p.DisplayName,
-		})
+		for _, p := range rows {
+			if joined[p.ID] || pending[p.ID] {
+				continue
+			}
+			out = append(out, &tenancyv1.JoinableProject{
+				ProjectId:      p.ID,
+				OrganizationId: p.OrganizationID,
+				DisplayName:    p.DisplayName,
+			})
+		}
 	}
 	return &tenancyv1.ListJoinableProjectsResponse{Response: okResponse(), Projects: out}, nil
-}
-
-// userOrganizationID returns the caller's real (non-platform)
-// organization id, or "" when the caller belongs to none.
-func (s *Service) userOrganizationID(ctx context.Context, userID string, mrepo *MembershipRepository) (string, error) {
-	memberOrgs, err := mrepo.ListMemberOrgs(ctx, userID)
-	if err != nil {
-		return "", err
-	}
-	for _, m := range memberOrgs {
-		if m.OrganizationID != platformOrgID {
-			return m.OrganizationID, nil
-		}
-	}
-	return "", nil
-}
-
-// realOrgMemberships filters out the dedicated platform organization,
-// which is a system artifact rather than tenant membership. It backs the
-// one-organization rule.
-func realOrgMemberships(members []*OrgMember) []*OrgMember {
-	out := make([]*OrgMember, 0, len(members))
-	for _, m := range members {
-		if m.OrganizationID == platformOrgID {
-			continue
-		}
-		out = append(out, m)
-	}
-	return out
 }
 
 // requireOrgAdminOrPlatform gates organization metadata writes: a

@@ -131,9 +131,10 @@ service TenancyService {
     option (google.api.http) = {get: "/api/v1/admin/tenancy/organizations/{organization_id}/members"};
   }
 
-  // ListOrgMemberCandidates returns the accounts that may still join the
-  // organization: active users who belong to no organization. The console
-  // offers them as a pick-list instead of asking for a user id.
+  // ListOrgMemberCandidates returns the accounts that may still join this
+  // organization: active users who are not members of it yet. A person may
+  // belong to several organizations. The console offers them as a pick-list
+  // instead of asking for a user id.
   rpc ListOrgMemberCandidates(ListOrgMemberCandidatesRequest) returns (ListOrgMemberCandidatesResponse) {
     option (google.api.http) = {get: "/api/v1/admin/tenancy/organizations/{organization_id}/member-candidates"};
   }
@@ -167,8 +168,8 @@ service TenancyService {
   }
 
   // ListProjectMemberCandidates returns the members of the project's
-  // organization who may still join the project: active users who belong
-  // to no project.
+  // organization who may still join this project: active users who are not
+  // on this project's roster yet. A person may belong to several projects.
   rpc ListProjectMemberCandidates(ListProjectMemberCandidatesRequest) returns (ListProjectMemberCandidatesResponse) {
     option (google.api.http) = {get: "/api/v1/admin/tenancy/projects/{project_id}/member-candidates"};
   }
@@ -327,9 +328,9 @@ service TenancyService {
   }
 
   // ListJoinableOrganizations returns the active organizations the caller
-  // may apply to join (user surface). Empty when the caller already
-  // belongs to an organization, so one-org membership is offered as a
-  // pick-list rather than free text.
+  // may apply to join (user surface). A caller may belong to several
+  // organizations, so only organizations already joined (or with a pending
+  // request) are excluded; the platform organization is never offered.
   rpc ListJoinableOrganizations(ListJoinableOrganizationsRequest) returns (ListJoinableOrganizationsResponse) {
     option (google.api.http) = {
       get: "/api/v1/tenancy/joinable-organizations"
@@ -338,8 +339,9 @@ service TenancyService {
   }
 
   // ListJoinableProjects returns the active projects of the caller's
-  // organization they may apply to join (user surface). Empty when the
-  // caller already belongs to a project.
+  // organizations they may apply to join (user surface). A caller may belong
+  // to several projects, so only projects already joined (or with a pending
+  // request) are excluded; the list spans every organization they belong to.
   rpc ListJoinableProjects(ListJoinableProjectsRequest) returns (ListJoinableProjectsResponse) {
     option (google.api.http) = {
       get: "/api/v1/tenancy/joinable-projects"

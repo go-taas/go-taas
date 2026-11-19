@@ -92,11 +92,13 @@ func TestServiceListJoinableOrganizations(t *testing.T) {
 	// The platform org is excluded; both tenant orgs are offered.
 	require.Len(t, resp.Organizations, 2)
 
-	// Once a member of an organization, no organization is joinable.
+	// A person may join several organizations: only the joined one is
+	// no longer offered.
 	seedMember(t, svc, "org-a", "u-new", RoleMember)
 	resp, err = svc.ListJoinableOrganizations(ctx, &tenancyv1.ListJoinableOrganizationsRequest{})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Organizations)
+	require.Len(t, resp.Organizations, 1)
+	assert.Equal(t, "org-b", resp.Organizations[0].GetOrganizationId())
 }
 
 func TestServiceListJoinableProjects(t *testing.T) {
@@ -115,13 +117,15 @@ func TestServiceListJoinableProjects(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, resp.Projects, 2)
 
-	// A project member sees no joinable projects.
+	// A person may join several projects: only the joined one is no
+	// longer offered.
 	seedProjectMember(t, svc, "proj-a", "u-new", RoleMember)
 	resp, err = svc.ListJoinableProjects(ctx, &tenancyv1.ListJoinableProjectsRequest{
 		OrganizationId: "org-a",
 	})
 	require.NoError(t, err)
-	assert.Empty(t, resp.Projects)
+	require.Len(t, resp.Projects, 1)
+	assert.Equal(t, "proj-b", resp.Projects[0].GetProjectId())
 }
 
 func TestServiceListJoinableProjectsResolvesOrg(t *testing.T) {
@@ -149,16 +153,31 @@ func TestServiceListJoinableProjectsNoOrg(t *testing.T) {
 	assert.Empty(t, resp.Projects)
 }
 
-func TestRealOrgMemberships(t *testing.T) {
-	in := []*OrgMember{
-		{OrganizationID: "platform", UserID: "u", Role: RolePlatformAdmin},
-		{OrganizationID: "org-a", UserID: "u", Role: RoleMember},
-	}
-	out := realOrgMemberships(in)
-	require.Len(t, out, 1)
-	assert.Equal(t, "org-a", out[0].OrganizationID)
+func TestServiceListJoinableProjectsAcrossOrganizations(t *testing.T) {
+	svc := newMembershipService(t)
+	svc.SetSessionResolver(&fakeSessionResolver{userID: "u-new", email: "new@x.com"})
+	ctx := context.Background()
 
-	assert.Empty(t, realOrgMemberships(nil))
+	seedOrgNamed(t, svc, "org-a", "Acme")
+	seedOrgNamed(t, svc, "org-b", "Beta")
+	seedMember(t, svc, "org-a", "u-new", RoleMember)
+	seedMember(t, svc, "org-b", "u-new", RoleMember)
+	seedProject(t, svc, "proj-a", "org-a")
+	seedProject(t, svc, "proj-b", "org-b")
+
+	// Without an organization filter, projects from every organization
+	// the caller belongs to are offered.
+	resp, err := svc.ListJoinableProjects(ctx, &tenancyv1.ListJoinableProjectsRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Projects, 2)
+
+	// A project held in one organization does not hide projects in
+	// another organization.
+	seedProjectMember(t, svc, "proj-a", "u-new", RoleMember)
+	resp, err = svc.ListJoinableProjects(ctx, &tenancyv1.ListJoinableProjectsRequest{})
+	require.NoError(t, err)
+	require.Len(t, resp.Projects, 1)
+	assert.Equal(t, "proj-b", resp.Projects[0].GetProjectId())
 }
 
 // seedJoinRequest inserts a pending join request directly.

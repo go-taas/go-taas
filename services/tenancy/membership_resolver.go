@@ -29,7 +29,8 @@ func NewMembershipResolver(db *gorm.DB) *MembershipResolver {
 
 // Affiliation is the organization and project a platform user belongs to,
 // with their display names. Both are empty when the user has not joined
-// one; an account belongs to at most one organization and one project.
+// one; an account may belong to several organizations and projects, so the
+// directory shows the oldest of each.
 type Affiliation struct {
 	OrganizationID   string
 	OrganizationName string
@@ -37,9 +38,9 @@ type Affiliation struct {
 	ProjectName      string
 }
 
-// UserAffiliation resolves the organization and project a user belongs to.
-// The dedicated platform organization is not an affiliation: it is the
-// tenancy anchor of the platform itself, not a tenant a person joins.
+// UserAffiliation resolves the oldest organization and project a user
+// belongs to. The dedicated platform organization is not an affiliation: it
+// is the tenancy anchor of the platform itself, not a tenant a person joins.
 func (r *MembershipResolver) UserAffiliation(ctx context.Context, userID string) (Affiliation, error) {
 	var out Affiliation
 	db := r.repo.db.DB(ctx)
@@ -74,6 +75,19 @@ func (r *MembershipResolver) UserAffiliation(ctx context.Context, userID string)
 	out.ProjectID = project.ProjectID
 	out.ProjectName = project.DisplayName
 	return out, nil
+}
+
+// RemoveUserMemberships deletes every organization and project roster row of
+// a user. It backs account deletion: removing the account must also remove it
+// from the organizations and projects it belonged to, so no roster keeps
+// pointing at a user that no longer exists.
+func (r *MembershipResolver) RemoveUserMemberships(ctx context.Context, userID string) error {
+	return r.repo.db.DB(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("user_id = ?", userID).Delete(&OrgMember{}).Error; err != nil {
+			return err
+		}
+		return tx.Where("user_id = ?", userID).Delete(&ProjectMember{}).Error
+	})
 }
 
 // AccessibleOrgsAndRoles returns the user's (org, role) memberships.

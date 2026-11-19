@@ -21,9 +21,9 @@ func (f fakeCandidateDirectory) ListActiveUsers(context.Context) ([]tenancy.Cand
 }
 
 // TestFVTRosterMemberCandidates verifies the admin roster pick-lists over the
-// gateway: an organization offers the accounts that belong to no
-// organization, and a project offers its organization's members that belong
-// to no project.
+// gateway: an organization offers the accounts that are not members of it,
+// and a project offers its organization's members that are not on it. A
+// person may belong to several organizations and projects.
 func TestFVTRosterMemberCandidates(t *testing.T) {
 	env := newRBACEnv(t)
 	env.seedRBACMember(t, "org-a", "u-admin", tenancy.RoleOwner)
@@ -40,17 +40,23 @@ func TestFVTRosterMemberCandidates(t *testing.T) {
 		{UserID: "u-unaffiliated", Username: "newbie", DisplayName: "New Bie"},
 	}})
 
-	// Organization roster: only the account with no organization at all.
+	// Organization roster: accounts that are not members of org-a. The
+	// account that belongs to org-b is a candidate: it may join org-a too.
 	code, body := env.call(t, http.MethodGet, "/api/v1/admin/tenancy/organizations/org-a/member-candidates", nil)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	candidates := body["candidates"].([]any)
-	require.Len(t, candidates, 1)
-	first := candidates[0].(map[string]any)
-	assert.Equal(t, "u-unaffiliated", first["userId"])
-	assert.Equal(t, "New Bie", first["displayName"])
-	assert.Equal(t, "newbie", first["username"])
+	require.Len(t, candidates, 2)
+	byID := map[string]map[string]any{}
+	for _, raw := range candidates {
+		row := raw.(map[string]any)
+		byID[row["userId"].(string)] = row
+	}
+	require.Contains(t, byID, "u-unaffiliated")
+	assert.Equal(t, "New Bie", byID["u-unaffiliated"]["displayName"])
+	assert.Equal(t, "newbie", byID["u-unaffiliated"]["username"])
+	require.Contains(t, byID, "u-outsider")
 
-	// Project roster: the organization's members with no project.
+	// Project roster: the organization's members not on this project.
 	code, body = env.call(t, http.MethodGet, "/api/v1/admin/tenancy/projects/proj-a/member-candidates", nil)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	ids := make([]string, 0)

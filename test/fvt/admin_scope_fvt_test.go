@@ -56,8 +56,8 @@ func TestFVTMyAdminScopes(t *testing.T) {
 }
 
 // TestFVTJoinableLists verifies the join pick-lists (requirement 5): a
-// user with no organization sees the joinable organizations, and once a
-// member sees none; the project list is scoped to the organization.
+// user may belong to several organizations and projects, so the pick-lists
+// hide only the targets already joined.
 func TestFVTJoinableLists(t *testing.T) {
 	env := newRBACEnv(t)
 	env.seedRBACOrg(t, "org-a", "Acme")
@@ -70,11 +70,13 @@ func TestFVTJoinableLists(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Len(t, body["organizations"].([]any), 2)
 
-	// Joining an organization removes the joinable list (one-org rule).
+	// Joining an organization hides only that organization.
 	env.seedRBACMember(t, "org-a", "u-new", tenancy.RoleMember)
 	code, body = env.call(t, http.MethodGet, "/api/v1/tenancy/joinable-organizations", nil)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
-	assert.Len(t, body["organizations"].([]any), 0)
+	orgs := body["organizations"].([]any)
+	require.Len(t, orgs, 1)
+	assert.Equal(t, "org-b", orgs[0].(map[string]any)["organizationId"])
 
 	// Joinable projects are the organization's active projects.
 	code, body = env.call(t, http.MethodGet, "/api/v1/tenancy/joinable-projects?organizationId=org-a", nil)
@@ -85,16 +87,18 @@ func TestFVTJoinableLists(t *testing.T) {
 		assert.Equal(t, "org-a", raw.(map[string]any)["organizationId"])
 	}
 
-	// A project member sees no joinable projects.
+	// A project member still sees the projects they have not joined.
 	env.seedRBACProjectMember(t, "proj-a", "u-new", tenancy.RoleMember)
 	code, body = env.call(t, http.MethodGet, "/api/v1/tenancy/joinable-projects?organizationId=org-a", nil)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
-	assert.Len(t, body["projects"].([]any), 0)
+	projects, _ = body["projects"].([]any)
+	require.Len(t, projects, 1)
+	assert.Equal(t, "proj-b", projects[0].(map[string]any)["projectId"])
 }
 
-// TestFVTOneProjectRule verifies a user cannot join a second project
-// (requirement 5).
-func TestFVTOneProjectRule(t *testing.T) {
+// TestFVTMultipleProjectMemberships verifies a user may join a second
+// project (requirement 5): the single-project restriction is gone.
+func TestFVTMultipleProjectMemberships(t *testing.T) {
 	env := newRBACEnv(t)
 	env.seedRBACOrg(t, "org-a", "Acme")
 	env.seedRBACProject(t, "proj-a", "org-a")
@@ -103,10 +107,13 @@ func TestFVTOneProjectRule(t *testing.T) {
 	env.seedRBACProjectMember(t, "proj-a", "u-new", tenancy.RoleMember)
 	env.tenancySvc.SetSessionResolver(&fakeRBACSession{userID: "u-new", email: "new@x.com"})
 
-	_, body := env.call(t, http.MethodPost, "/api/v1/tenancy/join-requests", map[string]any{
+	code, body := env.call(t, http.MethodPost, "/api/v1/tenancy/join-requests", map[string]any{
 		"targetType": "project", "targetId": "proj-b",
 	})
-	assert.Equal(t, float64(10029), body["code"], "body: %v", body)
+	require.Equal(t, http.StatusOK, code, "a second project must be joinable: %v", body)
+	request, _ := body["request"].(map[string]any)
+	require.NotNil(t, request)
+	assert.Equal(t, "pending", request["status"])
 }
 
 // TestFVTPlatformOrgNotJoinable verifies the dedicated platform

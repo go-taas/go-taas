@@ -38,8 +38,8 @@ func candidateIDs(resp []*tenancyv1.MemberCandidate) []string {
 }
 
 // TestListOrgMemberCandidatesExcludesMembers verifies the org pick-list is the
-// accounts that have not joined any organization yet: a person belongs to at
-// most one organization.
+// accounts that have not joined this organization yet: a person may belong to
+// several organizations.
 func TestListOrgMemberCandidatesExcludesMembers(t *testing.T) {
 	svc := newCandidateService(t,
 		CandidateUser{UserID: "u-admin", Username: "admin"},
@@ -54,7 +54,8 @@ func TestListOrgMemberCandidatesExcludesMembers(t *testing.T) {
 		OrganizationId: "org-a",
 	})
 	require.NoError(t, err)
-	assert.Equal(t, []string{"u-free"}, candidateIDs(resp.GetCandidates()))
+	// u-other-org already belongs to org-b but may still join org-a.
+	assert.Equal(t, []string{"u-free", "u-other-org"}, candidateIDs(resp.GetCandidates()))
 	assert.Equal(t, "Free Person", resp.GetCandidates()[0].GetDisplayName())
 	assert.Equal(t, "free@x.com", resp.GetCandidates()[0].GetEmail())
 }
@@ -77,7 +78,7 @@ func TestListOrgMemberCandidatesRequiresAdmin(t *testing.T) {
 }
 
 // TestListProjectMemberCandidates verifies the project pick-list is limited to
-// the owning organization's members that belong to no project.
+// the owning organization's members that are not on this project yet.
 func TestListProjectMemberCandidates(t *testing.T) {
 	svc := newCandidateService(t,
 		CandidateUser{UserID: "u-admin"},
@@ -97,9 +98,9 @@ func TestListProjectMemberCandidates(t *testing.T) {
 		ProjectId: "proj-a",
 	})
 	require.NoError(t, err)
-	// The owner is already an org member without a project, so they remain a
+	// The owner is an org member not on this project, so they remain a
 	// candidate; the outsider is not in the organization, and the existing
-	// project member is already in a project.
+	// project member is already on this project's roster.
 	assert.Equal(t, []string{"u-admin", "u-org-free"}, candidateIDs(resp.GetCandidates()))
 }
 

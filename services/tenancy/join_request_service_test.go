@@ -31,7 +31,7 @@ func TestCreateJoinRequestOrganization(t *testing.T) {
 	assert.EqualValues(t, apierrors.CodeMemberExists, apierrors.CodeOf(err))
 }
 
-func TestCreateJoinRequestOneOrgRule(t *testing.T) {
+func TestCreateJoinRequestAllowsMultipleOrganizations(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()
 	seedOrg(t, svc, "org-a")
@@ -39,11 +39,18 @@ func TestCreateJoinRequestOneOrgRule(t *testing.T) {
 	// The caller (u-admin) is already a member of org-a.
 	seedMember(t, svc, "org-a", "u-admin", RoleMember)
 
-	_, err := svc.CreateJoinRequest(ctx, &tenancyv1.CreateJoinRequestRequest{
+	// Belonging to one organization must not prevent joining another.
+	resp, err := svc.CreateJoinRequest(ctx, &tenancyv1.CreateJoinRequestRequest{
 		TargetType: JoinTargetOrganization, TargetId: "org-b",
 	})
-	assert.EqualValues(t, apierrors.CodeMemberExists, apierrors.CodeOf(err),
-		"a user may belong to exactly one organization")
+	require.NoError(t, err)
+	assert.Equal(t, JoinStatusPending, resp.Request.Status)
+
+	// The organization the caller already belongs to is not joinable.
+	_, err = svc.CreateJoinRequest(ctx, &tenancyv1.CreateJoinRequestRequest{
+		TargetType: JoinTargetOrganization, TargetId: "org-a",
+	})
+	assert.EqualValues(t, apierrors.CodeMemberExists, apierrors.CodeOf(err))
 }
 
 func TestCreateJoinRequestProjectRequiresOrgMembership(t *testing.T) {
@@ -91,7 +98,7 @@ func TestApproveJoinRequestAddsMember(t *testing.T) {
 	assert.Equal(t, RoleMember, m.Role)
 }
 
-func TestApproveJoinRequestRechecksOneOrgRule(t *testing.T) {
+func TestApproveJoinRequestAllowsMultipleOrganizations(t *testing.T) {
 	svc := newMembershipService(t)
 	ctx := context.Background()
 	seedOrg(t, svc, "org-a")
@@ -104,13 +111,19 @@ func TestApproveJoinRequestRechecksOneOrgRule(t *testing.T) {
 		ID: "jr-1", UserID: "u-new", TargetType: JoinTargetOrganization,
 		TargetID: "org-b", Status: JoinStatusPending,
 	}))
-	// The applicant joined another org (org-a) while pending.
+	// The applicant joined another org (org-a) while pending: joining
+	// org-b must still succeed and keep both memberships.
 	require.NoError(t, repo.AddMember(ctx, &OrgMember{
 		OrganizationID: "org-a", UserID: "u-new", Role: RoleMember, JoinedAt: time.Now().UTC(),
 	}))
 
-	_, err := svc.ApproveJoinRequest(ctx, &tenancyv1.ApproveJoinRequestRequest{RequestId: "jr-1"})
-	assert.EqualValues(t, apierrors.CodeMemberExists, apierrors.CodeOf(err))
+	resp, err := svc.ApproveJoinRequest(ctx, &tenancyv1.ApproveJoinRequestRequest{RequestId: "jr-1"})
+	require.NoError(t, err)
+	assert.Equal(t, JoinStatusApproved, resp.Request.Status)
+
+	orgs, err := repo.ListMemberOrgs(ctx, "u-new")
+	require.NoError(t, err)
+	require.Len(t, orgs, 2, "approval must not move the user out of the previous organization")
 }
 
 func TestRejectJoinRequest(t *testing.T) {

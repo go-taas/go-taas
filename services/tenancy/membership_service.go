@@ -112,7 +112,7 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 	if err != nil {
 		return nil, err
 	}
-	// A duplicate join is answered before anything is deleted: the caller
+	// A duplicate join is answered before anything is written: the caller
 	// asked to add someone who is already there, and a request that returns an
 	// error must not have moved the account in the meantime.
 	if existing, err := repo.FindMember(ctx, orgID, userID); err != nil {
@@ -120,13 +120,9 @@ func (s *Service) AddOrgMember(ctx context.Context, req *tenancyv1.AddOrgMemberR
 	} else if existing != nil {
 		return nil, apierrors.New(apierrors.CodeMemberExists)
 	}
-	// An account belongs to at most one organization: joining one is a move,
-	// not an addition. Clearing the previous membership (and any project the
-	// user held in another organization) before inserting keeps the invariant
-	// true, so the directory and the console agree on where the person is.
-	if err := repo.MoveUserToOrg(ctx, orgID, userID); err != nil {
-		return nil, err
-	}
+	// A person may belong to more than one organization, so joining this one
+	// only adds a membership; it does not move the account out of the
+	// organizations it already belongs to.
 	m := &OrgMember{
 		OrganizationID: orgID,
 		UserID:         userID,
