@@ -45,6 +45,19 @@ func TestFVTEmailCodeRegisterAndLogin(t *testing.T) {
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
 	assert.Equal(t, float64(0), body["response"].(map[string]any)["code"])
 
+	// Registration returns a usable session: the registration code was
+	// already consumed, so the account must not be left needing a second
+	// login code that the console does not have.
+	token, _ := body["sessionToken"].(string)
+	require.NotEmpty(t, token, "registration must return a session: %v", body)
+	assert.Equal(t, "user", body["realm"])
+	code, profile := env.call(t, http.MethodGet, "/api/v1/auth/profile", nil, map[string]string{
+		"Authorization": "Bearer " + token,
+	})
+	require.Equal(t, http.StatusOK, code, "profile: %v", profile)
+	profileUser := profile["profile"].(map[string]any)
+	assert.Equal(t, "alice", profileUser["username"])
+
 	// Register without a code → 10002.
 	code, body = env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
 		"username": "bob", "password": "Password123", "email": "bob@x.com",

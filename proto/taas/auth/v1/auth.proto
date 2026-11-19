@@ -453,6 +453,14 @@ message CreateUserRequest {
 message CreateUserResponse {
   taas.common.v1.Response response = 1;
   string user_id = 2;
+  // session_token is the signed-in session minted for the new account.
+  // Registration proves the mailbox with the email code, so the console can
+  // enter the console directly instead of asking for a second code by way of
+  // Login.
+  string session_token = 3;
+  int64 expires_at = 4;
+  // realm is "user" or "admin", derived exactly as Login derives it.
+  string realm = 5;
 }
 
 message LoginRequest {

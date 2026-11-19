@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"time"
 
 	"google.golang.org/grpc/metadata"
 	"testing"
@@ -38,6 +39,28 @@ func TestServiceCreateUser(t *testing.T) {
 		Username: "alice", Password: "Password123",
 	})
 	assert.EqualValues(t, apierrors.CodeUserExists, apierrors.CodeOf(err))
+}
+
+// Registration signs the new account in: the email code was already spent
+// proving the mailbox, so asking Login for a second code would fail after the
+// account already exists.
+func TestServiceCreateUserIssuesSession(t *testing.T) {
+	svc, _ := newSSOService(t)
+	ctx := context.Background()
+
+	resp, err := svc.CreateUser(ctx, &authv1.CreateUserRequest{
+		Username: "newbie", Password: "Password123", Email: "newbie@example.com",
+	})
+	require.NoError(t, err)
+	require.NotEmpty(t, resp.SessionToken)
+	assert.Greater(t, resp.ExpiresAt, time.Now().Unix())
+	assert.Equal(t, RealmUser, resp.Realm)
+
+	sess, err := svc.sessionStore.Get(ctx, resp.SessionToken)
+	require.NoError(t, err)
+	assert.Equal(t, resp.UserId, sess.UserID)
+	assert.Equal(t, "newbie", sess.Username)
+	assert.Equal(t, RealmUser, sess.Realm)
 }
 
 func TestServiceCreateUserValidation(t *testing.T) {
@@ -110,6 +133,7 @@ func TestServiceLoginDerivesAdminRealm(t *testing.T) {
 	assert.Equal(t, RealmAdmin, sess.Realm)
 	assert.Equal(t, "org-a", sess.ActiveOrg)
 }
+
 // A platform admin is exempt from login email verification so the
 // bootstrap admin can sign in with its initial password.
 func TestServiceLoginPlatformAdminSkipsEmailCode(t *testing.T) {

@@ -18,9 +18,6 @@ import { isValidEmail } from '../email';
 
 interface RegisterResponse {
   userId?: string;
-}
-
-interface LoginResponse {
   sessionToken?: string;
   realm?: string;
   expiresAt?: string;
@@ -117,25 +114,24 @@ export default function RegisterPage() {
     setSubmitting(true);
     setError('');
     try {
-      // Register the local account.
-      await api.post<RegisterResponse>('/api/v1/auth/users', '', {
+      // Registration consumes the email code and signs the account in. It
+      // must not call Login with the same code afterwards: the code is
+      // single-use and carries the "register" purpose, so Login would report
+      // an expired code after the account already exists.
+      const data = await api.post<RegisterResponse>('/api/v1/auth/users', '', {
         username: username.trim(),
         password,
         email: email.trim(),
         emailCode: emailCode.trim(),
       });
-      // Sign in with the new account.
-      const data = await api.post<LoginResponse>('/api/v1/auth/login', '', {
-        username: username.trim(),
-        password,
-        emailCode: emailCode.trim(),
-      });
       const token = data.sessionToken;
-      const realm = (data.realm as Realm) || 'user';
       if (!token) {
-        setError(t('register.errorFailed'));
+        // The account exists but this server did not hand back a session;
+        // send the user to the login page instead of claiming a failure.
+        navigate('/login');
         return;
       }
+      const realm = (data.realm as Realm) || 'user';
       setSessionToken(realm, token);
       navigate(realmHome(realm));
     } catch (e) {

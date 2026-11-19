@@ -17,6 +17,7 @@ import (
 	authv1 "github.com/go-taas/go-taas/proto/taas/auth/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/tenancy"
 )
@@ -77,9 +78,25 @@ func (s *Service) CreateUser(ctx context.Context, req *authv1.CreateUserRequest)
 		ResourceID:   user.ID,
 		Result:       "success",
 	})
+	// Registration signs the account in. The alternative - telling the
+	// console to call Login next - would need a second email code with the
+	// login purpose, while the registration code was just consumed, so the
+	// account would exist while the page reported an expired code.
+	sessionID, expiresAt, realm, err := s.issueSession(ctx, user)
+	if err != nil {
+		// Never leave a half-finished registration behind: the caller saw an
+		// error and will retry with a fresh code.
+		if delErr := repo.DeleteUser(ctx, user.ID); delErr != nil {
+			logger.S().Errorw("rollback of a failed registration failed", "user", user.ID, "err", delErr)
+		}
+		return nil, err
+	}
 	return &authv1.CreateUserResponse{
-		Response: okResponse(),
-		UserId:   user.ID,
+		Response:     okResponse(),
+		UserId:       user.ID,
+		SessionToken: sessionID,
+		ExpiresAt:    expiresAt,
+		Realm:        realm,
 	}, nil
 }
 
@@ -132,18 +149,34 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		}
 	}
 
+	sessionID, expiresAt, realm, err := s.issueSession(ctx, user)
+	if err != nil {
+		return nil, err
+	}
+	return &authv1.LoginResponse{
+		Response:     okResponse(),
+		SessionToken: sessionID,
+		ExpiresAt:    expiresAt,
+		Realm:        realm,
+	}, nil
+}
+
+// issueSession mints a session for an authenticated account and returns its
+// id, expiry and realm. Login and registration share it so a freshly created
+// account enters the console with the same session shape as a returning one.
+func (s *Service) issueSession(ctx context.Context, user *User) (string, int64, string, error) {
 	// Derive roles and orgs from the account and its org_members rows
 	// (authoritative for local accounts; there are no IdP claims).
 	roles, accessibleOrgs, activeOrg, err := s.localMembership(ctx, user)
 	if err != nil {
-		return nil, err
+		return "", 0, "", err
 	}
 	realm := RealmUser
 	if s.isAdminRole(roles) {
 		realm = RealmAdmin
 	}
 	if s.sessionStore == nil {
-		return nil, apierrors.New(apierrors.CodeSessionInvalid)
+		return "", 0, "", apierrors.New(apierrors.CodeSessionInvalid)
 	}
 	sessionID := uuid.NewString()
 	accessToken := newAccessToken()
@@ -162,7 +195,7 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		Realm:          realm,
 	}
 	if err := s.sessionStore.Create(ctx, sess, accessToken); err != nil {
-		return nil, err
+		return "", 0, "", err
 	}
 	s.recordAudit(ctx, &audit.AuditEvent{
 		OrganizationID: activeOrg,
@@ -173,12 +206,7 @@ func (s *Service) Login(ctx context.Context, req *authv1.LoginRequest) (*authv1.
 		ResourceID:     sessionID,
 		Result:         "success",
 	})
-	return &authv1.LoginResponse{
-		Response:     okResponse(),
-		SessionToken: sessionID,
-		ExpiresAt:    expiresAt,
-		Realm:        realm,
-	}, nil
+	return sessionID, expiresAt, realm, nil
 }
 
 // isPlatformAdminUser reports whether the user is a platform
