@@ -152,6 +152,14 @@ func (s *Service) DeleteUser(ctx context.Context, req *authv1.DeleteUserRequest)
 	if target.Username == seedAdminUsername || target.PlatformAdmin {
 		return nil, apierrors.New(apierrors.CodeUserProtected)
 	}
+	// A deleted account must not linger on an organization or project
+	// roster: remove the memberships first so the rosters never reference a
+	// user row that no longer exists.
+	if s.membershipResolver != nil {
+		if err := s.membershipResolver.RemoveUserMemberships(ctx, target.ID); err != nil {
+			return nil, err
+		}
+	}
 	if err := repo.DeleteUser(ctx, req.GetUserId()); err != nil {
 		if isRecordNotFound(err) {
 			return nil, apierrors.New(apierrors.CodeUserNotFound)
@@ -172,10 +180,9 @@ func (s *Service) DeleteUser(ctx context.Context, req *authv1.DeleteUserRequest)
 // summarizeUser maps a user row to the directory summary, computing the
 // organization count from the membership resolver when wired.
 func (s *Service) summarizeUser(ctx context.Context, row *User) *authv1.UserSummary {
-	// The directory shows where an account belongs, not how many places it
-	// has joined: an account belongs to at most one organization and one
-	// project. A resolution failure leaves the fields empty, which the
-	// console renders as "-".
+	// The directory shows the oldest place an account belongs; an account may
+	// belong to several organizations and projects. A resolution failure
+	// leaves the fields empty, which the console renders as "-".
 	var affiliation tenancy.Affiliation
 	if s.membershipResolver != nil {
 		if found, err := s.membershipResolver.UserAffiliation(ctx, row.ID); err == nil {

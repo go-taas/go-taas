@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/go-taas/go-taas/services/auth"
+	"github.com/go-taas/go-taas/services/tenancy"
 )
 
 func TestFVTAdminUserCannotBeDeleted(t *testing.T) {
@@ -83,4 +84,50 @@ func TestFVTAdminUserCannotBeDisabled(t *testing.T) {
 	code, body = env.call(t, http.MethodPost, "/api/v1/admin/auth/users/user-alice:enable", nil,
 		map[string]string{"X-Organization-Id": "org-fvt"})
 	require.Equal(t, http.StatusOK, code, "ordinary enable: %v", body)
+}
+
+// Deleting an account also removes it from the organizations and projects it
+// belonged to: a roster must not keep pointing at a user that no longer exists.
+func TestFVTDeleteUserRemovesTenantMemberships(t *testing.T) {
+	env := newSSOEnv(t)
+	env.svc.SetMembershipResolver(tenancy.NewMembershipResolver(env.db))
+
+	require.NoError(t, env.db.Create(&auth.User{
+		ID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", Username: "dave", Email: "dave@example.com",
+		State: auth.UserStateActive,
+	}).Error)
+	require.NoError(t, env.db.Create(&auth.User{
+		ID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", Username: "erin", Email: "erin@example.com",
+		State: auth.UserStateActive,
+	}).Error)
+	require.NoError(t, env.db.Create(&tenancy.Project{
+		ID: "proj-fvt", OrganizationID: "org-fvt", DisplayName: "FVT Project", State: tenancy.StateActive,
+	}).Error)
+	require.NoError(t, env.db.Create(&tenancy.OrgMember{
+		OrganizationID: "org-fvt", UserID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", Role: tenancy.RoleMember,
+	}).Error)
+	require.NoError(t, env.db.Create(&tenancy.ProjectMember{
+		ProjectID: "proj-fvt", UserID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", Role: tenancy.RoleMember,
+	}).Error)
+	// A second account's memberships must survive.
+	require.NoError(t, env.db.Create(&tenancy.OrgMember{
+		OrganizationID: "org-fvt", UserID: "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee", Role: tenancy.RoleMember,
+	}).Error)
+
+	code, body := env.call(t, http.MethodDelete,
+		"/api/v1/admin/auth/users/dddddddd-dddd-4ddd-8ddd-dddddddddddd", nil,
+		map[string]string{"X-Organization-Id": "org-fvt"})
+	require.Equal(t, http.StatusOK, code, "delete: %v", body)
+
+	var orgCount, projectCount int64
+	require.NoError(t, env.db.Model(&tenancy.OrgMember{}).
+		Where("user_id = ?", "dddddddd-dddd-4ddd-8ddd-dddddddddddd").Count(&orgCount).Error)
+	assert.EqualValues(t, 0, orgCount, "the deleted account must leave the organization roster")
+	require.NoError(t, env.db.Model(&tenancy.ProjectMember{}).
+		Where("user_id = ?", "dddddddd-dddd-4ddd-8ddd-dddddddddddd").Count(&projectCount).Error)
+	assert.EqualValues(t, 0, projectCount, "the deleted account must leave the project roster")
+
+	require.NoError(t, env.db.Model(&tenancy.OrgMember{}).
+		Where("user_id = ?", "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee").Count(&orgCount).Error)
+	assert.EqualValues(t, 1, orgCount)
 }

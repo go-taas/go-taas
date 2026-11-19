@@ -218,6 +218,39 @@ func TestServiceDeleteUser(t *testing.T) {
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
 
+// TestServiceDeleteUserRemovesMemberships verifies account deletion also
+// removes the account from every organization and project roster, so no
+// roster keeps a dangling user id.
+func TestServiceDeleteUserRemovesMemberships(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	require.NoError(t, db.Create(&User{ID: "user-1", Username: "alice", Email: "a@x.com"}).Error)
+	require.NoError(t, db.Create(&User{ID: "user-2", Username: "bob", Email: "b@x.com"}).Error)
+	require.NoError(t, db.Create(&tenancy.Organization{ID: "org-a", DisplayName: "Acme", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.Project{ID: "proj-a", OrganizationID: "org-a", DisplayName: "Alpha", State: tenancy.StateActive}).Error)
+	require.NoError(t, db.Create(&tenancy.OrgMember{OrganizationID: "org-a", UserID: "user-1", Role: "member"}).Error)
+	require.NoError(t, db.Create(&tenancy.ProjectMember{ProjectID: "proj-a", UserID: "user-1", Role: "member"}).Error)
+	// Another account's memberships must be left untouched.
+	require.NoError(t, db.Create(&tenancy.OrgMember{OrganizationID: "org-a", UserID: "user-2", Role: "admin"}).Error)
+	require.NoError(t, db.Create(&tenancy.ProjectMember{ProjectID: "proj-a", UserID: "user-2", Role: "admin"}).Error)
+
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+	_, err := svc.DeleteUser(ctx, &authv1.DeleteUserRequest{UserId: "user-1"})
+	require.NoError(t, err)
+
+	var orgCount, projectCount int64
+	require.NoError(t, db.Model(&tenancy.OrgMember{}).Where("user_id = ?", "user-1").Count(&orgCount).Error)
+	assert.EqualValues(t, 0, orgCount, "the deleted user must not stay on an organization roster")
+	require.NoError(t, db.Model(&tenancy.ProjectMember{}).Where("user_id = ?", "user-1").Count(&projectCount).Error)
+	assert.EqualValues(t, 0, projectCount, "the deleted user must not stay on a project roster")
+
+	require.NoError(t, db.Model(&tenancy.OrgMember{}).Where("user_id = ?", "user-2").Count(&orgCount).Error)
+	assert.EqualValues(t, 1, orgCount)
+	require.NoError(t, db.Model(&tenancy.ProjectMember{}).Where("user_id = ?", "user-2").Count(&projectCount).Error)
+	assert.EqualValues(t, 1, projectCount)
+}
+
 // TestResolveUserLabels verifies the roster label resolver: display name
 // when set, username as the fallback, and unknown ids omitted.
 func TestResolveUserLabels(t *testing.T) {
