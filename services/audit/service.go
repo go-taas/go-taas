@@ -691,6 +691,26 @@ type ActorUsernameResolver interface {
 // SetActorLabelResolver injects the actor display-name resolver.
 func (s *Service) SetActorLabelResolver(r ActorLabelResolver) { s.actorLabelResolver = r }
 
+// uniqueActorIDs collects the distinct non-empty actor ids of a page. A
+// page usually repeats the same actor, and one batch keyed by distinct ids
+// keeps the lookup (and the IN list) small.
+func uniqueActorIDs(rows []*AuditEvent) []string {
+	seen := make(map[string]struct{}, len(rows))
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		id := row.ActorUserID
+		if id == "" {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // actorLabels resolves the display labels of the events' actors in one
 // batch. A missing resolver or an error yields an empty map so the log
 // falls back to actor ids.
@@ -698,12 +718,7 @@ func (s *Service) actorLabels(ctx context.Context, rows []*AuditEvent) map[strin
 	if s.actorLabelResolver == nil || len(rows) == 0 {
 		return nil
 	}
-	ids := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if row.ActorUserID != "" {
-			ids = append(ids, row.ActorUserID)
-		}
-	}
+	ids := uniqueActorIDs(rows)
 	if len(ids) == 0 {
 		return nil
 	}
@@ -723,12 +738,7 @@ func (s *Service) actorUsernames(ctx context.Context, rows []*AuditEvent) map[st
 	if !ok || len(rows) == 0 {
 		return nil
 	}
-	ids := make([]string, 0, len(rows))
-	for _, row := range rows {
-		if row.ActorUserID != "" {
-			ids = append(ids, row.ActorUserID)
-		}
-	}
+	ids := uniqueActorIDs(rows)
 	if len(ids) == 0 {
 		return nil
 	}

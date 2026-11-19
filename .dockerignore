@@ -1,0 +1,11 @@
+# Build context hygiene. The console stage copies `web/` wholesale and then
+# runs `npm ci`; without these exclusions a host install (which pnpm lays out
+# as symlinks) is copied over the image's own node_modules and buildkit fails
+# with "cannot replace to directory ... with file".
+.git
+.github
+**/node_modules
+web/dist
+site/docs/api
+*.log
+.dsh

@@ -276,3 +276,14 @@ func TestSSORepositoryCountBindingsByProvider(t *testing.T) {
 	require.NoError(t, err)
 	assert.EqualValues(t, 1, count)
 }
+
+// TestUserIDInClause pins the batch-lookup predicate. Audit actors can
+// carry a non-uuid id ("system", or an account name written by an older
+// producer); PostgreSQL casts the whole IN list to uuid and rejects the
+// batch, which silently blanks every actor label on the page. Comparing as
+// text keeps the batch working, while sqlite keeps its plain predicate.
+func TestUserIDInClause(t *testing.T) {
+	assert.Equal(t, "id::text IN ?", userIDInClause("postgres"))
+	assert.Equal(t, "id IN ?", userIDInClause("sqlite"))
+	assert.Equal(t, "id IN ?", userIDInClause(""))
+}

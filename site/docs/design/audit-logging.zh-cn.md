@@ -136,7 +136,7 @@
 - **FR5.3** 一个「导出」按钮（`audit-export`）提供 CSV 与 JSON；它导出当前应用的过滤条件（D7）。导出超过 10,000 行上限时出现「已截断」提示。
 - **FR5.4** 页面显示数据新鲜度提示（「审计事件在摄取窗口内出现」）并在可见时每 60 秒轮询刷新。空状态显示「没有匹配这些过滤条件的审计事件」。
 - **FR5.5** **页面分页展示整个过滤结果集。** 请求携带 `page.offset`/`page.limit`（每页 20 行），并依据 `pageMeta.total` 渲染分页器，管理员可以翻遍所有匹配事件，而不仅是最新一页。修改过滤条件时 offset 重置为 0。
-- **FR5.6** **操作者身份按「更像人」的优先级展示。** 操作者列依次渲染 `actor_display_name`、`actor_username`（账号名）、`actor_user_id`（操作者 UUID），系统操作者回退为本地化的「系统」标签。当存在展示名或账号名时，绝不把 UUID 作为次级信息展示。`actor_username` 与 `actor_display_name` 一样按页批量解析一次目录；导出 API 仍输出原始 `actor_user_id` 以便机器稳定消费。
+- **FR5.6** **操作者身份按「更像人」的优先级展示。** 操作者列依次渲染 `actor_display_name`、`actor_username`（账号名）、`actor_user_id`（操作者 UUID），系统操作者回退为本地化的「系统」标签。当存在展示名或账号名时，绝不把 UUID 作为次级信息展示。`actor_username` 与 `actor_display_name` 一样按页批量解析一次目录；导出 API 仍输出原始 `actor_user_id` 以便机器稳定消费。批量查询按页内去重后的操作者 ID 进行，并容忍系统操作者（`system`）与历史遗留的非 UUID 操作者 ID：由于用户表的 id 列是 `uuid` 类型，在 PostgreSQL 上按文本比较，避免一条历史数据让整批查询失败、导致整页名字为空。
 
 ### FR6 — 控制台「我的活动」页面（终端用户）
 

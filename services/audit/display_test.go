@@ -229,3 +229,39 @@ func TestDecorateEventsCarriesActorUsername(t *testing.T) {
 	assert.Equal(t, "Wang Sen", events[0].GetActorDisplayName())
 	assert.Equal(t, "senwang", events[0].GetActorUsername())
 }
+
+// recordingActorResolver records the ids handed to the directory, so a
+// page that repeats one actor is proven to resolve once per distinct id
+// instead of once per row.
+type recordingActorResolver struct {
+	labelIDs    []string
+	usernameIDs []string
+}
+
+func (r *recordingActorResolver) ResolveUserLabels(_ context.Context, ids []string) (map[string]string, error) {
+	r.labelIDs = append([]string(nil), ids...)
+	return map[string]string{}, nil
+}
+
+func (r *recordingActorResolver) ResolveUsernames(_ context.Context, ids []string) (map[string]string, error) {
+	r.usernameIDs = append([]string(nil), ids...)
+	return map[string]string{}, nil
+}
+
+func TestDecorateEventsResolvesDistinctActors(t *testing.T) {
+	db := displayTestDB(t)
+	svc := NewForFVT(db)
+	resolver := &recordingActorResolver{}
+	svc.SetActorLabelResolver(resolver)
+	repo, err := svc.repository()
+	require.NoError(t, err)
+
+	events := svc.decorateEvents(context.Background(), repo, []*AuditEvent{
+		{ID: "e1", ActorUserID: "u-1", ActorType: "user", Action: "auth.login", Result: "success"},
+		{ID: "e2", ActorUserID: "u-1", ActorType: "user", Action: "auth.logout", Result: "success"},
+		{ID: "e3", ActorUserID: "", ActorType: "system", Action: "system.job", Result: "success"},
+	})
+	require.Len(t, events, 3)
+	assert.Equal(t, []string{"u-1"}, resolver.labelIDs, "one lookup per distinct actor")
+	assert.Equal(t, []string{"u-1"}, resolver.usernameIDs, "one username lookup per distinct actor")
+}

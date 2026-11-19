@@ -322,11 +322,25 @@ func (r *SSORepository) ListUsersByIDs(ctx context.Context, ids []string) ([]*Us
 	if len(ids) == 0 {
 		return nil, nil
 	}
+	db := r.db.DB(ctx)
 	var rows []*User
-	if err := r.db.DB(ctx).Where("id IN ?", ids).Find(&rows).Error; err != nil {
+	if err := db.Where(userIDInClause(db.Dialector.Name()), ids).Find(&rows).Error; err != nil {
 		return nil, err
 	}
 	return rows, nil
+}
+
+// userIDInClause is the WHERE fragment for a batch of user ids. Audit
+// actors can carry a non-uuid id ("system", or an account name written by
+// an older producer), and PostgreSQL casts the whole IN list to uuid when
+// the column is uuid, rejecting the batch — which silently blanks every
+// actor label on the page. Comparing the column as text keeps the batch
+// working for those legacy rows.
+func userIDInClause(dialect string) string {
+	if dialect == "postgres" {
+		return "id::text IN ?"
+	}
+	return "id IN ?"
 }
 
 // SetUserState flips a user's lifecycle state and re-selects the row.
