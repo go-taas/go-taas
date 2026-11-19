@@ -5,7 +5,10 @@ import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { formatMoney } from '../display';
-import { formatTime } from '../api';
+import { formatTime, type PageMeta } from '../api';
+import { Pagination } from '../components';
+
+const PAGE_SIZE = 20;
 
 interface PaymentChannel {
   channelId: string;
@@ -34,6 +37,8 @@ export default function BillingPaymentsPage() {
   const { t, tEnum } = useI18n();
   const [channels, setChannels] = useState<PaymentChannel[]>([]);
   const [intents, setIntents] = useState<PaymentIntent[]>([]);
+  const [intentTotal, setIntentTotal] = useState(0);
+  const [intentOffset, setIntentOffset] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
@@ -41,13 +46,31 @@ export default function BillingPaymentsPage() {
       .get<{ channels?: PaymentChannel[] }>('/api/v1/admin/billing/payment-channels?page.limit=100', orgId)
       .then((data) => setChannels(data.channels || []))
       .catch((e) => setError(e instanceof Error ? e.message : t('payments.loadFailed')));
+  }, [api, orgId, t]);
+
+  useEffect(() => {
+    const params = new URLSearchParams({
+      'page.offset': String(intentOffset),
+      'page.limit': String(PAGE_SIZE),
+    });
     api
-      .get<{ intents?: PaymentIntent[] }>('/api/v1/admin/billing/payment-intents?page.limit=100', orgId)
-      .then((data) => setIntents(data.intents || []))
+      .get<{ intents?: PaymentIntent[]; pageMeta?: PageMeta }>(
+        `/api/v1/admin/billing/payment-intents?${params.toString()}`,
+        orgId,
+      )
+      .then((data) => {
+        setIntents(data.intents || []);
+        setIntentTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
+      })
       .catch(() => {
         // Intents may be empty; not fatal.
       });
-  }, [api, orgId, t]);
+  }, [api, orgId, intentOffset, t]);
+
+  // A different organization is a different ledger: start at its first page.
+  useEffect(() => {
+    setIntentOffset(0);
+  }, [orgId]);
 
   const payIntent = async (intentId: string) => {
     try {
@@ -118,6 +141,14 @@ export default function BillingPaymentsPage() {
             ))}
           </tbody>
         </table>
+      )}
+      {intentTotal > PAGE_SIZE && (
+        <Pagination
+          offset={intentOffset}
+          limit={PAGE_SIZE}
+          total={intentTotal}
+          onPageChange={setIntentOffset}
+        />
       )}
     </div>
   );

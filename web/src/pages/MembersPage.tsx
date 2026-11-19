@@ -2,15 +2,16 @@
 // and remove. Implements docs/design/org-members-rbac.md FR1, AC1-AC3.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type MemberCandidate, type OrgMember } from '../api';
+import { api, ApiError, type MemberCandidate, type OrgMember, type PageMeta } from '../api';
 import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
-import { Breadcrumb, Dialog, ErrorBanner, RowActionsMenu, StateBadge, Toast } from '../components';
+import { Breadcrumb, Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import { candidateLabel } from '../candidates';
 import { useRoute } from '../router';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
+const PAGE_SIZE = 20;
 
 export default function MembersPage() {
   const { scope } = useAdminScope();
@@ -38,6 +39,8 @@ export default function MembersPage() {
   );
   const { t, tEnum } = useI18n();
   const [members, setMembers] = useState<OrgMember[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -54,21 +57,35 @@ export default function MembersPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.get<{ response: { code: number; message: string }; members: OrgMember[] }>(
-        `/api/v1/admin/tenancy/organizations/${orgId}/members?page.limit=100`,
+      const params = new URLSearchParams({
+        'page.offset': String(offset),
+        'page.limit': String(PAGE_SIZE),
+      });
+      const data = await api.get<{
+        response: { code: number; message: string };
+        members: OrgMember[];
+        pageMeta?: PageMeta;
+      }>(
+        `/api/v1/admin/tenancy/organizations/${orgId}/members?${params.toString()}`,
         orgId,
       );
       setMembers(data.members || []);
+      setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('members.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [orgId, t]);
+  }, [orgId, offset, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A different organization is a different roster: start at its first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [orgId]);
 
   // Load the eligible accounts whenever the dialog opens, so a member who
   // joined in the meantime is not offered again.
@@ -264,6 +281,9 @@ export default function MembersPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {total > PAGE_SIZE && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
       </div>
 

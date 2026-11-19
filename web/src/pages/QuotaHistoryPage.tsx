@@ -5,12 +5,14 @@
 // operator and dimension columns.
 
 import { useCallback, useEffect, useState } from 'react';
-import { Breadcrumb, ErrorBanner } from '../components';
+import { Breadcrumb, ErrorBanner, Pagination } from '../components';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { formatTime, type GetOrganizationQuotaResponse } from '../api';
 import { useParams } from '../router';
+
+const PAGE_SIZE = 20;
 
 // quotaDimensionLabel normalizes both the snake_case strings the server
 // writes into audit rows and the camelCase names the console uses, so a
@@ -31,6 +33,8 @@ export default function QuotaHistoryPage() {
   const params = useParams();
   const orgId = params.orgId || '';
   const [data, setData] = useState<GetOrganizationQuotaResponse | null>(null);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -38,21 +42,31 @@ export default function QuotaHistoryPage() {
     setLoading(true);
     setError('');
     try {
+      const params = new URLSearchParams({
+        'page.offset': String(offset),
+        'page.limit': String(PAGE_SIZE),
+      });
       const next = await api.get<GetOrganizationQuotaResponse>(
-        `/api/v1/admin/quotas/${encodeURIComponent(orgId)}`,
+        `/api/v1/admin/quotas/${encodeURIComponent(orgId)}?${params.toString()}`,
         scopedOrgId,
       );
       setData(next);
+      setTotal(parseInt(next.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('quota.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, scopedOrgId, t]);
+  }, [api, offset, orgId, scopedOrgId, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A different organization is a different history: first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [orgId]);
 
   const orgName = data?.quota?.organizationName || orgId;
 
@@ -108,6 +122,9 @@ export default function QuotaHistoryPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {total > PAGE_SIZE && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
         <p className="muted" style={{ padding: '0 16px 12px' }}>
           {t('quota.propagationNote')}

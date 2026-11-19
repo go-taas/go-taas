@@ -1966,6 +1966,7 @@ export interface GetOrganizationQuotaResponse {
   quota: OrganizationQuota;
   usage: QuotaUsage;
   changes: QuotaChangeEntry[];
+  pageMeta?: PageMeta;
 }
 
 export interface UpdateOrganizationQuotaResponse {

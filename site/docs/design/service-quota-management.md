@@ -64,7 +64,7 @@ The core product rule:
 | D6 | **Quota changes take effect within the verdict-cache TTL** (≤ 30 s for hot-path dimensions) and immediately for lifecycle dimensions; the drawer documents the propagation window. Tightening a quota below current usage does **not** kill in-flight requests or delete services — it blocks new ones (usage drains naturally) | Predictable, non-destructive tightening: the guard blocks at the boundary, never revokes what is already running — the same semantics #6's spend limit uses for in-flight requests |
 | D7 | **Quota management is operator-only**; the tenant surface is read-only (the quota bar + `/quotas`). A tenant "request increase" action is a **mailto link** to the operator (configurable address), not a workflow (§1.3 Bedrock) | The constrained party must not hold the lever (§1.2); a mailto covers the one-operator platform without an approval-flow stack |
 | D8 | **The tenant quota bar shows all three dimensions** (current usage / limit, or "Unlimited") on the end-user console (a compact bar in the org context area + the `/quotas` detail page); usage counters are: in-flight requests (gateway), service count (infer), batch jobs today (batch), and the per-request token cap (a constant display). No other tenant sees another org's quotas | Visible-before-you-hit-it (§1.3 Anthropic); the bar makes the constraint transparent and the 13301 error diagnosable |
-| D9 | **All quota mutations are audited** (`quota.updated` with old → new values, acting operator) and the admin page shows a per-org change history (last 20 changes) | Quota changes are fleet-protection decisions with fairness implications; the history matches the audit convention (#22) and answers "who tightened this and when" |
+| D9 | **All quota mutations are audited** (`quota.updated` with old → new values, acting operator) and the admin page shows a per-org change history (paged) | Quota changes are fleet-protection decisions with fairness implications; the history matches the audit convention (#22) and answers "who tightened this and when" |
 | D10 | **Realm and surface binding**: management is admin-only (`/admin/quotas` + `/api/v1/admin/quotas/*`); the tenant view is end-user (`/quotas` + `/api/v1/quotas/*`). A user-realm session on an admin route gets **10038**; a session without the role gets **10036** | Consistent with the console-surface separation (#17); quota internals (fleet-wide comparisons) are operator knowledge, the org's own quotas are the tenant's |
 
 **In scope**: the three org quota fields and their enforcement (gateway in-flight tracking + token cap; batch daily check); the admin page `/admin/quotas` (org table with quota columns, edit dialog with presets, change history drawer); the tenant quota bar and `/quotas` page; the verdict-cache extension; audit events; the request-increase mailto.
@@ -108,7 +108,7 @@ The core product rule:
 
 - **FR1.1** An organization's quota is `{organization_id, organization_name, max_concurrent_requests (int64, 0 = unlimited, else 1–10000), max_batch_jobs_per_day (int64, 0 = unlimited, else 1–10000), max_output_tokens_per_request (int64, 0 = unlimited, else 64–32768), updated_at, updated_by}`. Defaults on org create: all 0 (unlimited, §1.4).
 - **FR1.2** `ListOrganizationQuotas` (`GET /api/v1/admin/quotas`) returns the per-org quota rows with current usage (`concurrent_requests` (live), `inference_services` (display only), `batch_jobs_today`) and `page_size`/`page_token` pagination, a `name` search, and an `unlimited_only` / `limited_only` filter. Usage counters are best-effort snapshots (the in-flight count is gateway state relayed through the quota RPC).
-- **FR1.3** `GetOrganizationQuota` (`GET /api/v1/admin/quotas/{organization_id}`) returns one org's quota with usage and the last 20 change-history entries. An unknown org returns **13306 `CodeQuotaNotFound`**.
+- **FR1.3** `GetOrganizationQuota` (`GET /api/v1/admin/quotas/{organization_id}`) returns one org's quota with usage and a page of change-history entries (`page.offset`/`page.limit`). An unknown org returns **13306 `CodeQuotaNotFound`**.
 - **FR1.4** `UpdateOrganizationQuota` (`PATCH /api/v1/admin/quotas/{organization_id}`) sets any subset of the three dimensions. A value outside its range (or negative) returns **13305 `CodeQuotaInvalid`** with the dimension named in the message. Tightening below current usage is allowed and non-destructive (D6). The change is audited (`quota.updated`, old → new, operator) and appears in the history.
 - **FR1.5** The edit dialog offers the four presets (D5) as one-click fills; selecting a preset populates the fields and the operator may edit before saving. Presets are UI constants labeled "Default / Starter / Growth / Enterprise".
 
@@ -167,7 +167,7 @@ The core product rule:
 
 **Edit dialog**: the three fields (labeled with their ranges and "0 = unlimited"), the preset row (Default / Starter / Growth / Enterprise — one click fills the fields), inline validation (out-of-range shows "Enter 0 (unlimited) or 1–10000" style copy), and Save (PATCH). Saving shows a success toast and refreshes the row; a **13305** error highlights the offending field.
 
-**Change-history drawer** (right side): the last 20 changes for the org — Time, Operator, and per-dimension Old → New ("Concurrency: 50 → 100"), sourced from the audit trail.
+**Change-history page**: the paged changes for the org — Time, Operator, and per-dimension Old → New ("Concurrency: 50 → 100"), sourced from the audit trail.
 
 **States**: loading skeletons; empty ("No organizations yet"); error (stale with retry); permission-denied (standard, link to `/admin`).
 
@@ -197,7 +197,7 @@ The quota RPCs extend **`tenancy`** (org quota fields, admin surface) and add a 
 | RPC | Route | Prefix | Status | Purpose |
 | --- | --- | --- | --- | --- |
 | `ListOrganizationQuotas` (extends `taas.tenancy.v1`) | `GET /api/v1/admin/quotas` | admin | **new** | Per-org quota rows with live usage; pagination, search, limit-state filter |
-| `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | admin | **new** | One org's quota + usage + change history; unknown org → 13306 |
+| `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | admin | **new** | One org's quota + usage + paged change history; unknown org → 13306 |
 | `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | admin | **new** | Set any subset of the three dimensions; audited; 13305 on bad values |
 | `GetMyQuota` | `GET /api/v1/quotas` | user | **new** | The caller's org quota with live usage (masked — own org only) |
 | `VerifyAPIKey` (`taas.auth.v1`) | internal (gateway → `auth`) | n/a | **changed** | Verdict gains `max_concurrent_requests`, `max_output_tokens_per_request` (org-level, D3) |
@@ -240,7 +240,7 @@ Error codes (`pkg/errors/codes.go`):
 | AC7 | **Check order**: a request that would fail both rate limit and quota gets **10037** (rate first); a request that would fail both quota and funds gets the quota code (quota before funds) | FVT (gateway contract) |
 | AC8 | **Quota bar and `/quotas`**: the end-user console shows the three chips with usage/limit (amber ≥ 80%, red 100%) and the `/quotas` page shows the three cards with plain-language guidance and the Request increase mailto; the bar hides when all dimensions are unlimited | Nightwatch E2E |
 | AC9 | **Tenant org scoping**: `GET /api/v1/quotas` returns only the caller's org quota; no field leaks another org's data; the tenant surface has no quota mutation route | FVT + Nightwatch E2E |
-| AC10 | **Change history and audit**: every `UpdateOrganizationQuota` appears in the audit trail (`quota.updated`, old → new, operator) and in the admin change-history drawer (last 20) | FVT + Nightwatch E2E |
+| AC10 | **Change history and audit**: every `UpdateOrganizationQuota` appears in the audit trail (`quota.updated`, old → new, operator) and in the admin change-history page (paged) | FVT + Nightwatch E2E |
 | AC11 | **Propagation window**: a hot-path quota change is enforced within the verdict TTL (≤ 30 s); a lifecycle change on the next create call; the drawer documents both windows | FVT |
 | AC12 | **Negative realm separation**: a valid user-realm session token sent to `GET /api/v1/admin/quotas` is rejected with **10038**; the admin page contains no `/api/v1/*` call and the user pages no `/api/v1/admin/*` call | FVT + Nightwatch E2E |
 | AC13 | A session without the required role receives **10036** and the admin page shows the standard permission-denied state with a link back to `/admin` | Nightwatch E2E |

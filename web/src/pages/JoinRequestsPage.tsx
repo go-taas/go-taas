@@ -4,11 +4,13 @@
 // project's requests.
 
 import { useCallback, useEffect, useState } from 'react';
-import { ErrorBanner, RowActionsMenu, StateBadge, Toast } from '../components';
-import { api } from '../api';
+import { ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
+import { api, type PageMeta } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { useAdminScope } from '../admin-scope';
+
+const PAGE_SIZE = 20;
 
 interface JoinRequest {
   requestId: string;
@@ -32,6 +34,8 @@ export default function JoinRequestsPage() {
   const scopedTargetId =
     scope?.scopeType === 'project' ? scope.projectId : scope?.scopeType === 'organization' ? scope.organizationId : '';
   const [requests, setRequests] = useState<JoinRequest[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [targetType, setTargetType] = useState(scopedTargetType || 'organization');
   const [targetId, setTargetId] = useState(scopedTargetId);
   const [status, setStatus] = useState('pending');
@@ -51,18 +55,21 @@ export default function JoinRequestsPage() {
         targetType,
         targetId: targetId.trim(),
         status,
+        'page.offset': String(offset),
+        'page.limit': String(PAGE_SIZE),
       });
-      const data = await api.get<{ requests: JoinRequest[] }>(
+      const data = await api.get<{ requests: JoinRequest[]; pageMeta?: PageMeta }>(
         `/api/v1/admin/tenancy/join-requests?${params.toString()}`,
         orgId,
       );
       setRequests(data.requests || []);
+      setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('joinreq.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [api, orgId, targetId, targetType, status, t]);
+  }, [api, offset, orgId, targetId, targetType, status, t]);
 
   useEffect(() => {
     if (scopedTargetType) {
@@ -74,6 +81,11 @@ export default function JoinRequestsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A different target or status is a different result set.
+  useEffect(() => {
+    setOffset(0);
+  }, [targetId, targetType, status]);
 
   const decide = async (request: JoinRequest, action: 'approve' | 'reject') => {
     setError('');
@@ -187,6 +199,9 @@ export default function JoinRequestsPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {total > PAGE_SIZE && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
       </div>
     </div>

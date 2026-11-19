@@ -237,7 +237,7 @@ func (s *Service) ListOrganizationQuotas(ctx context.Context, req *tenancyv1.Lis
 	}, nil
 }
 
-// GetOrganizationQuota returns one org's quota, usage and the last 20
+// GetOrganizationQuota returns one org's quota, usage and one page of
 // change-history entries (feature #51, FR1.3).
 func (s *Service) GetOrganizationQuota(ctx context.Context, req *tenancyv1.GetOrganizationQuotaRequest) (*tenancyv1.GetOrganizationQuotaResponse, error) {
 	if err := s.requireAdminRole(ctx); err != nil {
@@ -254,7 +254,8 @@ func (s *Service) GetOrganizationQuota(ctx context.Context, req *tenancyv1.GetOr
 	if err != nil {
 		return nil, err
 	}
-	changes, err := repo.ListQuotaChanges(ctx, org.ID, 20)
+	offset, limit := normalizePagination(req.GetPage())
+	changes, total, err := repo.ListQuotaChanges(ctx, org.ID, offset, limit)
 	if err != nil {
 		return nil, err
 	}
@@ -269,12 +270,12 @@ func (s *Service) GetOrganizationQuota(ctx context.Context, req *tenancyv1.GetOr
 	entries := make([]*tenancyv1.QuotaChangeEntry, 0, len(changes))
 	for _, ch := range changes {
 		entries = append(entries, &tenancyv1.QuotaChangeEntry{
-			ChangedAt:          ch.ChangedAt.Unix(),
-			Operator:           ch.Operator,
+			ChangedAt:           ch.ChangedAt.Unix(),
+			Operator:            ch.Operator,
 			OperatorDisplayName: operatorLabels[ch.Operator],
-			Dimension:          ch.Dimension,
-			OldValue:           ch.OldValue,
-			NewValue:           ch.NewValue,
+			Dimension:           ch.Dimension,
+			OldValue:            ch.OldValue,
+			NewValue:            ch.NewValue,
 		})
 	}
 	return &tenancyv1.GetOrganizationQuotaResponse{
@@ -282,6 +283,7 @@ func (s *Service) GetOrganizationQuota(ctx context.Context, req *tenancyv1.GetOr
 		Quota:    quotaProto(org, s.userLabel(ctx, org.QuotaUpdatedBy)),
 		Usage:    s.quotaUsage(ctx, repo, org.ID),
 		Changes:  entries,
+		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampInt32(limit)},
 	}, nil
 }
 

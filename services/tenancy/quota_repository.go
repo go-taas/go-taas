@@ -112,10 +112,11 @@ func (r *Repository) CountBatchJobsSince(ctx context.Context, orgID string, sinc
 	return count, err
 }
 
-// ListQuotaChanges returns the org's newest quota.updated change
-// entries, flattened from the audit trail, newest first, capped at
-// limit (feature #51, AD16).
-func (r *Repository) ListQuotaChanges(ctx context.Context, orgID string, limit int) ([]QuotaChange, error) {
+// ListQuotaChanges returns one page of the org's quota.updated change
+// entries, flattened from the audit trail, newest first. An audit event
+// may carry up to four dimension changes, so the page is taken over the
+// flattened entries rather than over events (feature #51, AD16).
+func (r *Repository) ListQuotaChanges(ctx context.Context, orgID string, offset, limit int) ([]QuotaChange, int64, error) {
 	type auditRow struct {
 		CreatedAt   time.Time
 		ActorUserID string
@@ -125,12 +126,11 @@ func (r *Repository) ListQuotaChanges(ctx context.Context, orgID string, limit i
 	err := r.db.DB(ctx).Table("audit_events").
 		Where("organization_id = ? AND action = ?", orgID, "quota.updated").
 		Order("created_at DESC").
-		Limit(limit * 4). // a single event may carry up to 4 dimension changes
 		Scan(&rows).Error
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
-	var out []QuotaChange
+	out := make([]QuotaChange, 0, len(rows))
 	for _, row := range rows {
 		var meta quotaChangeMetadata
 		if err := json.Unmarshal([]byte(row.Metadata), &meta); err != nil {
@@ -144,12 +144,17 @@ func (r *Repository) ListQuotaChanges(ctx context.Context, orgID string, limit i
 				OldValue:  ch.Old,
 				NewValue:  ch.New,
 			})
-			if len(out) >= limit {
-				return out, nil
-			}
 		}
 	}
-	return out, nil
+	total := int64(len(out))
+	if offset >= len(out) {
+		return []QuotaChange{}, total, nil
+	}
+	end := offset + limit
+	if end > len(out) {
+		end = len(out)
+	}
+	return out[offset:end], total, nil
 }
 
 // OrgQuota implements OrgQuotaReader: the four maxima off the org row.

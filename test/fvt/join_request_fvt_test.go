@@ -27,11 +27,19 @@ func TestFVTJoinRequestApproveAndReject(t *testing.T) {
 	env.seedJoinRequest(t, "jr-1", "u-new", tenancy.JoinTargetOrganization, "org-a")
 	env.seedJoinRequest(t, "jr-2", "u-other", tenancy.JoinTargetOrganization, "org-a")
 
-	// List pending requests for the org.
+	// List pending requests for the org one page at a time.
 	code, body := env.call(t, http.MethodGet,
-		"/api/v1/admin/tenancy/join-requests?targetType=organization&targetId=org-a&status=pending", nil)
+		"/api/v1/admin/tenancy/join-requests?targetType=organization&targetId=org-a&status=pending&page.offset=0&page.limit=1", nil)
 	require.Equal(t, http.StatusOK, code, "body: %v", body)
-	assert.Len(t, body["requests"].([]any), 2)
+	assert.Len(t, body["requests"].([]any), 1)
+	pageMeta, _ := body["pageMeta"].(map[string]any)
+	require.NotNil(t, pageMeta)
+	assert.EqualValues(t, "2", pageMeta["total"])
+
+	code, body = env.call(t, http.MethodGet,
+		"/api/v1/admin/tenancy/join-requests?targetType=organization&targetId=org-a&status=pending&page.offset=1&page.limit=1", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	assert.Len(t, body["requests"].([]any), 1)
 
 	// Approve one: the applicant becomes a member.
 	code, body = env.call(t, http.MethodPost,

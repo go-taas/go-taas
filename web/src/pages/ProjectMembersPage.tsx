@@ -3,11 +3,11 @@
 // members (requirement 4).
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type MemberCandidate } from '../api';
+import { api, ApiError, type MemberCandidate, type PageMeta } from '../api';
 import { useApi } from '../surface';
 import { formatMoney, quotaRemaining } from '../display';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, RowActionsMenu, Toast } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import { useAdminScope } from '../admin-scope';
 import { candidateLabel } from '../candidates';
 
@@ -19,6 +19,7 @@ interface ProjectMember {
 }
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
+const PAGE_SIZE = 20;
 
 export default function ProjectMembersPage() {
   const { scope } = useAdminScope();
@@ -28,6 +29,8 @@ export default function ProjectMembersPage() {
   const projectName = scope?.displayName || '';
   const { t } = useI18n();
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -54,21 +57,31 @@ export default function ProjectMembersPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.get<{ members: ProjectMember[] }>(
-        `/api/v1/admin/tenancy/projects/${projectId}/members?page.limit=100`,
+      const params = new URLSearchParams({
+        'page.offset': String(offset),
+        'page.limit': String(PAGE_SIZE),
+      });
+      const data = await api.get<{ members: ProjectMember[]; pageMeta?: PageMeta }>(
+        `/api/v1/admin/tenancy/projects/${projectId}/members?${params.toString()}`,
         '',
       );
       setMembers(data.members || []);
+      setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('projectMembers.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [api, projectId, t]);
+  }, [api, projectId, offset, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A different project is a different roster: start at its first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [projectId]);
 
   const loadCandidates = useCallback(async () => {
     if (!projectId) {
@@ -228,6 +241,9 @@ export default function ProjectMembersPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {total > PAGE_SIZE && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
       </div>
 

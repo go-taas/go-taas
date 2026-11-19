@@ -3,13 +3,14 @@
 // FR2, AC4-AC7.
 
 import { useCallback, useEffect, useState } from 'react';
-import { api, ApiError, type Invitation } from '../api';
+import { api, ApiError, type Invitation, type PageMeta } from '../api';
 import { OrganizationPicker, organizationLabel, useOrganizationPicker } from '../org';
 import { useAdminScope } from '../admin-scope';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, RowActionsMenu, StateBadge, Toast } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 
 const ASSIGNABLE_ROLES = ['admin', 'member', 'viewer'];
+const PAGE_SIZE = 20;
 
 export default function InvitationsPage() {
   const { scope } = useAdminScope();
@@ -26,6 +27,8 @@ export default function InvitationsPage() {
   );
   const { t, tEnum } = useI18n();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -39,21 +42,35 @@ export default function InvitationsPage() {
     setLoading(true);
     setError('');
     try {
-      const data = await api.get<{ response: { code: number; message: string }; invitations: Invitation[] }>(
-        `/api/v1/admin/tenancy/organizations/${orgId}/invitations?page.limit=100`,
+      const params = new URLSearchParams({
+        'page.offset': String(offset),
+        'page.limit': String(PAGE_SIZE),
+      });
+      const data = await api.get<{
+        response: { code: number; message: string };
+        invitations: Invitation[];
+        pageMeta?: PageMeta;
+      }>(
+        `/api/v1/admin/tenancy/organizations/${orgId}/invitations?${params.toString()}`,
         orgId,
       );
       setInvitations(data.invitations || []);
+      setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
     } catch (e) {
       setError(e instanceof Error ? e.message : t('invitations.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [orgId, t]);
+  }, [orgId, offset, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A different organization is a different pipeline: start at its first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [orgId]);
 
   const createInvite = async () => {
     setError('');
@@ -203,6 +220,9 @@ export default function InvitationsPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {total > PAGE_SIZE && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
       </div>
 

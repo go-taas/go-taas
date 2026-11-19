@@ -332,3 +332,34 @@ func TestGetOrganizationQuotaHistoryResolvesOperator(t *testing.T) {
 	assert.Equal(t, "Operator One", resp.GetChanges()[0].GetOperatorDisplayName())
 	assert.Equal(t, "11111111-1111-1111-1111-111111111111", resp.GetChanges()[0].GetOperator())
 }
+
+// TestGetOrganizationQuotaHistoryPaginates covers paging over flattened
+// dimension changes: one audit event can carry several changes, so the
+// page and total count entries, not audit events.
+func TestGetOrganizationQuotaHistoryPaginates(t *testing.T) {
+	env := newQuotaTestEnv(t, true)
+	for _, limit := range []int64{10, 20, 30} {
+		_, err := env.svc.UpdateOrganizationQuota(env.ctx, &tenancyv1.UpdateOrganizationQuotaRequest{
+			OrganizationId:        env.orgID,
+			MaxConcurrentRequests: int64Ptr(limit),
+		})
+		require.NoError(t, err)
+	}
+
+	first, err := env.svc.GetOrganizationQuota(env.ctx, &tenancyv1.GetOrganizationQuotaRequest{
+		OrganizationId: env.orgID,
+		Page:           &commonv1.PageRequest{Offset: 0, Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Len(t, first.GetChanges(), 2)
+	assert.EqualValues(t, 3, first.GetPageMeta().GetTotal())
+
+	second, err := env.svc.GetOrganizationQuota(env.ctx, &tenancyv1.GetOrganizationQuotaRequest{
+		OrganizationId: env.orgID,
+		Page:           &commonv1.PageRequest{Offset: 2, Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Len(t, second.GetChanges(), 1)
+	assert.EqualValues(t, 3, second.GetPageMeta().GetTotal())
+	assert.NotEqual(t, first.GetChanges()[0].GetChangedAt(), int64(0))
+}

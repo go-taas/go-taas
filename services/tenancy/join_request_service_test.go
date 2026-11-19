@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	tenancyv1 "github.com/go-taas/go-taas/proto/taas/tenancy/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
@@ -171,4 +172,44 @@ func TestProjectQuota(t *testing.T) {
 	svc.SetSessionResolver(&fakeSessionResolver{userID: "u-viewer", email: "v@x.com"})
 	_, err = svc.GetProjectQuota(ctx, &tenancyv1.GetProjectQuotaRequest{ProjectId: "proj-a"})
 	assert.EqualValues(t, apierrors.CodeForbidden, apierrors.CodeOf(err))
+}
+
+// TestListJoinRequestsPaginates covers the admin join-request list: the
+// page is sliced over requests, and the response reports the full total so
+// the console can page through the queue.
+func TestListJoinRequestsPaginates(t *testing.T) {
+	svc := newMembershipService(t)
+	ctx := context.Background()
+	seedOrg(t, svc, "org-a")
+	seedMember(t, svc, "org-a", "u-admin", RoleOwner)
+
+	repo := NewMembershipRepository(svc.repo.db.DB(ctx))
+	for _, user := range []string{"u-1", "u-2", "u-3"} {
+		require.NoError(t, repo.CreateJoinRequest(ctx, &JoinRequest{
+			ID: "jr-" + user, UserID: user, TargetType: JoinTargetOrganization,
+			TargetID: "org-a", Status: JoinStatusPending,
+		}))
+	}
+
+	first, err := svc.ListJoinRequests(ctx, &tenancyv1.ListJoinRequestsRequest{
+		TargetType: JoinTargetOrganization,
+		TargetId:   "org-a",
+		Page:       &commonv1.PageRequest{Offset: 0, Limit: 2},
+	})
+	require.NoError(t, err)
+	assert.Len(t, first.GetRequests(), 2)
+	assert.EqualValues(t, 3, first.GetPageMeta().GetTotal())
+	assert.EqualValues(t, 0, first.GetPageMeta().GetOffset())
+
+	second, err := svc.ListJoinRequests(ctx, &tenancyv1.ListJoinRequestsRequest{
+		TargetType: JoinTargetOrganization,
+		TargetId:   "org-a",
+		Page:       &commonv1.PageRequest{Offset: 2, Limit: 2},
+	})
+	require.NoError(t, err)
+	assert.Len(t, second.GetRequests(), 1)
+	assert.EqualValues(t, 3, second.GetPageMeta().GetTotal())
+
+	// Rows are distinct across the page boundary.
+	assert.NotEqual(t, first.GetRequests()[0].GetRequestId(), second.GetRequests()[0].GetRequestId())
 }

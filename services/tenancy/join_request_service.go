@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	tenancyv1 "github.com/go-taas/go-taas/proto/taas/tenancy/v1"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
@@ -117,7 +118,10 @@ func (s *Service) ListJoinRequests(ctx context.Context, req *tenancyv1.ListJoinR
 	if err != nil {
 		return nil, err
 	}
-	rows, err := repo.ListJoinRequests(ctx, targetType, targetID, strings.TrimSpace(req.GetStatus()))
+	offset, limit := normalizePagination(req.GetPage())
+	rows, total, err := repo.ListJoinRequests(
+		ctx, targetType, targetID, strings.TrimSpace(req.GetStatus()), offset, limit,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +130,11 @@ func (s *Service) ListJoinRequests(ctx context.Context, req *tenancyv1.ListJoinR
 	for _, row := range rows {
 		out = append(out, summarizeJoinRequest(row, labels[row.UserID]))
 	}
-	return &tenancyv1.ListJoinRequestsResponse{Response: okResponse(), Requests: out}, nil
+	return &tenancyv1.ListJoinRequestsResponse{
+		Response: okResponse(),
+		Requests: out,
+		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampInt32(limit)},
+	}, nil
 }
 
 // ApproveJoinRequest approves a pending request and adds the member.

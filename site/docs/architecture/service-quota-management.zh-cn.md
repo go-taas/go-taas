@@ -31,7 +31,7 @@ Feature #6 与 #8 给了 go-taas **资金**护栏 — per-key 限流（RPM/TPM�
 - 固化的网关契约：检查顺序 rate → quota 并发 → token 上限 → funds、按组织在途跟踪（接受时递增、完成时递减）、13301 为 429 + `Retry-After: 1`、13304 为 400 并指明上限、缺失 `max_tokens` 时钳制、按组织在途数经 MQ 上报（设计 FR2.2–FR2.4、§6 注）。
 - 创建时守卫：`CreateBatchJob` 中的 13303，在既有流程内部，收紧非破坏（设计 FR3）。13302 仍定义但不再由任何流程返回。
 - `pkg/errors` 中的新错误块 **133xx**（13301–13306）（设计 D4）。
-- 审计事件 `quota.updated`（逐维度 old → new、操作运营者）与管理面的组织变更历史（最近 20 条）（设计 D9、FR1.3–FR1.4）。
+- 审计事件 `quota.updated`（逐维度 old → new、操作运营者）与管理面的组织分页变更历史（设计 D9、FR1.3–FR1.4）。
 - 可在 Nightwatch、FVT 与单元测试中验证的编号验收标准（AC1–AC14）；网关契约以既有模式合成验证。
 
 **非目标**（来自设计，重述）：per-key 配额（刻意排除 — 资源轴是组织级事实，D2）；作为数据模型的配额层级/套餐（D5 — 预设是 UI 常量）；租户自助配额变更与审批流（D7 — 仅运营者，申请走 mailto）；项目级配额（随 #5 的项目模型推迟）；per-model/per-endpoint 配额（未来 — 组织轴先行）；配额超额计费（刻意排除 — 硬性 fail-closed 上限，资金留在 #6/#8）；限流 RPM/TPM 与消费限额（feature #6，原样复用）；资金/余额执行（feature #8，原样复用）；与自动扩缩容的交互（扩缩容仍在组织服务配额内进行 — 配额限定天花板，#16 限定行为）；以及网关实现本身（数据面，不在仓库范围 — 契约在此固化并合成验证，FR5.4）。
@@ -56,14 +56,14 @@ AD1–AD10 将 UI/UX 设计的决策（D1–D10）重述为实现级规则。**A
 | AD6 | **变更窗口**：热路径维度在判定 TTL 内（≤ 30 秒）生效；生命周期维度在下一次创建调用时生效。收紧到低于当前用量绝不杀死在途请求或删除服务 — 只阻断新的，用量自然排空 | 设计 D6。可预测、非破坏的收紧：守卫在边界阻断，绝不撤销已在运行的 |
 | AD7 | **配额管理仅限运营者**；租户面只读（配额条 + `/quotas`）。租户的「申请提升」动作是指向配置的运营者地址的 mailto 链接，不是工作流 | 设计 D7。被约束方不得持有杠杆；mailto 覆盖单运营者平台而无需审批流技术栈 |
 | AD8 | **租户配额条展示全部三个维度**（用量 / 限额，或「不限制」），位于用户组织上下文区，外加 `/quotas` 详情页；用量计数为在途请求（网关状态）、今日批处理（batch）、token 上限（常量展示）。任何租户看不到其他组织的配额 | 设计 D8。可见先于命中：配额条让约束透明、13301 错误可诊断 |
-| AD9 | **所有配额变更均审计**（`quota.updated`，逐维度 old → new 与操作运营者），管理页面展示组织变更历史（最近 20 条） | 设计 D9。配额变更是有公平性影响的集群保护决策；历史回答「谁在何时收紧的」 |
+| AD9 | **所有配额变更均审计**（`quota.updated`，逐维度 old → new 与操作运营者），管理页面展示组织分页变更历史 | 设计 D9。配额变更是有公平性影响的集群保护决策；历史回答「谁在何时收紧的」 |
 | AD10 | **领域与面绑定**：管理仅限 admin（`/admin/quotas` + `/api/v1/admin/quotas/*`）；租户视图是 end-user（`/quotas` + `/api/v1/quotas/*`）。用户领域会话访问管理路由得到 **10038**；无平台管理员角色的会话得到 **10036** | 设计 D10。与控制台双面分离一致；配额内部信息（全集群对比）是运营者知识，组织自己的配额是租户的 |
 | AD11 | **对设计 D2/FR1.1 的细化 — 配额状态是 `organizations` 上的五个增量列，无新表。** `max_concurrent_requests`、`max_batch_jobs_per_day`、`max_output_tokens_per_request`（int64，NOT NULL，DEFAULT 0 = 不限制），外加为管理表格 Updated / Updated by 列反规范化的 `quota_updated_by`（string(64)，DEFAULT ''）与 `quota_updated_at`（timestamp，NULL）。用量计数只计算、绝不存储（第 4.2 节） | 设计已钉死「配额字段在组织行上（增量 AutoMigrate 列）」，且执行不需要逐维度历史表 — 审计轨迹本身就是历史（AD16）。现有表上的五列是满足 FR1.1 投影（含 `updated_at`/`updated_by`）的最小 schema，零回填：现有行读作全部不限制，即 feature 前行为。`max_inference_services` 已在服务数配额退役时移除 |
 | AD12 | **对设计 D3/FR2.1 的细化 — 判定扩展机制。** `keyVerdict`（auth 服务缓存的判定结构体）增加 `MaxConcurrentRequests`（`json:"max_concurrent_requests"`）与 `MaxOutputTokensPerRequest`（`json:"max_output_tokens_per_request"`）；`VerifyAPIKeyResponse` 增加 proto 字段 **7 与 8**（字段 1–6 已占用）。缓存未命中路径（判定构造经 `OrgQuotaReader` 接缝读取组织配额）与缓存命中路径（字段从缓存 JSON 反序列化）都携带它们。升级前缓存的判定反序列化时缺少这两个键 → 零 → 不限制：向后兼容，且任何变更的传播窗口受缓存 TTL（≤ 30 秒）界定。判定构造期间的配额读取错误记录警告并降级为不限制（绝不让 `VerifyAPIKey` 本身失败 — 配额展示故障演变为鉴权中断会停掉全部推理） | 设计规定了判定字段与 TTL 界定但未规定缓存机制；此处钉死。读取错误时 fail-open 的取舍是刻意接受的：窗口受 TTL 界定，而替代方案（判定失败）会把配额表故障变成全集群鉴权中断 |
 | AD13 | **对设计 D3/FR3 的细化 — 一个窄读取接缝，两个消费者。** `tenancy` 在 `services/tenancy/quota.go` 中导出只读 `OrgQuotaReader` 接口（`OrgQuota(ctx, organizationID) (OrgQuota, error)`，三个限额的值结构体），由 tenancy 仓储实现并在 tenancy 服务上暴露。`apps/taas-server/main.go` 通过 `SetOrgQuotaReader` 注入 `auth`（判定构造）与 `batch`（`CreateBatchJob`）；nil 接缝读作不限制（过渡接缝惯例，FVT 设置不变）。`tenancy` 另外为 `GetMyQuota` 的组织限定获得 `sessionOrgResolver` 接缝（`SessionActiveOrg`，billing 模式），并为三个管理配额 RPC 获得 `requireAdminRole` 门（provider 形态）— 既有 tenancy RPC 保持以管理领域守卫为边界，不变 | 设计说检查读取「组织的配额」但未钉死方式。一个导出接口（一个实现、三个消费者）避免三个消费方重复声明同一形状；导入方向（`auth`/`infer`/`batch` → `tenancy`）不构成环，因为 tenancy 本地定义其会话接缝且不导入三者之一。管理门是新增的，因为既有 tenancy RPC 仅依赖领域守卫 — 配额变更是第一批还必须执行角色的 tenancy 写入（FR5.1） |
 | AD14 | **对设计 FR2.4/FR1.2 的细化 — 在途用量中继沿用推理自动扩缩容的 MQ 先例。** 网关在新 subject **`quota.orgs.concurrency`** 上发布按组织在途数（JSON `{organization_id, in_flight, reported_at}`），每个上报间隔（默认 10 秒）每组织一条消息（含零计数以清除陈旧条目）。`tenancy` 中的消费者 runner（`quota_concurrency_consumer.go`，由 `quota.concurrencyConsumer.enabled` 门控的 `server.Runner`）在互斥锁保护的内存在图中保存每组织最新快照并暴露 `CurrentInFlight(orgID)`，对缺失或陈旧条目（早于 `quota.concurrencyConsumer.staleAfter`，默认 2 分钟）返回 **0**。订阅是普通 subscribe（每个 taas-server 副本维护自己的 map — queue group 会让其他副本失明）。配额 RPC 尽力而为地读取快照；tenancy 重启后从空开始并在一个上报间隔内回填 | 设计要求配额 RPC 呈现实时在途用量（FR1.2/FR4.1），而计数器是网关本地状态（FR2.4）。自动扩缩容功能已确立网关→MQ 在途上报为平台模式；复用它保持单一中继机制。尽力而为语义（缺失/陈旧/重启 → 0）正是设计自己的表述 — 计数器是展示快照，绝不是执行输入（执行是网关本地的） |
 | AD15 | **对设计 FR3.2 的细化 — 每日批处理计数器是实时 COUNT，无新表。** `COUNT(*) FROM batch_jobs WHERE organization_id = ? AND created_at >= <本地午夜>`，本地午夜按配置的 `quota.timezone`（默认 UTC，抽屉中记录的平台时区）计算。已取消与失败的任务也计数（守卫针对提交而非成功）。batch 仓储增加 `CountJobsSince(ctx, orgID, since)`；检查在既有创建流程内运行 | 设计钉死了 COUNT 形状与无新表规则；此处钉死时区来源（平台无按组织时区）与仓储接缝。索引 `(organization_id, created_at)` 上的午夜边界 COUNT 在检查时刻是精确的，不需要计数表、重置任务或漂移修复 |
-| AD16 | **对设计 D9/FR1.3 的细化 — 变更历史是嵌入 `GetOrganizationQuota` 的直接 `audit_events` 读取。** 变更写入一条 `quota.updated` 事件（资源类型 `organization`、资源 id 为组织、actor 为运营者），其 metadata jsonb 为 `{"changes": [{"dimension": "max_concurrent_requests", "old": 0, "new": 50}, …]}` — 仅实际变化的维度。历史读取选择 `audit_events WHERE organization_id = ? AND action = 'quota.updated' ORDER BY created_at DESC`（窄共享句柄读取，既有的跨模块读取模式 — 审计服务的 `ListAuditEvents` 过滤器没有适配此用途的 resource-id 形状），将每个事件的 `changes` 数组展平为逐维度条目，返回最新 20 条 | 设计说抽屉「来自审计轨迹」但未钉死读取。每次变更一条事件（带 changes 数组）保持轨迹紧凑且原子；读取时展平给抽屉逐维度的 Old → New 行。直接读取是刻意的：审计模块不变，查询按组织与 action 限定 |
+| AD16 | **对设计 D9/FR1.3 的细化 — 变更历史是嵌入 `GetOrganizationQuota` 的直接 `audit_events` 读取。** 变更写入一条 `quota.updated` 事件（资源类型 `organization`、资源 id 为组织、actor 为运营者），其 metadata jsonb 为 `{"changes": [{"dimension": "max_concurrent_requests", "old": 0, "new": 50}, …]}` — 仅实际变化的维度。历史读取选择 `audit_events WHERE organization_id = ? AND action = 'quota.updated' ORDER BY created_at DESC`（窄共享句柄读取，既有的跨模块读取模式 — 审计服务的 `ListAuditEvents` 过滤器没有适配此用途的 resource-id 形状），将每个事件的 `changes` 数组展平为逐维度条目，返回请求的那一页条目 | 设计说抽屉「来自审计轨迹」但未钉死读取。每次变更一条事件（带 changes 数组）保持轨迹紧凑且原子；读取时展平给抽屉逐维度的 Old → New 行。直接读取是刻意的：审计模块不变，查询按组织与 action 限定 |
 | AD17 | **对设计 D5/FR1.5 的细化 — 预设以类型化常量 map 形式存在于 `QuotasPage.tsx`**（`default`/`starter`/`growth`/`enterprise` → 四个值），在编辑对话框中渲染为四个一键填充按钮并设置表单状态；运营者随后可编辑任意字段。无 API、无配置、无 i18n 驱动的值 | 设计规定预设仅是 UI 便利；常量 map 是最小实现，让值在一处可审，并保证填充后表单仍可编辑 |
 | AD18 | **对设计 D7/FR4.3 的细化 — 申请提升地址是配置键 `quota.requestIncreaseTo`（默认空），经 `GetMyQuotaResponse.request_increase_email` 呈现给租户。** `/quotas` 页面将「申请提升」按钮渲染为 `mailto:` 链接（主题与正文预填组织显示名，URL 编码）；配置地址为空时隐藏按钮。compose/e2e 栈设置该键使 AC8 练习该链接 | 设计说「mailto 到配置的运营者地址」但未钉死地址在哪配置、SPA 如何获知。搭乘 `GetMyQuota` 避免新的配置投影端点；空则隐藏是 fail-closed 解读（邮寄给无人的按钮比没有按钮更糟） |
 
@@ -202,7 +202,7 @@ flowchart TD
 - `action = "quota.updated"`、`resource_type = "organization"`、`resource_id = <organization_id>`、`organization_id = <organization_id>`、`actor_user_id = <运营者>`、`result = "success"`。
 - `metadata`（jsonb）：`{"changes": [{"dimension": "<列名>", "old": <int>, "new": <int>}, …]}` — 仅值实际变化的维度；什么都不改的 PATCH 不写事件（FR5.3：变更被审计，无操作不是变更）。
 
-历史读取（嵌入 `GetOrganizationQuota`，AD16）：选择 `audit_events` 中 `organization_id = ?` 且 `action = 'quota.updated'` 的行，最新在前，将每个事件的 `changes` 数组展平为逐维度条目（一个事件变更两个维度产生共享时间戳与操作者的两条条目），返回最新 20 条。列表/读取 RPC 不审计，遵循平台读取路径惯例（FR5.3）。
+历史读取（嵌入 `GetOrganizationQuota`，AD16）：选择 `audit_events` 中 `organization_id = ?` 且 `action = 'quota.updated'` 的行，最新在前，将每个事件的 `changes` 数组展平为逐维度条目（一个事件变更两个维度产生共享时间戳与操作者的两条条目），返回请求的那一页条目。列表/读取 RPC 不审计，遵循平台读取路径惯例（FR5.3）。
 
 ### 4.4 迁移与 init-SQL 升级路径
 
@@ -223,7 +223,7 @@ flowchart TD
 | RPC | HTTP 方法 + 路径 | 面 | 状态 | 用途 |
 | --- | --- | --- | --- | --- |
 | `ListOrganizationQuotas`（扩展 `taas.tenancy.v1.TenancyService`） | `GET /api/v1/admin/quotas` | admin | **新增** | 带尽力而为实时用量的逐组织配额行；分页、名称搜索、限额状态过滤 |
-| `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | admin | **新增** | 单组织的配额 + 用量 + 最近 20 条变更历史；未知组织 → 13306 |
+| `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | admin | **新增** | 单组织的配额 + 用量 + 一页变更历史；未知组织 → 13306 |
 | `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | admin | **新增** | 设置三个维度的任意子集；审计；超范围值 13305 |
 | `GetMyQuota` | `GET /api/v1/quotas` | user | **新增** | 调用者自己组织的配额与实时用量（从会话限定组织） |
 | `VerifyAPIKey`（`taas.auth.v1.AuthService`） | 内部（网关 → `auth`） | n/a | **变更** | 判定/响应增加 `max_concurrent_requests`（字段 7）与 `max_output_tokens_per_request`（字段 8） |
@@ -246,7 +246,7 @@ flowchart TD
   }
 
   // GetOrganizationQuota returns one organization's quota, live usage
-  // and the last 20 change-history entries (admin surface). An unknown
+  // and a page of change-history entries (admin surface). An unknown
   // organization returns 13306.
   rpc GetOrganizationQuota(GetOrganizationQuotaRequest) returns (GetOrganizationQuotaResponse) {
     option (google.api.http) = {get: "/api/v1/admin/quotas/{organization_id}"};
@@ -319,13 +319,15 @@ message ListOrganizationQuotasResponse {
 
 message GetOrganizationQuotaRequest {
   string organization_id = 1;
+  taas.common.v1.PageRequest page = 2;
 }
 
 message GetOrganizationQuotaResponse {
   taas.common.v1.Response response = 1;
   OrganizationQuota quota = 2;
   QuotaUsage usage = 3;
-  repeated QuotaChangeEntry changes = 4; // newest first, last 20
+  repeated QuotaChangeEntry changes = 4; // newest first
+  taas.common.v1.PageMeta page_meta = 5;
 }
 
 message UpdateOrganizationQuotaRequest {
@@ -666,7 +668,7 @@ compose 栈设置 `CONFIG_QUOTA_REQUESTINCREASETO` 使 e2e 套件练习 mailto �
 | AC7 检查顺序：限流先于配额、配额先于资金 | §1.4、§6 注 2 | §5.3（流程图 + 条目 2–3）、§7.2 |
 | AC8 配额条（四 chip、≥ 80% 琥珀、100% 红、全部不限制时隐藏）+ `/quotas` 卡片 + 申请提升 mailto | FR4.2–FR4.3、D8 | AD18、§6.1–6.3、§13.9 |
 | AC9 租户组织限定：仅调用者组织、无泄漏、无租户变更路由 | FR4.1、FR4.4 | §3.3、§5.2（GetMyQuota）、§10、§13.2 |
-| AC10 变更历史与审计：`quota.updated` old → new + 运营者，抽屉最近 20 条 | FR1.3–FR1.4、D9 | AD16、§4.3、§7.1、§13.2–13.3 |
+| AC10 变更历史与审计：`quota.updated` old → new + 运营者，分页历史 | FR1.3–FR1.4、D9 | AD16、§4.3、§7.1、§13.2–13.3 |
 | AC11 传播窗口：热路径 ≤ 30 秒、生命周期下次创建，抽屉记录两者 | D6、D3 | AD12、§11.5、§7.1 |
 | AC12 负向领域分离（10038）、无跨面调用 | FR5.1 | §3.3、§6.1、§6.4、§10 |
 | AC13 角色拒绝（10036）+ 带 `/admin` 链接的无权限状态 | FR5.1、§5.3 | §3.3、§6.4、§8 |

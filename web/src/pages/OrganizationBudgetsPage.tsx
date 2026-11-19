@@ -22,8 +22,10 @@ import {
 import { useApi } from '../surface';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, RowActionsMenu, Toast, usePolling } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast, usePolling } from '../components';
 import { formatMoney, displayCurrencyLabel } from '../display';
+
+const PAGE_SIZE = 20;
 
 /** ProjectBudget is one project's budget row, with what it has consumed. */
 interface ProjectBudget extends ProjectSummary {
@@ -44,6 +46,7 @@ export default function OrganizationBudgetsPage() {
   const { t } = useI18n();
   const [balance, setBalance] = useState<BalanceResponse | null>(null);
   const [projects, setProjects] = useState<ProjectBudget[]>([]);
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -109,6 +112,11 @@ export default function OrganizationBudgetsPage() {
     setLoading(true);
     void loadProjects();
   }, [loadProjects]);
+
+  // A different organization is a different set of projects.
+  useEffect(() => {
+    setOffset(0);
+  }, [orgId]);
 
   useEffect(() => {
     void loadBalance();
@@ -207,7 +215,7 @@ export default function OrganizationBudgetsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {projects.map((project) => {
+                  {projects.slice(offset, offset + PAGE_SIZE).map((project) => {
                     const limit = Number(project.monthlySpendLimitCents || 0);
                     const spent = Number(project.spentThisCycleCents || 0);
                     const percent = limit > 0 ? Math.min(100, (spent / limit) * 100) : 0;
@@ -247,6 +255,14 @@ export default function OrganizationBudgetsPage() {
                   })}
                 </tbody>
               </table>
+            )}
+            {projects.length > PAGE_SIZE && (
+              <Pagination
+                offset={offset}
+                limit={PAGE_SIZE}
+                total={projects.length}
+                onPageChange={setOffset}
+              />
             )}
           </div>
           <p className="muted">{t('budgets.ladderNote')}</p>

@@ -14,11 +14,12 @@ import {
   formatTime,
   type EngineParamTemplate,
   type ModelSummary,
+  type PageMeta,
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
-import { Dialog, ErrorBanner, RowActionsMenu, Toast } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import { engineParams } from '../components/engineParams';
 import { EnvRow, EnvVarsEditor, envToRows, rowsToEnv } from '../components/EnvVarsEditor';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
@@ -26,10 +27,12 @@ import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelera
 interface ListResponse {
   response: { code: number; message: string };
   templates?: EngineParamTemplate[];
+  pageMeta?: PageMeta;
 }
 
 const ENGINES = ['vllm', 'sglang'];
 const TOPOLOGIES = ['', 'single', 'multinode', 'pd'];
+const PAGE_SIZE = 20;
 
 // argsToRows turns the stored flag map into editable rows. A valueless switch
 // is stored as "flag:true"; it round-trips as the same string, so an operator
@@ -52,6 +55,8 @@ export default function EngineTemplatesPage() {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [templates, setTemplates] = useState<EngineParamTemplate[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -64,24 +69,33 @@ export default function EngineTemplatesPage() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
+      const params = new URLSearchParams({
+        'page.offset': String(offset),
+        'page.limit': String(PAGE_SIZE),
+      });
       if (search.trim()) params.set('search', search.trim());
       const data = await api.get<ListResponse>(
         `/api/v1/admin/engine-param-templates?${params.toString()}`,
         orgId,
       );
       setTemplates(data.templates || []);
+      setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : t('engineTemplates.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [orgId, search, t]);
+  }, [orgId, offset, search, t]);
 
   useEffect(() => {
     void load();
   }, [load]);
+
+  // A new search is a new result set: start at its first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [search]);
 
   useEffect(() => {
     api
@@ -202,6 +216,9 @@ export default function EngineTemplatesPage() {
               ))}
             </tbody>
           </table>
+        )}
+        {total > PAGE_SIZE && (
+          <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
       </div>
 

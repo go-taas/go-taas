@@ -64,7 +64,7 @@
 | D6 | **配额变更在 verdict 缓存 TTL 内生效**（热路径维度 ≤ 30 秒），生命周期维度即时；抽屉文档化传播窗口。收紧配额到当前用量之下**不会**杀掉在途请求或删除服务 — 只阻塞新的（用量自然排空） | 可预测、非破坏性收紧：守卫在边界阻塞，绝不撤销已在运行的东西 — 与 #6 支出上限对在途请求的语义相同 |
 | D7 | **配额管理仅限运营者**；租户面只读（配额条 + `/quotas`）。租户"申请提升"是发往运营者的 **mailto 链接**（可配置地址），不是工作流（§1.3 Bedrock） | 被约束方不能持有杠杆（§1.2）；mailto 覆盖单运营者平台而无需审批流栈 |
 | D8 | **租户配额条展示全部三个维度**（当前用量 / 限额，或"不限"）于终端用户控制台（组织上下文区的紧凑条 + `/quotas` 详情页）；用量计数为：在途请求（网关）、今日批量任务（batch）、单请求 token 上限（常量展示）。任何租户看不到其他组织的配额 | 撞上之前可见（§1.3 Anthropic）；配额条让约束透明、13301 错误可诊断 |
-| D9 | **所有配额变更均审计**（`quota.updated` 带旧 → 新值与操作运营者），管理页展示按组织的变更历史（最近 20 条） | 配额变更是有公平性影响的机群保护决策；历史匹配审计惯例（#22）并回答"谁在何时收紧的" |
+| D9 | **所有配额变更均审计**（`quota.updated` 带旧 → 新值与操作运营者），管理页展示按组织的分页变更历史 | 配额变更是有公平性影响的机群保护决策；历史匹配审计惯例（#22）并回答"谁在何时收紧的" |
 | D10 | **Realm 与表面绑定**：管理仅限管理面（`/admin/quotas` + `/api/v1/admin/quotas/*`）；租户视图是终端用户面（`/quotas` + `/api/v1/quotas/*`）。用户 realm 会话访问管理路由得到 **10038**；无角色会话得到 **10036** | 与控制台表面分离（#17）一致；配额内部信息（全平台对比）是运营者知识，本组织的配额是租户的 |
 
 **范围内**：三个组织配额字段及其执行（网关在途跟踪 + token 上限；batch 每日检查）；管理页 `/admin/quotas`（带配额列的组织表、带预设的编辑对话框、变更历史抽屉）；租户配额条与 `/quotas` 页；verdict 缓存扩展；审计事件；申请提升 mailto。
@@ -108,7 +108,7 @@
 
 - **FR1.1** 组织配额为 `{organization_id, organization_name, max_concurrent_requests (int64, 0 = 不限, 否则 1–10000), max_batch_jobs_per_day (int64, 0 = 不限, 否则 1–10000), max_output_tokens_per_request (int64, 0 = 不限, 否则 64–32768), updated_at, updated_by}`。组织创建时默认：全部 0（不限，§1.4）。
 - **FR1.2** `ListOrganizationQuotas`（`GET /api/v1/admin/quotas`）返回按组织配额行及当前用量（`concurrent_requests`（实时）、`inference_services`、`batch_jobs_today`），支持 `page_size`/`page_token` 分页、`name` 搜索与 `unlimited_only` / `limited_only` 过滤。用量计数是尽力而为的快照（在途计数是经配额 RPC 中继的网关状态）。
-- **FR1.3** `GetOrganizationQuota`（`GET /api/v1/admin/quotas/{organization_id}`）返回单个组织的配额、用量与最近 20 条变更历史。未知组织返回 **13306 `CodeQuotaNotFound`**。
+- **FR1.3** `GetOrganizationQuota`（`GET /api/v1/admin/quotas/{organization_id}`）返回单个组织的配额、用量与一页变更历史（`page.offset`/`page.limit`）。未知组织返回 **13306 `CodeQuotaNotFound`**。
 - **FR1.4** `UpdateOrganizationQuota`（`PATCH /api/v1/admin/quotas/{organization_id}`）设置三个维度的任意子集。超出范围的值（或负数）返回 **13305 `CodeQuotaInvalid`** 并在消息中指名维度。收紧到当前用量之下是允许的且非破坏性（D6）。变更被审计（`quota.updated`，旧 → 新，运营者）并出现在历史中。
 - **FR1.5** 编辑对话框提供四个预设（D5）一键填充；选择预设填充字段后运营者可在保存前编辑。预设是 UI 常量，标注"Default / Starter / Growth / Enterprise"。
 
@@ -167,7 +167,7 @@
 
 **编辑对话框**：三个字段（标注范围与"0 = 不限"）、预设行（Default / Starter / Growth / Enterprise — 一键填充字段）、内联校验（超范围显示"输入 0（不限）或 1–10000"式文案）、保存（PATCH）。保存显示成功 toast 并刷新行；**13305** 错误高亮出错字段。
 
-**变更历史抽屉**（右侧）：该组织最近 20 条变更 — 时间、运营者、按维度旧 → 新（"并发：50 → 100"），来源于审计轨迹。
+**变更历史页面**：该组织分页展示的变更 — 时间、运营者、按维度旧 → 新（"并发：50 → 100"），来源于审计轨迹。
 
 **状态**：加载骨架屏；空态（"还没有组织"）；错误（过期带重试）；无权限（标准样式，链接到 `/admin`）。
 
@@ -197,7 +197,7 @@
 | RPC | 路由 | 前缀 | 状态 | 用途 |
 | --- | --- | --- | --- | --- |
 | `ListOrganizationQuotas`（扩展 `taas.tenancy.v1`） | `GET /api/v1/admin/quotas` | 管理 | **新增** | 按组织配额行及实时用量；分页、搜索、限额状态过滤 |
-| `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | 管理 | **新增** | 单组织配额 + 用量 + 变更历史；未知组织 → 13306 |
+| `GetOrganizationQuota` | `GET /api/v1/admin/quotas/{organization_id}` | 管理 | **新增** | 单组织配额 + 用量 + 分页变更历史；未知组织 → 13306 |
 | `UpdateOrganizationQuota` | `PATCH /api/v1/admin/quotas/{organization_id}` | 管理 | **新增** | 设置三个维度的任意子集；审计；坏值 → 13305 |
 | `GetMyQuota` | `GET /api/v1/quotas` | 用户 | **新增** | 调用者组织配额及实时用量（脱敏 — 仅本组织） |
 | `VerifyAPIKey`（`taas.auth.v1`） | 内部（网关 → `auth`） | 无 | **变更** | verdict 增加 `max_concurrent_requests`、`max_output_tokens_per_request`（组织级，D3） |
@@ -241,7 +241,7 @@
 | AC7 | **检查顺序**：同时违反速率限制与配额的请求得到 **10037**（速率优先）；同时违反配额与资金的请求得到配额码（配额先于资金） | FVT（网关契约） |
 | AC8 | **配额条与 `/quotas`**：终端用户控制台展示三个带用量/限额的徽标（≥ 80% 琥珀、100% 红），`/quotas` 页展示三张带通俗说明的卡片与申请提升 mailto；全部维度不限时配额条隐藏 | Nightwatch E2E |
 | AC9 | **租户组织限定**：`GET /api/v1/quotas` 只返回调用者组织的配额；任何字段不泄露其他组织数据；租户面无配额变更路由 | FVT + Nightwatch E2E |
-| AC10 | **变更历史与审计**：每次 `UpdateOrganizationQuota` 出现在审计轨迹（`quota.updated`，旧 → 新，运营者）与管理变更历史抽屉（最近 20 条） | FVT + Nightwatch E2E |
+| AC10 | **变更历史与审计**：每次 `UpdateOrganizationQuota` 出现在审计轨迹（`quota.updated`，旧 → 新，运营者）与管理变更历史页面（分页） | FVT + Nightwatch E2E |
 | AC11 | **传播窗口**：热路径配额变更在 verdict TTL 内（≤ 30 秒）执行；生命周期变更在下一次创建调用时；抽屉文档化两个窗口 | FVT |
 | AC12 | **反向 realm 分离**：有效用户 realm 会话 token 访问 `GET /api/v1/admin/quotas` 被拒 **10038**；管理页无 `/api/v1/*` 调用、用户页无 `/api/v1/admin/*` 调用 | FVT + Nightwatch E2E |
 | AC13 | 无所需角色的会话收到 **10036**，管理页展示标准无权限状态并带返回 `/admin` 链接 | Nightwatch E2E |

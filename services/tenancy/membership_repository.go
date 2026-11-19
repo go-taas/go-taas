@@ -301,8 +301,9 @@ func (r *MembershipRepository) ListJoinRequestsByUser(ctx context.Context, userI
 	return rows, err
 }
 
-// ListJoinRequests returns join requests filtered by target and status.
-func (r *MembershipRepository) ListJoinRequests(ctx context.Context, targetType, targetID, status string) ([]*JoinRequest, error) {
+// ListJoinRequests returns one page of join requests filtered by target
+// and status, newest first.
+func (r *MembershipRepository) ListJoinRequests(ctx context.Context, targetType, targetID, status string, offset, limit int) ([]*JoinRequest, int64, error) {
 	query := r.db.DB(ctx).Model(&JoinRequest{})
 	if targetType != "" {
 		query = query.Where("target_type = ?", targetType)
@@ -313,9 +314,13 @@ func (r *MembershipRepository) ListJoinRequests(ctx context.Context, targetType,
 	if status != "" {
 		query = query.Where("status = ?", status)
 	}
+	var total int64
+	if err := query.Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
 	var rows []*JoinRequest
-	err := query.Order("created_at DESC").Find(&rows).Error
-	return rows, err
+	err := query.Order("created_at DESC").Offset(offset).Limit(limit).Find(&rows).Error
+	return rows, total, err
 }
 
 // FindJoinRequest returns the join request with the given id; nil when

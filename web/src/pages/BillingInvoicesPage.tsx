@@ -3,9 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
-import { formatTime } from '../api';
+import { formatTime, type PageMeta } from '../api';
 import { useI18n } from '../i18n';
 import { formatMoney } from '../display';
+import { Pagination } from '../components';
+
+const PAGE_SIZE = 20;
 
 interface Invoice {
   invoiceId: string;
@@ -25,14 +28,31 @@ export default function BillingInvoicesPage() {
   const { orgId } = useOrg();
   const { t, tEnum } = useI18n();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
+  const [total, setTotal] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [error, setError] = useState('');
 
   useEffect(() => {
+    const params = new URLSearchParams({
+      'page.offset': String(offset),
+      'page.limit': String(PAGE_SIZE),
+    });
     api
-      .get<{ invoices?: Invoice[] }>('/api/v1/admin/billing/invoices?page.limit=100', orgId)
-      .then((data) => setInvoices(data.invoices || []))
+      .get<{ invoices?: Invoice[]; pageMeta?: PageMeta }>(
+        `/api/v1/admin/billing/invoices?${params.toString()}`,
+        orgId,
+      )
+      .then((data) => {
+        setInvoices(data.invoices || []);
+        setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : t('invoices.loadFailed')));
-  }, [api, orgId, t]);
+  }, [api, orgId, offset, t]);
+
+  // A different organization is a different ledger: start at its first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [orgId]);
 
   const download = async (invoiceId: string) => {
     try {
@@ -79,6 +99,9 @@ export default function BillingInvoicesPage() {
             ))}
           </tbody>
         </table>
+      )}
+      {total > PAGE_SIZE && (
+        <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
       )}
     </div>
   );

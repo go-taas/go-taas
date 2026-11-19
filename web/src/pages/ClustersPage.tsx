@@ -7,11 +7,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { api, type ClusterSummary } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { BackLink, ErrorBanner, StateBadge, Toast } from '../components';
+import { BackLink, ErrorBanner, Pagination, StateBadge, Toast } from '../components';
 import { navigate } from '../router';
 
 const STATE_FILTERS = ['', 'active', 'disabled'];
 const HEALTH_FILTERS = ['', 'healthy', 'degraded', 'unknown'];
+const PAGE_SIZE = 20;
 
 export default function ClustersPage() {
   const { orgId } = useOrg();
@@ -20,6 +21,7 @@ export default function ClustersPage() {
   const [discovering, setDiscovering] = useState(false);
   const [stateFilter, setStateFilter] = useState('');
   const [healthFilter, setHealthFilter] = useState('');
+  const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
@@ -73,6 +75,11 @@ export default function ClustersPage() {
     void load();
   }, [load]);
 
+  // A different filter is a different result set: start at its first page.
+  useEffect(() => {
+    setOffset(0);
+  }, [stateFilter, healthFilter]);
+
   const register = async () => {
     try {
       await api.post<{ clusterId: string }>('/api/v1/admin/clusters', orgId, {
@@ -94,6 +101,9 @@ export default function ClustersPage() {
   const filtered = clusters.filter(
     (c) => (!stateFilter || c.state === stateFilter) && (!healthFilter || c.health === healthFilter),
   );
+  // The cluster registry endpoint has no filter parameters yet, so the page
+  // slices the filtered rows itself and keeps the same Pagination contract.
+  const pageRows = filtered.slice(offset, offset + PAGE_SIZE);
 
   return (
     <div>
@@ -187,7 +197,7 @@ export default function ClustersPage() {
               </tr>
             </thead>
             <tbody>
-              {filtered.map((c) => (
+              {pageRows.map((c) => (
                 <tr key={c.clusterId} data-testid={`clusters-cluster-${c.clusterId}`}>
                   <td>
                     <a
@@ -234,6 +244,14 @@ export default function ClustersPage() {
               ))}
             </tbody>
           </table>
+          {filtered.length > PAGE_SIZE && (
+            <Pagination
+              offset={offset}
+              limit={PAGE_SIZE}
+              total={filtered.length}
+              onPageChange={setOffset}
+            />
+          )}
         </div>
       )}
 

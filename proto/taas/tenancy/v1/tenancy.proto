@@ -861,13 +861,15 @@ message ListOrganizationQuotasResponse {
 
 message GetOrganizationQuotaRequest {
   string organization_id = 1;
+  taas.common.v1.PageRequest page = 2;
 }
 
 message GetOrganizationQuotaResponse {
   taas.common.v1.Response response = 1;
   OrganizationQuota quota = 2;
   QuotaUsage usage = 3;
-  repeated QuotaChangeEntry changes = 4; // newest first, last 20
+  repeated QuotaChangeEntry changes = 4; // newest first
+  taas.common.v1.PageMeta page_meta = 5;
 }
 
 message UpdateOrganizationQuotaRequest {
@@ -1149,11 +1151,13 @@ message ListJoinRequestsRequest {
   string target_type = 1;
   string target_id = 2;
   string status = 3;
+  taas.common.v1.PageRequest page = 4;
 }
 
 message ListJoinRequestsResponse {
   taas.common.v1.Response response = 1;
   repeated JoinRequest requests = 2;
+  taas.common.v1.PageMeta page_meta = 3;
 }
 
 message ApproveJoinRequestRequest {
