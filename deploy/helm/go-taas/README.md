@@ -568,7 +568,12 @@ storage:
 
 A filesystem backend must have `filesystem.existingClaim` or
 `filesystem.provision.enabled`; `delivery.default` must be one of
-`delivery.allowed`, and `cache` requires `warmup.enabled`. Object-store
+`delivery.allowed`, and `cache` requires `warmup.enabled`. A transfer pod
+can only mount a claim from its own namespace, so an `existingClaim` must
+exist in `transfer.namespace` (the chart creates a provisioned claim
+there). When the same StorageClass resolves every claim to the same
+JuiceFS/NFS export — the reference deployment — the server and the
+inference pods see the same weights under their own claims. Object-store
 credentials are never inlined: the chart only names a Secret, and the
 transfer Job projects the keys.
 

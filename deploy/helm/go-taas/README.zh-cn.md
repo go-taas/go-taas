@@ -436,7 +436,7 @@ storage:
         allowed: [cache, download]
 ```
 
-文件系统后端必须提供 `filesystem.existingClaim` 或 `filesystem.provision.enabled`；`delivery.default` 必须属于 `delivery.allowed`，`cache` 还要求 `warmup.enabled`。对象存储凭据不内联：chart 只引用 Secret，由搬运 Job 投射键值。
+文件系统后端必须提供 `filesystem.existingClaim` 或 `filesystem.provision.enabled`；`delivery.default` 必须属于 `delivery.allowed`，`cache` 还要求 `warmup.enabled`。搬运 Pod 只能挂载同命名空间的 PVC，因此 `existingClaim` 必须位于 `transfer.namespace`（chart 置备的 PVC 就创建在该命名空间）。当同一 StorageClass 把所有 PVC 解析到同一个 JuiceFS/NFS 导出（参考部署即如此）时，服务端与推理 Pod 通过各自的 claim 看到同一份权重。对象存储凭据不内联：chart 只引用 Secret，由搬运 Job 投射键值。
 
 `transfer` 把所有大流量操作从 API Server 移到 `Job/taas-transfer-<id>`：Server 写意图行并发布消息，Controller 构建 Job，Job 通过 ConfigMap 回报进度、通过消息队列回报终态。Chart 会创建 transfer 命名空间、ServiceAccount 与仅能读写进度 ConfigMap 的 Role。
 
