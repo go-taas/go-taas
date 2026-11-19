@@ -58,6 +58,7 @@ var messages = map[Code]string{
 	CodeEmailSendFailed:       "failed to send the verification email",
 	CodeUserProtected:         "the platform administrator account cannot be deleted",
 	CodeUserDisableProtected:  "the bootstrap and platform administrator accounts cannot be disabled",
+	CodeUserRoleProtected:     "the bootstrap administrator's platform administrator role cannot be revoked",
 
 	// model
 	CodeModelNotFound:        "model not found",

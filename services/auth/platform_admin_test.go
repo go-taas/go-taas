@@ -137,6 +137,30 @@ func TestRevokePlatformAdminRefusesSelfAndLastAdmin(t *testing.T) {
 	assert.False(t, resp.GetUser().GetPlatformAdmin())
 }
 
+// TestRevokePlatformAdminProtectsTheBootstrapAdmin verifies the seeded admin
+// keeps the platform administrator role: without it the recovery account can
+// no longer recover the installation.
+func TestRevokePlatformAdminProtectsTheBootstrapAdmin(t *testing.T) {
+	env := newPlatformAdminEnv(t)
+	ctx := env.ctx(t, "root")
+	require.NoError(t, env.db.Create(&User{
+		ID: "dddddddd-dddd-4ddd-8ddd-dddddddddddd", Username: seedAdminUsername,
+		Email: "admin@example.com", State: UserStateActive, PlatformAdmin: true,
+	}).Error)
+
+	_, err := env.svc.RevokePlatformAdmin(ctx, &authv1.RevokePlatformAdminRequest{
+		UserId: "dddddddd-dddd-4ddd-8ddd-dddddddddddd",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeUserRoleProtected, apierrors.CodeOf(err))
+
+	// The role is untouched and no session was revoked.
+	var row User
+	require.NoError(t, env.db.First(&row, "id = ?", "dddddddd-dddd-4ddd-8ddd-dddddddddddd").Error)
+	assert.True(t, row.PlatformAdmin, "the bootstrap admin must stay a platform administrator")
+	assert.NotContains(t, env.reaper.reaped, row.ID)
+}
+
 // TestRevokePlatformAdminKeepsTheLastAdministrator covers the last-admin guard
 // with two administrators: after one is demoted, the remaining one cannot be.
 func TestRevokePlatformAdminKeepsTheLastAdministrator(t *testing.T) {

@@ -102,6 +102,10 @@ const (
 	// administrator account. A disabled recovery account would lock an
 	// installation out just as effectively as deleting it.
 	CodeUserDisableProtected Code = 10047 // USER_DISABLE_PROTECTED
+	// CodeUserRoleProtected refuses revoking the platform administrator
+	// role from the bootstrap admin. Without the role it is no longer the
+	// recovery account, which would strand an installation.
+	CodeUserRoleProtected Code = 10048 // USER_ROLE_PROTECTED
 )
 
 // model module error codes.

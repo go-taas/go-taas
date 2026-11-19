@@ -122,3 +122,24 @@ func TestFVTPlatformAdminGuards(t *testing.T) {
 		"/api/v1/admin/auth/users/"+fvtAliceID+":revoke-platform-admin", nil)
 	require.Equal(t, http.StatusOK, code, "revoking a non-administrator is a no-op: %v", body)
 }
+
+// The bootstrap admin keeps the platform administrator role: without it the
+// installation loses its seeded recovery account.
+func TestFVTPlatformAdminCannotRevokeBootstrapAdmin(t *testing.T) {
+	env := newPlatformAdminEnv2(t)
+
+	const bootstrapID = "dddddddd-dddd-4ddd-8ddd-dddddddddddd"
+	require.NoError(t, env.db.Create(&auth.User{
+		ID: bootstrapID, Username: "admin", Email: "admin@example.com",
+		State: auth.UserStateActive, PlatformAdmin: true,
+	}).Error)
+
+	code, body := env.call(t, fvtRootID, http.MethodPost,
+		"/api/v1/admin/auth/users/"+bootstrapID+":revoke-platform-admin", nil)
+	assert.NotEqual(t, http.StatusOK, code)
+	assert.EqualValues(t, 10048, body["code"], "bootstrap revoke: %v", body)
+
+	var row auth.User
+	require.NoError(t, env.db.First(&row, "id = ?", bootstrapID).Error)
+	assert.True(t, row.PlatformAdmin, "the bootstrap admin must stay a platform administrator")
+}

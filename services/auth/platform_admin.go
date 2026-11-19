@@ -110,6 +110,14 @@ func (s *Service) RevokePlatformAdmin(ctx context.Context, req *authv1.RevokePla
 	if err != nil {
 		return nil, err
 	}
+	// The bootstrap admin is the installation's recovery identity: without
+	// the platform administrator role it can no longer administer the
+	// platform, which defeats the recovery path the seeded account exists
+	// for. The console disables the action too; the guard lives here because
+	// the API is reachable without the console.
+	if target.Username == seedAdminUsername {
+		return nil, apierrors.New(apierrors.CodeUserRoleProtected)
+	}
 	if target.ID == actor {
 		return nil, apierrors.Newf(apierrors.CodeForbidden,
 			"auth: a platform administrator cannot revoke its own role")
