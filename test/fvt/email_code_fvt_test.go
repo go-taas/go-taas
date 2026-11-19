@@ -67,6 +67,7 @@ func TestFVTEmailCodeRegisterAndLogin(t *testing.T) {
 }
 
 var _ = auth.UserStateActive
+
 // TestFVTEmailCodeChangeEmailOnAdminSurface verifies the admin console can
 // request a change_email code (the profile page is shared by both
 // surfaces, so the endpoint must answer on the admin prefix too).
@@ -84,4 +85,53 @@ func TestFVTEmailCodeChangeEmailOnAdminSurface(t *testing.T) {
 	stored, err := client.Get(t.Context(), "auth:email-code:new@x.com:change_email").Result()
 	require.NoError(t, err)
 	assert.Len(t, stored, 6)
+}
+
+// A malformed address is rejected before any code is generated or mail is
+// attempted, so the console can point at the field instead of claiming a
+// send failure.
+func TestFVTEmailCodeRejectsInvalidAddress(t *testing.T) {
+	env := newSSOEnv(t)
+	enableEmailVerificationFVT(t)
+
+	for _, email := range []string{"not-an-email", "alice", "alice@", "@example.com", "alice@example", "a lice@example.com"} {
+		code, body := env.call(t, http.MethodPost, "/api/v1/auth/email-code", map[string]any{
+			"email": email, "purpose": "register",
+		}, nil)
+		assert.NotEqual(t, http.StatusOK, code, "email %q: %v", email, body)
+		assert.EqualValues(t, float64(10044), body["code"], "email %q: %v", email, body)
+	}
+
+	// Registration refuses the same malformed address even when a code is
+	// supplied: the address is validated independently of the code.
+	code, body := env.call(t, http.MethodPost, "/api/v1/auth/users", map[string]any{
+		"username": "badmail", "password": "Password123", "email": "not-an-email", "emailCode": "123456",
+	}, nil)
+	assert.NotEqual(t, http.StatusOK, code)
+	assert.EqualValues(t, float64(10044), body["code"], "%v", body)
+}
+
+// A transport failure is surfaced to the caller instead of being logged and
+// answered with success: the browser must tell the user the mail did not go
+// out. The stored code and cooldown are released so a retry can work.
+func TestFVTEmailCodeSendFailureIsReported(t *testing.T) {
+	env := newSSOEnv(t)
+	cfg := &config.Configuration{}
+	cfg.Auth.EmailVerification = true
+	cfg.Auth.SMTP = config.SMTPConfig{Host: "127.0.0.1", Port: 1, From: "no-reply@example.com"}
+	config.SetConfigForTest(cfg)
+	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
+
+	code, body := env.call(t, http.MethodPost, "/api/v1/auth/email-code", map[string]any{
+		"email": "alice@example.com", "purpose": "register",
+	}, nil)
+	assert.NotEqual(t, http.StatusOK, code, "%v", body)
+	assert.EqualValues(t, float64(10045), body["code"], "%v", body)
+
+	client := env.svc.SessionStoreClient()
+	require.NotNil(t, client)
+	assert.EqualValues(t, 0, client.Exists(t.Context(), "auth:email-code:alice@example.com:register").Val(),
+		"a code that could not be sent must not stay valid")
+	assert.EqualValues(t, 0, client.Exists(t.Context(), "auth:email-code-cooldown:alice@example.com:register").Val(),
+		"a failed send must not block the retry")
 }

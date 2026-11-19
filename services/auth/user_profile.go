@@ -78,6 +78,9 @@ func (s *Service) UpdateUserProfile(ctx context.Context, req *authv1.UpdateUserP
 	if email != "" && len(email) > maxEmailLen {
 		return nil, apierrors.New(apierrors.CodeTenancyInvalid)
 	}
+	if email != "" && !validEmailAddress(email) {
+		return nil, apierrors.New(apierrors.CodeEmailInvalid)
+	}
 	repo, err := s.ssoRepository()
 	if err != nil {
 		return nil, err

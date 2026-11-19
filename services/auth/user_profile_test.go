@@ -96,7 +96,14 @@ func TestServiceUpdateUserProfileValidation(t *testing.T) {
 		DisplayName: string(make([]byte, 200)),
 	})
 	assert.EqualValues(t, apierrors.CodeTenancyInvalid, apierrors.CodeOf(err))
+
+	// A malformed new address is refused before any code is checked.
+	_, err = svc.UpdateUserProfile(ctx, &authv1.UpdateUserProfileRequest{
+		Email: "not-an-email",
+	})
+	assert.EqualValues(t, apierrors.CodeEmailInvalid, apierrors.CodeOf(err))
 }
+
 // profileUser creates a user row and an authenticated context for it.
 func profileUser(t *testing.T, svc *Service, db *gorm.DB, id, username, email, sessionID string) context.Context {
 	t.Helper()

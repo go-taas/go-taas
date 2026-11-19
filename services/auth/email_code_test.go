@@ -2,6 +2,7 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -193,4 +194,67 @@ func TestSendVerificationEmailImplicitTLS(t *testing.T) {
 func TestHostOf(t *testing.T) {
 	assert.Equal(t, "smtp.example.com", hostOf("smtp.example.com:465"))
 	assert.Equal(t, "smtp.example.com", hostOf("smtp.example.com"))
+}
+
+// The address syntax accepted by the API: one plain mailbox with a dotted
+// domain, no display name and no whitespace.
+func TestValidEmailAddress(t *testing.T) {
+	valid := []string{"alice@example.com", "a.b+tag@sub.example.co", "A_1@example.io"}
+	for _, email := range valid {
+		assert.True(t, validEmailAddress(email), "%q should be valid", email)
+	}
+	invalid := []string{
+		"", "not-an-email", "alice", "alice@", "@example.com", "alice@example",
+		"a lice@example.com", "alice @example.com", "Alice <alice@example.com>",
+		".alice@example.com", "alice.@example.com", "alice..b@example.com",
+		"alice@.example.com", "alice@example..com", "alice@example.com.",
+		"alice@example.com\n", "alice@" + strings.Repeat("a", 64) + ".com",
+		strings.Repeat("a", 250) + "@example.com",
+	}
+	for _, email := range invalid {
+		assert.False(t, validEmailAddress(email), "%q should be invalid", email)
+	}
+}
+
+// A rejected address is refused before a code is stored or mail is
+// attempted.
+func TestSendEmailCodeRejectsInvalidAddress(t *testing.T) {
+	svc, _ := newSSOService(t)
+	enableEmailVerification(t)
+
+	_, err := svc.SendEmailCode(context.Background(), &authv1.SendEmailCodeRequest{
+		Email: "not-an-email", Purpose: emailCodePurposeRegister,
+	})
+	assert.EqualValues(t, apierrors.CodeEmailInvalid, apierrors.CodeOf(err))
+}
+
+// An SMTP failure releases the code and cooldown and is reported, so the
+// console can tell the user the mail did not go out.
+func TestSendEmailCodeReportsTransportFailure(t *testing.T) {
+	svc, _ := newSSOService(t)
+	cfg := &config.Configuration{}
+	cfg.Auth.EmailVerification = true
+	cfg.Auth.SMTP = config.SMTPConfig{Host: "127.0.0.1", Port: 1, From: "no-reply@example.com"}
+	config.SetConfigForTest(cfg)
+	t.Cleanup(func() { config.SetConfigForTest(&config.Configuration{}) })
+
+	_, err := svc.SendEmailCode(context.Background(), &authv1.SendEmailCodeRequest{
+		Email: "alice@example.com", Purpose: emailCodePurposeRegister,
+	})
+	assert.EqualValues(t, apierrors.CodeEmailSendFailed, apierrors.CodeOf(err))
+
+	client, err := svc.redisClientFor()
+	require.NoError(t, err)
+	assert.EqualValues(t, 0, client.Exists(context.Background(), "auth:email-code:alice@example.com:register").Val())
+	assert.EqualValues(t, 0, client.Exists(context.Background(), "auth:email-code-cooldown:alice@example.com:register").Val())
+}
+
+// Registration refuses a malformed address even when email verification is
+// off: a stored address must be deliverable.
+func TestCreateUserRejectsInvalidEmail(t *testing.T) {
+	svc, _ := newSSOService(t)
+	_, err := svc.CreateUser(context.Background(), &authv1.CreateUserRequest{
+		Username: "badmail", Password: "Password123", Email: "not-an-email",
+	})
+	assert.EqualValues(t, apierrors.CodeEmailInvalid, apierrors.CodeOf(err))
 }

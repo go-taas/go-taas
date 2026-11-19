@@ -17,6 +17,7 @@ import (
 	"fmt"
 	"math/big"
 	"net"
+	"net/mail"
 	"net/smtp"
 	"strings"
 	"time"
@@ -89,6 +90,37 @@ func (s *Service) redisClientFor() (*goredis.Client, error) {
 	return client, nil
 }
 
+// validEmailAddress reports whether an address is a plain, deliverable
+// mailbox: one addr-spec with a dotted domain, no display name, no
+// whitespace, and within the stored column's bounds. It is deliberately
+// stricter than net/mail, which also accepts "Name <a@b>" and bare local
+// addresses that no SMTP relay would deliver to.
+func validEmailAddress(email string) bool {
+	if email == "" || len(email) > maxEmailLen || strings.ContainsAny(email, " \t\r\n") {
+		return false
+	}
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return false
+	}
+	at := strings.LastIndex(email, "@")
+	if at <= 0 || at != strings.Index(email, "@") {
+		return false
+	}
+	domain := email[at+1:]
+	if len(domain) > 253 || !strings.Contains(domain, ".") ||
+		strings.HasPrefix(domain, ".") || strings.HasSuffix(domain, ".") ||
+		strings.Contains(domain, "..") {
+		return false
+	}
+	for _, label := range strings.Split(domain, ".") {
+		if label == "" || len(label) > 63 {
+			return false
+		}
+	}
+	return true
+}
+
 // ensureEmailAvailable refuses an address another account already owns.
 // The caller's own address is fine: re-submitting it needs no code.
 func (s *Service) ensureEmailAvailable(ctx context.Context, email string) error {
@@ -126,6 +158,9 @@ func (s *Service) SendEmailCode(ctx context.Context, req *authv1.SendEmailCodeRe
 		purpose != emailCodePurposeLogin && purpose != emailCodePurposeChangeEmail) {
 		return nil, apierrors.New(apierrors.CodeUserNotFound)
 	}
+	if !validEmailAddress(email) {
+		return nil, apierrors.New(apierrors.CodeEmailInvalid)
+	}
 	// A changed address must not already belong to another account. The
 	// unique index is the authoritative guard on write; answering here too
 	// keeps the caller from spending a code (and the 60s cooldown) only to
@@ -161,9 +196,14 @@ func (s *Service) SendEmailCode(ctx context.Context, req *authv1.SendEmailCodeRe
 		return nil, err
 	}
 	if err := sendVerificationEmail(email, code); err != nil {
-		// A send failure is not fatal for the code issuance; the code is
-		// still stored and can be verified.
+		// A code that did not reach the mailbox is worthless and the
+		// cooldown would only lock the user out of a retry. Release both
+		// and report the failure: the console has to tell the user the
+		// mail did not go out instead of claiming success.
+		_ = client.Del(ctx, key).Err()
+		_ = client.Del(ctx, cooldownKey).Err()
 		logger.S().Warnw("email code send failed", "email", email, "err", err)
+		return nil, apierrors.New(apierrors.CodeEmailSendFailed)
 	}
 	return &authv1.SendEmailCodeResponse{
 		Response:           okResponse(),

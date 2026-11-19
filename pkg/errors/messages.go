@@ -54,6 +54,9 @@ var messages = map[Code]string{
 	CodeOrganizationInUse:     "organization still has api keys or inference services",
 	CodeOrganizationProtected: "the platform organization cannot be deleted",
 	CodeCaptchaInvalid:        "captcha invalid or expired",
+	CodeEmailInvalid:          "email address is invalid",
+	CodeEmailSendFailed:       "failed to send the verification email",
+	CodeUserProtected:         "the platform administrator account cannot be deleted",
 
 	// model
 	CodeModelNotFound:        "model not found",

@@ -89,6 +89,15 @@ const (
 	// distinct from invalid credentials so the console can refresh the
 	// image instead of claiming the password was wrong.
 	CodeCaptchaInvalid Code = 10043 // CAPTCHA_INVALID
+	// CodeEmailInvalid is returned when an email address is malformed.
+	CodeEmailInvalid Code = 10044 // EMAIL_INVALID
+	// CodeEmailSendFailed is returned when the verification email could
+	// not be handed to the SMTP transport.
+	CodeEmailSendFailed Code = 10045 // EMAIL_SEND_FAILED
+	// CodeUserProtected refuses deleting a system or platform
+	// administrator account. The bootstrap admin is the recovery path
+	// for an installation, so it is not deletable.
+	CodeUserProtected Code = 10046 // USER_PROTECTED
 )
 
 // model module error codes.

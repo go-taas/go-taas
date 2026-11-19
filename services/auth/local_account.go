@@ -38,6 +38,9 @@ func (s *Service) CreateUser(ctx context.Context, req *authv1.CreateUserRequest)
 	if !ValidatePasswordPolicy(password) {
 		return nil, apierrors.New(apierrors.CodePasswordPolicy)
 	}
+	if email != "" && !validEmailAddress(email) {
+		return nil, apierrors.New(apierrors.CodeEmailInvalid)
+	}
 	// When email verification is enabled, the email and its code are
 	// required.
 	if emailVerificationEnabled() {
