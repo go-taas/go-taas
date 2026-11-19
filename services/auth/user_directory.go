@@ -70,7 +70,26 @@ func (s *Service) GetUser(ctx context.Context, req *authv1.GetUserRequest) (*aut
 }
 
 // DisableUser flips a user to the disabled state.
+//
+// The bootstrap admin and every platform administrator are protected: a
+// disabled recovery account locks the installation out exactly like a
+// deleted one. The guard lives on the server because the API is reachable
+// without the console.
 func (s *Service) DisableUser(ctx context.Context, req *authv1.DisableUserRequest) (*authv1.DisableUserResponse, error) {
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return nil, err
+	}
+	target, err := repo.FindUser(ctx, req.GetUserId())
+	if isRecordNotFound(err) {
+		return nil, apierrors.New(apierrors.CodeUserNotFound)
+	}
+	if err != nil {
+		return nil, err
+	}
+	if target.Username == seedAdminUsername || target.PlatformAdmin {
+		return nil, apierrors.New(apierrors.CodeUserDisableProtected)
+	}
 	user, err := s.setUserState(ctx, req.GetUserId(), UserStateDisabled)
 	if err != nil {
 		return nil, err

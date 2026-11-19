@@ -185,6 +185,16 @@ func (s *Service) seedComposeProviderAndAdmin(ctx context.Context) error {
 		}
 		adminUser.PasswordHash = hash
 	}
+	// The bootstrap admin is the installation's recovery path and the API
+	// refuses to disable it. A row disabled by an older build or by a
+	// direct database edit is reactivated on the next start so the
+	// operator is never locked out.
+	if adminUser.State != UserStateActive {
+		if _, err := repo.SetUserState(ctx, adminUser.ID, UserStateActive); err != nil {
+			return err
+		}
+		adminUser.State = UserStateActive
+	}
 
 	// 3. The admin user's identity binding (opt-in, with the provider).
 	var prov *SSOProvider

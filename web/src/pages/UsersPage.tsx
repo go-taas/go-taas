@@ -105,6 +105,8 @@ export default function UsersPage() {
     } catch (e) {
       if (e instanceof ApiError && e.code === 10046) {
         setActionError(t('users.deleteProtected'));
+      } else if (e instanceof ApiError && e.code === 10047) {
+        setActionError(t('users.disableProtected'));
       } else {
         setActionError(e instanceof ApiError ? e.message : t('users.stateFailed'));
       }
@@ -258,6 +260,15 @@ export default function UsersPage() {
                               label: t('common.disable'),
                               group: 'lifecycle',
                               danger: true,
+                              // The server refuses to disable the bootstrap
+                              // admin and every platform administrator, so the
+                              // entry stays visible but explains itself instead
+                              // of failing after a confirmation.
+                              disabled: user.platformAdmin || user.username === 'admin',
+                              title:
+                                user.platformAdmin || user.username === 'admin'
+                                  ? t('users.disableProtected')
+                                  : undefined,
                               onClick: () => openConfirm({ user, action: 'disable' }),
                             }
                           : {

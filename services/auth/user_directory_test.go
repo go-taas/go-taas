@@ -87,6 +87,40 @@ func TestServiceDisableEnableUser(t *testing.T) {
 	assert.EqualValues(t, apierrors.CodeUserNotFound, apierrors.CodeOf(err))
 }
 
+// TestServiceDisableUserProtectsAdministrators verifies the account the
+// installation recovers through cannot be disabled from the directory.
+func TestServiceDisableUserProtectsAdministrators(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+
+	require.NoError(t, db.Create(&User{
+		ID: "user-admin", Username: seedAdminUsername, Email: "admin@x.com",
+		State: UserStateActive, PlatformAdmin: true,
+	}).Error)
+	require.NoError(t, db.Create(&User{
+		ID: "user-root", Username: "root", Email: "root@x.com",
+		State: UserStateActive, PlatformAdmin: true,
+	}).Error)
+	require.NoError(t, db.Create(&User{
+		ID: "user-alice", Username: "alice", Email: "alice@x.com",
+		State: UserStateActive,
+	}).Error)
+
+	for _, id := range []string{"user-admin", "user-root"} {
+		_, err := svc.DisableUser(ctx, &authv1.DisableUserRequest{UserId: id})
+		assert.EqualValues(t, apierrors.CodeUserDisableProtected, apierrors.CodeOf(err), "protect %s", id)
+
+		var row User
+		require.NoError(t, db.First(&row, "id = ?", id).Error)
+		assert.Equal(t, UserStateActive, row.State, "%s must stay active", id)
+	}
+
+	// The guard is narrow: an ordinary account is still disableable.
+	dis, err := svc.DisableUser(ctx, &authv1.DisableUserRequest{UserId: "user-alice"})
+	require.NoError(t, err)
+	assert.Equal(t, UserStateDisabled, dis.User.State)
+}
+
 func TestServiceUserAffiliation(t *testing.T) {
 	svc, db := newSSOService(t)
 	ctx := context.Background()

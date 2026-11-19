@@ -1241,6 +1241,7 @@ export const en: Record<string, string> = {
   'users.revokeAdminSuccess': 'The platform administrator role was removed from {username}.',
   'users.deleteSuccess': 'User {username} was deleted.',
   'users.deleteProtected': 'The platform administrator account cannot be deleted.',
+  'users.disableProtected': 'The bootstrap and platform administrator accounts cannot be disabled.',
 
   // ---- Billing Payments ----
   'payments.title': 'Payments',

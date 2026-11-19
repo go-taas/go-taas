@@ -98,6 +98,10 @@ const (
 	// administrator account. The bootstrap admin is the recovery path
 	// for an installation, so it is not deletable.
 	CodeUserProtected Code = 10046 // USER_PROTECTED
+	// CodeUserDisableProtected refuses disabling a system or platform
+	// administrator account. A disabled recovery account would lock an
+	// installation out just as effectively as deleting it.
+	CodeUserDisableProtected Code = 10047 // USER_DISABLE_PROTECTED
 )
 
 // model module error codes.

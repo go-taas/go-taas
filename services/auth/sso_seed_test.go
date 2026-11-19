@@ -293,3 +293,27 @@ func TestSeedRestoresDeletedAdmin(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, RealmAdmin, resp.Realm)
 }
+
+// TestSeedReactivatesDisabledAdmin verifies the second half of the recovery
+// path: the API refuses to disable the bootstrap admin, and a row disabled by
+// an older build or a direct database edit is active again after a start.
+func TestSeedReactivatesDisabledAdmin(t *testing.T) {
+	svc, db := newSSOService(t)
+	ctx := context.Background()
+	svc.SetMembershipResolver(tenancy.NewMembershipResolver(db))
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+	require.NoError(t, db.Model(&User{}).Where("username = ?", seedAdminUsername).
+		Update("state", UserStateDisabled).Error)
+
+	require.NoError(t, svc.EnsureComposeSeed(ctx))
+	var admin User
+	require.NoError(t, db.First(&admin, "username = ?", seedAdminUsername).Error)
+	assert.Equal(t, UserStateActive, admin.State, "the seed restores the recovery account")
+
+	resp, err := svc.Login(ctx, &authv1.LoginRequest{
+		Username: seedAdminUsername, Password: seedAdminLocalPassword,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, RealmAdmin, resp.Realm)
+}

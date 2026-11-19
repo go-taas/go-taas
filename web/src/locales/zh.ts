@@ -1234,6 +1234,7 @@ export const zh: Record<string, string> = {
   'users.revokeAdminSuccess': '已取消 {username} 的平台管理员角色。',
   'users.deleteSuccess': '已删除用户 {username}。',
   'users.deleteProtected': '平台管理员账号不能被删除。',
+  'users.disableProtected': '内置管理员与平台管理员账号不能被禁用。',
 
   // ---- Billing Payments ----
   'payments.title': '支付',
