@@ -1,3 +1,26 @@
+# [1.121.0](https://github.com/go-taas/go-taas/compare/v1.120.0...v1.121.0) (2026-11-19)
+
+
+### Bug Fixes
+
+* **auth:** protect the bootstrap admin from being disabled ([1ec3223](https://github.com/go-taas/go-taas/commit/1ec3223b1ce6de38b6d635fe5e79ae6836a8025e))
+* **auth:** protect the bootstrap and platform administrators ([4923f0d](https://github.com/go-taas/go-taas/commit/4923f0dbd136165b4aa0c339e7753a9f691684b8))
+* **auth:** sign in when registering a local account ([82aa49d](https://github.com/go-taas/go-taas/commit/82aa49db4a4db5314257fbb37446fd66221edaff))
+* **auth:** validate emails and report verification delivery failures ([e7b4cf7](https://github.com/go-taas/go-taas/commit/e7b4cf7d0c1e6659f1ac4f8b4506c68fc1f9d753))
+* **web:** keep dialog actions inside the panel ([770a013](https://github.com/go-taas/go-taas/commit/770a0130b8f62d7e49d87ceeb7ea98b28b3484da))
+* **web:** unify user roles and surface user-management outcomes ([11e8ad8](https://github.com/go-taas/go-taas/commit/11e8ad872825ee4272c65b9acbd424e48d11f117))
+
+
+### Features
+
+* **auth:** drop tenant memberships when deleting a user ([df2a2f8](https://github.com/go-taas/go-taas/commit/df2a2f8ef73a78a43e0f490eb4fdb39ac67a8067))
+* **auth:** protect the bootstrap administrator's platform role ([9da144c](https://github.com/go-taas/go-taas/commit/9da144cea04300885d88b4c952182caa3a2e5310))
+* **console:** label project dialogs with display names ([77a732b](https://github.com/go-taas/go-taas/commit/77a732b8d0347c044f6cf8b134e9d2df41a588d2))
+* **console:** report every user action in a dismissible toast ([88a9209](https://github.com/go-taas/go-taas/commit/88a92095b9eb1292f4de1136fa8688d58a85fa67))
+* **tenancy:** allow users to join multiple organizations and projects ([f107b51](https://github.com/go-taas/go-taas/commit/f107b51bdec23f59b5a0afc236ade30c85f8421c))
+* **web:** retire the admin profile page ([102f932](https://github.com/go-taas/go-taas/commit/102f932867c967c0ffcc025bdc4f787609a967a3))
+* **web:** validate emails and explain account failures ([89a7319](https://github.com/go-taas/go-taas/commit/89a7319e2b7223d379d28693650048681f1d6206))
+
 # [1.120.0](https://github.com/go-taas/go-taas/compare/v1.119.0...v1.120.0) (2026-11-18)
 
 
