@@ -214,6 +214,12 @@ type k8sReconciler struct {
 	// queued behind this event and abort promptly, so the teardown is not
 	// delayed by the readiness timeout. Nil disables the check.
 	serviceState ServiceStateProvider
+	// warmupEnabled turns on the model-aware node affinity injection.
+	warmupEnabled bool
+	// warmupMode is preferred, required or disabled.
+	warmupMode string
+	// warmupWeight is the preferred-affinity weight (1-100).
+	warmupWeight int
 }
 
 // ServiceStateProvider reports the current desired state of an inference
@@ -345,6 +351,20 @@ func (r *k8sReconciler) SetScheduling(schedulerName, highClass, normalClass, low
 // its engine. It must be called before serving.
 func (r *k8sReconciler) SetServiceStateProvider(provider ServiceStateProvider) {
 	r.serviceState = provider
+}
+
+// SetWarmupConfig installs the model-aware scheduling policy. It must be
+// called before serving.
+func (r *k8sReconciler) SetWarmupConfig(enabled bool, mode string, weight int) {
+	r.warmupEnabled = enabled
+	if mode == "" {
+		mode = "preferred"
+	}
+	r.warmupMode = mode
+	if weight <= 0 {
+		weight = 100
+	}
+	r.warmupWeight = weight
 }
 
 // serviceSuperseded reports whether the platform state says this change is

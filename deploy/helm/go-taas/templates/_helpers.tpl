@@ -93,6 +93,30 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 {{- end -}}
 
+{{- define "go-taas.transfer.namespace" -}}
+{{- default "taas-jobs" .Values.transfer.namespace -}}
+{{- end -}}
+
+{{- define "go-taas.transfer.serviceAccountName" -}}
+{{- if .Values.transfer.serviceAccount.create -}}
+{{- default (printf "%s-transfer" (include "go-taas.fullname" .)) .Values.transfer.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.transfer.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
+{{/* PVC a filesystem backend mounts. Call with (dict "root" $ "name" $name "backend" $backend). */}}
+{{- define "go-taas.storage.claimName" -}}
+{{- $fs := dig "filesystem" dict .backend -}}
+{{- if $fs.existingClaim -}}
+{{- $fs.existingClaim -}}
+{{- else if dig "provision" "enabled" false $fs -}}
+{{- printf "%s-%s" (include "go-taas.fullname" .root) .name -}}
+{{- else -}}
+model-weights
+{{- end -}}
+{{- end -}}
+
 {{/* ---- images ---------------------------------------------------------- */}}
 
 {{/* Control-plane image reference. Call with (dict "root" $ "name" "taas-server" "image" .Values.taasServer.image). */}}
@@ -588,6 +612,40 @@ route; these are its install-time parts.
       "protectedPrefixes" ($gp.protectedPrefixes | default (list "/"))
       "pluginPath" "/usr/local/bin/gateway-plugin.wasm" -}}
 {{- $_ := set $overrides "gatewayPlugin" $gatewayPlugin -}}
+{{- $storage := deepCopy (.Values.storage | default dict) -}}
+{{- if or $storage.defaultBackend $storage.backends -}}
+{{- range $name, $backend := (get $storage "backends" | default dict) -}}
+{{- if and (eq (dig "type" "filesystem" $backend) "filesystem") (not (dig "filesystem" "existingClaim" "" $backend)) -}}
+{{- $fs := dig "filesystem" dict $backend -}}
+{{- $_ := set $fs "existingClaim" (include "go-taas.storage.claimName" (dict "root" $ "name" $name "backend" $backend)) -}}
+{{- $_ := set $backend "filesystem" $fs -}}
+{{- end -}}
+{{- end -}}
+{{- $_ := set $overrides "storage" $storage -}}
+{{- end -}}
+{{- $transfer := .Values.transfer | default dict -}}
+{{- $transferEnabled := ternary true false ($transfer.enabled | default false) -}}
+{{- $transferCfg := dict
+      "mode" (ternary "job" "inline" $transferEnabled)
+      "namespace" (include "go-taas.transfer.namespace" .)
+      "concurrency" (int ($transfer.concurrency | default 4))
+      "image" ""
+      "serviceAccount" (include "go-taas.transfer.serviceAccountName" .)
+      "nodeSelector" ($transfer.nodeSelector | default dict)
+      "tolerations" ($transfer.tolerations | default list)
+      "resources" ($transfer.resources | default dict)
+      "progressInterval" ($transfer.progressInterval | default "5s") -}}
+{{- if $transferEnabled -}}
+{{- $_ := set $transferCfg "image" (include "go-taas.image" (dict "root" . "name" ($transfer.image.name | default "taas-transfer") "image" ($transfer.image | default dict))) -}}
+{{- end -}}
+{{- if $transfer.job -}}
+{{- $_ := set $transferCfg "job" $transfer.job -}}
+{{- end -}}
+{{- $_ := set $overrides "transfer" $transferCfg -}}
+{{- $warmup := .Values.warmup | default dict -}}
+{{- if $warmup.enabled -}}
+{{- $_ := set $overrides "warmup" $warmup -}}
+{{- end -}}
 {{- $monitoring := .Values.monitoring | default dict -}}
 {{- if $monitoring.prometheusURL -}}
 {{- $rm := get $overrides "resourceMetrics" | default dict -}}
@@ -600,7 +658,8 @@ route; these are its install-time parts.
 {{- end -}}
 
 {{- define "go-taas.hasConfigOverrides" -}}
-{{- if or .Values.configOverrides .Values.dataPlane.enabled .Values.monitoring.prometheusURL .Values.gatewayPlugin.enabled -}}true{{- end -}}
+{{- $storage := .Values.storage | default dict -}}
+{{- if or .Values.configOverrides .Values.dataPlane.enabled .Values.monitoring.prometheusURL .Values.gatewayPlugin.enabled (dig "backends" dict $storage) .Values.transfer .Values.warmup.enabled -}}true{{- end -}}
 {{- end -}}
 
 {{/* Checksum of the config-overrides file, to roll pods when it changes. */}}

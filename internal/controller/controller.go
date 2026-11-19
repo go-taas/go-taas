@@ -67,6 +67,12 @@ type Controller struct {
 	// podFailureDetector is the optional periodic pod-failure scanner.
 	// Nil when not configured.
 	podFailureDetector *PodFailureDetector
+	// modelTransfer reconciles model.transfers into Kubernetes Jobs.
+	// Nil when transfer Jobs are not configured.
+	modelTransfer *ModelTransferReconciler
+	// modelWarmup reconciles model.warmups into KServe LocalModel resources.
+	// Nil when warmup is disabled.
+	modelWarmup *ModelWarmupReconciler
 }
 
 // New constructs a Controller consuming client and applying events with
@@ -111,6 +117,18 @@ func (c *Controller) SetPodFailureDetector(detector *PodFailureDetector) {
 	c.podFailureDetector = detector
 }
 
+// SetModelTransferReconciler installs the model-transfer Job reconciler. It
+// must be called before Run.
+func (c *Controller) SetModelTransferReconciler(reconciler *ModelTransferReconciler) {
+	c.modelTransfer = reconciler
+}
+
+// SetModelWarmupReconciler installs the model warmup reconciler. It must be
+// called before Run.
+func (c *Controller) SetModelWarmupReconciler(reconciler *ModelWarmupReconciler) {
+	c.modelWarmup = reconciler
+}
+
 // Run subscribes to all consumed subjects and blocks until ctx is
 // cancelled or a subscription fails. Subscriptions are started in the
 // background because broker clients differ in whether Subscribe blocks;
@@ -132,6 +150,26 @@ func (c *Controller) Run(ctx context.Context) error {
 			errCh <- err
 		}
 	}()
+	if c.modelTransfer != nil {
+		go func() {
+			if err := c.client.Subscribe(ctx, subjects.ModelTransfers, func(msg mq.Message) error {
+				return c.modelTransfer.ApplyModelTransfer(ctx, msg)
+			}); err != nil {
+				errCh <- err
+			}
+		}()
+		go c.modelTransfer.Run(ctx)
+	}
+	if c.modelWarmup != nil {
+		go func() {
+			if err := c.client.Subscribe(ctx, subjects.ModelWarmups, func(msg mq.Message) error {
+				return c.modelWarmup.ApplyModelWarmup(ctx, msg)
+			}); err != nil {
+				errCh <- err
+			}
+		}()
+		go c.modelWarmup.Run(ctx)
+	}
 	if c.inventory != nil {
 		go c.inventory.Run(ctx)
 	}

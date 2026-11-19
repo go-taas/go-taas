@@ -1,0 +1,260 @@
+# 多存储后端、异步模型任务与模型预热调度
+
+| 属性 | 内容 |
+| --- | --- |
+| 特性点 | 可插拔模型权重存储、异步搬运/解压 Job、节点级模型预热与调度 |
+| 文档范围 | 存储抽象、交付模式、无状态搬运 Job、预热索引与调度、API、数据模型、Helm 配置、控制台页面、失败处理与验收标准 |
+| 归属模块 | `model`（目录、下载、上传、搬运、缓存记录）、`controller`（Kubernetes Job 与 KServe 缓存资源）、`storage` / `transfer` / `warmup` 包 |
+| 相关文档 | [模型目录与一键部署](./model-catalog-deployment.zh-cn.md)、[架构设计](./architecture.zh-cn.md) |
+| 状态 | 已实现 |
+
+---
+
+## 1. 背景
+
+控制面此前只假设一种存储形态：一个挂载在 `weightsDir` 的 ReadWriteMany PVC，由进程内下载协程写入、所有推理 Pod 读取。这一假设阻碍了三类真实部署：
+
+1. **对象存储是事实来源。** S3/MinIO/OSS/COS 更便宜、更持久，但推理 Pod 无法直接 `mmap` 对象，必须先把字节物化到可读位置。
+2. **多种存储类并存。** 平台可能用高性能 JuiceFS 承载热模型、用 NFS/CephFS 归档冷模型、用 S3 保存导入的检查点；一个模型版本必须声明它所在的存储后端。
+3. **大文件搬运不属于 API Server。** 在 server 进程里下载 100 GiB 检查点或跨桶复制，会让控制面有状态、吃内存且无法水平扩展。
+
+因此本特性把“字节放在哪”与“Pod 怎么读”解耦，把所有大流量操作搬进专用 Kubernetes Job，并增加节点本地缓存，让已预热的模型调度到持有权重的节点。
+
+## 2. 目标与非目标
+
+目标：
+
+- 通过 Helm 声明任意数量的文件系统或对象存储后端。
+- 目录版本携带存储后端与交付模式（`mount`、`download`、`cache`），不改变部署 API 形状。
+- 下载、上传/解压、跨存储复制、删除全部异步、可观测、可取消。
+- `taas-server` 保持无状态：搬运不依赖 weights 挂载、不跑搬运协程、不持有 Job 的 Kubernetes 客户端。
+- 从 KServe `LocalModelNode` 构建“模型 → 已预热节点”索引，并向 `LLMInferenceService` 注入 `nodeAffinity`，默认 `preferred`，运维可要求 `required`。
+- 向后兼容：未声明 `storage` 的安装保持旧的单 PVC 行为。
+
+非目标：
+
+- 租户级存储隔离。存储后端是平台级能力，只有平台管理员可以注册、下载、搬运、预热模型。
+- 通用桶间数据搬运器。Job 只在声明的后端之间搬运模型目录前缀。
+- 替代 KServe 的缓存 agent：平台创建 `LocalModelNodeGroup`/`LocalModelCache` 并消费 `LocalModelNode` 状态，节点拷贝由 KServe `localmodelnode` agent 完成。
+
+## 3. 存储模型
+
+### 3.1 后端类型
+
+| 类型 | 字段 | 适用 |
+| --- | --- | --- |
+| `filesystem` | `existingClaim`、`provision{enabled,storageClass,accessMode,size}`、`mountPath` | JuiceFS、NFS、CephFS、EFS、Lustre、任意 RWX/RWO PVC |
+| `objectstore` | `provider`、`endpoint`、`region`、`bucket`、`prefix`、`forcePathStyle`、`tls`、`credentials` | S3、MinIO、OSS、COS、GCS S3 互操作 |
+
+对象存储凭据不内联：`credentials.existingSecret` 指向 Secret（release 命名空间，或由 Job 投射到 transfer 命名空间），`accessKeyKey` / `secretKeyKey` 指定键名。
+
+### 3.2 交付模式
+
+`delivery.default` 决定版本的默认交付方式，`delivery.allowed` 限定请求可选项。
+
+| 模式 | Pod 如何读取 | 前提 |
+| --- | --- | --- |
+| `mount` | 文件系统挂载到 `mountPath`，或对象存储经 CSI 挂载（`delivery.mount.storageClass`） | 可挂载后端 |
+| `download` | KServe storage-initializer 拉取模型 URI | `delivery.download.enabled` 且对象存储可达 |
+| `cache` | 权重复制到节点本地，Pod 绑定已预热节点 | `warmup.enabled`、节点组、KServe local-model agent |
+
+文件系统后端声明 `provision.enabled` 时由 chart 创建 PVC，否则必须给出 `existingClaim`；两者皆无时在渲染期拒绝。版本逻辑 URI 对文件系统为 `pvc://<claim>/<weightPath>`，对对象存储为 `s3://<bucket>/<prefix>/<weightPath>`。`cache` 交付会把 KServe 源改为缓存 URI 并记录源，以便缓存被驱逐后重建。
+
+## 4. 无状态搬运 Job
+
+### 4.1 流程
+
+```text
+控制台 / API
+   |  POST /api/v1/admin/model-transfers
+   v
+model 服务 ── 行: model_transfers(state=queued) ──> MQ model.transfers
+   |                                                  |
+   |                      controller（taas-controller）<+
+   |                              | 构建 Job（spec JSON）
+   |                              v
+   |                     Job/taas-transfer-<id>（transfer.namespace）
+   |                       | 挂载文件系统 PVC / 投射对象存储环境变量
+   |                       | 进度 -> ConfigMap taas-transfer-progress-<id>
+   |                       v
+   |                     MQ model.transfers.status
+   v                              |
+model 服务 <----------------------+
+   | 终态：更新行、注册版本、审计
+   v
+控制台轮询 GET /api/v1/admin/model-transfers/{id}
+```
+
+服务端只写意图行与目录注册，Controller 拥有 Job 生命周期并回传观测状态。已终态或不存在的行收到状态消息时直接忽略，重复投递安全。
+
+### 4.2 Job 描述与幂等
+
+描述包含搬运 id、操作、源/目标后端、解析后的 URI 与容器内路径、对象存储引用、可选 hub 下载身份、逻辑权重路径，整体序列化为 `TRANSFER_SPEC_JSON`；Job 名由搬运 id 派生，同一消息重复应用是 no-op。凭据以 `TRANSFER_SOURCE_*` / `TRANSFER_TARGET_*` 环境变量从 Secret 投射，绝不写入描述。
+
+| 操作 | 行为 |
+| --- | --- |
+| `copy` | 在两个后端间复制模型前缀；对象到对象且 endpoint/bucket/prefix 不同时经临时暂存 |
+| `download` | 拉取 hub 模型到目标后端，终态成功后注册版本 |
+| `delete` | 目录行删除后清理后端中的模型前缀 |
+| `cancel` | Controller 以 background 传播删除 Job，行转 `cancelled` |
+
+进度是 Job 写入、Controller 读取的小 JSON（`state`、`bytes`、`totalBytes`、`message`），仅作参考；成败以 Job 终态条件为准。Job TTL 清理 Job，进度 ConfigMap 体量小，可按同一 TTL 或运维策略回收。
+
+### 4.3 并发与失败处理
+
+- `transfer.concurrency` 限制活跃 Job 数，默认 4，避免同时拉取大量模型压垮集群。
+- Job 的 backoff、active deadline、TTL 可按 release 配置；超时以 `failed` 和 Job condition 消息呈现。
+- 缺少镜像或 ServiceAccount 属于配置错误；仅当 `transfer.mode=inline` 或未配置 `taas-transfer` 镜像时回退旧的进程内路径，保证离线安装可用。
+- 源与目标对象存储 endpoint/bucket/prefix 不同时，先在目标存储的临时前缀落地，成功后清理。
+
+## 5. 模型预热与感知调度
+
+### 5.1 资源
+
+| 资源 | 归属 | 作用 |
+| --- | --- | --- |
+| `LocalModelNodeGroup` | Controller，来自 `warmup.nodeGroups` | 可缓存权重的节点池，含容量与 hostPath/PVC |
+| `LocalModelCache` | Controller，来自 `WarmModel` 请求 | 一个待复制到节点组的模型 |
+| `LocalModelNode` | KServe `localmodelnode` agent | 每节点已下载模型状态 |
+| `LLMInferenceService` | Controller | 接收注入的 `nodeAffinity` |
+
+`WarmModel` 校验模型版本与解析后的源 URI，写入 `model_cache_entries`（`queued`）并发布 `model.warmups`。Controller 确保节点组与缓存存在，随后回报 `queued` → `warming` → `ready`（或 `failed`/`cancelled`），携带已预热节点、节点总数与字节数。
+
+### 5.2 调度
+
+创建或更新 `LLMInferenceService` 前，Controller 列举 `LocalModelNode` 构建“模型 → 已下载节点”索引。模型存在已预热节点时，注入基于 `kubernetes.io/hostname` 的节点亲和：
+
+- `scheduling.mode: preferred`（默认）使用 `preferredDuringSchedulingIgnoredDuringExecution` 与 `scheduling.weight`（1–100），冷节点仍可运行。
+- `scheduling.mode: required` 使用 `requiredDuringSchedulingIgnoredDuringExecution`，只在已预热节点可调度；适合延迟敏感模型，但节点排空时存在容量风险。
+- `scheduling.mode: disabled`（或 `warmup.enabled: false`）交由集群调度。
+
+亲和合并进已有 affinity，不覆盖运维自定义规则。
+
+### 5.3 驱逐与自动预热
+
+`warmup.eviction` 配置缓存保留策略（默认 `lru`）、单节点容量与组容量。`warmup.auto` 记录“模型就绪或相关服务部署时自动预热”的意图；面向运维的入口仍是 `WarmModel`，未配置预热的部署行为不变。
+
+## 6. 数据模型
+
+| 表 | 关键列 | 说明 |
+| --- | --- | --- |
+| `model_transfers` | `id`、`model_id`、`version`、`operation`、`source_backend`、`target_backend`、`source_uri`、`target_uri`、`state`、`message`、`bytes`、`total_bytes`、`job_name`、`download_id` | 一次搬运一行；`download_id` 关联异步下载要完成的下载行 |
+| `model_cache_entries` | `id`、`model_id`、`model_name`、`version`、`backend`、`source_uri`、`weight_path`、`state`、`message`、`size_bytes`、`warmed_nodes`、`node_groups` | 一个 `LocalModelCache` 一行 |
+| `model_versions` | `storage_backend` | 版本所在后端，空表示默认后端 |
+
+行只由服务端写入，Controller 仅发布状态；重连无需数据库句柄，也不会与目录分叉。
+
+## 7. API（仅平台管理员）
+
+| 方法 | 路径 | 用途 |
+| --- | --- | --- |
+| GET | `/api/v1/admin/storage-backends` | 列出后端、类型、交付模式与能力 |
+| POST | `/api/v1/admin/model-transfers` | 排队复制/下载/删除 |
+| GET | `/api/v1/admin/model-transfers` | 分页列出搬运，最新在前 |
+| GET | `/api/v1/admin/model-transfers/{transfer_id}` | 单个搬运及进度 |
+| POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | 取消排队/运行中的搬运 |
+| POST | `/api/v1/admin/model-warmups` | 在配置的节点组预热模型版本 |
+| GET | `/api/v1/admin/model-cache-entries` | 分页列出缓存，最新在前 |
+| POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | 移除模型缓存 |
+
+既有 `StartModelDownload` 请求不变；配置搬运镜像后立即返回排队下载，搬运行携带同一 `download_id`，轮询下载接口的客户端可看到状态迁移，而不是长连接等待。
+
+## 8. 控制台
+
+平台管理员导航下三个页面：
+
+- **存储后端**：只读展示后端类型、endpoint/claim、挂载路径与交付模式，解释部署表单为何提供 `mount` 或 `cache`。
+- **模型搬运**：列出操作、源 → 目标、状态、字节/总量、消息，并为非终态提供取消。
+- **模型缓存**：模型/版本、后端、节点组、已预热节点、大小与状态，可取消。
+
+三页遵循共享表格、空态、错误与分页约定（`PAGE_SIZE = 20`），文案全部来自 API 数据而非硬编码样例。
+
+## 9. Helm 配置
+
+```yaml
+storage:
+  defaultBackend: shared
+  backends:
+    shared:
+      type: filesystem
+      filesystem:
+        existingClaim: model-weights
+        mountPath: /data/weights
+      delivery:
+        default: mount
+        allowed: [mount, cache]
+    archive:
+      type: objectstore
+      objectStore:
+        provider: s3
+        endpoint: https://s3.example.com
+        bucket: taas-models
+        prefix: weights
+        forcePathStyle: false
+        credentials:
+          existingSecret: archive-keys
+      delivery:
+        default: cache
+        allowed: [cache, download]
+
+transfer:
+  enabled: true
+  mode: job
+  namespace: taas-jobs
+  concurrency: 4
+  image:
+    repository: taas-transfer
+    tag: ""
+  serviceAccount:
+    create: true
+
+warmup:
+  enabled: true
+  nodeGroups:
+    - name: worker
+      storageLimit: 200Gi
+      hostPath: /var/lib/taas/models
+      nodeSelector:
+        kserve/localmodel: worker
+  scheduling:
+    mode: preferred
+    weight: 100
+```
+
+校验规则：
+
+- `filesystem` 必须声明 `existingClaim` 或 `provision.enabled`。
+- `delivery.default` 必须属于 `delivery.allowed`；`cache` 需要 `warmup.enabled`。
+- `transfer.serviceAccount.create` 为真时 chart 创建命名空间、ServiceAccount 与仅能读写 progress ConfigMap 的 Role。
+- Controller ClusterRole 仅在相应特性启用时增加 `batch/jobs`、`configmaps` 与 `serving.kserve.io` 本地模型权限。
+
+## 10. 兼容与迁移
+
+- 未配置 `storage.backends` 时，chart 用 `controller.weights.pvcName`、`storageClass`、`mountPath` 合成一个文件系统后端，既有 release 升级无需改值。
+- `model_versions.storage_backend` 为新增列，空值在读取时解析为默认后端。
+- `model_transfers`、`model_cache_entries` 为新增表，服务启动 AutoMigrate；以 SQL 初始化模式的安装使用同一份 DDL。
+- 搬运默认 `job`；`mode: inline` 保留旧进程内行为，便于尚未推送 `taas-transfer` 镜像的集群，服务日志说明所走路径。
+
+## 11. 安全
+
+- 所有新 RPC 要求平台管理员角色，不提供租户级存储/搬运访问。
+- 对象存储凭据只从 Secret 读取并投射给 Job，绝不出现在 API 响应、日志或 Job 描述中。
+- 上传解压拒绝绝对路径、`..` 穿越、逃逸目标的符号链接，并限制文件数与总字节。
+- 搬运 Job 使用专用 ServiceAccount 与仅限 transfer 命名空间 progress ConfigMap 的 Role。
+
+## 12. 可观测性与运维
+
+- 搬运行携带字节/总量与可读消息，控制台与 API 均可见。
+- progress ConfigMap 以搬运 id 命名；Job 未写进度只表示没有进度，不会被误判成功。
+- Controller 以 info 记录 Job 创建、缓存协调与亲和注入；缺少 LocalModelNode CRD 是 warning，不使协调失败。
+- 运维可检查 transfer 命名空间中的 Job 与推理命名空间中的 KServe 本地模型资源。
+
+## 13. 测试与验收
+
+单元测试覆盖存储归一化/校验、搬运状态机、上传解压、预热投影、Job 构造与取消、预热资源创建与亲和注入，以及控制台构建/类型检查；FVT 覆盖新 REST 端点与分页。验收要求：
+
+1. 模型版本可在文件系统与对象存储之间往返复制，server 进程不参与字节搬运。
+2. 配置搬运镜像的下载只在 Job 成功后注册版本，Job 失败不留下已注册版本。
+3. `WarmModel` 创建节点组/缓存，`ready` 携带已预热节点，该模型的部署获得配置的亲和。
+4. 未配置 `storage`/`transfer`/`warmup` 的安装升级后行为不变。
+5. 三个控制台页面渲染真实 API 数据、分页，并可取消非终态任务。

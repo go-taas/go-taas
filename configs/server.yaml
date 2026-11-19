@@ -358,3 +358,29 @@ evaluation:
   maxCasesPerRun: 50
   maxVariableValueLength: 10000
   maxInFlightRunsPerOrg: 10
+
+# Model-weights storage backends (see configs/config.yaml for the full
+# schema). The server only records where a version lives and hands transfers
+# to the controller; it never mounts the weights.
+storage:
+  defaultBackend: ""
+  backends: {}
+
+# Asynchronous transfer jobs. `mode: inline` runs the legacy in-process
+# transfer inside the server; `job` hands it to the controller.
+transfer:
+  mode: job
+  namespace: taas-jobs
+  concurrency: 4
+  image: ""
+  serviceAccount: taas-transfer
+  progressInterval: 5s
+
+# Warmup API and cache index. The controller owns the KServe resources; the
+# server only validates requests and mirrors their state.
+warmup:
+  enabled: false
+  nodeGroups: []
+  scheduling:
+    mode: preferred
+    weight: 100

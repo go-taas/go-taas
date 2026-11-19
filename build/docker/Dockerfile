@@ -136,7 +136,14 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
       -X main.version=${VERSION} \
       -X main.commit=${COMMIT} \
       -X main.buildTime=${BUILD_TIME}" \
-    -o /out/taas-model-router ./apps/model-router
+    -o /out/taas-model-router ./apps/model-router && \
+    CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} \
+    go build -trimpath \
+    -ldflags "-s -w \
+      -X main.version=${VERSION} \
+      -X main.commit=${COMMIT} \
+      -X main.buildTime=${BUILD_TIME}" \
+    -o /out/taas-transfer ./apps/taas-transfer
 
 # ---- taas-server ------------------------------------------------------
 # The runtime image carries skopeo (used by the image-import flow to copy
@@ -214,6 +221,23 @@ COPY --from=builder /out/taas-model-router /usr/local/bin/taas-model-router
 USER nonroot:nonroot
 EXPOSE 8000
 ENTRYPOINT ["/usr/local/bin/taas-model-router"]
+
+# ---- taas-transfer ----------------------------------------------------
+FROM gcr.io/distroless/static-debian12:nonroot AS taas-transfer
+ARG VERSION
+ARG COMMIT
+ARG BUILD_TIME
+LABEL org.opencontainers.image.title="taas-transfer" \
+      org.opencontainers.image.version="${VERSION}" \
+      org.opencontainers.image.revision="${COMMIT}" \
+      org.opencontainers.image.created="${BUILD_TIME}" \
+      org.opencontainers.image.url="https://go-taas.com" \
+      org.opencontainers.image.source="https://github.com/go-taas/go-taas" \
+      org.opencontainers.image.documentation="https://go-taas.com/docs.html" \
+      org.opencontainers.image.licenses="Apache-2.0"
+COPY --from=builder /out/taas-transfer /usr/local/bin/taas-transfer
+USER nonroot:nonroot
+ENTRYPOINT ["/usr/local/bin/taas-transfer"]
 
 # ---- taas-console -----------------------------------------------------
 # Standalone console image: the Vite bundle served by nginx with /api/

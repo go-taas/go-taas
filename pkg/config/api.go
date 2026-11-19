@@ -8,8 +8,11 @@ package config
 
 import (
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
+
+	"github.com/go-taas/go-taas/pkg/storage"
 )
 
 // tenancyIDRegex is the shared id syntax for organizations and projects:
@@ -675,6 +678,87 @@ type ModelUploadConfig struct {
 	// TempDir is where the archive is staged before it is extracted. Empty
 	// uses the OS temp directory.
 	TempDir string `mapstructure:"tempDir"`
+}
+
+// TransferConfig holds the asynchronous model-transfer settings.
+type TransferConfig struct {
+	// Mode is "job" (controller-owned Kubernetes Job) or "inline" (the
+	// legacy in-process transfer). "job" is the default; inline exists as
+	// an upgrade escape hatch.
+	Mode string `mapstructure:"mode"`
+	// Namespace is where transfer Jobs run. Defaults to "taas-jobs".
+	Namespace string `mapstructure:"namespace"`
+	// Concurrency bounds the number of active transfer Jobs. Defaults to 4.
+	Concurrency int `mapstructure:"concurrency"`
+	// Image is the taas-transfer image a Job runs. Empty disables Job
+	// transfers, and the server falls back to inline execution.
+	Image string `mapstructure:"image"`
+	// ServiceAccount is the Job pod's service account. Defaults to
+	// "taas-transfer".
+	ServiceAccount string `mapstructure:"serviceAccount"`
+	// NodeSelector pins transfer Jobs to worker nodes. Empty runs anywhere.
+	NodeSelector map[string]string `mapstructure:"nodeSelector"`
+	// Tolerations lets transfer Jobs run on tainted storage nodes.
+	Tolerations []map[string]any `mapstructure:"tolerations"`
+	// Job carries the Job lifecycle settings.
+	Job TransferJobConfig `mapstructure:"job"`
+	// Resources are the transfer container's resource requests/limits
+	// (Kubernetes quantity strings).
+	Resources map[string]map[string]string `mapstructure:"resources"`
+	// ProgressInterval is how often the controller samples a Job's
+	// progress ConfigMap. Defaults to 5s.
+	ProgressInterval time.Duration `mapstructure:"progressInterval"`
+}
+
+// TransferJobConfig holds one transfer Job's lifecycle settings.
+type TransferJobConfig struct {
+	BackoffLimit          int32 `mapstructure:"backoffLimit"`
+	ActiveDeadlineSeconds int64 `mapstructure:"activeDeadlineSeconds"`
+	TTLSecondsAfterFinish int32 `mapstructure:"ttlSecondsAfterFinished"`
+}
+
+// WarmupConfig holds the model warmup and warm-aware scheduling settings.
+type WarmupConfig struct {
+	// Enabled turns LocalModelCache creation and nodeAffinity injection on.
+	Enabled bool `mapstructure:"enabled"`
+	// NodeGroups declares the node pools weights are cached on.
+	NodeGroups []WarmupNodeGroup `mapstructure:"nodeGroups"`
+	// Scheduling configures the injected node affinity.
+	Scheduling WarmupScheduling `mapstructure:"scheduling"`
+	// Auto configures automatic warmup triggers.
+	Auto WarmupAuto `mapstructure:"auto"`
+	// Eviction configures cache retention.
+	Eviction WarmupEviction `mapstructure:"eviction"`
+}
+
+// WarmupNodeGroup is one node pool that caches model weights.
+type WarmupNodeGroup struct {
+	Name         string            `mapstructure:"name"`
+	NodeSelector map[string]string `mapstructure:"nodeSelector"`
+	StorageLimit string            `mapstructure:"storageLimit"`
+	HostPath     string            `mapstructure:"hostPath"`
+	StorageClass string            `mapstructure:"storageClass"`
+}
+
+// WarmupScheduling is the injected node-affinity policy.
+type WarmupScheduling struct {
+	// Mode is preferred, required or disabled.
+	Mode string `mapstructure:"mode"`
+	// Weight is the preferred-affinity weight (1-100).
+	Weight int32 `mapstructure:"weight"`
+}
+
+// WarmupAuto configures when a model is warmed automatically.
+type WarmupAuto struct {
+	OnModelReady bool `mapstructure:"onModelReady"`
+	OnDeploy     bool `mapstructure:"onDeploy"`
+}
+
+// WarmupEviction configures node-cache eviction.
+type WarmupEviction struct {
+	Policy           string `mapstructure:"policy"`
+	MaxModelsPerNode int    `mapstructure:"maxModelsPerNode"`
+	MinFreeBytes     int64  `mapstructure:"minFreeBytes"`
 }
 
 // LogConfig holds logging settings loaded from configuration files.
@@ -1436,7 +1520,14 @@ type Configuration struct {
 	Quota         QuotaConfig         `mapstructure:"quota"`
 	VGPU          VGPUConfig          `mapstructure:"vgpu"`
 	Fault         FaultConfig         `mapstructure:"fault"`
-	Log           LogConfig           `mapstructure:"log"`
+	// Storage declares the model-weights backends. When it is empty the
+	// legacy controller.weights settings synthesize a filesystem backend.
+	Storage storage.Config `mapstructure:"storage"`
+	// Transfer configures the asynchronous model-transfer Jobs.
+	Transfer TransferConfig `mapstructure:"transfer"`
+	// Warmup configures node-local model caching and warm-aware scheduling.
+	Warmup WarmupConfig `mapstructure:"warmup"`
+	Log    LogConfig    `mapstructure:"log"`
 }
 
 // LoadTestConfig holds the feature-20 load-testing settings.
@@ -1743,7 +1834,99 @@ func (c *Configuration) Validate() error {
 	if c.Fault.SignalsConsumer.Workers < 0 {
 		return &FieldError{Field: "fault.signalsConsumer.workers", Reason: "must not be negative"}
 	}
+	// Storage backends: the normalized section always validates; a raw
+	// zero-value config (no backends) is allowed through.
+	if err := c.Storage.Validate(); err != nil {
+		return &FieldError{Field: "storage", Reason: err.Error()}
+	}
+	// A node-cache delivery needs the warmup controller to populate the
+	// nodes; enabling it without warmup would leave pods unscheduled.
+	for name, backend := range c.Storage.Backends {
+		if backend.Delivery.Default == storage.ModeCache && !c.Warmup.Enabled {
+			return &FieldError{
+				Field:  "storage.backends." + name + ".delivery.default",
+				Reason: "cache delivery requires warmup.enabled=true",
+			}
+		}
+	}
+	// Transfer Jobs: enum, namespace, concurrency and Job lifecycle bounds.
+	switch c.Transfer.Mode {
+	case "", "job", "inline":
+	default:
+		return &FieldError{Field: "transfer.mode", Reason: `must be "job" or "inline"`}
+	}
+	if c.Transfer.Mode == "job" && strings.TrimSpace(c.Transfer.Namespace) == "" {
+		return &FieldError{Field: "transfer.namespace", Reason: "must not be empty in job mode"}
+	}
+	if c.Transfer.Concurrency < 0 {
+		return &FieldError{Field: "transfer.concurrency", Reason: "must not be negative"}
+	}
+	if c.Transfer.ProgressInterval < 0 {
+		return &FieldError{Field: "transfer.progressInterval", Reason: "must not be negative"}
+	}
+	if c.Transfer.Job.BackoffLimit < 0 {
+		return &FieldError{Field: "transfer.job.backoffLimit", Reason: "must not be negative"}
+	}
+	if c.Transfer.Job.ActiveDeadlineSeconds < 0 {
+		return &FieldError{Field: "transfer.job.activeDeadlineSeconds", Reason: "must not be negative"}
+	}
+	if c.Transfer.Job.TTLSecondsAfterFinish < 0 {
+		return &FieldError{Field: "transfer.job.ttlSecondsAfterFinished", Reason: "must not be negative"}
+	}
+	// Warmup: the scheduling mode is a closed set and the preferred weight
+	// stays within the Kubernetes 1-100 range.
+	switch c.Warmup.Scheduling.Mode {
+	case "", "preferred", "required", "disabled":
+	default:
+		return &FieldError{Field: "warmup.scheduling.mode", Reason: `must be "preferred", "required" or "disabled"`}
+	}
+	if c.Warmup.Scheduling.Weight < 0 || c.Warmup.Scheduling.Weight > 100 {
+		return &FieldError{Field: "warmup.scheduling.weight", Reason: "must be within 1-100"}
+	}
+	if c.Warmup.Enabled && len(c.Warmup.NodeGroups) == 0 {
+		return &FieldError{Field: "warmup.nodeGroups", Reason: "must declare at least one node group when warmup is enabled"}
+	}
+	for i, ng := range c.Warmup.NodeGroups {
+		if strings.TrimSpace(ng.Name) == "" {
+			return &FieldError{Field: "warmup.nodeGroups", Reason: "every node group needs a name (index " + strconv.Itoa(i) + ")"}
+		}
+		if ng.StorageLimit != "" && !quantityLike(ng.StorageLimit) {
+			return &FieldError{Field: "warmup.nodeGroups[" + strconv.Itoa(i) + "].storageLimit", Reason: "must be a Kubernetes quantity such as 100Gi"}
+		}
+	}
+	switch c.Warmup.Eviction.Policy {
+	case "", "lru", "none":
+	default:
+		return &FieldError{Field: "warmup.eviction.policy", Reason: `must be "lru" or "none"`}
+	}
+	if c.Warmup.Eviction.MaxModelsPerNode < 0 {
+		return &FieldError{Field: "warmup.eviction.maxModelsPerNode", Reason: "must not be negative"}
+	}
+	if c.Warmup.Eviction.MinFreeBytes < 0 {
+		return &FieldError{Field: "warmup.eviction.minFreeBytes", Reason: "must not be negative"}
+	}
 	return nil
+}
+
+// quantityLike reports whether s looks like a Kubernetes resource quantity:
+// a positive number with an optional binary or decimal suffix.
+func quantityLike(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	i := 0
+	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.') {
+		i++
+	}
+	if i == 0 {
+		return false
+	}
+	switch strings.TrimSpace(s[i:]) {
+	case "", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "K", "M", "G", "T", "P", "E", "m":
+		return true
+	}
+	return false
 }
 
 // FieldError describes a single invalid configuration field.

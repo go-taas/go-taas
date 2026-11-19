@@ -39,6 +39,15 @@ rules:
   - apiGroups: ["autoscaling"]
     resources: ["horizontalpodautoscalers"]
     verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  # One-shot model transfer Jobs and their progress ConfigMaps. The
+  # controller creates a Job per transfer, samples its progress, and deletes
+  # it on cancellation.
+  - apiGroups: ["batch"]
+    resources: ["jobs"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
   # Per-pod CPU/memory samples from the metrics-server (resource metrics feature).
   - apiGroups: ["metrics.k8s.io"]
     resources: ["pods"]
@@ -52,6 +61,15 @@ rules:
   - apiGroups: ["serving.kserve.io"]
     resources: ["llminferenceservices/status", "llminferenceservices/finalizers"]
     verbs: ["get", "update", "patch"]
+  # KServe local-model warmup. The controller owns the node groups and
+  # caches it creates and reads the per-node inventory to build the warm-node
+  # index behind the injected node affinity.
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["localmodelnodegroups", "localmodelcaches"]
+    verbs: ["get", "list", "watch", "create", "update", "patch", "delete"]
+  - apiGroups: ["serving.kserve.io"]
+    resources: ["localmodelnodes"]
+    verbs: ["get", "list", "watch"]
   # Volcano gang groups: one PodGroup per inference service, so the pods of a
   # replica are placed together and a higher priority may preempt a lower one.
   - apiGroups: ["scheduling.volcano.sh"]

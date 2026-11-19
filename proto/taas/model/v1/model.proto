@@ -121,6 +121,65 @@ service ModelService {
       body: "*"
     };
   }
+
+  // ListStorageBackends lists the configured model-weights storage
+  // backends and their delivery capabilities (platform admin only).
+  rpc ListStorageBackends(ListStorageBackendsRequest) returns (ListStorageBackendsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/storage-backends"};
+  }
+
+  // StartModelTransfer queues an asynchronous copy, download or delete of
+  // a model version between storage backends (platform admin only).
+  rpc StartModelTransfer(StartModelTransferRequest) returns (StartModelTransferResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/model-transfers"
+      body: "*"
+    };
+  }
+
+  // ListModelTransfers returns transfer jobs, newest first (platform
+  // admin only).
+  rpc ListModelTransfers(ListModelTransfersRequest) returns (ListModelTransfersResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-transfers"};
+  }
+
+  // GetModelTransfer returns one transfer job (platform admin only).
+  rpc GetModelTransfer(GetModelTransferRequest) returns (GetModelTransferResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-transfers/{transfer_id}"};
+  }
+
+  // CancelModelTransfer cancels a queued or running transfer (platform
+  // admin only).
+  rpc CancelModelTransfer(CancelModelTransferRequest) returns (CancelModelTransferResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/model-transfers/{transfer_id}:cancel"
+      body: "*"
+    };
+  }
+
+  // WarmModel asks the controller to cache a model on the configured node
+  // groups (platform admin only).
+  rpc WarmModel(WarmModelRequest) returns (WarmModelResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/model-warmups"
+      body: "*"
+    };
+  }
+
+  // ListModelCacheEntries returns the model cache rows, newest first
+  // (platform admin only).
+  rpc ListModelCacheEntries(ListModelCacheEntriesRequest) returns (ListModelCacheEntriesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-cache-entries"};
+  }
+
+  // CancelModelWarmup removes a model from the node caches (platform admin
+  // only).
+  rpc CancelModelWarmup(CancelModelWarmupRequest) returns (CancelModelWarmupResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/model-warmups/{cache_id}:cancel"
+      body: "*"
+    };
+  }
 }
 
 message RegisterModelRequest {
@@ -431,4 +490,159 @@ message ListModelDownloadsResponse {
   taas.common.v1.Response response = 1;
   repeated ModelDownload downloads = 2;
   taas.common.v1.PageMeta page_meta = 3;
+}
+
+
+// StorageBackend is one configured model-weights backend.
+message StorageBackend {
+  string name = 1;
+  // type is filesystem or objectstore.
+  string type = 2;
+  // default_delivery is mount, download or cache.
+  string default_delivery = 3;
+  // allowed_deliveries lists the delivery modes the backend permits.
+  repeated string allowed_deliveries = 4;
+  // is_default marks the platform default backend.
+  bool is_default = 5;
+  // mount_path is where a filesystem is mounted in pods.
+  string mount_path = 6;
+  // provider, endpoint and bucket describe an object store.
+  string provider = 7;
+  string endpoint = 8;
+  string bucket = 9;
+  // warmup_enabled reports whether node-local caching can serve it.
+  bool warmup_enabled = 10;
+}
+
+message ListStorageBackendsRequest {}
+
+message ListStorageBackendsResponse {
+  taas.common.v1.Response response = 1;
+  repeated StorageBackend backends = 2;
+  // default_backend names the platform default backend.
+  string default_backend = 3;
+}
+
+// StartModelTransferRequest queues a model-weights transfer.
+message StartModelTransferRequest {
+  string model_id = 1;
+  // version defaults to the active version, then the latest.
+  string version = 2;
+  // operation is copy, download or delete; copy is the default.
+  string operation = 3;
+  // source_backend defaults to the version's backend, then the default.
+  string source_backend = 4;
+  // target_backend is the destination for a copy.
+  string target_backend = 5;
+}
+
+message StartModelTransferResponse {
+  taas.common.v1.Response response = 1;
+  ModelTransfer transfer = 2;
+}
+
+message ListModelTransfersRequest {
+  taas.common.v1.PageRequest page = 1;
+  // state filters by queued, running, succeeded, failed or cancelled.
+  string state = 2;
+  string model_id = 3;
+}
+
+message ListModelTransfersResponse {
+  taas.common.v1.Response response = 1;
+  repeated ModelTransfer transfers = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message GetModelTransferRequest {
+  string transfer_id = 1;
+}
+
+message GetModelTransferResponse {
+  taas.common.v1.Response response = 1;
+  ModelTransfer transfer = 2;
+}
+
+message CancelModelTransferRequest {
+  string transfer_id = 1;
+}
+
+message CancelModelTransferResponse {
+  taas.common.v1.Response response = 1;
+  ModelTransfer transfer = 2;
+}
+
+// ModelTransfer is one asynchronous storage operation.
+message ModelTransfer {
+  string transfer_id = 1;
+  string operation = 2;
+  string model_id = 3;
+  string model_name = 4;
+  string version = 5;
+  string source_backend = 6;
+  string target_backend = 7;
+  string source_uri = 8;
+  string target_uri = 9;
+  string weight_path = 10;
+  string state = 11;
+  string message = 12;
+  int64 bytes = 13;
+  int64 total_bytes = 14;
+  string job_name = 15;
+  int64 created_at = 16;
+  int64 updated_at = 17;
+}
+
+// WarmModelRequest asks the controller to populate the node-local caches.
+message WarmModelRequest {
+  string model_id = 1;
+  string version = 2;
+  // node_groups defaults to the configured warmup node groups.
+  repeated string node_groups = 3;
+}
+
+message WarmModelResponse {
+  taas.common.v1.Response response = 1;
+  ModelCacheEntry cache = 2;
+}
+
+message ListModelCacheEntriesRequest {
+  taas.common.v1.PageRequest page = 1;
+  string model_id = 2;
+  string state = 3;
+}
+
+message ListModelCacheEntriesResponse {
+  taas.common.v1.Response response = 1;
+  repeated ModelCacheEntry caches = 2;
+  taas.common.v1.PageMeta page_meta = 3;
+}
+
+message CancelModelWarmupRequest {
+  string cache_id = 1;
+}
+
+message CancelModelWarmupResponse {
+  taas.common.v1.Response response = 1;
+  ModelCacheEntry cache = 2;
+}
+
+// ModelCacheEntry is the desired and observed state of one warmed model.
+message ModelCacheEntry {
+  string cache_id = 1;
+  string model_id = 2;
+  string model_name = 3;
+  string version = 4;
+  string backend = 5;
+  string source_uri = 6;
+  string weight_path = 7;
+  string cache_name = 8;
+  repeated string node_groups = 9;
+  string state = 10;
+  string message = 11;
+  repeated string warmed_nodes = 12;
+  int32 total_nodes = 13;
+  int64 size_bytes = 14;
+  int64 created_at = 15;
+  int64 updated_at = 16;
 }

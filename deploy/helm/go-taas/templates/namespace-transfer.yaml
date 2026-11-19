@@ -1,0 +1,20 @@
+{{- if and .Values.transfer .Values.transfer.enabled }}
+{{- $namespace := include "go-taas.transfer.namespace" . }}
+{{- if ne $namespace .Release.Namespace }}
+{{/*
+Namespace the one-shot model transfer Jobs run in. It is separate from the
+control plane so transfer pods never share its ServiceAccount, and annotated
+`keep` so deleting the release does not interrupt a running transfer.
+*/}}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ $namespace }}
+  labels:
+    {{- include "go-taas.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/part-of: go-taas
+    app.kubernetes.io/component: transfer
+  annotations:
+    helm.sh/resource-policy: keep
+{{- end }}
+{{- end }}

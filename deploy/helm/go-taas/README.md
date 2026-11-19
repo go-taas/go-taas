@@ -473,6 +473,14 @@ Three mechanisms, highest precedence first:
 | `controller.config.controller.weights.*` | `model-weights` / `/data/weights` / `""` | shared weights PVC name, mount path, StorageClass |
 | `controller.config.controller.scheduling.schedulerName` | `""` | `volcano` turns on gang scheduling with the PodGroups the controller writes; empty keeps the cluster default scheduler |
 | `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | PriorityClasses a service priority maps onto; an unmapped priority leaves the pod with the cluster default class |
+| `storage.defaultBackend` / `storage.backends` | `""` / `{}` | named filesystem/object-store backends and their delivery modes; empty keeps the legacy weights PVC |
+| `transfer.enabled` / `mode` / `namespace` / `concurrency` | `true` / `job` / `taas-jobs` / `4` | run transfers as Kubernetes Jobs in a dedicated namespace; `inline` is the legacy path |
+| `transfer.image.name` / `tag` | `taas-transfer` / `""` | the transfer Job image |
+| `transfer.serviceAccount.create` | `true` | create the transfer namespace, ServiceAccount and progress-ConfigMap Role |
+| `transfer.job.*` / `resources` / `progressInterval` | `2` / `21600` / `86400` / `{}` / `5s` | Job lifecycle, container resources, progress sampling |
+| `warmup.enabled` / `nodeGroups` | `false` / `[]` | create KServe local-model groups/caches and inject warm-aware affinity |
+| `warmup.scheduling.mode` / `weight` | `preferred` / `100` | `preferred`, `required` or `disabled`; weight applies to preferred |
+| `warmup.eviction.policy` / `maxModelsPerNode` / `minFreeBytes` | `lru` / `20` / `10737418240` | cache retention policy and capacity bounds |
 | `rdma.enabled` / `deviceClass` | `true` / `taas-rdma` | the DRA `DeviceClass` inference pods request RDMA devices from; `rdma.requireLinkUp` accepts only links the node reports up, and `rdma.selector` overrides the built CEL expression (pin cards or PCI addresses) |
 | `rdma.additionalDeviceClasses` | `[]` | extra `DeviceClass` objects, one per fabric rail; a rail is one L3 network, so pin the ports that share a subnet (usually one port per host, not both ports of a card); name the rail's class in a service's `rdma.device_class` so a replica's pods allocate from the same rail |
 | `controller.config.controller.rdma.deviceClass` | `taas-rdma` | the class a service inherits when it enables RDMA without naming one; must match `rdma.deviceClass` |
@@ -519,6 +527,113 @@ earlier documentation; both paths render the same `CONFIG_IMAGE_HARBOR_*`
 environment variables, and the top-level block wins when both are set. While
 `hostname` is empty the console disables the import/upload actions and says why,
 instead of failing halfway through a transfer.
+
+## Storage backends, transfer Jobs and model warmup
+
+The chart no longer assumes one shared filesystem. `storage.backends`
+declares the filesystem and object-store backends a model version may live
+on, and each backend declares how pods read it (`mount`, `download` or
+`cache`). An install that sets nothing keeps the legacy single-PVC
+behaviour: the chart synthesizes a `default` filesystem backend from
+`controller.config.controller.weights.*`.
+
+```yaml
+storage:
+  defaultBackend: shared
+  backends:
+    shared:
+      type: filesystem
+      filesystem:
+        existingClaim: model-weights   # or provision.enabled + storageClass
+        mountPath: /data/weights
+      delivery:
+        default: mount
+        allowed: [mount, cache]
+    archive:
+      type: objectstore
+      objectStore:
+        provider: s3
+        endpoint: https://s3.example.com
+        bucket: taas-models
+        prefix: weights
+        forcePathStyle: false
+        credentials:
+          existingSecret: archive-keys
+          accessKeyKey: accessKey
+          secretKeyKey: secretKey
+      delivery:
+        default: cache
+        allowed: [cache, download]
+```
+
+A filesystem backend must have `filesystem.existingClaim` or
+`filesystem.provision.enabled`; `delivery.default` must be one of
+`delivery.allowed`, and `cache` requires `warmup.enabled`. Object-store
+credentials are never inlined: the chart only names a Secret, and the
+transfer Job projects the keys.
+
+`transfer` moves every large byte operation out of the API server and into
+`Job/taas-transfer-<id>`. The server writes the intent row and publishes
+it; the controller builds the Job; the Job reports progress through a
+ConfigMap and its final state through the message queue. The chart creates
+the transfer namespace, the service account and a Role limited to progress
+ConfigMaps.
+
+```yaml
+transfer:
+  enabled: true
+  mode: job                 # inline is the legacy escape hatch
+  namespace: taas-jobs
+  concurrency: 4
+  image:
+    name: taas-transfer
+    tag: ""                 # empty uses the release image tag
+  serviceAccount:
+    create: true
+  job:
+    backoffLimit: 2
+    activeDeadlineSeconds: 21600
+    ttlSecondsAfterFinished: 86400
+```
+
+`transfer.mode: inline` keeps the old in-process transfer and is intended
+only as an upgrade escape hatch; a release without a `taas-transfer` image
+falls back to it automatically.
+
+`warmup` turns `LocalModelCache`/`LocalModelNodeGroup` creation and
+warm-aware scheduling on. The controller creates one node group per
+`warmup.nodeGroups` entry, creates a cache on `WarmModel`, and injects a
+node affinity into `LLMInferenceService` when the model is already warm on
+some nodes:
+
+```yaml
+warmup:
+  enabled: true
+  nodeGroups:
+    - name: worker
+      storageLimit: 200Gi
+      hostPath: /var/lib/taas/models
+      storageClass: ""       # empty uses the hostPath volume
+      nodeSelector:
+        kserve/localmodel: worker
+  scheduling:
+    mode: preferred          # preferred, required or disabled
+    weight: 100              # 1-100, preferred mode only
+  eviction:
+    policy: lru
+    maxModelsPerNode: 20
+    minFreeBytes: 10737418240
+```
+
+The node group needs the KServe local-model agent on its nodes; the
+`nodeSelector` is what the operator uses to bind the group to a pool that
+runs that agent. `scheduling.mode: required` makes a deployment wait for a
+warmed node, which is correct for latency-critical models and a capacity
+risk during drains; the default `preferred` degrades to a cold node.
+
+The console exposes the three read/operate surfaces under the platform
+administrator navigation: **Storage backends**, **Model transfers** and
+**Model caches**.
 
 ## Shared model weights
 

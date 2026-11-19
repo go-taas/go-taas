@@ -58,6 +58,10 @@ type Version struct {
 	// syntax-validated at registration (existence is checked by the
 	// controller at deploy time).
 	WeightPath string `gorm:"size:512;not null"`
+	// StorageBackend names the storage backend the weights live in. Empty
+	// means the platform default backend; existing rows keep working
+	// without a backfill.
+	StorageBackend string `gorm:"size:63;not null;default:''"`
 	// IsActive marks this version as the active/default version for new
 	// deployments (feature #32, AD2). At most one version per model is
 	// active, enforced by the partial unique index (model_id) WHERE

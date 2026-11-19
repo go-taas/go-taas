@@ -7,6 +7,7 @@ import (
 	"context"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -84,7 +85,29 @@ func main() {
 		"binpack",
 		cfg.VGPU.HAMI.SchedulerName,
 	)
+	// Model warmup: inject node affinity toward nodes whose local cache
+	// holds the model.
+	if warmup, ok := reconciler.(interface {
+		SetWarmupConfig(enabled bool, mode string, weight int)
+	}); ok {
+		warmup.SetWarmupConfig(cfg.Warmup.Enabled, cfg.Warmup.Scheduling.Mode, int(cfg.Warmup.Scheduling.Weight))
+	}
 	ctrl := controller.New(mqClient, reconciler)
+	// Asynchronous model transfers run as Kubernetes Jobs. The reconciler
+	// is wired only when an image is configured: without one there is
+	// nothing to run.
+	if strings.TrimSpace(cfg.Transfer.Image) != "" {
+		ctrl.SetModelTransferReconciler(controller.NewModelTransferReconciler(
+			k8sClient.Clientset(), mqClient, cfg.Transfer, cfg.Storage,
+		))
+	}
+	// Model warmup creates the KServe LocalModel resources the node agent
+	// consumes.
+	if cfg.Warmup.Enabled {
+		ctrl.SetModelWarmupReconciler(controller.NewModelWarmupReconciler(
+			k8sClient.Dynamic(), mqClient, cfg.Warmup, cfg.Controller.Namespace,
+		))
+	}
 	// The periodic pod-failure scanner publishes a failed status for any
 	// running service whose pod has a terminal failure, keeping the k8s
 	// resources for diagnosis.

@@ -30,6 +30,9 @@ const downloadProgressInterval = time.Second
 // the weights land. It returns immediately with the queued job; the
 // console polls ListModelDownloads for progress.
 func (s *Service) StartModelDownload(ctx context.Context, req *modelv1.StartModelDownloadRequest) (*modelv1.StartModelDownloadResponse, error) {
+	if err := s.requireAdminRole(ctx, callerOrgID(ctx)); err != nil {
+		return nil, err
+	}
 	source := strings.TrimSpace(req.GetSource())
 	hubModelID := strings.TrimSpace(req.GetHubModelId())
 	if source == "" {
@@ -44,7 +47,10 @@ func (s *Service) StartModelDownload(ctx context.Context, req *modelv1.StartMode
 	if err := validateHubModelID(hubModelID); err != nil {
 		return nil, err
 	}
-	if s.downloader == nil || s.weightsDir == "" {
+	jobExecution := s.transferSettings.Mode == "job" &&
+		strings.TrimSpace(s.transferSettings.Image) != "" &&
+		s.storageConfig.Enabled()
+	if !jobExecution && (s.downloader == nil || s.weightsDir == "") {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: model download is not configured")
 	}
 
@@ -95,6 +101,12 @@ func (s *Service) StartModelDownload(ctx context.Context, req *modelv1.StartMode
 	if err := db.WithContext(ctx).Create(job).Error; err != nil {
 		return nil, err
 	}
+	if jobExecution && s.startDownloadTransfer(ctx, job) {
+		return &modelv1.StartModelDownloadResponse{
+			Response: okResponse(),
+			Download: downloadProjection(job),
+		}, nil
+	}
 	// The download must outlive the request that queued it, so the job
 	// runs with its own context rather than the request-scoped one.
 	//
@@ -109,6 +121,9 @@ func (s *Service) StartModelDownload(ctx context.Context, req *modelv1.StartMode
 
 // ListModelDownloads returns one page of download jobs, newest first.
 func (s *Service) ListModelDownloads(ctx context.Context, req *modelv1.ListModelDownloadsRequest) (*modelv1.ListModelDownloadsResponse, error) {
+	if err := s.requireAdminRole(ctx, callerOrgID(ctx)); err != nil {
+		return nil, err
+	}
 	db, err := s.gormDB()
 	if err != nil {
 		return nil, err

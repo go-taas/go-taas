@@ -162,6 +162,19 @@ type Subjects struct {
 	// (feature #53, AD14). The controller consumes them to execute
 	// reschedule/drain.
 	FaultActions string
+	// ModelTransfers carries model-transfer Job requests. The controller
+	// creates the Job; the server falls back to inline execution when no
+	// controller is configured.
+	ModelTransfers string
+	// ModelTransferStatus carries transfer Job progress and terminal state
+	// from the controller back to the model module.
+	ModelTransferStatus string
+	// ModelWarmups carries model warmup requests. The controller creates
+	// the LocalModelCache and the LocalModelNodeGroup.
+	ModelWarmups string
+	// ModelWarmupStatus carries LocalModelCache/LocalModelNode observations
+	// from the controller back to the model module.
+	ModelWarmupStatus string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -184,7 +197,11 @@ func DefaultSubjects() Subjects {
 		RuntimeModelChanges:     "runtime.models.changes",
 		QuotaOrgsConcurrency:    "quota.orgs.concurrency",
 		FaultSignals:            "fault.signals",
-		FaultActions:            "fault.actions"}
+		FaultActions:            "fault.actions",
+		ModelTransfers:          "model.transfers",
+		ModelTransferStatus:     "model.transfers.status",
+		ModelWarmups:            "model.warmups",
+		ModelWarmupStatus:       "model.warmups.status"}
 }
 
 // NewFake returns an in-memory Client for unit tests and local development

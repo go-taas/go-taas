@@ -988,4 +988,135 @@ auth:
     # -- Initial password of the seeded local `admin` account.
     adminLocalPassword: "Pass4admin"
 
+# Model-weights storage. A backend answers where the bytes live; delivery
+# answers how inference pods read them. When `backends` is empty the chart
+# keeps the legacy single-PVC layout derived from `controller.weights`, so an
+# existing installation needs no change. See `pkg/storage` for the schema.
+storage:
+  # -- Backend a model version uses when it names none. Empty picks the only
+  # declared backend.
+  defaultBackend: ""
+  # Named backends. The key is the backend name model versions store.
+  #
+  #   backends:
+  #     filesystem:
+  #       type: filesystem
+  #       filesystem:
+  #         existingClaim: model-weights   # or provision.enabled below
+  #         provision:
+  #           enabled: false
+  #           storageClass: juicefs-platform-shared
+  #           accessMode: ReadWriteMany
+  #           size: 100Gi
+  #         mountPath: /data/weights
+  #       delivery:
+  #         default: mount
+  #         allowed: [mount]
+  #     objectstore:
+  #       type: objectstore
+  #       objectStore:
+  #         provider: s3
+  #         endpoint: https://s3.example.com
+  #         region: us-east-1
+  #         bucket: taas-models
+  #         prefix: models
+  #         forcePathStyle: false
+  #         tls:
+  #           insecureSkipVerify: false
+  #         credentials:
+  #           existingSecret: taas-objectstore-credentials
+  #           accessKeyKey: access-key
+  #           secretKeyKey: secret-key
+  #       delivery:
+  #         default: cache
+  #         allowed: [cache, download, mount]
+  #         cache:
+  #           nodeGroup: gpu
+  #           waitForReady: true
+  #         download:
+  #           enabled: true
+  #         mount:
+  #           storageClass: ""
+  #           size: ""
+  backends: {}
+
+# Asynchronous model transfers. The server records a transfer and asks the
+# controller to run it as a Kubernetes Job, so the control plane never mounts
+# weights or streams model bytes itself.
+transfer:
+  # -- Run transfers as Jobs. Set to false only as an upgrade escape hatch;
+  # inline transfers then run inside the server process.
+  enabled: true
+  # -- Execution mode: `job` or `inline`.
+  mode: job
+  # -- Namespace the transfer Jobs run in. The chart creates it.
+  namespace: taas-jobs
+  # -- Maximum number of concurrently active transfer Jobs.
+  concurrency: 4
+  image:
+    # -- Image name appended to `image.repository` (the Dockerfile build target).
+    name: taas-transfer
+    # -- Image tag. Empty uses `image.tag`, then `v<Chart.appVersion>`.
+    tag: ""
+  serviceAccount:
+    # -- Create the transfer Job ServiceAccount in `transfer.namespace`.
+    create: true
+    # -- ServiceAccount name. Empty uses the chart's full name plus `-transfer`.
+    name: ""
+    # -- Annotations for the ServiceAccount (e.g. IRSA/workload identity for
+    # an object store that authorizes the pod instead of a static key).
+    annotations: {}
+  # -- Pin transfer Jobs to storage-worker nodes. Empty runs anywhere.
+  nodeSelector: {}
+  # -- Tolerations for transfer Jobs (e.g. a dedicated storage-node taint).
+  tolerations: []
+  # -- Transfer container resources, e.g. `{limits: {cpu: "4", memory: 8Gi}}`.
+  resources: {}
+  job:
+    # -- Job retries before it is marked failed.
+    backoffLimit: 2
+    # -- Hard limit on one transfer, in seconds (default 6h).
+    activeDeadlineSeconds: 21600
+    # -- Seconds a finished Job and its pods are kept for inspection.
+    ttlSecondsAfterFinished: 86400
+  # -- How often the controller samples a Job's progress ConfigMap.
+  progressInterval: 5s
+
+# Model warmup and warm-aware scheduling. With `enabled` on, the controller
+# creates KServe LocalModelNodeGroup/LocalModelCache resources and injects
+# node affinity into every LLMInferenceService so its pods land on nodes that
+# already hold the model.
+warmup:
+  # -- Enable LocalModelCache creation and warm-aware scheduling.
+  enabled: false
+  # Node pools that cache weights. The name is referenced by
+  # `storage.backends.<name>.delivery.cache.nodeGroup`. Every group needs a
+  # node selector that matches the pool's nodes.
+  #
+  #   nodeGroups:
+  #     - name: gpu
+  #       nodeSelector:
+  #         node.kubernetes.io/instance-type: gpu-a100
+  #       storageLimit: 500Gi
+  #       hostPath: /var/lib/taas/models
+  nodeGroups: []
+  scheduling:
+    # -- Injected affinity: `preferred`, `required` or `disabled`.
+    mode: preferred
+    # -- Weight used when mode is `preferred` (1-100).
+    weight: 100
+  auto:
+    # -- Warm a model when it first reports ready.
+    onModelReady: true
+    # -- Warm a model when it is deployed, before the first request.
+    onDeploy: false
+  eviction:
+    # -- Eviction policy: `lru` or `none`.
+    policy: lru
+    # -- Maximum models kept on one node; 0 disables the count bound.
+    maxModelsPerNode: 20
+    # -- Minimum free bytes to keep on a node; 0 disables the byte bound.
+    minFreeBytes: 10737418240
+
+
 configOverrides: {}

@@ -356,6 +356,14 @@ secrets:
 | `controller.config.controller.weights.*` | `model-weights` / `/data/weights` / `""` | 共享权重 PVC 名称、挂载路径、StorageClass |
 | `controller.config.controller.scheduling.schedulerName` | `""` | 设为 `volcano` 时启用 gang 调度（控制器写入 PodGroup）；为空则使用集群默认调度器 |
 | `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | 服务优先级映射到的 PriorityClass；未映射时 Pod 使用集群默认类 |
+| `storage.defaultBackend` / `storage.backends` | `""` / `{}` | 命名的文件系统/对象存储后端及交付模式；为空时保持旧 weights PVC |
+| `transfer.enabled` / `mode` / `namespace` / `concurrency` | `true` / `job` / `taas-jobs` / `4` | 以 Kubernetes Job 执行搬运；`inline` 为旧路径 |
+| `transfer.image.name` / `tag` | `taas-transfer` / `""` | 搬运 Job 镜像 |
+| `transfer.serviceAccount.create` | `true` | 创建 transfer 命名空间、ServiceAccount 与进度 ConfigMap Role |
+| `transfer.job.*` / `resources` / `progressInterval` | `2` / `21600` / `86400` / `{}` / `5s` | Job 生命周期、容器资源、进度采样 |
+| `warmup.enabled` / `nodeGroups` | `false` / `[]` | 创建 KServe 本地缓存并注入感知调度的亲和 |
+| `warmup.scheduling.mode` / `weight` | `preferred` / `100` | `preferred`、`required` 或 `disabled`；weight 仅 preferred 生效 |
+| `warmup.eviction.policy` / `maxModelsPerNode` / `minFreeBytes` | `lru` / `20` / `10737418240` | 缓存保留策略与容量上限 |
 | `rdma.enabled` / `deviceClass` | `true` / `taas-rdma` | 推理 Pod 申请 RDMA 设备所用的 DRA `DeviceClass`；`rdma.requireLinkUp` 只接受节点报告为 up 的链路，`rdma.selector` 可覆盖内置 CEL 表达式（用于固定网卡或 PCI 地址） |
 | `rdma.additionalDeviceClasses` | `[]` | 额外的 `DeviceClass`，每条 rail 一个；一条 rail 就是一个三层网络，因此只固定同一子网内的端口（通常每台主机一个端口，而不是一张卡的两个端口）；在服务的 `rdma.device_class` 中指定所属 rail 的类，保证同一副本的 Pod 取自同一条 rail |
 | `controller.config.controller.rdma.deviceClass` | `taas-rdma` | 服务开启 RDMA 但未指定设备类时继承的类；必须与 `rdma.deviceClass` 一致 |
@@ -394,6 +402,87 @@ harbor:
 `taasServer.harbor` 是旧文档写法的兼容别名；两条路径渲染出同样的 `CONFIG_IMAGE_HARBOR_*` 环境变量，
 两者同时设置时以顶层 `harbor` 为准。`hostname` 为空时，控制台会禁用导入/上传并说明原因，而不是在传输
 途中失败。
+
+## 存储后端、搬运 Job 与模型预热
+
+Chart 不再假设只有一块共享文件系统。`storage.backends` 声明模型版本可存放的文件系统与对象存储后端，每个后端声明 Pod 的读取方式（`mount`、`download` 或 `cache`）。不配置时仍保持旧的单 PVC 行为：chart 会用 `controller.config.controller.weights.*` 合成一个 `default` 文件系统后端。
+
+```yaml
+storage:
+  defaultBackend: shared
+  backends:
+    shared:
+      type: filesystem
+      filesystem:
+        existingClaim: model-weights   # 或 provision.enabled + storageClass
+        mountPath: /data/weights
+      delivery:
+        default: mount
+        allowed: [mount, cache]
+    archive:
+      type: objectstore
+      objectStore:
+        provider: s3
+        endpoint: https://s3.example.com
+        bucket: taas-models
+        prefix: weights
+        forcePathStyle: false
+        credentials:
+          existingSecret: archive-keys
+          accessKeyKey: accessKey
+          secretKeyKey: secretKey
+      delivery:
+        default: cache
+        allowed: [cache, download]
+```
+
+文件系统后端必须提供 `filesystem.existingClaim` 或 `filesystem.provision.enabled`；`delivery.default` 必须属于 `delivery.allowed`，`cache` 还要求 `warmup.enabled`。对象存储凭据不内联：chart 只引用 Secret，由搬运 Job 投射键值。
+
+`transfer` 把所有大流量操作从 API Server 移到 `Job/taas-transfer-<id>`：Server 写意图行并发布消息，Controller 构建 Job，Job 通过 ConfigMap 回报进度、通过消息队列回报终态。Chart 会创建 transfer 命名空间、ServiceAccount 与仅能读写进度 ConfigMap 的 Role。
+
+```yaml
+transfer:
+  enabled: true
+  mode: job                 # inline 为旧行为逃生舱
+  namespace: taas-jobs
+  concurrency: 4
+  image:
+    name: taas-transfer
+    tag: ""                 # 为空时使用 release 镜像 tag
+  serviceAccount:
+    create: true
+  job:
+    backoffLimit: 2
+    activeDeadlineSeconds: 21600
+    ttlSecondsAfterFinished: 86400
+```
+
+`transfer.mode: inline` 保留旧的进程内搬运，仅用于升级过渡；未提供 `taas-transfer` 镜像时也会自动回退。
+
+`warmup` 开启 `LocalModelCache`/`LocalModelNodeGroup` 创建与感知调度的能力。Controller 为每个 `warmup.nodeGroups` 创建节点组，在 `WarmModel` 时创建缓存，并在模型已预热到某些节点时向 `LLMInferenceService` 注入节点亲和：
+
+```yaml
+warmup:
+  enabled: true
+  nodeGroups:
+    - name: worker
+      storageLimit: 200Gi
+      hostPath: /var/lib/taas/models
+      storageClass: ""       # 为空时使用 hostPath 卷
+      nodeSelector:
+        kserve/localmodel: worker
+  scheduling:
+    mode: preferred          # preferred、required 或 disabled
+    weight: 100              # 1-100，仅 preferred 生效
+  eviction:
+    policy: lru
+    maxModelsPerNode: 20
+    minFreeBytes: 10737418240
+```
+
+节点组要求对应节点运行 KServe local-model agent，`nodeSelector` 就是运维把节点组绑定到该节点池的方式。`scheduling.mode: required` 会让部署等待已预热节点，适合延迟敏感模型，但节点排空时存在容量风险；默认 `preferred` 可降级到冷节点。
+
+控制台在平台管理员导航下提供三个页面：**存储后端**、**模型搬运**、**模型缓存**。
 
 ## 共享模型权重
 

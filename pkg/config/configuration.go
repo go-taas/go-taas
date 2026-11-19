@@ -683,6 +683,62 @@ func (c *Configuration) applyDefaults() {
 	if c.Fault.SignalsConsumer.Workers == 0 {
 		c.Fault.SignalsConsumer.Workers = 2
 	}
+	// Multi-backend storage, asynchronous transfers and model warmup. The
+	// legacy controller weights settings remain the source of truth for the
+	// synthesized default backend, so an existing values file keeps working
+	// without a storage section.
+	c.Storage = c.Storage.Normalize(
+		c.Controller.Weights.PVCName,
+		c.Controller.Weights.StorageClass,
+		c.Controller.Weights.MountPath,
+	)
+	if c.Transfer.Mode == "" {
+		c.Transfer.Mode = "job"
+	}
+	if c.Transfer.Namespace == "" {
+		c.Transfer.Namespace = "taas-jobs"
+	}
+	if c.Transfer.Concurrency == 0 {
+		c.Transfer.Concurrency = 4
+	}
+	if c.Transfer.ServiceAccount == "" {
+		c.Transfer.ServiceAccount = "taas-transfer"
+	}
+	if c.Transfer.ProgressInterval == 0 {
+		c.Transfer.ProgressInterval = 5 * time.Second
+	}
+	if c.Transfer.Job.BackoffLimit == 0 {
+		c.Transfer.Job.BackoffLimit = 2
+	}
+	if c.Transfer.Job.ActiveDeadlineSeconds == 0 {
+		c.Transfer.Job.ActiveDeadlineSeconds = 21600
+	}
+	if c.Transfer.Job.TTLSecondsAfterFinish == 0 {
+		c.Transfer.Job.TTLSecondsAfterFinish = 86400
+	}
+	if c.Warmup.Scheduling.Mode == "" {
+		c.Warmup.Scheduling.Mode = "preferred"
+	}
+	if c.Warmup.Scheduling.Weight == 0 {
+		c.Warmup.Scheduling.Weight = 100
+	}
+	if c.Warmup.Eviction.Policy == "" {
+		c.Warmup.Eviction.Policy = "lru"
+	}
+	if c.Warmup.Eviction.MaxModelsPerNode == 0 {
+		c.Warmup.Eviction.MaxModelsPerNode = 20
+	}
+	if c.Warmup.Eviction.MinFreeBytes == 0 {
+		c.Warmup.Eviction.MinFreeBytes = 10 << 30
+	}
+	for i := range c.Warmup.NodeGroups {
+		if c.Warmup.NodeGroups[i].StorageLimit == "" {
+			c.Warmup.NodeGroups[i].StorageLimit = "100Gi"
+		}
+		if c.Warmup.NodeGroups[i].HostPath == "" {
+			c.Warmup.NodeGroups[i].HostPath = "/var/lib/taas/models"
+		}
+	}
 }
 
 // String returns a string representation of the configuration for logging.

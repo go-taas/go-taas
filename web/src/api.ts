@@ -309,6 +309,63 @@ export interface ModelDownload {
   updatedAt: string;
 }
 
+// StorageBackend is one model-weights backend the platform can store on.
+export interface StorageBackend {
+  name: string;
+  // type is filesystem or objectstore.
+  type: string;
+  defaultDelivery: string;
+  allowedDeliveries?: string[];
+  isDefault?: boolean;
+  mountPath?: string;
+  provider?: string;
+  endpoint?: string;
+  bucket?: string;
+  warmupEnabled?: boolean;
+}
+
+// ModelTransfer is one asynchronous copy/download/delete job.
+export interface ModelTransfer {
+  transferId: string;
+  operation: string;
+  modelId?: string;
+  modelName?: string;
+  version?: string;
+  sourceBackend?: string;
+  targetBackend?: string;
+  sourceUri?: string;
+  targetUri?: string;
+  weightPath?: string;
+  state: string;
+  message?: string;
+  // int64 fields arrive as JSON strings.
+  bytes: string | number;
+  totalBytes?: string | number;
+  jobName?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ModelCacheEntry is one model's node-local warmup state.
+export interface ModelCacheEntry {
+  cacheId: string;
+  modelId?: string;
+  modelName?: string;
+  version?: string;
+  backend?: string;
+  sourceUri?: string;
+  weightPath?: string;
+  cacheName?: string;
+  nodeGroups?: string[];
+  state: string;
+  message?: string;
+  warmedNodes?: string[];
+  totalNodes?: number;
+  sizeBytes?: string | number;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // AvailableModel is the masked user-realm catalog projection (feature-17
 // AD8): no weight_path, version list or grant rows.
 export interface AvailableModel {

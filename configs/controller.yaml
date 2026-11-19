@@ -91,3 +91,39 @@ controller:
   # does not name one (CONFIG_CONTROLLER_RDMA_DEVICECLASS).
   rdma:
     deviceClass: taas-rdma
+
+# Model-weights storage backends. The controller mounts a filesystem backend
+# into transfer Jobs and injects the backend's access path into inference pods.
+storage:
+  defaultBackend: ""
+  backends: {}
+
+# One-shot model transfer Jobs. The controller subscribes to model.transfers
+# and owns the Job lifecycle.
+transfer:
+  mode: job
+  namespace: taas-jobs
+  concurrency: 4
+  image: ""
+  serviceAccount: taas-transfer
+  progressInterval: 5s
+  job:
+    backoffLimit: 2
+    activeDeadlineSeconds: 21600
+    ttlSecondsAfterFinished: 86400
+
+# Warmup and warm-aware scheduling: LocalModelCache creation plus the node
+# affinity injected into every LLMInferenceService.
+warmup:
+  enabled: false
+  nodeGroups: []
+  scheduling:
+    mode: preferred
+    weight: 100
+  auto:
+    onModelReady: true
+    onDeploy: false
+  eviction:
+    policy: lru
+    maxModelsPerNode: 20
+    minFreeBytes: 10737418240

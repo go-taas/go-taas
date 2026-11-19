@@ -22,7 +22,7 @@ func newModelTestDB(t *testing.T) *gorm.DB {
 	dsn := fmt.Sprintf("file:%s?mode=memory&cache=shared&_busy_timeout=5000", t.Name())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	require.NoError(t, err)
-	require.NoError(t, db.AutoMigrate(&Model{}, &Version{}, &Authorization{}))
+	require.NoError(t, db.AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}, &ModelTransfer{}, &ModelCacheEntry{}))
 	// The version-history deployment count joins inference_services
 	// (feature #32, AD4). The model module owns no infer schema, so the
 	// test creates a minimal inference_services table for the join.

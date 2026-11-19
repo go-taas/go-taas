@@ -1,0 +1,37 @@
+{{- if and .Values.transfer .Values.transfer.enabled }}
+{{- $namespace := include "go-taas.transfer.namespace" . }}
+{{/*
+A transfer Job writes its byte progress into a ConfigMap in its own
+namespace. Nothing else is granted: the Job reads model bytes and speaks to
+the object store, never to the Kubernetes API.
+*/}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ include "go-taas.fullname" . }}-transfer-progress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: transfer
+rules:
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    verbs: ["get", "create", "update", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ include "go-taas.fullname" . }}-transfer-progress
+  namespace: {{ $namespace }}
+  labels:
+    {{- include "go-taas.labels" . | nindent 4 }}
+    app.kubernetes.io/component: transfer
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ include "go-taas.fullname" . }}-transfer-progress
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "go-taas.transfer.serviceAccountName" . }}
+    namespace: {{ $namespace }}
+{{- end }}

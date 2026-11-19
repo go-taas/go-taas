@@ -548,3 +548,85 @@ controller:
 tracing:
   retention:
     traceTTL: 720h
+
+# Model-weights storage. A backend answers where the bytes live; `delivery`
+# answers how pods read them. When `backends` is empty the platform derives
+# one filesystem backend from model.weightsDir and controller.weights, so an
+# existing installation keeps working unchanged.
+storage:
+  # defaultBackend is the backend a model version uses when it names none.
+  # Empty picks the only configured backend.
+  defaultBackend: ""
+  # backends maps a backend name to its definition. Filesystem backends cover
+  # JuiceFS/NFS/CephFS/EFS/Lustre (an existing RWX claim, or a claim the chart
+  # provisions); objectStore backends cover S3/MinIO/OSS/COS.
+  #
+  #   backends:
+  #     juicefs:
+  #       type: filesystem
+  #       filesystem:
+  #         existingClaim: model-weights
+  #         mountPath: /data/weights
+  #       delivery:
+  #         default: mount
+  #         allowed: [mount]
+  #     s3:
+  #       type: objectstore
+  #       objectStore:
+  #         provider: s3
+  #         endpoint: https://s3.example.com
+  #         region: us-east-1
+  #         bucket: taas-models
+  #         prefix: models
+  #         forcePathStyle: false
+  #         credentials:
+  #           existingSecret: taas-objectstore-credentials
+  #           accessKeyKey: access-key
+  #           secretKeyKey: secret-key
+  #       delivery:
+  #         default: cache
+  #         allowed: [cache, download, mount]
+  #         cache:
+  #           nodeGroup: gpu
+  #           waitForReady: true
+  #         download:
+  #           enabled: true
+  backends: {}
+
+# Asynchronous model transfers. The server records a transfer and the
+# controller runs it as a one-shot Job, so the control plane never mounts
+# weights or streams model bytes. `inline` is an upgrade escape hatch.
+transfer:
+  mode: job
+  namespace: taas-jobs
+  concurrency: 4
+  # image is the taas-transfer image a Job runs. Empty disables Job transfers
+  # and the server falls back to inline execution.
+  image: ""
+  serviceAccount: taas-transfer
+  progressInterval: 5s
+  job:
+    backoffLimit: 2
+    activeDeadlineSeconds: 21600
+    ttlSecondsAfterFinished: 86400
+
+# Model warmup and warm-aware scheduling. With enabled on, the controller
+# creates KServe LocalModelNodeGroup/LocalModelCache resources and injects
+# node affinity into LLMInferenceService so pods prefer nodes that already
+# hold the model.
+warmup:
+  enabled: false
+  # nodeGroups declares the node pools weights are cached on. Every group
+  # needs a selector that matches the pool's nodes.
+  nodeGroups: []
+  scheduling:
+    # mode is preferred, required or disabled.
+    mode: preferred
+    weight: 100
+  auto:
+    onModelReady: true
+    onDeploy: false
+  eviction:
+    policy: lru
+    maxModelsPerNode: 20
+    minFreeBytes: 10737418240

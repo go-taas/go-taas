@@ -204,6 +204,161 @@
           }
         }
       }
+    },
+    "storage": {
+      "type": "object",
+      "description": "Model-weights storage backends. Empty keeps the legacy weights PVC.",
+      "properties": {
+        "defaultBackend": {
+          "type": "string"
+        },
+        "backends": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/definitions/storageBackend"
+          }
+        }
+      }
+    },
+    "transfer": {
+      "type": "object",
+      "description": "Asynchronous model transfers run as Kubernetes Jobs.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "mode": {
+          "type": "string",
+          "enum": [
+            "job",
+            "inline"
+          ]
+        },
+        "namespace": {
+          "type": "string",
+          "minLength": 1
+        },
+        "concurrency": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 64
+        },
+        "image": {
+          "type": "object",
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "tag": {
+              "type": "string"
+            }
+          }
+        },
+        "serviceAccount": {
+          "type": "object",
+          "properties": {
+            "create": {
+              "type": "boolean"
+            },
+            "name": {
+              "type": "string"
+            }
+          }
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "tolerations": {
+          "type": "array"
+        },
+        "resources": {
+          "type": "object"
+        },
+        "job": {
+          "type": "object",
+          "properties": {
+            "backoffLimit": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "activeDeadlineSeconds": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "ttlSecondsAfterFinished": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        },
+        "progressInterval": {
+          "type": "string"
+        }
+      }
+    },
+    "warmup": {
+      "type": "object",
+      "description": "KServe LocalModelCache warmup and warm-aware scheduling.",
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "nodeGroups": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/warmupNodeGroup"
+          }
+        },
+        "scheduling": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "preferred",
+                "required",
+                "disabled"
+              ]
+            },
+            "weight": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100
+            }
+          }
+        },
+        "auto": {
+          "type": "object",
+          "properties": {
+            "onModelReady": {
+              "type": "boolean"
+            },
+            "onDeploy": {
+              "type": "boolean"
+            }
+          }
+        },
+        "eviction": {
+          "type": "object",
+          "properties": {
+            "policy": {
+              "type": "string",
+              "enum": [
+                "lru",
+                "none"
+              ]
+            },
+            "maxModelsPerNode": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "minFreeBytes": {
+              "type": "integer",
+              "minimum": 0
+            }
+          }
+        }
+      }
     }
   },
   "definitions": {
@@ -716,6 +871,175 @@
         "internal",
         "external"
       ]
+    },
+    "storageBackend": {
+      "type": "object",
+      "description": "One model-weights backend.",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": [
+            "filesystem",
+            "objectstore"
+          ]
+        },
+        "filesystem": {
+          "type": "object",
+          "properties": {
+            "existingClaim": {
+              "type": "string"
+            },
+            "provision": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                },
+                "storageClass": {
+                  "type": "string"
+                },
+                "accessMode": {
+                  "type": "string"
+                },
+                "size": {
+                  "type": "string"
+                }
+              }
+            },
+            "mountPath": {
+              "type": "string"
+            }
+          }
+        },
+        "objectStore": {
+          "type": "object",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "region": {
+              "type": "string"
+            },
+            "bucket": {
+              "type": "string"
+            },
+            "prefix": {
+              "type": "string"
+            },
+            "forcePathStyle": {
+              "type": "boolean"
+            },
+            "tls": {
+              "type": "object",
+              "properties": {
+                "insecureSkipVerify": {
+                  "type": "boolean"
+                },
+                "caSecret": {
+                  "type": "string"
+                }
+              }
+            },
+            "credentials": {
+              "type": "object",
+              "properties": {
+                "existingSecret": {
+                  "type": "string"
+                },
+                "accessKeyKey": {
+                  "type": "string"
+                },
+                "secretKeyKey": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "delivery": {
+          "type": "object",
+          "properties": {
+            "default": {
+              "type": "string",
+              "enum": [
+                "mount",
+                "download",
+                "cache"
+              ]
+            },
+            "allowed": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "mount",
+                  "download",
+                  "cache"
+                ]
+              }
+            },
+            "cache": {
+              "type": "object",
+              "properties": {
+                "nodeGroup": {
+                  "type": "string"
+                },
+                "waitForReady": {
+                  "type": "boolean"
+                }
+              }
+            },
+            "mount": {
+              "type": "object",
+              "properties": {
+                "storageClass": {
+                  "type": "string"
+                },
+                "size": {
+                  "type": "string"
+                }
+              }
+            },
+            "download": {
+              "type": "object",
+              "properties": {
+                "enabled": {
+                  "type": "boolean"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "warmupNodeGroup": {
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "nodeSelector": {
+          "type": "object"
+        },
+        "storageLimit": {
+          "type": "string"
+        },
+        "hostPath": {
+          "type": "string"
+        },
+        "storageClass": {
+          "type": "string"
+        }
+      }
     }
   }
 }

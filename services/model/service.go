@@ -23,6 +23,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/modelhub"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/routing"
 	"github.com/go-taas/go-taas/services/tenancy"
@@ -289,6 +290,29 @@ type Service struct {
 	// auditRecorder is the best-effort audit recorder (feature #15, AD3).
 	// Nil until wired: no audit events are produced.
 	auditRecorder AuditRecorder
+
+	// storageConfig is the normalized multi-backend storage configuration.
+	// Empty falls back to the legacy weights directory.
+	storageConfig storage.Config
+	// transferSettings selects Job vs inline transfer execution.
+	transferSettings TransferSettings
+	// transferPublisher hands transfer requests to the controller. Nil
+	// uses the shared MQ component.
+	transferPublisher TransferPublisher
+	// warmupEnabled exposes whether node-local model warmup is enabled.
+	warmupEnabled bool
+	// warmupDefaults carries the controller's warmup configuration.
+	warmupNodeGroups []WarmupNodeGroupSettings
+}
+
+// WarmupNodeGroupSettings is one configured node pool, copied from config so
+// the model service need not import the config package.
+type WarmupNodeGroupSettings struct {
+	Name         string
+	StorageLimit string
+	HostPath     string
+	StorageClass string
+	NodeSelector map[string]string
 }
 
 // Downloader downloads model weights from a model hub into a local
@@ -523,7 +547,7 @@ func NewForFVT(db *gorm.DB) *Service {
 // model_authorizations) onto a caller-provided database for
 // full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&Model{}, &Version{}, &Authorization{})
+	return db.AutoMigrate(&Model{}, &Version{}, &Authorization{}, &ModelTransfer{}, &ModelCacheEntry{})
 }
 
 // AttachToServer implements server.Service.
@@ -556,7 +580,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err := migrateActiveVersionIndex(db); err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}, &ModelTransfer{}, &ModelCacheEntry{}); err != nil {
 		return err
 	}
 	// Downloads are in-process goroutines: a job left queued or running

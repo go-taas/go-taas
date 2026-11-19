@@ -282,6 +282,10 @@ func (r *k8sReconciler) buildLLMInferenceService(ctx context.Context, evt change
 		}
 		spec["prefill"] = prefillSpec
 	}
+	// Warm-aware placement: a pod is steered to a node whose local cache
+	// already holds the weights, so the engine starts without copying the
+	// model again.
+	r.applyWarmupAffinity(ctx, spec, modelName)
 
 	return &unstructured.Unstructured{Object: map[string]any{
 		"apiVersion": "serving.kserve.io/v1alpha2",

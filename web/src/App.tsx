@@ -37,6 +37,9 @@ import SSOProvidersPage from './pages/SSOProvidersPage';
 import IdentityBindingsPage from './pages/IdentityBindingsPage';
 import ModelsPage from './pages/ModelsPage';
 import ModelDetailPage from './pages/ModelDetailPage';
+import ModelTransfersPage from './pages/ModelTransfersPage';
+import ModelCachesPage from './pages/ModelCachesPage';
+import StorageBackendsPage from './pages/StorageBackendsPage';
 import InferenceServicesPage from './pages/InferenceServicesPage';
 import ServiceDetailPage from './pages/ServiceDetailPage';
 import ClustersPage from './pages/ClustersPage';
@@ -258,6 +261,9 @@ function AdminSurface() {
               <Route path="/admin/identity-bindings" element={<IdentityBindingsPage />} />
               <Route path="/admin/models" element={<ModelsPage />} />
               <Route path="/admin/models/:id" element={<ModelDetailPage />} />
+              <Route path="/admin/storage-backends" element={<StorageBackendsPage />} />
+              <Route path="/admin/model-transfers" element={<ModelTransfersPage />} />
+              <Route path="/admin/model-cache-entries" element={<ModelCachesPage />} />
               <Route path="/admin/images" element={<ImagesPage />} />
               <Route path="/admin/engine-templates" element={<EngineTemplatesPage />} />
               <Route path="/admin/images/:id" element={<ImageDetailPage />} />

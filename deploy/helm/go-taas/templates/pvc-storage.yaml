@@ -1,0 +1,30 @@
+{{- $storage := .Values.storage | default dict }}
+{{- range $name, $backend := ($storage.backends | default dict) }}
+{{- $fs := dig "filesystem" dict $backend }}
+{{- if and (eq (dig "type" "filesystem" $backend) "filesystem") (dig "provision" "enabled" false $fs) (not $fs.existingClaim) }}
+{{/*
+Filesystem backend the operator asked the chart to provision. A
+ReadWriteMany class (JuiceFS, NFS, CephFS, EFS, Lustre) is required because
+every inference replica and every transfer Job reads the same weights.
+*/}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "go-taas.storage.claimName" (dict "root" $ "name" $name "backend" $backend) }}
+  labels:
+    {{- include "go-taas.labels" $ | nindent 4 }}
+    app.kubernetes.io/component: storage
+    go-taas.com/storage-backend: {{ $name | quote }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - {{ dig "provision" "accessMode" "ReadWriteMany" $fs | quote }}
+  {{- with (dig "provision" "storageClass" "" $fs) }}
+  storageClassName: {{ . | quote }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ dig "provision" "size" "100Gi" $fs | quote }}
+{{- end }}
+{{- end }}
