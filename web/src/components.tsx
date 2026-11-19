@@ -1,7 +1,7 @@
 // Shared presentational components used across console pages.
 
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { Check, Copy, DotsThreeVertical } from '@phosphor-icons/react';
+import { Check, Copy, DotsThreeVertical, X } from '@phosphor-icons/react';
 import { navigate } from './router';
 import { useI18n } from './i18n';
 
@@ -268,6 +268,50 @@ export function ErrorBanner({ message }: { message: string }) {
   return (
     <div className="error-banner" data-testid="error-banner" role="alert">
       {message}
+    </div>
+  );
+}
+
+// Toast is a success banner that clears itself after a few seconds and can
+// also be dismissed explicitly. Every action that reports a result uses it so
+// a confirmation never piles up or hides the next one.
+export function Toast({
+  message,
+  onDismiss,
+  duration = 3000,
+  testId = 'toast',
+}: {
+  message: string;
+  onDismiss: () => void;
+  duration?: number;
+  testId?: string;
+}) {
+  const { t } = useI18n();
+  // The consumer usually passes an inline callback, so keep the latest one in
+  // a ref: an unrelated re-render must not restart the dismissal timer.
+  const dismissRef = useRef(onDismiss);
+  useEffect(() => {
+    dismissRef.current = onDismiss;
+  }, [onDismiss]);
+  useEffect(() => {
+    if (!message) return;
+    const timer = window.setTimeout(() => dismissRef.current(), duration);
+    return () => window.clearTimeout(timer);
+  }, [message, duration]);
+  if (!message) return null;
+  return (
+    <div className="success-banner toast" data-testid={testId} role="status">
+      <span className="toast-message">{message}</span>
+      <button
+        type="button"
+        className="toast-close"
+        data-testid={`${testId}-close`}
+        aria-label={t('common.close')}
+        title={t('common.close')}
+        onClick={onDismiss}
+      >
+        <X size={14} weight="bold" aria-hidden="true" />
+      </button>
     </div>
   );
 }

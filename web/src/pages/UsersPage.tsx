@@ -11,7 +11,7 @@ import { api, ApiError, formatTime, type OrganizationSummary, type PageMeta, typ
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, RequiredStatus } from '../components/FormField';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -100,6 +100,8 @@ export default function UsersPage() {
       if (action === 'grantAdmin') setNotice(t('users.grantAdminSuccess', { username: name }));
       else if (action === 'revokeAdmin') setNotice(t('users.revokeAdminSuccess', { username: name }));
       else if (action === 'delete') setNotice(t('users.deleteSuccess', { username: name }));
+      else if (action === 'disable') setNotice(t('users.disableSuccess', { username: name }));
+      else if (action === 'enable') setNotice(t('users.enableSuccess', { username: name }));
       await load();
       setConfirmTarget(null);
     } catch (e) {
@@ -125,11 +127,7 @@ export default function UsersPage() {
       </div>
 
       {error && <ErrorBanner message={error} />}
-      {notice && (
-        <div className="success-banner" data-testid="users-toast">
-          {notice}
-        </div>
-      )}
+      <Toast message={notice} onDismiss={() => setNotice('')} testId="users-toast" />
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
         <select
@@ -325,8 +323,10 @@ export default function UsersPage() {
           orgId={orgId}
           user={orgTarget}
           onClose={() => setOrgTarget(null)}
-          onDone={() => {
+          onDone={(organizationName) => {
+            const name = orgTarget.username || orgTarget.userId;
             setOrgTarget(null);
+            setNotice(t('users.addOrgSuccess', { username: name, organization: organizationName }));
             void load();
           }}
         />
@@ -430,7 +430,7 @@ function AddToOrgDialog({
   orgId: string;
   user: UserSummary;
   onClose: () => void;
-  onDone: () => void;
+  onDone: (organizationName: string) => void;
 }) {
   const { t, tEnum } = useI18n();
   const [orgs, setOrgs] = useState<OrganizationSummary[]>([]);
@@ -474,12 +474,8 @@ function AddToOrgDialog({
     };
   }, [orgId, user.organizationId]);
 
-  // A save moves the account: joining an organization clears the previous one
-  // (and the projects the user held there), so the operator is told before,
-  // not left wondering why the old roster still listed them.
-  const movingFrom = user.organizationId && user.organizationId !== selected ? user.organizationId : '';
-  // The warning names organizations, not ids: the operator picked them by
-  // name and should read them back the same way.
+  // The confirmation names organizations, not ids: the operator picked them
+  // by name and should read them back the same way.
   const orgLabel = (id: string) => {
     const org = orgs.find((o) => o.organizationId === id);
     return org?.displayName && org.displayName !== id ? org.displayName : id;
@@ -490,23 +486,26 @@ function AddToOrgDialog({
     setSubmitting(true);
     setError('');
     try {
+      // A user may already belong to several organizations. The directory
+      // carries only the primary affiliation, so an organization other than
+      // that one cannot be assumed to be new: post the membership and, when
+      // the server reports a duplicate (10029), update the existing role.
+      const path = `/api/v1/admin/tenancy/organizations/${selected}/members`;
+      const post = () => api.post(path, orgId, { userId: user.userId, role });
+      const patch = () => api.patch(`${path}/${user.userId}`, orgId, { role });
       if (selected === user.organizationId) {
-        // The user is already in this organization, so the only thing that
-        // can change is the role: posting a "new member" would be refused as
-        // a duplicate. The owner's role is not editable here (the server
-        // protects it with 10032), which is the same rule the roster applies.
-        await api.patch(
-          `/api/v1/admin/tenancy/organizations/${selected}/members/${user.userId}`,
-          orgId,
-          { role },
-        );
+        // The owner's role is not editable here (the server protects it with
+        // 10032), which is the same rule the roster applies.
+        await patch();
       } else {
-        await api.post(`/api/v1/admin/tenancy/organizations/${selected}/members`, orgId, {
-          userId: user.userId,
-          role,
-        });
+        try {
+          await post();
+        } catch (e) {
+          if (e instanceof ApiError && e.code === 10029) await patch();
+          else throw e;
+        }
       }
-      onDone();
+      onDone(orgLabel(selected));
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('users.addOrgFailed'));
     } finally {
@@ -542,16 +541,6 @@ function AddToOrgDialog({
             ))}
           </select>
         </div>
-        {movingFrom && (
-          <div className="form-field full">
-            <div className="error" data-testid="user-add-org-move-warning">
-              {t('users.addOrgMoveWarning', {
-                from: user.organizationName || orgLabel(movingFrom),
-                to: orgLabel(selected),
-              })}
-            </div>
-          </div>
-        )}
         <div className="form-field">
           <FieldLabel
             text={t('users.role')}
