@@ -109,6 +109,7 @@ Pitfalls to avoid:
 - **FR1.1** The `audit_events` table stores one row per control-plane mutation or auth event: `audit_event_id` (UUID v4, primary key), `organization_id` (nullable for platform-level events), `actor_user_id`, `actor_type` (`user`/`system`/`api_key`), `action` (curated enum, D4), `resource_type` (enum), `resource_id` (string), `result` (`success`/`failure`), `ip_address`, `user_agent`, `metadata` (JSONB, extra context), `created_at`.
 - **FR1.2** **Best-effort recorder** (D3): every mutating control-plane API calls the audit recorder after the mutation succeeds; a recorder failure is logged and never fails or rolls back the mutation. The recorder is invoked for at least: auth login/logout/login-failure, API key create/revoke, model create/update/deploy/undeploy, image register/delete, inference-service create/scale/delete, member add/remove/role-change, invitation create/revoke/accept/reject, price update, org create/update, and billing payment/auto-recharge/invoice.
 - **FR1.3** Indexes: primary key on `audit_event_id`; composite on `(organization_id, created_at)` for org-scoped lists; composite on `(actor_user_id, created_at)` for the end-user activity list; `action` and `result` indexed for filtering.
+- **FR1.4** **`ip_address` is the browser's client IP, not the pod IP.** The server resolves it from the request's proxy chain: the left-most `X-Forwarded-For` entry, then `X-Real-IP`, then the socket peer. Every hop in the deployment must therefore preserve the original source: the console nginx proxy forwards `$proxy_add_x_forwarded_for`, and the cluster ingress/Envoy service must use `externalTrafficPolicy: Local` so that cross-node tunnel SNAT does not overwrite the source with the node's Cilium host address. When the ingress SNATs, the recorded IP becomes the node/pod address (for example a `10.42.x.x` Cilium host IP) instead of the browser address.
 
 ### FR2 — Retention
 
@@ -134,6 +135,8 @@ Pitfalls to avoid:
 - **FR5.2** A row action "Detail" opens a drill-down dialog (`GetAuditEvent`) showing the full metadata: actor, actor type, action, resource type/id, result, IP, user agent, org, metadata JSON, created_at.
 - **FR5.3** An "Export" button (`audit-export`) offers CSV and JSON; it exports the currently applied filters (D7). A "truncated" notice appears when the export exceeds the 10,000-row cap.
 - **FR5.4** The page shows a data-freshness note ("audit events appear within the ingestion window") and refreshes on a 60-second poll while visible. The empty state reads "No audit events match these filters".
+- **FR5.5** **The page paginates the whole filtered set.** It requests `page.offset`/`page.limit` (20 rows per page) and renders a pager driven by `pageMeta.total`, so an administrator can walk every matching event instead of only the newest page. Changing a filter resets the offset to zero.
+- **FR5.6** **Actor identity is shown most-human-first.** The actor column renders `actor_display_name` when present, otherwise `actor_username` (the account name), otherwise `actor_user_id` (the actor UUID), and falls back to a localized "system" label for system actors. The UUID is never shown as a secondary line when a display name or username exists. `actor_username` is resolved in one batched directory lookup per page alongside `actor_display_name`; the export APIs keep emitting the raw `actor_user_id` for stable machine consumption.
 
 ### FR6 — Console My Activity page (end-user)
 
@@ -272,6 +275,9 @@ Error codes (audit block 10601–10699, `pkg/errors/codes.go`):
 | AC12 | The end-user My Activity page renders the table with testid `activity-table` and rows `activity-row-{id}`, filters via `activity-filter-action`/`activity-filter-result`, and exports via `activity-export` (CSV/JSON) | E2E |
 | AC13 | **Surface separation** — the admin Audit Logs page calls only `/api/v1/admin/audit/*` and the My Activity page calls only `/api/v1/audit/*`; an unauthenticated visitor to either page is redirected to the correct login (`/admin/login` vs `/login`) | E2E |
 | AC14 | Regression: the data plane is unchanged — request logs (feature #12) still capture per-inference diagnostics and audit events do not gate inference traffic | FVT + E2E regression |
+| AC15 | The admin Audit Logs page requests `page.offset`/`page.limit`, renders a pager from `pageMeta.total`, and can reach every matching event, not only the newest page | E2E |
+| AC16 | The actor column renders display name → username → actor UUID → system label, in that order, and never shows a UUID while a display name or username exists; `actor_username` is resolved in one batched lookup per page | Unit + E2E |
+| AC17 | An audit event recorded behind the console ingress stores the browser's client IP in `ip_address`; when a hop SNATs the source, the stored value is the pod/node address, which the `externalTrafficPolicy: Local` ingress setting prevents | FVT + live verification |
 
 ---
 

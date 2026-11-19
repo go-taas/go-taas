@@ -266,6 +266,30 @@ func (s *Service) ResolveUserLabels(ctx context.Context, userIDs []string) (map[
 	return labels, nil
 }
 
+// ResolveUsernames returns each requested user id's raw account name.
+// The audit console uses it to show the account before falling back to
+// the opaque actor uuid. Unknown ids are omitted and never fail the batch.
+func (s *Service) ResolveUsernames(ctx context.Context, userIDs []string) (map[string]string, error) {
+	usernames := make(map[string]string, len(userIDs))
+	if len(userIDs) == 0 {
+		return usernames, nil
+	}
+	repo, err := s.ssoRepository()
+	if err != nil {
+		return nil, err
+	}
+	rows, err := repo.ListUsersByIDs(ctx, userIDs)
+	if err != nil {
+		return nil, err
+	}
+	for _, row := range rows {
+		if row.Username != "" {
+			usernames[row.ID] = row.Username
+		}
+	}
+	return usernames, nil
+}
+
 // ListActiveUsers returns every active account, newest first. It is the
 // tenancy service's roster-candidate directory seam: the tenancy module owns
 // the membership tables and subtracts the accounts that already joined, while

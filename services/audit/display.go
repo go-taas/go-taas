@@ -224,12 +224,14 @@ func labelKey(resourceType, id string) string { return resourceType + "\x00" + i
 // queries.
 func (s *Service) decorateEvents(ctx context.Context, repo *Repository, rows []*AuditEvent) []*auditv1.AuditEvent {
 	labels := s.actorLabels(ctx, rows)
+	usernames := s.actorUsernames(ctx, rows)
 	orgNames := repo.resolveOrgLabels(ctx, orgIDsOf(rows))
 	resourceNames := repo.resolveResourceLabels(ctx, rows)
 	events := make([]*auditv1.AuditEvent, 0, len(rows))
 	for _, row := range rows {
 		ev := summarizeEvent(row)
 		ev.ActorDisplayName = labels[row.ActorUserID]
+		ev.ActorUsername = usernames[row.ActorUserID]
 		ev.OrganizationDisplayName = orgNames[row.OrganizationID]
 		ev.ResourceDisplayName = resourceNames[labelKey(row.ResourceType, row.ResourceID)]
 		events = append(events, ev)

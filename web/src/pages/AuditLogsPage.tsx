@@ -8,9 +8,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useApi } from '../surface';
 import { useOrg } from '../org';
-import { formatTime, type OrganizationSummary } from '../api';
+import { formatTime, type OrganizationSummary, type PageMeta } from '../api';
 import { useI18n } from '../i18n';
-import { StateBadge } from '../components';
+import { StateBadge, Pagination } from '../components';
 
 interface AuditEvent {
   auditEventId: string;
@@ -18,6 +18,7 @@ interface AuditEvent {
   organizationDisplayName?: string;
   actorUserId: string;
   actorDisplayName?: string;
+  actorUsername?: string;
   actorType: string;
   action: string;
   resourceType: string;
@@ -29,6 +30,8 @@ interface AuditEvent {
   metadata: string;
   createdAt: string;
 }
+
+const PAGE_SIZE = 20;
 
 // humanizeAction turns an unknown action into readable words, so a new
 // backend action still reads sensibly before its translation lands.
@@ -45,6 +48,10 @@ export default function AuditLogsPage() {
   const [events, setEvents] = useState<AuditEvent[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // The API already paginates; the page keeps the offset and total so
+  // every audit row is reachable instead of showing only the newest page.
+  const [offset, setOffset] = useState(0);
+  const [total, setTotal] = useState(0);
   // The governance view spans every organization; the filter narrows it on
   // demand (an operator investigating one tenant's trail).
   const [orgFilter, setOrgFilter] = useState('');
@@ -60,16 +67,27 @@ export default function AuditLogsPage() {
       .catch(() => setOrgList([]));
   }, [api, orgId]);
 
+  // Changing the organization filter starts a new result set.
+  useEffect(() => {
+    setOffset(0);
+  }, [orgFilter]);
+
   useEffect(() => {
     const query = orgFilter ? `organizationId=${encodeURIComponent(orgFilter)}&` : '';
     setLoading(true);
     setError('');
     api
-      .get<{ auditEvents?: AuditEvent[] }>(`/api/v1/admin/audit/events?${query}page.limit=100`, orgId)
-      .then((data) => setEvents(data.auditEvents || []))
+      .get<{ auditEvents?: AuditEvent[]; pageMeta?: PageMeta }>(
+        `/api/v1/admin/audit/events?${query}page.offset=${offset}&page.limit=${PAGE_SIZE}`,
+        orgId,
+      )
+      .then((data) => {
+        setEvents(data.auditEvents || []);
+        setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : t('audit.loadFailed')))
       .finally(() => setLoading(false));
-  }, [api, orgId, orgFilter, t]);
+  }, [api, orgId, orgFilter, offset, t]);
 
   // Organization display names by id: the event carries one, and the
   // organization list backfills it for rows recorded before the backend
@@ -137,10 +155,10 @@ export default function AuditLogsPage() {
                 <td>{formatTime(e.createdAt)}</td>
                 <td data-testid={`audit-action-${e.auditEventId}`}>{actionLabel(e.action)}</td>
                 <td>{orgLabel(e)}</td>
-                <td>
-                  {e.actorDisplayName || e.actorUserId || t('audit.systemActor')}
-                  {e.actorDisplayName && e.actorUserId && (
-                    <div className="muted small mono">{e.actorUserId}</div>
+                <td data-testid={`audit-actor-${e.auditEventId}`}>
+                  {e.actorDisplayName || e.actorUsername || e.actorUserId || t('audit.systemActor')}
+                  {e.actorDisplayName && e.actorUsername && e.actorUsername !== e.actorDisplayName && (
+                    <div className="muted small mono">{e.actorUsername}</div>
                   )}
                 </td>
                 <td>
@@ -158,6 +176,14 @@ export default function AuditLogsPage() {
             ))}
           </tbody>
         </table>
+      )}
+      {!loading && total > 0 && (
+        <Pagination
+          offset={offset}
+          limit={PAGE_SIZE}
+          total={total}
+          onPageChange={setOffset}
+        />
       )}
     </div>
   );

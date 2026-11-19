@@ -109,6 +109,7 @@
 - **FR1.1** `audit_events` 表每行存储一个控制面变更或认证事件：`audit_event_id`（UUID v4，主键）、`organization_id`（平台级事件可为空）、`actor_user_id`、`actor_type`（`user`/`system`/`api_key`）、`action`（精选枚举，D4）、`resource_type`（枚举）、`resource_id`（字符串）、`result`（`success`/`failure`）、`ip_address`、`user_agent`、`metadata`（JSONB，额外上下文）、`created_at`。
 - **FR1.2** **尽力而为记录器**（D3）：每个变更性控制面 API 在操作成功后调用审计记录器；记录器失败被记录，绝不失败或回滚操作。记录器至少为以下操作调用：认证登录/登出/登录失败、API Key 创建/撤销、模型创建/更新/部署/取消部署、镜像注册/删除、推理服务创建/扩缩容/删除、成员增/删/改角色、邀请创建/撤销/接受/拒绝、价格更新、组织创建/更新、以及计费支付/自动充值/发票。
 - **FR1.3** 索引：`audit_event_id` 主键；`(organization_id, created_at)` 复合索引用于组织范围列表；`(actor_user_id, created_at)` 复合索引用于终端用户活动列表；`action` 与 `result` 索引用于过滤。
+- **FR1.4** **`ip_address` 记录浏览器客户端 IP，而非 Pod IP。** 服务端从请求的代理链路中解析：优先取 `X-Forwarded-For` 最左侧条目，其次 `X-Real-IP`，最后是 socket 对端地址。因此链路上的每一跳都必须保留原始来源：console nginx 代理转发 `$proxy_add_x_forwarded_for`，集群入口/Envoy 服务必须使用 `externalTrafficPolicy: Local`，否则跨节点隧道 SNAT 会把来源改写成节点的 Cilium 主机地址。当入口发生 SNAT 时，记录的 IP 会变成节点/Pod 地址（例如 `10.42.x.x` 的 Cilium 主机 IP），而不是浏览器地址。
 
 ### FR2 — 保留期
 
@@ -134,6 +135,8 @@
 - **FR5.2** 行操作「详情」打开下钻对话框（`GetAuditEvent`）展示完整元数据：主体、主体类型、操作、资源类型/id、结果、IP、用户代理、组织、metadata JSON、created_at。
 - **FR5.3** 一个「导出」按钮（`audit-export`）提供 CSV 与 JSON；它导出当前应用的过滤条件（D7）。导出超过 10,000 行上限时出现「已截断」提示。
 - **FR5.4** 页面显示数据新鲜度提示（「审计事件在摄取窗口内出现」）并在可见时每 60 秒轮询刷新。空状态显示「没有匹配这些过滤条件的审计事件」。
+- **FR5.5** **页面分页展示整个过滤结果集。** 请求携带 `page.offset`/`page.limit`（每页 20 行），并依据 `pageMeta.total` 渲染分页器，管理员可以翻遍所有匹配事件，而不仅是最新一页。修改过滤条件时 offset 重置为 0。
+- **FR5.6** **操作者身份按「更像人」的优先级展示。** 操作者列依次渲染 `actor_display_name`、`actor_username`（账号名）、`actor_user_id`（操作者 UUID），系统操作者回退为本地化的「系统」标签。当存在展示名或账号名时，绝不把 UUID 作为次级信息展示。`actor_username` 与 `actor_display_name` 一样按页批量解析一次目录；导出 API 仍输出原始 `actor_user_id` 以便机器稳定消费。
 
 ### FR6 — 控制台「我的活动」页面（终端用户）
 
@@ -272,6 +275,9 @@ flowchart TD
 | AC12 | 终端用户「我的活动」页面以 testid `activity-table` 与行 `activity-row-{id}` 渲染表格，经 `activity-filter-action`/`activity-filter-result` 过滤，并经 `activity-export`（CSV/JSON）导出 | E2E |
 | AC13 | **表面分离** — 管理端「审计日志」页面只调用 `/api/v1/admin/audit/*`，「我的活动」页面只调用 `/api/v1/audit/*`；任一页面的未认证访客被重定向到正确的登录页（`/admin/login` 对 `/login`） | E2E |
 | AC14 | 回归：数据面不变 — 请求日志（特性 #12）仍捕获每次推理诊断，审计事件不把关推理流量 | FVT + E2E 回归 |
+| AC15 | 管理端「审计日志」页面请求 `page.offset`/`page.limit`，依据 `pageMeta.total` 渲染分页器，可翻到所有匹配事件而不仅是第一页 | E2E |
+| AC16 | 操作者列按「展示名 → 账号名 → 操作者 UUID → 系统」顺序渲染；存在展示名或账号名时不显示 UUID；`actor_username` 每页仅做一次批量解析 | 单元 + E2E |
+| AC17 | 经 console 入口记录的审计事件在 `ip_address` 中保存浏览器客户端 IP；若某一跳发生 SNAT，则保存的是 Pod/节点地址，而 `externalTrafficPolicy: Local` 入口设置可避免该情况 | FVT + 线上验证 |
 
 ---
 

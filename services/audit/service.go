@@ -681,6 +681,13 @@ type ActorLabelResolver interface {
 	ResolveUserLabels(ctx context.Context, userIDs []string) (map[string]string, error)
 }
 
+// ActorUsernameResolver is an optional extension of ActorLabelResolver:
+// the console needs the raw account name to fall back from a display name
+// before it shows the opaque actor uuid.
+type ActorUsernameResolver interface {
+	ResolveUsernames(ctx context.Context, userIDs []string) (map[string]string, error)
+}
+
 // SetActorLabelResolver injects the actor display-name resolver.
 func (s *Service) SetActorLabelResolver(r ActorLabelResolver) { s.actorLabelResolver = r }
 
@@ -705,6 +712,31 @@ func (s *Service) actorLabels(ctx context.Context, rows []*AuditEvent) map[strin
 		return nil
 	}
 	return labels
+}
+
+// actorUsernames resolves the actors' raw account names in one batch.
+// The label resolver may not expose usernames (an older/injected
+// implementation); an empty map simply leaves the console on its uuid
+// fallback.
+func (s *Service) actorUsernames(ctx context.Context, rows []*AuditEvent) map[string]string {
+	resolver, ok := s.actorLabelResolver.(ActorUsernameResolver)
+	if !ok || len(rows) == 0 {
+		return nil
+	}
+	ids := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if row.ActorUserID != "" {
+			ids = append(ids, row.ActorUserID)
+		}
+	}
+	if len(ids) == 0 {
+		return nil
+	}
+	usernames, err := resolver.ResolveUsernames(ctx, ids)
+	if err != nil {
+		return nil
+	}
+	return usernames
 }
 
 // PlatformAdminResolver reports whether the caller carries the

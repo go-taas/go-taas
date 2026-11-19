@@ -192,3 +192,40 @@ func TestCandidateIDsAndPlausibility(t *testing.T) {
 	assert.Empty(t, plausibleIDs([]string{"proj-1/u-9"}))
 	assert.Equal(t, []string{"id-1"}, plausibleIDs([]string{"id-1", "with space"}))
 }
+
+// actorIdentityResolver is the auth seam: labels for the primary display
+// and the raw username for the secondary line. The console prefers the
+// display name, then the username, and only then the actor uuid.
+type actorIdentityResolver struct {
+	labels    map[string]string
+	usernames map[string]string
+}
+
+func (r actorIdentityResolver) ResolveUserLabels(context.Context, []string) (map[string]string, error) {
+	return r.labels, nil
+}
+
+func (r actorIdentityResolver) ResolveUsernames(context.Context, []string) (map[string]string, error) {
+	return r.usernames, nil
+}
+
+// TestDecorateEventsCarriesActorUsername proves the actor identity has
+// both fields, so the console can fall back from display name to the
+// account name before showing the opaque uuid.
+func TestDecorateEventsCarriesActorUsername(t *testing.T) {
+	db := displayTestDB(t)
+	svc := NewForFVT(db)
+	svc.SetActorLabelResolver(actorIdentityResolver{
+		labels:    map[string]string{"u-1": "Wang Sen"},
+		usernames: map[string]string{"u-1": "senwang"},
+	})
+	repo, err := svc.repository()
+	require.NoError(t, err)
+
+	events := svc.decorateEvents(context.Background(), repo, []*AuditEvent{
+		{ID: "e1", ActorUserID: "u-1", ActorType: "user", Action: "auth.login", Result: "success"},
+	})
+	require.Len(t, events, 1)
+	assert.Equal(t, "Wang Sen", events[0].GetActorDisplayName())
+	assert.Equal(t, "senwang", events[0].GetActorUsername())
+}

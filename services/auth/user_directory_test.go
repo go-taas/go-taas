@@ -276,6 +276,15 @@ func TestResolveUserLabels(t *testing.T) {
 	empty, err := svc.ResolveUserLabels(ctx, nil)
 	require.NoError(t, err)
 	assert.Empty(t, empty)
+
+	// The audit console also asks for raw usernames so it can fall back
+	// from a display name before showing the actor uuid.
+	usernames, err := svc.ResolveUsernames(ctx, []string{"u-with-name", "u-without-name", "u-unknown"})
+	require.NoError(t, err)
+	assert.Equal(t, "alice", usernames["u-with-name"])
+	assert.Equal(t, "bob", usernames["u-without-name"])
+	_, ok = usernames["u-unknown"]
+	assert.False(t, ok, "unknown ids are omitted")
 }
 
 // The bootstrap admin and every platform administrator are protected: the
