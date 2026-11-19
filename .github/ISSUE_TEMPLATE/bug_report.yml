@@ -1,0 +1,112 @@
+name: "Bug report"
+description: "Report behaviour that is not working as expected"
+title: "[Bug] "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. Please search existing issues first and remove
+        any credentials, private hostnames, model weights, or customer data from logs before
+        pasting them.
+
+  - type: checkboxes
+    id: searched-existing-issues
+    attributes:
+      label: Pre-submission check
+      description: Confirm that you looked for an existing report before opening this one.
+      options:
+        - label: I searched the existing issues and did not find a report for this problem.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: A short, specific description of the problem.
+      placeholder: "Creating an inference service with a vLLM image stays in 'starting' ..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected-behaviour
+    attributes:
+      label: Expected behaviour
+      description: What you expected to happen.
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual-behaviour
+    attributes:
+      label: Actual behaviour
+      description: What actually happened. Include the exact error message and the relevant log excerpt.
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to reproduce
+      description: The smallest sequence that reproduces the problem. Include commands, manifests, or API calls.
+      placeholder: |
+        1. Install with `helm install taas deploy/helm/go-taas ...`
+        2. Create a model and an inference service ...
+        3. Observe the service status / error ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Which part of the platform is failing?
+      options:
+        - Console
+        - API
+        - CLI
+        - Deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment environment
+      description: How is the affected installation deployed?
+      options:
+        - Kubernetes
+        - Offline / air-gapped
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Go TaaS version or commit
+      description: The release tag or commit that shows the bug.
+      placeholder: "v1.120.0 or main @ <commit>"
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment-details
+    attributes:
+      label: Environment details
+      description: Kubernetes version, accelerator/card, serving engine image, browser, and anything else that may matter.
+      placeholder: |
+        - Kubernetes: v1.31 (RKE2)
+        - Accelerator: NVIDIA A800
+        - Engine image: hub.sudoinfotech.com/taas/vllm:v0.6.3
+        - Browser: Chrome 141
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Screenshots, related issues, workaround attempts, or anything else that helps triage.

@@ -1,0 +1,76 @@
+name: "General issue"
+description: "Ask a question, report an unclear behaviour, or discuss the project"
+title: "[Issue] "
+labels:
+  - question
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form when your report is neither a reproducible bug nor a concrete feature
+        request: setup questions, unclear documentation, operational observations, or a topic that
+        needs maintainer input. For open-ended discussion, GitHub Discussions is also a good home.
+
+  - type: checkboxes
+    id: searched-existing-issues
+    attributes:
+      label: Pre-submission check
+      description: Confirm that you looked for an existing issue or discussion before opening this one.
+      options:
+        - label: I searched the existing issues and discussions and did not find an answer.
+          required: true
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is your question or issue? State it in one or two sentences.
+    validations:
+      required: true
+
+  - type: textarea
+    id: motivation
+    attributes:
+      label: Context and expected outcome
+      description: What are you trying to do, what have you tried, and what answer or outcome would help?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: affected-area
+    attributes:
+      label: Affected area
+      description: Which part of the project does this concern?
+      options:
+        - Console
+        - API
+        - CLI
+        - Deployment
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: Deployment environment
+      description: Where are you running Go TaaS?
+      options:
+        - Kubernetes
+        - Offline / air-gapped
+    validations:
+      required: true
+
+  - type: input
+    id: version
+    attributes:
+      label: Go TaaS version or commit
+      description: The version or commit you are using, if applicable.
+      placeholder: "v1.120.0 or main @ <commit>"
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Links, logs, screenshots, or related issues. Remove secrets before posting.
