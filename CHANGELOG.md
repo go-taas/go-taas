@@ -1,3 +1,16 @@
+# [1.125.0](https://github.com/go-taas/go-taas/compare/v1.124.0...v1.125.0) (2026-11-19)
+
+
+### Bug Fixes
+
+* **helm:** create provisioned storage claims in the transfer namespace ([5f81c55](https://github.com/go-taas/go-taas/commit/5f81c55782c73b21b6a8491e6ee0a59dfbb58ba8))
+* **model:** seed pvc warmup caches and wire serving to storage backend ([8dd7a60](https://github.com/go-taas/go-taas/commit/8dd7a609fd3c8447d87d4c6fc62d941882c36dd1))
+
+
+### Features
+
+* **model:** add pluggable storage, transfer jobs and model warmup ([575f5cd](https://github.com/go-taas/go-taas/commit/575f5cd0387432fb7a2ab5c982990967f959214c))
+
 # [1.124.0](https://github.com/go-taas/go-taas/compare/v1.123.0...v1.124.0) (2026-11-19)
 
 
