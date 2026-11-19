@@ -1518,14 +1518,6 @@ func gpuResourceName(accelerator string) string {
 	}
 }
 
-// engineResources returns the container resource requests for an
-// accelerator: one unit of the accelerator's extended resource so the
-// scheduler places the pod on a node with free capacity. Unknown
-// accelerators get no resource request.
-func engineResources(accelerator string) corev1.ResourceRequirements {
-	return engineResourcesFor(accelerator, 1)
-}
-
 // engineResourcesFor returns the container resource requests for cards units
 // of an accelerator's extended resource. A tensor/pipeline-parallel replica
 // needs one device per shard in the single pod that runs it, so the pod asks

@@ -1,4 +1,4 @@
-// KServe LLMInferenceService desired state.
+// Package controller reconciles the platform's Kubernetes resources.
 //
 // Every inference service is realized by exactly one KServe
 // LLMInferenceService (serving.kserve.io/v1alpha2). KServe owns the workload,
@@ -51,10 +51,6 @@ const (
 	serveRoleDecode  = "decode"
 )
 
-// roleLabel names a pod's role, so an operator (and the log follower) can tell
-// prefill from decode.
-const roleLabel = "go-taas.com/role"
-
 // mainContainerName is the name a KServe preset gives the model server
 // container. The platform's engine container is renamed to it so the preset
 // and the overlay describe one container instead of two.
@@ -70,14 +66,6 @@ const kserveWorkloadSuffix = "-kserve-workload-svc"
 // disaggregated: KServe's PD decode preset puts a routing sidecar on enginePort
 // in front of the model server, so the engine must listen here instead.
 const decodeEnginePort = 8001
-
-// inferencePoolPort is the port an InferencePool's endpoints serve on: the
-// model server port the route's backendRef names.
-const inferencePoolPort = enginePort
-
-// modelRequestTimeoutSeconds bounds one request through the Gateway. A request
-// is a whole answer, so the timeout is generous: the historical 600s.
-const modelRequestTimeoutSeconds = 600
 
 // pdKVConnector is the vLLM KV-transfer connector used when the operator did
 // not supply a `kv-transfer-config` of their own. It has to be the connector
@@ -95,9 +83,6 @@ const weightURIScheme = "pvc://"
 // services/infer (the control plane decides the value; the controller only
 // interprets it).
 const (
-	// topologySingle runs one pod per replica; tensor/pipeline parallelism
-	// shards inside that pod.
-	topologySingle = "single"
 	// topologyMultiNode spreads one replica across several machines, one pod
 	// per machine. topologyDistributed is its pre-rename name and keeps
 	// working for an older control plane.

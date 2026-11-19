@@ -166,15 +166,15 @@ func New(cfg Config) (*Router, error) {
 		gateway:  gatewayURL,
 		direct:   strings.TrimSpace(cfg.WorkloadSuffix) != "",
 	}
-	proxy := httputil.NewSingleHostReverseProxy(gatewayURL)
-	// A proxy that sets Rewrite may not also carry the Director
-	// NewSingleHostReverseProxy installs.
-	proxy.Director = nil
-	proxy.Rewrite = r.rewrite
-	// Inference answers stream. Flushing per read keeps a generation arriving
-	// as it is produced instead of in one block at the end.
-	proxy.FlushInterval = -1
-	r.proxy = proxy
+	// A literal ReverseProxy with only Rewrite set: the proxy rejects a
+	// value carrying both Director and Rewrite, and Rewrite is the
+	// non-deprecated hook.
+	r.proxy = &httputil.ReverseProxy{
+		Rewrite: r.rewrite,
+		// Inference answers stream. Flushing per read keeps a generation
+		// arriving as it is produced instead of in one block at the end.
+		FlushInterval: -1,
+	}
 	return r, nil
 }
 

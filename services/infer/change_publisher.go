@@ -294,7 +294,8 @@ func republishSurvivors(
 	client mq.Client,
 	repo *InferenceServiceRepository,
 	models *model.Repository,
-	modelName, excludeServiceID string,
+	_ string,
+	excludeServiceID string,
 ) {
 	if client == nil || repo == nil || excludeServiceID == "" {
 		return

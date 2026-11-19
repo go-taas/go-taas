@@ -34,19 +34,6 @@ func servedModelName(evt changeEvent) string {
 	return evt.Name
 }
 
-// mergeLabels returns a new map holding base overlaid with extra, so the
-// shared resource labels stay intact and no caller-visible map is mutated.
-func mergeLabels(base, extra map[string]string) map[string]string {
-	merged := make(map[string]string, len(base)+len(extra))
-	for k, v := range base {
-		merged[k] = v
-	}
-	for k, v := range extra {
-		merged[k] = v
-	}
-	return merged
-}
-
 // applyUnstructuredObject creates the object, or updates it in place while
 // keeping the resource version the API server handed out.
 func applyUnstructuredObject(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, obj *unstructured.Unstructured) error {
@@ -292,20 +279,4 @@ func (r *k8sReconciler) reclaimDynamic(kind, namespace string, gvr schema.GroupV
 			return deleteUnstructuredObject(ctx, r.dynamic, gvr, namespace, name)
 		},
 	}
-}
-
-// getUnstructuredObject reads one object, mapping not-found and a missing CRD
-// to (nil, nil) so every caller can treat them the same way.
-func getUnstructuredObject(ctx context.Context, dyn dynamic.Interface, gvr schema.GroupVersionResource, namespace, name string) (*unstructured.Unstructured, error) {
-	if dyn == nil || name == "" {
-		return nil, nil
-	}
-	obj, err := dyn.Resource(gvr).Namespace(namespace).Get(ctx, name, metav1.GetOptions{})
-	if apierrors.IsNotFound(err) || meta.IsNoMatchError(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return obj, nil
 }
