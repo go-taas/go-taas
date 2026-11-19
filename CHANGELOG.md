@@ -1,3 +1,10 @@
+# [1.124.0](https://github.com/go-taas/go-taas/compare/v1.123.0...v1.124.0) (2026-11-19)
+
+
+### Features
+
+* **console:** paginate optimization recommendations ([63fb4a9](https://github.com/go-taas/go-taas/commit/63fb4a9d31792373eb804adc73cf83bacddb2952))
+
 # [1.123.0](https://github.com/go-taas/go-taas/compare/v1.122.0...v1.123.0) (2026-11-19)
 
 
