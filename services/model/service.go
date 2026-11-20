@@ -1249,7 +1249,25 @@ func (s *Service) removeModelWeights(ctx context.Context, repo *Repository, mode
 				"model_id", v.ModelID, "dir", dir, "err", err)
 			continue
 		}
+		pruneEmptyWeightParents(dir, root)
 		logger.S().Infow("model: deleted model weights", "model_id", v.ModelID, "dir", dir)
+	}
+}
+
+// pruneEmptyWeightParents removes directories left empty above a deleted
+// weight path, such as the family directory of an uploaded version. It stops
+// at the weights root and at the first directory that is not empty, so a
+// sibling version or an unrelated model is never touched.
+func pruneEmptyWeightParents(dir, root string) {
+	for {
+		parent := filepath.Dir(dir)
+		if parent == root || !strings.HasPrefix(parent, root+string(os.PathSeparator)) {
+			return
+		}
+		if err := os.Remove(parent); err != nil {
+			return
+		}
+		dir = parent
 	}
 }
 

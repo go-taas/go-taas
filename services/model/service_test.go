@@ -547,6 +547,63 @@ func TestServiceDeleteModelRemovesWeights(t *testing.T) {
 	assert.NoError(t, statErr, "an unrelated weights directory survives")
 }
 
+// TestServiceDeleteModelRemovesEmptyWeightParents verifies deleting a
+// version directory also prunes the now-empty family directory left behind by
+// an upload, while a family that still holds another version survives.
+func TestServiceDeleteModelRemovesEmptyWeightParents(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	svc.SetWeightsDir(root)
+
+	versionDir := filepath.Join(root, "family", "upload-20260101")
+	require.NoError(t, os.MkdirAll(versionDir, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(versionDir, "model.bin"), []byte("w"), 0o600))
+
+	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "uploaded", Version: "upload-20260101", WeightPath: "family/upload-20260101/",
+		HubModelId: "uploaded/hub",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.DeleteModel(ctx, &modelv1.DeleteModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(versionDir)
+	assert.True(t, os.IsNotExist(statErr), "the version weight directory is gone")
+	_, statErr = os.Stat(filepath.Join(root, "family"))
+	assert.True(t, os.IsNotExist(statErr), "the now-empty family directory is gone")
+}
+
+// TestServiceDeleteModelKeepsNonEmptyWeightParents verifies empty-parent
+// pruning stops when a sibling version still occupies the family directory.
+func TestServiceDeleteModelKeepsNonEmptyWeightParents(t *testing.T) {
+	svc := newModelTestService(t)
+	ctx := context.Background()
+	root := t.TempDir()
+	svc.SetWeightsDir(root)
+
+	versionDir := filepath.Join(root, "family", "upload-20260101")
+	require.NoError(t, os.MkdirAll(versionDir, 0o750))
+	sibling := filepath.Join(root, "family", "upload-20260202")
+	require.NoError(t, os.MkdirAll(sibling, 0o750))
+	require.NoError(t, os.WriteFile(filepath.Join(sibling, "model.bin"), []byte("w"), 0o600))
+
+	reg, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "uploaded", Version: "upload-20260101", WeightPath: "family/upload-20260101/",
+		HubModelId: "uploaded/hub",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.DeleteModel(ctx, &modelv1.DeleteModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+
+	_, statErr := os.Stat(versionDir)
+	assert.True(t, os.IsNotExist(statErr), "the version weight directory is gone")
+	_, statErr = os.Stat(filepath.Join(sibling, "model.bin"))
+	assert.NoError(t, statErr, "a sibling version survives")
+}
+
 // TestServiceDeleteModelRefusesEscape verifies a weight path outside the
 // weights root is never followed, even when the row carries one.
 func TestServiceDeleteModelRefusesEscape(t *testing.T) {
