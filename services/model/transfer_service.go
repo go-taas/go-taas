@@ -334,14 +334,18 @@ func (s *Service) completeDownloadTransfer(ctx context.Context, row *ModelTransf
 		Update("model_id", modelID).Error; err != nil {
 		logger.S().Warnw("model: record transfer model failed", "transfer", row.ID, "model", modelID, "err", err)
 	}
-	s.updateDownload(ctx, job.ID, map[string]any{
+	succeeded := map[string]any{
 		"state":       DownloadStateSucceeded,
 		"message":     "",
 		"bytes":       status.Bytes,
 		"weight_path": row.WeightPath,
 		"model_id":    modelID,
 		"updated_at":  time.Now().UTC(),
-	})
+	}
+	if status.TotalBytes > 0 {
+		succeeded["total_bytes"] = status.TotalBytes
+	}
+	s.updateDownload(ctx, job.ID, succeeded)
 	s.recordAudit(ctx, &audit.AuditEvent{
 		ActorUserID:  s.grantedBy(ctx),
 		ActorType:    "user",
@@ -487,8 +491,12 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 		// was already loaded above, so there is nothing left to report.
 		return nil
 	}
-	if row.Operation == transfer.OperationDownload && row.DownloadID != nil && transfer.Terminal(status.State) {
-		s.completeDownloadTransfer(ctx, row, status)
+	if row.Operation == transfer.OperationDownload && row.DownloadID != nil {
+		if transfer.Terminal(status.State) {
+			s.completeDownloadTransfer(ctx, row, status)
+		} else {
+			s.syncDownloadProgress(ctx, *row.DownloadID, status)
+		}
 	}
 	// A successful copy makes the target the version's home: serving must
 	// read the copy from the backend that now holds it instead of the
@@ -501,6 +509,26 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 		}
 	}
 	return nil
+}
+
+// syncDownloadProgress mirrors a running transfer's byte counters into the
+// model_downloads row it was queued for. Without it the download row keeps
+// the state it was created with until the Job reaches a terminal state, so
+// the console shows a download stuck in the queue with no progress.
+func (s *Service) syncDownloadProgress(ctx context.Context, downloadID string, status transfer.Status) {
+	updates := map[string]any{"updated_at": time.Now().UTC()}
+	if status.State == transfer.StateRunning {
+		updates["state"] = DownloadStateDownloading
+	}
+	// A progress report may omit a value it has not measured yet; a zero
+	// must not erase a byte count the row already has.
+	if status.Bytes > 0 {
+		updates["bytes"] = status.Bytes
+	}
+	if status.TotalBytes > 0 {
+		updates["total_bytes"] = status.TotalBytes
+	}
+	s.updateDownload(ctx, downloadID, updates)
 }
 
 // getTransfer loads one transfer row.

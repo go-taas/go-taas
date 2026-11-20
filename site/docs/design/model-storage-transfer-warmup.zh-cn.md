@@ -107,7 +107,7 @@ model 服务 <----------------------+
 | `delete` | 目录行删除后清理后端中的模型前缀 |
 | `cancel` | Controller 以 background 传播删除 Job，行转 `cancelled` |
 
-进度是 Job 写入、Controller 读取的小 JSON（`state`、`bytes`、`totalBytes`、`message`），仅作参考；成败以 Job 终态条件为准。Job TTL 清理 Job，进度 ConfigMap 体量小，可按同一 TTL 或运维策略回收。
+进度是 Job 写入、Controller 读取的小 JSON（`state`、`bytes`、`totalBytes`、`message`），仅作参考；成败以 Job 终态条件为准。Hub 下载在搬运前上报模型在 Hub 上的总大小，并在运行期间采样目标目录，因此进度是百分比而不是只有结束时的一次采样；model 服务把每个非终态上报同步到关联的 `model_downloads` 行，下载因此离开 `queued` 并展示同一组字节数。Job TTL 清理 Job，进度 ConfigMap 体量小，可按同一 TTL 或运维策略回收。
 
 ### 4.3 并发与失败处理
 

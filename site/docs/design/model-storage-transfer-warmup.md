@@ -187,9 +187,14 @@ Operations:
 Progress is a small JSON document (`state`, `bytes`, `totalBytes`,
 `message`) written by the Job and read by the controller; progress is
 advisory and never the source of truth for success. A Job's terminal
-condition, not its last progress write, decides the row state. The Job's
-TTL cleans up the Job; the progress ConfigMap is small and can be garbage
-collected with the same TTL or by an operator policy.
+condition, not its last progress write, decides the row state. A hub
+download reports the model's hub size before it moves bytes and samples its
+target directory while it runs, so progress is a percentage instead of a
+single final sample; the model service mirrors each non-terminal report into
+the linked `model_downloads` row so the download leaves `queued` and shows
+the same byte counters. The Job's TTL cleans up the Job; the progress
+ConfigMap is small and can be garbage collected with the same TTL or by an
+operator policy.
 
 ### 4.3 Concurrency and failure handling
 

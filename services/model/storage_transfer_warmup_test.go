@@ -437,3 +437,65 @@ func TestStorageBackendNameFallsBackToDefault(t *testing.T) {
 	assert.Equal(t, "shared", service.storageBackendName("  "))
 	assert.Equal(t, "minio", service.storageBackendName("minio"))
 }
+
+// TestHandleModelTransferStatusTracksDownloadProgress verifies a running
+// transfer Job publishes its progress to the linked model_downloads row, so
+// the console leaves the queued state and shows a percentage while the bytes
+// are still moving.
+func TestHandleModelTransferStatusTracksDownloadProgress(t *testing.T) {
+	svc := newDownloadTestService(t)
+	root := t.TempDir()
+	svc.SetStorageConfig(storage.Config{
+		DefaultBackend: "shared",
+		Backends: map[string]storage.Backend{
+			"shared": {
+				Name:       "shared",
+				Type:       storage.TypeFilesystem,
+				Filesystem: storage.Filesystem{ExistingClaim: "shared-claim", MountPath: root},
+			},
+		},
+	})
+	svc.SetTransferSettings(TransferSettings{Mode: "job", Image: "taas-transfer:test"})
+	svc.SetTransferPublisher(&recordingPublisher{})
+	ctx := adminCtx()
+
+	resp, err := svc.StartModelDownload(ctx, &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "Qwen/Qwen2.5-0.5B-Instruct",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, DownloadStateQueued, resp.GetDownload().GetState())
+
+	transfers, err := svc.ListModelTransfers(ctx, &modelv1.ListModelTransfersRequest{})
+	require.NoError(t, err)
+	require.Len(t, transfers.GetTransfers(), 1)
+	transferID := transfers.GetTransfers()[0].GetTransferId()
+
+	// The Job starts moving bytes: the download row follows before the
+	// transfer reaches a terminal state.
+	running, _ := json.Marshal(transfer.Status{
+		ID: transferID, State: transfer.StateRunning,
+		Bytes: 120, TotalBytes: 480, JobName: "taas-transfer-live",
+	})
+	require.NoError(t, svc.HandleModelTransferStatus(ctx, running))
+	downloads, err := svc.ListModelDownloads(ctx, &modelv1.ListModelDownloadsRequest{})
+	require.NoError(t, err)
+	require.Len(t, downloads.GetDownloads(), 1)
+	live := downloads.GetDownloads()[0]
+	assert.Equal(t, DownloadStateDownloading, live.GetState())
+	assert.EqualValues(t, 120, live.GetBytes())
+	assert.EqualValues(t, 480, live.GetTotalBytes())
+
+	// The terminal report still registers the model and flips the row.
+	done, _ := json.Marshal(transfer.Status{
+		ID: transferID, State: transfer.StateSucceeded,
+		Bytes: 480, TotalBytes: 480, JobName: "taas-transfer-live",
+	})
+	require.NoError(t, svc.HandleModelTransferStatus(ctx, done))
+	downloads, err = svc.ListModelDownloads(ctx, &modelv1.ListModelDownloadsRequest{})
+	require.NoError(t, err)
+	finished := downloads.GetDownloads()[0]
+	assert.Equal(t, DownloadStateSucceeded, finished.GetState())
+	assert.EqualValues(t, 480, finished.GetBytes())
+	assert.EqualValues(t, 480, finished.GetTotalBytes())
+	assert.NotEmpty(t, finished.GetModelId())
+}

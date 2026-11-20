@@ -46,7 +46,7 @@ func main() {
 	defer stop()
 	reporter := newProgressReporter(spec.ID)
 	reporter.report(ctx, transfer.StateRunning, "", 0, 0)
-	progress := func(n int64) { reporter.report(ctx, transfer.StateRunning, "", n, 0) }
+	progress := func(n, total int64) { reporter.report(ctx, transfer.StateRunning, "", n, total) }
 	if err := run(ctx, &spec, progress); err != nil {
 		reporter.report(ctx, transfer.StateFailed, err.Error(), 0, 0)
 		logger.S().Errorw("transfer failed", "transfer", spec.ID, "operation", spec.Operation, "err", err)
@@ -125,8 +125,34 @@ func (p *progressReporter) report(ctx context.Context, state, message string, by
 	}
 }
 
+// progressInterval is how often a running transfer samples its target
+// directory for byte progress. It is a variable so tests can shorten it.
+var progressInterval = 2 * time.Second
+
+// watchProgress samples dir until stop is called, reporting the bytes written
+// so far. It gives a running Job continuous progress instead of one sample at
+// the end.
+func watchProgress(dir string, total int64, progress func(int64, int64)) (stop func()) {
+	done := make(chan struct{})
+	var once sync.Once
+	stop = func() { once.Do(func() { close(done) }) }
+	go func() {
+		ticker := time.NewTicker(progressInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				progress(storage.DirSize(dir), total)
+			}
+		}
+	}()
+	return stop
+}
+
 // run executes one spec.
-func run(ctx context.Context, spec *transfer.Spec, progress func(int64)) error {
+func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
 	switch spec.Operation {
 	case transfer.OperationCopy:
 		return copyOne(ctx, spec, progress)
@@ -139,7 +165,7 @@ func run(ctx context.Context, spec *transfer.Spec, progress func(int64)) error {
 	}
 }
 
-func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64)) error {
+func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
 	sourceRemote, err := remoteFor(spec.SourceObjectStore)
 	if err != nil {
 		return err
@@ -159,7 +185,7 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64)) err
 		if strings.TrimSpace(spec.TargetPath) == "" {
 			return fmt.Errorf("copy needs a target path")
 		}
-		_, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, spec.TargetPath, progress)
+		_, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, spec.TargetPath, func(n int64) { progress(n, 0) })
 		return err
 	case sourceRemote == nil && targetRemote != nil:
 		if strings.TrimSpace(spec.SourcePath) == "" {
@@ -175,7 +201,7 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64)) err
 			return err
 		}
 		defer func() { _ = os.RemoveAll(temp) }()
-		if _, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, temp, progress); err != nil {
+		if _, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, temp, func(n int64) { progress(n, 0) }); err != nil {
 			return err
 		}
 		_, err = targetRemote.UploadDir(ctx, temp, spec.WeightPath)
@@ -196,7 +222,7 @@ var uploadDirTo = func(ctx context.Context, ref *transfer.ObjectStoreRef, dir, k
 	return remote.UploadDir(ctx, dir, key)
 }
 
-func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64)) error {
+func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
 	if strings.TrimSpace(spec.HubSource) == "" || strings.TrimSpace(spec.HubModelID) == "" {
 		return fmt.Errorf("download needs hub source and model id")
 	}
@@ -204,29 +230,49 @@ func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64))
 	if err != nil {
 		return err
 	}
+	downloader := newHubDownloader()
+	// Learn the model's size first: without it the console can only show an
+	// indeterminate bar for the whole transfer.
+	var total int64
+	if reporter, ok := downloader.(modelhub.SizeReporter); ok {
+		if size, sizeErr := reporter.TotalBytes(ctx, source, spec.HubModelID); sizeErr == nil && size > 0 {
+			total = size
+		}
+	}
+	progress(0, total)
 	if objectStoreRefPresent(spec.TargetObjectStore) {
 		temp, err := os.MkdirTemp("", "taas-transfer-download-")
 		if err != nil {
 			return err
 		}
 		defer func() { _ = os.RemoveAll(temp) }()
-		if err := newHubDownloader().Download(ctx, source, spec.HubModelID, temp); err != nil {
+		stop := watchProgress(temp, total, progress)
+		defer stop()
+		if err := downloader.Download(ctx, source, spec.HubModelID, temp); err != nil {
 			return err
 		}
+		stop()
 		written, err := uploadDirTo(ctx, spec.TargetObjectStore, temp, spec.WeightPath)
 		if err != nil {
 			return err
 		}
-		progress(written)
+		progress(written, total)
 		return nil
 	}
 	if strings.TrimSpace(spec.TargetPath) == "" {
 		return fmt.Errorf("download needs a target path or object store")
 	}
-	if err := newHubDownloader().Download(ctx, source, spec.HubModelID, spec.TargetPath); err != nil {
+	stop := watchProgress(spec.TargetPath, total, progress)
+	defer stop()
+	if err := downloader.Download(ctx, source, spec.HubModelID, spec.TargetPath); err != nil {
 		return err
 	}
-	progress(storage.DirSize(spec.TargetPath))
+	stop()
+	written := storage.DirSize(spec.TargetPath)
+	if total < written {
+		total = written
+	}
+	progress(written, total)
 	return nil
 }
 
