@@ -269,8 +269,9 @@ it, so operator-supplied rules survive.
 
 ### 5.3 Eviction and automatic warmup
 
-`warmup.eviction` sets the cache retention policy (`lru` by default), the
-per-node storage limit and the group capacity. `warmup.auto` records the
+`warmup.eviction` sets the cache retention policy (`lru` by default) and the
+per-node free-space floor. Each warmup node group's storage limit is edited
+with the group in the console, not in Helm. `warmup.auto` records the
 intent to warm a model when it becomes ready or when a service that uses it
 is deployed; the operator-facing API remains `WarmModel`, and a deployment
 without warmup configured behaves exactly as before.

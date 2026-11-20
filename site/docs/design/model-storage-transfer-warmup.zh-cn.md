@@ -145,7 +145,7 @@ KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携�
 
 ### 5.3 驱逐与自动预热
 
-`warmup.eviction` 配置缓存保留策略（默认 `lru`）、单节点容量与组容量。`warmup.auto` 记录“模型就绪或相关服务部署时自动预热”的意图；面向运维的入口仍是 `WarmModel`，未配置预热的部署行为不变。
+`warmup.eviction` 配置缓存保留策略（默认 `lru`）与单节点最小剩余空间；每个预热节点组的容量在控制台的节点组中编辑，不再由 Helm 设置。`warmup.auto` 记录“模型就绪或相关服务部署时自动预热”的意图；面向运维的入口仍是 `WarmModel`，未配置预热的部署行为不变。
 
 ## 6. 数据模型
 
