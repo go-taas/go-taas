@@ -3,7 +3,7 @@
 // keys (AD12).
 
 import { useEffect, useState, type ReactNode } from 'react';
-import { ArrowsLeftRight, SignOut } from '@phosphor-icons/react';
+import { ArrowsLeftRight, SignOut, Stack } from '@phosphor-icons/react';
 import { Router, navigate } from '../router';
 import { getSessionToken, setSessionToken, type SessionInfo } from '../api';
 import { useApi, useRealm } from '../surface';
@@ -139,16 +139,6 @@ export function AdminShell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="topbar-actions">
-          {scope && scopes.length > 1 && (
-            <button
-              className="scope-switch"
-              data-testid="admin-scope-switch"
-              title={t('adminScope.switch')}
-              onClick={() => navigate('/admin')}
-            >
-              {t(scopeTypeLabelKey(scope.scopeType))}
-            </button>
-          )}
           <ThemeToggle testId="admin-theme-toggle" />
           <NotificationBell path="/api/v1/admin/notifications" testId="admin-bell-badge" />
           <LanguageSwitcher testId="admin-lang-switcher" />
@@ -209,6 +199,20 @@ export function AdminShell({ children }: { children: ReactNode }) {
               </div>
             )}
             <div className="account-actions">
+              {scope && scopes.length > 1 && (
+                <button
+                  className="account-action account-action-scope"
+                  data-testid="admin-scope-switch"
+                  title={t('adminScope.switch')}
+                  onClick={() => navigate('/admin')}
+                >
+                  <Stack size={15} weight="bold" aria-hidden="true" />
+                  <span className="account-action-label">{t('adminScope.switch')}</span>
+                  <span className="account-scope-badge">
+                    {t(scopeTypeLabelKey(scope.scopeType))}
+                  </span>
+                </button>
+              )}
               <button
                 className="account-action"
                 data-testid="switch-to-user"

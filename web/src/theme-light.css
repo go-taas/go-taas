@@ -158,18 +158,6 @@ html[data-theme='light'] .topbar .notification-badge {
   border-color: #ffffff;
 }
 
-html[data-theme='light'] .topbar .scope-switch {
-  color: #0e7490;
-  background: #e6f4f7;
-  border-color: #bfe4ea;
-}
-
-html[data-theme='light'] .topbar .scope-switch:hover {
-  color: #155e75;
-  background: #d9eff4;
-  border-color: #9fd7e1;
-}
-
 html[data-theme='light'] .theme-toggle {
   color: #5f6b7a;
   background: #ffffff;
@@ -312,6 +300,24 @@ html[data-theme='light'] .account-action {
 html[data-theme='light'] .account-action:hover:not(:disabled) {
   color: #111827;
   background: #f1f4f8;
+}
+
+html[data-theme='light'] .account-action-scope {
+  color: #0e7490;
+  background: #e6f4f7;
+  border: 1px solid #bfe4ea;
+}
+
+html[data-theme='light'] .account-action-scope:hover:not(:disabled) {
+  color: #155e75;
+  background: #d9eff4;
+  border-color: #9fd7e1;
+}
+
+html[data-theme='light'] .account-scope-badge {
+  color: #0e7490;
+  background: #ffffff;
+  border-color: #bfe4ea;
 }
 
 html[data-theme='light'] .account-action-danger {

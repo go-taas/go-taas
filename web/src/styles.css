@@ -3636,23 +3636,6 @@ button.primary:hover {
 }
 
 /* Compact scope switcher in the admin topbar. */
-.scope-switch {
-  padding: 6px 10px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--muted-strong);
-  font-size: 12.5px;
-  font-weight: 600;
-  font-family: var(--font-body);
-  cursor: pointer;
-}
-
-.scope-switch:hover {
-  background: var(--surface-2);
-  color: var(--primary-strong);
-}
-
 /* ============================================================
    User usage report
    The page reads top-down: what is left to spend, what the
