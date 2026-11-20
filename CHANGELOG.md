@@ -1,3 +1,10 @@
+# [1.127.0](https://github.com/go-taas/go-taas/compare/v1.126.1...v1.127.0) (2026-11-20)
+
+
+### Features
+
+* **model:** manage warmup node groups in operations and fold model workflows into models ([cc79ba7](https://github.com/go-taas/go-taas/commit/cc79ba7e22b109aec8ea4764ef5317812f143b68))
+
 ## [1.126.1](https://github.com/go-taas/go-taas/compare/v1.126.0...v1.126.1) (2026-11-20)
 
 
