@@ -21,6 +21,11 @@ import (
 	"github.com/go-taas/go-taas/services/audit"
 )
 
+// unassignedTransferModelID fills the not-null uuid column of a hub download
+// that has no catalogue model yet. PostgreSQL rejects an empty string in a
+// uuid column; the row is updated with the real id once the Job registers it.
+const unassignedTransferModelID = "00000000-0000-0000-0000-000000000000"
+
 // TransferSettings is the subset of the transfer configuration the model
 // service needs. It is copied at wiring time so the service stays free of a
 // config-package dependency.
@@ -248,6 +253,7 @@ func (s *Service) startDownloadTransfer(ctx context.Context, job *DownloadJob) b
 	row := &ModelTransfer{
 		ID:            spec.ID,
 		Operation:     transfer.OperationDownload,
+		ModelID:       unassignedTransferModelID,
 		ModelName:     job.Name,
 		Version:       job.Version,
 		SourceBackend: source,
@@ -321,6 +327,12 @@ func (s *Service) completeDownloadTransfer(ctx context.Context, row *ModelTransf
 	}
 	if err := repo.SetVersionStorageBackend(ctx, modelID, job.Version, row.TargetBackend); err != nil {
 		logger.S().Warnw("model: record download storage backend failed", "model", modelID, "version", job.Version, "err", err)
+	}
+	// The transfer row existed before the catalogue row did; attach it now so
+	// the transfer list names the model it produced.
+	if err := db.WithContext(ctx).Model(&ModelTransfer{}).Where("id = ?", row.ID).
+		Update("model_id", modelID).Error; err != nil {
+		logger.S().Warnw("model: record transfer model failed", "transfer", row.ID, "model", modelID, "err", err)
 	}
 	s.updateDownload(ctx, job.ID, map[string]any{
 		"state":       DownloadStateSucceeded,
@@ -690,10 +702,14 @@ func (s *Service) updateTransfer(ctx context.Context, id, state, message string,
 
 // transferProjection maps the row to its API message.
 func transferProjection(row *ModelTransfer) *modelv1.ModelTransfer {
+	modelID := row.ModelID
+	if modelID == unassignedTransferModelID {
+		modelID = ""
+	}
 	return &modelv1.ModelTransfer{
 		TransferId:    row.ID,
 		Operation:     row.Operation,
-		ModelId:       row.ModelID,
+		ModelId:       modelID,
 		ModelName:     row.ModelName,
 		Version:       row.Version,
 		SourceBackend: row.SourceBackend,

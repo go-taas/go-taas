@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -236,6 +237,10 @@ func TestCompleteDownloadTransferRegistersModel(t *testing.T) {
 	require.NoError(t, db.Where("id = ?", job.ID).First(&got).Error)
 	assert.Equal(t, DownloadStateSucceeded, got.State)
 	assert.NotEmpty(t, got.ModelID)
+
+	var stored ModelTransfer
+	require.NoError(t, db.Where("id = ?", row.ID).First(&stored).Error)
+	assert.Equal(t, got.ModelID, stored.ModelID)
 }
 
 func createTestWarmupGroup(t *testing.T, svc *Service, name, limit string) {
@@ -339,6 +344,17 @@ func TestStartDownloadTransferUsesSelectedBackend(t *testing.T) {
 	require.NoError(t, json.Unmarshal(pub.body, &spec))
 	assert.Equal(t, target.Name, spec.TargetBackend)
 	assert.Equal(t, filepath.Join(target.Filesystem.MountPath, "qwen__hub/"), spec.TargetPath)
+
+	// A download transfer exists before the model does. PostgreSQL rejects an
+	// empty string in a uuid column, so the unassigned row must still carry a
+	// valid uuid until the controller reports success and the catalogue row
+	// exists.
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	var row ModelTransfer
+	require.NoError(t, db.Where("download_id = ?", resp.GetDownload().GetDownloadId()).First(&row).Error)
+	_, err = uuid.Parse(row.ModelID)
+	require.NoError(t, err)
 }
 
 // TestStartModelDownloadObjectStoreDispatchFailure avoids a silent fallback:
