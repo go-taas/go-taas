@@ -663,6 +663,7 @@ helm uninstall taas -n taas
 | 控制台返回 "The admin console bundle is not built in this environment" | 服务端镜像未包含 `web/dist`（源码构建时未执行 `npm run build`） | 使用官方镜像，或在编译前先构建控制台 |
 | `curl https://taas.example.com` 返回 404 | HTTPRoute 挂错 Gateway，或 DNS 指向了推理 Gateway | 把控制台路由挂到平台 Gateway（步骤 5 方案 B），并检查 `kubectl -n taas get httproute` 的 `Accepted`/`ResolvedRefs` |
 | 用初始化密码登录被拒 | 初始化只会填充「缺失」的密码，之前的安装可能已设置过 | `exec` 进服务端查看 `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`，或通过另一位平台管理员重置 |
+| 加速卡页面显示 GPU 节点为 0 张，或节点 allocatable 中缺少 `nvidia.com/gpu` | 该节点没有运行 GPU device plugin；HAMi 的 device-plugin DaemonSet 只调度到带 `gpu=on` 标签的节点 | 给节点打标签（`kubectl label node <node> gpu=on`）并确认 device-plugin Pod 达到 `2/2 Running`，节点随后会通告其 vGPU 卡槽 |
 | 推理 Pod `Pending`，`0/N nodes are unavailable: Insufficient nvidia.com/gpu` | 没有空闲 GPU，或节点缺少所选卡型 | 释放设备或改选其他加速卡；`kubectl get node -o jsonpath='{.status.allocatable}'` |
 | 推理 Pod 已运行但引擎日志报 "weights not found" | 服务端与推理命名空间未共享权重文件系统 | 两个 PVC 必须来自同一个 RWX/JuiceFS 卷（步骤 3.4），且 `model.weightsDir` 必须为 `/data/weights` |
 | 推理域名返回 404、但直连某个 Pod 可用 | 数据面路由域名与 DNS 记录不一致 | 在 平台 → 网关设置 与 DNS 中设为同一域名 |
