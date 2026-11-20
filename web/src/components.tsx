@@ -1,6 +1,7 @@
 // Shared presentational components used across console pages.
 
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { Check, Copy, DotsThreeVertical, WarningCircle, X } from '@phosphor-icons/react';
 import { navigate } from './router';
 import { useI18n } from './i18n';
@@ -87,18 +88,66 @@ export function StateBadge({ state }: { state: string }) {
  */
 export function StatusError({ message, testId }: { message?: string; testId?: string }) {
   const text = (message || '').trim();
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [tip, setTip] = useState<{ left: number; top: number; below: boolean } | null>(null);
+
+  // A table cell can sit inside a horizontally scrolling panel, whose
+  // overflow would clip an absolutely positioned tooltip. Rendering the tip
+  // into document.body keeps the whole message readable; opening it from the
+  // icon's viewport rectangle keeps it attached to the icon.
+  const show = () => {
+    const rect = anchor.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = rect.top < 96;
+    setTip({
+      left: Math.min(Math.max(rect.left + rect.width / 2, 168), window.innerWidth - 168),
+      top: below ? rect.bottom + 8 : rect.top - 8,
+      below,
+    });
+  };
+  const hide = () => setTip(null);
+
+  useEffect(() => {
+    if (!tip) return undefined;
+    const close = () => setTip(null);
+    window.addEventListener('scroll', close, true);
+    window.addEventListener('resize', close);
+    return () => {
+      window.removeEventListener('scroll', close, true);
+      window.removeEventListener('resize', close);
+    };
+  }, [tip]);
+
   if (!text) return null;
   return (
-    <span
-      className="status-error"
-      role="img"
-      tabIndex={0}
-      aria-label={text}
-      data-tip={text}
-      data-testid={testId}
-    >
-      <WarningCircle size={16} weight="fill" aria-hidden="true" />
-    </span>
+    <>
+      <span
+        ref={anchor}
+        className="status-error"
+        role="img"
+        tabIndex={0}
+        aria-label={text}
+        data-tip={text}
+        data-testid={testId}
+        onMouseEnter={show}
+        onMouseLeave={hide}
+        onFocus={show}
+        onBlur={hide}
+      >
+        <WarningCircle size={16} weight="fill" aria-hidden="true" />
+      </span>
+      {tip &&
+        createPortal(
+          <span
+            className={`status-error-tooltip${tip.below ? ' below' : ''}`}
+            role="tooltip"
+            style={{ left: tip.left, top: tip.top }}
+          >
+            {text}
+          </span>,
+          document.body,
+        )}
+    </>
   );
 }
 

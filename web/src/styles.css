@@ -4134,15 +4134,12 @@ button.primary:hover {
   outline-offset: 2px;
 }
 
-.status-error::after {
-  content: attr(data-tip);
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  transform: translateX(-50%);
-  z-index: 40;
+.status-error-tooltip {
+  position: fixed;
+  z-index: 1000;
   width: max-content;
   max-width: 320px;
+  transform: translate(-50%, -100%);
   padding: 7px 9px;
   border-radius: 7px;
   background: #1e293b;
@@ -4154,16 +4151,11 @@ button.primary:hover {
   white-space: normal;
   overflow-wrap: anywhere;
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.24);
-  opacity: 0;
-  visibility: hidden;
   pointer-events: none;
-  transition: opacity 120ms ease, visibility 120ms ease;
 }
 
-.status-error:hover::after,
-.status-error:focus-visible::after {
-  opacity: 1;
-  visibility: visible;
+.status-error-tooltip.below {
+  transform: translate(-50%, 0);
 }
 
 /* Model tabs: the tab strip and the content below it need breathing room,
