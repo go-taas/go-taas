@@ -4102,6 +4102,8 @@ export const zh: Record<string, string> = {
   'caches.cancelled': '预热已取消',
   'caches.cancelFailed': '取消预热失败',
   'caches.warmFailed': '预热模型失败',
+  'caches.modelsLoading': '正在加载模型列表…',
+  'caches.noModels': '暂无可预热的模型，请先注册或下载模型',
   'caches.colModel': '模型',
   'caches.colBackend': '后端',
   'caches.colNodes': '已预热节点',

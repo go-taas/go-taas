@@ -40,6 +40,7 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
   const [notice, setNotice] = useState('');
   const [warmOpen, setWarmOpen] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -98,6 +99,7 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
 
   useEffect(() => {
     if (!warmOpen) return;
+    setModelsLoading(true);
     void Promise.all([
       api.get<ModelsResponse>('/api/v1/admin/models?page.offset=0&page.limit=200', orgId),
       api.get<GroupsResponse>('/api/v1/admin/model-warmup-node-groups', orgId),
@@ -106,7 +108,8 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
         setModels(modelData.models || []);
         setNodeGroups(groupData.nodeGroups || []);
       })
-      .catch((e) => setError(e instanceof Error ? e.message : t('caches.loadFailed')));
+      .catch((e) => setError(e instanceof Error ? e.message : t('caches.loadFailed')))
+      .finally(() => setModelsLoading(false));
   }, [warmOpen, orgId, t]);
 
   const cancel = async (cache: ModelCacheEntry) => {
@@ -235,6 +238,7 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
         <WarmModelDialog
           orgId={orgId}
           models={models}
+          modelsLoading={modelsLoading}
           nodeGroups={nodeGroups}
           onClose={() => setWarmOpen(false)}
           onDone={() => {
@@ -302,28 +306,43 @@ function NodesPanel({ nodes, loading }: { nodes: WarmupNode[]; loading: boolean 
 function WarmModelDialog({
   orgId,
   models,
+  modelsLoading,
   nodeGroups,
   onClose,
   onDone,
 }: {
   orgId: string;
   models: ModelSummary[];
+  modelsLoading: boolean;
   nodeGroups: WarmupNodeGroup[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const { t } = useI18n();
-  const [modelId, setModelId] = useState(models[0]?.modelId || '');
+  // The dialog mounts before the model list arrives, so the selected id must
+  // follow the first model once it loads instead of staying empty forever.
+  const fallbackModelId = models[0]?.modelId || '';
+  const [modelId, setModelId] = useState(fallbackModelId);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  useEffect(() => {
+    if (!modelId && fallbackModelId) setModelId(fallbackModelId);
+  }, [fallbackModelId, modelId]);
+  const selectedModelId = modelId || fallbackModelId;
+  const disabledReason = modelsLoading
+    ? t('caches.modelsLoading')
+    : models.length === 0
+      ? t('caches.noModels')
+      : '';
 
   const submit = async () => {
+    if (!selectedModelId) return;
     setBusy(true);
     setError('');
     try {
       await api.post('/api/v1/admin/model-warmups', orgId, {
-        modelId,
+        modelId: selectedModelId,
         nodeGroups: selectedGroups,
       });
       onDone();
@@ -338,11 +357,14 @@ function WarmModelDialog({
     <Dialog title={t('caches.warm')} onClose={onClose} testId="warm-model-dialog">
       <div className="form-field full">
         <label htmlFor="warm-model-id">{t('caches.colModel')}</label>
-        <select id="warm-model-id" value={modelId} onChange={(e) => setModelId(e.target.value)}>
+        <select id="warm-model-id" value={selectedModelId} onChange={(e) => setModelId(e.target.value)}>
           {models.map((model) => (
             <option key={model.modelId} value={model.modelId}>{model.name}</option>
           ))}
         </select>
+        {disabledReason && (
+          <div className="muted" data-testid="warm-disabled-reason">{disabledReason}</div>
+        )}
       </div>
       <div className="form-field full">
         <label>{t('caches.nodeGroups')}</label>
@@ -369,7 +391,7 @@ function WarmModelDialog({
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
-        <button disabled={busy || !modelId} onClick={() => void submit()}>
+        <button disabled={busy || !selectedModelId} onClick={() => void submit()}>
           {busy ? t('caches.warming') : t('caches.warm')}
         </button>
       </div>

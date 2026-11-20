@@ -4138,6 +4138,8 @@ export const en: Record<string, string> = {
   'caches.cancelled': 'Warmup cancelled.',
   'caches.cancelFailed': 'Could not cancel the warmup.',
   'caches.warmFailed': 'Could not warm the model.',
+  'caches.modelsLoading': 'Loading models…',
+  'caches.noModels': 'No models to warm yet. Register or download a model first.',
   'caches.colModel': 'Model',
   'caches.colBackend': 'Backend',
   'caches.colNodes': 'Warm nodes',
