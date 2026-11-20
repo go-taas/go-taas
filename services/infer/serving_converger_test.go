@@ -9,6 +9,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/go-taas/go-taas/pkg/storage"
 	inferv1 "github.com/go-taas/go-taas/proto/taas/infer/v1"
 	"github.com/go-taas/go-taas/services/model"
 )
@@ -31,7 +32,7 @@ func TestServingConvergerPublishesRoutesForRunningServices(t *testing.T) {
 		Update("model_id", modelID).Error)
 
 	client := &recordingClient{}
-	converger := NewServingConverger(repo, model.NewRepository(db), client, time.Minute)
+	converger := NewServingConverger(repo, model.NewRepository(db), client, storage.Config{}, time.Minute)
 	converger.runOnce(context.Background())
 
 	require.Len(t, client.published, 1, "only the running service needs its state re-applied")
@@ -48,6 +49,60 @@ func TestServingConvergerPublishesRoutesForRunningServices(t *testing.T) {
 	// template with no image, and the engine would fall back to the preset's.
 	assert.Equal(t, "ghcr.io/go-taas/vllm-test:v0.6.3", evt.Image.Reference)
 	assert.Equal(t, "vllm", evt.Image.Engine)
+}
+
+// TestServingConvergerKeepsStorageDelivery is the regression test for the
+// converger reverting an object-store download back to the legacy PVC mount:
+// the periodic desired-state rebuild must carry the same storage plan the
+// original create published, not just the weights path.
+func TestServingConvergerKeepsStorageDelivery(t *testing.T) {
+	seedImageRegistry(t)
+	db := newInferTestDB(t)
+	repo := NewInferenceServiceRepository(db)
+	modelID := seedModel(t, db, "qwen-3b", "v1")
+	require.NoError(t, model.NewRepository(db).SetVersionStorageBackend(
+		context.Background(), modelID, "v1", "archive"))
+
+	running := seedService(t, repo, "org-1", "live", StateRunning, time.Now())
+	require.NoError(t, db.Model(&InferenceService{}).Where("id = ?", running.ID).
+		Update("model_id", modelID).Error)
+
+	cfg := storage.Config{
+		DefaultBackend: "archive",
+		Backends: map[string]storage.Backend{
+			"archive": {
+				Type: storage.TypeObjectStore,
+				ObjectStore: storage.ObjectStore{
+					Endpoint:       "http://minio:9000",
+					Region:         "us-east-1",
+					Bucket:         "models",
+					Prefix:         "weights",
+					ForcePathStyle: true,
+					Credentials: storage.Credentials{
+						ExistingSecret: "minio-keys",
+						AccessKeyKey:   "accessKey",
+						SecretKeyKey:   "secretKey",
+					},
+				},
+				Delivery: storage.Delivery{
+					Default: storage.ModeDownload,
+					Allowed: []string{storage.ModeDownload},
+				},
+			},
+		},
+	}
+	client := &recordingClient{}
+	converger := NewServingConverger(repo, model.NewRepository(db), client, cfg, time.Minute)
+	converger.runOnce(context.Background())
+
+	require.Len(t, client.published, 1)
+	var evt changeEvent
+	require.NoError(t, json.Unmarshal(client.published[0].Body, &evt))
+	assert.Equal(t, "archive", evt.Model.StorageBackend)
+	assert.Equal(t, storage.ModeDownload, evt.Model.Delivery)
+	assert.Equal(t, "s3://models/weights/qwen-3b/v1", evt.Model.ModelURI)
+	assert.Equal(t, "minio-keys", evt.Model.CredentialsSecret)
+	assert.Equal(t, "http://minio:9000", evt.Model.ObjectEndpoint)
 }
 
 // TestServingConvergerRetriesASettledFailure covers the recovery half of the
@@ -74,7 +129,7 @@ func TestServingConvergerRetriesASettledFailure(t *testing.T) {
 		UpdateColumn("updated_at", time.Now().UTC().Add(-2*time.Hour)).Error)
 
 	client := &recordingClient{}
-	converger := NewServingConverger(repo, model.NewRepository(db), client, time.Minute)
+	converger := NewServingConverger(repo, model.NewRepository(db), client, storage.Config{}, time.Minute)
 	converger.runOnce(context.Background())
 
 	require.Len(t, client.published, 1, "only the settled failure is retried")
@@ -89,8 +144,8 @@ func TestServingConvergerRetriesASettledFailure(t *testing.T) {
 // a database or broker: the runner must not panic, and must not publish.
 func TestServingConvergerWithoutComponentsIsANoOp(t *testing.T) {
 	client := &recordingClient{}
-	NewServingConverger(nil, nil, client, time.Minute).runOnce(context.Background())
-	NewServingConverger(&InferenceServiceRepository{}, nil, nil, time.Minute).runOnce(context.Background())
+	NewServingConverger(nil, nil, client, storage.Config{}, time.Minute).runOnce(context.Background())
+	NewServingConverger(&InferenceServiceRepository{}, nil, nil, storage.Config{}, time.Minute).runOnce(context.Background())
 	assert.Empty(t, client.published)
 }
 
@@ -223,7 +278,7 @@ func TestTeardownConvergerCarriesTheModelName(t *testing.T) {
 		Update("model_id", modelID).Error)
 
 	client := &recordingClient{}
-	converger := NewTeardownConverger(repo, model.NewRepository(db), client, time.Minute)
+	converger := NewTeardownConverger(repo, model.NewRepository(db), client, storage.Config{}, time.Minute)
 	converger.runOnce(context.Background())
 
 	require.Len(t, client.published, 2, "the survivor's route is re-pointed, then the teardown replays")

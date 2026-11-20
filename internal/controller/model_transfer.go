@@ -259,7 +259,13 @@ func (r *ModelTransferReconciler) buildJob(spec *transfer.Spec, name string) (*b
 	if resources := resourceRequirements(r.resources); resources != nil {
 		container.Resources = *resources
 	}
+	// The weights PVC is written by the platform's own seed and upload paths,
+	// which can leave root-only files (a HuggingFace cache, for instance).
+	// The mover must read every file in the version, so it runs as root; it
+	// never executes model content.
+	rootUID := int64(0)
 	podSpec := corev1.PodSpec{
+		SecurityContext:    &corev1.PodSecurityContext{RunAsUser: &rootUID},
 		RestartPolicy:      corev1.RestartPolicyNever,
 		ServiceAccountName: r.saName,
 		Containers:         []corev1.Container{container},

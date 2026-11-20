@@ -720,6 +720,13 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	if err != nil {
 		return nil, err
 	}
+	// The weights were written into the default backend: record it on the
+	// version so serving resolves the same backend later.
+	if backend := s.storageConfig.DefaultBackend; backend != "" {
+		if err := repo.SetVersionStorageBackend(ctx, modelID, version, backend); err != nil {
+			logger.S().Warnw("model: record version storage backend failed", "model", modelID, "version", version, "err", err)
+		}
+	}
 	// Feature #15: record the successful registration best-effort.
 	s.recordAudit(ctx, &audit.AuditEvent{
 		ActorUserID:  s.grantedBy(ctx),

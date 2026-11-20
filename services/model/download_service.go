@@ -219,6 +219,11 @@ func (s *Service) runDownloadJob(job *DownloadJob) {
 		})
 		return
 	}
+	if backend := s.storageConfig.DefaultBackend; backend != "" {
+		if err := repo.SetVersionStorageBackend(ctx, modelID, job.Version, backend); err != nil {
+			logger.S().Warnw("model: record download storage backend failed", "model", modelID, "version", job.Version, "err", err)
+		}
+	}
 	s.updateDownload(ctx, job.ID, map[string]any{
 		"state":       DownloadStateSucceeded,
 		"message":     "",

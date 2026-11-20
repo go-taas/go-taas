@@ -375,6 +375,20 @@ func (r *Repository) RegisterModelOrCreateVersion(ctx context.Context, name, des
 	return modelID, nil
 }
 
+// SetVersionStorageBackend records the backend a version's weights live in.
+// It is idempotent and leaves an empty backend untouched, so callers can use
+// it after a registration without knowing whether the backend was already
+// recorded.
+func (r *Repository) SetVersionStorageBackend(ctx context.Context, modelID, version, backend string) error {
+	if strings.TrimSpace(backend) == "" {
+		return nil
+	}
+	return r.db.DB(ctx).
+		Model(&Version{}).
+		Where("model_id = ? AND version = ?", modelID, version).
+		Update("storage_backend", backend).Error
+}
+
 // findRegistrationTarget resolves the model a registration applies to.
 // The hub id wins when present (it is the globally unique identity); a
 // hub id owned by another model name, or a model whose hub id differs,

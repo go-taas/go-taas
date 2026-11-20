@@ -319,6 +319,9 @@ func (s *Service) completeDownloadTransfer(ctx context.Context, row *ModelTransf
 		})
 		return
 	}
+	if err := repo.SetVersionStorageBackend(ctx, modelID, job.Version, row.TargetBackend); err != nil {
+		logger.S().Warnw("model: record download storage backend failed", "model", modelID, "version", job.Version, "err", err)
+	}
 	s.updateDownload(ctx, job.ID, map[string]any{
 		"state":       DownloadStateSucceeded,
 		"message":     "",
@@ -474,6 +477,16 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 	}
 	if row.Operation == transfer.OperationDownload && row.DownloadID != nil && transfer.Terminal(status.State) {
 		s.completeDownloadTransfer(ctx, row, status)
+	}
+	// A successful copy makes the target the version's home: serving must
+	// read the copy from the backend that now holds it instead of the
+	// source the version was uploaded to.
+	if row.Operation == transfer.OperationCopy && status.State == transfer.StateSucceeded &&
+		row.TargetBackend != "" && s.repo != nil {
+		if err := s.repo.SetVersionStorageBackend(ctx, row.ModelID, row.Version, row.TargetBackend); err != nil {
+			logger.S().Warnw("model: record transfer target backend failed",
+				"transfer", row.ID, "model", row.ModelID, "version", row.Version, "err", err)
+		}
 	}
 	return nil
 }

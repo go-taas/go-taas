@@ -26,7 +26,7 @@
 
 - 通过 Helm 声明任意数量的文件系统或对象存储后端。
 - 目录版本携带存储后端与交付模式（`mount`、`download`、`cache`），不改变部署 API 形状。
-- 下载、上传/解压、跨存储复制、删除全部异步、可观测、可取消。
+- Hub 下载、跨存储复制、删除全部异步、可观测、可取消。
 - `taas-server` 保持无状态：搬运不依赖 weights 挂载、不跑搬运协程、不持有 Job 的 Kubernetes 客户端。
 - 从 KServe `LocalModelNode` 构建“模型 → 已预热节点”索引，并向 `LLMInferenceService` 注入 `nodeAffinity`，默认 `preferred`，运维可要求 `required`。
 - 向后兼容：未声明 `storage` 的安装保持旧的单 PVC 行为。
@@ -36,6 +36,7 @@
 - 租户级存储隔离。存储后端是平台级能力，只有平台管理员可以注册、下载、搬运、预热模型。
 - 通用桶间数据搬运器。Job 只在声明的后端之间搬运模型目录前缀。
 - 替代 KServe 的缓存 agent：平台创建 `LocalModelNodeGroup`/`LocalModelCache` 并消费 `LocalModelNode` 状态，节点拷贝由 KServe `localmodelnode` agent 完成。
+- 本地归档的异步上传。现有管理员上传接口保持有界、流式的同步解压并写入 weights 文件系统；搬运 Job 覆盖 hub 下载、跨后端复制与删除。把解压迁移到 Job 需要暂存卷与新的上传会话 API，作为独立后续项。
 
 ## 3. 存储模型
 
@@ -46,7 +47,7 @@
 | `filesystem` | `existingClaim`、`provision{enabled,storageClass,accessMode,size}`、`mountPath` | JuiceFS、NFS、CephFS、EFS、Lustre、任意 RWX/RWO PVC |
 | `objectstore` | `provider`、`endpoint`、`region`、`bucket`、`prefix`、`forcePathStyle`、`tls`、`credentials` | S3、MinIO、OSS、COS、GCS S3 互操作 |
 
-对象存储凭据不内联：`credentials.existingSecret` 指向 Secret（release 命名空间，或由 Job 投射到 transfer 命名空间），`accessKeyKey` / `secretKeyKey` 指定键名。
+对象存储凭据不内联：`credentials.existingSecret` 指向 Secret，`accessKeyKey` / `secretKeyKey` 指定键名。搬运 Job 会把它投射到 transfer 命名空间，服务 Pod 会把它投射到推理命名空间，因此同一个 Secret 也必须存在于 `inference.namespace`；chart 不会跨命名空间复制 Secret 数据，需要运维或外部 secret controller 完成。
 
 ### 3.2 交付模式
 
@@ -60,7 +61,13 @@
 
 文件系统后端声明 `provision.enabled` 时由 chart 创建 PVC，否则必须给出 `existingClaim`；两者皆无时在渲染期拒绝。版本逻辑 URI 对文件系统为 `pvc://<claim>/<weightPath>`，对对象存储为 `s3://<bucket>/<prefix>/<weightPath>`。`cache` 交付会把 KServe 源改为缓存 URI 并记录源，以便缓存被驱逐后重建。
 
-**服务侧范围。** Controller 把平台的默认文件系统后端挂载进推理 Pod：`app/controller` 解析该后端，并用它的 claim 与挂载路径作为权重的 volume 和引擎模型目录。按版本选择后端、对象存储的 `download` 交付与节点本地 `cache` 交付尚未接入服务 Pod；存放在非默认后端的版本需要先复制到默认后端（或把该后端声明为默认）才能服务。对象存储预热同样依赖 KServe local-model agent 具备 S3 凭据，Controller 的 PVC 种子 Job 只覆盖 `pvc://` 源。两处缺口作为后续工作跟踪，不影响下文描述的搬运、预热资源与 warm-aware 调度行为。
+**服务侧交付。** 控制面把每个版本的存储后端与交付模式解析进变更事件，Controller 据此构建 Pod：
+
+- `mount` 挂载后端 claim 到 `filesystem.mountPath`；任何无法应用的交付都回退到它。
+- `download` 增加一个 `storage-initializer` init 容器，把对象存储 URI 拉到共享 `emptyDir` 的 `/models`。容器获得后端的 endpoint/region/path-style 配置；当 `objectStore.credentials.existingSecret` 存在时，从该 Secret 注入 `AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`。事件中只传名称，凭据值不出 Secret。
+- `cache` 以只读方式挂载预热节点组的 `hostPath`，并让引擎指向 `<hostPath>/models/<storageKey>`，即种子 Job 与 KServe local-model agent 写入的路径；已有的 warm-aware 亲和性把 Pod 约束到已预热节点。
+
+版本在注册、上传或下载完成时会记录 `storage_backend`；字段出现前的旧行按默认后端解析。对象存储预热仍依赖 KServe local-model agent 在节点组上具备 S3 凭据，Controller 自带的种子 Job 只覆盖 `pvc://` 源。
 
 ## 4. 无状态搬运 Job
 
@@ -236,7 +243,7 @@ warmup:
 
 - 未配置 `storage.backends` 时，chart 用 `controller.weights.pvcName`、`storageClass`、`mountPath` 合成一个文件系统后端，既有 release 升级无需改值。
 - `model_versions.storage_backend` 为新增列，空值在读取时解析为默认后端。
-- `model_transfers`、`model_cache_entries` 为新增表，服务启动 AutoMigrate；以 SQL 初始化模式的安装使用同一份 DDL。
+- `model_transfers`、`model_cache_entries` 为新增表，`model_versions.storage_backend` 为新增列；它们都是 GORM 模型，由 model 服务启动时 `Migrate`（`db.AutoMigrate`）创建/变更。本仓库没有手写 init-SQL 脚本；以外部方式初始化 schema 的安装必须在启动新 server 前执行同一份 `AutoMigrate`（或等价的增量 DDL）。
 - 搬运默认 `job`；`mode: inline` 保留旧进程内行为，便于尚未推送 `taas-transfer` 镜像的集群，服务日志说明所走路径。
 
 ## 11. 安全

@@ -81,6 +81,15 @@ func main() {
 			weights.StorageClass = class
 		}
 	}
+	// A cache-delivery pod mounts the node-local warmup directory. Every
+	// node group of one release shares that path by design; the first one
+	// with a hostPath names it.
+	for _, group := range cfg.Warmup.NodeGroups {
+		if group.HostPath != "" {
+			weights.WarmupHostPath = group.HostPath
+			break
+		}
+	}
 	reconciler := controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, weights, schemeCache, cfg.Controller.AcceleratorLabelKey)
 	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
 	// placement-policy annotation, the pool's scheduling hint, and the

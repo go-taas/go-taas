@@ -1024,6 +1024,9 @@ storage:
   #         tls:
   #           insecureSkipVerify: false
   #         credentials:
+  #           # The Secret must exist in the release namespace for transfer
+  #           # Jobs and in the inference namespace for serving downloads;
+  #           # the chart does not copy Secret data across namespaces.
   #           existingSecret: taas-objectstore-credentials
   #           accessKeyKey: access-key
   #           secretKeyKey: secret-key
@@ -1035,6 +1038,7 @@ storage:
   #           waitForReady: true
   #         download:
   #           enabled: true
+  #           image: kserve/storage-initializer:v0.21.0
   #         mount:
   #           storageClass: ""
   #           size: ""

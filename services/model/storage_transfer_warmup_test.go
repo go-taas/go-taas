@@ -127,6 +127,11 @@ func TestHandleModelTransferStatusUpdatesRow(t *testing.T) {
 	assert.Equal(t, transfer.StateSucceeded, got.GetTransfer().GetState())
 	assert.Equal(t, int64(42), got.GetTransfer().GetBytes())
 	assert.Equal(t, "taas-transfer-x", got.GetTransfer().GetJobName())
+
+	// The copied version now lives in the target backend.
+	version, err := svc.repo.FindVersion(adminCtx(), reg.GetModelId(), "v1")
+	require.NoError(t, err)
+	assert.Equal(t, target.Name, version.StorageBackend)
 }
 
 func TestWarmModelAndStatus(t *testing.T) {

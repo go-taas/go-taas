@@ -41,8 +41,8 @@ Goals:
 - Declare any number of filesystem or object-store backends in Helm.
 - Give each catalog version a storage backend and a delivery mode
   (`mount`, `download`, `cache`) without changing the deployment API shape.
-- Make download, upload/extract, cross-store copy and delete asynchronous,
-  observable, cancellable Jobs.
+- Make hub download, cross-store copy and delete asynchronous, observable,
+  cancellable Jobs.
 - Keep `taas-server` stateless: no weights mounts required for transfers,
   no transfer goroutines, no Kubernetes client for jobs.
 - Build a model → warmed-node index from KServe `LocalModelNode` resources
@@ -61,6 +61,11 @@ Non-goals:
 - Replacing KServe's own model cache agent: the platform creates
   `LocalModelNodeGroup`/`LocalModelCache` and consumes `LocalModelNode`
   status; the KServe `localmodelnode` agent performs the node copy.
+- Asynchronous local archive upload. The existing admin upload endpoint
+  keeps its bounded, streamed synchronous extract into the weights
+  filesystem; the transfer Job covers hub download, cross-backend copy and
+  delete. Moving archive extraction to a Job is a separate follow-up because
+  it needs a staging volume and a new upload-session API.
 
 ## 3. Storage model
 
@@ -72,8 +77,11 @@ Non-goals:
 | `objectstore` | `provider`, `endpoint`, `region`, `bucket`, `prefix`, `forcePathStyle`, `tls`, `credentials` | S3, MinIO, OSS, COS, GCS S3-interop |
 
 Object-store credentials are never inlined: `credentials.existingSecret`
-names a Secret in the release namespace (or the transfer namespace when the
-job projects it) and `accessKeyKey` / `secretKeyKey` name its keys.
+names a Secret and `accessKeyKey` / `secretKeyKey` name its keys. A transfer
+Job projects the Secret into the transfer namespace, while a serving pod
+projects it into the inference namespace, so the same Secret must also exist
+in `inference.namespace` (the chart does not copy Secret data across
+namespaces; an operator or an external secret controller must do it).
 
 ### 3.2 Delivery modes
 
@@ -95,17 +103,27 @@ filesystem backend and `s3://<bucket>/<prefix>/<weightPath>` for an object
 store. `delivery.cache` rewrites the KServe source to the cache URI and
 records the source so the cache can be rebuilt after eviction.
 
-**Serving scope.** The controller mounts the platform's default filesystem
-backend into inference pods: `app/controller` resolves that backend and uses
-its claim and mount path for the weights volume and the engine's model
-directory. Per-version backend selection and the object-store `download` and
-node-local `cache` delivery paths are not yet applied to the serving pod; a
-version stored in a non-default backend is served only after it is copied to
-the default backend (or after the backend is declared as the default).
-Object-store warmup likewise relies on the KServe local-model agent having
-S3 credentials; the controller's PVC seed Job covers `pvc://` sources only.
-Both gaps are tracked as follow-ups and do not change the transfer,
-warmup-resource or warm-affinity behaviour described below.
+**Serving.** The control plane resolves each version's backend and delivery
+mode into the change event, and the controller builds the pod accordingly:
+
+- `mount` mounts the backend's claim at its `filesystem.mountPath`; this is
+  also the fallback when a delivery cannot be applied.
+- `download` adds a `storage-initializer` init container that fetches the
+  object-store URI into a shared `emptyDir` at `/models`. The container gets
+  the backend's endpoint/region/path-style settings and, when
+  `objectStore.credentials.existingSecret` is set, `AWS_ACCESS_KEY_ID` and
+  `AWS_SECRET_ACCESS_KEY` from that Secret. Only names are carried in the
+  event; no credential value ever leaves the Secret.
+- `cache` mounts the warmup node group's `hostPath` read-only and points the
+  engine at `<hostPath>/models/<storageKey>`, the path the seed Job and the
+  KServe local-model agent populate. The existing warm-aware affinity keeps
+  the pod on a warmed node.
+
+A version's `storage_backend` is recorded when it is registered, uploaded or
+downloaded. Rows written before this field existed resolve to the default
+backend. Object-store warmup still depends on the KServe local-model agent
+having S3 credentials on the node group; the controller's own seed Job covers
+`pvc://` sources only.
 
 ## 4. Stateless transfer jobs
 
@@ -358,9 +376,12 @@ Validation rules:
   existing release upgrades without changing a single value.
 - `model_versions.storage_backend` is additive; an empty value resolves to
   the default backend at read time.
-- `model_transfers` and `model_cache_entries` are new tables. The service
-  AutoMigrates them on startup; the init SQL path carries the same DDL for
-  installations that bootstrap the schema out of band.
+- `model_transfers` and `model_cache_entries` are new tables and
+  `model_versions.storage_backend` is a new column. They are GORM models
+  applied by the model service's `Migrate` (`db.AutoMigrate`) at startup.
+  This repository has no hand-written init-SQL scripts: an installation
+  that bootstraps the schema out of band must apply the same `AutoMigrate`
+  (or equivalent additive DDL) before starting the new server.
 - Transfers default to `job`; `mode: inline` preserves the old in-process
   behaviour for a cluster that has not yet pushed the `taas-transfer`
   image. The server logs which path it took.

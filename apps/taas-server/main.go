@@ -218,6 +218,7 @@ func main() {
 		})
 	}
 	inferSvc := infer.New(srv.Components())
+	inferSvc.SetStorageConfig(cfg.Storage)
 	srv.RegisterService(inferSvc)
 	meteringSvc := metering.New(srv.Components())
 	srv.RegisterService(meteringSvc)

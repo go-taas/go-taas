@@ -30,6 +30,7 @@ import (
 	"github.com/google/uuid"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
+	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/services/audit"
 )
 
@@ -190,6 +191,13 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 		// the extracted bytes belong to nobody, so they go.
 		_ = os.RemoveAll(dest)
 		return nil, err
+	}
+	// The archive was extracted into the default backend, so record it on
+	// the version for serving.
+	if backend := s.storageConfig.DefaultBackend; backend != "" {
+		if err := repo.SetVersionStorageBackend(ctx, modelID, version, backend); err != nil {
+			logger.S().Warnw("model: record upload storage backend failed", "model", modelID, "version", version, "err", err)
+		}
 	}
 	s.recordAudit(ctx, &audit.AuditEvent{
 		ActorUserID:  s.grantedBy(ctx),

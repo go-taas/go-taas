@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/model"
 )
@@ -52,6 +53,29 @@ type changeEventModel struct {
 	Name       string `json:"name,omitempty"`
 	Version    string `json:"version"`
 	WeightPath string `json:"weight_path"`
+	// StorageBackend names the backend the version lives in. Empty keeps
+	// the controller's legacy shared-weights mount.
+	StorageBackend string `json:"storage_backend,omitempty"`
+	// Delivery is the resolved delivery mode: mount, download or cache.
+	Delivery string `json:"delivery,omitempty"`
+	// ModelURI is the backend-qualified URI of the model.
+	ModelURI string `json:"model_uri,omitempty"`
+	// MountPath is where a filesystem backend is mounted.
+	MountPath string `json:"mount_path,omitempty"`
+	// ClaimName is the filesystem PVC that holds the weights.
+	ClaimName string `json:"claim_name,omitempty"`
+	// DownloadImage is the storage-initializer image for download delivery.
+	DownloadImage string `json:"download_image,omitempty"`
+	// ObjectEndpoint, ObjectRegion and ObjectForcePathStyle configure an
+	// S3-compatible download.
+	ObjectEndpoint       string `json:"object_endpoint,omitempty"`
+	ObjectRegion         string `json:"object_region,omitempty"`
+	ObjectForcePathStyle bool   `json:"object_force_path_style,omitempty"`
+	// CredentialsSecret names the Secret carrying the object-store keys;
+	// AccessKeyKey and SecretKeyKey name its entries.
+	CredentialsSecret string `json:"credentials_secret,omitempty"`
+	AccessKeyKey      string `json:"access_key_key,omitempty"`
+	SecretKeyKey      string `json:"secret_key_key,omitempty"`
 }
 
 // changeEventImage is the resolved image spec inside a change event.
@@ -257,7 +281,7 @@ func publishChangeWithCompensation(
 // event that leaves any of them out would write an object whose pods cannot
 // start, so a caller that only knows part of the state does not publish at
 // all: it resolves the rest first.
-func buildServiceEvent(ctx context.Context, models *model.Repository, row *InferenceService, eventType string) (changeEvent, error) {
+func buildServiceEvent(ctx context.Context, models *model.Repository, cfg storage.Config, row *InferenceService, eventType string) (changeEvent, error) {
 	version, err := models.FindVersion(ctx, row.ModelID, row.ModelVersion)
 	if err != nil {
 		return changeEvent{}, fmt.Errorf("resolve model version: %w", err)
@@ -266,8 +290,9 @@ func buildServiceEvent(ctx context.Context, models *model.Repository, row *Infer
 	if err != nil {
 		return changeEvent{}, fmt.Errorf("resolve engine image: %w", err)
 	}
-	return buildChangeEvent(eventType, row, servedModelName(ctx, models, row),
-		version.WeightPath, img.Reference(), img.Engine), nil
+	evt := buildChangeEvent(eventType, row, servedModelName(ctx, models, row),
+		version.WeightPath, img.Reference(), img.Engine)
+	return applyServingStorage(evt, version, cfg), nil
 }
 
 // survivorLimit caps how many survivor services one teardown re-points
@@ -294,6 +319,7 @@ func republishSurvivors(
 	client mq.Client,
 	repo *InferenceServiceRepository,
 	models *model.Repository,
+	cfg storage.Config,
 	_ string,
 	excludeServiceID string,
 ) {
@@ -311,7 +337,7 @@ func republishSurvivors(
 		return
 	}
 	for _, survivor := range survivors {
-		evt, err := buildServiceEvent(ctx, models, survivor, EventTypeReconcileRoute)
+		evt, err := buildServiceEvent(ctx, models, cfg, survivor, EventTypeReconcileRoute)
 		if err != nil {
 			logger.S().Warnw("infer: resolve survivor desired state failed",
 				"service_id", survivor.ID, "err", err)

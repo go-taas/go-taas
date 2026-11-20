@@ -88,6 +88,22 @@ func (c *RemoteClient) key(key string) string {
 	return c.prefix + "/" + key
 }
 
+// joinObjectKey joins a model prefix and a relative file path into one
+// object key. Both sides are trimmed so a weight path that already ends in
+// "/" cannot produce the "//" object names S3 and MinIO reject.
+func joinObjectKey(prefix, rel string) string {
+	prefix = strings.Trim(prefix, "/")
+	rel = strings.Trim(filepath.ToSlash(rel), "/")
+	switch {
+	case prefix == "":
+		return rel
+	case rel == "":
+		return prefix
+	default:
+		return prefix + "/" + rel
+	}
+}
+
 // DownloadPrefix copies every object under key to destDir, preserving the
 // relative path. It returns the number of bytes written and calls progress
 // after each object.
@@ -152,7 +168,7 @@ func (c *RemoteClient) UploadDir(ctx context.Context, dir, key string) (int64, e
 		if err != nil {
 			return err
 		}
-		objectKey := c.key(strings.TrimPrefix(key+"/"+filepath.ToSlash(rel), "/"))
+		objectKey := c.key(joinObjectKey(key, rel))
 		upload, err := c.client.FPutObject(ctx, c.bucket, objectKey, path, minio.PutObjectOptions{})
 		if err != nil {
 			return err

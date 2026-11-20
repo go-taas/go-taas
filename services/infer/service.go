@@ -26,6 +26,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/services/audit"
 	"github.com/go-taas/go-taas/services/image"
 	"github.com/go-taas/go-taas/services/model"
@@ -108,6 +109,11 @@ type Service struct {
 	repo       *InferenceServiceRepository
 	modelRepo  *model.Repository
 	mqClient   mq.Client
+
+	// storageConfig resolves the backend a version lives in and how a
+	// serving pod reads it. The zero value resolves the legacy default
+	// filesystem backend, so unit tests keep the mounted-weights path.
+	storageConfig storage.Config
 
 	// orgGuard validates the transitional organization context against
 	// the organizations table (feature #6). Nil until wired: unit tests
@@ -345,6 +351,10 @@ type AuditRecorder interface {
 func New(components server.Components) *Service {
 	return &Service{components: components}
 }
+
+// SetStorageConfig installs the model storage configuration. Serving uses it
+// to turn a version into a concrete delivery plan (mount, download or cache).
+func (s *Service) SetStorageConfig(cfg storage.Config) { s.storageConfig = cfg }
 
 // SetOrgGuard injects the tenancy read guard (the SetDeleteModelGuard
 // pattern). Production and FVT wire it; unit tests leave it nil so
@@ -1111,6 +1121,7 @@ func (s *Service) CreateInferenceService(ctx context.Context, req *inferv1.Creat
 	}
 
 	evt := buildChangeEvent(EventTypeUpsert, svc, modelRow.Name, modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt = s.applyServingStorage(evt, modelVersion)
 	// Feature #16: the change event carries the effective policy (the
 	// global default when the service stores {}).
 	effective, err := repo.ResolveEffectivePolicy(ctx, svc)
@@ -1394,6 +1405,7 @@ func (s *Service) ScaleInferenceService(ctx context.Context, req *inferv1.ScaleI
 	scaled.Replicas = replicas
 	evt := buildChangeEvent(EventTypeUpsert, &scaled, servedModelName(ctx, modelRepo, row),
 		modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt = s.applyServingStorage(evt, modelVersion)
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish scale change failed",
 			"service_id", req.GetServiceId(), "err", err)
@@ -1451,7 +1463,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	if row.State == StateTerminated {
 		// Same model-route failover as the stop path (see below).
 		modelRepo, _ := s.modelRepository()
-		republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
+		republishSurvivors(ctx, client, repo, modelRepo, s.storageConfig, modelName, row.ID)
 		if err := publishChange(ctx, client, buildChangeEvent(EventTypeDelete, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish delete change failed",
 				"service_id", req.GetServiceId(), "err", err)
@@ -1466,7 +1478,7 @@ func (s *Service) DeleteInferenceService(ctx context.Context, req *inferv1.Delet
 	// Keep the model routable through the teardown: another running service
 	// of the same model takes over the model-scoped route.
 	modelRepo, _ := s.modelRepository()
-	republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
+	republishSurvivors(ctx, client, repo, modelRepo, s.storageConfig, modelName, row.ID)
 
 	// A publish failure only logs: the row is already terminated, so the
 	// service is hidden from lists and the controller's periodic resync
@@ -1530,7 +1542,7 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 		// A model we no longer serve may still be served by a sibling
 		// service: re-point its route before this service's teardown runs.
 		modelRepo, _ := s.modelRepository()
-		republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
+		republishSurvivors(ctx, client, repo, modelRepo, s.storageConfig, modelName, row.ID)
 		if err := publishChange(ctx, client, buildChangeEvent(EventTypeStop, row, modelName, "", "", "")); err != nil {
 			logger.S().Warnw("infer: re-publish stop change failed",
 				"service_id", req.GetServiceId(), "err", err)
@@ -1551,7 +1563,7 @@ func (s *Service) StopInferenceService(ctx context.Context, req *inferv1.StopInf
 	// service's resources. Otherwise the survivor would answer 503 until
 	// something reconciled it.
 	modelRepo, _ := s.modelRepository()
-	republishSurvivors(ctx, client, repo, modelRepo, modelName, row.ID)
+	republishSurvivors(ctx, client, repo, modelRepo, s.storageConfig, modelName, row.ID)
 
 	// A publish failure only logs: the row is already stopped, so the
 	// service is hidden from the running set and the controller's periodic
@@ -1641,6 +1653,7 @@ func (s *Service) StartInferenceService(ctx context.Context, req *inferv1.StartI
 	started.State = StatePending
 	evt := buildChangeEvent(EventTypeStart, &started, servedModelName(ctx, modelRepo, row),
 		modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt = s.applyServingStorage(evt, modelVersion)
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish start change failed",
 			"service_id", req.GetServiceId(), "err", err)
@@ -1725,6 +1738,7 @@ func (s *Service) UpdateInferenceServiceVersion(ctx context.Context, req *inferv
 	updated.State = StateDeploying
 	evt := buildChangeEvent(EventTypeUpdateVersion, &updated, servedModelName(ctx, modelRepo, row),
 		target.WeightPath, img.Reference(), img.Engine)
+	evt = s.applyServingStorage(evt, target)
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish version-change failed",
 			"service_id", req.GetServiceId(), "err", err)
@@ -1915,6 +1929,7 @@ func (s *Service) UpdateInferenceServiceTopology(ctx context.Context, req *infer
 	}
 	evt := buildChangeEvent(EventTypeUpsert, &updated, servedModelName(ctx, modelRepo, row),
 		modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt = s.applyServingStorage(evt, modelVersion)
 	effective, err := repo.ResolveEffectivePolicy(ctx, &updated)
 	if err != nil {
 		return nil, err
@@ -2034,6 +2049,7 @@ func (s *Service) UpdateInferenceServiceEngineArgs(ctx context.Context, req *inf
 	updated.State = nextState
 	evt := buildChangeEvent(EventTypeUpdateEngineArgs, &updated, servedModelName(ctx, modelRepo, row),
 		modelVersion.WeightPath, img.Reference(), img.Engine)
+	evt = s.applyServingStorage(evt, modelVersion)
 	if err := publishChange(ctx, client, evt); err != nil {
 		logger.S().Errorw("infer: publish engine-args change failed",
 			"service_id", req.GetServiceId(), "err", err)
@@ -2253,15 +2269,15 @@ func (s *Service) ListDeploymentEvents(ctx context.Context, req *inferv1.ListDep
 	events := make([]*inferv1.DeploymentEvent, 0, len(rows))
 	for _, row := range rows {
 		events = append(events, &inferv1.DeploymentEvent{
-			EventId:         row.ID,
-			ServiceId:       row.ServiceID,
-			ServiceName:     row.ServiceName,
-			EventType:       row.EventType,
-			Actor:           row.Actor,
+			EventId:          row.ID,
+			ServiceId:        row.ServiceID,
+			ServiceName:      row.ServiceName,
+			EventType:        row.EventType,
+			Actor:            row.Actor,
 			ActorDisplayName: actorLabels[row.Actor],
-			Before:          string(row.Before),
-			After:           string(row.After),
-			CreatedAt:       row.CreatedAt.Unix(),
+			Before:           string(row.Before),
+			After:            string(row.After),
+			CreatedAt:        row.CreatedAt.Unix(),
 		})
 	}
 	return &inferv1.ListDeploymentEventsResponse{
@@ -2369,8 +2385,13 @@ func (s *Service) RollbackDeployment(ctx context.Context, req *inferv1.RollbackD
 	if err != nil {
 		return nil, err
 	}
+	rollbackVersion, err := modelRepo.FindVersion(ctx, updated.ModelID, updated.ModelVersion)
+	if err != nil {
+		return nil, err
+	}
 	evtChange := buildChangeEvent(EventTypeRollback, &updated, servedModelName(ctx, modelRepo, row),
 		target.WeightPath, img.Reference(), img.Engine)
+	evtChange = s.applyServingStorage(evtChange, rollbackVersion)
 	if err := publishChange(ctx, client, evtChange); err != nil {
 		logger.S().Errorw("infer: publish rollback change failed",
 			"service_id", req.GetServiceId(), "err", err)

@@ -10,6 +10,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/services/model"
 )
 
@@ -30,6 +31,7 @@ type TeardownConverger struct {
 	repo     *InferenceServiceRepository
 	models   *model.Repository
 	pub      mq.Client
+	storage  storage.Config
 	interval time.Duration
 	window   time.Duration
 }
@@ -37,11 +39,11 @@ type TeardownConverger struct {
 // NewTeardownConverger builds the converger over a repository, the model
 // repository (the served model name decides which HTTPRoute the teardown
 // targets) and the MQ client.
-func NewTeardownConverger(repo *InferenceServiceRepository, models *model.Repository, pub mq.Client, interval time.Duration) *TeardownConverger {
+func NewTeardownConverger(repo *InferenceServiceRepository, models *model.Repository, pub mq.Client, cfg storage.Config, interval time.Duration) *TeardownConverger {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	return &TeardownConverger{repo: repo, models: models, pub: pub, interval: interval, window: teardownConvergerWindow}
+	return &TeardownConverger{repo: repo, models: models, pub: pub, storage: cfg, interval: interval, window: teardownConvergerWindow}
 }
 
 // NewTeardownConvergerFromConfig builds the converger from the shared
@@ -69,7 +71,7 @@ func NewTeardownConvergerFromConfig(components server.Components) *TeardownConve
 	if cfg.Infer.TeardownConverger.Interval > 0 {
 		interval = cfg.Infer.TeardownConverger.Interval
 	}
-	return NewTeardownConverger(NewInferenceServiceRepository(db), model.NewRepository(db), pub, interval)
+	return NewTeardownConverger(NewInferenceServiceRepository(db), model.NewRepository(db), pub, cfg.Storage, interval)
 }
 
 // RunnerName implements server.Runner.
@@ -111,7 +113,7 @@ func (c *TeardownConverger) runOnce(ctx context.Context) {
 		// Re-point the model route at a running sibling first: the route is
 		// named after the model, so the replay below would otherwise remove
 		// it from under a service that is still serving that model.
-		republishSurvivors(ctx, c.pub, c.repo, c.models, modelName, row.ID)
+		republishSurvivors(ctx, c.pub, c.repo, c.models, c.storage, modelName, row.ID)
 		evt := buildChangeEvent(eventType, row, modelName, "", "", "")
 		if err := publishChange(ctx, c.pub, evt); err != nil {
 			logger.S().Warnw("infer: teardown converger publish failed",

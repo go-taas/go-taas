@@ -10,6 +10,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 	"github.com/go-taas/go-taas/pkg/server"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/services/model"
 )
 
@@ -55,16 +56,17 @@ type ServingConverger struct {
 	repo     *InferenceServiceRepository
 	models   *model.Repository
 	pub      mq.Client
+	storage  storage.Config
 	interval time.Duration
 }
 
 // NewServingConverger builds the converger over the service repository, the
 // model repository (for the served model name) and the MQ client.
-func NewServingConverger(repo *InferenceServiceRepository, models *model.Repository, pub mq.Client, interval time.Duration) *ServingConverger {
+func NewServingConverger(repo *InferenceServiceRepository, models *model.Repository, pub mq.Client, cfg storage.Config, interval time.Duration) *ServingConverger {
 	if interval <= 0 {
 		interval = time.Minute
 	}
-	return &ServingConverger{repo: repo, models: models, pub: pub, interval: interval}
+	return &ServingConverger{repo: repo, models: models, pub: pub, storage: cfg, interval: interval}
 }
 
 // NewServingConvergerFromConfig builds the converger from the shared
@@ -95,7 +97,7 @@ func NewServingConvergerFromConfig(components server.Components) *ServingConverg
 	if cfg.Infer.TeardownConverger.Interval > 0 {
 		interval = cfg.Infer.TeardownConverger.Interval
 	}
-	return NewServingConverger(NewInferenceServiceRepository(db), model.NewRepository(db), pub, interval)
+	return NewServingConverger(NewInferenceServiceRepository(db), model.NewRepository(db), pub, cfg.Storage, interval)
 }
 
 // RunnerName implements server.Runner.
@@ -146,5 +148,5 @@ func (c *ServingConverger) runOnce(ctx context.Context) {
 // it carries every resolved part: the model's weights, the engine image and
 // the engine's arguments.
 func (c *ServingConverger) desiredState(ctx context.Context, row *InferenceService) (changeEvent, error) {
-	return buildServiceEvent(ctx, c.models, row, EventTypeReconcileRoute)
+	return buildServiceEvent(ctx, c.models, c.storage, row, EventTypeReconcileRoute)
 }

@@ -200,6 +200,17 @@ func weightModelURI(pvc, weightPath string) string {
 	return uri
 }
 
+// modelURI is the URI KServe records for the model. A delivery plan from the
+// control plane carries the backend's own URI; without one the platform's
+// shared weights claim is named, because the platform mounts it and KServe
+// must not fetch anything.
+func modelURI(evt changeEvent, defaultClaim string) string {
+	if uri := strings.TrimSpace(evt.Model.ModelURI); uri != "" {
+		return uri
+	}
+	return weightModelURI(defaultClaim, evt.Model.WeightPath)
+}
+
 // buildLLMInferenceService composes the LLMInferenceService for a change event.
 //
 // The pod template is the platform's engine pod: the same spec the plain
@@ -241,7 +252,7 @@ func (r *k8sReconciler) buildLLMInferenceService(ctx context.Context, evt change
 		},
 		"model": map[string]any{
 			"name": modelName,
-			"uri":  weightModelURI(r.weights.PVCName, evt.Model.WeightPath),
+			"uri":  modelURI(evt, r.weights.PVCName),
 		},
 		// The platform mounts the weights itself. A storage initializer would
 		// copy the whole model a second time and make the pod wait for it.

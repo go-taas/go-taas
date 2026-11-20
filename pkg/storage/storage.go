@@ -123,10 +123,18 @@ type DeliveryMount struct {
 	Size         string `mapstructure:"size" yaml:"size"`
 }
 
-// DeliveryDownload configures KServe's storage initializer.
+// DeliveryDownload configures the storage initializer that fetches an
+// object-store model into the pod.
 type DeliveryDownload struct {
 	Enabled bool `mapstructure:"enabled" yaml:"enabled"`
+	// Image is the storage-initializer image. The default is the image the
+	// cluster's KServe installation already runs.
+	Image string `mapstructure:"image" yaml:"image"`
 }
+
+// DefaultDownloadImage is the storage-initializer image used when a backend
+// enables download delivery without naming one.
+const DefaultDownloadImage = "kserve/storage-initializer:v0.21.0"
 
 // DefaultMountPath is the in-container path weights are mounted at.
 const DefaultMountPath = "/data/weights"
@@ -179,6 +187,9 @@ func (c Config) Normalize(legacyPVC, legacyStorageClass, legacyMountPath string)
 		backend.Name = name
 		if backend.Filesystem.MountPath == "" {
 			backend.Filesystem.MountPath = DefaultMountPath
+		}
+		if backend.Delivery.Download.Image == "" {
+			backend.Delivery.Download.Image = DefaultDownloadImage
 		}
 		if backend.Delivery.Default == "" {
 			switch backend.Type {

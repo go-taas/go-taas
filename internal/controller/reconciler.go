@@ -43,6 +43,21 @@ type changeEvent struct {
 		Name       string `json:"name,omitempty"`
 		Version    string `json:"version"`
 		WeightPath string `json:"weight_path"`
+		// StorageBackend, Delivery, ModelURI, MountPath and ClaimName
+		// describe how the serving pod reads the weights. An empty
+		// backend keeps the legacy shared-weights mount.
+		StorageBackend       string `json:"storage_backend,omitempty"`
+		Delivery             string `json:"delivery,omitempty"`
+		ModelURI             string `json:"model_uri,omitempty"`
+		MountPath            string `json:"mount_path,omitempty"`
+		ClaimName            string `json:"claim_name,omitempty"`
+		DownloadImage        string `json:"download_image,omitempty"`
+		ObjectEndpoint       string `json:"object_endpoint,omitempty"`
+		ObjectRegion         string `json:"object_region,omitempty"`
+		ObjectForcePathStyle bool   `json:"object_force_path_style,omitempty"`
+		CredentialsSecret    string `json:"credentials_secret,omitempty"`
+		AccessKeyKey         string `json:"access_key_key,omitempty"`
+		SecretKeyKey         string `json:"secret_key_key,omitempty"`
 	} `json:"model"`
 	Image struct {
 		ImageID   string `json:"image_id"`
@@ -220,6 +235,9 @@ type k8sReconciler struct {
 	warmupMode string
 	// warmupWeight is the preferred-affinity weight (1-100).
 	warmupWeight int
+	// warmupHostPath is the node directory the warmup cache lives in. A
+	// cache-delivery pod mounts it directly.
+	warmupHostPath string
 }
 
 // ServiceStateProvider reports the current desired state of an inference
@@ -252,6 +270,10 @@ type WeightsConfig struct {
 	// MountPath is the path the weights volume is mounted at inside
 	// inference pods. Defaults to "/data/weights".
 	MountPath string
+	// WarmupHostPath is the node-local cache directory of the first warmup
+	// node group. Cache-delivery pods mount it at the same path. Defaults
+	// to "/models".
+	WarmupHostPath string
 }
 
 // NewK8sReconciler builds the default Kubernetes-backed reconciler.
@@ -282,6 +304,9 @@ func newReconcilerWithClientset(clientset kubernetes.Interface, dyn dynamic.Inte
 	}
 	if weights.MountPath == "" {
 		weights.MountPath = "/data/weights"
+	}
+	if weights.WarmupHostPath == "" {
+		weights.WarmupHostPath = "/models"
 	}
 	if scheme == nil {
 		scheme = NewSchemeCache()
@@ -1445,9 +1470,14 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 		}
 	}
 	priorityClass := r.priorityClassFor(evt.Priority)
+	// The backend a version lives in decides how this pod reads it: a
+	// mounted claim, a storage-initializer download, or the node-local
+	// warmup cache.
+	weightsVolume, weightsMount, modelPath, initContainers := r.servingWeights(evt)
 	spec := corev1.PodSpec{
 		SchedulerName:     schedulerName,
 		PriorityClassName: priorityClass,
+		InitContainers:    initContainers,
 		Containers: []corev1.Container{{
 			Name:  "engine",
 			Image: evt.Image.Reference,
@@ -1457,29 +1487,16 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 			// node with free capacity and the device plugin
 			// exposes the device to the container.
 			Resources: resources,
-			// The engine command points at the model's weights
-			// directory (the whole JuiceFS filesystem is mounted
-			// at the weights mount path; the model lives in a
-			// subdirectory named by its weight path).
-			Command: engineCommand(args, r.weights.MountPath, evt.Model.WeightPath, servedModelName(evt), role),
+			// The engine command points at the model directory the
+			// resolved delivery produced.
+			Command: engineCommand(args, modelPath, "", servedModelName(evt), role),
 			// Operator-supplied environment variables. They apply to every
 			// topology; a PD or multi-machine role may override one for
 			// itself (see envForRole).
-			Env: evt.envForRole(role.Name),
-			VolumeMounts: []corev1.VolumeMount{{
-				Name:      "weights",
-				MountPath: r.weights.MountPath,
-				ReadOnly:  true,
-			}},
+			Env:          evt.envForRole(role.Name),
+			VolumeMounts: []corev1.VolumeMount{weightsMount},
 		}},
-		Volumes: []corev1.Volume{{
-			Name: "weights",
-			VolumeSource: corev1.VolumeSource{
-				PersistentVolumeClaim: &corev1.PersistentVolumeClaimVolumeSource{
-					ClaimName: r.weights.PVCName,
-				},
-			},
-		}},
+		Volumes:      []corev1.Volume{weightsVolume},
 		NodeSelector: nodeSelector,
 	}
 	// RDMA devices come from the service's ResourceClaimTemplate: each pod
