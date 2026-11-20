@@ -183,23 +183,56 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64)) err
 	}
 }
 
+// newHubDownloader builds the hub client used by a download Job. It is a
+// variable so tests can replace the network client.
+var newHubDownloader = func() modelhub.Downloader { return modelhub.NewHTTPDownloader(modelhub.Options{}) }
+
+// uploadDirTo moves a downloaded directory into an object-store backend.
+var uploadDirTo = func(ctx context.Context, ref *transfer.ObjectStoreRef, dir, key string) (int64, error) {
+	remote, err := remoteFor(ref)
+	if err != nil {
+		return 0, err
+	}
+	return remote.UploadDir(ctx, dir, key)
+}
+
 func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64)) error {
 	if strings.TrimSpace(spec.HubSource) == "" || strings.TrimSpace(spec.HubModelID) == "" {
 		return fmt.Errorf("download needs hub source and model id")
-	}
-	if strings.TrimSpace(spec.TargetPath) == "" {
-		return fmt.Errorf("download needs a target path")
 	}
 	source, err := modelhub.ParseSource(spec.HubSource)
 	if err != nil {
 		return err
 	}
-	downloader := modelhub.NewHTTPDownloader(modelhub.Options{})
-	err = downloader.Download(ctx, source, spec.HubModelID, spec.TargetPath)
-	if err == nil {
-		progress(storage.DirSize(spec.TargetPath))
+	if objectStoreRefPresent(spec.TargetObjectStore) {
+		temp, err := os.MkdirTemp("", "taas-transfer-download-")
+		if err != nil {
+			return err
+		}
+		defer func() { _ = os.RemoveAll(temp) }()
+		if err := newHubDownloader().Download(ctx, source, spec.HubModelID, temp); err != nil {
+			return err
+		}
+		written, err := uploadDirTo(ctx, spec.TargetObjectStore, temp, spec.WeightPath)
+		if err != nil {
+			return err
+		}
+		progress(written)
+		return nil
 	}
-	return err
+	if strings.TrimSpace(spec.TargetPath) == "" {
+		return fmt.Errorf("download needs a target path or object store")
+	}
+	if err := newHubDownloader().Download(ctx, source, spec.HubModelID, spec.TargetPath); err != nil {
+		return err
+	}
+	progress(storage.DirSize(spec.TargetPath))
+	return nil
+}
+
+// objectStoreRefPresent reports whether a ref names a usable object store.
+func objectStoreRefPresent(ref *transfer.ObjectStoreRef) bool {
+	return ref != nil && strings.TrimSpace(ref.Endpoint) != "" && strings.TrimSpace(ref.Bucket) != ""
 }
 
 func deleteOne(ctx context.Context, spec *transfer.Spec) error {
@@ -225,7 +258,7 @@ func remoteFor(ref *transfer.ObjectStoreRef) (*storage.RemoteClient, error) {
 	// The controller exports the credentials through the standard AWS
 	// environment variables. A ref without an explicit endpoint is treated
 	// as absent.
-	if strings.TrimSpace(ref.Endpoint) == "" || strings.TrimSpace(ref.Bucket) == "" {
+	if !objectStoreRefPresent(ref) {
 		return nil, nil
 	}
 	return storage.NewRemoteClient(*ref)
