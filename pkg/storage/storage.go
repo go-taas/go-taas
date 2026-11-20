@@ -372,3 +372,25 @@ func contains(list []string, want string) bool {
 	}
 	return false
 }
+
+// CredentialEnvNames returns the environment variables that carry one named
+// backend's object-store credential. The server reads them when it writes an
+// upload directly to object storage, and the chart renders them from the
+// backend's existing Secret. The name is upper-cased and every character
+// outside [A-Z0-9] becomes an underscore, so the chart and Go agree without a
+// shared registry.
+func CredentialEnvNames(backendName string) (accessKeyEnv, secretKeyEnv string) {
+	var key strings.Builder
+	for _, r := range strings.ToUpper(strings.TrimSpace(backendName)) {
+		switch {
+		case r >= 'A' && r <= 'Z', r >= '0' && r <= '9':
+			key.WriteRune(r)
+		default:
+			key.WriteByte('_')
+		}
+	}
+	if key.Len() == 0 {
+		key.WriteString("DEFAULT")
+	}
+	return "TAAS_STORAGE_" + key.String() + "_ACCESS_KEY", "TAAS_STORAGE_" + key.String() + "_SECRET_KEY"
+}

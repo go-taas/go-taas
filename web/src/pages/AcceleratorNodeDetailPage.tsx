@@ -66,6 +66,14 @@ function healthBadgeClass(health: string): string {
   }
 }
 
+// gpuAllocatedTotal renders allocated/total from the allocated and free
+// counts the API reports.
+function gpuAllocatedTotal(allocatedRaw: string, freeRaw: string): string {
+  const allocated = parseInt(allocatedRaw || '0', 10) || 0;
+  const free = parseInt(freeRaw || '0', 10) || 0;
+  return `${allocated} / ${allocated + free}`;
+}
+
 export default function AcceleratorNodeDetailPage() {
   const api = useApi();
   const { orgId } = useOrg();
@@ -169,7 +177,7 @@ export default function AcceleratorNodeDetailPage() {
           <div className="detail-item">
             <div className="label">{t('accnode.gpus')}</div>
             <div className="value">
-              {s.gpusAllocated} / {s.gpusFree}
+              {gpuAllocatedTotal(s.gpusAllocated, s.gpusFree)}
             </div>
           </div>
           <div className="detail-item">

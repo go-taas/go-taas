@@ -52,6 +52,14 @@ const POLL_MS = 30_000;
 const HEALTHS = ['healthy', 'degraded', 'unknown'];
 
 // vendorBadgeClass maps a vendor to a stable badge style.
+// gpuAllocatedTotal renders allocated/total. The API reports allocated and
+// free counts, so total is their sum.
+function gpuAllocatedTotal(allocatedRaw: string, freeRaw: string): string {
+  const allocated = parseInt(allocatedRaw || '0', 10) || 0;
+  const free = parseInt(freeRaw || '0', 10) || 0;
+  return `${allocated} / ${allocated + free}`;
+}
+
 function vendorBadgeClass(vendor: string): string {
   switch (vendor) {
     case 'nvidia':
@@ -217,6 +225,7 @@ export default function AcceleratorsPage() {
         {cardTypes.map((c) => {
           const free = parseInt(c.free || '0', 10);
           const totalGpus = parseInt(c.total || '0', 10);
+          const allocated = totalGpus > free ? totalGpus - free : 0;
           const pct = totalGpus > 0 ? Math.round((free / totalGpus) * 100) : 0;
           const noFree = free === 0;
           return (
@@ -233,9 +242,9 @@ export default function AcceleratorsPage() {
                 <div className="value">{c.cardType}</div>
               </div>
               <div className="detail-item">
-                <div className="label">{t('accelerators.freeTotal')}</div>
+                <div className="label">{t('accelerators.allocatedTotal')}</div>
                 <div className="value">
-                  {c.free} / {c.total}
+                  {allocated} / {c.total}
                 </div>
               </div>
               <div className="detail-item">
@@ -347,7 +356,7 @@ export default function AcceleratorsPage() {
                   </td>
                   <td>{(n.cardTypes || []).join(', ')}</td>
                   <td>
-                    {n.gpusAllocated} / {n.gpusFree}
+                    {gpuAllocatedTotal(n.gpusAllocated, n.gpusFree)}
                   </td>
                   <td className="mono">{n.driverVersion || '—'}</td>
                   <td>

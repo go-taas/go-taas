@@ -239,6 +239,9 @@ export interface ModelSummary {
   // hubModelId is the model's globally unique id on a public model hub
   // ("<vendor>/<model>"), empty when the model is not bound to a hub.
   hubModelId?: string;
+  // storageBackend is the backend the latest version's weights live in;
+  // empty means the platform default backend.
+  storageBackend?: string;
 }
 
 // EngineParamTemplate is a reusable set of engine parameters plus the
@@ -305,6 +308,8 @@ export interface ModelDownload {
   totalBytes?: string | number;
   weightPath?: string;
   modelId?: string;
+  // storageBackend is the backend the job writes the weights to.
+  storageBackend?: string;
   createdAt: string;
   updatedAt: string;
 }

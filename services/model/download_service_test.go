@@ -206,3 +206,52 @@ func TestStartModelDownloadWithoutSizeStaysIndeterminate(t *testing.T) {
 	done := waitForState(t, svc, resp.GetDownload().GetDownloadId(), DownloadStateSucceeded)
 	assert.EqualValues(t, 0, done.GetTotalBytes())
 }
+
+// TestStartModelDownloadRecordsSelectedBackend verifies the download writes
+// to the requested backend and records it on the version, so serving resolves
+// the same backend instead of assuming the default.
+func TestStartModelDownloadRecordsSelectedBackend(t *testing.T) {
+	svc := newDownloadTestService(t)
+	svc.SetStorageConfig(filesystemBackends(svc.weightsDir, "shared", "cold"))
+	ctx := context.Background()
+
+	resp, err := svc.StartModelDownload(ctx, &modelv1.StartModelDownloadRequest{
+		Source:         "modelscope",
+		HubModelId:     "Qwen/Qwen2.5-0.5B-Instruct",
+		StorageBackend: "cold",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "cold", resp.GetDownload().GetStorageBackend())
+
+	done := waitForState(t, svc, resp.GetDownload().GetDownloadId(), DownloadStateSucceeded)
+	assert.Equal(t, "cold", done.GetStorageBackend())
+	assert.NotEmpty(t, done.GetModelId())
+
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	version, err := repo.FindVersion(ctx, done.GetModelId(), done.GetVersion())
+	require.NoError(t, err)
+	assert.Equal(t, "cold", version.StorageBackend)
+
+	// The list/detail projection exposes the backend of the latest version.
+	got, err := svc.GetModel(ctx, &modelv1.GetModelRequest{ModelId: done.GetModelId()})
+	require.NoError(t, err)
+	assert.Equal(t, "cold", got.GetModel().GetStorageBackend())
+	list, err := svc.ListModels(ctx, &modelv1.ListModelsRequest{})
+	require.NoError(t, err)
+	require.Len(t, list.GetModels(), 1)
+	assert.Equal(t, "cold", list.GetModels()[0].GetStorageBackend())
+}
+
+// TestStartModelDownloadRejectsUnknownBackend makes a mistyped backend name
+// fail before the job is queued.
+func TestStartModelDownloadRejectsUnknownBackend(t *testing.T) {
+	svc := newDownloadTestService(t)
+	svc.SetStorageConfig(filesystemBackends(svc.weightsDir, "shared", "cold"))
+	_, err := svc.StartModelDownload(context.Background(), &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "Qwen/Qwen2.5-0.5B-Instruct", StorageBackend: "missing",
+	})
+	require.Error(t, err)
+	assert.Equal(t, apierrors.CodeModelPathInvalid, apierrors.CodeOf(err))
+	assert.Contains(t, err.Error(), "missing")
+}

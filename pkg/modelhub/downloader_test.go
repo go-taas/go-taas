@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -240,4 +241,46 @@ func TestHTTPDownloaderTotalBytes(t *testing.T) {
 	total, err := d.TotalBytes(context.Background(), SourceModelScope, "Qwen/Qwen2.5-0.5B")
 	require.NoError(t, err)
 	assert.EqualValues(t, 12, total)
+}
+
+// TestDownloadPreservesModelIDSlashes guards against escaping the slash in
+// a nested model ID. ModelScope and HuggingFace resolve endpoints treat
+// "org%2Fmodel" as a different (missing) repository, so the resolved
+// download URL must keep the separator.
+func TestDownloadPreservesModelIDSlashes(t *testing.T) {
+	for _, tc := range []struct {
+		source Source
+		prefix string
+	}{
+		{SourceModelScope, "/models/org/model/resolve/master/"},
+		{SourceHuggingFace, "/org/model/resolve/main/"},
+	} {
+		t.Run(string(tc.source), func(t *testing.T) {
+			var gotPath string
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				p := r.URL.EscapedPath()
+				if strings.Contains(p, "/api/") {
+					if tc.source == SourceModelScope {
+						_, _ = w.Write([]byte(`{"Data":{"Files":[{"Path":"config.json"}]}}`))
+						return
+					}
+					_, _ = w.Write([]byte(`{"siblings":[{"rfilename":"config.json"}]}`))
+					return
+				}
+				gotPath = p
+				if strings.Contains(p, "%2F") {
+					http.NotFound(w, r)
+					return
+				}
+				_, _ = w.Write([]byte(`{}`))
+			}))
+			t.Cleanup(srv.Close)
+
+			d := NewHTTPDownloader(Options{BaseURL: srv.URL})
+			err := d.Download(context.Background(), tc.source, "org/model", t.TempDir())
+			require.NoError(t, err)
+			assert.Contains(t, gotPath, tc.prefix)
+			assert.NotContains(t, gotPath, "%2F")
+		})
+	}
 }

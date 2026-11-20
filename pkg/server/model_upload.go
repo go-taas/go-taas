@@ -11,6 +11,8 @@
 //	  hubModelId   the "<vendor>/<model>" hub identity (required, unique)
 //	  version      the internal catalog version (optional; legacy)
 //	  description  the model description (optional)
+//	  storageBackend the configured backend that stores the weights
+//	                 (optional; empty uses the platform default)
 //
 // The server streams the archive to a temp file, then hands the path to the
 // model module, which extracts it into the weights filesystem and registers
@@ -44,21 +46,23 @@ const modelUploadDefaultMaxBytes = int64(200) << 30
 // ModelUploadRequest is one upload, already staged to a temp file.
 type ModelUploadRequest struct {
 	// ArchivePath is the staged archive; the handler removes it.
-	ArchivePath  string
-	OriginalName string
-	Name         string
-	HubModelID   string
-	Version      string
-	Description  string
+	ArchivePath    string
+	OriginalName   string
+	Name           string
+	HubModelID     string
+	Version        string
+	Description    string
+	StorageBackend string
 }
 
 // ModelUploadResult is the catalog entry the upload produced.
 type ModelUploadResult struct {
-	ModelID    string `json:"modelId"`
-	Version    string `json:"version"`
-	WeightPath string `json:"weightPath"`
-	Bytes      int64  `json:"bytes"`
-	Files      int    `json:"files"`
+	ModelID        string `json:"modelId"`
+	Version        string `json:"version"`
+	WeightPath     string `json:"weightPath"`
+	Bytes          int64  `json:"bytes"`
+	Files          int    `json:"files"`
+	StorageBackend string `json:"storageBackend"`
 }
 
 // ModelUploadFunc performs an upload. It is implemented by the model module
@@ -156,12 +160,13 @@ func (s *commonServer) modelUploadHandler(w http.ResponseWriter, r *http.Request
 		ctx = authctx.WithResolver(ctx, s.sessionRoles)
 	}
 	result, err := s.modelUpload(ctx, ModelUploadRequest{
-		ArchivePath:  archivePath,
-		OriginalName: originalName,
-		Name:         fields["name"],
-		HubModelID:   fields["hubModelId"],
-		Version:      fields["version"],
-		Description:  fields["description"],
+		ArchivePath:    archivePath,
+		OriginalName:   originalName,
+		Name:           fields["name"],
+		HubModelID:     fields["hubModelId"],
+		Version:        fields["version"],
+		Description:    fields["description"],
+		StorageBackend: fields["storageBackend"],
 	})
 	if err != nil {
 		code, message := modelUploadError(err)
@@ -171,12 +176,13 @@ func (s *commonServer) modelUploadHandler(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_ = json.NewEncoder(w).Encode(map[string]any{
-		"response":   map[string]any{"code": 0, "message": "OK"},
-		"modelId":    result.ModelID,
-		"version":    result.Version,
-		"weightPath": result.WeightPath,
-		"bytes":      result.Bytes,
-		"files":      result.Files,
+		"response":       map[string]any{"code": 0, "message": "OK"},
+		"modelId":        result.ModelID,
+		"version":        result.Version,
+		"weightPath":     result.WeightPath,
+		"bytes":          result.Bytes,
+		"files":          result.Files,
+		"storageBackend": result.StorageBackend,
 	})
 }
 

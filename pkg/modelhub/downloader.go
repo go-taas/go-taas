@@ -270,9 +270,9 @@ func (d *HTTPDownloader) downloadFile(ctx context.Context, source Source, modelI
 	var dlURL string
 	switch source {
 	case SourceModelScope:
-		dlURL = base + "/models/" + url.PathEscape(modelID) + "/resolve/master/" + pathEscapePath(file)
+		dlURL = base + "/models/" + pathEscapePath(modelID) + "/resolve/master/" + pathEscapePath(file)
 	case SourceHuggingFace:
-		dlURL = base + "/" + url.PathEscape(modelID) + "/resolve/main/" + pathEscapePath(file)
+		dlURL = base + "/" + pathEscapePath(modelID) + "/resolve/main/" + pathEscapePath(file)
 	default:
 		return fmt.Errorf("modelhub: unsupported source %q", source)
 	}

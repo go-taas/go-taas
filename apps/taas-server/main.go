@@ -127,7 +127,7 @@ func main() {
 	// The downloader writes into the JuiceFS-mounted weights directory so
 	// inference pods read the same weights. Empty weightsDir disables the
 	// feature.
-	if cfg.Model.WeightsDir != "" {
+	if cfg.Model.WeightsDir != "" || cfg.Storage.Enabled() {
 		modelSvc.SetWeightsDir(cfg.Model.WeightsDir)
 		modelSvc.SetModelDownloader(modelhub.NewHTTPDownloader(modelhub.Options{}))
 		// The local upload endpoint extracts an archive into the same
@@ -135,22 +135,24 @@ func main() {
 		// is indistinguishable from a downloaded one.
 		srv.SetModelUpload(func(ctx context.Context, req server.ModelUploadRequest) (*server.ModelUploadResult, error) {
 			res, err := modelSvc.UploadModel(ctx, model.UploadModelRequest{
-				ArchivePath:  req.ArchivePath,
-				OriginalName: req.OriginalName,
-				Name:         req.Name,
-				HubModelID:   req.HubModelID,
-				Version:      req.Version,
-				Description:  req.Description,
+				ArchivePath:    req.ArchivePath,
+				OriginalName:   req.OriginalName,
+				Name:           req.Name,
+				HubModelID:     req.HubModelID,
+				Version:        req.Version,
+				Description:    req.Description,
+				StorageBackend: req.StorageBackend,
 			})
 			if err != nil {
 				return nil, err
 			}
 			return &server.ModelUploadResult{
-				ModelID:    res.ModelID,
-				Version:    res.Version,
-				WeightPath: res.WeightPath,
-				Bytes:      res.Bytes,
-				Files:      res.Files,
+				ModelID:        res.ModelID,
+				Version:        res.Version,
+				WeightPath:     res.WeightPath,
+				Bytes:          res.Bytes,
+				Files:          res.Files,
+				StorageBackend: res.StorageBackend,
 			}, nil
 		})
 	}

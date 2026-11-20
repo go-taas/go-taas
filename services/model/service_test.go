@@ -18,6 +18,7 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/modelhub"
+	"github.com/go-taas/go-taas/pkg/storage"
 )
 
 func newModelTestService(t *testing.T) *Service {
@@ -598,4 +599,40 @@ func TestServiceDeleteModelKeepsSharedWeights(t *testing.T) {
 
 	_, statErr := os.Stat(dir)
 	assert.NoError(t, statErr, "a directory another model references is kept")
+}
+
+// filesystemBackends builds a storage config with named filesystem backends
+// sharing one mount path, so tests can select a non-default backend without
+// a second directory.
+func filesystemBackends(root string, names ...string) storage.Config {
+	cfg := storage.Config{Backends: map[string]storage.Backend{}}
+	for i, name := range names {
+		cfg.Backends[name] = storage.Backend{
+			Name:       name,
+			Type:       storage.TypeFilesystem,
+			Filesystem: storage.Filesystem{MountPath: root},
+		}
+		if i == 0 {
+			cfg.DefaultBackend = name
+		}
+	}
+	return cfg
+}
+
+// TestServiceRegisterModelRecordsSelectedBackend covers an explicit backend
+// on registration: the caller says where the provided weights live.
+func TestServiceRegisterModelRecordsSelectedBackend(t *testing.T) {
+	svc := newModelTestService(t)
+	svc.SetStorageConfig(filesystemBackends(t.TempDir(), "shared", "cold"))
+	ctx := context.Background()
+
+	resp, err := svc.RegisterModel(ctx, &modelv1.RegisterModelRequest{
+		Name: "qwen-3b", HubModelId: "qwen-3b/hub", Version: "v1",
+		WeightPath: "qwen/3b/v1", StorageBackend: "cold",
+	})
+	require.NoError(t, err)
+
+	got, err := svc.GetModel(ctx, &modelv1.GetModelRequest{ModelId: resp.GetModelId()})
+	require.NoError(t, err)
+	assert.Equal(t, "cold", got.GetModel().GetStorageBackend())
 }

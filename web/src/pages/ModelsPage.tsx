@@ -13,6 +13,7 @@ import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 import ModelCachesPage from './ModelCachesPage';
 import ModelTransfersPage from './ModelTransfersPage';
 import UploadModelDialog from '../components/UploadModelDialog';
+import { StorageBackendSelect } from '../components/StorageBackendSelect';
 
 
 interface ListResponse {
@@ -113,23 +114,6 @@ export default function ModelsPage() {
           <h1>{t('models.title')}</h1>
           <div className="subtitle">{t('models.subtitle')}</div>
         </div>
-        {tab === 'catalog' && (
-          <div className="toolbar">
-            <button
-              className="secondary"
-              data-testid="open-model-downloads"
-              onClick={() => setDownloadsOpen((open) => !open)}
-            >
-              {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
-            </button>
-            <button className="secondary" data-testid="open-model-upload" onClick={() => setUploadOpen(true)}>
-              {t('models.upload.open')}
-            </button>
-            <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
-              {t('models.register')}
-            </button>
-          </div>
-        )}
       </div>
 
       <div className="guide-grid" data-testid="model-workflows-guide">
@@ -168,12 +152,38 @@ export default function ModelsPage() {
       {error && <ErrorBanner message={error} />}
       <Toast message={notice} onDismiss={() => setNotice('')} testId="models-toast" />
 
+      <div className="models-tab-content">
       {tab === 'warmup' ? (
         <ModelCachesPage embedded />
       ) : tab === 'transfers' ? (
         <ModelTransfersPage embedded />
       ) : (
         <>
+          <div className="toolbar models-tab-toolbar">
+            <input
+              type="text"
+              data-testid="model-search"
+              placeholder={t('common.searchByName')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
+            <div className="toolbar">
+              <button
+                className="secondary"
+                data-testid="open-model-downloads"
+                onClick={() => setDownloadsOpen((open) => !open)}
+              >
+                {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
+              </button>
+              <button className="secondary" data-testid="open-model-upload" onClick={() => setUploadOpen(true)}>
+                {t('models.upload.open')}
+              </button>
+              <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
+                {t('models.register')}
+              </button>
+            </div>
+          </div>
+
           {downloadsOpen && (
             <div className="downloads-section">
               <ModelDownloadsPanel defaultOpen />
@@ -191,16 +201,6 @@ export default function ModelsPage() {
             />
           )}
 
-          <div className="toolbar" style={{ marginBottom: 14 }}>
-            <input
-              type="text"
-              data-testid="model-search"
-              placeholder={t('common.searchByName')}
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
-          </div>
-
           <div className="panel">
             {loading ? (
               <div className="loading">{t('common.loading')}</div>
@@ -215,6 +215,7 @@ export default function ModelsPage() {
                     <th>{t('models.colName')}</th>
                     <th>{t('models.colHubModelId')}</th>
                     <th>{t('models.colWeightPath')}</th>
+                    <th>{t('models.colStorageBackend')}</th>
                     <th>{t('models.colCreated')}</th>
                     <th className="col-actions">{t('common.actions')}</th>
                   </tr>
@@ -234,6 +235,9 @@ export default function ModelsPage() {
                         {m.hubModelId || '—'}
                       </td>
                       <td className="mono muted">{m.weightPath}</td>
+                      <td className="mono muted" data-testid={`model-storage-backend-${m.name}`}>
+                        {m.storageBackend || '—'}
+                      </td>
                       <td>{formatTime(m.createdAt)}</td>
                       <td onClick={(e) => e.stopPropagation()}>
                         <RowActionsMenu
@@ -317,6 +321,7 @@ export default function ModelsPage() {
           </div>
         </Dialog>
       )}
+      </div>
     </div>
   );
 
@@ -337,6 +342,7 @@ function RegisterDialog({
   // The hub id binds the model to its identity on a public hub; weights
   // themselves are imported from the model downloads page.
   const [hubModelId, setHubModelId] = useState('');
+  const [storageBackend, setStorageBackend] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const { t } = useI18n();
@@ -368,6 +374,7 @@ function RegisterDialog({
         description: description.trim(),
         weightPath: weightPath.trim(),
         hubModelId: hubModelId.trim(),
+        storageBackend,
       };
       await api.post('/api/v1/admin/models', orgId, body);
       onRegistered(name.trim());
@@ -452,6 +459,12 @@ function RegisterDialog({
             />
             <div className="field-hint">{t('models.weightPathHint')}</div>
           </div>
+          <StorageBackendSelect
+            id="register-storage-backend"
+            testId="register-storage-backend"
+            value={storageBackend}
+            onChange={setStorageBackend}
+          />
           <div className="form-field full">
             <FieldLabel
               htmlFor="model-description"

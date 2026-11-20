@@ -14,7 +14,7 @@ import {
 } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { BackLink, ErrorBanner, Pagination, StateBadge } from '../components';
+import { BackLink, ErrorBanner, Pagination, StateBadge, StatusError } from '../components';
 import { usePolling } from '../components';
 
 interface ImageResponse {
@@ -204,7 +204,7 @@ export default function ImageDetailPage() {
                       (task.nodeResults || []).map((r) => (
                         <div key={r.node} className="mono">
                           {r.node}: {r.state}
-                          {r.message ? ` (${r.message})` : ''}
+                          <StatusError message={r.message} testId={`image-result-error-${task.taskId}-${r.node}`} />
                         </div>
                       ))
                     )}

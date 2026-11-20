@@ -31,6 +31,7 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/logger"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/services/audit"
 )
 
@@ -65,17 +66,21 @@ type UploadModelRequest struct {
 	Version string
 	// Description is the free-text model description.
 	Description string
+	// StorageBackend is the configured backend that stores the extracted
+	// weights. Empty uses the platform default backend.
+	StorageBackend string
 	// Actor is the uploading user's id, for the audit trail.
 	Actor string
 }
 
 // UploadModelResult is the catalog entry the upload produced.
 type UploadModelResult struct {
-	ModelID    string `json:"modelId"`
-	Version    string `json:"version"`
-	WeightPath string `json:"weightPath"`
-	Bytes      int64  `json:"bytes"`
-	Files      int    `json:"files"`
+	ModelID        string `json:"modelId"`
+	Version        string `json:"version"`
+	WeightPath     string `json:"weightPath"`
+	Bytes          int64  `json:"bytes"`
+	Files          int    `json:"files"`
+	StorageBackend string `json:"storageBackend"`
 }
 
 // UploadModel extracts a local archive into the weights filesystem and
@@ -88,7 +93,13 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 	if err := s.requireAdminRole(ctx, callerOrgID(ctx)); err != nil {
 		return nil, err
 	}
-	if s.weightsDir == "" {
+	backend, err := s.resolveStorageBackend(req.StorageBackend)
+	if err != nil {
+		return nil, err
+	}
+	objectStore := backend.Type == storage.TypeObjectStore
+	uploadRoot := s.backendMountPath(backend)
+	if !objectStore && uploadRoot == "" {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
 			"model: the weights directory is not configured, so a local upload cannot be stored")
 	}
@@ -158,7 +169,17 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 	}
 
 	rel := path.Join(cleanModelDirName(name), sanitizeVersion(version))
-	dest := filepath.Join(s.weightsDir, filepath.FromSlash(rel))
+	if objectStore {
+		// An object store cannot be extracted into directly: unpack into a
+		// staging directory, upload it, then drop the staging copy.
+		uploadRoot, err = os.MkdirTemp("", "taas-model-upload-*")
+		if err != nil {
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+				"model: could not create the upload staging directory: %v", err)
+		}
+		defer func() { _ = os.RemoveAll(uploadRoot) }()
+	}
+	dest := filepath.Join(uploadRoot, filepath.FromSlash(rel))
 	if existing, statErr := os.Stat(dest); statErr == nil && existing.IsDir() {
 		// The directory survives only from an interrupted or orphaned
 		// upload; a registered version would have been rejected above.
@@ -185,6 +206,25 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 	}
 
 	weightPath := rel + "/"
+	if objectStore {
+		ref, refErr := s.remoteRef(backend)
+		if refErr != nil {
+			_ = os.RemoveAll(dest)
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: %v", refErr)
+		}
+		client, clientErr := storage.NewRemoteClient(ref)
+		if clientErr != nil {
+			_ = os.RemoveAll(dest)
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: %v", clientErr)
+		}
+		uploaded, uploadErr := client.UploadDir(ctx, dest, weightPath)
+		if uploadErr != nil {
+			_ = os.RemoveAll(dest)
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+				"model: could not upload the archive to backend %q: %v", backend.Name, uploadErr)
+		}
+		extracted = uploaded
+	}
 	modelID, err := repo.RegisterModelOrCreateVersion(ctx, name, description, hubModelID, version, weightPath)
 	if err != nil {
 		// The registration was refused (a duplicate version, most likely):
@@ -192,10 +232,9 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 		_ = os.RemoveAll(dest)
 		return nil, err
 	}
-	// The archive was extracted into the default backend, so record it on
-	// the version for serving.
-	if backend := s.storageConfig.DefaultBackend; backend != "" {
-		if err := repo.SetVersionStorageBackend(ctx, modelID, version, backend); err != nil {
+	// Record the backend the archive was written to for serving.
+	if backend.Name != "" {
+		if err := repo.SetVersionStorageBackend(ctx, modelID, version, backend.Name); err != nil {
 			logger.S().Warnw("model: record upload storage backend failed", "model", modelID, "version", version, "err", err)
 		}
 	}
@@ -208,11 +247,12 @@ func (s *Service) UploadModel(ctx context.Context, req UploadModelRequest) (*Upl
 		Result:       "success",
 	})
 	return &UploadModelResult{
-		ModelID:    modelID,
-		Version:    version,
-		WeightPath: weightPath,
-		Bytes:      extracted,
-		Files:      files,
+		ModelID:        modelID,
+		Version:        version,
+		WeightPath:     weightPath,
+		Bytes:          extracted,
+		Files:          files,
+		StorageBackend: backend.Name,
 	}, nil
 }
 

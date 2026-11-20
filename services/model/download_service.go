@@ -47,9 +47,17 @@ func (s *Service) StartModelDownload(ctx context.Context, req *modelv1.StartMode
 	if err := validateHubModelID(hubModelID); err != nil {
 		return nil, err
 	}
+	backend, err := s.resolveStorageBackend(req.GetStorageBackend())
+	if err != nil {
+		return nil, err
+	}
 	jobExecution := s.transferSettings.Mode == "job" &&
 		strings.TrimSpace(s.transferSettings.Image) != "" &&
 		s.storageConfig.Enabled()
+	if !jobExecution && !s.inlineBackendSupported(backend) {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: backend %q needs the transfer Job mode, which is not configured", backend.Name)
+	}
 	if !jobExecution && (s.downloader == nil || s.weightsDir == "") {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: model download is not configured")
 	}
@@ -88,24 +96,40 @@ func (s *Service) StartModelDownload(ctx context.Context, req *modelv1.StartMode
 		return nil, err
 	}
 	job := &DownloadJob{
-		ID:          uuid.NewString(),
-		Source:      string(source),
-		HubModelID:  hubModelID,
-		Name:        name,
-		Version:     version,
-		Description: description,
-		State:       DownloadStateQueued,
-		CreatedAt:   time.Now().UTC(),
-		UpdatedAt:   time.Now().UTC(),
+		ID:             uuid.NewString(),
+		Source:         string(source),
+		HubModelID:     hubModelID,
+		Name:           name,
+		Version:        version,
+		Description:    description,
+		State:          DownloadStateQueued,
+		StorageBackend: backend.Name,
+		CreatedAt:      time.Now().UTC(),
+		UpdatedAt:      time.Now().UTC(),
 	}
 	if err := db.WithContext(ctx).Create(job).Error; err != nil {
 		return nil, err
 	}
-	if jobExecution && s.startDownloadTransfer(ctx, job) {
-		return &modelv1.StartModelDownloadResponse{
-			Response: okResponse(),
-			Download: downloadProjection(job),
-		}, nil
+	if jobExecution {
+		if s.startDownloadTransfer(ctx, job) {
+			return &modelv1.StartModelDownloadResponse{
+				Response: okResponse(),
+				Download: downloadProjection(job),
+			}, nil
+		}
+		if !s.inlineBackendSupported(backend) {
+			// The Job is the only writer for this backend. Falling back to
+			// the in-process downloader would write into the local weights
+			// directory while the version claims another backend, so fail
+			// the job instead.
+			s.updateDownload(ctx, job.ID, map[string]any{
+				"state":      DownloadStateFailed,
+				"message":    "download transfer job could not be queued",
+				"updated_at": time.Now().UTC(),
+			})
+			return nil, apierrors.Newf(apierrors.CodeInternal,
+				"model: could not queue the download transfer job")
+		}
 	}
 	// The download must outlive the request that queued it, so the job
 	// runs with its own context rather than the request-scoped one.
@@ -219,8 +243,8 @@ func (s *Service) runDownloadJob(job *DownloadJob) {
 		})
 		return
 	}
-	if backend := s.storageConfig.DefaultBackend; backend != "" {
-		if err := repo.SetVersionStorageBackend(ctx, modelID, job.Version, backend); err != nil {
+	if job.StorageBackend != "" {
+		if err := repo.SetVersionStorageBackend(ctx, modelID, job.Version, job.StorageBackend); err != nil {
 			logger.S().Warnw("model: record download storage backend failed", "model", modelID, "version", job.Version, "err", err)
 		}
 	}
@@ -354,19 +378,20 @@ func (s *Service) RecoverInterruptedDownloads(ctx context.Context) error {
 // downloadProjection maps a job row to its API projection.
 func downloadProjection(job *DownloadJob) *modelv1.ModelDownload {
 	return &modelv1.ModelDownload{
-		DownloadId: job.ID,
-		Source:     job.Source,
-		HubModelId: job.HubModelID,
-		Name:       job.Name,
-		Version:    job.Version,
-		State:      job.State,
-		Message:    job.Message,
-		Bytes:      job.Bytes,
-		TotalBytes: job.TotalBytes,
-		WeightPath: job.WeightPath,
-		ModelId:    job.ModelID,
-		CreatedAt:  job.CreatedAt.Unix(),
-		UpdatedAt:  job.UpdatedAt.Unix(),
+		DownloadId:     job.ID,
+		Source:         job.Source,
+		HubModelId:     job.HubModelID,
+		Name:           job.Name,
+		Version:        job.Version,
+		State:          job.State,
+		Message:        job.Message,
+		Bytes:          job.Bytes,
+		TotalBytes:     job.TotalBytes,
+		WeightPath:     job.WeightPath,
+		ModelId:        job.ModelID,
+		StorageBackend: job.StorageBackend,
+		CreatedAt:      job.CreatedAt.Unix(),
+		UpdatedAt:      job.UpdatedAt.Unix(),
 	}
 }
 

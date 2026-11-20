@@ -207,7 +207,7 @@ func (s *Service) StartModelTransfer(ctx context.Context, req *modelv1.StartMode
 // when the Job's terminal status arrives.
 func (s *Service) startDownloadTransfer(ctx context.Context, job *DownloadJob) bool {
 	cfg := s.storageConfig
-	backend, err := cfg.Resolve(cfg.DefaultBackend)
+	backend, err := cfg.Resolve(job.StorageBackend)
 	if err != nil {
 		return false
 	}
@@ -641,20 +641,29 @@ func (s *Service) localPath(backend storage.Backend, key string) (string, error)
 // remoteRef resolves an object-store backend and its credential env names.
 // The transfer Job receives the same values through its environment.
 func (s *Service) remoteRef(backend storage.Backend) (storage.RemoteRef, error) {
-	os := backend.ObjectStore
-	if strings.TrimSpace(os.Endpoint) == "" || strings.TrimSpace(os.Bucket) == "" {
+	store := backend.ObjectStore
+	if strings.TrimSpace(store.Endpoint) == "" || strings.TrimSpace(store.Bucket) == "" {
 		return storage.RemoteRef{}, fmt.Errorf("model: object-store backend %q is incomplete", backend.Name)
 	}
+	accessEnv, secretEnv := storage.CredentialEnvNames(backend.Name)
+	// The chart provisions one backend-scoped pair for every object store, so
+	// two backends cannot shadow each other. A process configured the old way
+	// keeps working through the AWS names.
+	if _, ok := os.LookupEnv(accessEnv); !ok {
+		if _, legacy := os.LookupEnv("AWS_ACCESS_KEY_ID"); legacy {
+			accessEnv, secretEnv = "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY" //nolint:gosec // G101: env names, not credentials
+		}
+	}
 	return storage.RemoteRef{ //nolint:gosec // G101: these are env var names, not credentials
-		Provider:           os.Provider,
-		Endpoint:           os.Endpoint,
-		Region:             os.Region,
-		Bucket:             os.Bucket,
-		Prefix:             os.Prefix,
-		ForcePathStyle:     os.ForcePathStyle,
-		InsecureSkipVerify: os.TLS.InsecureSkipVerify,
-		AccessKeyEnv:       "AWS_ACCESS_KEY_ID",
-		SecretKeyEnv:       "AWS_SECRET_ACCESS_KEY",
+		Provider:           store.Provider,
+		Endpoint:           store.Endpoint,
+		Region:             store.Region,
+		Bucket:             store.Bucket,
+		Prefix:             store.Prefix,
+		ForcePathStyle:     store.ForcePathStyle,
+		InsecureSkipVerify: store.TLS.InsecureSkipVerify,
+		AccessKeyEnv:       accessEnv,
+		SecretKeyEnv:       secretEnv,
 	}, nil
 }
 

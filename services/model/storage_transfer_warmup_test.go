@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
@@ -16,6 +17,8 @@ import (
 	"github.com/go-taas/go-taas/pkg/warmup"
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 )
+
+var errPublish = errors.New("publish failed")
 
 type recordingPublisher struct {
 	subject string
@@ -314,4 +317,100 @@ func TestWarmupNodeGroupCRUDAndNodeSnapshot(t *testing.T) {
 
 	_, err = svc.DeleteWarmupNodeGroup(adminCtx(), &modelv1.DeleteWarmupNodeGroupRequest{Name: "gpu"})
 	require.NoError(t, err)
+}
+
+// TestStartDownloadTransferUsesSelectedBackend verifies a download queued for
+// a named backend dispatches the transfer Job at that backend, not the
+// platform default.
+func TestStartDownloadTransferUsesSelectedBackend(t *testing.T) {
+	svc, _, target := storageTestService(t)
+	pub := &recordingPublisher{}
+	svc.SetTransferPublisher(pub)
+	svc.SetTransferSettings(TransferSettings{Mode: "job", Namespace: "taas-jobs", Image: "taas-transfer:test"})
+	require.NoError(t, svc.Migrate(context.Background()))
+
+	resp, err := svc.StartModelDownload(adminCtx(), &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "qwen/hub", StorageBackend: target.Name,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, target.Name, resp.GetDownload().GetStorageBackend())
+
+	var spec transfer.Spec
+	require.NoError(t, json.Unmarshal(pub.body, &spec))
+	assert.Equal(t, target.Name, spec.TargetBackend)
+	assert.Equal(t, filepath.Join(target.Filesystem.MountPath, "qwen__hub/"), spec.TargetPath)
+}
+
+// TestStartModelDownloadObjectStoreDispatchFailure avoids a silent fallback:
+// when the Job cannot be queued for an object-store backend, the job fails
+// instead of writing the weights into the local default directory.
+func TestStartModelDownloadObjectStoreDispatchFailure(t *testing.T) {
+	svc := newModelTestService(t)
+	svc.SetStorageConfig(storage.Config{
+		DefaultBackend: "shared",
+		Backends: map[string]storage.Backend{
+			"shared": {Name: "shared", Type: storage.TypeFilesystem},
+			"minio": {
+				Name: "minio", Type: storage.TypeObjectStore,
+				ObjectStore: storage.ObjectStore{Endpoint: "https://minio.example.com", Bucket: "models"},
+			},
+		},
+	})
+	svc.SetTransferPublisher(&recordingPublisher{err: errPublish})
+	svc.SetTransferSettings(TransferSettings{Mode: "job", Image: "taas-transfer:test"})
+	require.NoError(t, svc.Migrate(context.Background()))
+
+	_, err := svc.StartModelDownload(adminCtx(), &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "qwen/hub", StorageBackend: "minio",
+	})
+	require.Error(t, err)
+	list, err := svc.ListModelDownloads(adminCtx(), &modelv1.ListModelDownloadsRequest{})
+	require.NoError(t, err)
+	require.Len(t, list.GetDownloads(), 1)
+	assert.Equal(t, DownloadStateFailed, list.GetDownloads()[0].GetState())
+}
+
+func TestRemoteRefPrefersBackendScopedCredentialEnv(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	backend := storage.Backend{
+		Name: "archive",
+		Type: storage.TypeObjectStore,
+		ObjectStore: storage.ObjectStore{
+			Endpoint: "https://s3.example.com",
+			Bucket:   "models",
+		},
+	}
+	t.Setenv("AWS_ACCESS_KEY_ID", "legacy")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "legacy-secret")
+	t.Setenv("TAAS_STORAGE_ARCHIVE_ACCESS_KEY", "backend")
+	t.Setenv("TAAS_STORAGE_ARCHIVE_SECRET_KEY", "backend-secret")
+
+	ref, err := svc.remoteRef(backend)
+	require.NoError(t, err)
+	assert.Equal(t, "TAAS_STORAGE_ARCHIVE_ACCESS_KEY", ref.AccessKeyEnv)
+	assert.Equal(t, "TAAS_STORAGE_ARCHIVE_SECRET_KEY", ref.SecretKeyEnv)
+}
+
+func TestRemoteRefFallsBackToAWSCredentialEnv(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	backend := storage.Backend{
+		Name: "archive",
+		Type: storage.TypeObjectStore,
+		ObjectStore: storage.ObjectStore{
+			Endpoint: "https://s3.example.com",
+			Bucket:   "models",
+		},
+	}
+	t.Setenv("AWS_ACCESS_KEY_ID", "legacy")
+	t.Setenv("AWS_SECRET_ACCESS_KEY", "legacy-secret")
+	// t.Setenv cannot unset, so register the name and remove it after.
+	t.Setenv("TAAS_STORAGE_ARCHIVE_ACCESS_KEY", "")
+	t.Setenv("TAAS_STORAGE_ARCHIVE_SECRET_KEY", "")
+	require.NoError(t, os.Unsetenv("TAAS_STORAGE_ARCHIVE_ACCESS_KEY"))
+	require.NoError(t, os.Unsetenv("TAAS_STORAGE_ARCHIVE_SECRET_KEY"))
+
+	ref, err := svc.remoteRef(backend)
+	require.NoError(t, err)
+	assert.Equal(t, "AWS_ACCESS_KEY_ID", ref.AccessKeyEnv)
+	assert.Equal(t, "AWS_SECRET_ACCESS_KEY", ref.SecretKeyEnv)
 }

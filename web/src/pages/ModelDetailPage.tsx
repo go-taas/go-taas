@@ -94,6 +94,12 @@ export default function ModelDetailPage() {
             <div className="value mono">{model.model.weightPath}</div>
           </div>
           <div className="detail-item">
+            <div className="label">{t('modeldetail.storageBackend')}</div>
+            <div className="value mono" data-testid="model-detail-storage-backend">
+              {model.model.storageBackend || '—'}
+            </div>
+          </div>
+          <div className="detail-item">
             <div className="label">{t('modeldetail.created')}</div>
             <div className="value">{formatTime(model.model.createdAt)}</div>
           </div>

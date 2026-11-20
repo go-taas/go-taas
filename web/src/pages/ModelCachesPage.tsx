@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, formatTime, type ModelCacheEntry, type ModelSummary, type PageMeta, type WarmupNode, type WarmupNodeGroup } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StatusError, Toast } from '../components';
 import { formatBytes } from '../components/ModelDownloadsPanel';
 
 interface ListResponse {
@@ -122,7 +122,7 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
   return (
     <div>
       {embedded ? (
-        <div className="toolbar" style={{ marginBottom: 14 }}>
+        <div className="toolbar" style={{ marginBottom: 14, justifyContent: 'flex-end' }}>
           <button className="secondary" onClick={() => void (tab === 'nodes' ? loadNodes() : load())}>
             {t('common.refresh')}
           </button>
@@ -204,7 +204,7 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
                   <td className="mono">{formatBytes(cache.sizeBytes || 0)}</td>
                   <td>
                     <span className={`state state-${cache.state}`}>{t(`caches.state.${cache.state}`)}</span>
-                    {cache.message && <div className="muted">{cache.message}</div>}
+                    <StatusError message={cache.message} testId={`cache-error-${cache.cacheId}`} />
                   </td>
                   <td>{formatTime(cache.updatedAt)}</td>
                   <td>

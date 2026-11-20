@@ -18,6 +18,7 @@ import { Dialog } from '../components';
 import { ApiError, apiPrefix, sessionAuthHeader } from '../api';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
+import { StorageBackendSelect } from './StorageBackendSelect';
 
 interface Props {
   onClose: () => void;
@@ -48,6 +49,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
   const [name, setName] = useState('');
   const [hubModelId, setHubModelId] = useState('');
   const [description, setDescription] = useState('');
+  const [storageBackend, setStorageBackend] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [progress, setProgress] = useState(0);
@@ -97,6 +99,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
     form.append('file', file);
     form.append('name', name.trim());
     form.append('hubModelId', hubModelId.trim());
+    if (storageBackend) form.append('storageBackend', storageBackend);
     if (description.trim()) form.append('description', description.trim());
 
     const path = `${apiPrefix('admin')}/models:upload`;
@@ -220,6 +223,13 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
             />
             <div className="field-hint">{t('models.hubModelIdHint')}</div>
           </div>
+          <StorageBackendSelect
+            id="upload-storage-backend"
+            testId="upload-storage-backend"
+            value={storageBackend}
+            onChange={setStorageBackend}
+            disabled={submitting}
+          />
           <div className="form-field full">
             <FieldLabel
               htmlFor="upload-model-description"

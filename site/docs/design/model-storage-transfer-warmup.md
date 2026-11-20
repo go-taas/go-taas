@@ -61,11 +61,12 @@ Non-goals:
 - Replacing KServe's own model cache agent: the platform creates
   `LocalModelNodeGroup`/`LocalModelCache` and consumes `LocalModelNode`
   status; the KServe `localmodelnode` agent performs the node copy.
-- Asynchronous local archive upload. The existing admin upload endpoint
-  keeps its bounded, streamed synchronous extract into the weights
-  filesystem; the transfer Job covers hub download, cross-backend copy and
-  delete. Moving archive extraction to a Job is a separate follow-up because
-  it needs a staging volume and a new upload-session API.
+- Asynchronous local archive upload. The admin upload endpoint keeps its
+  bounded, streamed synchronous extract; it now names a target backend and
+  either extracts into that backend's filesystem or stages the archive and
+  uploads it to the object store. Moving archive extraction to a Job is a
+  separate follow-up because it needs a staging volume and a new
+  upload-session API.
 
 ## 3. Storage model
 
@@ -81,7 +82,13 @@ names a Secret and `accessKeyKey` / `secretKeyKey` name its keys. A transfer
 Job projects the Secret into the transfer namespace, while a serving pod
 projects it into the inference namespace, so the same Secret must also exist
 in `inference.namespace` (the chart does not copy Secret data across
-namespaces; an operator or an external secret controller must do it).
+namespaces; an operator or an external secret controller must do it). For the
+server-side upload path, the chart projects each object-store backend into
+the server as `TAAS_STORAGE_<BACKEND>_ACCESS_KEY` and
+`TAAS_STORAGE_<BACKEND>_SECRET_KEY` (`<BACKEND>` upper-cased, every character
+outside `A-Z0-9` replaced with `_`). The server prefers those names and falls
+back to `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for a process configured
+outside the chart, so two object-store backends never shadow each other.
 
 ### 3.2 Delivery modes
 
@@ -120,8 +127,10 @@ mode into the change event, and the controller builds the pod accordingly:
   the pod on a warmed node.
 
 A version's `storage_backend` is recorded when it is registered, uploaded or
-downloaded. Rows written before this field existed resolve to the default
-backend. Warmup does not depend on the KServe agent's own object-store
+downloaded, and every one of those requests names the backend explicitly
+(empty still means the platform default). The download job row stores the
+chosen backend too, so a retried or recovered job lands where it started.
+Rows written before this field existed resolve to the default backend. Warmup does not depend on the KServe agent's own object-store
 credentials: the controller's seed Job covers both `pvc://` sources and
 configured object-store URIs, projecting the backend Secret from the
 inference namespace.
@@ -285,6 +294,7 @@ without warmup configured behaves exactly as before.
 | `warmup_node_groups` | `name`, `node_selector_json`, `storage_limit`, `host_path`, `storage_class`, timestamps | platform-managed warmup pools; the source of truth for KServe `LocalModelNodeGroup` |
 | `warmup_nodes` | `name`, `node_groups_json`, `models_json`, `model_count`, `downloaded_count`, `observed_at` | last full `LocalModelNode` snapshot; replaced atomically, so a deleted node disappears |
 | `model_versions` | `storage_backend` | the backend a version lives on; empty means the default backend |
+| `model_downloads` | `storage_backend` | the backend a download job writes to; empty means the default backend |
 
 Rows are created by the server, never by the controller. The controller
 publishes state only; a reconnect therefore does not need database access
@@ -308,10 +318,12 @@ and cannot diverge from the catalog.
 | DELETE | `/api/v1/admin/model-warmup-node-groups/{name}` | delete a node group once no live warmup uses it |
 | GET | `/api/v1/admin/model-warmup-nodes` | list the last `LocalModelNode` observation per node |
 
-Existing `StartModelDownload` keeps its request shape; with a transfer
-image configured it returns a queued download immediately and the transfer
-row carries the same `download_id`, so a client that polls the download
-endpoint sees the state transition instead of a long HTTP request.
+`StartModelDownload`, `RegisterModel` and the multipart upload endpoint each
+accept an optional `storage_backend`; the list and detail projections return
+the latest version's backend so the console can show where the weights live.
+With a transfer image configured a download returns immediately and the
+transfer row carries the same `download_id`, so a client that polls the
+download endpoint sees the state transition instead of a long HTTP request.
 
 ## 8. Console
 
@@ -327,10 +339,16 @@ The platform-administrator console groups the surfaces by operator task:
   class) and shows ready/total node counts. Guide cards state that groups
   are runtime configuration rather than Helm values.
 - **Models** — one page with three tabs: **Model catalog**, **Warmup** and
-  **Transfers**. The catalog keeps register/upload/download/deploy actions;
-  Warmup owns the previous model-cache list and a new **Nodes** tab that
-  shows each `LocalModelNode`, its groups and its model copies. Transfers
-  owns the asynchronous copy/download/delete list and cancel action.
+  **Transfers**. Each tab indents its content from the tab strip and keeps
+  its actions on the right. The catalog keeps register/upload/download/deploy
+  actions, and every import form names a storage backend (default first);
+  the catalog table and the detail page show the backend of the latest
+  version. Warmup owns the previous model-cache list and a new **Nodes** tab
+  that shows each `LocalModelNode`, its groups and its model copies.
+  Transfers owns the asynchronous copy/download/delete list and cancel
+  action. A job's failure reason is a warning icon after its status with the
+  message in a hover/focus tooltip, so a long error does not stretch the
+  row.
   The old `/admin/model-transfers` and `/admin/model-cache-entries` routes
   redirect into the matching tab so bookmarks keep working.
 

@@ -51,6 +51,9 @@ type DownloadJob struct {
 	// ModelID is the catalog model the job registered (only when
 	// succeeded).
 	ModelID string `gorm:"size:36;not null;default:''"`
+	// StorageBackend is the backend the weights are written to. Empty
+	// means the platform default backend.
+	StorageBackend string `gorm:"size:63;not null;default:''"`
 	// CreatedAt is the enqueue time (UTC).
 	CreatedAt time.Time `gorm:"index:idx_model_downloads_created,priority:1,sort:DESC"`
 	// UpdatedAt is the last progress or state update (UTC).

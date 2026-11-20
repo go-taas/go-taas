@@ -4115,3 +4115,67 @@ button.primary:hover {
     grid-template-columns: 1fr;
   }
 }
+
+/* Failure reason behind a status badge: a small icon whose tooltip carries
+   the message, so a long error never stretches the row. */
+.status-error {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  color: var(--danger);
+  vertical-align: middle;
+  cursor: help;
+  border-radius: 4px;
+}
+
+.status-error:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.status-error::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 40;
+  width: max-content;
+  max-width: 320px;
+  padding: 7px 9px;
+  border-radius: 7px;
+  background: #1e293b;
+  color: #f8fafc;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  box-shadow: 0 6px 20px rgba(15, 23, 42, 0.24);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 120ms ease, visibility 120ms ease;
+}
+
+.status-error:hover::after,
+.status-error:focus-visible::after {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Model tabs: the tab strip and the content below it need breathing room,
+   and each tab's actions sit on the right edge of the workspace. */
+.models-tab-content {
+  padding-top: 18px;
+}
+
+.models-tab-toolbar {
+  margin-bottom: 14px;
+}
+
+.models-tab-toolbar > .toolbar {
+  margin-left: auto;
+}

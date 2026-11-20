@@ -99,6 +99,27 @@ spec:
                   key: provider-secret-encryption-key
                   optional: true
             {{- end }}
+            {{- range $name, $backend := .Values.storage.backends }}
+            {{- if eq (default "" $backend.type) "objectstore" }}
+            {{- $credentials := (default dict $backend.objectStore.credentials) }}
+            {{- with (default "" $credentials.existingSecret) }}
+            {{- $suffix := regexReplaceAll "[^A-Za-z0-9]" (upper $name) "_" }}
+            # Object-store credentials for direct uploads. The name matches
+            # storage.CredentialEnvNames in the server; transfer Jobs project
+            # their own role-scoped variables.
+            - name: TAAS_STORAGE_{{ $suffix }}_ACCESS_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ default "accessKey" $credentials.accessKeyKey }}
+            - name: TAAS_STORAGE_{{ $suffix }}_SECRET_KEY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ . }}
+                  key: {{ default "secretKey" $credentials.secretKeyKey }}
+            {{- end }}
+            {{- end }}
+            {{- end }}
             {{- with .Values.taasServer.extraEnv }}
             {{- toYaml . | nindent 12 }}
             {{- end }}

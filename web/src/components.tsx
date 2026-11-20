@@ -1,7 +1,7 @@
 // Shared presentational components used across console pages.
 
 import { Component, useEffect, useRef, useState, type ErrorInfo, type ReactNode } from 'react';
-import { Check, Copy, DotsThreeVertical, X } from '@phosphor-icons/react';
+import { Check, Copy, DotsThreeVertical, WarningCircle, X } from '@phosphor-icons/react';
 import { navigate } from './router';
 import { useI18n } from './i18n';
 
@@ -75,6 +75,29 @@ export function StateBadge({ state }: { state: string }) {
   return (
     <span className={`badge ${state}`} data-testid={`state-badge-${state}`}>
       {tEnum('state', state)}
+    </span>
+  );
+}
+
+/**
+ * StatusError renders the failure reason of a job as a small icon instead of
+ * a line of raw error text in the status cell. The message is exposed through
+ * a hover/focus tooltip and as the icon's accessible name, so the table keeps
+ * its row height while the reason stays one gesture away.
+ */
+export function StatusError({ message, testId }: { message?: string; testId?: string }) {
+  const text = (message || '').trim();
+  if (!text) return null;
+  return (
+    <span
+      className="status-error"
+      role="img"
+      tabIndex={0}
+      aria-label={text}
+      data-tip={text}
+      data-testid={testId}
+    >
+      <WarningCircle size={16} weight="fill" aria-hidden="true" />
     </span>
   );
 }

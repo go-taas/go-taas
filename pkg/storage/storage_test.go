@@ -128,3 +128,18 @@ func TestValidateAcceptsObjectStoreCache(t *testing.T) {
 	}
 	assert.NoError(t, cfg.Validate())
 }
+
+func TestCredentialEnvNames(t *testing.T) {
+	access, secret := CredentialEnvNames("minio")
+	assert.Equal(t, "TAAS_STORAGE_MINIO_ACCESS_KEY", access)
+	assert.Equal(t, "TAAS_STORAGE_MINIO_SECRET_KEY", secret)
+
+	// Names are data, so punctuation and case must not produce an invalid
+	// environment variable or collide between a dash and a dot.
+	access, secret = CredentialEnvNames("archive-eu.1")
+	assert.Equal(t, "TAAS_STORAGE_ARCHIVE_EU_1_ACCESS_KEY", access)
+	assert.Equal(t, "TAAS_STORAGE_ARCHIVE_EU_1_SECRET_KEY", secret)
+
+	access, _ = CredentialEnvNames("   ")
+	assert.Equal(t, "TAAS_STORAGE_DEFAULT_ACCESS_KEY", access)
+}

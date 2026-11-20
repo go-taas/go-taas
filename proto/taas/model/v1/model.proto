@@ -249,6 +249,9 @@ message RegisterModelRequest {
   // the catalog: a hub id already bound to another model is rejected.
   // It defaults to source_model_id when source is set.
   string hub_model_id = 7;
+  // storage_backend names the configured backend that holds the weights.
+  // Empty uses the platform default backend.
+  string storage_backend = 8;
 }
 
 message RegisterModelResponse {
@@ -296,6 +299,9 @@ message ModelSummary {
   // hub (feature: model download), e.g. "MiniMax/MiniMax-M3.1-Flash".
   // Empty when the model is not bound to a hub id.
   string hub_model_id = 12;
+  // storage_backend is the backend the latest version's weights live in.
+  // Empty means the platform default backend.
+  string storage_backend = 13;
 }
 
 message GetModelRequest {
@@ -489,6 +495,9 @@ message StartModelDownloadRequest {
   string version = 4;
   // description is the free-text model description.
   string description = 5;
+  // storage_backend names the backend the weights are downloaded into.
+  // Empty uses the platform default backend.
+  string storage_backend = 6;
 }
 
 message StartModelDownloadResponse {
@@ -522,6 +531,8 @@ message ModelDownload {
   // show a real percentage instead of an indeterminate bar. Zero when the
   // hub did not report sizes.
   int64 total_bytes = 13;
+  // storage_backend is the backend the job writes the weights to.
+  string storage_backend = 14;
 }
 
 message ListModelDownloadsRequest {

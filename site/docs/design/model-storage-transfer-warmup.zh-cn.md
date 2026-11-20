@@ -47,7 +47,7 @@
 | `filesystem` | `existingClaim`、`provision{enabled,storageClass,accessMode,size}`、`mountPath` | JuiceFS、NFS、CephFS、EFS、Lustre、任意 RWX/RWO PVC |
 | `objectstore` | `provider`、`endpoint`、`region`、`bucket`、`prefix`、`forcePathStyle`、`tls`、`credentials` | S3、MinIO、OSS、COS、GCS S3 互操作 |
 
-对象存储凭据不内联：`credentials.existingSecret` 指向 Secret，`accessKeyKey` / `secretKeyKey` 指定键名。搬运 Job 会把它投射到 transfer 命名空间，服务 Pod 会把它投射到推理命名空间，因此同一个 Secret 也必须存在于 `inference.namespace`；chart 不会跨命名空间复制 Secret 数据，需要运维或外部 secret controller 完成。
+对象存储凭据不内联：`credentials.existingSecret` 指向 Secret，`accessKeyKey` / `secretKeyKey` 指定键名。搬运 Job 会把它投射到 transfer 命名空间，服务 Pod 会把它投射到推理命名空间，因此同一个 Secret 也必须存在于 `inference.namespace`；chart 不会跨命名空间复制 Secret 数据，需要运维或外部 secret controller 完成。服务端本地上传直接用对象存储写入时，chart 会把每个对象存储后端投射为 `TAAS_STORAGE_<BACKEND>_ACCESS_KEY` 与 `TAAS_STORAGE_<BACKEND>_SECRET_KEY`（`<BACKEND>` 为大写后端名，非 `A-Z0-9` 字符替换为 `_`）；服务端优先读取这两个变量，未配置时回退到 `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`，因此多个对象存储后端不会互相覆盖。
 
 ### 3.2 交付模式
 
@@ -67,7 +67,7 @@
 - `download` 增加一个 `storage-initializer` init 容器，把对象存储 URI 拉到共享 `emptyDir` 的 `/models`。容器获得后端的 endpoint/region/path-style 配置；当 `objectStore.credentials.existingSecret` 存在时，从该 Secret 注入 `AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`。事件中只传名称，凭据值不出 Secret。
 - `cache` 以只读方式挂载预热节点组的 `hostPath`，并让引擎指向 `<hostPath>/models/<storageKey>`，即种子 Job 与 KServe local-model agent 写入的路径；已有的 warm-aware 亲和性把 Pod 约束到已预热节点。
 
-版本在注册、上传或下载完成时会记录 `storage_backend`；字段出现前的旧行按默认后端解析。预热不依赖 KServe agent 自带的对象存储凭据：Controller 的种子 Job 同时覆盖 `pvc://` 与已配置后端的对象存储 URI，并从推理命名空间投射后端 Secret。
+版本在注册、上传或下载时记录 `storage_backend`，这三种请求都显式指定后端（留空仍表示平台默认后端）；下载任务行也保存所选后端，恢复或重试时落回原位置。字段出现前的旧行按默认后端解析。预热不依赖 KServe agent 自带的对象存储凭据：Controller 的种子 Job 同时覆盖 `pvc://` 与已配置后端的对象存储 URI，并从推理命名空间投射后端 Secret。
 
 ## 4. 无状态搬运 Job
 
@@ -156,6 +156,7 @@ KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携�
 | `warmup_node_groups` | `name`、`node_selector_json`、`storage_limit`、`host_path`、`storage_class`、时间戳 | 平台管理的预热节点池，是 KServe `LocalModelNodeGroup` 的事实来源 |
 | `warmup_nodes` | `name`、`node_groups_json`、`models_json`、`model_count`、`downloaded_count`、`observed_at` | 最近一次完整 `LocalModelNode` 快照；原子替换，被删除节点会消失 |
 | `model_versions` | `storage_backend` | 版本所在后端，空表示默认后端 |
+| `model_downloads` | `storage_backend` | 下载任务写入的后端，空表示默认后端 |
 
 行只由服务端写入，Controller 仅发布状态；重连无需数据库句柄，也不会与目录分叉。
 
@@ -185,7 +186,7 @@ KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携�
 
 - **运维 > 存储后端**：只读展示后端类型、endpoint/claim、挂载路径、交付模式与是否允许节点缓存。列表上方用设计过的提示卡解释 `mount`、`download`、`cache`，并用一条提示说明：节点缓存同时需要“允许缓存交付的后端”和“覆盖目标节点的预热节点组”。
 - **运维 > 预热节点组**：创建、编辑、删除平台管理的节点组（选择器、存储上限、宿主机路径、存储类），并展示就绪/总节点数；提示卡说明节点组是运行时配置而非 Helm 值。
-- **模型**：单页三个标签：**模型目录**、**预热**、**模型传输**。目录保留注册、上传、下载与部署；预热包含原模型缓存列表和新增的**节点**标签，展示每个 `LocalModelNode` 的节点组与模型副本；模型传输包含异步复制/下载/删除与取消。旧路由 `/admin/model-transfers`、`/admin/model-cache-entries` 会重定向到对应标签，书签继续可用。
+- **模型**：单页三个标签：**模型目录**、**预热**、**模型传输**。每个标签的内容与标签栏留出上间距，标签内的操作按钮靠右。目录保留注册、上传、下载与部署，每个导入表单都指定存储后端（默认后端排最前），列表与详情展示最新版本的存储后端；预热包含原模型缓存列表和新增的**节点**标签，展示每个 `LocalModelNode` 的节点组与模型副本；模型传输包含异步复制/下载/删除与取消。任务的失败原因显示为状态后的警告图标，悬停或聚焦时用提示框展示消息，避免长错误撑高表格。旧路由 `/admin/model-transfers`、`/admin/model-cache-entries` 会重定向到对应标签，书签继续可用。
 
 所有视图遵循共享表格、空态、错误与分页约定（`PAGE_SIZE = 20`），文案全部来自 API 数据而非硬编码样例。
 

@@ -5,7 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, formatTime, type ModelSummary, type ModelTransfer, type PageMeta, type StorageBackend } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
+import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StatusError, Toast } from '../components';
 import { formatBytes } from '../components/ModelDownloadsPanel';
 
 interface ListResponse {
@@ -98,7 +98,7 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
   return (
     <div>
       {embedded ? (
-        <div className="toolbar" style={{ marginBottom: 14 }}>
+        <div className="toolbar" style={{ marginBottom: 14, justifyContent: 'flex-end' }}>
           <button className="secondary" onClick={() => void load()}>{t('common.refresh')}</button>
           <button data-testid="start-transfer" onClick={() => setStartOpen(true)}>{t('transfers.start')}</button>
         </div>
@@ -159,7 +159,7 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
                   </td>
                   <td>
                     <span className={`state state-${transfer.state}`}>{t(`transfers.state.${transfer.state}`)}</span>
-                    {transfer.message && <div className="muted">{transfer.message}</div>}
+                    <StatusError message={transfer.message} testId={`transfer-error-${transfer.transferId}`} />
                   </td>
                   <td>{formatTime(transfer.updatedAt)}</td>
                   <td>

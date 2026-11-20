@@ -267,3 +267,43 @@ func TestUploadModelRejectsDuplicateHubModelID(t *testing.T) {
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "already bound")
 }
+
+// TestUploadModelRecordsSelectedBackend verifies an upload into a named
+// backend records that backend on the version.
+func TestUploadModelRecordsSelectedBackend(t *testing.T) {
+	db := newModelTestDB(t)
+	svc := New(&fakeComponents{db: db})
+	svc.SetWeightsDir(t.TempDir())
+	svc.SetStorageConfig(filesystemBackends(svc.weightsDir, "shared", "cold"))
+	ctx := context.Background()
+	archive := tarArchive(t, map[string]string{"config.json": "{}"}, false)
+
+	res, err := svc.UploadModel(ctx, UploadModelRequest{
+		ArchivePath: archive, OriginalName: "model.tar", Name: "Qwen Upload",
+		HubModelID: "acme/qwen-upload", Version: "v1", StorageBackend: "cold",
+	})
+	require.NoError(t, err)
+
+	repo, err := svc.repository()
+	require.NoError(t, err)
+	version, err := repo.FindVersion(ctx, res.ModelID, res.Version)
+	require.NoError(t, err)
+	assert.Equal(t, "cold", version.StorageBackend)
+}
+
+// TestUploadModelRejectsUnknownBackend refuses a backend the operator never
+// configured instead of silently writing into the default one.
+func TestUploadModelRejectsUnknownBackend(t *testing.T) {
+	db := newModelTestDB(t)
+	svc := New(&fakeComponents{db: db})
+	svc.SetWeightsDir(t.TempDir())
+	svc.SetStorageConfig(filesystemBackends(svc.weightsDir, "shared"))
+	archive := tarArchive(t, map[string]string{"config.json": "{}"}, false)
+
+	_, err := svc.UploadModel(context.Background(), UploadModelRequest{
+		ArchivePath: archive, OriginalName: "model.tar", Name: "Qwen Upload",
+		HubModelID: "acme/qwen-upload", Version: "v1", StorageBackend: "missing",
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "missing")
+}

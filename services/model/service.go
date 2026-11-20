@@ -703,10 +703,18 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 		return nil, err
 	}
 
+	backend, err := s.resolveStorageBackend(req.GetStorageBackend())
+	if err != nil {
+		return nil, err
+	}
 	// Source-based registration downloads the weights from a model hub
 	// and derives the weight path from the download. When no source is
 	// given, the caller supplies weight_path directly.
 	if source != "" {
+		if !s.inlineBackendSupported(backend) {
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+				"model: downloading into backend %q needs the transfer Job mode", backend.Name)
+		}
 		weightPath, err = s.downloadModel(ctx, source, sourceModelID)
 		if err != nil {
 			return nil, err
@@ -719,10 +727,10 @@ func (s *Service) RegisterModel(ctx context.Context, req *modelv1.RegisterModelR
 	if err != nil {
 		return nil, err
 	}
-	// The weights were written into the default backend: record it on the
-	// version so serving resolves the same backend later.
-	if backend := s.storageConfig.DefaultBackend; backend != "" {
-		if err := repo.SetVersionStorageBackend(ctx, modelID, version, backend); err != nil {
+	// Record the backend the caller named (or the platform default) so
+	// serving resolves the same backend later.
+	if backend.Name != "" {
+		if err := repo.SetVersionStorageBackend(ctx, modelID, version, backend.Name); err != nil {
 			logger.S().Warnw("model: record version storage backend failed", "model", modelID, "version", version, "err", err)
 		}
 	}
@@ -877,6 +885,7 @@ func (s *Service) ListModels(ctx context.Context, req *modelv1.ListModelsRequest
 		if latest, latestErr := repo.LatestVersion(ctx, row.ID); latestErr == nil && latest != nil {
 			summary.LatestVersion = latest.Version
 			summary.WeightPath = latest.WeightPath
+			summary.StorageBackend = latest.StorageBackend
 		}
 		models = append(models, summary)
 	}
@@ -1134,6 +1143,7 @@ func (s *Service) GetModel(ctx context.Context, req *modelv1.GetModelRequest) (*
 		if i == 0 {
 			summary.LatestVersion = v.Version
 			summary.WeightPath = v.WeightPath
+			summary.StorageBackend = v.StorageBackend
 		}
 	}
 	return &modelv1.GetModelResponse{

@@ -12,8 +12,9 @@ import { navigate } from '../router';
 import { api, ApiError, formatTime, type ModelDownload, type PageMeta } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
-import { ErrorBanner, Pagination } from '../components';
+import { ErrorBanner, Pagination, StatusError } from '../components';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
+import { StorageBackendSelect } from './StorageBackendSelect';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -49,6 +50,7 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
   const [hubModelId, setHubModelId] = useState('');
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
+  const [storageBackend, setStorageBackend] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [formError, setFormError] = useState('');
   const pollRef = useRef<number | null>(null);
@@ -106,6 +108,7 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
         hubModelId: id,
         name: name.trim(),
         description: description.trim(),
+        storageBackend,
       });
       setHubModelId('');
       setName('');
@@ -222,6 +225,12 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
               />
               <div className="field-hint">{t('models.downloads.modelNameDerivedHint')}</div>
             </div>
+            <StorageBackendSelect
+              id="download-storage-backend"
+              testId="download-storage-backend"
+              value={storageBackend}
+              onChange={setStorageBackend}
+            />
             <div className="form-field full">
               <FieldLabel
                 htmlFor="download-description"
@@ -285,12 +294,13 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
                   </td>
                   <td className="mono">
                     {d.name}
+                    {d.storageBackend && <div className="muted small">{d.storageBackend}</div>}
                   </td>
                   <td className="download-state">
                     <span className={`badge ${stateBadgeClass(d.state)}`}>
                       {t(`models.downloads.state.${d.state}`)}
                     </span>
-                    {d.message && <div className="muted small">{d.message}</div>}
+                    <StatusError message={d.message} testId={`download-error-${d.downloadId}`} />
                     {d.modelId && (
                       <button
                         className="link"
