@@ -188,7 +188,7 @@ accelerator 服务运行一个 `server.Runner`，订阅 `accelerator.inventory`�
 | 华为昇腾 (`huawei`) | `huawei.com/Ascend*` | 资源后缀（`Ascend910B4`）；HAMi 注册注解 | `huawei.com/npu-driver-version` |
 | 寒武纪 (`cambricon`) | `cambricon.com/*`、`cambricon.com/mlu*` | `Model` 标签或资源名（`MLU370`） | `DriverVersion` |
 | 壁仞 (`biren`) | `birentech.com/*`、`birentech.com/gpu` | `birentech.com/gpu.product`；HAMi 注册注解 | `birentech.com/gpu.driver-version` |
-| 燧原 (`enflame`) | `enflame.com/*`、`enflame.com/gcu`、`/vgcu` | `enflame.com/gcu.product` | `enflame.com/gcu.driver-version` |
+| 燧原 (`enflame`) | `enflame.com/*`、`enflame.com/gcu`、`/vgcu` | `enflame.com/gcu.product` | `enflame.com/gcu.driverVer` |
 | 海光 (`hygon`) | `hygon.com/*`、`hygon.com/dcunum`、`/hcunum` | `hygon.com/gpu.product`；HAMi 注册注解 | `hygon.com/dcu.driver-version` |
 | 昆仑芯 (`kunlunxin`) | `kunlunxin.com/*`、`kunlunxin.com/xpu`、`/vxpu`、`baidu.com/xpu` | `kunlunxin.com/xpu.product`；HAMi 注册注解 | `kunlunxin.com/xpu.driver-version` |
 | 摩尔线程 (`mthreads`) | `mthreads.com/*`、`mthreads.ai/*`、`mthreads.com/gpu`、`/vgpu` | `mthreads.com/gpu.product` | `mthreads.com/gpu.driver-version` |

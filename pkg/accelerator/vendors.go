@@ -167,6 +167,7 @@ var vendorProfiles = []VendorProfile{
 			"enflame.com/product",
 		},
 		DriverLabelKeys: []string{
+			"enflame.com/gcu.driverVer",
 			"enflame.com/gcu.driver-version",
 		},
 	},

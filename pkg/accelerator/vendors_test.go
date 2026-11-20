@@ -299,6 +299,11 @@ func TestDriverVersion(t *testing.T) {
 			want:   "6.2.1",
 		},
 		{
+			name:   "enflame",
+			labels: map[string]string{"enflame.com/gcu.driverVer": "1.7.2.2402"},
+			want:   "1.7.2.2402",
+		},
+		{
 			name: "nvidia parts",
 			labels: map[string]string{
 				"nvidia.com/cuda.driver-version.major":    "595",

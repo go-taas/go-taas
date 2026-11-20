@@ -190,7 +190,7 @@ new vendor is one registry entry.
 | Huawei Ascend (`huawei`) | `huawei.com/Ascend*` | resource suffix (`Ascend910B4`); HAMi register annotation | `huawei.com/npu-driver-version` |
 | Cambricon (`cambricon`) | `cambricon.com/*`, `cambricon.com/mlu*` | `Model` label or resource (`MLU370`) | `DriverVersion` |
 | Biren (`biren`) | `birentech.com/*`, `birentech.com/gpu` | `birentech.com/gpu.product`; HAMi register annotation | `birentech.com/gpu.driver-version` |
-| Enflame (`enflame`) | `enflame.com/*`, `enflame.com/gcu`, `/vgcu` | `enflame.com/gcu.product` | `enflame.com/gcu.driver-version` |
+| Enflame (`enflame`) | `enflame.com/*`, `enflame.com/gcu`, `/vgcu` | `enflame.com/gcu.product` | `enflame.com/gcu.driverVer` |
 | Hygon (`hygon`) | `hygon.com/*`, `hygon.com/dcunum`, `/hcunum` | `hygon.com/gpu.product`; HAMi register annotation | `hygon.com/dcu.driver-version` |
 | Kunlunxin (`kunlunxin`) | `kunlunxin.com/*`, `kunlunxin.com/xpu`, `/vxpu`, `baidu.com/xpu` | `kunlunxin.com/xpu.product`; HAMi register annotation | `kunlunxin.com/xpu.driver-version` |
 | Moore Threads (`mthreads`) | `mthreads.com/*`, `mthreads.ai/*`, `mthreads.com/gpu`, `/vgpu` | `mthreads.com/gpu.product` | `mthreads.com/gpu.driver-version` |
