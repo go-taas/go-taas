@@ -256,9 +256,9 @@ function NodesPanel({ nodes, loading }: { nodes: WarmupNode[]; loading: boolean 
   }
   return (
     <div className="panel">
-      <div className="panel-header">
+      <div className="panel-header panel-header-stacked">
         <h2>{t('caches.nodesTitle')}</h2>
-        <span className="muted">{t('caches.nodesHint')}</span>
+        <p className="panel-hint">{t('caches.nodesHint')}</p>
       </div>
       <table className="data" data-testid="warmup-nodes-table">
         <thead>

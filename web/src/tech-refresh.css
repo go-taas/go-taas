@@ -779,6 +779,19 @@ h4,
   font-weight: 600;
 }
 
+.panel-header-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.panel-hint {
+  margin: 0;
+  color: #8b8b95;
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
 .dashboard-cards,
 .cards {
   display: grid;

@@ -1237,6 +1237,19 @@ th.sortable:hover {
   font-weight: 600;
 }
 
+.panel-header-stacked {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.panel-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
 /* Iridescent top edge on panels (subtle Aurora signature). */
 .panel::before {
   content: '';

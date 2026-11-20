@@ -377,6 +377,10 @@ html[data-theme='light'] .panel-header h2 {
   color: #111827;
 }
 
+html[data-theme='light'] .panel-hint {
+  color: #6b7280;
+}
+
 html[data-theme='light'] .dashboard-card,
 html[data-theme='light'] .card {
   background: #ffffff;

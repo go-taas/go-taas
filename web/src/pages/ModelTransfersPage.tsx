@@ -97,12 +97,7 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
 
   return (
     <div>
-      {embedded ? (
-        <div className="toolbar" style={{ marginBottom: 14, justifyContent: 'flex-end' }}>
-          <button className="secondary" onClick={() => void load()}>{t('common.refresh')}</button>
-          <button data-testid="start-transfer" onClick={() => setStartOpen(true)}>{t('transfers.start')}</button>
-        </div>
-      ) : (
+      {!embedded && (
         <div className="page-header">
           <div>
             <h1>{t('transfers.title')}</h1>
@@ -123,6 +118,13 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
             <option key={value} value={value}>{t(`transfers.state.${value}`)}</option>
           ))}
         </select>
+        {embedded && (
+          <>
+            <span className="toolbar-spacer" />
+            <button className="secondary" onClick={() => void load()}>{t('common.refresh')}</button>
+            <button data-testid="start-transfer" onClick={() => setStartOpen(true)}>{t('transfers.start')}</button>
+          </>
+        )}
       </div>
       <div className="panel">
         {loading ? (
