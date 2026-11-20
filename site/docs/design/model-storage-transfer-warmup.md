@@ -196,6 +196,13 @@ the same byte counters. The Job's TTL cleans up the Job; the progress
 ConfigMap is small and can be garbage collected with the same TTL or by an
 operator policy.
 
+A Job runs as root so it can read hub caches and uploaded weights owned by
+another uid. After a successful filesystem copy or download it hands the
+target tree to the server's uid/gid (`65532` by default, overridable with
+`TRANSFER_TARGET_UID` / `TRANSFER_TARGET_GID`), so deleting the model from
+the catalog can remove its weights without a privileged helper. Object-store
+targets have no local tree and are skipped.
+
 ### 4.3 Concurrency and failure handling
 
 - `transfer.concurrency` bounds active Jobs; the default 4 keeps a cluster

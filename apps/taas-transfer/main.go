@@ -153,16 +153,24 @@ func watchProgress(dir string, total int64, progress func(int64, int64)) (stop f
 
 // run executes one spec.
 func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+	var err error
 	switch spec.Operation {
 	case transfer.OperationCopy:
-		return copyOne(ctx, spec, progress)
+		err = copyOne(ctx, spec, progress)
 	case transfer.OperationDownload:
-		return downloadOne(ctx, spec, progress)
+		err = downloadOne(ctx, spec, progress)
 	case transfer.OperationDelete:
-		return deleteOne(ctx, spec)
+		err = deleteOne(ctx, spec)
 	default:
 		return fmt.Errorf("unsupported operation %q", spec.Operation)
 	}
+	if err != nil {
+		return err
+	}
+	if err := adoptTargetOwnership(spec); err != nil {
+		logger.S().Warnw("transfer: adopt target ownership failed", "transfer", spec.ID, "err", err)
+	}
+	return nil
 }
 
 func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {

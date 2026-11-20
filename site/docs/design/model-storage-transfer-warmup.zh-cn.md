@@ -109,6 +109,8 @@ model 服务 <----------------------+
 
 进度是 Job 写入、Controller 读取的小 JSON（`state`、`bytes`、`totalBytes`、`message`），仅作参考；成败以 Job 终态条件为准。Hub 下载在搬运前上报模型在 Hub 上的总大小，并在运行期间采样目标目录，因此进度是百分比而不是只有结束时的一次采样；model 服务把每个非终态上报同步到关联的 `model_downloads` 行，下载因此离开 `queued` 并展示同一组字节数。Job TTL 清理 Job，进度 ConfigMap 体量小，可按同一 TTL 或运维策略回收。
 
+Job 以 root 运行，才能读取属于其他 uid 的 hub 缓存和上传权重。文件系统复制或下载成功后，Job 把目标目录交给服务端 uid/gid（默认 `65532`，可用 `TRANSFER_TARGET_UID` / `TRANSFER_TARGET_GID` 覆盖），目录行删除时无需特权助手即可清理权重。对象存储目标没有本地目录，不做此处理。
+
 ### 4.3 并发与失败处理
 
 - `transfer.concurrency` 限制活跃 Job 数，默认 4，避免同时拉取大量模型压垮集群。
