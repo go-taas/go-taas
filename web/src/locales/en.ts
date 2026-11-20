@@ -4112,6 +4112,7 @@ export const en: Record<string, string> = {
   'transfers.cancelled': 'Transfer cancelled.',
   'transfers.cancelFailed': 'Could not cancel the transfer.',
   'transfers.startFailed': 'Could not start the transfer.',
+  'transfers.noModels': 'No model is available to transfer yet. Register or download a model first.',
   'transfers.allStates': 'All states',
   'transfers.colModel': 'Model',
   'transfers.colOperation': 'Operation',

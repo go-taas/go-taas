@@ -1,7 +1,7 @@
 // Model transfers page: asynchronous copy/download/delete jobs the
 // controller runs for model weights.
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { api, ApiError, formatTime, type ModelSummary, type ModelTransfer, type PageMeta, type StorageBackend } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -219,22 +219,44 @@ function StartTransferDialog({
   onDone: () => void;
 }) {
   const { t } = useI18n();
-  const [modelId, setModelId] = useState(models[0]?.modelId || '');
+  const fallbackModelId = models[0]?.modelId || '';
+  const [modelId, setModelId] = useState(fallbackModelId);
   const [operation, setOperation] = useState('copy');
   const [sourceBackend, setSourceBackend] = useState('');
   const [targetBackend, setTargetBackend] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const targetTouched = useRef(false);
+  const selectedModelId = modelId || fallbackModelId;
+  const selectedModel = models.find((model) => model.modelId === selectedModelId);
+  const disableReason = models.length === 0 ? t('transfers.noModels') : '';
+
+  // The dialog mounts before the model and backend lists finish loading, so
+  // seed the selection once they arrive instead of freezing the initial
+  // empty value.
+  useEffect(() => {
+    if (!modelId && fallbackModelId) setModelId(fallbackModelId);
+  }, [fallbackModelId, modelId]);
+
+  // A copy defaults to a backend other than the model's current one; a
+  // blank selection would otherwise copy a version onto itself.
+  useEffect(() => {
+    if (targetTouched.current || targetBackend) return;
+    const source = sourceBackend || selectedModel?.storageBackend || '';
+    const other = backends.find((backend) => backend.name !== source);
+    if (other) setTargetBackend(other.name);
+  }, [backends, selectedModel, sourceBackend, targetBackend]);
 
   const submit = async () => {
+    if (!selectedModelId) return;
     setBusy(true);
     setError('');
     try {
       await api.post('/api/v1/admin/model-transfers', orgId, {
-        modelId,
+        modelId: selectedModelId,
         operation,
         sourceBackend,
-        targetBackend,
+        targetBackend: operation === 'delete' ? '' : targetBackend,
       });
       onDone();
     } catch (e) {
@@ -249,7 +271,7 @@ function StartTransferDialog({
       <div className="form-grid">
         <div className="form-field full">
           <label htmlFor="transfer-model">{t('transfers.colModel')}</label>
-          <select id="transfer-model" value={modelId} onChange={(e) => setModelId(e.target.value)}>
+          <select id="transfer-model" value={selectedModelId} onChange={(e) => setModelId(e.target.value)}>
             {models.map((model) => (
               <option key={model.modelId} value={model.modelId}>{model.name}</option>
             ))}
@@ -258,7 +280,7 @@ function StartTransferDialog({
         <div className="form-field">
           <label htmlFor="transfer-operation">{t('transfers.colOperation')}</label>
           <select id="transfer-operation" value={operation} onChange={(e) => setOperation(e.target.value)}>
-            {['copy', 'download', 'delete'].map((value) => (
+            {['copy', 'delete'].map((value) => (
               <option key={value} value={value}>{t(`transfers.operation.${value}`)}</option>
             ))}
           </select>
@@ -272,20 +294,30 @@ function StartTransferDialog({
             ))}
           </select>
         </div>
-        <div className="form-field">
-          <label htmlFor="transfer-target">{t('transfers.targetBackend')}</label>
-          <select id="transfer-target" value={targetBackend} onChange={(e) => setTargetBackend(e.target.value)}>
-            <option value="">{t('transfers.defaultBackend')}</option>
-            {backends.map((backend) => (
-              <option key={backend.name} value={backend.name}>{backend.name}</option>
-            ))}
-          </select>
-        </div>
+        {operation !== 'delete' && (
+          <div className="form-field">
+            <label htmlFor="transfer-target">{t('transfers.targetBackend')}</label>
+            <select
+              id="transfer-target"
+              value={targetBackend}
+              onChange={(e) => {
+                targetTouched.current = true;
+                setTargetBackend(e.target.value);
+              }}
+            >
+              <option value="">{t('transfers.defaultBackend')}</option>
+              {backends.map((backend) => (
+                <option key={backend.name} value={backend.name}>{backend.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
       </div>
+      {disableReason && <div className="muted" data-testid="transfer-disabled-reason">{disableReason}</div>}
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
-        <button disabled={busy || !modelId} onClick={() => void submit()}>
+        <button disabled={busy || !selectedModelId} onClick={() => void submit()}>
           {busy ? t('common.creating') : t('transfers.start')}
         </button>
       </div>

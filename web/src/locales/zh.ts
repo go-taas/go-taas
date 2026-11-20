@@ -4076,6 +4076,7 @@ export const zh: Record<string, string> = {
   'transfers.cancelled': '传输已取消',
   'transfers.cancelFailed': '取消传输失败',
   'transfers.startFailed': '发起传输失败',
+  'transfers.noModels': '登录后暂无可传输的模型，请先注册或下载模型',
   'transfers.allStates': '全部状态',
   'transfers.colModel': '模型',
   'transfers.colOperation': '操作',
