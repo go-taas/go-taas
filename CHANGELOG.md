@@ -1,3 +1,15 @@
+# [1.128.0](https://github.com/go-taas/go-taas/compare/v1.127.0...v1.128.0) (2026-11-20)
+
+
+### Bug Fixes
+
+* **accelerator:** read Enflame driver version label ([09e2019](https://github.com/go-taas/go-taas/commit/09e201951c056b7833c9908d0cdf6df4221a38c4))
+
+
+### Features
+
+* **accelerator:** detect vendors from GPU operator labels ([bdc5915](https://github.com/go-taas/go-taas/commit/bdc5915d84b979d7c2321fecdff3740bd09e86b6))
+
 # [1.127.0](https://github.com/go-taas/go-taas/compare/v1.126.1...v1.127.0) (2026-11-20)
 
 
