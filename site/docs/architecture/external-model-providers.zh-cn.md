@@ -614,13 +614,13 @@ grpc-gateway mux 依上述 `google.api.http` 绑定路由十二个注记 RPC；�
 
 ### 6.2 导航位置
 
-`AdminShell.ADMIN_NAV_ITEMS`（`web/src/shells/AdminShell.tsx`）当前是**扁平数组** —— 设计中的「Operations 组」是概念分组而非已实现分组（这与特性 #47 运行时的添加方式一致）。本特性在 `nav-runtime` 之后直接新增一项：
+`web/src/shells/nav.ts` 现在把管理面条目按分组组织。本特性在**推理**组的模型列表之后新增一项：
 
 ```ts
 { path: '/admin/providers', labelKey: 'nav.providers', testid: 'nav-providers', icon: Key },
 ```
 
-两条路由注册在 `web/src/App.tsx` 的 `AdminRoutes` 中，紧邻既有 `/admin/models` 与 `/admin/runtime` 路由：
+两条路由注册在 `web/src/App.tsx` 的 `AdminRoutes` 中，紧邻既有 `/admin/models` 与 `/admin/inference-services` 路由：
 
 ```tsx
 <Route path="/admin/providers" element={<ProvidersPage />} />

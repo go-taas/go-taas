@@ -5,7 +5,7 @@
 | Feature point | Deployment history & audit — deployment audit trail (create/update/scale/rollback events) with timestamps, actor, and diff, plus rollback from history (backlog row 34) |
 | Document scope | Requirement analysis, competitive research, the admin-surface deployment-history page for `/admin/deployments`, the page → API surface table, and numbered acceptance criteria |
 | Owning modules | `infer` (deployment-event trail over the inference-service lifecycle, the diff computation, and the rollback-from-history RPC), `audit` (read-only: the general audit spine this feature's deployment trail complements), `web` admin console (`DeploymentHistoryPage`), `controller` (read-only: reconcile a rollback event) |
-| Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle and the change-event structure · [Audit Logging & Activity Export](./audit-logging.md) — the general control-plane audit spine this feature's deployment trail complements · [Model Versioning & Rollback](./model-versioning.md) — the sibling rollback surface (version-level) this feature extends to the deployment level · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule |
+| Related documents | [Architecture Design](./architecture.md) — §2.4 `infer`, §2.7 Controller, §4.2 one-click deployment flow · [Model Catalog & One-Click Deployment](./model-catalog-deployment.md) — the inference-service lifecycle and the change-event structure · [Audit Logging & Activity Export](./audit-logging.md) — the general control-plane audit spine this feature's deployment trail complements · [Console Surface Separation](./console-surface-separation.md) — the two surfaces, the `AdminShell` conventions, the masked-projection rule |
 | Status | Implemented |
 
 ---
@@ -61,7 +61,7 @@ Pitfalls to avoid:
 
 **In scope**: a deployment-history page (per-service or cross-service event trail with timestamps, actor, and field-level diff), the deployment-event trail RPC, and rollback-from-history.
 
-**Out of scope** (tracked by other feature points): the general control-plane audit log and export (#15), request-level traces (#27), model version-level rollback (#32), the inference service logs viewer (#33), and canary/blue-green upgrades.
+**Out of scope** (tracked by other feature points): the general control-plane audit log and export (#15), request-level traces (#27), the inference service logs viewer (#33), and canary/blue-green upgrades.
 
 ---
 
@@ -248,7 +248,6 @@ Error codes (existing blocks, `pkg/errors/codes.go`):
 | --- | --- |
 | General control-plane audit log and export | Feature #15 audit logging |
 | Request-level traces and latency breakdown | Feature #27 request tracing |
-| Model version-level rollback | Feature #32 model versioning & rollback |
 | Inference service logs viewer | Feature #33 service logs viewer |
 | Canary / blue-green upgrades | Future feature point |
 | A user-realm deployment-history surface | Deliberately absent (D1) — tenants consume the endpoint, not the deployment internals |

@@ -98,7 +98,7 @@ Pitfalls to avoid:
 
 ### FR1 — Register Model (catalog entry)
 
-- **FR1.1** The console provides a "Register Model" action on the Models page, opening a form with: **Name** (required, 1–128 chars), **Version** (required, 1–64 chars), **Weight path** (required, object-storage path, e.g. `models/qwen2.5-32b/`), **Description** (optional, ≤ 1024 chars).
+- **FR1.1** The console provides a "Register Model" action on the Models page, opening a form with: **Name** (required, 1–128 chars), **Hub model ID** (required, `<vendor>/<model>`, unique platform-wide), **Weight path** (required, object-storage path, e.g. `models/qwen2.5-32b/`), **Description** (optional, ≤ 1024 chars). The form has no version field.
 - **FR1.2** The hub model id is required (`<vendor>/<model>`) and unique platform-wide: registering an id already bound to another catalog entry returns a clear conflict error. The console does not ask for a version; the server stores an internal one so deployments and pods keep a stable version string.
 - **FR1.3** The weight path is validated syntactically (non-empty, no `..` segments); actual existence in MinIO/JuiceFS is checked at deployment time by the Controller, and a missing weight path surfaces as a `failed` deployment with that reason.
 - **FR1.4** Deleting a model requires confirmation and is blocked with an actionable error while any non-terminated inference service still references it.
@@ -111,7 +111,7 @@ Pitfalls to avoid:
 
 ### FR3 — One-click deployment (create inference service)
 
-- **FR3.1** The "Deploy" action (from a model card or a version row) opens a deployment form pre-filled with the chosen model and version: **Service name** (required, DNS-safe, 1–63 chars), **Model + version** (pre-filled, changeable), **Accelerator** (fleet-reported vendors plus `cpu`), **Card type** (select of the cards that vendor actually carries, e.g. `A800`, `H800`, `BI-V150`), **Image** (dropdown from `ListImages`, filtered by the chosen accelerator), **Replicas** (integer, 1–100, default 1).
+- **FR3.1** The "Deploy" action (from a model row) opens a deployment form pre-filled with the chosen model and its internal version: **Service name** (required, DNS-safe, 1–63 chars), **Model + version** (pre-filled, changeable), **Accelerator** (fleet-reported vendors plus `cpu`), **Card type** (select of the cards that vendor actually carries, e.g. `A800`, `H800`, `BI-V150`), **Image** (dropdown from `ListImages`, filtered by the chosen accelerator), **Replicas** (integer, 1–100, default 1).
 - **FR3.2** Changing the accelerator re-filters the image dropdown; incompatible images are hidden. If no image matches the accelerator, the form shows "No image available for this accelerator — register one in Image Management" and disables submit.
 - **FR3.3** Submit calls `CreateInferenceService`; the response returns `service_id` with `state=pending` immediately; the console navigates to the service detail page, which polls until the state reaches `running`, `failed` or `terminated`.
 - **FR3.4** Validation errors (bad name, replicas out of range, unknown model/image) are shown inline in the form and never reach the message queue.
@@ -268,7 +268,7 @@ Constraints on the contract:
 
 | # | Criterion | Verification |
 | --- | --- | --- |
-| AC1 | `RegisterModel` with a new name+version succeeds and the model appears in `ListModels` with the correct `latest_version`; registering the same name+version again returns a conflict error | FVT |
+| AC1 | `RegisterModel` with a new name and hub model id succeeds and the model appears in `ListModels`; registering the same name again (default internal version) or an already-bound hub model id returns a conflict error | FVT |
 | AC2 | `GetModel` returns the model's metadata; the response still carries the legacy version fields for compatibility, but the console does not render them | FVT |
 | AC3 | `DeleteModel` on a model referenced by a non-terminated inference service returns an error naming the blocking service; after that service is deleted, the same call succeeds | FVT |
 | AC4 | `CreateInferenceService` with a valid model, image, accelerator, and replicas returns immediately (no blocking on pods) with a `service_id` and `state=pending` | FVT (latency bound: < 2 s) |

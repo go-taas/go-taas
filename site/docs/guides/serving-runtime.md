@@ -157,5 +157,5 @@ serving stack, not by the platform, so a long generation is allowed to finish.
 | a pod never leaves `Pending` | a multi-pod replica waits for its whole gang: check the `PodGroup` and the cluster's free accelerator capacity; a whole-card request next to a running one needs the rollout policy to replace it, not to wait for a second device |
 | the model never becomes ready | the weights volume mounts and the path in the service's model URI exists in it |
 
-The console's runtime page reports the serving components and the model's
+The admin runtime API reports the serving components and the model's
 conditions; a condition is the first place to look before the pods.

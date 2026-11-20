@@ -160,7 +160,7 @@ The supported offline path is the platform's own upload, which needs no internet
 
 Accepted archives are `.tar`, `.tar.gz`, `.tgz` and `.zip` of a model directory. The extractor rejects path traversal, bounds expansion, refuses an empty archive and preserves world-readable files so engine pods can read them. Uploads are bounded by `model.upload.maxArchiveBytes` (200 GiB by default) and require `model.weightsDir` to be mounted; an installation without the weights mount refuses the upload instead of accepting bytes it cannot store.
 
-For very large models, copying into the shared filesystem from a staging host and registering the version is the same operation with less HTTP overhead:
+For very large models, copying into the shared filesystem from a staging host and registering the model is the same operation with less HTTP overhead:
 
 ```bash
 # staging host: /srv/models/Qwen2.5-7B-Instruct/{config.json,*.safetensors,...}
@@ -168,7 +168,7 @@ rsync -a --info=progress2 /srv/models/Qwen2.5-7B-Instruct/ \
   /mnt/juicefs/taas-weights/Qwen2.5-7B-Instruct/v1/
 ```
 
-Then register the model version with weight path `Qwen2.5-7B-Instruct/v1/` in the console or through the model API. Set file mode `0644` and directory mode `0750`, matching the uploader.
+Then register the model with weight path `Qwen2.5-7B-Instruct/v1/` in the console or through the model API; the console does not ask for a version, and the server records an internal one. Set file mode `0644` and directory mode `0750`, matching the uploader.
 
 ### 4.3 Import from an internal model hub mirror
 
@@ -177,7 +177,7 @@ An organisation that already runs an internal model hub (a mirrored Hugging Face
 1. Mirror the model on the internal hub with the same repository id and revision the catalog records.
 2. Copy the snapshot into the shared weights directory, either from a staging host or with the storage tool's own sync (`juicefs sync`, `mc mirror`, or an object-store batch job).
 3. Verify a checksum or the file list against the hub manifest before registering.
-4. Register the catalog version with the relative weight path.
+4. Register the catalog model with the relative weight path.
 
 The built-in downloader is wired to the **public** hub base URLs (`https://modelscope.cn`, `https://huggingface.co`) and exposes no chart value for a replacement base URL. An internal mirror that speaks the hub API can be placed in front of those hostnames with DNS and an HTTPS reverse proxy, but validate that the mirror serves the same list/download paths before relying on it. For a strict air gap, do not depend on that indirection: the guaranteed path is the local archive upload or the direct copy into the shared weights directory.
 

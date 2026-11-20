@@ -91,9 +91,9 @@ flowchart TD
 
 | 组件 | 在本特性中的职责 |
 | --- | --- |
-| 控制台 | 模型页（注册、列表、含版本的详情）、推理服务页（部署对话框、状态徽标、扩缩容、删除）、含端点与 curl 片段的服务详情 |
+| 控制台 | 模型页（注册、列表、含元数据与部署操作的详情）、推理服务页（部署对话框、状态徽标、扩缩容、删除）、含端点与 curl 片段的服务详情。目录没有版本选择器，也没有版本列表 |
 | 控制面 Gateway（`grpc-gateway`） | 目录与推理服务 RPC 的 HTTP/JSON 门面；优先解析会话组织，仅在没有会话时把过渡期 `X-Organization-Id` 头透传为 gRPC metadata |
-| `model` 模块（`services/model`） | 目录 RPC、名称+版本唯一性、权重路径语法校验、被引用时的删除保护 |
+| `model` 模块（`services/model`） | 目录 RPC、一个模型一条记录且 hub model ID 必填并在平台内唯一、权重路径语法校验、被引用时的删除保护 |
 | `infer` 模块（`services/infer`） | 生命周期 RPC、同步校验（模型、镜像、副本数、加速器）、期望状态持久化、变更发布、状态消费、端点暴露 |
 | `image` 模块（`services/image`） | 只读：`infer` 按 `image_id` 查询镜像以校验存在性与加速器兼容性。注册 UI 属特性 #3 |
 | PostgreSQL | `models`、`model_versions`、`inference_services` 三张表 |
@@ -112,10 +112,11 @@ flowchart TD
 | `id` | `uuid` | PRIMARY KEY | 服务端生成的 UUID v4，对外即 `model_id` |
 | `name` | `varchar(128)` | NOT NULL, UNIQUE | 模型名称，1–128 字符（FR1.1） |
 | `description` | `varchar(1024)` | NOT NULL DEFAULT '' | 自由文本描述，≤ 1024 字符 |
+| `hub_model_id` | `varchar(255)` | NOT NULL DEFAULT ''，非空时部分 UNIQUE | 模型在公共模型仓库中的 id（`<vendor>/<model>`），注册时必填且目录内唯一 |
 | `created_at` | `timestamptz` | NOT NULL | 首次注册时间（UTC） |
 | `updated_at` | `timestamptz` | NOT NULL | 最近变更（注册新版本） |
 
-设计说明：目录身份是**名称**；版本是 `model_versions` 中的独立行。`latest_version` 在读取时派生（按第 3.2 节排序规则取最大 `version`），不落库 —— 落库的 `latest_version` 列需要在每次注册时事务性更新，且可能与版本行漂移。
+设计说明：一个目录条目就是一个模型；**名称**仍是查找键，`hub_model_id` 是必填且平台内唯一的身份。控制台按模型注册与列表，从不展示版本。版本仍以内部行存在于 `model_versions`，由旧版/版本 RPC 以及携带新版本的注册写入；`latest_version` 在读取时派生（按第 3.2 节排序规则取最大 `version`），是部署所钉住的版本，不落库 —— 落库的 `latest_version` 列需要在每次注册时事务性更新，且可能与版本行漂移。
 
 ### 3.2 `model_versions` 表
 
@@ -123,7 +124,7 @@ flowchart TD
 | --- | --- | --- | --- |
 | `id` | `uuid` | PRIMARY KEY | 服务端生成的 UUID v4 |
 | `model_id` | `uuid` | NOT NULL, FK → `models.id` | 所属模型 |
-| `version` | `varchar(64)` | NOT NULL | 版本串，1–64 字符（FR1.1） |
+| `version` | `varchar(64)` | NOT NULL | 内部版本串，1–64 字符；调用方省略时默认取模型名，不是运维字段 |
 | `weight_path` | `varchar(512)` | NOT NULL | 对象存储路径，做语法校验（FR1.3） |
 | `created_at` | `timestamptz` | NOT NULL | 注册时间（UTC） |
 
@@ -132,8 +133,8 @@ flowchart TD
 | 索引 | 定义 | 用途 |
 | --- | --- | --- |
 | 主键 | `(id)` | 版本身份 |
-| 唯一 | `(model_id, version)` | 名称+版本冲突检测（FR1.2、AC1） |
-| 复合 | `(model_id, created_at DESC)` | 版本列表，最新在前（AC2） |
+| 唯一 | `(model_id, version)` | 注册冲突检测（FR1.2、AC1） |
+| 复合 | `(model_id, created_at DESC)` | 版本历史，最新在前（内部/API 兼容；控制台不暴露） |
 
 版本排序：按 `created_at DESC, version DESC`（id 决胜）。「最新」即该排序的第一行。这避免为 `2024-09-11`、`v0.1-rc1` 这类版本串发明 semver 解析器，同时给出确定的最新在前列表（AC2）。
 
@@ -191,9 +192,9 @@ flowchart TD
 
 | 服务 | RPC | HTTP | 用途 |
 | --- | --- | --- | --- |
-| `taas.model.v1` | `RegisterModel` | `POST /api/v1/admin/models` | 注册模型版本 |
+| `taas.model.v1` | `RegisterModel` | `POST /api/v1/admin/models` | 注册目录模型（hub model ID 必填且唯一） |
 | `taas.model.v1` | `ListModels` | `GET /api/v1/admin/models` | 分页目录列表 |
-| `taas.model.v1` | `GetModel` | `GET /api/v1/admin/models/{model_id}` | 含版本列表的详情 |
+| `taas.model.v1` | `GetModel` | `GET /api/v1/admin/models/{model_id}` | 详情；旧版版本列表仍保留在响应中以兼容 |
 | `taas.model.v1` | `DeleteModel` | `DELETE /api/v1/admin/models/{model_id}` | 移除目录条目（引用检查） |
 | `taas.infer.v1` | `CreateInferenceService` | `POST /api/v1/admin/inference-services` | 一键部署 |
 | `taas.infer.v1` | `ListInferenceServices` | `GET /api/v1/admin/inference-services` | 含状态的服务列表 |
@@ -337,10 +338,10 @@ sequenceDiagram
     participant K8s as Kubernetes
     participant DB as PostgreSQL
 
-    Admin->>Console: 部署表单（模型、版本、镜像、加速器、副本数）
+    Admin->>Console: 部署表单（模型、镜像、加速器、副本数）
     Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService (X-Organization-Id)
-    Infer->>DB: 查询模型 + 版本、镜像、名称唯一性
+    Infer->>DB: 查询模型及其内部版本、镜像、名称唯一性
     Infer->>DB: INSERT inference_services (state=pending)
     Infer->>MQ: 在 infer.services.changes 发布 upsert
     Infer-->>CGW: service_id
@@ -434,7 +435,7 @@ sequenceDiagram
 | 服务不存在（get/scale/delete） | 10301 | `CodeInferServiceNotFound` | 任何已授权操作者都可读取平台服务；不存在的 id 返回 10301 |
 | 对 terminated 服务扩缩 | 10303 | `CodeInferServiceStateInvalid` | Detail: "cannot scale a terminated service" |
 | 删除被在线服务引用的模型 | 10101 | `CodeModelNotFound` | Detail 点名阻塞服务（AC3） |
-| 注册重复名称+版本 | 10102 | `CodeModelExists` | AC1 |
+| 注册重复名称（默认版本）或已被占用的 hub model ID | 10102 | `CodeModelExists` | AC1 |
 | 权重路径语法非法 | 10104 | `CodeModelPathInvalid` | FR1.3 |
 | 缺失会话/组织上下文 | 10001 / 10027 | `CodeUnauthorized` / `CodeSessionInvalid` | 会话优先；过渡期 `X-Organization-Id` 头仍可用 |
 | 受限模型、组织未授权 | 10105 | `CodeModelUnauthorized` | 任何写入之前检查 |
@@ -552,9 +553,9 @@ type Version struct {
 
 服务 RPC（`service.go`）：
 
-- `RegisterModel`：修剪输入；校验 name 1–128、version 1–64、权重路径语法（10104）；`FindByName` —— 未命中 → 单个 `WithinTx` 内创建模型 + 首版本；命中 → `FindVersion` —— 未命中 → 追加版本（更新 `models.updated_at`）；命中 → `CodeModelExists`（AC1）。响应 `{model_id}`（模型 id，跨版本稳定）。
-- `ListModels`：归一化分页（默认 20，上限 100）；把行映射为 `ModelSummary{model_id, name, latest_version, weight_path, created_at}`，其中 `latest_version` 及其 `weight_path` 取自 `ListVersionsByModel` 的第一行（目录规模下每页行一次查询可接受；联表单查是文档化的优化 TODO）。
-- `GetModel`：模型 + 完整版本列表（AC2）；`versions` 是排序后的版本串列表。
+- `RegisterModel`：修剪输入；校验 name 1–128、description ≤ 1024、权重路径语法（10104）；版本省略时默认取名称并限制在 64 字符内；要求 hub model ID 语法合法，并拒绝已绑定到其他目录条目的 id（`CodeModelExists`）；随后 `RegisterModelOrCreateVersion` —— 无既有模型 → 单个 `WithinTx` 内创建模型 + 首版本；既有模型且版本未出现 → 追加版本（更新 `models.updated_at`）；已有 `(model_id, version)` → `CodeModelExists`（AC1）。响应 `{model_id}`（模型 id，跨版本稳定）。
+- `ListModels`：归一化分页（默认 20，上限 100）。未携带组织时只列自托管模型（`ListSelfHostedModels`）—— 外部模型属于用户目录概念，不在管理目录展示。把行映射为 `ModelSummary{model_id, name, hub_model_id, latest_version, weight_path, created_at}`，其中 `latest_version` 及其 `weight_path` 取自 `ListVersionsByModel` 的第一行（目录规模下每页行一次查询可接受；联表单查是文档化的优化 TODO）。
+- `GetModel`：模型元数据；响应还携带排序后的版本串列表以兼容 API（AC2），但控制台不渲染。
 - `DeleteModel`：引用检查 —— `infer` 仓库 `CountByModelID(ctx, modelID, excludeTerminated=true)`；> 0 → 10101，detail "referenced by inference service <name>"（AC3）；否则单个 `WithinTx` 内删除模型 + 版本。
 
 跨模块依赖：`model` 通过窄接口暴露 `FindVersion`，由 `infer` 消费（第 10.3 节）。依赖是包级的（`infer` 导入 `model`），与平台既有 `pkg/*` 共享方式一致；更大的服务注册表重构属特性 #6 范围。
@@ -641,8 +642,8 @@ type InferenceService struct {
 
 | AC | 由何处覆盖 | 验证钩子 |
 | --- | --- | --- |
-| AC1 — 注册 + 冲突 | 第 10.2 节 `RegisterModel`、唯一索引 `(model_id, version)` | 单元 + FVT |
-| AC2 — 含排序版本的详情 | 第 10.2 节 `GetModel`、`ListVersionsByModel` 排序 | 单元 + FVT |
+| AC1 — 注册 + 冲突 | 第 10.2 节 `RegisterModel`、唯一索引 `(model_id, version)` 与非空 `hub_model_id` 部分唯一索引 | 单元 + FVT |
+| AC2 — 详情元数据；旧版版本 | 第 10.2 节 `GetModel`、`ListVersionsByModel` 排序（仅 API 兼容） | 单元 + FVT |
 | AC3 — 删除模型引用检查 | 第 10.2 节 `DeleteModel` + `CountByModelID` | 单元 + FVT |
 | AC4 — 创建立即返回 | 第 10.3 节 `CreateInferenceService`（插入 + 发布，无 K8s 调用） | FVT 时延上界 < 2 秒 |
 | AC5 — 发布前校验 | 第 4.3 节校验矩阵、先提交后发布 | 单元（fake MQ 断言零发布）+ FVT |

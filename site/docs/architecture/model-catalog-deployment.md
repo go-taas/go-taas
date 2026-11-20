@@ -91,9 +91,9 @@ flowchart TD
 
 | Component | Responsibility in this feature |
 | --- | --- |
-| Console | Models page (register, list, detail with versions), Inference Services page (deploy dialog, state badges, scale, delete), service detail with endpoints and curl snippet |
+| Console | Models page (register, list, detail with metadata and a deploy action), Inference Services page (deploy dialog, state badges, scale, delete), service detail with endpoints and curl snippet. The catalog has no version selector or version list |
 | Control Gateway (`grpc-gateway`) | HTTP/JSON facade for the catalog and inference-service RPCs; resolves the session organization and passes the transitional `X-Organization-Id` header as gRPC metadata only when no session is present |
-| `model` module (`services/model`) | Catalog RPCs, name+version uniqueness, weight-path syntax validation, delete protection while referenced |
+| `model` module (`services/model`) | Catalog RPCs, one entry per model with a required globally unique hub model id, weight-path syntax validation, delete protection while referenced |
 | `infer` module (`services/infer`) | Lifecycle RPCs, synchronous validation (model, image, replicas, accelerator), desired-state persistence, change publication, status consumption, endpoint exposure |
 | `image` module (`services/image`) | Read-only: `infer` looks images up by `image_id` to validate existence and accelerator compatibility. Registration UI is feature #3 |
 | PostgreSQL | `models`, `model_versions`, `inference_services` tables |
@@ -112,10 +112,11 @@ flowchart TD
 | `id` | `uuid` | PRIMARY KEY | Server-generated UUID v4, exposed as `model_id` |
 | `name` | `varchar(128)` | NOT NULL, UNIQUE | Model name, 1–128 chars (FR1.1) |
 | `description` | `varchar(1024)` | NOT NULL DEFAULT '' | Free-text description, ≤ 1024 chars |
+| `hub_model_id` | `varchar(255)` | NOT NULL DEFAULT '', partial UNIQUE where non-empty | The model's id on a public hub (`<vendor>/<model>`); required on registration and unique across the catalog |
 | `created_at` | `timestamptz` | NOT NULL | First registration time (UTC) |
 | `updated_at` | `timestamptz` | NOT NULL | Last touch (new version registered) |
 
-Design note: the catalog identity is the **name**; versions are separate rows in `model_versions`. `latest_version` is derived at read time (max `version` by the ordering rule in Section 3.2), not stored — a stored `latest_version` column would need a transactional update on every registration and could drift from the version rows.
+Design note: a catalog entry is one model; the **name** stays the lookup key and `hub_model_id` is the required, globally unique identity. The console registers and lists one entry per model and never shows a version. Versions remain internal rows in `model_versions`, written by the legacy/version RPCs and by a registration that supplies a new version; `latest_version` is derived at read time (max `version` by the ordering rule in Section 3.2) and is what a deployment pins, not stored — a stored `latest_version` column would need a transactional update on every registration and could drift.
 
 ### 3.2 The `model_versions` Table
 
@@ -123,7 +124,7 @@ Design note: the catalog identity is the **name**; versions are separate rows in
 | --- | --- | --- | --- |
 | `id` | `uuid` | PRIMARY KEY | Server-generated UUID v4 |
 | `model_id` | `uuid` | NOT NULL, FK → `models.id` | Owning model |
-| `version` | `varchar(64)` | NOT NULL | Version string, 1–64 chars (FR1.1) |
+| `version` | `varchar(64)` | NOT NULL | Internal version string, 1–64 chars; defaults to the model name when the caller omits it, and is not an operator field |
 | `weight_path` | `varchar(512)` | NOT NULL | Object-storage path, syntax-validated (FR1.3) |
 | `created_at` | `timestamptz` | NOT NULL | Registration time (UTC) |
 
@@ -132,8 +133,8 @@ Indexes:
 | Index | Definition | Purpose |
 | --- | --- | --- |
 | Primary key | `(id)` | Version identity |
-| Unique | `(model_id, version)` | Name+version conflict detection (FR1.2, AC1) |
-| Composite | `(model_id, created_at DESC)` | Version list, newest first (AC2) |
+| Unique | `(model_id, version)` | Registration conflict detection (FR1.2, AC1) |
+| Composite | `(model_id, created_at DESC)` | Version history, newest first (internal/API compatibility; no console surface) |
 
 Version ordering: versions are ordered by `created_at DESC, version DESC` (id tie-break). "Latest" means the first row of that ordering. This avoids inventing a semver parser for version strings like `2024-09-11` or `v0.1-rc1` while still giving deterministic, newest-first lists (AC2).
 
@@ -191,9 +192,9 @@ The table below is the lifecycle subset this feature implements; `InferServiceSe
 
 | Service | RPC | HTTP | Purpose |
 | --- | --- | --- | --- |
-| `taas.model.v1` | `RegisterModel` | `POST /api/v1/admin/models` | Register a model version |
+| `taas.model.v1` | `RegisterModel` | `POST /api/v1/admin/models` | Register a catalog model (hub model id required and unique) |
 | `taas.model.v1` | `ListModels` | `GET /api/v1/admin/models` | Paginated catalog list |
-| `taas.model.v1` | `GetModel` | `GET /api/v1/admin/models/{model_id}` | Detail with version list |
+| `taas.model.v1` | `GetModel` | `GET /api/v1/admin/models/{model_id}` | Detail; the legacy version list remains in the response for compatibility |
 | `taas.model.v1` | `DeleteModel` | `DELETE /api/v1/admin/models/{model_id}` | Remove a catalog entry (reference-checked) |
 | `taas.infer.v1` | `CreateInferenceService` | `POST /api/v1/admin/inference-services` | One-click deploy |
 | `taas.infer.v1` | `ListInferenceServices` | `GET /api/v1/admin/inference-services` | Service list with states |
@@ -337,10 +338,10 @@ sequenceDiagram
     participant K8s as Kubernetes
     participant DB as PostgreSQL
 
-    Admin->>Console: Deploy form (model, version, image, accelerator, replicas)
+    Admin->>Console: Deploy form (model, image, accelerator, replicas)
     Console->>CGW: POST /api/v1/admin/inference-services
     CGW->>Infer: CreateInferenceService (X-Organization-Id)
-    Infer->>DB: SELECT model + version, image, name uniqueness
+    Infer->>DB: SELECT model + its internal version, image, name uniqueness
     Infer->>DB: INSERT inference_services (state=pending)
     Infer->>MQ: Publish upsert on infer.services.changes
     Infer-->>CGW: service_id
@@ -434,7 +435,7 @@ All errors are `pkg/errors` business codes in the unified envelope. Codes alread
 | Service not found (get/scale/delete) | 10301 | `CodeInferServiceNotFound` | Any authorized operator may read a platform service; a missing id is 10301 |
 | Scale on a terminated service | 10303 | `CodeInferServiceStateInvalid` | Detail: "cannot scale a terminated service" |
 | Delete model referenced by live services | 10101 | `CodeModelNotFound` | Detail names the blocking service (AC3) |
-| Register duplicate name+version | 10102 | `CodeModelExists` | AC1 |
+| Register duplicate name (default version) or an already-bound hub model id | 10102 | `CodeModelExists` | AC1 |
 | Weight path syntax invalid | 10104 | `CodeModelPathInvalid` | FR1.3 |
 | Missing session/organization context | 10001 / 10027 | `CodeUnauthorized` / `CodeSessionInvalid` | Session first; the transitional `X-Organization-Id` header still works |
 | Restricted model, organization not granted | 10105 | `CodeModelUnauthorized` | Checked before any write |
@@ -552,9 +553,9 @@ type Version struct {
 
 Service RPCs (`service.go`):
 
-- `RegisterModel`: trim inputs; validate name 1–128, version 1–64, weight-path syntax (10104); `FindByName` — miss → create model + first version in one `WithinTx`; hit → `FindVersion` — miss → append version (update `models.updated_at`); hit → `CodeModelExists` (AC1). Respond `{model_id}` (the model's id, stable across versions).
-- `ListModels`: normalize pagination (default 20, cap 100); map rows to `ModelSummary{model_id, name, latest_version, weight_path, created_at}` where `latest_version` and its `weight_path` come from the first row of `ListVersionsByModel` (one query per page row is acceptable at catalog scale; a single joined query is a documented optimization TODO).
-- `GetModel`: model + full version list (AC2); `versions` is the ordered version-string list.
+- `RegisterModel`: trim inputs; validate name 1–128, description ≤ 1024, weight-path syntax (10104); default the internal version to the name when omitted and cap it at 64; require a syntactically valid hub model id and reject one already bound to a different catalog entry (`CodeModelExists`); then `RegisterModelOrCreateVersion` — no existing model → create model + first version in one `WithinTx`; existing model + unseen version → append the version (update `models.updated_at`); existing `(model_id, version)` → `CodeModelExists` (AC1). Respond `{model_id}` (the model's id, stable across versions).
+- `ListModels`: normalize pagination (default 20, cap 100). Without an organization it lists self-hosted models only (`ListSelfHostedModels`) — external models are a user-catalog concept and are not shown in the admin catalog. Map rows to `ModelSummary{model_id, name, hub_model_id, latest_version, weight_path, created_at}` where `latest_version` and its `weight_path` come from the first row of `ListVersionsByModel` (one query per page row is acceptable at catalog scale; a single joined query is a documented optimization TODO).
+- `GetModel`: model metadata; the response also carries the ordered version-string list for API compatibility (AC2), but the console does not render it.
 - `DeleteModel`: reference check — `infer` repository `CountByModelID(ctx, modelID, excludeTerminated=true)`; > 0 → 10101 with detail "referenced by inference service <name>" (AC3); else delete model + versions in one `WithinTx`.
 
 Cross-module dependency: `model` exposes `FindVersion` through a narrow interface consumed by `infer` (Section 10.3). The dependency is package-level (`infer` imports `model`), mirroring how the platform already shares `pkg/*`; a wider service-registry refactor is feature #6 scope.
@@ -641,8 +642,8 @@ The console is a separate deliverable; this design pins its contract: the seven-
 
 | AC | Addressed by | Verification hook |
 | --- | --- | --- |
-| AC1 — register + conflict | Section 10.2 `RegisterModel`, unique index `(model_id, version)` | Unit + FVT |
-| AC2 — detail with ordered versions | Section 10.2 `GetModel`, `ListVersionsByModel` ordering | Unit + FVT |
+| AC1 — register + conflict | Section 10.2 `RegisterModel`, unique indexes `(model_id, version)` and partial `hub_model_id` | Unit + FVT |
+| AC2 — detail metadata; legacy versions | Section 10.2 `GetModel`, `ListVersionsByModel` ordering (API compatibility only) | Unit + FVT |
 | AC3 — delete-model reference check | Section 10.2 `DeleteModel` + `CountByModelID` | Unit + FVT |
 | AC4 — create returns immediately | Section 10.3 `CreateInferenceService` (insert + publish, no K8s call) | FVT latency bound < 2 s |
 | AC5 — validation before publish | Section 4.3 validation matrix, publish-after-commit | Unit (fake MQ asserts zero publishes) + FVT |

@@ -286,10 +286,10 @@ below with its responsibility boundary and the feature points it implements
 | 1 | `auth` | Local and SSO-federated authentication (LDAP / OIDC / SAML / WeChat), account binding and JIT provisioning, sessions and tokens, API Key lifecycle and verification, per-key rate limits, per-key model scoping, role-based console routing | #1, #7, #11, #22, #46 |
 | 2 | `tenancy` | Organization / project isolation, members, roles and invitations (RBAC), console-surface separation, per-organization service quotas | #6, #10, #17, #51 |
 | 3 | `account` | Account profile and GDPR-style account-data export bundles | #41 |
-| 4 | `model` | Model catalog, versioning and rollback, weight paths and model-hub download, per-tenant model authorization | #2, #13, #32 |
+| 4 | `model` | Model catalog (one entry per model, keyed by a required, globally unique hub model id), weight paths and model-hub download, per-tenant model authorization | #2, #13 |
 | 5 | `image` | Inference engine image registry, versioning and import, node-level pre-pull tasks, model × engine × card-type compatibility matrix | #3, #19 |
 | 6 | `infer` | Inference service lifecycle (deploy, scale, upgrade, rollback), autoscaling, routing policies, playground (incl. side-by-side comparison), SDK quickstart, service logs, load testing | #2, #12, #16, #20, #21, #33, #35, #45 |
-| 7 | `runtime` | Platform serving scheme (plain Deployment vs KServe), runtime component health and registered-model projection | #47 |
+| 7 | `runtime` | Platform serving scheme (plain fallback vs KServe), runtime component health and registered-model projection, served by the admin API only (no console page) | #47 |
 | 8 | `routing` | Routing groups (virtual models) over real catalog candidates: weights, cost/latency strategies, intent rules, decision trail | #49 |
 | 9 | `provider` | External provider registry, encrypted write-only keys, upstream-model curation and publishing into the catalog, connectivity probes | #48 |
 | 10 | `metering` | Token metering and tamper-proof vouchers, usage records, request logs, usage dashboards, per-key usage analytics, error analysis | #4, #9, #12, #28, #31 |
@@ -335,7 +335,7 @@ below with its responsibility boundary and the feature points it implements
 
 **Core responsibilities:**
 
-- Metadata registration and version management for open-source LLMs (Qwen, DeepSeek, LLaMA, etc.);
+- Metadata registration for open-source LLMs (Qwen, DeepSeek, LLaMA, etc.); the catalog keeps one entry per model, and every entry carries a required, platform-wide unique hub model id; the internal version string is not an operator concept;
 - Maintenance of model weight paths in object storage, so inference services can mount them directly through the shared file system;
 - Tenant-level model authorization, deciding the set of models each tenant may consume.
 
@@ -566,7 +566,7 @@ sequenceDiagram
     participant CTRL as Controller
     participant K8s as Kubernetes
 
-    Admin->>CGW: POST /api/v1/admin/inference-services (model, version, image, accelerator, replicas)
+    Admin->>CGW: POST /api/v1/admin/inference-services (model, image, accelerator, replicas)
     CGW->>GRPC: Validate parameters, write desired state, register deployment task
     GRPC->>MQ: Publish "deploy inference service" message
     MQ->>CTRL: Consume deployment message

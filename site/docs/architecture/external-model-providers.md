@@ -622,13 +622,13 @@ Management is entirely on the **admin surface**; tenant consumption is entirely 
 
 ### 6.2 Navigation placement
 
-`AdminShell.ADMIN_NAV_ITEMS` (`web/src/shells/AdminShell.tsx`) is a **flat array** today — the design's "Operations group" is a conceptual grouping, not an implemented one (this mirrors how runtime #47 was added). The feature adds one item directly after `nav-runtime`:
+`web/src/shells/nav.ts` groups the admin entries into categories today. The feature adds one item to the **Inference** group, directly after the model list:
 
 ```ts
 { path: '/admin/providers', labelKey: 'nav.providers', testid: 'nav-providers', icon: Key },
 ```
 
-The two routes are registered in `web/src/App.tsx` inside `AdminRoutes` next to the existing `/admin/models` and `/admin/runtime` routes:
+The two routes are registered in `web/src/App.tsx` inside `AdminRoutes` next to the existing `/admin/models` and `/admin/inference-services` routes:
 
 ```tsx
 <Route path="/admin/providers" element={<ProvidersPage />} />
@@ -641,7 +641,7 @@ The two routes are registered in `web/src/App.tsx` inside `AdminRoutes` next to 
 | --- | --- |
 | Realm-scoped HTTP client | `web/src/api.ts` `useApi()` (admin realm: prefix `/api/v1/admin/*`, token `go-taas.admin.session-token`) |
 | Status badges | `web/src/components/StatusBadge.tsx` for the probe badge (`Reachable` / `Credentials rejected` / `Unreachable` / `Error` / `Not checked`) and the enabled/published badges |
-| Table, pagination, filters | The existing catalog/runtime table + toolbar patterns (same page-size 20 convention) |
+| Table, pagination, filters | The existing catalog table + toolbar patterns (same page-size 20 convention) |
 | Dialogs / confirmations | The existing modal + confirmation patterns (create/edit dialog, publish dialog, unpublish/delete confirmations) |
 | Toasts | The existing toast helper for "Provider deleted." / "Model published." / "Model unpublished." |
 | i18n | `web/src/locales/en.ts` + `zh.ts` gain `nav.providers`, the page copy and the error copy |

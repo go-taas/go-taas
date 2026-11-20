@@ -5,7 +5,7 @@
 | 功能点 | 部署历史与审计 —— 部署审计轨迹（创建/更新/扩缩容/回滚事件），带时间戳、操作者与差异，以及从历史回滚（backlog 第 34 行） |
 | 文档范围 | 功能点 34 的架构与详细设计：`deployment_events` 表、`InferServiceService` 上的 `ListDeploymentEvents` 与 `RollbackDeployment` RPC、管理端部署历史页面（`/admin/deployments`），以及错误处理、配置、安全、上线与各层函数级设计 |
 | 所属模块 | `infer`（推理服务生命周期上的部署事件轨迹、差异计算与从历史回滚 RPC）、`audit`（只读：本功能的部署轨迹所补充的通用审计主干）、`web` 管理端控制台（`DeploymentHistoryPage`）、`controller`（只读：协调回滚事件） |
-| 相关文档 | [需求分析与 UI/UX 设计](../design/deployment-history-audit.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§2.7 Controller、§4.2 一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.md)（推理服务生命周期与变更事件结构）· [审计日志与活动导出](./audit-logging.md)（本功能的部署轨迹所补充的通用控制面审计主干）· [模型版本管理与回滚](./model-versioning.md)（本功能扩展到部署级别的同级回滚表面）· [控制台表面分离](./console-surface-separation.md)（两个表面、`AdminShell` 约定、掩码投影规则） |
+| 相关文档 | [需求分析与 UI/UX 设计](../design/deployment-history-audit.md) · [架构设计](../design/architecture.md) §2.4（`infer`）、§2.7 Controller、§4.2 一键部署流程 · [模型目录与一键部署](./model-catalog-deployment.md)（推理服务生命周期与变更事件结构）· [审计日志与活动导出](./audit-logging.md)（本功能的部署轨迹所补充的通用控制面审计主干）· [控制台表面分离](./console-surface-separation.md)（两个表面、`AdminShell` 约定、掩码投影规则） |
 | 状态 | 已实现 |
 
 ---
@@ -25,7 +25,7 @@ go-taas 将推理服务作为 LLMInferenceService 运行（model-catalog-deploym
 - 部署历史错误块（118xx）中的新错误码。
 - 页面 → 路由 → API 前缀表，带精确的管理端前缀；包括空、错误、权限拒绝在内的各页面交互状态；可在 compose 栈上通过 Nightwatch 测试的编号验收标准。
 
-**非目标**（延后，设计 §8）：通用控制面审计日志与导出（#15）；请求级追踪（#27）；模型版本级回滚（#32）；推理服务日志查看器（#33）；金丝雀/蓝绿升级；用户端部署历史表面（D1）。
+**非目标**（延后，设计 §8）：通用控制面审计日志与导出（#15）；请求级追踪（#27）；推理服务日志查看器（#33）；金丝雀/蓝绿升级；用户端部署历史表面（D1）。
 
 ### 1.1 本文档阅读顺序
 

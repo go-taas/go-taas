@@ -3,8 +3,8 @@
 | Attribute | Content |
 | --- | --- |
 | Feature point | The platform serves models through one serving stack: a KServe control plane writes the serving object, the workload's own `Service` load-balances the replicas, the data-plane Gateway terminates the public host and the model router makes the second hop |
-| Document scope | What the runtime consists of, why this stack over the alternatives, how control and data plane are split, what the platform owns and does not own, how the runtime state is projected into the console, and what the verification covered |
-| Owning modules | `internal/controller` (the serving object, the pod group, the data-plane route) · `pkg/modelrouter` + `apps/model-router` (the second hop) · `services/runtime` (the runtime projection the console reads) · `services/infer` (the desired state the controller converges to) |
+| Document scope | What the runtime consists of, why this stack over the alternatives, how control and data plane are split, what the platform owns and does not own, how the runtime state is exposed by the runtime API, and what the verification covered |
+| Owning modules | `internal/controller` (the serving object, the pod group, the data-plane route) · `pkg/modelrouter` + `apps/model-router` (the second hop) · `services/runtime` (the runtime projection served by the admin API; the console no longer has a runtime page) · `services/infer` (the desired state the controller converges to) |
 | Related documents | [LLMInferenceService Serving Topology](./llminferenceservice-serving-topology.md) · [Inference Autoscaling](./inference-autoscaling.md) · [Data-Plane Gateway & Plugin](./data-plane-gateway-plugin.md) · [Serving Runtime guide](../guides/serving-runtime.md) |
 | Status | Implemented |
 
@@ -75,7 +75,7 @@ public host ◀── Gateway ◀── route ────────▶   mode
 
 The control plane never talks to a pod. It converges a service to one object and stops. The data plane never talks to the database. It answers requests with the state it already has from the object. The two meet at exactly one place: the `LLMInferenceService` the controller writes and the runtime reads. A second meeting point is a second thing to keep in step, and it is always the one that drifts.
 
-The control plane's failures are the ones a console can show: a service that will not converge, a key that will not admit, a scheme that is not `kserve`. The data plane's failures are the ones a request shows: a 429 from a spent balance, a 503 when no replica is ready. Keeping them apart keeps each debuggable without the other.
+The control plane's failures are the ones an operator can see: a service that will not converge, a key that will not admit, a scheme that is not `kserve`. The data plane's failures are the ones a request shows: a 429 from a spent balance, a 503 when no replica is ready. Keeping them apart keeps each debuggable without the other.
 
 ## 5. Serving a model's own object
 
@@ -93,15 +93,15 @@ The pod group is a second object, written for a multi-pod replica only and only 
 
 ## 6. Serving runtime health and the projection
 
-The runtime page reads a projection, not the cluster:
+The runtime module exposes a projection, not the cluster:
 
 1. the controller polls the KServe control plane's Deployments in the inference namespace and the data-plane Gateway's readiness, and publishes the snapshot on the runtime's own MQ subject;
-2. the runtime module keeps the snapshot in memory, the same shape as the accelerator inventory, and answers the page from it;
+2. the runtime module keeps the snapshot in memory, the same shape as the accelerator inventory, and answers the admin API from it;
 3. a component that disappears disappears from the next snapshot, the same self-healing shape as the inventory: a stale row cannot outlive the source.
 
-Ready means "its Deployment reports available replicas at least the desired count" — the same test for every component, so a component tabled in the page cannot disagree with the console.
+Ready means "its Deployment reports available replicas at least the desired count" — the same test for every component, so a component listed in the projection cannot disagree with the console's service view.
 
-**The scheme.** The scheme is `kserve` and it is the default. `plain` means "a Deployment and a Service, no serving object": the fall-back a CRD-less cluster or a unit test uses, with no workload written by the runtime and no per-model route either way. It is not a second mode of the same object, and the console says so on the page rather than offering a switch as if there were a choice.
+**The scheme.** The scheme is `kserve` and it is the default. `plain` means "a Deployment and a Service, no serving object": the fall-back a CRD-less cluster or a unit test uses, with no workload written by the runtime and no per-model route either way. It is not a second mode of the same object, and the console offers no switch that would suggest otherwise.
 
 ## 7. Configuration
 
@@ -120,7 +120,7 @@ The runtime surface uses the platform's codes; the ones a runtime operator meets
 
 | Code | Name | When |
 | --- | --- | --- |
-| 12901 | `CodeRuntimeUnavailable` | the cluster or the KServe control plane is unreachable; the runtime page shows no components and the scheme stays what it was |
+| 12901 | `CodeRuntimeUnavailable` | the cluster or the KServe control plane is unreachable; the runtime projection reports no components and the scheme stays what it was |
 | 12902 | `CodeRuntimeSchemeInvalid` | a scheme other than `kserve` or `plain` |
 | 12909 | `CodeRuntimeRouteNotPublished` | a service is `Ready` but no route is published for it yet |
 
@@ -134,4 +134,4 @@ Also observed on a live cluster with a real model and its own image: the object 
 
 - A multi-pod replica needs a gang-capable scheduler and several machines with free devices; a cluster without them shows the service `Pending` and the pod group `Unschedulable`, which is the honest state, not a retry loop.
 - PD needs an engine that can split prefill from decode; the prefill half has its own replica count and its own tuning, so a PD service is two role sections to get right, not one.
-- The runtime collection is a poll: a component that flips between ready and not is only as fresh as the interval, and the console says when the snapshot was taken rather than pretending it is live.
+- The runtime collection is a poll: a component that flips between ready and not is only as fresh as the interval, and the projection reports when the snapshot was taken rather than pretending it is live.

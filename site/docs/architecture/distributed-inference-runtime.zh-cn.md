@@ -3,8 +3,8 @@
 | 属性 | 内容 |
 | --- | --- |
 | 功能点 | 平台通过一条 KServe 形态的链路提供服务：KServe 控制面写入服务对象，工作负载自己的 `Service` 在副本之间做负载均衡，数据面 Gateway 终结公网域名，模型路由器完成第二跳 |
-| 文档范围 | 运行时由哪些组件构成、为什么选这套栈而不是替代方案、控制面与数据面如何分工、平台负责什么与不负责什么、运行时状态如何投射到控制台、本次验证覆盖了什么 |
-| 归属模块 | `internal/controller`（服务对象、Pod 组、数据面路由）· `pkg/modelrouter` + `apps/model-router`（第二跳）· `services/runtime`（控制台读的运行时投影）· `services/infer`（控制器收敛的期望状态） |
+| 文档范围 | 运行时由哪些组件构成、为什么选这套栈而不是替代方案、控制面与数据面如何分工、平台负责什么与不负责什么、运行时状态如何通过运行时 API 对外提供、本次验证覆盖了什么 |
+| 归属模块 | `internal/controller`（服务对象、Pod 组、数据面路由）· `pkg/modelrouter` + `apps/model-router`（第二跳）· `services/runtime`（由管理 API 提供的运行时投影；控制台已不再有运行时页面）· `services/infer`（控制器收敛的期望状态） |
 | 关联文档 | [LLMInferenceService 服务拓扑](./llminferenceservice-serving-topology.md) · [推理自动伸缩](./inference-autoscaling.md) · [数据面 Gateway 与插件](./data-plane-gateway-plugin.md) · [服务运行时指南](../guides/serving-runtime.md) |
 | 状态 | 已实现 |
 
@@ -93,15 +93,15 @@ Pod 组是第二个对象，只在多 Pod 副本且集群调度器支持 gang �
 
 ## 6. 运行时健康与投影
 
-运行时页面读的是一份投影，不是集群：
+运行时模块提供的是一份投影，不是集群：
 
 1. 控制器轮询推理命名空间里 KServe 控制面的 Deployment 与数据面 Gateway 的就绪状态，把快照发到运行时自己的 MQ 主题上；
-2. 运行时模块把快照留在内存里，形状与加速卡清点一致，页面由它来回答；
+2. 运行时模块把快照留在内存里，形状与加速卡清点一致，管理 API 由它来回答；
 3. 消失的组件在下一个快照里消失，跟清点一样是自愈的形状：一行陈旧数据活不过它的来源。
 
-就绪的含义是"它的 Deployment 报告的可用副本数不少于期望副本数"——每个组件用同一把尺子，因此一个被列进页面的组件不会与控制台的意见不一致。
+就绪的含义是"它的 Deployment 报告的可用副本数不少于期望副本数"——每个组件用同一把尺子，因此投影里列出的组件不会与控制台的服务视图矛盾。
 
-**scheme。** scheme 是 `kserve`，且它是默认值。`plain` 意味着"一个 Deployment 加一个 Service，没有 KServe 对象"，是 CRD 缺席的集群或单元测试用的退路；`plain` 下没有运行时写出的工作负载，两种模式下也都没有按模型的路由。它不是同一个对象的第二种模式，控制台在页面上如实说明，而不是给出一个仿佛有得选的开关。
+**scheme。** scheme 是 `kserve`，且它是默认值。`plain` 意味着"一个 Deployment 加一个 Service，没有 KServe 对象"，是 CRD 缺席的集群或单元测试用的退路；`plain` 下没有运行时写出的工作负载，两种模式下也都没有按模型的路由。它不是同一个对象的第二种模式，控制台也不提供会让人以为有得选的开关。
 
 ## 7. 配置
 
@@ -120,7 +120,7 @@ Pod 组是第二个对象，只在多 Pod 副本且集群调度器支持 gang �
 
 | 码 | 名字 | 何时 |
 | --- | --- | --- |
-| 12901 | `CodeRuntimeUnavailable` | 集群或 KServe 控制面不可达；运行时页面显示没有组件，scheme 保持原样 |
+| 12901 | `CodeRuntimeUnavailable` | 集群或 KServe 控制面不可达；运行时投影报告没有组件，scheme 保持原样 |
 | 12902 | `CodeRuntimeSchemeInvalid` | scheme 不是 `kserve` 或 `plain` |
 | 12905 | `CodeRuntimeEngineUnsupported` | 引擎不在平台支持的集合里 |
 | 12909 | `CodeRuntimeRouteNotPublished` | 服务已 `Ready` 但还没有为它发布出路由 |
@@ -135,4 +135,4 @@ Pod 组是第二个对象，只在多 Pod 副本且集群调度器支持 gang �
 
 - 多 Pod 副本要有能 gang 的调度器，以及若干台有空闲设备的机器；两者都不在的集群会让服务停在 `Pending`、Pod 组停在 `Unschedulable`，这是诚实的状态而不是一个重试循环。
 - PD 要有能把 prefill 从 decode 里拆出来的引擎；prefill 那一半有自己的副本数和自己的调优，所以一个 PD 服务是两段角色各自要弄对，而不是一段。
-- 运行时的收集是轮询：在就绪与不就绪之间来回跳的组件，新鲜度只到轮询间隔，控制台会说出快照是什么时候取的，而不是假装它是实时的。
+- 运行时的收集是轮询：在就绪与不就绪之间来回跳的组件，新鲜度只到轮询间隔，投影会给出快照的采集时间，而不是假装它是实时的。

@@ -168,7 +168,7 @@ rsync -a --info=progress2 /srv/models/Qwen2.5-7B-Instruct/ \
   /mnt/juicefs/taas-weights/Qwen2.5-7B-Instruct/v1/
 ```
 
-随后在控制台或通过模型 API 以权重路径 `Qwen2.5-7B-Instruct/v1/` 注册模型版本。文件权限设为 `0644`、目录权限设为 `0750`，与上传器保持一致。
+随后在控制台或通过模型 API 以权重路径 `Qwen2.5-7B-Instruct/v1/` 注册模型（控制台不询问版本，服务器会记录内部版本）。文件权限设为 `0644`、目录权限设为 `0750`，与上传器保持一致。
 
 ### 4.3 从内部模型中心镜像导入
 
@@ -177,7 +177,7 @@ rsync -a --info=progress2 /srv/models/Qwen2.5-7B-Instruct/ \
 1. 在内部模型中心按目录记录的同一 repository id 与 revision 镜像模型。
 2. 把快照复制到共享权重目录：可从中转主机复制，也可使用存储侧同步工具（`juicefs sync`、`mc mirror` 或对象存储批量任务）。
 3. 登记前用校验和或文件清单与模型中心逐项核对。
-4. 以相对权重路径注册模型版本。
+4. 以相对权重路径注册目录模型。
 
 内置下载器固定访问**公网**模型中心基址（`https://modelscope.cn`、`https://huggingface.co`），没有暴露可替换基址的 Chart 配置。若内部镜像完整实现了模型中心 API，可通过 DNS 与 HTTPS 反向代理把上述域名指到内部服务；采用前必须验证其列表与下载路径与公网一致。对严格气隙环境，不要依赖这层代理：可靠路径始终是本地归档上传或直接写入共享权重目录。
 
