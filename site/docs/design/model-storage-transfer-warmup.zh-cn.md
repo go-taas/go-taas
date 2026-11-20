@@ -67,7 +67,7 @@
 - `download` 增加一个 `storage-initializer` init 容器，把对象存储 URI 拉到共享 `emptyDir` 的 `/models`。容器获得后端的 endpoint/region/path-style 配置；当 `objectStore.credentials.existingSecret` 存在时，从该 Secret 注入 `AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`。事件中只传名称，凭据值不出 Secret。
 - `cache` 以只读方式挂载预热节点组的 `hostPath`，并让引擎指向 `<hostPath>/models/<storageKey>`，即种子 Job 与 KServe local-model agent 写入的路径；已有的 warm-aware 亲和性把 Pod 约束到已预热节点。
 
-版本在注册、上传或下载完成时会记录 `storage_backend`；字段出现前的旧行按默认后端解析。对象存储预热仍依赖 KServe local-model agent 在节点组上具备 S3 凭据，Controller 自带的种子 Job 只覆盖 `pvc://` 源。
+版本在注册、上传或下载完成时会记录 `storage_backend`；字段出现前的旧行按默认后端解析。预热不依赖 KServe agent 自带的对象存储凭据：Controller 的种子 Job 同时覆盖 `pvc://` 与已配置后端的对象存储 URI，并从推理命名空间投射后端 Secret。
 
 ## 4. 无状态搬运 Job
 
@@ -129,7 +129,7 @@ model 服务 <----------------------+
 
 `WarmModel` 校验模型版本与解析后的源 URI，写入 `model_cache_entries`（`queued`）并发布 `model.warmups`。Controller 确保节点组与缓存存在，随后回报 `queued` → `warming` → `ready`（或 `failed`/`cancelled`），携带已预热节点、节点总数与字节数。
 
-KServe storage-initializer 支持对象存储、HTTP 与 Hugging Face，但不支持 `pvc://`。因此文件系统后端的预热由 Controller 自己完成：每轮扫描缓存时找到该缓存对应的 `LocalModelNode`，在目标节点上运行一次性 `taas-transfer` Job（源 PVC 只读挂载到 `/source`，节点组 hostPath 挂载到 `/target`），把权重复制到 `/target/models/<storageKey>`，成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。对象存储与 HTTP 源仍走 KServe 原生路径。
+KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携带平台的对象存储凭据。因此 Controller 对能解析到已配置后端的缓存都在节点上自行预热：每轮扫描缓存时找到对应的 `LocalModelNode`，在目标节点运行一次性 `taas-transfer` Job（节点组 hostPath 挂载到 `/target`）。文件系统源把 PVC 只读挂载到 `/source`；对象存储源把后端 Secret 投射为 `WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY`，由 transfer 拉取前缀。两者都复制到 `/target/models/<storageKey>`，只有 Job 成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。没有匹配后端的 HTTP 源继续走 KServe 原生路径。
 
 ### 5.2 调度
 

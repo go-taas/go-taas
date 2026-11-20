@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/pkg/mq"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/pkg/warmup"
 )
 
@@ -29,7 +30,7 @@ func testWarmupReconciler(objects ...runtime.Object) (*ModelWarmupReconciler, *d
 			StorageClass: "local-path",
 			NodeSelector: map[string]string{"kserve/localmodel": "worker"},
 		}},
-	}, "taas-infer", WarmupSeedConfig{}), dyn
+	}, storage.Config{}, "taas-infer", WarmupSeedConfig{}), dyn
 }
 
 func TestApplyModelWarmupCreatesGroupAndCache(t *testing.T) {
@@ -227,6 +228,98 @@ func TestSeedCachesCreatesPVCSeedJobAndMarksNodeDownloaded(t *testing.T) {
 	status := updated.Object["status"].(map[string]any)
 	modelStatus := status["modelStatus"].(map[string]any)
 	assert.Equal(t, "ModelDownloaded", modelStatus["taas-model-cache-seed"])
+}
+
+func TestSeedCachesFetchesObjectStoreSource(t *testing.T) {
+	sourceURI := "s3://models/weights/qwen/v1"
+	cache := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "serving.kserve.io/v1alpha1",
+		"kind":       "LocalModelCache",
+		"metadata": map[string]any{
+			"name":   "taas-model-cache-s3",
+			"labels": map[string]any{"taas.io/model-cache-id": "cache-s3"},
+			"annotations": map[string]any{
+				"taas.io/backend": "archive",
+			},
+		},
+		"spec": map[string]any{
+			"sourceModelUri": sourceURI,
+			"nodeGroups":     []any{"worker"},
+		},
+	}}
+	node := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "serving.kserve.io/v1alpha1",
+		"kind":       "LocalModelNode",
+		"metadata":   map[string]any{"name": "sd4090"},
+		"spec": map[string]any{
+			"localModels": []any{map[string]any{
+				"modelName": "taas-model-cache-s3",
+				"nodeGroup": "worker",
+			}},
+		},
+	}}
+	reconciler, dyn := testWarmupReconciler(cache, node)
+	reconciler.storage = storage.Config{
+		DefaultBackend: "archive",
+		Backends: map[string]storage.Backend{
+			"archive": {
+				Type: storage.TypeObjectStore,
+				ObjectStore: storage.ObjectStore{
+					Endpoint:       "http://minio:9000",
+					Region:         "us-east-1",
+					Bucket:         "models",
+					Prefix:         "weights",
+					ForcePathStyle: true,
+					Credentials: storage.Credentials{
+						ExistingSecret: "minio-keys",
+						AccessKeyKey:   "accessKey",
+						SecretKeyKey:   "secretKey",
+					},
+				},
+				Delivery: storage.Delivery{Default: storage.ModeCache, Allowed: []string{storage.ModeCache}},
+			},
+		},
+	}
+	reconciler.seed = WarmupSeedConfig{
+		Image:     "registry/taas-transfer:test",
+		Namespace: "taas",
+	}
+	require.NoError(t, reconciler.seedCaches(context.Background()))
+
+	job, err := dyn.Resource(jobGVR).Namespace("taas").Get(context.Background(), seedJobName("taas-model-cache-s3", "sd4090"), metav1.GetOptions{})
+	require.NoError(t, err)
+	template := job.Object["spec"].(map[string]any)["template"].(map[string]any)["spec"].(map[string]any)
+	container := template["containers"].([]any)[0].(map[string]any)
+
+	var transferSpec map[string]any
+	for _, entry := range container["env"].([]any) {
+		env := entry.(map[string]any)
+		if env["name"] == "TRANSFER_SPEC_JSON" {
+			require.NoError(t, json.Unmarshal([]byte(env["value"].(string)), &transferSpec))
+		}
+	}
+	require.NotNil(t, transferSpec)
+	assert.Equal(t, "qwen/v1", transferSpec["weightPath"])
+	assert.Empty(t, transferSpec["sourcePath"])
+	source := transferSpec["sourceObjectStore"].(map[string]any)
+	assert.Equal(t, "models", source["bucket"])
+	assert.Equal(t, "weights", source["prefix"])
+	assert.Equal(t, "http://minio:9000", source["endpoint"])
+	assert.Equal(t, "/target/models/"+storageKeyOf(sourceURI), transferSpec["targetPath"])
+
+	volumes := template["volumes"].([]any)
+	require.Len(t, volumes, 1, "an object-store seed needs only the target hostPath")
+	assert.Equal(t, "target", volumes[0].(map[string]any)["name"])
+	assert.Len(t, template["containers"].([]any)[0].(map[string]any)["volumeMounts"].([]any), 1)
+
+	// The Secret is projected by name; the controller never reads its values.
+	envEntries := container["env"].([]any)
+	require.Len(t, envEntries, 4)
+	access := envEntries[2].(map[string]any)
+	assert.Equal(t, "WARMUP_SOURCE_ACCESS_KEY", access["name"])
+	ref := access["valueFrom"].(map[string]any)["secretKeyRef"].(map[string]any)
+	assert.Equal(t, "minio-keys", ref["name"])
+	assert.Equal(t, "accessKey", ref["key"])
 }
 
 func TestParsePVCURIAndStorageKey(t *testing.T) {

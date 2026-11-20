@@ -130,7 +130,7 @@ func main() {
 	// consumes.
 	if cfg.Warmup.Enabled {
 		ctrl.SetModelWarmupReconciler(controller.NewModelWarmupReconciler(
-			k8sClient.Dynamic(), mqClient, cfg.Warmup, cfg.Controller.Namespace,
+			k8sClient.Dynamic(), mqClient, cfg.Warmup, cfg.Storage, cfg.Controller.Namespace,
 			controller.WarmupSeedConfig{
 				Image:          cfg.Transfer.Image,
 				Namespace:      cfg.Transfer.Namespace,

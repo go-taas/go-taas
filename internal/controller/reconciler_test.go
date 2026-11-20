@@ -215,3 +215,18 @@ func kservePod(name, component string, ready bool) *corev1.Pod {
 		}},
 	}
 }
+
+// A cache-delivery pod mounts the warmup node directory. The constructor must
+// carry the configured hostPath into the reconciler; without it every cache
+// service silently falls back to the shared weights claim and waits forever
+// for weights that are only on the node.
+func TestNewReconcilerCarriesWarmupHostPath(t *testing.T) {
+	r := newReconcilerWithClientset(fake.NewSimpleClientset(), nil, nil, "", reconcileNamespace,
+		WeightsConfig{WarmupHostPath: "/models"}, nil)
+	assert.Equal(t, "/models", r.(*k8sReconciler).warmupHostPath)
+
+	plain := newReconcilerWithClientset(fake.NewSimpleClientset(), nil, nil, "", reconcileNamespace,
+		WeightsConfig{}, nil)
+	assert.Equal(t, "/models", plain.(*k8sReconciler).warmupHostPath,
+		"the default warmup directory is also mounted")
+}

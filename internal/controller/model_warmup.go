@@ -20,6 +20,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/pkg/warmup"
 )
 
@@ -39,10 +40,11 @@ const (
 	warmupSeedTargetMount = "/target"
 )
 
-// WarmupSeedConfig describes the Job that pre-populates a node-local cache
-// from a filesystem (PVC) source. KServe's storage initializer supports
-// object stores and HTTP but not pvc://, so the platform seeds those caches
-// itself and then marks the LocalModelNode entry as downloaded.
+// WarmupSeedConfig describes the Job that pre-populates a node-local cache.
+// KServe's local-model agent may have no credentials for the platform's
+// object store, and its storage initializer cannot read pvc:// at all, so the
+// controller seeds both source kinds itself and then marks the
+// LocalModelNode entry as downloaded.
 type WarmupSeedConfig struct {
 	Image          string
 	Namespace      string
@@ -62,10 +64,11 @@ type ModelWarmupReconciler struct {
 	eviction  config.WarmupEviction
 	interval  time.Duration
 	seed      WarmupSeedConfig
+	storage   storage.Config
 }
 
 // NewModelWarmupReconciler builds the warmup reconciler.
-func NewModelWarmupReconciler(dynamicClient dynamic.Interface, client mq.Client, cfg config.WarmupConfig, namespace string, seed WarmupSeedConfig) *ModelWarmupReconciler {
+func NewModelWarmupReconciler(dynamicClient dynamic.Interface, client mq.Client, cfg config.WarmupConfig, storageCfg storage.Config, namespace string, seed WarmupSeedConfig) *ModelWarmupReconciler {
 	return &ModelWarmupReconciler{
 		dynamic:   dynamicClient,
 		client:    client,
@@ -74,6 +77,7 @@ func NewModelWarmupReconciler(dynamicClient dynamic.Interface, client mq.Client,
 		eviction:  cfg.Eviction,
 		interval:  15 * time.Second,
 		seed:      seed,
+		storage:   storageCfg,
 	}
 }
 
@@ -261,6 +265,7 @@ func (r *ModelWarmupReconciler) ensureCache(ctx context.Context, request *warmup
 				"taas.io/model-name":    request.ModelName,
 				"taas.io/model-version": request.Version,
 				"taas.io/source-uri":    request.SourceURI,
+				"taas.io/backend":       request.Backend,
 			},
 		},
 		"spec": map[string]any{
@@ -294,16 +299,32 @@ func (r *ModelWarmupReconciler) ensureCache(ctx context.Context, request *warmup
 	annotations["taas.io/model-name"] = request.ModelName
 	annotations["taas.io/model-version"] = request.Version
 	annotations["taas.io/source-uri"] = request.SourceURI
+	annotations["taas.io/backend"] = request.Backend
 	existing.SetAnnotations(annotations)
 	_, err = resourceAPI.Update(ctx, existing, metav1.UpdateOptions{})
 	return err
 }
 
-// seedCaches populates node-local caches whose source is a filesystem PVC.
-// KServe's storage initializer cannot read pvc://, so for those caches the
-// controller copies the weights onto the node itself. Once the copy
-// succeeds, the matching LocalModelNode entry is marked downloaded; from
-// then on the KServe agent treats the cache as present on that node.
+// warmupSeedSource is one cache source the controller can seed itself: a
+// filesystem claim mount, or an object-store prefix fetched by the transfer
+// binary.
+type warmupSeedSource struct {
+	URI        string
+	Claim      string
+	Path       string
+	WeightPath string
+	Remote     *storage.RemoteRef
+	Secret     string
+	AccessKey  string
+	SecretKey  string
+}
+
+// seedCaches populates node-local caches from either a filesystem PVC or a
+// configured object store. KServe's storage initializer cannot read pvc://,
+// and its node agent may not carry the platform's object-store credentials,
+// so the controller copies the weights onto the node itself. Once the copy
+// succeeds the matching LocalModelNode entry is marked downloaded; from then
+// on the KServe agent treats the cache as present on that node.
 func (r *ModelWarmupReconciler) seedCaches(ctx context.Context) error {
 	if strings.TrimSpace(r.seed.Image) == "" || strings.TrimSpace(r.seed.Namespace) == "" {
 		return nil
@@ -333,10 +354,10 @@ func (r *ModelWarmupReconciler) seedCaches(ctx context.Context) error {
 			continue
 		}
 		sourceURI, _ := spec["sourceModelUri"].(string)
-		claim, sourcePath, ok := parsePVCURI(sourceURI)
+		source, ok := r.seedSource(sourceURI, cache.GetAnnotations()["taas.io/backend"])
 		if !ok {
-			// Object-store and HTTP sources are handled by KServe's own
-			// storage initializer.
+			// HTTP sources and sources no configured backend owns are left
+			// to KServe's own storage initializer.
 			continue
 		}
 		allowed := map[string]bool{}
@@ -356,12 +377,87 @@ func (r *ModelWarmupReconciler) seedCaches(ctx context.Context) error {
 			if nodeHasModel(node, cacheName) {
 				continue
 			}
-			if err := r.ensureSeedJob(ctx, cacheName, modelName, node.GetName(), hostPath, sourceURI, claim, sourcePath); err != nil {
+			if err := r.ensureSeedJob(ctx, cacheName, modelName, node.GetName(), hostPath, source); err != nil {
 				return err
 			}
 		}
 	}
 	return nil
+}
+
+// seedSource resolves a cache source URI against the configured backends.
+// An empty backend annotation falls back to matching the URI against each
+// backend's bucket and prefix, so caches created before the annotation was
+// added still seed.
+func (r *ModelWarmupReconciler) seedSource(sourceURI, backendName string) (warmupSeedSource, bool) {
+	if claim, path, ok := parsePVCURI(sourceURI); ok {
+		return warmupSeedSource{URI: sourceURI, Claim: claim, Path: path}, true
+	}
+	backend, ok := r.backendForURI(sourceURI, backendName)
+	if !ok || backend.Type != storage.TypeObjectStore {
+		return warmupSeedSource{}, false
+	}
+	bucket := strings.TrimSpace(backend.ObjectStore.Bucket)
+	prefix := strings.Trim(strings.TrimSpace(backend.ObjectStore.Prefix), "/")
+	rest := strings.TrimPrefix(sourceURI, "s3://"+bucket+"/")
+	if rest == sourceURI || strings.TrimSpace(rest) == "" {
+		return warmupSeedSource{}, false
+	}
+	weightPath := strings.TrimPrefix(strings.TrimPrefix(rest, prefix), "/")
+	if strings.TrimSpace(weightPath) == "" {
+		return warmupSeedSource{}, false
+	}
+	ref := &storage.RemoteRef{ //nolint:gosec // env names, not credential values
+		Provider:       backend.ObjectStore.Provider,
+		Endpoint:       backend.ObjectStore.Endpoint,
+		Region:         backend.ObjectStore.Region,
+		Bucket:         bucket,
+		Prefix:         prefix,
+		ForcePathStyle: backend.ObjectStore.ForcePathStyle,
+		// These are environment variable names, not credential values.
+		AccessKeyEnv: "WARMUP_SOURCE_ACCESS_KEY",
+		SecretKeyEnv: "WARMUP_SOURCE_SECRET_KEY", //nolint:gosec // env name, not a secret
+
+	}
+	creds := backend.ObjectStore.Credentials
+	return warmupSeedSource{
+		URI:        sourceURI,
+		WeightPath: weightPath,
+		Remote:     ref,
+		Secret:     creds.ExistingSecret,
+		AccessKey:  firstNonEmptyTrim(creds.AccessKeyKey, "accessKey"),
+		SecretKey:  firstNonEmptyTrim(creds.SecretKeyKey, "secretKey"),
+	}, true
+}
+
+// backendForURI returns the backend a cache URI belongs to, by name when the
+// cache carries it and otherwise by bucket/prefix match.
+func (r *ModelWarmupReconciler) backendForURI(sourceURI, backendName string) (storage.Backend, bool) {
+	if strings.TrimSpace(backendName) != "" {
+		backend, err := r.storage.Resolve(backendName)
+		return backend, err == nil
+	}
+	for name := range r.storage.Backends {
+		backend, err := r.storage.Resolve(name)
+		if err != nil {
+			continue
+		}
+		if backend.Type != storage.TypeObjectStore {
+			continue
+		}
+		bucket := strings.TrimSpace(backend.ObjectStore.Bucket)
+		prefix := strings.Trim(strings.TrimSpace(backend.ObjectStore.Prefix), "/")
+		root := "s3://" + bucket
+		if prefix != "" {
+			root += "/" + prefix + "/"
+		} else {
+			root += "/"
+		}
+		if strings.HasPrefix(sourceURI, root) {
+			return backend, true
+		}
+	}
+	return storage.Backend{}, false
 }
 
 // seedTarget returns the node host path and model identity when a node
@@ -419,7 +515,7 @@ func nodeHasModel(node *unstructured.Unstructured, cacheName string) bool {
 // ensureSeedJob creates the one-shot copy Job for a node, or completes it by
 // marking the node downloaded once the Job succeeded. A failed Job is
 // deleted so the next scan can retry from a clean pod.
-func (r *ModelWarmupReconciler) ensureSeedJob(ctx context.Context, cacheName, modelName, nodeName, hostPath, sourceURI, claim, sourcePath string) error {
+func (r *ModelWarmupReconciler) ensureSeedJob(ctx context.Context, cacheName, modelName, nodeName, hostPath string, source warmupSeedSource) error {
 	name := seedJobName(cacheName, nodeName)
 	resourceAPI := r.dynamic.Resource(jobGVR)
 	existing, err := resourceAPI.Namespace(r.seed.Namespace).Get(ctx, name, metav1.GetOptions{})
@@ -440,23 +536,26 @@ func (r *ModelWarmupReconciler) ensureSeedJob(ctx context.Context, cacheName, mo
 	if !apierrors.IsNotFound(err) {
 		return err
 	}
-	if strings.TrimSpace(sourcePath) != "" {
-		sourcePath = strings.Trim(sourcePath, "/")
-	}
+	sourcePath := strings.Trim(strings.TrimSpace(source.Path), "/")
 	sourceMountPath := warmupSeedSourceMount
 	if sourcePath != "" {
 		sourceMountPath = warmupSeedSourceMount + "/" + sourcePath
 	}
-	targetPath := warmupSeedTargetMount + "/models/" + storageKeyOf(sourceURI)
+	targetPath := warmupSeedTargetMount + "/models/" + storageKeyOf(source.URI)
 	spec := map[string]any{
 		"id":         fmt.Sprintf("warm-%s-%s", cacheName, nodeName),
 		"operation":  "copy",
 		"modelId":    modelName,
 		"modelName":  modelName,
-		"sourceUri":  sourceURI,
+		"sourceUri":  source.URI,
 		"targetUri":  "file://" + targetPath,
-		"sourcePath": sourceMountPath,
 		"targetPath": targetPath,
+	}
+	if source.Remote != nil {
+		spec["weightPath"] = source.WeightPath
+		spec["sourceObjectStore"] = source.Remote
+	} else {
+		spec["sourcePath"] = sourceMountPath
 	}
 	env, err := json.Marshal(spec)
 	if err != nil {
@@ -502,19 +601,13 @@ func (r *ModelWarmupReconciler) ensureSeedJob(ctx context.Context, cacheName, mo
 						"image":           r.seed.Image,
 						"imagePullPolicy": "IfNotPresent",
 						"command":         []any{"/usr/local/bin/taas-transfer"},
-						"env": []any{
+						"env": append([]any{
 							map[string]any{"name": "TRANSFER_SPEC_JSON", "value": string(env)},
 							map[string]any{"name": "POD_NAMESPACE", "value": r.seed.Namespace},
-						},
-						"volumeMounts": []any{
-							map[string]any{"name": "source", "mountPath": warmupSeedSourceMount, "readOnly": true},
-							map[string]any{"name": "target", "mountPath": warmupSeedTargetMount},
-						},
+						}, seedCredentialEnv(source)...),
+						"volumeMounts": seedVolumeMounts(source),
 					}},
-					"volumes": []any{
-						map[string]any{"name": "source", "persistentVolumeClaim": map[string]any{"claimName": claim}},
-						map[string]any{"name": "target", "hostPath": map[string]any{"path": hostPath, "type": "DirectoryOrCreate"}},
-					},
+					"volumes": seedVolumes(source, hostPath),
 				},
 			},
 		},
@@ -568,6 +661,53 @@ func (r *ModelWarmupReconciler) markNodeDownloaded(ctx context.Context, nodeName
 	node.Object["status"] = status
 	_, err = resourceAPI.UpdateStatus(ctx, node, metav1.UpdateOptions{})
 	return err
+}
+
+// seedCredentialEnv projects an object-store Secret into the seed Job. The
+// controller never reads the values: kubelet resolves the secretKeyRef when
+// the pod starts, so the credentials stay in the inference namespace.
+func seedCredentialEnv(source warmupSeedSource) []any {
+	if source.Remote == nil || strings.TrimSpace(source.Secret) == "" {
+		return nil
+	}
+	return []any{
+		map[string]any{
+			"name": source.Remote.AccessKeyEnv,
+			"valueFrom": map[string]any{
+				"secretKeyRef": map[string]any{"name": source.Secret, "key": source.AccessKey},
+			},
+		},
+		map[string]any{
+			"name": source.Remote.SecretKeyEnv,
+			"valueFrom": map[string]any{
+				"secretKeyRef": map[string]any{"name": source.Secret, "key": source.SecretKey},
+			},
+		},
+	}
+}
+
+func seedVolumeMounts(source warmupSeedSource) []any {
+	mounts := []any{
+		map[string]any{"name": "target", "mountPath": warmupSeedTargetMount},
+	}
+	if source.Remote == nil {
+		mounts = append([]any{
+			map[string]any{"name": "source", "mountPath": warmupSeedSourceMount, "readOnly": true},
+		}, mounts...)
+	}
+	return mounts
+}
+
+func seedVolumes(source warmupSeedSource, hostPath string) []any {
+	volumes := []any{
+		map[string]any{"name": "target", "hostPath": map[string]any{"path": hostPath, "type": "DirectoryOrCreate"}},
+	}
+	if source.Remote == nil {
+		volumes = append([]any{
+			map[string]any{"name": "source", "persistentVolumeClaim": map[string]any{"claimName": source.Claim}},
+		}, volumes...)
+	}
+	return volumes
 }
 
 // parsePVCURI splits pvc://claim/path into its parts.

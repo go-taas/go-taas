@@ -317,6 +317,7 @@ func newReconcilerWithClientset(clientset kubernetes.Interface, dyn dynamic.Inte
 		endpointBaseURL: endpointBaseURL,
 		namespace:       namespace,
 		weights:         weights,
+		warmupHostPath:  weights.WarmupHostPath,
 		dynamic:         dyn,
 		scheme:          scheme,
 	}

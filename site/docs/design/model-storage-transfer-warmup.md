@@ -121,9 +121,10 @@ mode into the change event, and the controller builds the pod accordingly:
 
 A version's `storage_backend` is recorded when it is registered, uploaded or
 downloaded. Rows written before this field existed resolve to the default
-backend. Object-store warmup still depends on the KServe local-model agent
-having S3 credentials on the node group; the controller's own seed Job covers
-`pvc://` sources only.
+backend. Warmup does not depend on the KServe agent's own object-store
+credentials: the controller's seed Job covers both `pvc://` sources and
+configured object-store URIs, projecting the backend Secret from the
+inference namespace.
 
 ## 4. Stateless transfer jobs
 
@@ -213,19 +214,22 @@ controller ensures the node groups and the cache, then reports state
 (`queued` → `warming` → `ready`, or `failed`/`cancelled`) with warmed node
 names, total nodes and bytes.
 
-KServe's storage initializer accepts object-store, HTTP and Hugging Face
-URIs, not `pvc://`. For a filesystem backend the controller therefore
-pre-populates the node itself: on every cache scan it finds the
-`LocalModelNode` entries for the cache, runs a one-shot `taas-transfer` Job
-pinned to that node (source PVC mounted read-only at `/source`, the group
-hostPath mounted at `/target`), copies the weights to
-`/target/models/<storageKey>`, and only then marks the node's
+KServe's storage initializer does not accept `pvc://`, and the local-model
+agent may not carry the platform's object-store credentials. The controller
+therefore pre-populates every cache it can resolve to a configured backend:
+on every scan it finds the `LocalModelNode` entries for the cache and runs a
+one-shot `taas-transfer` Job pinned to that node, with the group hostPath
+mounted at `/target`. A filesystem source mounts the PVC read-only at
+`/source`; an object-store source projects the backend's Secret as
+`WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY` and lets the transfer
+binary fetch the prefix. Both copy to `/target/models/<storageKey>`, and only
+after the Job succeeds does the controller mark the node's
 `status.modelStatus[cacheName]` as `ModelDownloaded`. The storage key is the
 first 16 hex characters of SHA-256 of the source URI, matching KServe's own
 layout. The seed Job runs as root because uploaded weights can be owned by an
 arbitrary uid with mode 0750; it writes world-readable files so non-root
-serving runtimes can read them. Object-store and HTTP sources continue to use the
-KServe path.
+serving runtimes can read them. HTTP sources that no backend owns continue to
+use the KServe path.
 
 ### 5.2 Scheduling
 
