@@ -278,8 +278,14 @@ func nodeToInventory(n *corev1.Node, allocated map[corev1.ResourceName]int64) in
 		if !ok {
 			continue
 		}
-		cardType := cardTypeForResource(resourceVendor, family, name, labels, n.Annotations)
 		allocatable := qty.Value()
+		// A zero allocatable means the device plugin has not registered the
+		// cards. Reporting a zero-card row only adds noise; the physical
+		// fallback below reports the cards that are actually present.
+		if allocatable <= 0 {
+			continue
+		}
+		cardType := cardTypeForResource(resourceVendor, family, name, labels, n.Annotations)
 		used := allocated[name]
 		cardTypes = append(cardTypes, cardType)
 		resources = append(resources, inventoryResource{
@@ -287,6 +293,25 @@ func nodeToInventory(n *corev1.Node, allocated map[corev1.ResourceName]int64) in
 		})
 		gpusAllocated += used
 		gpusFree += allocatable - used
+	}
+
+	// The device plugin can be absent or crash-looping while the GPU
+	// operator still labels the node with its card model and card count.
+	// Without this fallback such a node reads as a CPU node and disappears
+	// from the fleet view, so an operator cannot see the hardware that
+	// needs fixing. The card is reported with its physical count and the
+	// node's device-plugin state is degraded, so it is not advertised as
+	// schedulable capacity.
+	if len(resources) == 0 {
+		if cardType := accelerator.CardModelFromLabels(vendor, labels); cardType != "" {
+			if count := accelerator.CardCountFromLabels(vendor, labels); count > 0 {
+				cardTypes = append(cardTypes, cardType)
+				resources = append(resources, inventoryResource{
+					CardType: cardType, Allocatable: count,
+				})
+				gpusFree += count
+			}
+		}
 	}
 
 	taints := make([]string, 0, len(n.Spec.Taints))
@@ -375,12 +400,22 @@ func devicePluginFromNode(n *corev1.Node, labels map[string]string) string {
 			return "unknown"
 		}
 	}
-	// Fall back: a node with accelerator extended resources and no
-	// explicit label is assumed healthy.
-	for name := range n.Status.Allocatable {
-		if _, ok := cardTypeFromResource(name); ok {
+	// Fall back: a node with a positive accelerator extended resource and
+	// no explicit label is assumed healthy. A registered resource of zero
+	// means the device plugin is not advertising cards, which is degraded
+	// rather than healthy.
+	sawZero := false
+	for name, qty := range n.Status.Allocatable {
+		if _, ok := cardTypeFromResource(name); !ok {
+			continue
+		}
+		if qty.Value() > 0 {
 			return "healthy"
 		}
+		sawZero = true
+	}
+	if sawZero {
+		return "degraded"
 	}
 	return "unknown"
 }

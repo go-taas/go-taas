@@ -596,3 +596,59 @@ func TestNodeToInventoryHAMICardModel(t *testing.T) {
 	assert.Equal(t, "amd", inv.Vendor)
 	assert.Equal(t, []string{"AMD Instinct MI300X"}, inv.CardTypes)
 }
+
+// TestNodeToInventoryReportsPhysicalCardsWithoutAllocatable covers a GPU
+// node whose device plugin has not registered its cards: the node carries
+// the vendor's product and count labels, but nvidia.com/gpu is 0. The
+// fleet view must still show the physical cards (and flag the node as
+// degraded) instead of dropping it as a CPU node.
+func TestNodeToInventoryReportsPhysicalCardsWithoutAllocatable(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node01",
+			UID:  "uid-4090",
+			Labels: map[string]string{
+				"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
+				"nvidia.com/gpu.count":   "2",
+			},
+		},
+		Status: corev1.NodeStatus{
+			Conditions: []corev1.NodeCondition{
+				{Type: corev1.NodeReady, Status: corev1.ConditionTrue},
+			},
+			Allocatable: corev1.ResourceList{
+				"nvidia.com/gpu": resource.MustParse("0"),
+			},
+		},
+	}
+	inv := nodeToInventory(node, nil)
+	assert.Equal(t, "nvidia", inv.Vendor)
+	assert.Equal(t, "degraded", inv.DevicePluginState)
+	require.Len(t, inv.Resources, 1)
+	assert.Equal(t, "NVIDIA-GeForce-RTX-4090", inv.Resources[0].CardType)
+	assert.EqualValues(t, 2, inv.Resources[0].Allocatable)
+	assert.EqualValues(t, 0, inv.Resources[0].Allocated)
+	assert.EqualValues(t, 2, inv.GPUsFree)
+	assert.Equal(t, []string{"NVIDIA-GeForce-RTX-4090"}, inv.CardTypes)
+}
+
+// TestNodeToInventorySkipsUncountedCardsWithoutAllocatable keeps a node
+// that only publishes a product label (no count) out of the card table:
+// the card count must come from the vendor operator, not a guess.
+func TestNodeToInventorySkipsUncountedCardsWithoutAllocatable(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node01",
+			UID:  "uid-uncounted",
+			Labels: map[string]string{
+				"nvidia.com/gpu.product": "NVIDIA-GeForce-RTX-4090",
+			},
+		},
+		Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{
+			"nvidia.com/gpu": resource.MustParse("0"),
+		}},
+	}
+	inv := nodeToInventory(node, nil)
+	assert.Empty(t, inv.Resources)
+	assert.Empty(t, inv.CardTypes)
+}

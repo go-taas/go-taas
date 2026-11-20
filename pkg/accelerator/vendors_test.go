@@ -347,3 +347,58 @@ func TestSelectableLabel(t *testing.T) {
 	assert.False(t, SelectableLabel("kubernetes.io/hostname"))
 	assert.False(t, SelectableLabel("nvidia.com/gpu.deploy.driver"))
 }
+
+// TestCardCountFromLabels covers the card-count labels a vendor operator
+// publishes even when its device plugin advertises no allocatable
+// resource. The count is the physical card count, so the fleet view can
+// still show a card that is present but not schedulable.
+func TestCardCountFromLabels(t *testing.T) {
+	cases := []struct {
+		name   string
+		vendor string
+		labels map[string]string
+		want   int64
+	}{
+		{
+			name:   "nvidia cards",
+			vendor: "nvidia",
+			labels: map[string]string{"nvidia.com/gpu.count": "2"},
+			want:   2,
+		},
+		{
+			name:   "amd cards",
+			vendor: "amd",
+			labels: map[string]string{"amd.com/gpu.count": "8"},
+			want:   8,
+		},
+		{
+			name:   "intel cards",
+			vendor: "intel",
+			labels: map[string]string{"gpu.intel.com/cards": "4"},
+			want:   4,
+		},
+		{
+			name:   "blank value",
+			vendor: "nvidia",
+			labels: map[string]string{"nvidia.com/gpu.count": " "},
+			want:   0,
+		},
+		{
+			name:   "invalid value",
+			vendor: "nvidia",
+			labels: map[string]string{"nvidia.com/gpu.count": "two"},
+			want:   0,
+		},
+		{
+			name:   "unknown vendor",
+			vendor: "unspecified",
+			labels: map[string]string{"nvidia.com/gpu.count": "2"},
+			want:   0,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, CardCountFromLabels(c.vendor, c.labels))
+		})
+	}
+}

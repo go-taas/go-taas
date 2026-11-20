@@ -11,6 +11,7 @@ package accelerator
 
 import (
 	"encoding/json"
+	"strconv"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
@@ -36,6 +37,10 @@ type VendorProfile struct {
 	// vendor's device plugin advertises.
 	// ModelLabelKeys carry the card model/product, most specific first.
 	ModelLabelKeys []string
+	// CountLabelKeys carry the physical card count the operator discovered.
+	// The count is not a schedulable resource; it exists so a node whose
+	// device plugin advertises no allocatable cards can still be reported.
+	CountLabelKeys []string
 	// DriverLabelKeys carry the driver version, most specific first.
 	DriverLabelKeys []string
 	// HAMIRegisterAnnotations are HAMi node annotations whose device list
@@ -57,6 +62,7 @@ var vendorProfiles = []VendorProfile{
 			"nvidia.com/gpu.product",
 			"nvidia.com/gpu.model",
 		},
+		CountLabelKeys: []string{"nvidia.com/gpu.count"},
 		DriverLabelKeys: []string{
 			"nvidia.com/cuda.driver-version.full",
 			"nvidia.com/gpu.driver-version",
@@ -73,6 +79,7 @@ var vendorProfiles = []VendorProfile{
 			"amd.com/gpu.product",
 			"amd.com/gpu.family",
 		},
+		CountLabelKeys: []string{"amd.com/gpu.count", "beta.amd.com/gpu.count"},
 		DriverLabelKeys: []string{
 			"amd.com/gpu.driver-version",
 			"beta.amd.com/gpu.driver-version",
@@ -87,6 +94,7 @@ var vendorProfiles = []VendorProfile{
 			"gpu.intel.com/product",
 			"gpu.intel.com/family",
 		},
+		CountLabelKeys: []string{"gpu.intel.com/cards", "gpu.intel.com/card.count"},
 		DriverLabelKeys: []string{
 			"gpu.intel.com/driver-version",
 		},
@@ -349,6 +357,29 @@ func resourceFamilySuffix(key, prefix string) string {
 		s = "ascend"
 	}
 	return s
+}
+
+// CardCountFromLabels returns the physical card count the vendor operator
+// discovered on the node (nvidia.com/gpu.count, amd.com/gpu.count, ...).
+// It returns 0 when the operator publishes no count or the value is not a
+// positive integer.
+func CardCountFromLabels(vendor string, labels map[string]string) int64 {
+	p, ok := Profile(vendor)
+	if !ok {
+		return 0
+	}
+	for _, key := range p.CountLabelKeys {
+		raw := strings.TrimSpace(labels[key])
+		if raw == "" {
+			continue
+		}
+		count, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || count <= 0 {
+			return 0
+		}
+		return count
+	}
+	return 0
 }
 
 // CardModelFromLabels returns the card product/model label, the vendor's
