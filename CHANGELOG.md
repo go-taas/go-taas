@@ -1,3 +1,10 @@
+## [1.126.1](https://github.com/go-taas/go-taas/compare/v1.126.0...v1.126.1) (2026-11-20)
+
+
+### Bug Fixes
+
+* **controller:** seed object-store warmup caches and honor cache delivery ([48bcb20](https://github.com/go-taas/go-taas/commit/48bcb20e1fc2e407cd743852914ee30e2f4966db))
+
 # [1.126.0](https://github.com/go-taas/go-taas/compare/v1.125.0...v1.126.0) (2026-11-20)
 
 
