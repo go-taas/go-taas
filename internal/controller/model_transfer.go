@@ -210,7 +210,17 @@ func (r *ModelTransferReconciler) buildJob(spec *transfer.Spec, name string) (*b
 	mounts := []corev1.VolumeMount{}
 	seenClaim := map[string]string{}
 	seenMount := map[string]bool{}
-	for role, backendName := range map[string]string{"SOURCE": spec.SourceBackend, "TARGET": spec.TargetBackend} {
+	// A hub download has no source backend in the storage config: the mover
+	// fetches from the hub itself. Only the target mount is required.
+	roles := []struct{ role, backend string }{
+		{"SOURCE", spec.SourceBackend},
+		{"TARGET", spec.TargetBackend},
+	}
+	if spec.Operation == transfer.OperationDownload {
+		roles = roles[1:]
+	}
+	for _, item := range roles {
+		role, backendName := item.role, item.backend
 		if backendName == "" {
 			continue
 		}

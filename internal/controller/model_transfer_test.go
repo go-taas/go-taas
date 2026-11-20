@@ -100,6 +100,40 @@ func TestApplyModelTransferCreatesJob(t *testing.T) {
 	assert.Len(t, jobs.Items, 1)
 }
 
+func TestApplyModelTransferDownloadSkipsHubSourceBackend(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	reconciler := NewModelTransferReconciler(client, mq.NewFake(), config.TransferConfig{
+		Namespace: "taas-jobs",
+		Image:     "transfer:test",
+	}, testTransferStorage())
+
+	spec := transfer.Spec{
+		ID:            "transfer-hub",
+		Operation:     transfer.OperationDownload,
+		SourceBackend: "hub:modelscope",
+		TargetBackend: "archive",
+		SourceURI:     "hub:modelscope",
+		TargetURI:     "s3://models/qwen",
+		HubSource:     "modelscope",
+		HubModelID:    "Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4",
+		WeightPath:    "Qwen__Qwen2.5-0.5B-Instruct-GPTQ-Int4/",
+	}
+	body, err := json.Marshal(&spec)
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyModelTransfer(context.Background(), mq.Message{Body: body}))
+
+	job, err := client.BatchV1().Jobs("taas-jobs").Get(context.Background(), "taas-transfer-transfer-hub", metav1.GetOptions{})
+	require.NoError(t, err)
+	env := map[string]corev1.EnvVar{}
+	for _, item := range job.Spec.Template.Spec.Containers[0].Env {
+		env[item.Name] = item
+	}
+	assert.Equal(t, "modelscope", env["TRANSFER_HUB_SOURCE"].Value)
+	assert.Equal(t, "Qwen/Qwen2.5-0.5B-Instruct-GPTQ-Int4", env["TRANSFER_HUB_MODEL_ID"].Value)
+	require.NotNil(t, env["TRANSFER_TARGET_ACCESS_KEY"].ValueFrom)
+	assert.Equal(t, "archive-keys", env["TRANSFER_TARGET_ACCESS_KEY"].ValueFrom.SecretKeyRef.Name)
+}
+
 func mustDecodeSpec(t *testing.T, raw string) transfer.Spec {
 	t.Helper()
 	var spec transfer.Spec
