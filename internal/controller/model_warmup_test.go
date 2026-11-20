@@ -23,13 +23,6 @@ func testWarmupReconciler(objects ...runtime.Object) (*ModelWarmupReconciler, *d
 	dyn := dynamicfake.NewSimpleDynamicClient(scheme, objects...)
 	return NewModelWarmupReconciler(dyn, mq.NewFake(), config.WarmupConfig{
 		Enabled: true,
-		NodeGroups: []config.WarmupNodeGroup{{
-			Name:         "worker",
-			StorageLimit: "200Gi",
-			HostPath:     "/var/lib/taas/models",
-			StorageClass: "local-path",
-			NodeSelector: map[string]string{"kserve/localmodel": "worker"},
-		}},
 	}, storage.Config{}, "taas-infer", WarmupSeedConfig{}), dyn
 }
 
@@ -332,4 +325,88 @@ func TestParsePVCURIAndStorageKey(t *testing.T) {
 	assert.False(t, ok)
 	assert.Equal(t, "471591f9c6a5faf7", storageKeyOf("pvc://taas-model-weights/storage-warmup-test/upload-20261119-170954"))
 	assert.LessOrEqual(t, len(seedJobName("taas-model-1e8ff38d-50af-4603-807a-3f08d37ac215", "sd4090")), 63)
+}
+
+func TestApplyNodeGroupCreatesAndDeletes(t *testing.T) {
+	reconciler, dyn := testWarmupReconciler()
+	group := warmup.NodeGroup{
+		Name: "gpu", StorageLimit: "500Gi", HostPath: "/models", StorageClass: "local-path",
+		NodeSelector: map[string]string{"gpu": "true"},
+	}
+	body, err := json.Marshal(&warmup.NodeGroupEvent{NodeGroup: group})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+	created, err := dyn.Resource(localModelNodeGroupGVR).Get(context.Background(), "gpu", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "500Gi", created.Object["spec"].(map[string]any)["storageLimit"])
+	assert.Equal(t, "/models", nestedString(created, "spec", "persistentVolumeSpec", "hostPath", "path"))
+
+	deleted, err := json.Marshal(&warmup.NodeGroupEvent{NodeGroup: warmup.NodeGroup{Name: "gpu"}, Deleted: true})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: deleted}))
+	_, err = dyn.Resource(localModelNodeGroupGVR).Get(context.Background(), "gpu", metav1.GetOptions{})
+	assert.Error(t, err)
+}
+
+func TestApplyNodeGroupSnapshotPrunesDeletedGroup(t *testing.T) {
+	stale := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "serving.kserve.io/v1alpha1", "kind": "LocalModelNodeGroup",
+		"metadata": map[string]any{
+			"name":   "stale",
+			"labels": map[string]any{"app.kubernetes.io/managed-by": "taas"},
+		},
+	}}
+	reconciler, dyn := testWarmupReconciler(stale)
+	body, err := json.Marshal(&warmup.NodeGroupEvent{
+		Snapshot: true,
+		NodeGroups: []warmup.NodeGroup{
+			{Name: "gpu", StorageLimit: "50Gi", HostPath: "/models", NodeSelector: map[string]string{"gpu": "true"}},
+			{Name: "cpu", StorageLimit: "10Gi", HostPath: "/models"},
+		},
+	})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+
+	for _, name := range []string{"gpu", "cpu"} {
+		_, err := dyn.Resource(localModelNodeGroupGVR).Get(context.Background(), name, metav1.GetOptions{})
+		require.NoError(t, err)
+	}
+	_, err = dyn.Resource(localModelNodeGroupGVR).Get(context.Background(), "stale", metav1.GetOptions{})
+	assert.Error(t, err)
+}
+
+func TestReportNodesPublishesLocalModelNodeSnapshot(t *testing.T) {
+	nodeA := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "serving.kserve.io/v1alpha1", "kind": "LocalModelNode",
+		"metadata": map[string]any{"name": "node-a"},
+		"spec": map[string]any{"localModels": []any{
+			map[string]any{"modelName": "cache-1", "nodeGroup": "worker"},
+			map[string]any{"modelName": "cache-2", "nodeGroup": "gpu"},
+		}},
+		"status": map[string]any{"modelStatus": map[string]any{
+			"cache-1": "ModelDownloaded", "cache-2": "ModelDownloading",
+		}},
+	}}
+	nodeB := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "serving.kserve.io/v1alpha1", "kind": "LocalModelNode",
+		"metadata": map[string]any{"name": "node-b"},
+	}}
+	reconciler, _ := testWarmupReconciler(nodeA, nodeB)
+	clientMQ := mq.NewFake()
+	reconciler.client = clientMQ
+	var got warmup.NodeSnapshot
+	require.NoError(t, clientMQ.Subscribe(context.Background(), mq.DefaultSubjects().ModelWarmupNodes, func(msg mq.Message) error {
+		return json.Unmarshal(msg.Body, &got)
+	}))
+	require.NoError(t, reconciler.reportNodes(context.Background()))
+	require.Len(t, got.Nodes, 2)
+	byName := map[string]warmup.Node{}
+	for _, node := range got.Nodes {
+		byName[node.Name] = node
+	}
+	assert.Equal(t, 2, byName["node-a"].ModelCount)
+	assert.Equal(t, 1, byName["node-a"].DownloadedCount)
+	assert.Equal(t, []string{"gpu", "worker"}, byName["node-a"].NodeGroups)
+	assert.Equal(t, "ModelDownloaded", byName["node-a"].Models[0].State)
+	assert.Equal(t, 0, byName["node-b"].ModelCount)
 }

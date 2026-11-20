@@ -380,7 +380,6 @@ transfer:
 # server only validates requests and mirrors their state.
 warmup:
   enabled: false
-  nodeGroups: []
   scheduling:
     mode: preferred
     weight: 100

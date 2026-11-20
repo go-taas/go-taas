@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -56,7 +57,7 @@ func storageTestService(t *testing.T) (*Service, storage.Backend, storage.Backen
 
 func TestListStorageBackendsReportsDeliveryAndWarmup(t *testing.T) {
 	svc, source, _ := storageTestService(t)
-	svc.SetWarmupSettings(true, nil)
+	svc.SetWarmupSettings(true)
 	resp, err := svc.ListStorageBackends(adminCtx(), &modelv1.ListStorageBackendsRequest{})
 	require.NoError(t, err)
 	require.Len(t, resp.GetBackends(), 2)
@@ -137,7 +138,8 @@ func TestHandleModelTransferStatusUpdatesRow(t *testing.T) {
 func TestWarmModelAndStatus(t *testing.T) {
 	svc, _, _ := storageTestService(t)
 	svc.SetTransferPublisher(&recordingPublisher{})
-	svc.SetWarmupSettings(true, []WarmupNodeGroupSettings{{Name: "gpu", StorageLimit: "10Gi"}})
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
 	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
 		Name: "qwen", HubModelId: "qwen/hub", Version: "v1", WeightPath: "qwen/v1",
 	})
@@ -162,7 +164,8 @@ func TestWarmModelAndStatus(t *testing.T) {
 func TestWarmModelIsIdempotentWhileCacheLive(t *testing.T) {
 	svc, _, _ := storageTestService(t)
 	svc.SetTransferPublisher(&recordingPublisher{})
-	svc.SetWarmupSettings(true, []WarmupNodeGroupSettings{{Name: "gpu", StorageLimit: "10Gi"}})
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
 	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
 		Name: "qwen-idem", HubModelId: "qwen/hub", Version: "v1", WeightPath: "qwen/v1",
 	})
@@ -176,6 +179,26 @@ func TestWarmModelIsIdempotentWhileCacheLive(t *testing.T) {
 	list, err := svc.ListModelCacheEntries(adminCtx(), &modelv1.ListModelCacheEntriesRequest{})
 	require.NoError(t, err)
 	assert.Len(t, list.GetCaches(), 1)
+}
+
+func TestWarmModelRequiresManagedNodeGroup(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	svc.SetTransferPublisher(&recordingPublisher{})
+	svc.SetWarmupSettings(true)
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-nogroup", HubModelId: "qwen/hub", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	_, err = svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "no warmup node group is configured")
+
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
+	_, err = svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{
+		ModelId: reg.GetModelId(), NodeGroups: []string{"missing"},
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unknown warmup node group")
 }
 
 func TestCompleteDownloadTransferRegistersModel(t *testing.T) {
@@ -210,4 +233,85 @@ func TestCompleteDownloadTransferRegistersModel(t *testing.T) {
 	require.NoError(t, db.Where("id = ?", job.ID).First(&got).Error)
 	assert.Equal(t, DownloadStateSucceeded, got.State)
 	assert.NotEmpty(t, got.ModelID)
+}
+
+func createTestWarmupGroup(t *testing.T, svc *Service, name, limit string) {
+	t.Helper()
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&WarmupNodeGroup{
+		Name:             name,
+		NodeSelectorJSON: `{"kubernetes.io/hostname":"` + name + `"}`,
+		StorageLimit:     limit,
+		HostPath:         "/models",
+		CreatedAt:        time.Now().UTC(),
+		UpdatedAt:        time.Now().UTC(),
+	}).Error)
+}
+
+func TestWarmupNodeGroupCRUDAndNodeSnapshot(t *testing.T) {
+	svc := newModelTestService(t)
+	created, err := svc.CreateWarmupNodeGroup(adminCtx(), &modelv1.CreateWarmupNodeGroupRequest{
+		Name:         "gpu",
+		NodeSelector: map[string]string{"gpu": "true"},
+		StorageLimit: "50Gi",
+		HostPath:     "/models",
+		StorageClass: "local-path",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "gpu", created.GetNodeGroup().GetName())
+
+	updated, err := svc.UpdateWarmupNodeGroup(adminCtx(), &modelv1.UpdateWarmupNodeGroupRequest{
+		Name:         "gpu",
+		NodeSelector: map[string]string{"gpu": "true", "pool": "fast"},
+		StorageLimit: "80Gi",
+		HostPath:     "/var/lib/taas/cache",
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "80Gi", updated.GetNodeGroup().GetStorageLimit())
+	assert.Equal(t, "/var/lib/taas/cache", updated.GetNodeGroup().GetHostPath())
+
+	require.NoError(t, svc.HandleWarmupNodeSnapshot(context.Background(), []byte(`{
+		"nodes": [{
+			"name": "node-a",
+			"nodeGroups": ["gpu"],
+			"models": [{"cacheName": "taas-model-cache-1", "nodeGroup": "gpu", "state": "ModelDownloaded"}],
+			"modelCount": 1,
+			"downloadedCount": 1,
+			"observedAt": "2026-01-02T03:04:05Z"
+		}]
+	}`)))
+	nodes, err := svc.ListWarmupNodes(adminCtx(), &modelv1.ListWarmupNodesRequest{})
+	require.NoError(t, err)
+	require.Len(t, nodes.GetNodes(), 1)
+	assert.Equal(t, "node-a", nodes.GetNodes()[0].GetName())
+	assert.Equal(t, []string{"gpu"}, nodes.GetNodes()[0].GetNodeGroups())
+	assert.Equal(t, int32(1), nodes.GetNodes()[0].GetDownloadedCount())
+
+	groups, err := svc.ListWarmupNodeGroups(adminCtx(), &modelv1.ListWarmupNodeGroupsRequest{})
+	require.NoError(t, err)
+	require.Len(t, groups.GetNodeGroups(), 1)
+	assert.Equal(t, int32(1), groups.GetNodeGroups()[0].GetTotalNodes())
+	assert.Equal(t, int32(1), groups.GetNodeGroups()[0].GetReadyNodes())
+
+	// A full snapshot replaces the projection, so a deleted node disappears.
+	require.NoError(t, svc.HandleWarmupNodeSnapshot(context.Background(), []byte(`{"nodes":[]}`)))
+	nodes, err = svc.ListWarmupNodes(adminCtx(), &modelv1.ListWarmupNodesRequest{})
+	require.NoError(t, err)
+	assert.Empty(t, nodes.GetNodes())
+
+	// The periodic sync publishes the full desired set, including groups a
+	// controller that restarted may have missed.
+	publisher := &recordingPublisher{}
+	svc.SetTransferPublisher(publisher)
+	require.NoError(t, svc.SyncWarmupNodeGroups(context.Background()))
+	var snapshot warmup.NodeGroupEvent
+	require.NoError(t, json.Unmarshal(publisher.body, &snapshot))
+	assert.True(t, snapshot.Snapshot)
+	require.Len(t, snapshot.NodeGroups, 1)
+	assert.Equal(t, "gpu", snapshot.NodeGroups[0].Name)
+	assert.Equal(t, "/var/lib/taas/cache", snapshot.NodeGroups[0].HostPath)
+
+	_, err = svc.DeleteWarmupNodeGroup(adminCtx(), &modelv1.DeleteWarmupNodeGroupRequest{Name: "gpu"})
+	require.NoError(t, err)
 }

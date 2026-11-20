@@ -1,7 +1,7 @@
 // Model cache page: node-local warmup state and warm/cancel actions.
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { api, ApiError, formatTime, type ModelCacheEntry, type ModelSummary, type PageMeta } from '../api';
+import { api, ApiError, formatTime, type ModelCacheEntry, type ModelSummary, type PageMeta, type WarmupNode, type WarmupNodeGroup } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
@@ -15,14 +15,24 @@ interface ListResponse {
 interface ModelsResponse {
   models: ModelSummary[];
 }
+interface NodesResponse {
+  nodes: WarmupNode[];
+}
+interface GroupsResponse {
+  nodeGroups: WarmupNodeGroup[];
+}
 
 const PAGE_SIZE = 20;
 const ACTIVE_STATES = ['queued', 'warming'];
 
-export default function ModelCachesPage() {
+export default function ModelCachesPage({ embedded = false }: { embedded?: boolean }) {
   const { orgId } = useOrg();
   const { t } = useI18n();
+  const [tab, setTab] = useState<'models' | 'nodes'>('models');
   const [caches, setCaches] = useState<ModelCacheEntry[]>([]);
+  const [nodes, setNodes] = useState<WarmupNode[]>([]);
+  const [nodesLoading, setNodesLoading] = useState(false);
+  const [nodeGroups, setNodeGroups] = useState<WarmupNodeGroup[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -36,7 +46,7 @@ export default function ModelCachesPage() {
       if (!quiet) setLoading(true);
       try {
         const data = await api.get<ListResponse>(
-          `/api/v1/admin/model-cache-entries?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
+          `/api/v1/admin/model-warmups?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
           orgId,
         );
         setCaches(data.caches || []);
@@ -55,6 +65,27 @@ export default function ModelCachesPage() {
     void load();
   }, [load]);
 
+  const loadNodes = useCallback(async () => {
+    setNodesLoading(true);
+    try {
+      const [nodeData, groupData] = await Promise.all([
+        api.get<NodesResponse>('/api/v1/admin/model-warmup-nodes', orgId),
+        api.get<GroupsResponse>('/api/v1/admin/model-warmup-node-groups', orgId),
+      ]);
+      setNodes(nodeData.nodes || []);
+      setNodeGroups(groupData.nodeGroups || []);
+      setError('');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : t('caches.loadFailed'));
+    } finally {
+      setNodesLoading(false);
+    }
+  }, [orgId, t]);
+
+  useEffect(() => {
+    if (tab === 'nodes') void loadNodes();
+  }, [tab, loadNodes]);
+
   const hasActive = useMemo(
     () => caches.some((cache) => ACTIVE_STATES.includes(cache.state)),
     [caches],
@@ -67,9 +98,14 @@ export default function ModelCachesPage() {
 
   useEffect(() => {
     if (!warmOpen) return;
-    api
-      .get<ModelsResponse>('/api/v1/admin/models?page.offset=0&page.limit=200', orgId)
-      .then((data) => setModels(data.models || []))
+    void Promise.all([
+      api.get<ModelsResponse>('/api/v1/admin/models?page.offset=0&page.limit=200', orgId),
+      api.get<GroupsResponse>('/api/v1/admin/model-warmup-node-groups', orgId),
+    ])
+      .then(([modelData, groupData]) => {
+        setModels(modelData.models || []);
+        setNodeGroups(groupData.nodeGroups || []);
+      })
       .catch((e) => setError(e instanceof Error ? e.message : t('caches.loadFailed')));
   }, [warmOpen, orgId, t]);
 
@@ -85,22 +121,56 @@ export default function ModelCachesPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>{t('caches.title')}</h1>
-          <div className="subtitle">{t('caches.subtitle')}</div>
-        </div>
-        <div className="toolbar">
-          <button className="secondary" onClick={() => void load()}>
+      {embedded ? (
+        <div className="toolbar" style={{ marginBottom: 14 }}>
+          <button className="secondary" onClick={() => void (tab === 'nodes' ? loadNodes() : load())}>
             {t('common.refresh')}
           </button>
           <button data-testid="warm-model" onClick={() => setWarmOpen(true)}>
             {t('caches.warm')}
           </button>
         </div>
+      ) : (
+        <div className="page-header">
+          <div>
+            <h1>{t('caches.title')}</h1>
+            <div className="subtitle">{t('caches.subtitle')}</div>
+          </div>
+          <div className="toolbar">
+            <button className="secondary" onClick={() => void (tab === 'nodes' ? loadNodes() : load())}>
+              {t('common.refresh')}
+            </button>
+            <button data-testid="warm-model" onClick={() => setWarmOpen(true)}>
+              {t('caches.warm')}
+            </button>
+          </div>
+        </div>
+      )}
+      <div className="tab-strip" role="tablist" style={{ marginTop: 0 }}>
+        <button
+          className={`tab ${tab === 'models' ? 'active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'models'}
+          data-testid="warmup-tab-models"
+          onClick={() => setTab('models')}
+        >
+          {t('caches.tabModels')}
+        </button>
+        <button
+          className={`tab ${tab === 'nodes' ? 'active' : ''}`}
+          role="tab"
+          aria-selected={tab === 'nodes'}
+          data-testid="warmup-tab-nodes"
+          onClick={() => setTab('nodes')}
+        >
+          {t('caches.tabNodes')}
+        </button>
       </div>
       {error && <ErrorBanner message={error} />}
       <Toast message={notice} onDismiss={() => setNotice('')} testId="caches-toast" />
+      {tab === 'nodes' ? (
+        <NodesPanel nodes={nodes} loading={nodesLoading} />
+      ) : (
       <div className="panel">
         {loading ? (
           <div className="loading">{t('common.loading')}</div>
@@ -160,10 +230,12 @@ export default function ModelCachesPage() {
           <Pagination offset={offset} limit={PAGE_SIZE} total={total} onPageChange={setOffset} />
         )}
       </div>
+      )}
       {warmOpen && (
         <WarmModelDialog
           orgId={orgId}
           models={models}
+          nodeGroups={nodeGroups}
           onClose={() => setWarmOpen(false)}
           onDone={() => {
             setWarmOpen(false);
@@ -176,19 +248,73 @@ export default function ModelCachesPage() {
   );
 }
 
+function NodesPanel({ nodes, loading }: { nodes: WarmupNode[]; loading: boolean }) {
+  const { t } = useI18n();
+  if (loading) return <div className="panel"><div className="loading">{t('common.loading')}</div></div>;
+  if (nodes.length === 0) {
+    return <div className="panel"><div className="empty-state" data-testid="warmup-nodes-empty">{t('caches.nodesEmpty')}</div></div>;
+  }
+  return (
+    <div className="panel">
+      <div className="panel-header">
+        <h2>{t('caches.nodesTitle')}</h2>
+        <span className="muted">{t('caches.nodesHint')}</span>
+      </div>
+      <table className="data" data-testid="warmup-nodes-table">
+        <thead>
+          <tr>
+            <th>{t('caches.colNode')}</th>
+            <th>{t('caches.colNodeGroups')}</th>
+            <th>{t('caches.colCopies')}</th>
+            <th>{t('caches.colNodeModels')}</th>
+            <th>{t('common.updated')}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {nodes.map((node) => (
+            <tr key={node.name} data-testid={`warmup-node-${node.name}`}>
+              <td><strong className="mono">{node.name}</strong></td>
+              <td className="mono muted">{(node.nodeGroups || []).join(', ') || '—'}</td>
+              <td>{node.downloadedCount || 0} / {node.modelCount || 0}</td>
+              <td>
+                {(node.models || []).length === 0 ? <span className="muted">—</span> : (
+                  <div className="node-model-list">
+                    {(node.models || []).map((model) => (
+                      <div key={model.cacheName || model.modelName} className="node-model-row">
+                        <span className="mono">{model.modelName || model.cacheName}</span>
+                        <span className={`state state-${(model.state || '').replace('Model', '').toLowerCase()}`}>
+                          {model.state || '—'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </td>
+              <td>{formatTime(node.updatedAt)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function WarmModelDialog({
   orgId,
   models,
+  nodeGroups,
   onClose,
   onDone,
 }: {
   orgId: string;
   models: ModelSummary[];
+  nodeGroups: WarmupNodeGroup[];
   onClose: () => void;
   onDone: () => void;
 }) {
   const { t } = useI18n();
   const [modelId, setModelId] = useState(models[0]?.modelId || '');
+  const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
 
@@ -196,7 +322,10 @@ function WarmModelDialog({
     setBusy(true);
     setError('');
     try {
-      await api.post('/api/v1/admin/model-warmups', orgId, { modelId });
+      await api.post('/api/v1/admin/model-warmups', orgId, {
+        modelId,
+        nodeGroups: selectedGroups,
+      });
       onDone();
     } catch (e) {
       setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('caches.warmFailed'));
@@ -214,6 +343,28 @@ function WarmModelDialog({
             <option key={model.modelId} value={model.modelId}>{model.name}</option>
           ))}
         </select>
+      </div>
+      <div className="form-field full">
+        <label>{t('caches.nodeGroups')}</label>
+        {nodeGroups.length === 0 ? (
+          <div className="muted">{t('caches.noNodeGroups')}</div>
+        ) : (
+          <div className="checkbox-list">
+            {nodeGroups.map((group) => (
+              <label key={group.name} className="checkbox-row">
+                <input
+                  type="checkbox"
+                  checked={selectedGroups.includes(group.name)}
+                  onChange={(e) => setSelectedGroups((current) =>
+                    e.target.checked ? [...current, group.name] : current.filter((name) => name !== group.name),
+                  )}
+                />
+                <span>{group.name}</span>
+              </label>
+            ))}
+          </div>
+        )}
+        <div className="muted">{t('caches.nodeGroupsHint')}</div>
       </div>
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">

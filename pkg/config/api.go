@@ -8,7 +8,6 @@ package config
 
 import (
 	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -721,23 +720,12 @@ type TransferJobConfig struct {
 type WarmupConfig struct {
 	// Enabled turns LocalModelCache creation and nodeAffinity injection on.
 	Enabled bool `mapstructure:"enabled"`
-	// NodeGroups declares the node pools weights are cached on.
-	NodeGroups []WarmupNodeGroup `mapstructure:"nodeGroups"`
 	// Scheduling configures the injected node affinity.
 	Scheduling WarmupScheduling `mapstructure:"scheduling"`
 	// Auto configures automatic warmup triggers.
 	Auto WarmupAuto `mapstructure:"auto"`
 	// Eviction configures cache retention.
 	Eviction WarmupEviction `mapstructure:"eviction"`
-}
-
-// WarmupNodeGroup is one node pool that caches model weights.
-type WarmupNodeGroup struct {
-	Name         string            `mapstructure:"name"`
-	NodeSelector map[string]string `mapstructure:"nodeSelector"`
-	StorageLimit string            `mapstructure:"storageLimit"`
-	HostPath     string            `mapstructure:"hostPath"`
-	StorageClass string            `mapstructure:"storageClass"`
 }
 
 // WarmupScheduling is the injected node-affinity policy.
@@ -1883,17 +1871,6 @@ func (c *Configuration) Validate() error {
 	if c.Warmup.Scheduling.Weight < 0 || c.Warmup.Scheduling.Weight > 100 {
 		return &FieldError{Field: "warmup.scheduling.weight", Reason: "must be within 1-100"}
 	}
-	if c.Warmup.Enabled && len(c.Warmup.NodeGroups) == 0 {
-		return &FieldError{Field: "warmup.nodeGroups", Reason: "must declare at least one node group when warmup is enabled"}
-	}
-	for i, ng := range c.Warmup.NodeGroups {
-		if strings.TrimSpace(ng.Name) == "" {
-			return &FieldError{Field: "warmup.nodeGroups", Reason: "every node group needs a name (index " + strconv.Itoa(i) + ")"}
-		}
-		if ng.StorageLimit != "" && !quantityLike(ng.StorageLimit) {
-			return &FieldError{Field: "warmup.nodeGroups[" + strconv.Itoa(i) + "].storageLimit", Reason: "must be a Kubernetes quantity such as 100Gi"}
-		}
-	}
 	switch c.Warmup.Eviction.Policy {
 	case "", "lru", "none":
 	default:
@@ -1906,27 +1883,6 @@ func (c *Configuration) Validate() error {
 		return &FieldError{Field: "warmup.eviction.minFreeBytes", Reason: "must not be negative"}
 	}
 	return nil
-}
-
-// quantityLike reports whether s looks like a Kubernetes resource quantity:
-// a positive number with an optional binary or decimal suffix.
-func quantityLike(s string) bool {
-	s = strings.TrimSpace(s)
-	if s == "" {
-		return false
-	}
-	i := 0
-	for i < len(s) && (s[i] >= '0' && s[i] <= '9' || s[i] == '.') {
-		i++
-	}
-	if i == 0 {
-		return false
-	}
-	switch strings.TrimSpace(s[i:]) {
-	case "", "Ki", "Mi", "Gi", "Ti", "Pi", "Ei", "K", "M", "G", "T", "P", "E", "m":
-		return true
-	}
-	return false
 }
 
 // FieldError describes a single invalid configuration field.

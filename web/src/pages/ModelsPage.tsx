@@ -10,6 +10,8 @@ import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
+import ModelCachesPage from './ModelCachesPage';
+import ModelTransfersPage from './ModelTransfersPage';
 import UploadModelDialog from '../components/UploadModelDialog';
 
 
@@ -31,6 +33,20 @@ export default function ModelsPage() {
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const [search, setSearch] = useState('');
+  // The page owns the three model-weight workflows: the catalog, node-local
+  // warmup and asynchronous transfers. A query parameter lets the legacy
+  // routes land on the right tab.
+  const [tab, setTab] = useState<'catalog' | 'warmup' | 'transfers'>(() => {
+    const requested = new URLSearchParams(window.location.search).get('tab');
+    return requested === 'warmup' || requested === 'transfers' ? requested : 'catalog';
+  });
+  const selectTab = (next: 'catalog' | 'warmup' | 'transfers') => {
+    setTab(next);
+    const url = new URL(window.location.href);
+    if (next === 'catalog') url.searchParams.delete('tab');
+    else url.searchParams.set('tab', next);
+    window.history.replaceState({}, '', `${url.pathname}${url.search}`);
+  };
   const [registerOpen, setRegisterOpen] = useState(false);
   // Model downloads live on this page: importing a model and browsing the
   // catalog are the same job, so there is no separate navigation entry.
@@ -97,127 +113,170 @@ export default function ModelsPage() {
           <h1>{t('models.title')}</h1>
           <div className="subtitle">{t('models.subtitle')}</div>
         </div>
-        <div className="toolbar">
-          <button
-            className="secondary"
-            data-testid="open-model-downloads"
-            onClick={() => setDownloadsOpen((open) => !open)}
-          >
-            {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
-          </button>
-          <button className="secondary" data-testid="open-model-upload" onClick={() => setUploadOpen(true)}>
-            {t('models.upload.open')}
-          </button>
-          <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
-            {t('models.register')}
-          </button>
-        </div>
+        {tab === 'catalog' && (
+          <div className="toolbar">
+            <button
+              className="secondary"
+              data-testid="open-model-downloads"
+              onClick={() => setDownloadsOpen((open) => !open)}
+            >
+              {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
+            </button>
+            <button className="secondary" data-testid="open-model-upload" onClick={() => setUploadOpen(true)}>
+              {t('models.upload.open')}
+            </button>
+            <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
+              {t('models.register')}
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="guide-grid" data-testid="model-workflows-guide">
+        <article className="guide-card">
+          <div className="guide-body">
+            <strong>{t('models.guideCatalogTitle')}</strong>
+            <p>{t('models.guideCatalogBody')}</p>
+          </div>
+        </article>
+        <article className="guide-card">
+          <div className="guide-body">
+            <strong>{t('models.guideWarmupTitle')}</strong>
+            <p>{t('models.guideWarmupBody')}</p>
+          </div>
+        </article>
+        <article className="guide-card">
+          <div className="guide-body">
+            <strong>{t('models.guideTransferTitle')}</strong>
+            <p>{t('models.guideTransferBody')}</p>
+          </div>
+        </article>
+      </div>
+
+      <div className="tab-strip" role="tablist">
+        <button className={`tab ${tab === 'catalog' ? 'active' : ''}`} role="tab" aria-selected={tab === 'catalog'} data-testid="models-tab-catalog" onClick={() => selectTab('catalog')}>
+          {t('models.tabCatalog')}
+        </button>
+        <button className={`tab ${tab === 'warmup' ? 'active' : ''}`} role="tab" aria-selected={tab === 'warmup'} data-testid="models-tab-warmup" onClick={() => selectTab('warmup')}>
+          {t('models.tabWarmup')}
+        </button>
+        <button className={`tab ${tab === 'transfers' ? 'active' : ''}`} role="tab" aria-selected={tab === 'transfers'} data-testid="models-tab-transfers" onClick={() => selectTab('transfers')}>
+          {t('models.tabTransfers')}
+        </button>
       </div>
 
       {error && <ErrorBanner message={error} />}
       <Toast message={notice} onDismiss={() => setNotice('')} testId="models-toast" />
 
-      {downloadsOpen && (
-        <div className="downloads-section">
-          <ModelDownloadsPanel defaultOpen />
-        </div>
-      )}
+      {tab === 'warmup' ? (
+        <ModelCachesPage embedded />
+      ) : tab === 'transfers' ? (
+        <ModelTransfersPage embedded />
+      ) : (
+        <>
+          {downloadsOpen && (
+            <div className="downloads-section">
+              <ModelDownloadsPanel defaultOpen />
+            </div>
+          )}
 
-      {uploadOpen && (
-        <UploadModelDialog
-          onClose={() => setUploadOpen(false)}
-          onDone={() => {
-            setUploadOpen(false);
-            setNotice(t('models.upload.success'));
-            void load();
-          }}
-        />
-      )}
+          {uploadOpen && (
+            <UploadModelDialog
+              onClose={() => setUploadOpen(false)}
+              onDone={() => {
+                setUploadOpen(false);
+                setNotice(t('models.upload.success'));
+                void load();
+              }}
+            />
+          )}
 
-      <div className="toolbar" style={{ marginBottom: 14 }}>
-        <input
-          type="text"
-          data-testid="model-search"
-          placeholder={t('common.searchByName')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-      </div>
-
-      <div className="panel">
-        {loading ? (
-          <div className="loading">{t('common.loading')}</div>
-        ) : filtered.length === 0 ? (
-          <div className="empty-state" data-testid="models-empty">
-            {search ? t('models.emptySearch') : t('models.empty')}
+          <div className="toolbar" style={{ marginBottom: 14 }}>
+            <input
+              type="text"
+              data-testid="model-search"
+              placeholder={t('common.searchByName')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+            />
           </div>
-        ) : (
-          <table className="data" data-testid="models-table">
-            <thead>
-              <tr>
-                <th>{t('models.colName')}</th>
-                <th>{t('models.colHubModelId')}</th>
-                <th>{t('models.colWeightPath')}</th>
-                <th>{t('models.colCreated')}</th>
-                <th className="col-actions">{t('common.actions')}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((m) => (
-                <tr
-                  key={m.modelId}
-                  data-testid={`model-row-${m.name}`}
-                  style={{ cursor: 'pointer' }}
-                  onClick={() => navigate(`/admin/models/${m.modelId}`)}
-                >
-                  <td>
-                    <strong>{m.name}</strong>
-                  </td>
-                  <td className="mono muted" data-testid={`model-hub-id-${m.name}`}>
-                    {m.hubModelId || '—'}
-                  </td>
-                  <td className="mono muted">{m.weightPath}</td>
-                  <td>{formatTime(m.createdAt)}</td>
-                  <td onClick={(e) => e.stopPropagation()}>
-                    <RowActionsMenu
-                      label={t('common.actionsFor', { name: m.name })}
-                      testId={`model-actions-${m.name}`}
-                      actions={[
-                        {
-                          key: `deploy-${m.name}`,
-                          label: t('models.deploy'),
-                          onClick: () =>
-                            navigate(
-                              `/admin/inference-services?create=1&modelId=${encodeURIComponent(m.modelId)}` +
-                                `&version=${encodeURIComponent(m.latestVersion)}`,
-                            ),
-                        },
-                        {
-                          key: `delete-model-${m.name}`,
-                          label: t('common.delete'),
-                          danger: true,
-                          onClick: () => {
-                            setDeleteError('');
-                            setDeleteTarget(m);
-                          },
-                        },
-                      ]}
-                    />
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-        {total > PAGE_SIZE && (
-          <Pagination
-            offset={offset}
-            limit={PAGE_SIZE}
-            total={total}
-            onPageChange={setOffset}
-          />
-        )}
-      </div>
+
+          <div className="panel">
+            {loading ? (
+              <div className="loading">{t('common.loading')}</div>
+            ) : filtered.length === 0 ? (
+              <div className="empty-state" data-testid="models-empty">
+                {search ? t('models.emptySearch') : t('models.empty')}
+              </div>
+            ) : (
+              <table className="data" data-testid="models-table">
+                <thead>
+                  <tr>
+                    <th>{t('models.colName')}</th>
+                    <th>{t('models.colHubModelId')}</th>
+                    <th>{t('models.colWeightPath')}</th>
+                    <th>{t('models.colCreated')}</th>
+                    <th className="col-actions">{t('common.actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((m) => (
+                    <tr
+                      key={m.modelId}
+                      data-testid={`model-row-${m.name}`}
+                      style={{ cursor: 'pointer' }}
+                      onClick={() => navigate(`/admin/models/${m.modelId}`)}
+                    >
+                      <td>
+                        <strong>{m.name}</strong>
+                      </td>
+                      <td className="mono muted" data-testid={`model-hub-id-${m.name}`}>
+                        {m.hubModelId || '—'}
+                      </td>
+                      <td className="mono muted">{m.weightPath}</td>
+                      <td>{formatTime(m.createdAt)}</td>
+                      <td onClick={(e) => e.stopPropagation()}>
+                        <RowActionsMenu
+                          label={t('common.actionsFor', { name: m.name })}
+                          testId={`model-actions-${m.name}`}
+                          actions={[
+                            {
+                              key: `deploy-${m.name}`,
+                              label: t('models.deploy'),
+                              onClick: () =>
+                                navigate(
+                                  `/admin/inference-services?create=1&modelId=${encodeURIComponent(m.modelId)}` +
+                                    `&version=${encodeURIComponent(m.latestVersion)}`,
+                                ),
+                            },
+                            {
+                              key: `delete-model-${m.name}`,
+                              label: t('common.delete'),
+                              danger: true,
+                              onClick: () => {
+                                setDeleteError('');
+                                setDeleteTarget(m);
+                              },
+                            },
+                          ]}
+                        />
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+            {total > PAGE_SIZE && (
+              <Pagination
+                offset={offset}
+                limit={PAGE_SIZE}
+                total={total}
+                onPageChange={setOffset}
+              />
+            )}
+          </div>
+        </>
+      )}
 
       {registerOpen && (
         <RegisterDialog
@@ -258,9 +317,9 @@ export default function ModelsPage() {
           </div>
         </Dialog>
       )}
-
     </div>
   );
+
 }
 
 function RegisterDialog({

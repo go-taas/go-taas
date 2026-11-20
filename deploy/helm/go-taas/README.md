@@ -478,7 +478,7 @@ Three mechanisms, highest precedence first:
 | `transfer.image.name` / `tag` | `taas-transfer` / `""` | the transfer Job image |
 | `transfer.serviceAccount.create` | `true` | create the transfer namespace, ServiceAccount and progress-ConfigMap Role |
 | `transfer.job.*` / `resources` / `progressInterval` | `2` / `21600` / `86400` / `{}` / `5s` | Job lifecycle, container resources, progress sampling |
-| `warmup.enabled` / `nodeGroups` | `false` / `[]` | create KServe local-model groups/caches and inject warm-aware affinity |
+| `warmup.enabled` | `false` | enable KServe local-model caches and inject warm-aware affinity; node groups are created at runtime in the console |
 | `warmup.scheduling.mode` / `weight` | `preferred` / `100` | `preferred`, `required` or `disabled`; weight applies to preferred |
 | `warmup.eviction.policy` / `maxModelsPerNode` / `minFreeBytes` | `lru` / `20` / `10737418240` | cache retention policy and capacity bounds |
 | `rdma.enabled` / `deviceClass` | `true` / `taas-rdma` | the DRA `DeviceClass` inference pods request RDMA devices from; `rdma.requireLinkUp` accepts only links the node reports up, and `rdma.selector` overrides the built CEL expression (pin cards or PCI addresses) |
@@ -606,21 +606,16 @@ only as an upgrade escape hatch; a release without a `taas-transfer` image
 falls back to it automatically.
 
 `warmup` turns `LocalModelCache`/`LocalModelNodeGroup` creation and
-warm-aware scheduling on. The controller creates one node group per
-`warmup.nodeGroups` entry, creates a cache on `WarmModel`, and injects a
-node affinity into `LLMInferenceService` when the model is already warm on
-some nodes:
+warm-aware scheduling on. Warmup node groups are **not Helm values**: a
+platform administrator creates them in **Operations > Warmup node groups**,
+the model service stores them in PostgreSQL, and the controller materializes
+the KServe `LocalModelNodeGroup`. The controller also creates a cache on
+`WarmModel` and injects a node affinity into `LLMInferenceService` when the
+model is already warm on some nodes:
 
 ```yaml
 warmup:
   enabled: true
-  nodeGroups:
-    - name: worker
-      storageLimit: 200Gi
-      hostPath: /var/lib/taas/models
-      storageClass: ""       # empty uses the hostPath volume
-      nodeSelector:
-        kserve/localmodel: worker
   scheduling:
     mode: preferred          # preferred, required or disabled
     weight: 100              # 1-100, preferred mode only
@@ -630,15 +625,15 @@ warmup:
     minFreeBytes: 10737418240
 ```
 
-The node group needs the KServe local-model agent on its nodes; the
-`nodeSelector` is what the operator uses to bind the group to a pool that
-runs that agent. `scheduling.mode: required` makes a deployment wait for a
+Each node group needs the KServe local-model agent on its nodes; its
+`nodeSelector` binds the group to a pool that runs that agent. An upgrade
+must create at least one group in the console before the first warmup. `scheduling.mode: required` makes a deployment wait for a
 warmed node, which is correct for latency-critical models and a capacity
 risk during drains; the default `preferred` degrades to a cold node.
 
-The console exposes the three read/operate surfaces under the platform
-administrator navigation: **Storage backends**, **Model transfers** and
-**Model caches**.
+The console exposes **Operations > Storage backends** (with delivery/node
+cache guidance) and **Operations > Warmup node groups**, and folds model
+warmup and transfers into the **Models** page as tabs.
 
 ## Shared model weights
 

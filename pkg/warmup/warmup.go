@@ -63,3 +63,41 @@ type Status struct {
 	SizeBytes   int64     `json:"sizeBytes,omitempty"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
+
+// NodeGroupEvent is a platform-managed node-group create/update/delete. The
+// controller reconciles the matching KServe LocalModelNodeGroup; the model
+// service publishes it whenever an administrator edits the group.
+type NodeGroupEvent struct {
+	NodeGroup NodeGroup `json:"nodeGroup"`
+	Deleted   bool      `json:"deleted,omitempty"`
+	// Snapshot carries the complete desired set. The model service publishes
+	// it periodically so a controller that restarted converges, including
+	// node groups that were deleted while it was down.
+	Snapshot   bool        `json:"snapshot,omitempty"`
+	NodeGroups []NodeGroup `json:"nodeGroups,omitempty"`
+}
+
+// NodeModel is one model copy recorded on a LocalModelNode.
+type NodeModel struct {
+	CacheName string `json:"cacheName"`
+	ModelName string `json:"modelName,omitempty"`
+	NodeGroup string `json:"nodeGroup,omitempty"`
+	State     string `json:"state,omitempty"`
+}
+
+// Node is the controller's observation of one LocalModelNode.
+type Node struct {
+	Name            string      `json:"name"`
+	NodeGroups      []string    `json:"nodeGroups,omitempty"`
+	Models          []NodeModel `json:"models,omitempty"`
+	ModelCount      int         `json:"modelCount"`
+	DownloadedCount int         `json:"downloadedCount"`
+	ObservedAt      time.Time   `json:"observedAt"`
+}
+
+// NodeSnapshot is the full set of LocalModelNodes the controller owns. It is
+// published as a complete snapshot so the server can drop nodes that no
+// longer exist.
+type NodeSnapshot struct {
+	Nodes []Node `json:"nodes"`
+}

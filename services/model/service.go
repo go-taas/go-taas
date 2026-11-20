@@ -301,12 +301,11 @@ type Service struct {
 	transferPublisher TransferPublisher
 	// warmupEnabled exposes whether node-local model warmup is enabled.
 	warmupEnabled bool
-	// warmupDefaults carries the controller's warmup configuration.
-	warmupNodeGroups []WarmupNodeGroupSettings
 }
 
-// WarmupNodeGroupSettings is one configured node pool, copied from config so
-// the model service need not import the config package.
+// WarmupNodeGroupSettings is one platform-managed node pool. It is kept as a
+// service-level projection so the model module stays free of the config
+// package and of GORM in its API.
 type WarmupNodeGroupSettings struct {
 	Name         string
 	StorageLimit string
@@ -547,7 +546,7 @@ func NewForFVT(db *gorm.DB) *Service {
 // model_authorizations) onto a caller-provided database for
 // full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&Model{}, &Version{}, &Authorization{}, &ModelTransfer{}, &ModelCacheEntry{})
+	return db.AutoMigrate(&Model{}, &Version{}, &Authorization{}, &ModelTransfer{}, &ModelCacheEntry{}, &WarmupNodeGroup{}, &WarmupNode{})
 }
 
 // AttachToServer implements server.Service.
@@ -580,7 +579,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err := migrateActiveVersionIndex(db); err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}, &ModelTransfer{}, &ModelCacheEntry{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}, &ModelTransfer{}, &ModelCacheEntry{}, &WarmupNodeGroup{}, &WarmupNode{}); err != nil {
 		return err
 	}
 	// Downloads are in-process goroutines: a job left queued or running

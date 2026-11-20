@@ -175,6 +175,12 @@ type Subjects struct {
 	// ModelWarmupStatus carries LocalModelCache/LocalModelNode observations
 	// from the controller back to the model module.
 	ModelWarmupStatus string
+	// ModelWarmupGroups carries platform-managed warmup node-group
+	// create/update/delete events to the controller.
+	ModelWarmupGroups string
+	// ModelWarmupNodes carries the full LocalModelNode snapshot from the
+	// controller back to the model module.
+	ModelWarmupNodes string
 }
 
 // DefaultSubjects returns the canonical subject names.
@@ -201,7 +207,9 @@ func DefaultSubjects() Subjects {
 		ModelTransfers:          "model.transfers",
 		ModelTransferStatus:     "model.transfers.status",
 		ModelWarmups:            "model.warmups",
-		ModelWarmupStatus:       "model.warmups.status"}
+		ModelWarmupStatus:       "model.warmups.status",
+		ModelWarmupGroups:       "model.warmups.groups",
+		ModelWarmupNodes:        "model.warmups.nodes"}
 }
 
 // NewFake returns an in-memory Client for unit tests and local development

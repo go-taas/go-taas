@@ -60,7 +60,6 @@ type ModelWarmupReconciler struct {
 	dynamic   dynamic.Interface
 	client    mq.Client
 	namespace string
-	groups    []config.WarmupNodeGroup
 	eviction  config.WarmupEviction
 	interval  time.Duration
 	seed      WarmupSeedConfig
@@ -73,12 +72,77 @@ func NewModelWarmupReconciler(dynamicClient dynamic.Interface, client mq.Client,
 		dynamic:   dynamicClient,
 		client:    client,
 		namespace: firstNonEmptyTrim(namespace, "taas-infer"),
-		groups:    cfg.NodeGroups,
 		eviction:  cfg.Eviction,
 		interval:  15 * time.Second,
 		seed:      seed,
 		storage:   storageCfg,
 	}
+}
+
+// ApplyNodeGroup consumes one platform-managed node-group create/update or
+// delete. Node groups are not Helm values: the model service publishes every
+// edit, so the KServe LocalModelNodeGroup follows the database row.
+func (r *ModelWarmupReconciler) ApplyNodeGroup(ctx context.Context, msg mq.Message) error {
+	var event warmup.NodeGroupEvent
+	if err := json.Unmarshal(msg.Body, &event); err != nil {
+		return fmt.Errorf("controller: malformed warmup node group event: %w", err)
+	}
+	if event.Snapshot {
+		return r.syncNodeGroups(ctx, event.NodeGroups)
+	}
+	name := strings.TrimSpace(event.NodeGroup.Name)
+	if name == "" {
+		return fmt.Errorf("controller: warmup node group event has no name")
+	}
+	if event.Deleted {
+		return r.deleteNodeGroup(ctx, name)
+	}
+	return r.ensureNodeGroup(ctx, event.NodeGroup)
+}
+
+// syncNodeGroups converges the managed LocalModelNodeGroups to the desired
+// set. It creates or updates every group in the snapshot and deletes managed
+// groups the snapshot no longer contains, so a deletion that happened while
+// the controller was down still takes effect.
+func (r *ModelWarmupReconciler) syncNodeGroups(ctx context.Context, groups []warmup.NodeGroup) error {
+	desired := make(map[string]bool, len(groups))
+	for _, group := range groups {
+		name := strings.TrimSpace(group.Name)
+		if name == "" {
+			continue
+		}
+		desired[name] = true
+		if err := r.ensureNodeGroup(ctx, group); err != nil {
+			return err
+		}
+	}
+	existing, err := r.dynamic.Resource(localModelNodeGroupGVR).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/managed-by=taas",
+	})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	for _, item := range existing.Items {
+		if desired[item.GetName()] {
+			continue
+		}
+		if err := r.deleteNodeGroup(ctx, item.GetName()); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// deleteNodeGroup removes a LocalModelNodeGroup; a missing group is success.
+func (r *ModelWarmupReconciler) deleteNodeGroup(ctx context.Context, name string) error {
+	err := r.dynamic.Resource(localModelNodeGroupGVR).Delete(ctx, name, metav1.DeleteOptions{})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	return err
 }
 
 // ApplyModelWarmup consumes one warmup request. Cancellation deletes the
@@ -96,9 +160,6 @@ func (r *ModelWarmupReconciler) ApplyModelWarmup(ctx context.Context, msg mq.Mes
 		return r.deleteCache(ctx, cacheName)
 	}
 	groups := request.NodeGroups
-	if len(groups) == 0 {
-		groups = r.configuredGroups()
-	}
 	for _, group := range groups {
 		if err := r.ensureNodeGroup(ctx, group); err != nil {
 			return err
@@ -127,23 +188,11 @@ func (r *ModelWarmupReconciler) Run(ctx context.Context) {
 			if err := r.reportCaches(ctx); err != nil {
 				logger.S().Warnw("controller: model cache scan failed", "err", err)
 			}
+			if err := r.reportNodes(ctx); err != nil {
+				logger.S().Warnw("controller: local model node scan failed", "err", err)
+			}
 		}
 	}
-}
-
-// configuredGroups maps the operator's config onto local node groups.
-func (r *ModelWarmupReconciler) configuredGroups() []warmup.NodeGroup {
-	out := make([]warmup.NodeGroup, 0, len(r.groups))
-	for _, group := range r.groups {
-		out = append(out, warmup.NodeGroup{
-			Name:         group.Name,
-			NodeSelector: group.NodeSelector,
-			StorageLimit: group.StorageLimit,
-			HostPath:     group.HostPath,
-			StorageClass: group.StorageClass,
-		})
-	}
-	return out
 }
 
 // nodeSelectorAffinity converts a label selector into the required node
@@ -370,7 +419,7 @@ func (r *ModelWarmupReconciler) seedCaches(ctx context.Context) error {
 		}
 		for j := range nodes.Items {
 			node := &nodes.Items[j]
-			hostPath, modelName, ok := r.seedTarget(node, cacheName, allowed)
+			hostPath, modelName, ok := r.seedTarget(ctx, node, cacheName, allowed)
 			if !ok {
 				continue
 			}
@@ -462,7 +511,7 @@ func (r *ModelWarmupReconciler) backendForURI(sourceURI, backendName string) (st
 
 // seedTarget returns the node host path and model identity when a node
 // belongs to one of the cache's node groups.
-func (r *ModelWarmupReconciler) seedTarget(node *unstructured.Unstructured, cacheName string, allowed map[string]bool) (hostPath, modelName string, ok bool) {
+func (r *ModelWarmupReconciler) seedTarget(ctx context.Context, node *unstructured.Unstructured, cacheName string, allowed map[string]bool) (hostPath, modelName string, ok bool) {
 	spec, _ := node.Object["spec"].(map[string]any)
 	if spec == nil {
 		return "", "", false
@@ -481,20 +530,26 @@ func (r *ModelWarmupReconciler) seedTarget(node *unstructured.Unstructured, cach
 		if len(allowed) > 0 && !allowed[group] {
 			continue
 		}
-		hostPath = r.hostPathForGroup(group)
+		hostPath = hostPathForGroup(ctx, r.dynamic, group)
 		return hostPath, name, true
 	}
 	return "", "", false
 }
 
-// hostPathForGroup resolves the configured host path for a node group.
-func (r *ModelWarmupReconciler) hostPathForGroup(name string) string {
-	for _, group := range r.groups {
-		if group.Name == name {
-			return firstNonEmptyTrim(group.HostPath, "/var/lib/taas/models")
-		}
+// hostPathForGroup reads the host path from a node group's
+// LocalModelNodeGroup. The database row is the source of truth, so neither
+// the warmup nor the serving path keeps a second copy of the group settings.
+func hostPathForGroup(ctx context.Context, dynamicClient dynamic.Interface, name string) string {
+	const fallback = "/models"
+	if dynamicClient == nil || name == "" {
+		return fallback
 	}
-	return "/var/lib/taas/models"
+	group, err := dynamicClient.Resource(localModelNodeGroupGVR).Get(ctx, name, metav1.GetOptions{})
+	if err != nil {
+		return fallback
+	}
+	hostPath := nestedString(group, "spec", "persistentVolumeSpec", "hostPath", "path")
+	return firstNonEmptyTrim(hostPath, fallback)
 }
 
 // nodeHasModel reports whether a LocalModelNode already records the cache as
@@ -866,6 +921,72 @@ func (r *ModelWarmupReconciler) reportCaches(ctx context.Context) error {
 		}
 	}
 	return nil
+}
+
+// reportNodes publishes the full LocalModelNode snapshot: each node's
+// groups and the model copies it records. The server replaces its projection
+// with this snapshot, so a deleted node disappears from the console.
+func (r *ModelWarmupReconciler) reportNodes(ctx context.Context) error {
+	list, err := r.dynamic.Resource(localModelNodeGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		if apierrors.IsNotFound(err) {
+			return nil
+		}
+		return err
+	}
+	now := time.Now().UTC()
+	snapshot := warmup.NodeSnapshot{Nodes: make([]warmup.Node, 0, len(list.Items))}
+	for i := range list.Items {
+		node := &list.Items[i]
+		observed := warmup.Node{Name: node.GetName(), ObservedAt: now}
+		seenGroups := map[string]bool{}
+		spec, _ := node.Object["spec"].(map[string]any)
+		if spec != nil {
+			if localModels, ok := spec["localModels"].([]any); ok {
+				for _, entry := range localModels {
+					model, ok := entry.(map[string]any)
+					if !ok {
+						continue
+					}
+					name, _ := model["modelName"].(string)
+					group, _ := model["nodeGroup"].(string)
+					if name == "" {
+						continue
+					}
+					if group != "" && !seenGroups[group] {
+						seenGroups[group] = true
+						observed.NodeGroups = append(observed.NodeGroups, group)
+					}
+					observed.Models = append(observed.Models, warmup.NodeModel{
+						CacheName: name, NodeGroup: group,
+					})
+				}
+			}
+		}
+		status, _ := node.Object["status"].(map[string]any)
+		if status != nil {
+			if modelStatus, ok := status["modelStatus"].(map[string]any); ok {
+				for i := range observed.Models {
+					if state, ok := modelStatus[observed.Models[i].CacheName].(string); ok {
+						observed.Models[i].State = state
+					}
+				}
+			}
+		}
+		sort.Strings(observed.NodeGroups)
+		observed.ModelCount = len(observed.Models)
+		for _, model := range observed.Models {
+			if model.State == "ModelDownloaded" {
+				observed.DownloadedCount++
+			}
+		}
+		snapshot.Nodes = append(snapshot.Nodes, observed)
+	}
+	body, err := json.Marshal(&snapshot)
+	if err != nil {
+		return err
+	}
+	return r.client.Publish(ctx, mq.DefaultSubjects().ModelWarmupNodes, body, nil)
 }
 
 // applyWarmupAffinity injects the model-aware node affinity into a serving

@@ -58,7 +58,7 @@ func newStorageFVTEnv(t *testing.T) *storageFVTEnv {
 	})
 	svc.SetTransferSettings(model.TransferSettings{Mode: "job", Namespace: "taas-jobs", Image: "taas-transfer:test"})
 	svc.SetTransferPublisher(&storageFVTPublisher{})
-	svc.SetWarmupSettings(true, []model.WarmupNodeGroupSettings{{Name: "gpu", StorageLimit: "10Gi", HostPath: "/var/lib/taas/models"}})
+	svc.SetWarmupSettings(true)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
@@ -124,8 +124,23 @@ func TestStorageTransferWarmupAPIs(t *testing.T) {
 	require.Equal(t, 200, code)
 	assert.Equal(t, "cancelled", cancelled["transfer"].(map[string]any)["state"])
 
-	// Warm the model on the configured node group.
-	code, warmed := env.call(t, "POST", "/api/v1/admin/model-warmups", map[string]any{"modelId": modelID})
+	// Warmup node groups are platform-managed rows, not Helm values. Create
+	// one through the admin API before queueing a warmup.
+	code, group := env.call(t, "POST", "/api/v1/admin/model-warmup-node-groups", map[string]any{
+		"name": "gpu", "nodeSelector": map[string]string{"gpu": "true"},
+		"storageLimit": "10Gi", "hostPath": "/var/lib/taas/models",
+	})
+	require.Equal(t, 200, code, "%v", group)
+	assert.Equal(t, "gpu", group["nodeGroup"].(map[string]any)["name"])
+
+	code, groups := env.call(t, "GET", "/api/v1/admin/model-warmup-node-groups", nil)
+	require.Equal(t, 200, code)
+	assert.Len(t, groups["nodeGroups"].([]any), 1)
+
+	// Warm the model on the selected node group.
+	code, warmed := env.call(t, "POST", "/api/v1/admin/model-warmups", map[string]any{
+		"modelId": modelID, "nodeGroups": []string{"gpu"},
+	})
 	require.Equal(t, 200, code, "%v", warmed)
 	cache := warmed["cache"].(map[string]any)
 	cacheID, _ := cache["cacheId"].(string)
@@ -136,7 +151,15 @@ func TestStorageTransferWarmupAPIs(t *testing.T) {
 	require.Equal(t, 200, code)
 	assert.Len(t, caches["caches"].([]any), 1)
 
+	// The renamed endpoint returns the same rows under its new field name.
+	code, warmups := env.call(t, "GET", "/api/v1/admin/model-warmups?page.limit=10", nil)
+	require.Equal(t, 200, code)
+	assert.Len(t, warmups["warmups"].([]any), 1)
+
 	code, cancelledCache := env.call(t, "POST", "/api/v1/admin/model-warmups/"+cacheID+":cancel", map[string]any{})
 	require.Equal(t, 200, code)
 	assert.Equal(t, "cancelled", cancelledCache["cache"].(map[string]any)["state"])
+
+	code, deleted := env.call(t, "DELETE", "/api/v1/admin/model-warmup-node-groups/gpu", nil)
+	require.Equal(t, 200, code, "%v", deleted)
 }

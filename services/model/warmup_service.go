@@ -18,12 +18,11 @@ import (
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 )
 
-// SetWarmupSettings installs the warmup enable flag and the configured node
-// groups. The model service copies them so it stays free of the config
-// package.
-func (s *Service) SetWarmupSettings(enabled bool, groups []WarmupNodeGroupSettings) {
+// SetWarmupSettings installs the warmup enable flag. Node groups are
+// platform-managed rows, not configuration: they are created and edited in
+// the Operations console and read from the database on every request.
+func (s *Service) SetWarmupSettings(enabled bool) {
 	s.warmupEnabled = enabled
-	s.warmupNodeGroups = groups
 }
 
 // WarmModel records a warmup request and hands it to the controller, which
@@ -63,23 +62,17 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 	if err != nil {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: %v", err)
 	}
-	groups := s.warmupNodeGroups
-	if requested := req.GetNodeGroups(); len(requested) > 0 {
-		byName := make(map[string]WarmupNodeGroupSettings, len(s.warmupNodeGroups))
-		for _, group := range s.warmupNodeGroups {
-			byName[group.Name] = group
-		}
-		groups = make([]WarmupNodeGroupSettings, 0, len(requested))
-		for _, name := range requested {
-			group, ok := byName[strings.TrimSpace(name)]
-			if !ok {
-				return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: unknown warmup node group %q", name)
-			}
-			groups = append(groups, group)
-		}
+	db, err := s.gormDB()
+	if err != nil {
+		return nil, err
+	}
+	groups, err := s.warmupGroupsFor(ctx, db, req.GetNodeGroups())
+	if err != nil {
+		return nil, err
 	}
 	if len(groups) == 0 {
-		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: no warmup node group is configured")
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: no warmup node group is configured; create one in Operations > Warmup node groups")
 	}
 	now := time.Now().UTC()
 	entry := &ModelCacheEntry{
@@ -93,10 +86,6 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 		State:      warmup.StateQueued,
 		CreatedAt:  now,
 		UpdatedAt:  now,
-	}
-	db, err := s.gormDB()
-	if err != nil {
-		return nil, err
 	}
 	// A model version can only have one live cache. KServe rejects a second
 	// LocalModelCache with the same source URI, so re-warming an already
@@ -153,40 +142,55 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 	return &modelv1.WarmModelResponse{Response: okResponse(), Cache: cacheProjection(entry)}, nil
 }
 
-// ListModelCacheEntries returns one page of cache entries, newest first.
-func (s *Service) ListModelCacheEntries(ctx context.Context, req *modelv1.ListModelCacheEntriesRequest) (*modelv1.ListModelCacheEntriesResponse, error) {
-	if err := s.requireAdminRole(ctx, callerOrgID(ctx)); err != nil {
-		return nil, err
-	}
-	db, err := s.gormDB()
+// ListModelWarmups returns one page of warmup entries, newest first. It is
+// the current name of ListModelCacheEntries; both share one query so the
+// legacy console path and the renamed endpoint cannot disagree.
+func (s *Service) ListModelWarmups(ctx context.Context, req *modelv1.ListModelWarmupsRequest) (*modelv1.ListModelWarmupsResponse, error) {
+	caches, pageMeta, err := s.listWarmups(ctx, req.GetPage(), req.GetModelId(), req.GetState())
 	if err != nil {
 		return nil, err
 	}
-	offset, limit := normalizePagination(req.GetPage())
+	return &modelv1.ListModelWarmupsResponse{Response: okResponse(), Warmups: caches, PageMeta: pageMeta}, nil
+}
+
+// ListModelCacheEntries returns one page of cache entries, newest first.
+func (s *Service) ListModelCacheEntries(ctx context.Context, req *modelv1.ListModelCacheEntriesRequest) (*modelv1.ListModelCacheEntriesResponse, error) {
+	caches, pageMeta, err := s.listWarmups(ctx, req.GetPage(), req.GetModelId(), req.GetState())
+	if err != nil {
+		return nil, err
+	}
+	return &modelv1.ListModelCacheEntriesResponse{Response: okResponse(), Caches: caches, PageMeta: pageMeta}, nil
+}
+
+func (s *Service) listWarmups(ctx context.Context, page *commonv1.PageRequest, modelID, state string) ([]*modelv1.ModelCacheEntry, *commonv1.PageMeta, error) {
+	if err := s.requireAdminRole(ctx, callerOrgID(ctx)); err != nil {
+		return nil, nil, err
+	}
+	db, err := s.gormDB()
+	if err != nil {
+		return nil, nil, err
+	}
+	offset, limit := normalizePagination(page)
 	query := db.WithContext(ctx).Model(&ModelCacheEntry{})
-	if modelID := strings.TrimSpace(req.GetModelId()); modelID != "" {
+	if modelID = strings.TrimSpace(modelID); modelID != "" {
 		query = query.Where("model_id = ?", modelID)
 	}
-	if state := strings.TrimSpace(req.GetState()); state != "" {
+	if state = strings.TrimSpace(state); state != "" {
 		query = query.Where("state = ?", state)
 	}
 	var total int64
 	if err := query.Count(&total).Error; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var rows []*ModelCacheEntry
 	if err := query.Order("created_at DESC").Order("id DESC").Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	caches := make([]*modelv1.ModelCacheEntry, 0, len(rows))
 	for _, row := range rows {
 		caches = append(caches, cacheProjection(row))
 	}
-	return &modelv1.ListModelCacheEntriesResponse{
-		Response: okResponse(),
-		Caches:   caches,
-		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampToInt32(limit)},
-	}, nil
+	return caches, &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampToInt32(limit)}, nil
 }
 
 // CancelModelWarmup marks a cache cancelled and asks the controller to

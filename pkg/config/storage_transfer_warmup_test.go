@@ -65,13 +65,7 @@ func TestValidateRejectsCacheDeliveryWithoutWarmup(t *testing.T) {
 	assert.Error(t, cfg.Validate())
 
 	cfg.Warmup.Enabled = true
-	cfg.Warmup.NodeGroups = []WarmupNodeGroup{{Name: "gpu"}}
 	assert.NoError(t, cfg.Validate())
-}
-
-func TestValidateRejectsWarmupWithoutNodeGroups(t *testing.T) {
-	cfg := &Configuration{Warmup: WarmupConfig{Enabled: true}}
-	assert.Error(t, cfg.Validate())
 }
 
 func TestValidateRejectsInvalidWarmupWeight(t *testing.T) {

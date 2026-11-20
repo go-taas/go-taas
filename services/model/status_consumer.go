@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
@@ -64,6 +65,42 @@ func NewModelWarmupStatusConsumerRunner(components server.Components, svc *Servi
 		group:   "model-warmup-status",
 		apply:   svc.HandleModelWarmupStatus,
 	}
+}
+
+// NewModelWarmupNodeStatusConsumerRunner builds the LocalModelNode
+// snapshot consumer, or nil when MQ is unavailable.
+func NewModelWarmupNodeStatusConsumerRunner(components server.Components, svc *Service) server.Runner {
+	client := mqClient(components)
+	if client == nil || svc == nil {
+		return nil
+	}
+	return &statusConsumer{
+		client:  client,
+		service: svc,
+		subject: mq.DefaultSubjects().ModelWarmupNodes,
+		group:   "model-warmup-nodes",
+		apply:   svc.HandleWarmupNodeSnapshot,
+	}
+}
+
+// warmupNodeGroupSyncRunner republishes the platform-managed node groups so
+// a controller that (re)starts after the original edit still converges.
+type warmupNodeGroupSyncRunner struct {
+	service *Service
+}
+
+// Run implements server.Runner.
+func (r *warmupNodeGroupSyncRunner) Run(ctx context.Context) error {
+	return r.service.RunWarmupNodeGroupSync(ctx, 30*time.Second)
+}
+
+// NewWarmupNodeGroupSyncRunner builds the node-group sync runner, or nil
+// when MQ is unavailable.
+func NewWarmupNodeGroupSyncRunner(components server.Components, svc *Service) server.Runner {
+	if mqClient(components) == nil || svc == nil {
+		return nil
+	}
+	return &warmupNodeGroupSyncRunner{service: svc}
 }
 
 // mqClient unwraps the shared MQ component.

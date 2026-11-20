@@ -121,17 +121,7 @@ func main() {
 		Namespace: cfg.Transfer.Namespace,
 		Image:     cfg.Transfer.Image,
 	})
-	warmupGroups := make([]model.WarmupNodeGroupSettings, 0, len(cfg.Warmup.NodeGroups))
-	for _, group := range cfg.Warmup.NodeGroups {
-		warmupGroups = append(warmupGroups, model.WarmupNodeGroupSettings{
-			Name:         group.Name,
-			StorageLimit: group.StorageLimit,
-			HostPath:     group.HostPath,
-			StorageClass: group.StorageClass,
-			NodeSelector: group.NodeSelector,
-		})
-	}
-	modelSvc.SetWarmupSettings(cfg.Warmup.Enabled, warmupGroups)
+	modelSvc.SetWarmupSettings(cfg.Warmup.Enabled)
 	srv.RegisterService(modelSvc)
 	// Feature: model download from a model hub (ModelScope/HuggingFace).
 	// The downloader writes into the JuiceFS-mounted weights directory so
@@ -876,6 +866,12 @@ func main() {
 		srv.AddRunner(runner)
 	}
 	if runner := model.NewModelWarmupStatusConsumerRunner(srv.Components(), modelSvc); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := model.NewModelWarmupNodeStatusConsumerRunner(srv.Components(), modelSvc); runner != nil {
+		srv.AddRunner(runner)
+	}
+	if runner := model.NewWarmupNodeGroupSyncRunner(srv.Components(), modelSvc); runner != nil {
 		srv.AddRunner(runner)
 	}
 	if runner := accelerator.NewSnapshotConsumerRunner(srv.Components(), acceleratorCache); runner != nil {

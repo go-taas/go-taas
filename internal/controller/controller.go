@@ -168,6 +168,13 @@ func (c *Controller) Run(ctx context.Context) error {
 				errCh <- err
 			}
 		}()
+		go func() {
+			if err := c.client.Subscribe(ctx, subjects.ModelWarmupGroups, func(msg mq.Message) error {
+				return c.modelWarmup.ApplyNodeGroup(ctx, msg)
+			}); err != nil {
+				errCh <- err
+			}
+		}()
 		go c.modelWarmup.Run(ctx)
 	}
 	if c.inventory != nil {

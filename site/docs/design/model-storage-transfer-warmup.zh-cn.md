@@ -122,14 +122,16 @@ model 服务 <----------------------+
 
 | 资源 | 归属 | 作用 |
 | --- | --- | --- |
-| `LocalModelNodeGroup` | Controller，来自 `warmup.nodeGroups` | 可缓存权重的节点池，含容量与 hostPath/PVC |
+| `LocalModelNodeGroup` | Controller，来自 `warmup_node_groups` 行 | 可缓存权重的节点池，含容量与 hostPath/PVC |
 | `LocalModelCache` | Controller，来自 `WarmModel` 请求 | 一个待复制到节点组的模型 |
 | `LocalModelNode` | KServe localmodel controller（节点状态由 agent 维护） | 每节点已下载模型状态 |
 | `LLMInferenceService` | Controller | 接收注入的 `nodeAffinity` |
 
-`WarmModel` 校验模型版本与解析后的源 URI，写入 `model_cache_entries`（`queued`）并发布 `model.warmups`。Controller 确保节点组与缓存存在，随后回报 `queued` → `warming` → `ready`（或 `failed`/`cancelled`），携带已预热节点、节点总数与字节数。
+预热节点组**不是 Helm 配置**。平台管理员在“运维 > 预热节点组”中创建、编辑和删除，模型服务校验后写入 `warmup_node_groups`，Controller 监听 `model.warmups.groups` 创建、更新或删除对应的 KServe `LocalModelNodeGroup`。服务端每 30 秒发布一次完整期望集合，Controller 应用全部节点组并删除集合中已不存在的受管节点组，因此重启后无需数据库即可收敛，停机期间删除的节点组也会被清理。仍被排队、预热中或已就绪任务引用的节点组拒绝删除。
 
-KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携带平台的对象存储凭据。因此 Controller 对能解析到已配置后端的缓存都在节点上自行预热：每轮扫描缓存时找到对应的 `LocalModelNode`，在目标节点运行一次性 `taas-transfer` Job（节点组 hostPath 挂载到 `/target`）。文件系统源把 PVC 只读挂载到 `/source`；对象存储源把后端 Secret 投射为 `WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY`，由 transfer 拉取前缀。两者都复制到 `/target/models/<storageKey>`，只有 Job 成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。没有匹配后端的 HTTP 源继续走 KServe 原生路径。
+`WarmModel` 校验模型版本与解析后的源 URI，支持可选的 `node_groups`（为空表示全部托管节点组），写入 `model_cache_entries`（`queued`）并发布携带完整节点组配置的 `model.warmups`。Controller 确保所选节点组与缓存存在，随后回报 `queued` → `warming` → `ready`（或 `failed`/`cancelled`），携带已预热节点、节点总数与字节数。
+
+KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携带平台的对象存储凭据。因此 Controller 对能解析到已配置后端的缓存都在节点上自行预热：每轮扫描缓存时找到对应的 `LocalModelNode`，从实时 `LocalModelNodeGroup` 解析节点组 hostPath，在目标节点运行一次性 `taas-transfer` Job（该 hostPath 挂载到 `/target`）。`cache` 交付的推理 Pod 也挂载同一 hostPath，因此修改节点组路径无需发布 Helm 即同时影响两条链路。文件系统源把 PVC 只读挂载到 `/source`；对象存储源把后端 Secret 投射为 `WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY`，由 transfer 拉取前缀。两者都复制到 `/target/models/<storageKey>`，只有 Job 成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。没有匹配后端的 HTTP 源继续走 KServe 原生路径。
 
 ### 5.2 调度
 
@@ -151,6 +153,8 @@ KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携�
 | --- | --- | --- |
 | `model_transfers` | `id`、`model_id`、`version`、`operation`、`source_backend`、`target_backend`、`source_uri`、`target_uri`、`state`、`message`、`bytes`、`total_bytes`、`job_name`、`download_id` | 一次搬运一行；`download_id` 关联异步下载要完成的下载行 |
 | `model_cache_entries` | `id`、`model_id`、`model_name`、`version`、`backend`、`source_uri`、`weight_path`、`state`、`message`、`size_bytes`、`warmed_nodes`、`node_groups` | 一个 `LocalModelCache` 一行 |
+| `warmup_node_groups` | `name`、`node_selector_json`、`storage_limit`、`host_path`、`storage_class`、时间戳 | 平台管理的预热节点池，是 KServe `LocalModelNodeGroup` 的事实来源 |
+| `warmup_nodes` | `name`、`node_groups_json`、`models_json`、`model_count`、`downloaded_count`、`observed_at` | 最近一次完整 `LocalModelNode` 快照；原子替换，被删除节点会消失 |
 | `model_versions` | `storage_backend` | 版本所在后端，空表示默认后端 |
 
 行只由服务端写入，Controller 仅发布状态；重连无需数据库句柄，也不会与目录分叉。
@@ -164,21 +168,26 @@ KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携�
 | GET | `/api/v1/admin/model-transfers` | 分页列出搬运，最新在前 |
 | GET | `/api/v1/admin/model-transfers/{transfer_id}` | 单个搬运及进度 |
 | POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | 取消排队/运行中的搬运 |
-| POST | `/api/v1/admin/model-warmups` | 在配置的节点组预热模型版本 |
-| GET | `/api/v1/admin/model-cache-entries` | 分页列出缓存，最新在前 |
-| POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | 移除模型缓存 |
+| POST | `/api/v1/admin/model-warmups` | 在指定（或全部）预热节点组预热模型版本 |
+| GET | `/api/v1/admin/model-cache-entries` | 分页列出预热任务，最新在前 |
+| POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | 移除模型预热 |
+| GET | `/api/v1/admin/model-warmup-node-groups` | 列出平台管理的预热节点组及就绪/总节点数 |
+| POST | `/api/v1/admin/model-warmup-node-groups` | 创建节点组并让 Controller 落地 |
+| PUT | `/api/v1/admin/model-warmup-node-groups/{name}` | 编辑节点组，名称不可变 |
+| DELETE | `/api/v1/admin/model-warmup-node-groups/{name}` | 无活跃预热引用时删除节点组 |
+| GET | `/api/v1/admin/model-warmup-nodes` | 列出每个节点的最近一次 `LocalModelNode` 观测 |
 
 既有 `StartModelDownload` 请求不变；配置搬运镜像后立即返回排队下载，搬运行携带同一 `download_id`，轮询下载接口的客户端可看到状态迁移，而不是长连接等待。
 
 ## 8. 控制台
 
-平台管理员导航下三个页面：
+平台管理员控制台按运维任务重新组织：
 
-- **存储后端**：只读展示后端类型、endpoint/claim、挂载路径与交付模式，解释部署表单为何提供 `mount` 或 `cache`。
-- **模型搬运**：列出操作、源 → 目标、状态、字节/总量、消息，并为非终态提供取消。
-- **模型缓存**：模型/版本、后端、节点组、已预热节点、大小与状态，可取消。
+- **运维 > 存储后端**：只读展示后端类型、endpoint/claim、挂载路径、交付模式与是否允许节点缓存。列表上方用设计过的提示卡解释 `mount`、`download`、`cache`，并用一条提示说明：节点缓存同时需要“允许缓存交付的后端”和“覆盖目标节点的预热节点组”。
+- **运维 > 预热节点组**：创建、编辑、删除平台管理的节点组（选择器、存储上限、宿主机路径、存储类），并展示就绪/总节点数；提示卡说明节点组是运行时配置而非 Helm 值。
+- **模型**：单页三个标签：**模型目录**、**预热**、**模型传输**。目录保留注册、上传、下载与部署；预热包含原模型缓存列表和新增的**节点**标签，展示每个 `LocalModelNode` 的节点组与模型副本；模型传输包含异步复制/下载/删除与取消。旧路由 `/admin/model-transfers`、`/admin/model-cache-entries` 会重定向到对应标签，书签继续可用。
 
-三页遵循共享表格、空态、错误与分页约定（`PAGE_SIZE = 20`），文案全部来自 API 数据而非硬编码样例。
+所有视图遵循共享表格、空态、错误与分页约定（`PAGE_SIZE = 20`），文案全部来自 API 数据而非硬编码样例。
 
 ## 9. Helm 配置
 
@@ -221,12 +230,8 @@ transfer:
 
 warmup:
   enabled: true
-  nodeGroups:
-    - name: worker
-      storageLimit: 200Gi
-      hostPath: /var/lib/taas/models
-      nodeSelector:
-        kserve/localmodel: worker
+  # 预热节点组不是 Helm 值。在“运维 > 预热节点组”运行时创建；模型服务写入
+  # PostgreSQL，Controller 创建对应的 KServe LocalModelNodeGroup。
   scheduling:
     mode: preferred
     weight: 100
@@ -238,6 +243,7 @@ warmup:
 - `delivery.default` 必须属于 `delivery.allowed`；`cache` 需要 `warmup.enabled`。
 - `transfer.serviceAccount.create` 为真时 chart 创建命名空间、ServiceAccount 与仅能读写 progress ConfigMap 的 Role。
 - Controller ClusterRole 仅在相应特性启用时增加 `batch/jobs`、`configmaps` 与 `serving.kserve.io` 本地模型权限。
+- `warmup.nodeGroups` 已从 `values.yaml` 与 `values.schema.json` 移除；旧值会被忽略。升级后必须在“运维 > 预热节点组”至少创建一个节点组，否则首次预热会返回清晰的 `no warmup node group is configured` 错误。
 
 ## 10. 兼容与迁移
 
@@ -266,6 +272,6 @@ warmup:
 
 1. 模型版本可在文件系统与对象存储之间往返复制，server 进程不参与字节搬运。
 2. 配置搬运镜像的下载只在 Job 成功后注册版本，Job 失败不留下已注册版本。
-3. `WarmModel` 创建节点组/缓存，`ready` 携带已预热节点，该模型的部署获得配置的亲和。
+3. 在控制台创建预热节点组后，Controller 创建对应 KServe `LocalModelNodeGroup`；选择该组的 `WarmModel` 创建缓存，`ready` 携带已预热节点，该模型的部署获得配置的亲和。
 4. 未配置 `storage`/`transfer`/`warmup` 的安装升级后行为不变。
-5. 三个控制台页面渲染真实 API 数据、分页，并可取消非终态任务。
+5. 模型页的目录、预热（模型与节点）和传输标签渲染真实 API 数据、分页，并可取消非终态任务；两个运维页面展示存储交付提示并提供节点组 CRUD。

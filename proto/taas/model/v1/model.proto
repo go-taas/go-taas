@@ -157,8 +157,9 @@ service ModelService {
     };
   }
 
-  // WarmModel asks the controller to cache a model on the configured node
-  // groups (platform admin only).
+  // WarmModel asks the controller to warm a model on the selected node
+  // groups (platform admin only). An empty node_groups list uses every
+  // configured warmup node group.
   rpc WarmModel(WarmModelRequest) returns (WarmModelResponse) {
     option (google.api.http) = {
       post: "/api/v1/admin/model-warmups"
@@ -166,8 +167,13 @@ service ModelService {
     };
   }
 
-  // ListModelCacheEntries returns the model cache rows, newest first
-  // (platform admin only).
+  // ListModelWarmups returns the model warmup rows, newest first (platform
+  // admin only). The older path is kept as an alias for compatibility.
+  rpc ListModelWarmups(ListModelWarmupsRequest) returns (ListModelWarmupsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-warmups"};
+  }
+
+  // ListModelCacheEntries is the legacy name of ListModelWarmups.
   rpc ListModelCacheEntries(ListModelCacheEntriesRequest) returns (ListModelCacheEntriesResponse) {
     option (google.api.http) = {get: "/api/v1/admin/model-cache-entries"};
   }
@@ -179,6 +185,42 @@ service ModelService {
       post: "/api/v1/admin/model-warmups/{cache_id}:cancel"
       body: "*"
     };
+  }
+
+  // ListWarmupNodeGroups returns the platform-managed warmup node groups.
+  // These are not Helm values: a platform administrator creates and edits
+  // them in the Operations console.
+  rpc ListWarmupNodeGroups(ListWarmupNodeGroupsRequest) returns (ListWarmupNodeGroupsResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-warmup-node-groups"};
+  }
+
+  // CreateWarmupNodeGroup creates a node group and asks the controller to
+  // create the matching KServe LocalModelNodeGroup.
+  rpc CreateWarmupNodeGroup(CreateWarmupNodeGroupRequest) returns (CreateWarmupNodeGroupResponse) {
+    option (google.api.http) = {
+      post: "/api/v1/admin/model-warmup-node-groups"
+      body: "*"
+    };
+  }
+
+  // UpdateWarmupNodeGroup edits a node group's selector and storage
+  // settings. The name is immutable.
+  rpc UpdateWarmupNodeGroup(UpdateWarmupNodeGroupRequest) returns (UpdateWarmupNodeGroupResponse) {
+    option (google.api.http) = {
+      put: "/api/v1/admin/model-warmup-node-groups/{name}"
+      body: "*"
+    };
+  }
+
+  // DeleteWarmupNodeGroup removes a node group once no live warmup uses it.
+  rpc DeleteWarmupNodeGroup(DeleteWarmupNodeGroupRequest) returns (DeleteWarmupNodeGroupResponse) {
+    option (google.api.http) = {delete: "/api/v1/admin/model-warmup-node-groups/{name}"};
+  }
+
+  // ListWarmupNodes returns the last observation of every KServe
+  // LocalModelNode: the node's groups and the model copies it holds.
+  rpc ListWarmupNodes(ListWarmupNodesRequest) returns (ListWarmupNodesResponse) {
+    option (google.api.http) = {get: "/api/v1/admin/model-warmup-nodes"};
   }
 }
 
@@ -597,13 +639,26 @@ message ModelTransfer {
 message WarmModelRequest {
   string model_id = 1;
   string version = 2;
-  // node_groups defaults to the configured warmup node groups.
+  // node_groups selects the platform-managed warmup node groups. Empty
+  // uses every configured group.
   repeated string node_groups = 3;
 }
 
 message WarmModelResponse {
   taas.common.v1.Response response = 1;
   ModelCacheEntry cache = 2;
+}
+
+message ListModelWarmupsRequest {
+  taas.common.v1.PageRequest page = 1;
+  string model_id = 2;
+  string state = 3;
+}
+
+message ListModelWarmupsResponse {
+  taas.common.v1.Response response = 1;
+  repeated ModelCacheEntry warmups = 2;
+  taas.common.v1.PageMeta page_meta = 3;
 }
 
 message ListModelCacheEntriesRequest {
@@ -625,6 +680,87 @@ message CancelModelWarmupRequest {
 message CancelModelWarmupResponse {
   taas.common.v1.Response response = 1;
   ModelCacheEntry cache = 2;
+}
+
+// WarmupNodeGroup is one platform-managed pool of nodes whose local disk
+// caches model weights. It materializes as a KServe LocalModelNodeGroup.
+message WarmupNodeGroup {
+  string name = 1;
+  map<string, string> node_selector = 2;
+  string storage_limit = 3;
+  string host_path = 4;
+  string storage_class = 5;
+  int64 created_at = 6;
+  int64 updated_at = 7;
+  // ready_nodes and total_nodes are the last observed LocalModelNode count.
+  int32 ready_nodes = 8;
+  int32 total_nodes = 9;
+}
+
+message ListWarmupNodeGroupsRequest {}
+
+message ListWarmupNodeGroupsResponse {
+  taas.common.v1.Response response = 1;
+  repeated WarmupNodeGroup node_groups = 2;
+}
+
+message CreateWarmupNodeGroupRequest {
+  string name = 1;
+  map<string, string> node_selector = 2;
+  string storage_limit = 3;
+  string host_path = 4;
+  string storage_class = 5;
+}
+
+message CreateWarmupNodeGroupResponse {
+  taas.common.v1.Response response = 1;
+  WarmupNodeGroup node_group = 2;
+}
+
+message UpdateWarmupNodeGroupRequest {
+  string name = 1;
+  map<string, string> node_selector = 2;
+  string storage_limit = 3;
+  string host_path = 4;
+  string storage_class = 5;
+}
+
+message UpdateWarmupNodeGroupResponse {
+  taas.common.v1.Response response = 1;
+  WarmupNodeGroup node_group = 2;
+}
+
+message DeleteWarmupNodeGroupRequest {
+  string name = 1;
+}
+
+message DeleteWarmupNodeGroupResponse {
+  taas.common.v1.Response response = 1;
+}
+
+// WarmupNodeModel is one model copy observed on a LocalModelNode.
+message WarmupNodeModel {
+  string cache_name = 1;
+  string model_name = 2;
+  string node_group = 3;
+  string state = 4;
+}
+
+// WarmupNode is the last observation of one KServe LocalModelNode.
+message WarmupNode {
+  string name = 1;
+  repeated string node_groups = 2;
+  repeated WarmupNodeModel models = 3;
+  int32 model_count = 4;
+  int32 downloaded_count = 5;
+  int64 updated_at = 6;
+}
+
+message ListWarmupNodesRequest {}
+
+message ListWarmupNodesResponse {
+  taas.common.v1.Response response = 1;
+  repeated WarmupNode nodes = 2;
 }
 
 // ModelCacheEntry is the desired and observed state of one warmed model.

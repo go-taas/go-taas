@@ -1093,17 +1093,10 @@ transfer:
 warmup:
   # -- Enable LocalModelCache creation and warm-aware scheduling.
   enabled: false
-  # Node pools that cache weights. The name is referenced by
-  # `storage.backends.<name>.delivery.cache.nodeGroup`. Every group needs a
-  # node selector that matches the pool's nodes.
-  #
-  #   nodeGroups:
-  #     - name: gpu
-  #       nodeSelector:
-  #         node.kubernetes.io/instance-type: gpu-a100
-  #       storageLimit: 500Gi
-  #       hostPath: /var/lib/taas/models
-  nodeGroups: []
+  # Warmup node groups are not Helm values. Platform administrators create
+  # and edit them in Operations > Warmup node groups; the model service
+  # stores them in PostgreSQL and the controller materializes them as KServe
+  # LocalModelNodeGroup resources.
   scheduling:
     # -- Injected affinity: `preferred`, `required` or `disabled`.
     mode: preferred

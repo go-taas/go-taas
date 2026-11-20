@@ -39,8 +39,7 @@ import {
   BookOpen,
   DownloadSimple,
   Database,
-  ArrowsLeftRight,
-  Lightning,
+  HardDrives,
   ChartBar,
   ShieldCheck,
   Stack,
@@ -106,9 +105,6 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
     icon: Stack,
     items: [
       { path: '/admin/models', labelKey: 'nav.models', testid: 'nav-models', icon: Cube },
-      { path: '/admin/storage-backends', labelKey: 'nav.storageBackends', testid: 'nav-storage-backends', icon: Database },
-      { path: '/admin/model-transfers', labelKey: 'nav.modelTransfers', testid: 'nav-model-transfers', icon: ArrowsLeftRight },
-      { path: '/admin/model-cache-entries', labelKey: 'nav.modelCaches', testid: 'nav-model-caches', icon: Lightning },
       { path: '/admin/inference-services', labelKey: 'nav.inferenceServices', testid: 'nav-inference-services', icon: Rocket },
       { path: '/admin/providers', labelKey: 'nav.providers', testid: 'nav-providers', icon: Cube },
       { path: '/admin/deployments', labelKey: 'nav.deployments', testid: 'nav-deployments', icon: Scroll },
@@ -143,6 +139,8 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
     icon: Wrench,
     items: [
       { path: '/admin/autoscaling', labelKey: 'nav.autoscaling', testid: 'nav-autoscaling', icon: Gauge },
+      { path: '/admin/storage-backends', labelKey: 'nav.storageBackends', testid: 'nav-storage-backends', icon: Database },
+      { path: '/admin/model-warmup-node-groups', labelKey: 'nav.warmupNodeGroups', testid: 'nav-warmup-node-groups', icon: HardDrives },
       { path: '/admin/accelerators', labelKey: 'nav.accelerators', testid: 'nav-accelerators', icon: Cpu },
       { path: '/admin/vgpu-pools', labelKey: 'nav.vgpuPools', testid: 'nav-vgpu-pools', icon: Cpu },
       { path: '/admin/clusters', labelKey: 'nav.clusters', testid: 'nav-clusters', icon: Globe },

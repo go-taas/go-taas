@@ -1474,7 +1474,7 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 	// The backend a version lives in decides how this pod reads it: a
 	// mounted claim, a storage-initializer download, or the node-local
 	// warmup cache.
-	weightsVolume, weightsMount, modelPath, initContainers := r.servingWeights(evt)
+	weightsVolume, weightsMount, modelPath, initContainers := r.servingWeights(ctx, evt)
 	spec := corev1.PodSpec{
 		SchedulerName:     schedulerName,
 		PriorityClassName: priorityClass,

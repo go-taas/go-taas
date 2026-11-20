@@ -92,7 +92,7 @@ overrides it; `delivery.allowed` bounds what a request may choose.
 | --- | --- | --- |
 | `mount` | a filesystem backend is mounted at `mountPath`, or an object store is mounted through a CSI driver (`delivery.mount.storageClass`) | a mountable backend |
 | `download` | KServe storage-initializer fetches the model URI into the pod | `delivery.download.enabled` and a reachable object store |
-| `cache` | the model is copied to node-local storage and the pod binds to a warmed node | `warmup.enabled`, a node group, and the KServe local-model agent |
+| `cache` | the model is copied to node-local storage and the pod binds to a warmed node | `warmup.enabled`, a platform-managed warmup node group, and the KServe local-model agent |
 
 A `filesystem` backend that declares `provision.enabled` gets a chart-managed
 PVC; otherwise `existingClaim` must name an existing claim. A backend with
@@ -203,23 +203,39 @@ collected with the same TTL or by an operator policy.
 
 | Resource | Owner | Purpose |
 | --- | --- | --- |
-| `LocalModelNodeGroup` | controller, from `warmup.nodeGroups` | one node pool that can hold cached weights, with a storage limit and a hostPath/PVC volume |
+| `LocalModelNodeGroup` | controller, from the `warmup_node_groups` row | one node pool that can hold cached weights, with a storage limit and a hostPath/PVC volume |
 | `LocalModelCache` | controller, from a `WarmModel` request | one model to copy onto the group's nodes |
 | `LocalModelNode` | KServe localmodel controller (per-node status maintained by the agent) | per-node status: which models are downloaded |
 | `LLMInferenceService` | controller | receives the injected `nodeAffinity` |
 
-`WarmModel` validates the model version and its resolved source URI, writes
-a `model_cache_entries` row in `queued`, and publishes `model.warmups`. The
-controller ensures the node groups and the cache, then reports state
-(`queued` → `warming` → `ready`, or `failed`/`cancelled`) with warmed node
-names, total nodes and bytes.
+Warmup node groups are **not Helm values**. A platform administrator creates,
+edits and deletes them in **Operations > Warmup node groups**; the model
+service validates and stores them in `warmup_node_groups`, and the controller
+watches `model.warmups.groups` to create, update or delete the matching KServe
+`LocalModelNodeGroup`. The server also publishes the complete desired set
+every 30 seconds; the controller applies every group and removes managed
+groups that are no longer in the set, so a restart converges without a
+database round-trip and a deletion made while it was down still takes effect.
+Deleting a group is rejected while a queued, warming or ready warmup still
+references it.
+
+`WarmModel` validates the model version and its resolved source URI, accepts
+an optional `node_groups` selection (empty means every managed group),
+writes a `model_cache_entries` row in `queued`, and publishes
+`model.warmups` with the full group settings. The controller ensures the
+requested groups and the cache, then reports state (`queued` → `warming` →
+`ready`, or `failed`/`cancelled`) with warmed node names, total nodes and
+bytes.
 
 KServe's storage initializer does not accept `pvc://`, and the local-model
 agent may not carry the platform's object-store credentials. The controller
 therefore pre-populates every cache it can resolve to a configured backend:
-on every scan it finds the `LocalModelNode` entries for the cache and runs a
-one-shot `taas-transfer` Job pinned to that node, with the group hostPath
-mounted at `/target`. A filesystem source mounts the PVC read-only at
+on every scan it finds the `LocalModelNode` entries for the cache, resolves
+the group's hostPath from the live `LocalModelNodeGroup`, and runs a one-shot
+`taas-transfer` Job pinned to that node with that hostPath mounted at
+`/target`. The same group hostPath is used when a `cache`-delivery serving pod
+mounts the warm copy, so changing a group's host path affects both paths
+without a Helm release. A filesystem source mounts the PVC read-only at
 `/source`; an object-store source projects the backend's Secret as
 `WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY` and lets the transfer
 binary fetch the prefix. Both copy to `/target/models/<storageKey>`, and only
@@ -265,6 +281,8 @@ without warmup configured behaves exactly as before.
 | --- | --- | --- |
 | `model_transfers` | `id`, `model_id`, `version`, `operation`, `source_backend`, `target_backend`, `source_uri`, `target_uri`, `state`, `message`, `bytes`, `total_bytes`, `job_name`, `download_id` | one row per transfer; `download_id` links an asynchronous download to the download row it completes |
 | `model_cache_entries` | `id`, `model_id`, `model_name`, `version`, `backend`, `source_uri`, `weight_path`, `state`, `message`, `size_bytes`, `warmed_nodes`, `node_groups` | one row per `LocalModelCache` |
+| `warmup_node_groups` | `name`, `node_selector_json`, `storage_limit`, `host_path`, `storage_class`, timestamps | platform-managed warmup pools; the source of truth for KServe `LocalModelNodeGroup` |
+| `warmup_nodes` | `name`, `node_groups_json`, `models_json`, `model_count`, `downloaded_count`, `observed_at` | last full `LocalModelNode` snapshot; replaced atomically, so a deleted node disappears |
 | `model_versions` | `storage_backend` | the backend a version lives on; empty means the default backend |
 
 Rows are created by the server, never by the controller. The controller
@@ -280,9 +298,14 @@ and cannot diverge from the catalog.
 | GET | `/api/v1/admin/model-transfers` | list transfers, newest first, paginated |
 | GET | `/api/v1/admin/model-transfers/{transfer_id}` | one transfer with progress |
 | POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | cancel a queued/running transfer |
-| POST | `/api/v1/admin/model-warmups` | warm a model version on the configured node groups |
-| GET | `/api/v1/admin/model-cache-entries` | list cache entries, newest first, paginated |
-| POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | remove a model cache |
+| POST | `/api/v1/admin/model-warmups` | warm a model version on the requested (or all) warmup node groups |
+| GET | `/api/v1/admin/model-cache-entries` | list warmups, newest first, paginated |
+| POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | remove a model warmup |
+| GET | `/api/v1/admin/model-warmup-node-groups` | list platform-managed warmup node groups with ready/total node counts |
+| POST | `/api/v1/admin/model-warmup-node-groups` | create a node group and ask the controller to materialize it |
+| PUT | `/api/v1/admin/model-warmup-node-groups/{name}` | edit a node group; the name is immutable |
+| DELETE | `/api/v1/admin/model-warmup-node-groups/{name}` | delete a node group once no live warmup uses it |
+| GET | `/api/v1/admin/model-warmup-nodes` | list the last `LocalModelNode` observation per node |
 
 Existing `StartModelDownload` keeps its request shape; with a transfer
 image configured it returns a queued download immediately and the transfer
@@ -291,19 +314,28 @@ endpoint sees the state transition instead of a long HTTP request.
 
 ## 8. Console
 
-Three platform-administrator pages, reachable from the admin navigation:
+The platform-administrator console groups the surfaces by operator task:
 
-- **Storage backends** — read-only cards/table of configured backends,
-  type, endpoint/claim, mount path and delivery modes, so an operator can
-  see why a deployment form offers `mount` or `cache`.
-- **Model transfers** — list with operation, source → target, state,
-  bytes/total bytes, message and a cancel action for non-terminal rows.
-- **Model caches** — model/version, backend, node groups, warmed nodes,
-  size and state, with a cancel action.
+- **Operations > Storage backends** — read-only table of configured
+  backends (type, endpoint/claim, mount path, delivery modes and whether
+  node cache is allowed). Above the table, designed guide cards explain
+  `mount`, `download` and `cache`, plus a callout explaining that node cache
+  requires both a cache-capable backend and a warmup node group.
+- **Operations > Warmup node groups** — creates, edits and deletes the
+  platform-managed node groups (selector, storage limit, host path, storage
+  class) and shows ready/total node counts. Guide cards state that groups
+  are runtime configuration rather than Helm values.
+- **Models** — one page with three tabs: **Model catalog**, **Warmup** and
+  **Transfers**. The catalog keeps register/upload/download/deploy actions;
+  Warmup owns the previous model-cache list and a new **Nodes** tab that
+  shows each `LocalModelNode`, its groups and its model copies. Transfers
+  owns the asynchronous copy/download/delete list and cancel action.
+  The old `/admin/model-transfers` and `/admin/model-cache-entries` routes
+  redirect into the matching tab so bookmarks keep working.
 
-All three follow the shared console table, empty-state, error and
-pagination conventions (`PAGE_SIZE = 20`), and all copy is parameterized
-from API data rather than hard-coded sample values.
+All views follow the shared console table, empty-state, error and pagination
+conventions (`PAGE_SIZE = 20`), and all copy is parameterized from API data
+rather than hard-coded sample values.
 
 ## 9. Helm configuration
 
@@ -349,12 +381,9 @@ transfer:
 
 warmup:
   enabled: true
-  nodeGroups:
-    - name: worker
-      storageLimit: 200Gi
-      hostPath: /var/lib/taas/models
-      nodeSelector:
-        kserve/localmodel: worker
+  # Warmup node groups are not Helm values. Create them at runtime in
+  # Operations > Warmup node groups; the model service stores them in
+  # PostgreSQL and the controller creates the KServe LocalModelNodeGroup.
   scheduling:
     mode: preferred
     weight: 100
@@ -372,6 +401,11 @@ Validation rules:
 - The controller's ClusterRole gains `batch/jobs`, `configmaps` and the
   `serving.kserve.io` local-model resources only when the corresponding
   feature is enabled.
+- `warmup.nodeGroups` is removed from `values.yaml` and
+  `values.schema.json`; a Helm value that still carries it is ignored. An
+  upgrade must create at least one group in **Operations > Warmup node
+  groups** before the first warmup, otherwise the API returns a clear
+  `no warmup node group is configured` error.
 
 ## 10. Compatibility and migration
 
@@ -429,5 +463,8 @@ endpoints and pagination. Acceptance requires:
    nodes, and a deployment of that model receives the configured affinity.
 4. An install with no `storage`/`transfer`/`warmup` values upgrades and
    behaves exactly as before.
-5. The three console pages render real API data, paginate, and cancel
-   non-terminal work.
+5. The Models page renders catalog, warmup (models and nodes tabs) and
+   transfer data from the API, paginates, and cancels non-terminal work; the
+   two Operations pages render storage guidance and node-group CRUD.
+6. Creating a warmup node group in the console creates a KServe
+   `LocalModelNodeGroup`, and a warmup that selects it reports its nodes.

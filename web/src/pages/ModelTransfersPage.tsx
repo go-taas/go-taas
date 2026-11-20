@@ -23,7 +23,7 @@ interface BackendsResponse {
 const PAGE_SIZE = 20;
 const ACTIVE_STATES = ['queued', 'running'];
 
-export default function ModelTransfersPage() {
+export default function ModelTransfersPage({ embedded = false }: { embedded?: boolean }) {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [transfers, setTransfers] = useState<ModelTransfer[]>([]);
@@ -97,20 +97,23 @@ export default function ModelTransfersPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>{t('transfers.title')}</h1>
-          <div className="subtitle">{t('transfers.subtitle')}</div>
+      {embedded ? (
+        <div className="toolbar" style={{ marginBottom: 14 }}>
+          <button className="secondary" onClick={() => void load()}>{t('common.refresh')}</button>
+          <button data-testid="start-transfer" onClick={() => setStartOpen(true)}>{t('transfers.start')}</button>
         </div>
-        <div className="toolbar">
-          <button className="secondary" onClick={() => void load()}>
-            {t('common.refresh')}
-          </button>
-          <button data-testid="start-transfer" onClick={() => setStartOpen(true)}>
-            {t('transfers.start')}
-          </button>
+      ) : (
+        <div className="page-header">
+          <div>
+            <h1>{t('transfers.title')}</h1>
+            <div className="subtitle">{t('transfers.subtitle')}</div>
+          </div>
+          <div className="toolbar">
+            <button className="secondary" onClick={() => void load()}>{t('common.refresh')}</button>
+            <button data-testid="start-transfer" onClick={() => setStartOpen(true)}>{t('transfers.start')}</button>
+          </div>
         </div>
-      </div>
+      )}
       {error && <ErrorBanner message={error} />}
       <Toast message={notice} onDismiss={() => setNotice('')} testId="transfers-toast" />
       <div className="toolbar" style={{ marginBottom: 14 }}>

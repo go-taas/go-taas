@@ -361,7 +361,7 @@ secrets:
 | `transfer.image.name` / `tag` | `taas-transfer` / `""` | 搬运 Job 镜像 |
 | `transfer.serviceAccount.create` | `true` | 创建 transfer 命名空间、ServiceAccount 与进度 ConfigMap Role |
 | `transfer.job.*` / `resources` / `progressInterval` | `2` / `21600` / `86400` / `{}` / `5s` | Job 生命周期、容器资源、进度采样 |
-| `warmup.enabled` / `nodeGroups` | `false` / `[]` | 创建 KServe 本地缓存并注入感知调度的亲和 |
+| `warmup.enabled` | `false` | 开启 KServe 本地缓存与感知调度的亲和；节点组在控制台运行时创建 |
 | `warmup.scheduling.mode` / `weight` | `preferred` / `100` | `preferred`、`required` 或 `disabled`；weight 仅 preferred 生效 |
 | `warmup.eviction.policy` / `maxModelsPerNode` / `minFreeBytes` | `lru` / `20` / `10737418240` | 缓存保留策略与容量上限 |
 | `rdma.enabled` / `deviceClass` | `true` / `taas-rdma` | 推理 Pod 申请 RDMA 设备所用的 DRA `DeviceClass`；`rdma.requireLinkUp` 只接受节点报告为 up 的链路，`rdma.selector` 可覆盖内置 CEL 表达式（用于固定网卡或 PCI 地址） |
@@ -459,18 +459,11 @@ transfer:
 
 `transfer.mode: inline` 保留旧的进程内搬运，仅用于升级过渡；未提供 `taas-transfer` 镜像时也会自动回退。
 
-`warmup` 开启 `LocalModelCache`/`LocalModelNodeGroup` 创建与感知调度的能力。Controller 为每个 `warmup.nodeGroups` 创建节点组，在 `WarmModel` 时创建缓存，并在模型已预热到某些节点时向 `LLMInferenceService` 注入节点亲和：
+`warmup` 开启 `LocalModelCache`/`LocalModelNodeGroup` 创建与感知调度的能力。预热节点组**不是 Helm 值**：平台管理员在“运维 > 预热节点组”中创建，模型服务写入 PostgreSQL，Controller 落地 KServe `LocalModelNodeGroup`。Controller 在 `WarmModel` 时创建缓存，并在模型已预热到某些节点时向 `LLMInferenceService` 注入节点亲和：
 
 ```yaml
 warmup:
   enabled: true
-  nodeGroups:
-    - name: worker
-      storageLimit: 200Gi
-      hostPath: /var/lib/taas/models
-      storageClass: ""       # 为空时使用 hostPath 卷
-      nodeSelector:
-        kserve/localmodel: worker
   scheduling:
     mode: preferred          # preferred、required 或 disabled
     weight: 100              # 1-100，仅 preferred 生效
@@ -480,9 +473,9 @@ warmup:
     minFreeBytes: 10737418240
 ```
 
-节点组要求对应节点运行 KServe local-model agent，`nodeSelector` 就是运维把节点组绑定到该节点池的方式。`scheduling.mode: required` 会让部署等待已预热节点，适合延迟敏感模型，但节点排空时存在容量风险；默认 `preferred` 可降级到冷节点。
+每个节点组要求对应节点运行 KServe local-model agent，`nodeSelector` 就是把节点组绑定到该节点池的方式。升级后必须在控制台至少创建一个节点组，才能发起首次预热。`scheduling.mode: required` 会让部署等待已预热节点，适合延迟敏感模型，但节点排空时存在容量风险；默认 `preferred` 可降级到冷节点。
 
-控制台在平台管理员导航下提供三个页面：**存储后端**、**模型搬运**、**模型缓存**。
+控制台提供“运维 > 存储后端”（含交付方式与节点缓存提示）和“运维 > 预热节点组”，并把模型预热与模型搬运合并到“模型”页的标签中。
 
 ## 共享模型权重
 

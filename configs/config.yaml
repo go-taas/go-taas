@@ -616,9 +616,8 @@ transfer:
 # hold the model.
 warmup:
   enabled: false
-  # nodeGroups declares the node pools weights are cached on. Every group
-  # needs a selector that matches the pool's nodes.
-  nodeGroups: []
+  # Warmup node groups are managed at runtime in the console
+  # (Operations > Warmup node groups), not in this file.
   scheduling:
     # mode is preferred, required or disabled.
     mode: preferred

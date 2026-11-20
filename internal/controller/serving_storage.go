@@ -1,10 +1,13 @@
 package controller
 
 import (
+	"context"
 	"path"
 	"strings"
 
 	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // servingWeights resolves how one serving pod reads its weights. The result
@@ -13,7 +16,7 @@ import (
 // delivery keeps the platform's historical shared-weights mount, so an older
 // control plane and a release without storage.backends behave exactly as
 // before.
-func (r *k8sReconciler) servingWeights(evt changeEvent) (corev1.Volume, corev1.VolumeMount, string, []corev1.Container) {
+func (r *k8sReconciler) servingWeights(ctx context.Context, evt changeEvent) (corev1.Volume, corev1.VolumeMount, string, []corev1.Container) {
 	delivery := strings.TrimSpace(evt.Model.Delivery)
 	if delivery == "" {
 		delivery = "mount"
@@ -39,7 +42,7 @@ func (r *k8sReconciler) servingWeights(evt changeEvent) (corev1.Volume, corev1.V
 		init.VolumeMounts = []corev1.VolumeMount{{Name: "model", MountPath: modelDownloadPath}}
 		return volume, mount, modelDownloadPath, []corev1.Container{init}
 	case "cache":
-		hostPath := strings.TrimSpace(r.warmupHostPath)
+		hostPath := r.cacheHostPath(ctx, strings.TrimSpace(evt.Model.ModelURI))
 		if hostPath == "" {
 			break
 		}
@@ -75,6 +78,37 @@ func (r *k8sReconciler) servingWeights(evt changeEvent) (corev1.Volume, corev1.V
 	}
 	mount := corev1.VolumeMount{Name: "weights", MountPath: mountPath, ReadOnly: true}
 	return volume, mount, modelDir(mountPath, evt.Model.WeightPath), nil
+}
+
+// cacheHostPath resolves the node-local directory that holds the warmup copy
+// of one model. The LocalModelCache records its node groups and the group
+// records the host path, so the serving volume follows the platform-managed
+// group instead of a Helm value.
+func (r *k8sReconciler) cacheHostPath(ctx context.Context, modelURI string) string {
+	fallback := strings.TrimSpace(r.warmupHostPath)
+	if fallback == "" {
+		fallback = "/models"
+	}
+	if r.dynamic == nil || modelURI == "" {
+		return fallback
+	}
+	caches, err := r.dynamic.Resource(localModelCacheGVR).List(ctx, metav1.ListOptions{})
+	if err != nil {
+		return fallback
+	}
+	for i := range caches.Items {
+		cache := &caches.Items[i]
+		source := nestedString(cache, "spec", "sourceModelUri")
+		if source != modelURI {
+			continue
+		}
+		groups, ok, _ := unstructured.NestedStringSlice(cache.Object, "spec", "nodeGroups")
+		if !ok || len(groups) == 0 {
+			return fallback
+		}
+		return hostPathForGroup(ctx, r.dynamic, groups[0])
+	}
+	return fallback
 }
 
 // modelDownloadPath is where the storage initializer lands a model and where

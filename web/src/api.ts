@@ -366,6 +366,38 @@ export interface ModelCacheEntry {
   updatedAt: string;
 }
 
+// WarmupNodeGroup is one platform-managed warmup node pool. It is created
+// and edited in the Operations console, not in Helm.
+export interface WarmupNodeGroup {
+  name: string;
+  nodeSelector?: Record<string, string>;
+  storageLimit?: string;
+  hostPath?: string;
+  storageClass?: string;
+  readyNodes?: number;
+  totalNodes?: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+// WarmupNodeModel is one model copy a node reports.
+export interface WarmupNodeModel {
+  cacheName?: string;
+  modelName?: string;
+  nodeGroup?: string;
+  state?: string;
+}
+
+// WarmupNode is the last observation of one KServe LocalModelNode.
+export interface WarmupNode {
+  name: string;
+  nodeGroups?: string[];
+  models?: WarmupNodeModel[];
+  modelCount?: number;
+  downloadedCount?: number;
+  updatedAt?: number | string;
+}
+
 // AvailableModel is the masked user-realm catalog projection (feature-17
 // AD8): no weight_path, version list or grant rows.
 export interface AvailableModel {

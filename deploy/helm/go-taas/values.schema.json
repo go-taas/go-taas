@@ -303,12 +303,6 @@
         "enabled": {
           "type": "boolean"
         },
-        "nodeGroups": {
-          "type": "array",
-          "items": {
-            "$ref": "#/definitions/warmupNodeGroup"
-          }
-        },
         "scheduling": {
           "type": "object",
           "properties": {
@@ -1018,29 +1012,6 @@
               }
             }
           }
-        }
-      }
-    },
-    "warmupNodeGroup": {
-      "type": "object",
-      "required": [
-        "name"
-      ],
-      "properties": {
-        "name": {
-          "type": "string"
-        },
-        "nodeSelector": {
-          "type": "object"
-        },
-        "storageLimit": {
-          "type": "string"
-        },
-        "hostPath": {
-          "type": "string"
-        },
-        "storageClass": {
-          "type": "string"
         }
       }
     }

@@ -731,14 +731,6 @@ func (c *Configuration) applyDefaults() {
 	if c.Warmup.Eviction.MinFreeBytes == 0 {
 		c.Warmup.Eviction.MinFreeBytes = 10 << 30
 	}
-	for i := range c.Warmup.NodeGroups {
-		if c.Warmup.NodeGroups[i].StorageLimit == "" {
-			c.Warmup.NodeGroups[i].StorageLimit = "100Gi"
-		}
-		if c.Warmup.NodeGroups[i].HostPath == "" {
-			c.Warmup.NodeGroups[i].HostPath = "/var/lib/taas/models"
-		}
-	}
 }
 
 // String returns a string representation of the configuration for logging.

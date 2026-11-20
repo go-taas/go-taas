@@ -116,7 +116,6 @@ transfer:
 # affinity injected into every LLMInferenceService.
 warmup:
   enabled: false
-  nodeGroups: []
   scheduling:
     mode: preferred
     weight: 100

@@ -52,6 +52,30 @@ export default function StorageBackendsPage() {
           </button>
         </div>
       </div>
+      <div className="guide-grid" data-testid="storage-delivery-guide">
+        <article className="guide-card">
+          <div className="guide-body">
+            <strong>{t('storageBackends.guideMountTitle')}</strong>
+            <p>{t('storageBackends.guideMountBody')}</p>
+          </div>
+        </article>
+        <article className="guide-card">
+          <div className="guide-body">
+            <strong>{t('storageBackends.guideDownloadTitle')}</strong>
+            <p>{t('storageBackends.guideDownloadBody')}</p>
+          </div>
+        </article>
+        <article className="guide-card">
+          <div className="guide-body">
+            <strong>{t('storageBackends.guideCacheTitle')}</strong>
+            <p>{t('storageBackends.guideCacheBody')}</p>
+          </div>
+        </article>
+      </div>
+      <div className="guide-note" data-testid="storage-node-cache-note">
+        <strong>{t('storageBackends.nodeCacheTitle')}</strong>
+        <span>{t('storageBackends.nodeCacheBody')}</span>
+      </div>
       {error && <ErrorBanner message={error} />}
       {defaultBackend && (
         <div className="muted" style={{ marginBottom: 12 }}>
