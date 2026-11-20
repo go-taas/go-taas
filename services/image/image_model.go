@@ -21,7 +21,7 @@ type Image struct {
 	Tag string `gorm:"size:128;not null;uniqueIndex:idx_images_name_tag_accelerator,priority:2"`
 	// Digest optionally pins integrity: "sha256:" + 64 hex chars.
 	Digest string `gorm:"size:71;not null;default:''"`
-	// Accelerator names the hardware platform (nvidia, iluvatar, metax).
+	// Accelerator names the hardware platform (a registered accelerator vendor).
 	Accelerator string `gorm:"size:32;not null;uniqueIndex:idx_images_name_tag_accelerator,priority:3"`
 	// Engine names the inference engine (vllm, sglang, ...).
 	Engine string `gorm:"size:64;not null"`

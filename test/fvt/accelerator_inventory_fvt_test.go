@@ -339,3 +339,71 @@ func TestFVTAccleratorEmptyInventory(t *testing.T) {
 	cardTypes, _ := body["cardTypes"].([]any)
 	assert.Empty(t, cardTypes)
 }
+
+// TestFVTAccleratorVendorOperatorLabels walks the vendor-operator label
+// contract: the vendor and card model come from each vendor's own GPU
+// operator labels, and the API accepts every supported vendor as a filter
+// without requiring any go-taas.com/* platform label.
+func TestFVTAccleratorVendorOperatorLabels(t *testing.T) {
+	env := newAcceleratorEnv(t)
+
+	env.publishSnapshot(t, []map[string]any{
+		{
+			"node_id": "v-amd", "name": "node-amd", "vendor": "amd",
+			"card_types":     []string{"Instinct MI300X"},
+			"driver_version": "6.2.1", "device_plugin_state": "healthy",
+			"readiness": "ready",
+			"labels": map[string]string{
+				"amd.com/gpu.product-name":   "Instinct MI300X",
+				"amd.com/gpu.driver-version": "6.2.1",
+			},
+			"resources": []map[string]any{
+				{"card_type": "Instinct MI300X", "allocatable": 8, "allocated": 2},
+			},
+		},
+		{
+			"node_id": "v-intel", "name": "node-intel", "vendor": "intel",
+			"card_types":          []string{"Flex_170"},
+			"driver_version":      "",
+			"device_plugin_state": "healthy",
+			"readiness":           "ready",
+			"labels": map[string]string{
+				"gpu.intel.com/product": "Flex_170",
+				"gpu.intel.com/family":  "Flex_Series",
+			},
+			"resources": []map[string]any{
+				{"card_type": "Flex_170", "allocatable": 2, "allocated": 0},
+			},
+		},
+	})
+
+	// Every supported vendor is a valid filter value. Before the vendor
+	// registry existed only nvidia/iluvatar/metax were accepted, so
+	// vendor=amd was silently treated as "no filter" and returned both
+	// nodes.
+	code, body := env.call(t, http.MethodGet, "/api/v1/admin/accelerators/nodes?vendor=amd", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	nodes, _ := body["nodes"].([]any)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "node-amd", nodes[0].(map[string]any)["name"])
+
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/accelerators/nodes?vendor=intel", nil)
+	require.Equal(t, http.StatusOK, code)
+	nodes, _ = body["nodes"].([]any)
+	require.Len(t, nodes, 1)
+	assert.Equal(t, "node-intel", nodes[0].(map[string]any)["name"])
+
+	// The card-type summary reports the vendor-operator card model, not the
+	// device-plugin resource family.
+	code, body = env.call(t, http.MethodGet, "/api/v1/admin/accelerators/card-types", nil)
+	require.Equal(t, http.StatusOK, code, "body: %v", body)
+	cardTypes, _ := body["cardTypes"].([]any)
+	require.Len(t, cardTypes, 2)
+	got := map[string]string{}
+	for _, row := range cardTypes {
+		m := row.(map[string]any)
+		got[m["vendor"].(string)] = m["cardType"].(string)
+	}
+	assert.Equal(t, "Instinct MI300X", got["amd"])
+	assert.Equal(t, "Flex_170", got["intel"])
+}

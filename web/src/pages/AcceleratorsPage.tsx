@@ -55,10 +55,19 @@ const HEALTHS = ['healthy', 'degraded', 'unknown'];
 function vendorBadgeClass(vendor: string): string {
   switch (vendor) {
     case 'nvidia':
+    case 'amd':
+    case 'intel':
       return 'badge active';
     case 'iluvatar':
+    case 'huawei':
       return 'badge autoscaled';
     case 'metax':
+    case 'cambricon':
+    case 'biren':
+    case 'enflame':
+    case 'hygon':
+    case 'kunlunxin':
+    case 'mthreads':
       return 'badge steady';
     default:
       return 'badge terminated';

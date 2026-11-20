@@ -17,7 +17,7 @@ const (
 // module for the compatibility matrix's card-type axis and the
 // not_in_fleet derivation (feature #19, AD11).
 type CardType struct {
-	// Vendor is the accelerator vendor (nvidia, iluvatar, metax).
+	// Vendor is the accelerator vendor (a registered accelerator vendor).
 	Vendor string
 	// CardType is the card type name (e.g. A800, H800).
 	CardType string

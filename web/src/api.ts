@@ -451,8 +451,8 @@ export interface InferenceServiceSummary {
   // organizations, projects or users. False means every platform user may
   // use the service.
   accessRestricted?: boolean;
-  // accelerator is the hardware platform the service runs on (nvidia,
-  // iluvatar, metax). acceleratorType is the concrete card model, when one
+  // accelerator is the hardware platform the service runs on (a registered accelerator
+  // vendor). acceleratorType is the concrete card model, when one
   // was named at creation.
   accelerator?: string;
   acceleratorType?: string;

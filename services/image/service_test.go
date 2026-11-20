@@ -338,6 +338,9 @@ func TestIsValidAccelerator(t *testing.T) {
 	assert.True(t, IsValidAccelerator("NVIDIA"))
 	assert.True(t, IsValidAccelerator("iluvatar"))
 	assert.True(t, IsValidAccelerator("metax"))
+	assert.True(t, IsValidAccelerator("amd"))
+	assert.True(t, IsValidAccelerator("intel"))
+	assert.True(t, IsValidAccelerator("huawei"))
 	assert.False(t, IsValidAccelerator("tpu"))
 	assert.False(t, IsValidAccelerator(""))
 }

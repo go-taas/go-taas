@@ -461,3 +461,138 @@ func TestRequestedAcceleratorsReadsBothFields(t *testing.T) {
 	}
 	assert.Empty(t, requestedAccelerators(cpuOnly), "CPU is not an accelerator")
 }
+
+// TestNodeToInventoryVendorOperatorLabels covers the vendors whose GPU
+// operators auto-label nodes: classification must work from those labels
+// and extended resources alone, with no go-taas.com/* label.
+func TestNodeToInventoryVendorOperatorLabels(t *testing.T) {
+	cases := []struct {
+		name       string
+		labels     map[string]string
+		alloc      corev1.ResourceList
+		wantVendor string
+		wantCards  []string
+		wantDriver string
+	}{
+		{
+			name: "amd node labeller",
+			labels: map[string]string{
+				"amd.com/gpu.product-name":   "Instinct MI300X",
+				"amd.com/gpu.driver-version": "6.2.1",
+			},
+			alloc:      corev1.ResourceList{"amd.com/gpu": resource.MustParse("8")},
+			wantVendor: "amd",
+			wantCards:  []string{"Instinct MI300X"},
+			wantDriver: "6.2.1",
+		},
+		{
+			name: "intel nfd labels",
+			labels: map[string]string{
+				"gpu.intel.com/product": "Flex_170",
+				"gpu.intel.com/family":  "Flex_Series",
+			},
+			alloc:      corev1.ResourceList{"gpu.intel.com/xe": resource.MustParse("2")},
+			wantVendor: "intel",
+			wantCards:  []string{"Flex_170"},
+		},
+		{
+			name:       "huawei ascend resource encodes model",
+			alloc:      corev1.ResourceList{"huawei.com/Ascend910B4": resource.MustParse("8")},
+			wantVendor: "huawei",
+			wantCards:  []string{"Ascend910B4"},
+		},
+		{
+			name:       "cambricon mlu resource encodes model",
+			alloc:      corev1.ResourceList{"cambricon.com/mlu370": resource.MustParse("4")},
+			wantVendor: "cambricon",
+			wantCards:  []string{"MLU370"},
+		},
+		{
+			name:       "biren",
+			alloc:      corev1.ResourceList{"birentech.com/gpu": resource.MustParse("2")},
+			wantVendor: "biren",
+			wantCards:  []string{"gpu"},
+		},
+		{
+			name:       "enflame",
+			alloc:      corev1.ResourceList{"enflame.com/gcu": resource.MustParse("4")},
+			wantVendor: "enflame",
+			wantCards:  []string{"gcu"},
+		},
+		{
+			name:       "hygon dcu",
+			alloc:      corev1.ResourceList{"hygon.com/dcunum": resource.MustParse("8")},
+			wantVendor: "hygon",
+			wantCards:  []string{"dcu"},
+		},
+		{
+			name:       "kunlunxin xpu",
+			alloc:      corev1.ResourceList{"kunlunxin.com/xpu": resource.MustParse("4")},
+			wantVendor: "kunlunxin",
+			wantCards:  []string{"xpu"},
+		},
+		{
+			name:       "mthreads",
+			alloc:      corev1.ResourceList{"mthreads.com/gpu": resource.MustParse("8")},
+			wantVendor: "mthreads",
+			wantCards:  []string{"gpu"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			node := &corev1.Node{
+				ObjectMeta: metav1.ObjectMeta{Name: "node01", UID: "uid", Labels: c.labels},
+				Status:     corev1.NodeStatus{Allocatable: c.alloc},
+			}
+			inv := nodeToInventory(node, nil)
+			assert.Equal(t, c.wantVendor, inv.Vendor)
+			assert.Equal(t, c.wantCards, inv.CardTypes)
+			if c.wantDriver != "" {
+				assert.Equal(t, c.wantDriver, inv.DriverVersion)
+			}
+		})
+	}
+}
+
+// TestNodeToInventoryMixedCardModels verifies each resource keeps its own
+// card model. The previous implementation resolved one node-wide model and
+// stamped it onto every accelerator resource, which mislabels a node that
+// advertises two Ascend generations.
+func TestNodeToInventoryMixedCardModels(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{Name: "node01", UID: "uid"},
+		Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{
+			"huawei.com/Ascend910B4": resource.MustParse("4"),
+			"huawei.com/Ascend910C":  resource.MustParse("2"),
+		}},
+	}
+	inv := nodeToInventory(node, nil)
+	assert.Equal(t, "huawei", inv.Vendor)
+	assert.ElementsMatch(t, []string{"Ascend910B4", "Ascend910C"}, inv.CardTypes)
+	require.Len(t, inv.Resources, 2)
+	byCard := map[string]int64{}
+	for _, r := range inv.Resources {
+		byCard[r.CardType] = r.Allocatable
+	}
+	assert.EqualValues(t, 4, byCard["Ascend910B4"])
+	assert.EqualValues(t, 2, byCard["Ascend910C"])
+}
+
+// TestNodeToInventoryHAMICardModel covers the fallback for vendors that
+// publish the card model only in HAMi's node registration annotation.
+func TestNodeToInventoryHAMICardModel(t *testing.T) {
+	node := &corev1.Node{
+		ObjectMeta: metav1.ObjectMeta{
+			Name: "node01", UID: "uid",
+			Annotations: map[string]string{
+				"hami.io/node-amd-register": `[{"id":"0","type":"AMD Instinct MI300X","health":true}]`,
+			},
+		},
+		Status: corev1.NodeStatus{Allocatable: corev1.ResourceList{
+			"amd.com/gpu": resource.MustParse("1"),
+		}},
+	}
+	inv := nodeToInventory(node, nil)
+	assert.Equal(t, "amd", inv.Vendor)
+	assert.Equal(t, []string{"AMD Instinct MI300X"}, inv.CardTypes)
+}

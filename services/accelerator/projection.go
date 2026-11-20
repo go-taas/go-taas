@@ -10,14 +10,26 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/go-taas/go-taas/pkg/accelerator"
 )
 
-// Vendor set (closed, AD3). A node with no accelerator label is
-// "unspecified".
+// Vendor ids (AD3). The set is owned by pkg/accelerator's vendor
+// registry; these constants exist for callers that need a compile-time
+// name. A node with no accelerator signal is "unspecified".
 const (
 	VendorNvidia      = "nvidia"
+	VendorAMD         = "amd"
+	VendorIntel       = "intel"
 	VendorIluvatar    = "iluvatar"
 	VendorMetax       = "metax"
+	VendorHuawei      = "huawei"
+	VendorCambricon   = "cambricon"
+	VendorBiren       = "biren"
+	VendorEnflame     = "enflame"
+	VendorHygon       = "hygon"
+	VendorKunlunxin   = "kunlunxin"
+	VendorMthreads    = "mthreads"
 	VendorUnspecified = "unspecified"
 )
 
@@ -46,7 +58,7 @@ const (
 type AcceleratorNode struct { //nolint:revive // accelerator.AcceleratorNode is the documented domain name
 	NodeID            string
 	Name              string
-	Vendor            string // nvidia | iluvatar | metax | unspecified
+	Vendor            string // nvidia | amd | intel | iluvatar | metax | huawei | ... | unspecified
 	CardTypes         []string
 	GPUsAllocated     int64
 	GPUsFree          int64
@@ -247,9 +259,11 @@ func (c *ProjectionCache) CardTypeSummary() []CardTypeSummary {
 // normalizeFilter returns the filter value if it is a known enum value,
 // otherwise "" (invalid values are treated as empty).
 func normalizeFilter(v string) string {
+	if accelerator.IsVendor(v) {
+		return v
+	}
 	switch v {
-	case VendorNvidia, VendorIluvatar, VendorMetax, VendorUnspecified,
-		HealthHealthy, HealthDegraded, HealthUnknown:
+	case VendorUnspecified, HealthHealthy, HealthDegraded, HealthUnknown:
 		return v
 	default:
 		return ""

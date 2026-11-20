@@ -2,6 +2,7 @@ package image
 
 import (
 	"context"
+	acceleratorpkg "github.com/go-taas/go-taas/pkg/accelerator"
 	"strings"
 
 	"gorm.io/gorm"
@@ -102,15 +103,11 @@ func imageToSummary(img *Image) *Summary {
 	}
 }
 
-// IsValidAccelerator reports whether the accelerator is in the supported
-// set (nvidia, iluvatar, metax).
+// IsValidAccelerator reports whether the accelerator is a registered
+// vendor. The registry is owned by pkg/accelerator so every consumer
+// accepts the same set.
 func IsValidAccelerator(accelerator string) bool {
-	switch strings.ToLower(accelerator) {
-	case "nvidia", "iluvatar", "metax":
-		return true
-	default:
-		return false
-	}
+	return acceleratorpkg.IsVendor(strings.ToLower(strings.TrimSpace(accelerator)))
 }
 
 // AcceleratorCPU marks an image that needs no accelerator at all: a

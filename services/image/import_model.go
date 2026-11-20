@@ -28,7 +28,7 @@ type ImportTask struct {
 	// DestinationReference is the derived Harbor reference the image is
 	// pushed to (only when succeeded).
 	DestinationReference string `gorm:"size:512;not null;default:''"`
-	// Accelerator names the hardware platform (nvidia, iluvatar, metax).
+	// Accelerator names the hardware platform (a registered accelerator vendor).
 	Accelerator string `gorm:"size:32;not null"`
 	// Engine names the inference engine (vllm, sglang, ...).
 	Engine string `gorm:"size:64;not null"`

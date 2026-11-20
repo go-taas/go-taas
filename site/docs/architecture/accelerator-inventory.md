@@ -12,7 +12,7 @@
 
 ## 1. Overview and Goals
 
-go-taas serves inference on heterogeneous accelerators (NVIDIA GPU, Iluvatar CoreX, MetaX) and delegates driver, device-plugin and node-label management to each vendor's GPU Operator (architecture §2.3). Today the operator has no visibility into the accelerator fleet: the deploy form accepts any card type, a request for a card type with no free capacity fails only at the Kubernetes scheduler, and a node whose driver or device plugin is degraded still appears in the cluster with no operator-facing explanation.
+go-taas serves inference on heterogeneous accelerators across NVIDIA, AMD, Intel, Huawei Ascend and the domestic accelerator vendors, and delegates driver, device-plugin and node-label management to each vendor's GPU Operator (architecture §2.3). Today the operator has no visibility into the accelerator fleet: the deploy form accepts any card type, a request for a card type with no free capacity fails only at the Kubernetes scheduler, and a node whose driver or device plugin is degraded still appears in the cluster with no operator-facing explanation.
 
 This feature adds a **read-only accelerator inventory and health view** on the admin console: a page that lists every compute node, its accelerator vendor, the GPU model(s) it carries, how many are allocated vs free, the driver and device-plugin status, and the node's readiness. It is the smallest independently valuable increment of Phase 3's "heterogeneous accelerators" roadmap item, and it is the "node inventory" prerequisite that image-management defers to and the "card-type inventory" prerequisite that the compatibility matrix (row 19) consumes.
 
@@ -42,7 +42,7 @@ AD1–AD10 restate the UI/UX design's decisions as implementation-level rules. *
 | --- | --- | --- |
 | AD1 | **The inventory is a projection of Kubernetes node + extended-resource state, collected by the Controller and served through the admin gateway; it is not a new database table.** The Controller is the only component with a Kubernetes client; it polls nodes on an interval and publishes a **full snapshot** to the MQ; the accelerator service consumes the snapshot and maintains an **in-memory projection cache** (a map keyed by node id) that the three RPCs read | Design D4. The source of truth is the cluster (node labels, `nvidia.com/gpu`-style extended resources, device-plugin status). A projection avoids a second source of truth that drifts from the cluster. The full-snapshot publish is self-healing: a node removed from the cluster disappears from the next snapshot, and a service restart repopulates the cache from the next snapshot. The cache is ephemeral and single-replica; this is acceptable for a read-only telemetry view (see AD11 for the trade-off) |
 | AD2 | **The Controller publishes raw signals; the accelerator service computes the composite health.** The Controller reports per node: readiness, device-plugin state, driver version, vendor, card types, and allocated/free counts. The accelerator service derives the composite `health` from readiness and device-plugin state at ingestion; the driver version is reported but not part of the verdict | Design D3. Health semantics live in the service that serves the API, so the AC4 unit test is a service-level test and the Controller stays a dumb collector. The client renders the badge; it never computes health |
-| AD3 | **Vendor is derived from node labels; card type from the node's accelerator-specific extended-resource name or label; a node with no accelerator label is `unspecified`.** The vendor drives the badge and the card-type parsing; an unlabeled node is still listed and its health is based on node readiness alone | Design D5, FR4.2. Matches the architecture's node-labeling model (§2.3). The vendor set is closed: `nvidia`, `iluvatar`, `metax`, `unspecified` |
+| AD3 | **Vendor and card model are derived from the vendor GPU Operator's own auto-labels and device-plugin extended resources; the platform label is only an override.** A node with no accelerator signal is `unspecified` and its health is based on node readiness alone. The vendor registry lives in `pkg/accelerator` and is the single source of truth for every consumer (controller, inventory service, node-selector suggestions) | Design D5, FR4.2, §4.4. The vendor operator labels are documented per vendor and are not required to carry any `go-taas.com/*` label; adding a vendor is one registry entry rather than a change to each consumer |
 | AD4 | **Allocated vs free is computed from the node's allocatable vs allocated extended resources per card type.** The page shows both numbers and a utilization bar | Design D6. "Free capacity" is the operator's planning question; allocatable/allocated is the Kubernetes-native answer |
 | AD5 | **The page is admin-surface only.** Route `/admin/accelerators` and `/admin/accelerators/:nodeId`; API prefix `/api/v1/admin/accelerators/*`. Tenants never see the fleet | Design D7. The accelerator fleet is operator-internal orchestration state; a tenant consumes models, not nodes |
 | AD6 | **A new error code 10208 `CodeAcceleratorNodeNotFound`** for a node id that does not exist in the inventory | Design D8. Mirrors the per-module code allocation pattern; a stale node id must not be silently treated as an empty node. The code lives in the image block (10201–10299) because the accelerator inventory is the node/card-type inventory the image module defers to |
@@ -130,9 +130,9 @@ The Controller is the only component with a Kubernetes client. It runs a new bac
 1. Lists all nodes via the clientset (`corev1.Nodes`).
 2. For each node, computes the **raw signals**:
    - **readiness**: from the node's `Ready` condition (`ready` / `not_ready` / `unknown`).
-   - **vendor**: from the accelerator label. The vendor set is closed: `nvidia`, `iluvatar`, `metax`, `unspecified`. A node with no accelerator label is `unspecified` (AD3).
-   - **card types and allocated/free**: from the node's accelerator-specific extended resources. For each card type, `allocatable` from the node's `status.allocatable`, and `allocated` as the sum of accelerator requests across the pods **on that node** — listed cluster-wide once per snapshot, skipping `Succeeded`/`Failed` pods (they release their devices) and pods with no `nodeName` (nothing is reserved yet). The card type is parsed from the extended-resource name or the accelerator label (e.g. `nvidia.com/gpu` → card type from the node label `nvidia.com/gpu.product`; Iluvatar/MetaX equivalents).
-   - **driver version**: from the node label the GPU Operator writes, most specific first: `go-taas.com/driver-version` (the platform's own convention, when a cluster sets it), then `nvidia.com/cuda.driver-version.full` (what GPU Feature Discovery actually publishes — `595.91.07`), then the major/minor/revision parts. It is informational and shown on the list and detail views; it is **not** a health input (see below).
+   - **vendor**: from the vendor GPU operator's own node labels and extended resources (matrix in §4.4), with an explicit `go-taas.com/accelerator` (or legacy `gpu-vendor`) label as an override. A node with no accelerator signal is `unspecified` (AD3).
+   - **card types and allocated/free**: from the node's accelerator-specific extended resources. For each card type, `allocatable` from the node's `status.allocatable`, and `allocated` as the sum of accelerator requests across the pods **on that node** — listed cluster-wide once per snapshot, skipping `Succeeded`/`Failed` pods (they release their devices) and pods with no `nodeName` (nothing is reserved yet). The card type is resolved **per resource**, because a node may advertise more than one card model: the vendor product label first, then HAMi's node registration annotation, then a model encoded in the resource name (`huawei.com/Ascend910B4`, `cambricon.com/mlu370`), then the device family. A node-wide model is never stamped onto every resource.
+   - **driver version**: from the node label the vendor operator writes, most specific first: `go-taas.com/driver-version` (the platform's own convention, when a cluster sets it), then the vendor key (`nvidia.com/cuda.driver-version.full`, `amd.com/gpu.driver-version`, ...), then NVIDIA's major/minor/revision parts. It is informational and shown on the list and detail views; it is **not** a health input (see below).
    - **device-plugin state**: from the node's device-plugin status (the `Healthy`/`Unhealthy` condition the device plugin reports, or the extended-resource allocatable being non-zero). `healthy` / `degraded` / `unknown`.
    - **per-GPU breakdown**: index, model, allocated/free, and any per-GPU health note (from the device-plugin's per-device health, where available).
 3. Assembles a **full snapshot** of all nodes and publishes it to the MQ subject `accelerator.inventory` (JSON body, `reported_at` timestamp).
@@ -171,6 +171,46 @@ A node with vendor `unspecified` (no accelerator label) has no device-plugin or 
 
 ---
 
+### 4.4 Vendor auto-label matrix
+
+The vendor and card model come from the labels and extended resources
+each vendor's GPU Operator publishes. The platform label
+`go-taas.com/accelerator` (and the legacy `gpu-vendor`) is an override,
+not a prerequisite. `pkg/accelerator` owns this matrix; the controller,
+the inventory service and the node-selector suggestion all read it, so a
+new vendor is one registry entry.
+
+| Vendor (API id) | Vendor signals | Card model | Driver version |
+| --- | --- | --- | --- |
+| NVIDIA (`nvidia`) | `nvidia.com/*` labels, `nvidia.com/gpu` | `nvidia.com/gpu.product` | `nvidia.com/cuda.driver-version.full`, `nvidia.com/gpu.driver-version` |
+| AMD (`amd`) | `amd.com/*`, `beta.amd.com/*`, `amd.com/gpu` | `amd.com/gpu.product-name` | `amd.com/gpu.driver-version` |
+| Intel (`intel`) | `gpu.intel.com/*`, `gpu.intel.com/i915`, `gpu.intel.com/xe` | `gpu.intel.com/product` | — |
+| Iluvatar (`iluvatar`) | `iluvatar.ai/*`, `iluvatar.com/*`, `iluvatar.ai/gpu` | `iluvatar.ai/gpu.product` | `iluvatar.ai/gpu.driver-version` |
+| MetaX (`metax`) | `metax-tech.com/*`, `metax.com/*`, `metax-tech.com/gpu`, `/vgpu` | `metax-tech.com/gpu.product` | `metax-tech.com/gpu.driver-version` |
+| Huawei Ascend (`huawei`) | `huawei.com/Ascend*` | resource suffix (`Ascend910B4`); HAMi register annotation | `huawei.com/npu-driver-version` |
+| Cambricon (`cambricon`) | `cambricon.com/*`, `cambricon.com/mlu*` | `Model` label or resource (`MLU370`) | `DriverVersion` |
+| Biren (`biren`) | `birentech.com/*`, `birentech.com/gpu` | `birentech.com/gpu.product`; HAMi register annotation | `birentech.com/gpu.driver-version` |
+| Enflame (`enflame`) | `enflame.com/*`, `enflame.com/gcu`, `/vgcu` | `enflame.com/gcu.product` | `enflame.com/gcu.driver-version` |
+| Hygon (`hygon`) | `hygon.com/*`, `hygon.com/dcunum`, `/hcunum` | `hygon.com/gpu.product`; HAMi register annotation | `hygon.com/dcu.driver-version` |
+| Kunlunxin (`kunlunxin`) | `kunlunxin.com/*`, `kunlunxin.com/xpu`, `/vxpu`, `baidu.com/xpu` | `kunlunxin.com/xpu.product`; HAMi register annotation | `kunlunxin.com/xpu.driver-version` |
+| Moore Threads (`mthreads`) | `mthreads.com/*`, `mthreads.ai/*`, `mthreads.com/gpu`, `/vgpu` | `mthreads.com/gpu.product` | `mthreads.com/gpu.driver-version` |
+
+Precedence per node: explicit `go-taas.com/accelerator` or `gpu-vendor`
+(only when it names a known vendor) → vendor label namespace → vendor
+extended resource. Per resource: vendor product label → HAMi node
+registration annotation → model encoded in the resource name → device
+family. The card model is never the bare `gpu` family when the vendor
+publishes a product name.
+
+References (vendor documentation and source):
+
+- NVIDIA GPU Feature Discovery labels: <https://github.com/NVIDIA/k8s-device-plugin>
+- AMD GPU Operator node labeller: <https://github.com/ROCm/gpu-operator>
+- Intel GPU plugin NFD labels: <https://github.com/intel/intel-device-plugins-for-kubernetes/blob/main/cmd/gpu_plugin/labels.md>
+- Ascend device plugin resources: <https://github.com/Project-HAMi/ascend-device-plugin>
+- Cambricon device plugin and node labels: <https://github.com/Cambricon/cambricon-k8s-device-plugin>
+- Biren and other domestic device resources (HAMi supported devices): <https://github.com/Project-HAMi/HAMi>
+
 ## 5. Data Model
 
 The inventory is an **in-memory projection cache** (AD1, AD11), not a database table. There is no GORM model, no `AutoMigrate`, no SQL migration. The "data model" is the shape of the cache entries and the wire messages.
@@ -182,7 +222,7 @@ The inventory is an **in-memory projection cache** (AD1, AD11), not a database t
 type AcceleratorNode struct {
     NodeID            string
     Name              string
-    Vendor            string // nvidia | iluvatar | metax | unspecified
+    Vendor            string // vendor registry id (nvidia, amd, intel, huawei, ...) or unspecified
     CardTypes         []string
     GPUsAllocated     int64
     GPUsFree          int64
@@ -380,7 +420,7 @@ message CardTypeSummary {
 
 | RPC | Check | Failure code | Canonical message |
 | --- | --- | --- | --- |
-| `ListAcceleratorNodes` | `vendor` in {nvidia, iluvatar, metax, unspecified} or empty; `health` in {healthy, degraded, unknown} or empty; `limit` ≤ 100 | 10001 `UNAUTHORIZED` for a missing org header is **not** applicable (platform-scoped, AD10); invalid filter values are ignored (treated as empty) | — |
+| `ListAcceleratorNodes` | `vendor` in the registry set (`nvidia`, `amd`, `intel`, `iluvatar`, `metax`, `huawei`, `cambricon`, `biren`, `enflame`, `hygon`, `kunlunxin`, `mthreads`, `unspecified`) or empty; `health` in {healthy, degraded, unknown} or empty; `limit` ≤ 100 | 10001 `UNAUTHORIZED` for a missing org header is **not** applicable (platform-scoped, AD10); invalid filter values are ignored (treated as empty) | — |
 | `GetAcceleratorNode` | `node_id` present in the cache | 10208 `CodeAcceleratorNodeNotFound` | accelerator node not found |
 | `ListCardTypeSummary` | none | — | — |
 

@@ -535,7 +535,7 @@ type ImageRegistryEntry struct {
 	// Tag is the image tag.
 	Tag string `mapstructure:"tag"`
 	// Accelerator names the hardware platform the image runs on
-	// (nvidia, iluvatar, metax).
+	// (a registered accelerator vendor).
 	Accelerator string `mapstructure:"accelerator"`
 	// Engine names the inference engine (vllm, sglang, ...).
 	Engine string `mapstructure:"engine"`

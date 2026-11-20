@@ -410,7 +410,7 @@ message CreateInferenceServiceRequest {
   string model_version = 3;
   string image_id = 4;
   int32 replicas = 5;
-  // accelerator names the hardware platform (nvidia, iluvatar, metax).
+  // accelerator names the hardware platform (a registered accelerator vendor).
   string accelerator = 6;
   // accelerator_type is the concrete card model requested.
   string accelerator_type = 7;
@@ -734,8 +734,8 @@ message InferenceServiceSummary {
   // specific orgs, projects or users. False means every platform user may
   // use it, which is the default.
   bool access_restricted = 15;
-  // accelerator is the hardware platform the service runs on (nvidia,
-  // iluvatar, metax), as chosen at creation.
+  // accelerator is the hardware platform the service runs on (a registered accelerator
+  // vendor), as chosen at creation.
   string accelerator = 16;
   // accelerator_type is the concrete card model requested at creation, when
   // one was named. Empty means the platform picked from the accelerator's

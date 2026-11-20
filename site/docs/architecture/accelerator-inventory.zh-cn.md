@@ -12,7 +12,7 @@
 
 ## 1. 概述与目标
 
-go-taas 在异构加速器（NVIDIA GPU、Iluvatar CoreX、MetaX）上提供推理服务，并把驱动、设备插件与节点标签管理委托给各厂商的 GPU Operator（架构第 2.3 节）。今天运维人员对加速器集群没有任何可见性：部署表单接受任意卡型，请求一个没有空闲容量的卡型只会在 Kubernetes 调度器处失败，而一个驱动或设备插件已降级的节点仍出现在集群里，没有任何面向运维人员的解释。
+go-taas 在异构加速器上提供推理服务，覆盖 NVIDIA、AMD、Intel、华为昇腾与各国产加速卡厂商，并把驱动、设备插件与节点标签管理委托给各厂商的 GPU Operator（架构第 2.3 节）。今天运维人员对加速器集群没有任何可见性：部署表单接受任意卡型，请求一个没有空闲容量的卡型只会在 Kubernetes 调度器处失败，而一个驱动或设备插件已降级的节点仍出现在集群里，没有任何面向运维人员的解释。
 
 本特性在管理控制台上新增一个**只读的加速器清单与健康视图**：一个页面列出每个计算节点、其加速器厂商、承载的 GPU 型号、已分配/空闲数量、驱动与设备插件状态、以及节点就绪度。这是 Phase 3「异构加速器」路线图条目中最小、可独立交付的增量，也是镜像管理延后的「节点清单」与兼容矩阵（第 19 行）消费的「卡型清单」前置条件。
 
@@ -42,7 +42,7 @@ AD1–AD10 把 UI/UX 设计的决策复述为实现级规则。**AD11 是架构�
 | --- | --- | --- |
 | AD1 | **清单是 Kubernetes 节点 + 扩展资源状态的投影，由 Controller 采集、经管理网关提供；不是新的数据库表。** Controller 是唯一持有 Kubernetes 客户端的组件；它按间隔轮询节点并把**全量快照**发布到 MQ；accelerator 服务消费快照并维护**内存投影缓存**（按节点 id 的 map），三个 RPC 读取它 | 设计 D4。事实来源是集群（节点标签、`nvidia.com/gpu` 式扩展资源、设备插件状态）。投影避免出现与集群漂移的第二个事实来源。全量快照发布是自愈的：从集群移除的节点会在下一个快照中消失，服务重启后也会从下一个快照重新填充缓存。缓存是临时的、单副本的；对只读遥测视图可接受（权衡见 AD11） |
 | AD2 | **Controller 发布原始信号；accelerator 服务计算复合健康。** Controller 按节点上报：就绪度、设备插件状态、驱动版本、厂商、卡型、已分配/空闲数量。accelerator 服务在摄入时从就绪度与设备插件状态推导复合 `health`（驱动版本只展示，不参与判定） | 设计 D3。健康语义位于提供 API 的服务中，因此 AC4 单元测试是服务级测试，Controller 保持为哑采集器。客户端只渲染徽章，从不计算健康 |
-| AD3 | **厂商从节点标签推导；卡型从节点上加速器专属的扩展资源名或标签推导；无加速器标签的节点为 `unspecified`。** 厂商驱动徽章与卡型解析；未打标签的节点仍会列出，其健康仅基于节点就绪度 | 设计 D5、FR4.2。与架构的节点标签模型一致（第 2.3 节）。厂商集合是封闭的：`nvidia`、`iluvatar`、`metax`、`unspecified` |
+| AD3 | **厂商与卡型来自各厂商 GPU Operator 自带的自动打标和 device-plugin 扩展资源；平台标签只作为覆盖项。** 无任何加速器信号的节点为 `unspecified`，其健康仅基于节点就绪度。厂商注册表位于 `pkg/accelerator`，是 Controller、清单服务与节点选择器建议的唯一事实来源 | 设计 D5、FR4.2、第 4.4 节。厂商 operator 标签按各厂商文档读取，不要求集群携带任何 `go-taas.com/*` 标签；新增厂商只需增加一条注册表记录，而不是改动每个消费者 |
 | AD4 | **已分配 vs 空闲由节点每种卡型的可分配 vs 已分配扩展资源计算。** 页面同时展示两个数字与利用率条 | 设计 D6。「空闲容量」是运维的规划问题；可分配/已分配是 Kubernetes 原生答案 |
 | AD5 | **页面仅限管理面。** 路由 `/admin/accelerators` 与 `/admin/accelerators/:nodeId`；API 前缀 `/api/v1/admin/accelerators/*`。租户永远看不到集群 | 设计 D7。加速器集群是运维内部的编排状态；租户消费的是模型，不是节点 |
 | AD6 | **新增错误码 10208 `CodeAcceleratorNodeNotFound`**，用于清单中不存在的节点 id | 设计 D8。与按模块分配错误码的模式一致；过期的节点 id 不能被静默当作空节点。该码位于镜像块（10201–10299），因为加速器清单正是镜像模块延后的节点/卡型清单 |
@@ -130,9 +130,9 @@ Controller 是唯一持有 Kubernetes 客户端的组件。它运行一个新的
 1. 通过 clientset 列出所有节点（`corev1.Nodes`）。
 2. 对每个节点计算**原始信号**：
    - **就绪度**：来自节点的 `Ready` 条件（`ready` / `not_ready` / `unknown`）。
-   - **厂商**：来自加速器标签。厂商集合封闭：`nvidia`、`iluvatar`、`metax`、`unspecified`。无加速器标签的节点为 `unspecified`（AD3）。
-   - **卡型与已分配/空闲**：来自节点上加速器专属的扩展资源。对每种卡型，`allocatable` vs `allocated`（节点上各 Pod 请求之和，或设备插件上报的扩展资源 `allocatable` 减 `allocated`）。卡型从扩展资源名或加速器标签解析（如 `nvidia.com/gpu` → 卡型来自节点标签 `nvidia.com/gpu.product`；Iluvatar/MetaX 对应项）。
-   - **驱动版本**：按优先级读取 GPU Operator 写入的节点标签：`go-taas.com/driver-version`（平台自有约定，集群设置了才生效）、`nvidia.com/cuda.driver-version.full`（GPU Feature Discovery 实际发布的标签，如 `595.91.07`），以及 major/minor/revision 分段。它是展示信息，显示在列表与详情视图，**不参与健康判定**（见下）。
+   - **厂商**：来自各厂商 GPU Operator 自带的节点标签与扩展资源（矩阵见第 4.4 节），显式 `go-taas.com/accelerator`（或遗留 `gpu-vendor`）标签作为覆盖。无任何加速器信号的节点为 `unspecified`（AD3）。
+   - **卡型与已分配/空闲**：来自节点上加速器专属的扩展资源。对每种卡型，`allocatable` vs `allocated`（节点上各 Pod 请求之和，或设备插件上报的扩展资源 `allocatable` 减 `allocated`）。卡型**按每个资源分别解析**，因为一个节点可能挂多种卡：优先厂商 product 标签，其次 HAMi 节点注册注解，再次资源名中编码的型号（`huawei.com/Ascend910B4`、`cambricon.com/mlu370`），最后回退到设备族。绝不再把一个节点级型号套到所有资源上。
+   - **驱动版本**：按优先级读取厂商 operator 写入的节点标签：`go-taas.com/driver-version`（平台自有约定，集群设置了才生效）、厂商键（`nvidia.com/cuda.driver-version.full`、`amd.com/gpu.driver-version` 等），以及 NVIDIA 的 major/minor/revision 分段。它是展示信息，显示在列表与详情视图，**不参与健康判定**（见下）。
    - **设备插件状态**：来自节点的设备插件状态（设备插件上报的 `Healthy`/`Unhealthy` 条件，或扩展资源 allocatable 非零）。`healthy` / `degraded` / `unknown`。
    - **逐 GPU 明细**：索引、型号、已分配/空闲，以及任何逐 GPU 健康备注（来自设备插件的逐设备健康，若可用）。
 3. 组装**全量快照**（所有节点）并发布到 MQ subject `accelerator.inventory`（JSON 体，带 `reported_at` 时间戳）。
@@ -171,6 +171,42 @@ accelerator 服务运行一个 `server.Runner`，订阅 `accelerator.inventory`�
 
 ---
 
+### 4.4 厂商自动打标矩阵
+
+厂商与卡型来自各厂商 GPU Operator 发布的标签与扩展资源。平台标签
+`go-taas.com/accelerator`（以及遗留的 `gpu-vendor`）只是覆盖项，不是
+前置条件。`pkg/accelerator` 维护这张矩阵，Controller、清单服务与节点
+选择器建议都读取它，因此新增厂商只需增加一条注册表记录。
+
+| 厂商（API id） | 厂商信号 | 卡型 | 驱动版本 |
+| --- | --- | --- | --- |
+| NVIDIA (`nvidia`) | `nvidia.com/*` 标签、`nvidia.com/gpu` | `nvidia.com/gpu.product` | `nvidia.com/cuda.driver-version.full`、`nvidia.com/gpu.driver-version` |
+| AMD (`amd`) | `amd.com/*`、`beta.amd.com/*`、`amd.com/gpu` | `amd.com/gpu.product-name` | `amd.com/gpu.driver-version` |
+| Intel (`intel`) | `gpu.intel.com/*`、`gpu.intel.com/i915`、`gpu.intel.com/xe` | `gpu.intel.com/product` | — |
+| 天数智芯 (`iluvatar`) | `iluvatar.ai/*`、`iluvatar.com/*`、`iluvatar.ai/gpu` | `iluvatar.ai/gpu.product` | `iluvatar.ai/gpu.driver-version` |
+| 沐曦 (`metax`) | `metax-tech.com/*`、`metax.com/*`、`metax-tech.com/gpu`、`/vgpu` | `metax-tech.com/gpu.product` | `metax-tech.com/gpu.driver-version` |
+| 华为昇腾 (`huawei`) | `huawei.com/Ascend*` | 资源后缀（`Ascend910B4`）；HAMi 注册注解 | `huawei.com/npu-driver-version` |
+| 寒武纪 (`cambricon`) | `cambricon.com/*`、`cambricon.com/mlu*` | `Model` 标签或资源名（`MLU370`） | `DriverVersion` |
+| 壁仞 (`biren`) | `birentech.com/*`、`birentech.com/gpu` | `birentech.com/gpu.product`；HAMi 注册注解 | `birentech.com/gpu.driver-version` |
+| 燧原 (`enflame`) | `enflame.com/*`、`enflame.com/gcu`、`/vgcu` | `enflame.com/gcu.product` | `enflame.com/gcu.driver-version` |
+| 海光 (`hygon`) | `hygon.com/*`、`hygon.com/dcunum`、`/hcunum` | `hygon.com/gpu.product`；HAMi 注册注解 | `hygon.com/dcu.driver-version` |
+| 昆仑芯 (`kunlunxin`) | `kunlunxin.com/*`、`kunlunxin.com/xpu`、`/vxpu`、`baidu.com/xpu` | `kunlunxin.com/xpu.product`；HAMi 注册注解 | `kunlunxin.com/xpu.driver-version` |
+| 摩尔线程 (`mthreads`) | `mthreads.com/*`、`mthreads.ai/*`、`mthreads.com/gpu`、`/vgpu` | `mthreads.com/gpu.product` | `mthreads.com/gpu.driver-version` |
+
+节点级优先级：显式 `go-taas.com/accelerator` 或 `gpu-vendor`（仅当值
+是已知厂商）→ 厂商标签命名空间 → 厂商扩展资源。资源级优先级：厂商
+product 标签 → HAMi 节点注册注解 → 资源名中编码的型号 → 设备族。厂商
+发布 product 名称时，卡型绝不能退化成裸的 `gpu` 族。
+
+参考（厂商文档与源码）：
+
+- NVIDIA GPU Feature Discovery 标签：<https://github.com/NVIDIA/k8s-device-plugin>
+- AMD GPU Operator node labeller：<https://github.com/ROCm/gpu-operator>
+- Intel GPU 插件 NFD 标签：<https://github.com/intel/intel-device-plugins-for-kubernetes/blob/main/cmd/gpu_plugin/labels.md>
+- 昇腾 device plugin 资源：<https://github.com/Project-HAMi/ascend-device-plugin>
+- 寒武纪 device plugin 与节点标签：<https://github.com/Cambricon/cambricon-k8s-device-plugin>
+- 壁仞等国产设备资源（HAMi 支持列表）：<https://github.com/Project-HAMi/HAMi>
+
 ## 5. 数据模型
 
 清单是**内存投影缓存**（AD1、AD11），不是数据库表。无 GORM 模型、无 `AutoMigrate`、无 SQL 迁移。「数据模型」是缓存条目与线上消息的形状。
@@ -182,7 +218,7 @@ accelerator 服务运行一个 `server.Runner`，订阅 `accelerator.inventory`�
 type AcceleratorNode struct {
     NodeID            string
     Name              string
-    Vendor            string // nvidia | iluvatar | metax | unspecified
+    Vendor            string // 厂商注册表 id（nvidia、amd、intel、huawei 等）或 unspecified
     CardTypes         []string
     GPUsAllocated     int64
     GPUsFree          int64
@@ -378,7 +414,7 @@ message CardTypeSummary {
 
 | RPC | 检查 | 失败码 | 规范消息 |
 | --- | --- | --- | --- |
-| `ListAcceleratorNodes` | `vendor` 属于 {nvidia, iluvatar, metax, unspecified} 或为空；`health` 属于 {healthy, degraded, unknown} 或为空；`limit` ≤ 100 | 缺失 org 头返回 10001 `UNAUTHORIZED` **不适用**（平台级，AD10）；非法过滤值被忽略（视为空） | — |
+| `ListAcceleratorNodes` | `vendor` 属于注册表集合（`nvidia`、`amd`、`intel`、`iluvatar`、`metax`、`huawei`、`cambricon`、`biren`、`enflame`、`hygon`、`kunlunxin`、`mthreads`、`unspecified`）或为空；`health` 属于 {healthy, degraded, unknown} 或为空；`limit` ≤ 100 | 缺失 org 头返回 10001 `UNAUTHORIZED` **不适用**（平台级，AD10）；非法过滤值被忽略（视为空） | — |
 | `GetAcceleratorNode` | `node_id` 存在于缓存 | 10208 `CodeAcceleratorNodeNotFound` | accelerator node not found |
 | `ListCardTypeSummary` | 无 | — | — |
 

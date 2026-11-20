@@ -254,3 +254,19 @@ func TestCPUNodeCountIgnoresCardedNodes(t *testing.T) {
 		assert.Equal(t, VendorNvidia, n.Vendor, "a CPU node must not appear as a row")
 	}
 }
+
+// TestNormalizeFilterVendors covers every vendor the label registry
+// supports. A vendor that is dropped here silently turns its filter into
+// "no filter", returning the whole fleet.
+func TestNormalizeFilterVendors(t *testing.T) {
+	for _, vendor := range []string{
+		VendorNvidia, VendorAMD, VendorIntel, VendorIluvatar, VendorMetax,
+		VendorHuawei, VendorCambricon, VendorBiren, VendorEnflame, VendorHygon,
+		VendorKunlunxin, VendorMthreads, VendorUnspecified,
+		HealthHealthy, HealthDegraded, HealthUnknown,
+	} {
+		assert.Equal(t, vendor, normalizeFilter(vendor), vendor)
+	}
+	assert.Equal(t, "", normalizeFilter("bogus"))
+	assert.Equal(t, "", normalizeFilter("NVIDIA"), "vendor ids are lower-case")
+}

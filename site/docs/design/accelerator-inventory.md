@@ -18,7 +18,7 @@ That gap has four concrete consequences visible today:
 
 1. **Blind capacity planning.** An operator cannot answer "how many free `A800` do I have?" — the deploy form accepts any card type, and a request for a card type with no free capacity fails only at the Kubernetes scheduler, after the message reaches the Controller.
 2. **No health signal.** A node whose GPU driver or device plugin is degraded still appears in the cluster; inference services scheduled onto it fail at runtime with no operator-facing explanation.
-3. **No fleet overview.** With three accelerator vendors, each with its own driver and device-plugin lifecycle, there is no single place to see driver versions, node labels, and readiness across the fleet.
+3. **No fleet overview.** With many accelerator vendors, each with its own driver and device-plugin lifecycle, there is no single place to see driver versions, node labels, and readiness across the fleet.
 4. **No foundation for the matrix.** The compatibility matrix (row 19) and node-level cache inventory (deferred in feature #3) both need a card-type inventory that does not exist.
 
 This feature adds a **read-only accelerator inventory and health view** on the admin console: a page that lists every compute node, its accelerator vendor, the GPU model(s) it carries, how many are allocated vs free, the driver and device-plugin status, and the node's readiness. It is the smallest independently valuable increment of Phase 3's "heterogeneous accelerators" roadmap item: it gives the operator the fleet picture that every downstream accelerator feature (compatibility matrix, node-aware warmup, capacity-aware deployment) builds on.
@@ -48,7 +48,7 @@ Pitfalls to avoid: exposing raw `kubectl`/`nvidia-smi` output as the product sur
 | D2 | **Two views on one page: a card-type summary and a per-node table.** The summary answers "how many of card X are free"; the table answers "which node, which driver, which health" | Operators plan capacity by card type (D1 of feature #2) but debug by node; both questions need one page |
 | D3 | **Health is a composite of signals**: the node `Ready` condition and the device-plugin `Healthy` status. A node is `Healthy` only when both hold | A node can be `Ready` while its device plugin is degraded; collapsing them hides the failure mode. *(Implementation note: driver-version presence was originally a third condition, but it is display information — real nodes often do not publish that label, so every node read `degraded`. The architecture document's AD2 and Section 4.3 are authoritative.)* |
 | D4 | **The inventory is a projection of Kubernetes node + extended-resource state**, collected by the Controller and served through the admin gateway; it is not a new database table | The source of truth is the cluster (node labels, `nvidia.com/gpu`-style extended resources, device-plugin status). A projection avoids a second source of truth that drifts from the cluster |
-| D5 | **Accelerator vendor is derived from node labels** (`nvidia` / `iluvatar` / `metax`), and card type from the node's accelerator-specific extended-resource name or label; a node with no accelerator label is shown as `unspecified` | Matches the architecture's node-labeling model (§2.3); the vendor drives the icon/badge and the card-type parsing |
+| D5 | **Accelerator vendor and card model are derived from each vendor GPU Operator's own auto-labels and extended resources** (matrix in architecture §4.4), with the platform label as an override; a node with no accelerator label is shown as `unspecified` | Matches the architecture's node-labeling model (§2.3); the vendor drives the icon/badge and the card-type parsing |
 | D6 | **Allocated vs free is computed from the node's allocatable vs allocated extended resources** for each card type; the page shows both numbers and a utilization bar | "Free capacity" is the operator's planning question; allocatable/allocated is the Kubernetes-native answer |
 | D7 | **The page is admin-surface only** (`/admin/accelerators` + `/api/v1/admin/accelerators/*`). Tenants never see the fleet | The accelerator fleet is operator-internal orchestration state (like inference services' replicas and images); a tenant consumes models, not nodes |
 | D8 | **A new error code 10208 `CodeAcceleratorNodeNotFound`** for a node id that does not exist in the inventory | Mirrors the per-module code allocation pattern (10207 for image reference); a stale node id must not be silently treated as an empty node |
@@ -76,15 +76,15 @@ Pitfalls to avoid: exposing raw `kubectl`/`nvidia-smi` output as the product sur
 
 ### FR1 — Card-type summary
 
-- **FR1.1** The page shows a summary of card types grouped by `(vendor, card_type)`: **Vendor** (badge: nvidia / iluvatar / metax / unspecified), **Card type** (e.g. `A800`, `H800`, `BI-V150`), **Total GPUs**, **Allocated**, **Free**, **Nodes** (count of nodes carrying that card type), and a **utilization bar** (allocated/total).
+- **FR1.1** The page shows a summary of card types grouped by `(vendor, card_type)`: **Vendor** (badge: any registered vendor / unspecified), **Card type** (e.g. `A800`, `H800`, `BI-V150`), **Total GPUs**, **Allocated**, **Free**, **Nodes** (count of nodes carrying that card type), and a **utilization bar** (allocated/total).
 - **FR1.2** A card type with zero free GPUs is flagged with a "No free capacity" badge and a muted row style; a card type with zero total GPUs is not shown.
 - **FR1.3** The summary is sorted by vendor, then by free capacity ascending (most constrained first), so the operator sees scarcity at the top.
 
 ### FR2 — Per-node table
 
 - **FR2.1** The page lists compute nodes in a table: **Node** (name), **Vendor** (badge), **Card type(s)** (comma-separated), **GPUs** (allocated/free), **Driver version**, **Device plugin** (Healthy / Degraded / Unknown badge), **Readiness** (Ready / NotReady / Unknown badge), **Health** (composite badge: Healthy / Degraded / Unknown), **Last updated** (relative time).
-- **FR2.2** The list is filterable by vendor (nvidia / iluvatar / metax / unspecified) and by health (Healthy / Degraded / Unknown), searchable by node name, and paginated (`offset`/`limit`, default 20, max 100).
-- **FR2.3** The empty state reads "No accelerator nodes found — install a GPU Operator and label your compute nodes" with a hint linking to the architecture's heterogeneous-compute section. A banner lists any supported vendor (nvidia / iluvatar / metax) with zero nodes.
+- **FR2.2** The list is filterable by vendor (any registered vendor id / unspecified) and by health (Healthy / Degraded / Unknown), searchable by node name, and paginated (`offset`/`limit`, default 20, max 100).
+- **FR2.3** The empty state reads "No accelerator nodes found — install a GPU Operator and label your compute nodes" with a hint linking to the architecture's heterogeneous-compute section. A banner lists any supported vendor (the registered vendor set) with zero nodes.
 - **FR2.4** A node row expands (or links to a detail view) to show per-GPU breakdown: each GPU's index, model, allocated/free, and any per-GPU health note.
 
 ### FR3 — Node detail
@@ -128,7 +128,7 @@ Pitfalls to avoid: exposing raw `kubectl`/`nvidia-smi` output as the product sur
 | Disabled | Refresh is disabled while a poll is in flight; filters are always enabled |
 | Permission-denied | A session without the required role receives 10036 and the page shows the standard permission-denied state (feature #17) with a link back to the admin home |
 
-**Filters**: Vendor (select: all / nvidia / iluvatar / metax / unspecified), Health (select: all / Healthy / Degraded / Unknown), Node name (text search). Server-side filtering via `ListAcceleratorNodes` parameters; pagination `offset`/`limit`.
+**Filters**: Vendor (select: all / registered vendor / unspecified), Health (select: all / Healthy / Degraded / Unknown), Node name (text search). Server-side filtering via `ListAcceleratorNodes` parameters; pagination `offset`/`limit`.
 
 **Table columns**: Node (link), Vendor (badge), Card type(s), GPUs (allocated/free), Driver version, Device plugin (badge), Readiness (badge), Health (composite badge), Last updated (relative time). Sortable by Node, GPUs free, and Last updated.
 

@@ -11,6 +11,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/go-taas/go-taas/pkg/accelerator"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
 )
@@ -26,32 +27,7 @@ const (
 	fallbackAcceleratorLabel = "gpu-vendor"
 	labelDriverVersion       = "go-taas.com/driver-version"
 	labelDevicePlugin        = "go-taas.com/device-plugin"
-
-	// platformLabelPrefix is the prefix of the platform's own node labels
-	// (accelerator vendor, driver version, vGPU pool membership). The
-	// inventory carries all of them so its consumers — the vGPU membership
-	// projection above all — see the operator's node classification.
-	platformLabelPrefix = "go-taas.com/"
-
-	// driverVersionLabelKeys are the labels a node may carry its GPU driver
-	// version on, most specific first.
-	//
-	// `go-taas.com/driver-version` is the platform's own convention and wins
-	// when a cluster sets it. NVIDIA's GPU Feature Discovery publishes the
-	// version under `nvidia.com/cuda.driver-version.full` (595.91.07) plus
-	// major/minor/revision parts, and no cluster sets the platform's label —
-	// so reading only that left the version empty on every real install,
-	// which the health rule then reported as "degraded" on a perfectly
-	// healthy node.
 )
-
-// driverVersionLabelKeys are the node labels that may carry the GPU driver
-// version, most specific first.
-var driverVersionLabelKeys = []string{
-	labelDriverVersion,
-	"nvidia.com/cuda.driver-version.full",
-	"nvidia.com/gpu.driver-version",
-}
 
 // inventoryNode is one node's raw signals in the published snapshot
 // (feature #18, Section 4.1). The accelerator service computes the
@@ -286,22 +262,23 @@ func nodeToInventory(n *corev1.Node, allocated map[corev1.ResourceName]int64) in
 	devicePlugin := devicePluginFromNode(n, labels)
 
 	// The card type is the card model (nvidia.com/gpu.product =
-	// NVIDIA-GeForce-RTX-4090, ...), not the device-plugin resource family
-	// ("gpu"): the compatibility matrix and the deploy form are keyed by
-	// card type, and "gpu" cannot tell an A800 from a 4090.
-	model := cardModelFromNode(vendor, labels)
-
+	// NVIDIA-GeForce-RTX-4090, amd.com/gpu.product-name = Instinct MI300X,
+	// ...), not the device-plugin resource family ("gpu"): the compatibility
+	// matrix and the deploy form are keyed by card type, and "gpu" cannot
+	// tell an A800 from a 4090.
+	//
+	// The model is resolved per resource, not once per node: a rack may mix
+	// card types, and Huawei/Kunlunxin encode the model in the resource name
+	// while AMD/Intel/NVIDIA publish it as a label.
 	cardTypes := []string{}
 	resources := []inventoryResource{}
 	var gpusAllocated, gpusFree int64
 	for name, qty := range n.Status.Allocatable {
-		cardType, ok := cardTypeFromResource(name)
+		resourceVendor, family, ok := accelerator.ClassifyResource(name)
 		if !ok {
 			continue
 		}
-		if model != "" {
-			cardType = model
-		}
+		cardType := cardTypeForResource(resourceVendor, family, name, labels, n.Annotations)
 		allocatable := qty.Value()
 		used := allocated[name]
 		cardTypes = append(cardTypes, cardType)
@@ -340,47 +317,31 @@ func nodeToInventory(n *corev1.Node, allocated map[corev1.ResourceName]int64) in
 // that only advertises nvidia.com/gpu is classified as nvidia instead of
 // "unspecified". A node with no accelerator signal stays "unspecified".
 func vendorFromNode(n *corev1.Node) string {
-	if v := n.Labels[labelAcceleratorVendor]; v != "" {
-		switch v {
-		case "nvidia", "iluvatar", "metax":
-			return v
-		}
+	resources := make(map[corev1.ResourceName]int64, len(n.Status.Allocatable))
+	for name, qty := range n.Status.Allocatable {
+		resources[name] = qty.Value()
 	}
-	labels := n.Labels
-	// Device-plugin labels published by the vendor operators.
-	if isTruthy(labels["nvidia.com/gpu.present"]) ||
-		labels["nvidia.com/gpu.product"] != "" ||
-		labels["nvidia.com/gpu.machine"] != "" {
-		return "nvidia"
+	v := accelerator.DetectVendor(n.Labels, resources)
+	if v == "" {
+		return "unspecified"
 	}
-	if _, ok := labels["iluvatar.ai/gpu.present"]; ok {
-		return "iluvatar"
-	}
-	for l := range labels {
-		if strings.HasPrefix(l, "iluvatar.ai/") {
-			return "iluvatar"
-		}
-		if strings.HasPrefix(l, "metax-tech.com/") {
-			return "metax"
-		}
-	}
-	// Extended resources advertised by the device plugins.
-	for name := range n.Status.Allocatable {
-		switch {
-		case strings.HasPrefix(string(name), "nvidia.com/"):
-			return "nvidia"
-		case strings.HasPrefix(string(name), "iluvatar.ai/"):
-			return "iluvatar"
-		case strings.HasPrefix(string(name), "metax-tech.com/"):
-			return "metax"
-		}
-	}
-	return "unspecified"
+	return v
 }
 
-// isTruthy reports whether a label value means true.
-func isTruthy(v string) bool {
-	return v == "true" || v == "True" || v == "1"
+// cardTypeForResource resolves one accelerator resource's card type:
+// the vendor's product label first, then HAMi's registration annotation,
+// then a model encoded in the resource name, then the device family.
+func cardTypeForResource(vendor, family string, name corev1.ResourceName, labels, annotations map[string]string) string {
+	if model := accelerator.CardModelFromLabels(vendor, labels); model != "" {
+		return model
+	}
+	if model := accelerator.CardModelFromHAMI(vendor, annotations); model != "" {
+		return model
+	}
+	if model := accelerator.CardModelFromResource(name); model != "" {
+		return model
+	}
+	return family
 }
 
 // readinessFromNode derives the node readiness from the Ready condition.
@@ -426,50 +387,7 @@ func devicePluginFromNode(n *corev1.Node, labels map[string]string) string {
 
 // driverVersionFromNode returns the node's GPU driver version, or "".
 func driverVersionFromNode(labels map[string]string) string {
-	for _, key := range driverVersionLabelKeys {
-		if v := strings.TrimSpace(labels[key]); v != "" {
-			return v
-		}
-	}
-	// Some drivers publish only the parts.
-	major := strings.TrimSpace(labels["nvidia.com/cuda.driver-version.major"])
-	minor := strings.TrimSpace(labels["nvidia.com/cuda.driver-version.minor"])
-	rev := strings.TrimSpace(labels["nvidia.com/cuda.driver-version.revision"])
-	if major == "" || minor == "" {
-		return ""
-	}
-	if rev != "" {
-		return major + "." + minor + "." + rev
-	}
-	return major + "." + minor
-}
-
-// cardModelLabelKeys returns the vendor label keys that carry the card
-// model, most specific first. Vendors publish the product name under
-// their own prefix; go-taas.com/accelerator-type and gpu-product are the
-// generic spellings an operator may use.
-func cardModelLabelKeys(vendor string) []string {
-	switch vendor {
-	case "nvidia":
-		return []string{"nvidia.com/gpu.product", "nvidia.com/gpu.model"}
-	case "iluvatar":
-		return []string{"iluvatar.ai/gpu.product", "iluvatar.ai/product", "gpu-product"}
-	case "metax":
-		return []string{"metax-tech.com/gpu.product", "metax-tech.com/product", "gpu-product"}
-	default:
-		return []string{"go-taas.com/accelerator-type", "gpu-product"}
-	}
-}
-
-// cardModelFromNode returns the node's card model from the vendor product
-// label, or "" when the vendor publishes none.
-func cardModelFromNode(vendor string, labels map[string]string) string {
-	for _, key := range cardModelLabelKeys(vendor) {
-		if v := strings.TrimSpace(labels[key]); v != "" {
-			return v
-		}
-	}
-	return ""
+	return accelerator.DriverVersion(labels)
 }
 
 // cardTypeFromResource parses the device-plugin resource family from an
@@ -477,13 +395,8 @@ func cardModelFromNode(vendor string, labels map[string]string) string {
 // the fallback card type when the vendor publishes no product label, and
 // it returns false for non-accelerator resources.
 func cardTypeFromResource(name corev1.ResourceName) (string, bool) {
-	switch string(name) {
-	case "nvidia.com/gpu", "iluvatar.com/gpu", "iluvatar.ai/gpu",
-		"metax.com/gpu", "metax-tech.com/gpu", "metax-tech.com/vgpu":
-		return "gpu", true
-	default:
-		return "", false
-	}
+	_, family, ok := accelerator.ClassifyResource(name)
+	return family, ok
 }
 
 // acceleratorLabels returns the accelerator-relevant node labels: the
@@ -495,9 +408,7 @@ func cardTypeFromResource(name corev1.ResourceName) (string, bool) {
 func acceleratorLabels(labels map[string]string) map[string]string {
 	out := map[string]string{}
 	for k, v := range labels {
-		if k == labelAcceleratorVendor || k == labelDriverVersion || k == labelDevicePlugin ||
-			k == "nvidia.com/cuda.driver-version.full" || k == "nvidia.com/gpu.product" ||
-			strings.HasPrefix(k, platformLabelPrefix) {
+		if accelerator.SelectableLabel(k) {
 			out[k] = v
 		}
 	}

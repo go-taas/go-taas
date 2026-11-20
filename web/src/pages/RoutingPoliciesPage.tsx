@@ -11,6 +11,7 @@ import { formatTime, type PageMeta } from '../api';
 import { Dialog, ErrorBanner, Pagination } from '../components';
 import { navigate } from '../router';
 import { useI18n } from '../i18n';
+import { useFleetAccelerators } from '../hooks/useFleetAccelerators';
 
 interface RoutingPolicySummary {
   modelId: string;
@@ -83,7 +84,6 @@ interface RevisionsResponse {
 }
 
 const PAGE_SIZE = 20;
-const ACCELERATORS = ['all', 'nvidia', 'iluvatar', 'metax'];
 const POLICY_STATES = ['DEFAULT', 'ENABLED', 'UNAVAILABLE'];
 const RETRY_CATEGORIES = [
   'RETRY_CATEGORY_CONNECT_TIMEOUT',
@@ -556,13 +556,17 @@ function RoutingPolicyDrawer({
 export default function RoutingPoliciesPage() {
   const api = useApi();
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [policies, setPolicies] = useState<RoutingPolicySummary[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
   const [search, setSearch] = useState('');
   const [stateFilter, setStateFilter] = useState('');
   const [accelerator, setAccelerator] = useState('all');
+  // The vendor list comes from the live fleet inventory, so a cluster that
+  // adds a vendor is filterable without a frontend release.
+  const fleet = useFleetAccelerators(orgId);
+  const acceleratorOptions = ['all', ...fleet.vendors];
   const [sort, setSort] = useState('-updated');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -731,9 +735,9 @@ export default function RoutingPoliciesPage() {
             disabled={loading}
             data-testid="routing-policy-accelerator-filter"
           >
-            {ACCELERATORS.map((a) => (
+            {acceleratorOptions.map((a) => (
               <option key={a} value={a}>
-                {a === 'all' ? t('routingPolicies.filterAllAccelerators') : a}
+                {a === 'all' ? t('routingPolicies.filterAllAccelerators') : tEnum('state', a)}
               </option>
             ))}
           </select>

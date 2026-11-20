@@ -9,23 +9,9 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
+	"github.com/go-taas/go-taas/pkg/accelerator"
 	"github.com/go-taas/go-taas/services/cluster"
 )
-
-// nvidiaSelectorLabels are the NVIDIA label keys worth offering as an
-// image-warmup selector. The other nvidia.com/* keys carry driver and
-// plugin metadata (versions, deploy flags, gfd timestamps) that no
-// selector should target.
-var nvidiaSelectorLabels = map[string]struct{}{
-	"nvidia.com/gpu.product":  {},
-	"nvidia.com/gpu.machine":  {},
-	"nvidia.com/gpu.family":   {},
-	"nvidia.com/gpu.memory":   {},
-	"nvidia.com/gpu.present":  {},
-	"nvidia.com/vgpu.present": {},
-	"go-taas.com/accelerator": {},
-	"gpu-vendor":              {},
-}
 
 // SelfClusterProvider reads the identity of the cluster the platform
 // runs in from the Kubernetes API: its name, topology region, node count
@@ -120,14 +106,10 @@ func shortUID(uid string) string {
 }
 
 // selectableAcceleratorLabel reports whether a label key is useful as an
-// image-warmup selector. NVIDIA publishes dozens of metadata keys per
-// node; only the hardware-identifying ones are offered, while the other
-// vendors' namespaces are small enough to offer wholesale.
+// image-warmup selector. The vendor registry owns the allow-list so every
+// supported vendor operator's hardware labels are offerable.
 func selectableAcceleratorLabel(key string) bool {
-	if _, ok := nvidiaSelectorLabels[key]; ok {
-		return true
-	}
-	return strings.HasPrefix(key, "iluvatar.") || strings.HasPrefix(key, "metax-tech.com/")
+	return accelerator.SelectableLabel(key)
 }
 
 // firstNonEmpty returns the first non-empty value.
