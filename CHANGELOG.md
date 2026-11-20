@@ -1,3 +1,10 @@
+# [1.126.0](https://github.com/go-taas/go-taas/compare/v1.125.0...v1.126.0) (2026-11-20)
+
+
+### Features
+
+* **model:** serve weights from configured storage backends ([024c17e](https://github.com/go-taas/go-taas/commit/024c17e3ecca87cf4f622be2210873fe21730668))
+
 # [1.125.0](https://github.com/go-taas/go-taas/compare/v1.124.0...v1.125.0) (2026-11-19)
 
 
