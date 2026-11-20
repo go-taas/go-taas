@@ -430,3 +430,10 @@ func TestRemoteRefFallsBackToAWSCredentialEnv(t *testing.T) {
 	assert.Equal(t, "AWS_ACCESS_KEY_ID", ref.AccessKeyEnv)
 	assert.Equal(t, "AWS_SECRET_ACCESS_KEY", ref.SecretKeyEnv)
 }
+
+func TestStorageBackendNameFallsBackToDefault(t *testing.T) {
+	service := &Service{storageConfig: storage.Config{DefaultBackend: "shared"}}
+	assert.Equal(t, "shared", service.storageBackendName(""))
+	assert.Equal(t, "shared", service.storageBackendName("  "))
+	assert.Equal(t, "minio", service.storageBackendName("minio"))
+}

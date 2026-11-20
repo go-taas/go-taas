@@ -885,7 +885,7 @@ func (s *Service) ListModels(ctx context.Context, req *modelv1.ListModelsRequest
 		if latest, latestErr := repo.LatestVersion(ctx, row.ID); latestErr == nil && latest != nil {
 			summary.LatestVersion = latest.Version
 			summary.WeightPath = latest.WeightPath
-			summary.StorageBackend = latest.StorageBackend
+			summary.StorageBackend = s.storageBackendName(latest.StorageBackend)
 		}
 		models = append(models, summary)
 	}
@@ -894,6 +894,17 @@ func (s *Service) ListModels(ctx context.Context, req *modelv1.ListModelsRequest
 		Models:   models,
 		PageMeta: &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampToInt32(limit)},
 	}, nil
+}
+
+// storageBackendName projects the effective backend of a version. Versions
+// written before storage backends existed have no value recorded; they live
+// on the platform default, so the API reports that name instead of an empty
+// column the console would have to explain.
+func (s *Service) storageBackendName(name string) string {
+	if trimmed := strings.TrimSpace(name); trimmed != "" {
+		return trimmed
+	}
+	return strings.TrimSpace(s.storageConfig.DefaultBackend)
 }
 
 // resolveOrg returns the organization context for the user-realm
@@ -1143,7 +1154,7 @@ func (s *Service) GetModel(ctx context.Context, req *modelv1.GetModelRequest) (*
 		if i == 0 {
 			summary.LatestVersion = v.Version
 			summary.WeightPath = v.WeightPath
-			summary.StorageBackend = v.StorageBackend
+			summary.StorageBackend = s.storageBackendName(v.StorageBackend)
 		}
 	}
 	return &modelv1.GetModelResponse{
