@@ -499,3 +499,17 @@ func TestHandleModelTransferStatusTracksDownloadProgress(t *testing.T) {
 	assert.EqualValues(t, 480, finished.GetTotalBytes())
 	assert.NotEmpty(t, finished.GetModelId())
 }
+
+func TestStartModelTransferRejectsGenericDownload(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen", HubModelId: "qwen/hub", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.StartModelTransfer(adminCtx(), &modelv1.StartModelTransferRequest{
+		ModelId: reg.GetModelId(), Operation: transfer.OperationDownload,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "model downloads")
+}

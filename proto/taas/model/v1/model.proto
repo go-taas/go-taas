@@ -581,7 +581,8 @@ message StartModelTransferRequest {
   string model_id = 1;
   // version defaults to the active version, then the latest.
   string version = 2;
-  // operation is copy, download or delete; copy is the default.
+  // operation is copy or delete; copy is the default. Hub downloads
+  // are started through the model downloads API.
   string operation = 3;
   // source_backend defaults to the version's backend, then the default.
   string source_backend = 4;

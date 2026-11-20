@@ -81,9 +81,11 @@ func (s *Service) StartModelTransfer(ctx context.Context, req *modelv1.StartMode
 		operation = transfer.OperationCopy
 	}
 	switch operation {
-	case transfer.OperationCopy, transfer.OperationDownload, transfer.OperationDelete:
+	case transfer.OperationCopy, transfer.OperationDelete:
+	case transfer.OperationDownload:
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: hub downloads are started through the model downloads API, not a transfer")
 	default:
-		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: transfer operation must be copy, download or delete")
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: transfer operation must be copy or delete")
 	}
 	modelID := strings.TrimSpace(req.GetModelId())
 	if modelID == "" {

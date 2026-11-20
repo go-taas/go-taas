@@ -310,7 +310,7 @@ and cannot diverge from the catalog.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/v1/admin/storage-backends` | list configured backends with type, delivery modes and capabilities |
-| POST | `/api/v1/admin/model-transfers` | queue a copy/download/delete transfer |
+| POST | `/api/v1/admin/model-transfers` | queue a copy or delete transfer; hub downloads go through the model downloads API |
 | GET | `/api/v1/admin/model-transfers` | list transfers, newest first, paginated |
 | GET | `/api/v1/admin/model-transfers/{transfer_id}` | one transfer with progress |
 | POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | cancel a queued/running transfer |
