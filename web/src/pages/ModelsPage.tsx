@@ -58,6 +58,9 @@ export default function ModelsPage() {
   // A row-level warm shortcut hands the model to the warmup tab, which opens
   // its dialog preselected; the value is consumed once that tab mounts.
   const [warmModelId, setWarmModelId] = useState('');
+  // The transfer shortcut mirrors warmup: switch to the transfers tab and let
+  // it open the new-transfer dialog with this model already selected.
+  const [transferModelId, setTransferModelId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<ModelSummary | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -163,7 +166,11 @@ export default function ModelsPage() {
           onInitialWarmConsumed={() => setWarmModelId('')}
         />
       ) : tab === 'transfers' ? (
-        <ModelTransfersPage embedded />
+        <ModelTransfersPage
+          embedded
+          initialTransferModelId={transferModelId || undefined}
+          onInitialTransferConsumed={() => setTransferModelId('')}
+        />
       ) : (
         <>
           <div className="toolbar models-tab-toolbar">
@@ -266,6 +273,14 @@ export default function ModelsPage() {
                               onClick: () => {
                                 setWarmModelId(m.modelId);
                                 selectTab('warmup');
+                              },
+                            },
+                            {
+                              key: `transfer-${m.name}`,
+                              label: t('models.transfer'),
+                              onClick: () => {
+                                setTransferModelId(m.modelId);
+                                selectTab('transfers');
                               },
                             },
                             {

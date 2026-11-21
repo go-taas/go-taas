@@ -2385,6 +2385,7 @@ export const en: Record<string, string> = {
   'models.registerSuccess': 'Model {name} registered.',
   'models.upload.success': 'Model uploaded and registered.',
   'models.deploy': 'Deploy',
+  'models.transfer': 'Transfer model',
   'models.registerTitle': 'Register Model',
   'models.registerSectionIdentity': 'Identity',
   'models.registerSectionIdentityHint': 'How the model is named and versioned.',

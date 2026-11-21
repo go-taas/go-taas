@@ -24,7 +24,16 @@ interface BackendsResponse {
 const PAGE_SIZE = 20;
 const ACTIVE_STATES = ['queued', 'running'];
 
-export default function ModelTransfersPage({ embedded = false }: { embedded?: boolean }) {
+export default function ModelTransfersPage({
+  embedded = false,
+  initialTransferModelId,
+  onInitialTransferConsumed,
+}: {
+  embedded?: boolean;
+  /** Opens the new-transfer dialog with this model preselected on mount. */
+  initialTransferModelId?: string;
+  onInitialTransferConsumed?: () => void;
+}) {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [transfers, setTransfers] = useState<ModelTransfer[]>([]);
@@ -34,10 +43,21 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [startOpen, setStartOpen] = useState(false);
+  const [startOpen, setStartOpen] = useState(Boolean(initialTransferModelId));
+  const [startModelId, setStartModelId] = useState(initialTransferModelId || '');
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [backends, setBackends] = useState<StorageBackend[]>([]);
   const [defaultBackend, setDefaultBackend] = useState('');
+
+  useEffect(() => {
+    if (!initialTransferModelId) return;
+    // The parent consumes the request as soon as the dialog opens, so
+    // switching tabs afterwards never reopens it.
+    setStartModelId(initialTransferModelId);
+    setStartOpen(true);
+    onInitialTransferConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTransferModelId]);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -196,9 +216,14 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
           models={models}
           backends={backends}
           defaultBackend={defaultBackend}
-          onClose={() => setStartOpen(false)}
+          initialModelId={startModelId}
+          onClose={() => {
+            setStartOpen(false);
+            setStartModelId('');
+          }}
           onDone={() => {
             setStartOpen(false);
+            setStartModelId('');
             setNotice(t('transfers.started'));
             setOffset(0);
             void load();
@@ -214,6 +239,7 @@ function StartTransferDialog({
   models,
   backends,
   defaultBackend,
+  initialModelId,
   onClose,
   onDone,
 }: {
@@ -221,12 +247,13 @@ function StartTransferDialog({
   models: ModelSummary[];
   backends: StorageBackend[];
   defaultBackend: string;
+  initialModelId?: string;
   onClose: () => void;
   onDone: () => void;
 }) {
   const { t } = useI18n();
   const fallbackModelId = models[0]?.modelId || '';
-  const [modelId, setModelId] = useState(fallbackModelId);
+  const [modelId, setModelId] = useState(initialModelId || fallbackModelId);
   const [targetBackend, setTargetBackend] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

@@ -2350,6 +2350,7 @@ export const zh: Record<string, string> = {
   'models.registerSuccess': '模型 {name} 已注册',
   'models.upload.success': '模型已上传并注册',
   'models.deploy': '部署',
+  'models.transfer': '传输模型',
   'models.registerTitle': '注册模型',
   'models.registerSectionIdentity': '模型标识',
   'models.registerSectionIdentityHint': '模型的名称与版本如何定义',

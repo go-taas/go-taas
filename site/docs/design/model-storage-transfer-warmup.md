@@ -378,7 +378,9 @@ The platform-administrator console groups the surfaces by operator task:
 - **Models** — one page with three tabs: **Model catalog**, **Warmup** and
   **Transfers**. Each tab indents its content from the tab strip and keeps
   its actions on the right. A catalog row's warm action switches to the
-  warmup tab and opens the warm dialog with that model selected. The catalog
+  warmup tab and opens the warm dialog with that model selected; its transfer
+  action switches to the transfers tab and opens the new-transfer dialog with
+  that model selected. The catalog
   keeps register/upload/download/deploy actions, and every import form names a
   storage backend (default first);
   the catalog table and the detail page show the backend of the latest
