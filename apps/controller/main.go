@@ -84,7 +84,7 @@ func main() {
 	// A cache-delivery pod mounts the node-local warmup directory. The
 	// controller resolves the host path from the platform-managed
 	// LocalModelNodeGroup of the model's warmup, so no path is baked in here.
-	reconciler := controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, weights, schemeCache, cfg.Controller.AcceleratorLabelKey)
+	reconciler := controller.NewK8sReconciler(k8sClient, mqClient, cfg.Infer.EndpointBaseURL, cfg.Controller.Namespace, weights, schemeCache)
 	// Feature #52 (AD13): the vGPU slicing-pool HAMI contract. The
 	// placement-policy annotation, the pool's scheduling hint, and the
 	// pool's node label selector are config-driven.

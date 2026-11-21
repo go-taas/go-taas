@@ -221,7 +221,7 @@ prefix is expected to be resolvable by whoever consumes it.
 | --- | --- | --- |
 | `go-taas.com/service-id` | inference Deployment, Service, pods, ModelClaim | owning inference service |
 | `go-taas.com/replica-index` | inference pods | masked replica index |
-| `go-taas.com/accelerator`, `go-taas.com/accelerator-type` | inference pods (node selector), nodes | requested accelerator vendor and card type |
+| `go-taas.com/accelerator`, `go-taas.com/accelerator-type` | nodes (optional) | override the accelerator vendor or card type when the vendor operator publishes no usable label; inference pods schedule on the vendor's own `present`/`product` labels |
 | `go-taas.com/driver-version`, `go-taas.com/device-plugin` | nodes | accelerator driver and device-plugin health signals |
 | `go-taas.com/model`, `go-taas.com/model-id`, `go-taas.com/origin` | ModelClaim | model name, catalog id, and whether the claim came from a service or a registration |
 | `go-taas.com/task-type`, `go-taas.com/task-id` | image warmup Job | warmup task identity |

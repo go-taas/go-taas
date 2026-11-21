@@ -73,14 +73,11 @@ func podsPerReplica(evt changeEvent) int32 {
 // on only when the configured scheduler is Volcano: a PodGroup nobody reads is
 // noise, and annotating pods for a scheduler that is not there gains nothing.
 //
-// A HAMi-managed accelerator turns it off even then. HAMi's device plugin
-// allocates from an annotation only the HAMi scheduler writes, so accelerator
-// pods must be placed by that scheduler; a PodGroup Volcano never schedules
-// would be dead weight. Gang scheduling for accelerator pods is therefore
-// unavailable in this mode — keeping it requires HAMi's Volcano integration
-// (Volcano's own vGPU device plugin), not this device plugin.
+// The vGPU contract does not affect this: only slice pods use the HAMi
+// scheduler, and they are excluded individually by usesSlice, so whole-card
+// services keep gang scheduling even when HAMi is configured.
 func (r *k8sReconciler) gangScheduling() bool {
-	return r.dynamic != nil && r.schedulerName == SchedulerVolcano && !r.hamiOwnsDevices()
+	return r.dynamic != nil && r.schedulerName == SchedulerVolcano
 }
 
 // usesSlice reports whether a service runs on a HAMI slice. Such a pod is

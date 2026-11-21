@@ -146,7 +146,7 @@ Chart 创建的每个资源都带 Kubernetes 推荐标签：
 | --- | --- | --- |
 | `go-taas.com/service-id` | 推理 Deployment、Service、Pod、ModelClaim | 所属推理服务 |
 | `go-taas.com/replica-index` | 推理 Pod | 掩码后的副本序号 |
-| `go-taas.com/accelerator`、`go-taas.com/accelerator-type` | 推理 Pod（node selector）、节点 | 请求的加速卡厂商与卡型 |
+| `go-taas.com/accelerator`、`go-taas.com/accelerator-type` | 节点（可选） | 厂商 operator 没有可用标签时覆盖加速卡厂商或卡型；推理 Pod 按厂商自己的 `present`/`product` 标签调度 |
 | `go-taas.com/driver-version`、`go-taas.com/device-plugin` | 节点 | 加速卡驱动与 device-plugin 健康信号 |
 | `go-taas.com/model`、`go-taas.com/model-id`、`go-taas.com/origin` | ModelClaim | 模型名、目录 ID，以及 Claim 来自服务还是注册 |
 | `go-taas.com/task-type`、`go-taas.com/task-id` | 镜像预热 Job | 预热任务标识 |

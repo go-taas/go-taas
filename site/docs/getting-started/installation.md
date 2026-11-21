@@ -76,7 +76,7 @@ Other distributions work as well (k3s, kind, EKS/GKE/AKS); the platform only nee
 
 ```bash
 kubectl get node <gpu-node> -o jsonpath='{.status.allocatable.nvidia\.com/gpu}{"\n"}'
-kubectl get node <gpu-node> --show-labels | tr ',' '\n' | grep -E 'gpu-vendor|gpu.product'
+kubectl get node <gpu-node> --show-labels | tr ',' '\n' | grep -E 'gpu.present|gcu.present|gpu.product|gcu.product'
 ```
 
 A CPU-only evaluation install needs neither.
@@ -274,16 +274,25 @@ These are the inputs the chart cannot infer.
 
 ### 4.1 Accelerator node labels
 
-Inference pods pin the accelerator vendor (and the card type when one is requested) through node labels. The controller accepts `go-taas.com/accelerator` and falls back to the `gpu-vendor` label that GPU Feature Discovery sets:
+The controller reads the labels the vendor's own GPU operator publishes; it
+does not require a `go-taas.com/accelerator` label. NVIDIA GPU Feature
+Discovery sets `nvidia.com/gpu.present=true` and
+`nvidia.com/gpu.product=<model>`; Enflame's operator sets
+`enflame.com/gcu.present=true` and `enflame.com/gcu.product=<model>`; other
+vendors follow the same `present`/`product` convention under their own prefix.
+Inference pods pin the vendor's presence label and, when a card type is
+requested, the vendor's product label.
 
 ```bash
-# preferred: label explicitly (value = vendor token used by the platform)
-kubectl label node <gpu-node> go-taas.com/accelerator=nvidia --overwrite
-# the card type comes from the device plugin's own label, e.g.
+# the vendor operator owns these labels; check them instead of writing them
+kubectl get node <gpu-node> -o jsonpath='{.metadata.labels.nvidia\.com/gpu\.present}{"\n"}'
 kubectl get node <gpu-node> -o jsonpath='{.metadata.labels.nvidia\.com/gpu\.product}{"\n"}'
 ```
 
-Accepted vendor tokens are `nvidia`, `iluvatar`, `metax`, and `cpu` for accelerator-free images. The card types the console offers are read from the live inventory, so nothing else is needed once the labels exist.
+The platform recognizes `nvidia`, `enflame`, `iluvatar`, `metax` and the other
+vendors listed under `pkg/accelerator`, plus `cpu` for accelerator-free images.
+The console's card types come from the live inventory, so nothing else is
+needed once the vendor operator has labeled the node.
 
 ### 4.2 Namespace
 

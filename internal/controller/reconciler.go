@@ -24,6 +24,7 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 
+	"github.com/go-taas/go-taas/pkg/accelerator"
 	"github.com/go-taas/go-taas/pkg/k8s"
 	"github.com/go-taas/go-taas/pkg/logger"
 	"github.com/go-taas/go-taas/pkg/mq"
@@ -204,16 +205,17 @@ type k8sReconciler struct {
 	// queueName is the Volcano queue the service's PodGroup joins. Empty
 	// uses Volcano's default queue.
 	queueName string
-	// acceleratorLabelKey is the configured node label key carrying the
-	// accelerator vendor. Empty uses labelAcceleratorVendor.
-	acceleratorLabelKey string
-	// resolvedAccelLabelKey caches the key actually present on the
-	// cluster's nodes, so the deploy path does not list nodes per event.
-	accelKeyMu            sync.Mutex
-	resolvedAccelLabelKey string
+	// accelKeyMu guards the node-label caches below, so the deploy path
+	// does not list nodes on every event.
+	accelKeyMu sync.Mutex
 	// cardTypeLabelKeys caches card model -> node label key ("" = no node
 	// reports that card).
 	cardTypeLabelKeys map[string]string
+	// vendorSelectors caches accelerator vendor -> the vendor-owned node
+	// label that marks a node as carrying that vendor's hardware. A cached
+	// empty map means no node publishes such a label, so the pod relies on
+	// the device resource alone.
+	vendorSelectors map[string]map[string]string
 	// engineProber answers "does the engine at this address serve
 	// traffic?". Nil uses the HTTP health probe. Tests inject a stub so
 	// they never reach the network.
@@ -281,16 +283,8 @@ type WeightsConfig struct {
 // reports; endpointBaseURL composes endpoint URLs ("" = in-cluster DNS).
 // scheme is the shared serving-scheme cache (feature #47); nil defaults to
 // plain. The dynamic client is taken from client.Dynamic().
-func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig, scheme *SchemeCache, acceleratorLabelKey ...string) Reconciler {
-	key := ""
-	if len(acceleratorLabelKey) > 0 {
-		key = acceleratorLabelKey[0]
-	}
-	r := newReconcilerWithClientset(client.Clientset(), client.Dynamic(), statusPublisher, endpointBaseURL, namespace, weights, scheme)
-	if concrete, ok := r.(*k8sReconciler); ok {
-		concrete.acceleratorLabelKey = key
-	}
-	return r
+func NewK8sReconciler(client *k8s.Client, statusPublisher mq.Client, endpointBaseURL, namespace string, weights WeightsConfig, scheme *SchemeCache) Reconciler {
+	return newReconcilerWithClientset(client.Clientset(), client.Dynamic(), statusPublisher, endpointBaseURL, namespace, weights, scheme)
 }
 
 // newReconcilerWithClientset builds a reconciler over arbitrary clientsets
@@ -1419,7 +1413,7 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 	// label selector so a shared-GPU pod only lands on pool nodes.
 	slice := evt.PoolID != "" && evt.SliceTemplateID != ""
 	annotations := map[string]string{}
-	nodeSelector := acceleratorNodeSelector(r.acceleratorLabelKeyFor(ctx), evt.Accelerator)
+	nodeSelector := r.vendorNodeSelector(ctx, evt.Accelerator)
 	if evt.AcceleratorType != "" {
 		if key := r.cardTypeLabelKeyFor(ctx, evt.AcceleratorType); key != "" {
 			nodeSelector[key] = evt.AcceleratorType
@@ -1434,13 +1428,11 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 	// configured scheduler the cluster default places them one by one, which
 	// is the historical behaviour.
 	schedulerName := r.schedulerName
-	// HAMi's device plugin owns the accelerator resource on the nodes it
-	// manages: Allocate() reads the device list from the annotation only the
-	// HAMi scheduler writes, and fails with "device number not matched" when
-	// it is absent. So with HAMi installed, *every* accelerator pod — a
-	// slice or a whole card — has to be placed by the HAMi scheduler; one
-	// placed by Volcano stays Pending. See hamiOwnsDevices.
-	if r.hamiOwnsDevices() {
+	// HAMi only places shared-GPU slices: Allocate() reads the device list
+	// from an annotation only the HAMi scheduler writes. A whole-card pod
+	// must stay on the platform scheduler, so the vGPU contract cannot change
+	// whole-card placement or make HAMi's device split count matter.
+	if slice && r.hamiOwnsDevices() {
 		schedulerName = r.hamiSchedulerName
 	}
 	if slice {
@@ -2063,18 +2055,60 @@ func resourceLabels(evt changeEvent) map[string]string {
 	}
 }
 
-// acceleratorNodeSelector maps the accelerator vendor request to a node
-// label selector. A card type is resolved separately (see
-// cardTypeLabelKeyFor) because the label that carries the card model is
-// vendor-specific, not derived from the vendor label key.
-func acceleratorNodeSelector(labelKey, accelerator string) map[string]string {
-	return map[string]string{labelKey: accelerator}
+// vendorNodeSelector pins a pod to the requested accelerator vendor through
+// the label the vendor's own GPU operator publishes (for example
+// nvidia.com/gpu.present=true or enflame.com/gcu.present=true). The platform
+// never requires its own go-taas.com/accelerator label: a cluster installed
+// with only vendor operators has to schedule without it. When no node
+// publishes such a label the selector is empty and the device resource
+// request is what keeps the pod on the right hardware.
+func (r *k8sReconciler) vendorNodeSelector(ctx context.Context, vendor string) map[string]string {
+	if vendor == "" {
+		return nil
+	}
+	r.accelKeyMu.Lock()
+	defer r.accelKeyMu.Unlock()
+	if cached, ok := r.vendorSelectors[vendor]; ok {
+		return copySelector(cached)
+	}
+	nodes, err := r.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
+	if err != nil {
+		// Do not cache a transient API failure; the device resource still
+		// constrains the pod.
+		return nil
+	}
+	selector := map[string]string{}
+	for _, node := range nodes.Items {
+		if key, value, ok := accelerator.PresenceLabel(vendor, node.Labels); ok {
+			selector[key] = value
+			break
+		}
+	}
+	if r.vendorSelectors == nil {
+		r.vendorSelectors = map[string]map[string]string{}
+	}
+	r.vendorSelectors[vendor] = copySelector(selector)
+	return selector
+}
+
+// copySelector returns an independent copy so a cached selector cannot be
+// mutated by a caller that adds the card type or a pool label.
+func copySelector(selector map[string]string) map[string]string {
+	if len(selector) == 0 {
+		return nil
+	}
+	out := make(map[string]string, len(selector))
+	for key, value := range selector {
+		out[key] = value
+	}
+	return out
 }
 
 // cardModelLabelCandidates are the node label keys that may carry a card
-// model. The controller resolves a requested card type to the key a node
-// actually uses, so the pod pins a real label instead of a synthesized
-// "<vendor-label>-type" key that matches nothing.
+// model. Every key belongs to the vendor's own GPU operator; the platform
+// resolves a requested card type to the key a node actually uses, so the pod
+// pins a real label instead of a synthesized "<vendor-label>-type" key that
+// matches nothing.
 var cardModelLabelCandidates = []string{
 	"nvidia.com/gpu.product",
 	"nvidia.com/gpu.model",
@@ -2082,16 +2116,24 @@ var cardModelLabelCandidates = []string{
 	"iluvatar.ai/product",
 	"metax-tech.com/gpu.product",
 	"metax-tech.com/product",
-	"go-taas.com/accelerator-type",
-	"gpu-product",
+	"enflame.com/gcu.product",
+	"enflame.com/product",
+	"amd.com/gpu.product-name",
+	"gpu.intel.com/product",
+	"huawei.com/Ascend.product",
+	"cambricon.com/gpu.model",
+	"birentech.com/gpu.product",
+	"hygon.com/gpu.product",
+	"kunlunxin.com/xpu.product",
+	"mthreads.com/gpu.product",
 }
 
 // cardTypeLabelKeyFor returns the node label key whose value is the given
 // card type, or "" when no node reports that card. The answer is cached:
 // card models rarely change and the deploy path must not list nodes per
-// event. An unresolvable card type degrades the selector to the vendor
-// family instead of emitting an unsatisfiable label (which would leave the
-// pod Pending forever).
+// event. An unresolvable card type degrades the selector to the vendor's
+// presence label instead of emitting an unsatisfiable label (which would
+// leave the pod Pending forever).
 func (r *k8sReconciler) cardTypeLabelKeyFor(ctx context.Context, cardType string) string {
 	if cardType == "" {
 		return ""
@@ -2123,62 +2165,10 @@ func (r *k8sReconciler) cardTypeLabelKeyFor(ctx context.Context, cardType string
 	}
 	r.cardTypeLabelKeys[cardType] = resolved
 	if resolved == "" {
-		logger.S().Warnw("controller: no node reports the requested card type, pinning the accelerator family only",
+		logger.S().Warnw("controller: no node reports the requested card type, pinning the vendor only",
 			"card_type", cardType)
 	}
 	return resolved
-}
-
-// acceleratorLabelKeyFor resolves the node label key that carries the
-// accelerator vendor: the configured key when the cluster's nodes carry
-// it, else "gpu-vendor" when they carry that instead, else the configured
-// key (so a misconfiguration fails visibly rather than silently matching
-// nothing). The answer is cached: node labels rarely change, and the
-// deploy path must not list nodes on every event.
-func (r *k8sReconciler) acceleratorLabelKeyFor(ctx context.Context) string {
-	configured := r.acceleratorLabelKey
-	if configured == "" {
-		configured = labelAcceleratorVendor
-	}
-	r.accelKeyMu.Lock()
-	defer r.accelKeyMu.Unlock()
-	if r.resolvedAccelLabelKey != "" {
-		return r.resolvedAccelLabelKey
-	}
-	nodes, err := r.clientset.CoreV1().Nodes().List(ctx, metav1.ListOptions{})
-	if err != nil {
-		// Fall through with the configured key: a transient API error
-		// must not change the desired spec.
-		return configured
-	}
-	found := false
-	for _, node := range nodes.Items {
-		if _, ok := node.Labels[configured]; ok {
-			found = true
-			break
-		}
-	}
-	switch {
-	case found:
-		r.resolvedAccelLabelKey = configured
-	case hasNodeLabel(nodes.Items, fallbackAcceleratorLabel):
-		r.resolvedAccelLabelKey = fallbackAcceleratorLabel
-		logger.S().Infow("controller: using fallback accelerator node label",
-			"configured", configured, "using", fallbackAcceleratorLabel)
-	default:
-		r.resolvedAccelLabelKey = configured
-	}
-	return r.resolvedAccelLabelKey
-}
-
-// hasNodeLabel reports whether any node carries the label key.
-func hasNodeLabel(nodes []corev1.Node, key string) bool {
-	for _, node := range nodes {
-		if _, ok := node.Labels[key]; ok {
-			return true
-		}
-	}
-	return false
 }
 
 // endpointFor composes the endpoint URL for a service: the configured

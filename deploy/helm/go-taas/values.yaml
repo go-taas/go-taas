@@ -900,12 +900,6 @@ controller:
     controller:
       # -- Namespace the controller manages inference resources in (`controller.namespace`).
       namespace: taas-infer
-      # -- Node label key carrying the accelerator vendor
-      # (`controller.acceleratorLabelKey`). Inference pods pin it as a node
-      # selector, so it must be a key the GPU nodes carry. Empty uses
-      # `go-taas.com/accelerator`, falling back to `gpu-vendor` when no node
-      # carries that.
-      acceleratorLabelKey: ""
       # Pod scheduling for inference pods. With Volcano installed, the pods of
       # one replica are gang-scheduled (all placed or none) and a service's
       # priority may preempt a lower one; without it the cluster default

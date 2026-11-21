@@ -73,11 +73,12 @@ func TestWholeCardPodStaysOnPlatformScheduler(t *testing.T) {
 	assert.Equal(t, "volcano", spec.SchedulerName)
 }
 
-// TestWholeCardPodUsesHAMiSchedulerWhenHAMiOwnsTheDevice pins the other half
-// of the contract: once HAMi's device plugin publishes the accelerator
-// resource, a whole-card pod must be placed by HAMi's scheduler too, or the
-// allocation annotation is missing and Allocate() fails.
-func TestWholeCardPodUsesHAMiSchedulerWhenHAMiOwnsTheDevice(t *testing.T) {
+// TestWholeCardPodStaysOnPlatformSchedulerWithHAMiConfigured pins the
+// isolation rule: the vGPU contract's scheduler is only for slice pods. A
+// whole-card service keeps the platform scheduler even when HAMi is
+// configured, so HAMi's device split count cannot change whole-card
+// placement.
+func TestWholeCardPodStaysOnPlatformSchedulerWithHAMiConfigured(t *testing.T) {
 	evt := testChangeEvent("upsert", "demo")
 
 	r := testReconciler()
@@ -85,20 +86,21 @@ func TestWholeCardPodUsesHAMiSchedulerWhenHAMiOwnsTheDevice(t *testing.T) {
 	r.SetVGPUConfig("hami.io/gpu-scheduler-policy", "binpack", "hami-scheduler")
 
 	spec, annotations := r.buildPodTemplate(context.Background(), evt, serveRole{Name: serveRoleWorker, PodGroupSize: 1})
-	assert.Equal(t, "hami-scheduler", spec.SchedulerName)
+	assert.Equal(t, "volcano", spec.SchedulerName)
 	assert.Empty(t, annotations["hami.io/gpu-scheduler-policy"], "a whole card has no placement policy")
 }
 
-// TestGangSchedulingNeedsVolcanoAndNoHAMi keeps the pre-HAMi gang path and
-// pins that a HAMi-managed accelerator turns it off.
-func TestGangSchedulingNeedsVolcanoAndNoHAMi(t *testing.T) {
+// TestGangSchedulingNeedsOnlyVolcano keeps gang scheduling independent of
+// the vGPU contract: configuring HAMi for slice pods must not disable
+// PodGroups for whole-card services.
+func TestGangSchedulingNeedsOnlyVolcano(t *testing.T) {
 	r := testReconciler()
 	r.dynamic = newFakeDynamic()
 	r.SetScheduling(SchedulerVolcano, "", "", "", "")
 	assert.True(t, r.gangScheduling())
 
 	r.SetVGPUConfig("hami.io/gpu-scheduler-policy", "binpack", "hami-scheduler")
-	assert.False(t, r.gangScheduling(), "no PodGroup for pods Volcano will never place")
+	assert.True(t, r.gangScheduling())
 }
 
 // TestSlicePodReservesEngineHeadroom pins the gpu_memory_utilization a

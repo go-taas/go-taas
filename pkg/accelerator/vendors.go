@@ -280,6 +280,56 @@ func DetectVendor(labels map[string]string, resources map[corev1.ResourceName]in
 	return ""
 }
 
+// PresenceLabel returns the vendor-owned node label that marks a node as
+// carrying that vendor's accelerators, together with its value. Only labels
+// under the vendor's own prefixes participate, so a platform label or
+// another vendor's operator can never select the node. An explicit false or
+// empty value is not a presence signal.
+func PresenceLabel(vendor string, labels map[string]string) (string, string, bool) {
+	profile, ok := Profile(vendor)
+	if !ok {
+		return "", "", false
+	}
+	bestKey, bestValue, bestRank := "", "", 3
+	for key, raw := range labels {
+		value := strings.ToLower(strings.TrimSpace(raw))
+		if value != "true" && value != "1" {
+			continue
+		}
+		if !hasLabelPrefix(key, profile.LabelPrefixes) {
+			continue
+		}
+		lower := strings.ToLower(key)
+		var rank int
+		switch {
+		case strings.HasSuffix(lower, ".present"), strings.HasSuffix(lower, "/present"):
+			rank = 0
+		case strings.HasSuffix(lower, ".installed"), strings.HasSuffix(lower, "/installed"):
+			rank = 1
+		default:
+			continue
+		}
+		if rank < bestRank || (rank == bestRank && key < bestKey) {
+			bestKey, bestValue, bestRank = key, raw, rank
+		}
+	}
+	if bestKey == "" {
+		return "", "", false
+	}
+	return bestKey, bestValue, true
+}
+
+// hasLabelPrefix reports whether key belongs to one of the vendor's label
+// prefixes.
+func hasLabelPrefix(key string, prefixes []string) bool {
+	for _, prefix := range prefixes {
+		if strings.HasPrefix(key, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 // ClassifyResource maps an accelerator extended resource to its vendor
 // and device family. The family is the fallback card type when neither
 // the vendor nor the resource encodes a concrete model.

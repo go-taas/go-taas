@@ -75,7 +75,7 @@ kubectl get nodes
 
 ```bash
 kubectl get node <gpu-node> -o jsonpath='{.status.allocatable.nvidia\.com/gpu}{"\n"}'
-kubectl get node <gpu-node> --show-labels | tr ',' '\n' | grep -E 'gpu-vendor|gpu.product'
+kubectl get node <gpu-node> --show-labels | tr ',' '\n' | grep -E 'gpu.present|gcu.present|gpu.product|gcu.product'
 ```
 
 纯 CPU 的体验环境无需 GPU。
@@ -261,16 +261,15 @@ kubectl -n taas create secret generic taas-harbor-push \
 
 ### 4.1 加速卡节点标签
 
-推理 Pod 通过节点标签固定加速卡厂商（以及在指定时固定卡型）。控制器接受 `go-taas.com/accelerator`，并会回退到 GPU Feature Discovery 设置的 `gpu-vendor`：
+控制器读取各厂商 GPU Operator 自己维护的节点标签，不要求 `go-taas.com/accelerator`。NVIDIA GPU Feature Discovery 会设置 `nvidia.com/gpu.present=true` 与 `nvidia.com/gpu.product=<卡型>`；燧原的 operator 会设置 `enflame.com/gcu.present=true` 与 `enflame.com/gcu.product=<卡型>`；其他厂商同样在各自前缀下提供 `present` / `product`。推理 Pod 用厂商的 presence 标签固定厂商，指定卡型时再用厂商的 product 标签固定卡型。
 
 ```bash
-# 推荐：显式打标签（值为平台使用的厂商标识）
-kubectl label node <gpu-node> go-taas.com/accelerator=nvidia --overwrite
-# 卡型来自 device plugin 自身的标签，例如
+# 这些标签由厂商 operator 维护，只需检查，不需要手工写入
+kubectl get node <gpu-node> -o jsonpath='{.metadata.labels.nvidia\.com/gpu\.present}{"\n"}'
 kubectl get node <gpu-node> -o jsonpath='{.metadata.labels.nvidia\.com/gpu\.product}{"\n"}'
 ```
 
-可用的厂商标识为 `nvidia`、`iluvatar`、`metax`，以及用于无加速卡镜像的 `cpu`。控制台展示的卡型来自实时清单，因此标签就绪后无需额外配置。
+平台识别的厂商包括 `nvidia`、`enflame`、`iluvatar`、`metax` 以及 `pkg/accelerator` 中列出的其他厂商，另有无加速卡的 `cpu`。控制台展示的卡型来自实时清单，因此厂商 operator 打好标签后无需额外配置。
 
 ### 4.2 命名空间
 

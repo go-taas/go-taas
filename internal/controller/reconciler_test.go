@@ -22,12 +22,14 @@ const reconcileNamespace = "taas-infer"
 // testReconciler returns a reconciler over a fake clientset for the
 // build-function tests.
 // testReconciler builds a reconciler over a fleet with one A100 node, so
-// the card type in testChangeEvent resolves to a real node label.
+// the card type in testChangeEvent resolves to a real node label. The node
+// carries only NVIDIA's own labels: the platform's go-taas.com/accelerator
+// label is not required for scheduling.
 func testReconciler() *k8sReconciler {
 	node := &corev1.Node{ObjectMeta: metav1.ObjectMeta{
 		Name: "gpu-node-1",
 		Labels: map[string]string{
-			labelAcceleratorVendor:   "nvidia",
+			"nvidia.com/gpu.present": "true",
 			"nvidia.com/gpu.product": "A100",
 		},
 	}}
@@ -90,10 +92,13 @@ func TestBuildDeployment(t *testing.T) {
 		"--served-model-name", "demo",
 	}, c.Command)
 
-	// Accelerator node selector.
-	assert.Equal(t, "nvidia", dep.Spec.Template.Spec.NodeSelector["go-taas.com/accelerator"])
+	// The vendor's own node labels pin the accelerator: no
+	// go-taas.com/accelerator label is required.
+	assert.Equal(t, "true", dep.Spec.Template.Spec.NodeSelector["nvidia.com/gpu.present"])
 	assert.Equal(t, "A100", dep.Spec.Template.Spec.NodeSelector["nvidia.com/gpu.product"],
 		"the card model is pinned through the label that carries it")
+	_, hasPlatformLabel := dep.Spec.Template.Spec.NodeSelector["go-taas.com/accelerator"]
+	assert.False(t, hasPlatformLabel, "scheduling must not depend on a platform-defined vendor label")
 
 	// The selector keeps the shared resource labels (it is immutable); the
 	// template adds the serving-gateway routing labels on top.

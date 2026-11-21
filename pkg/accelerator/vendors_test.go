@@ -402,3 +402,75 @@ func TestCardCountFromLabels(t *testing.T) {
 		})
 	}
 }
+
+// TestPresenceLabel covers the vendor-owned presence marker a scheduler can
+// pin a pod to. It must never return a platform label or another vendor's
+// label, and an explicit false must not select the node.
+func TestPresenceLabel(t *testing.T) {
+	cases := []struct {
+		name   string
+		vendor string
+		labels map[string]string
+		want   string
+		value  string
+		ok     bool
+	}{
+		{
+			name:   "nvidia present",
+			vendor: "nvidia",
+			labels: map[string]string{"nvidia.com/gpu.present": "true", "nvidia.com/gpu.product": "A100"},
+			want:   "nvidia.com/gpu.present",
+			value:  "true",
+			ok:     true,
+		},
+		{
+			name:   "enflame present",
+			vendor: "enflame",
+			labels: map[string]string{"enflame.com/gcu.present": "true", "enflame.com/gcu.product": "scorpio"},
+			want:   "enflame.com/gcu.present",
+			value:  "true",
+			ok:     true,
+		},
+		{
+			name:   "intel slash present",
+			vendor: "intel",
+			labels: map[string]string{"gpu.intel.com/present": "true"},
+			want:   "gpu.intel.com/present",
+			value:  "true",
+			ok:     true,
+		},
+		{
+			name:   "platform label ignored",
+			vendor: "nvidia",
+			labels: map[string]string{"go-taas.com/accelerator": "nvidia"},
+		},
+		{
+			name:   "other vendor ignored",
+			vendor: "nvidia",
+			labels: map[string]string{"enflame.com/gcu.present": "true"},
+		},
+		{
+			name:   "explicit false is not presence",
+			vendor: "metax",
+			labels: map[string]string{"metax.com/gpu.installed": "false"},
+		},
+		{
+			name:   "installed fallback",
+			vendor: "metax",
+			labels: map[string]string{"metax.com/gpu.installed": "true"},
+			want:   "metax.com/gpu.installed",
+			value:  "true",
+			ok:     true,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			key, value, ok := PresenceLabel(c.vendor, c.labels)
+			assert.Equal(t, c.ok, ok)
+			assert.Equal(t, c.want, key)
+			if c.ok {
+				assert.Equal(t, c.value, value)
+			}
+		})
+	}
+}
