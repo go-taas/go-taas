@@ -15,10 +15,12 @@ metadata:
     {{- include "go-taas.labels" . | nindent 4 }}
     app.kubernetes.io/component: controller
 rules:
-  # Node inventory and accelerator capacity, plus the inference namespace lookup.
+  # Node inventory and accelerator capacity, plus the inference namespace
+  # lookup. Node patch is required to apply and release the KServe local-model
+  # agent label on every node of a warmup node group.
   - apiGroups: [""]
     resources: ["nodes", "namespaces"]
-    verbs: ["get", "list", "watch"]
+    verbs: ["get", "list", "watch", "patch"]
   # Inference pods, their logs, the per-service Services and the model-weights PVC.
   - apiGroups: [""]
     resources: ["pods"]

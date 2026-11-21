@@ -255,6 +255,15 @@ database round-trip and a deletion made while it was down still takes effect.
 Deleting a group is rejected while a queued, warming or ready warmup still
 references it.
 
+The KServe local-model node agent is a DaemonSet selected by
+`kserve/localmodel=worker`. The group's PV node affinity decides which nodes
+belong to the pool, but it does not schedule the agent, so the controller
+also labels every node the selector matches and removes that label when the
+group is deleted. Without the label the node has no agent, its
+`LocalModelNode` never reports `ModelDownloaded`, and every cache placed on
+the pool stays `warming`. A node still selected by another managed group
+keeps the label.
+
 `WarmModel` validates the model version and its resolved source URI, accepts
 an optional `node_groups` selection (empty means every managed group),
 writes a `model_cache_entries` row in `queued`, and publishes

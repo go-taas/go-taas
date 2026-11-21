@@ -14,7 +14,9 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/dynamic"
 
 	"github.com/go-taas/go-taas/pkg/config"
@@ -25,6 +27,7 @@ import (
 )
 
 var (
+	nodeGVR                = schema.GroupVersionResource{Version: "v1", Resource: "nodes"}
 	localModelNodeGroupGVR = schema.GroupVersionResource{Group: "serving.kserve.io", Version: "v1alpha1", Resource: "localmodelnodegroups"}
 	localModelCacheGVR     = schema.GroupVersionResource{Group: "serving.kserve.io", Version: "v1alpha1", Resource: "localmodelcaches"}
 	localModelNodeGVR      = schema.GroupVersionResource{Group: "serving.kserve.io", Version: "v1alpha1", Resource: "localmodelnodes"}
@@ -32,6 +35,13 @@ var (
 )
 
 const (
+	// kserveLocalModelLabel is the node label the KServe local-model node
+	// agent DaemonSet selects on. A node without it gets no agent, so its
+	// LocalModelNode never reports a downloaded model and every cache placed
+	// on that node stays warming forever.
+	kserveLocalModelLabel = "kserve/localmodel"
+	kserveLocalModelValue = "worker"
+
 	// Labels and mount points of the node-local seed Job.
 	warmupSeedLabel       = "taas.io/model-warmup-seed"
 	warmupSeedCacheLabel  = "taas.io/model-cache-id"
@@ -95,7 +105,7 @@ func (r *ModelWarmupReconciler) ApplyNodeGroup(ctx context.Context, msg mq.Messa
 		return fmt.Errorf("controller: warmup node group event has no name")
 	}
 	if event.Deleted {
-		return r.deleteNodeGroup(ctx, name)
+		return r.deleteNodeGroup(ctx, name, event.NodeGroup.NodeSelector)
 	}
 	return r.ensureNodeGroup(ctx, event.NodeGroup)
 }
@@ -129,20 +139,142 @@ func (r *ModelWarmupReconciler) syncNodeGroups(ctx context.Context, groups []war
 		if desired[item.GetName()] {
 			continue
 		}
-		if err := r.deleteNodeGroup(ctx, item.GetName()); err != nil {
+		if err := r.deleteNodeGroup(ctx, item.GetName(), nil); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-// deleteNodeGroup removes a LocalModelNodeGroup; a missing group is success.
-func (r *ModelWarmupReconciler) deleteNodeGroup(ctx context.Context, name string) error {
-	err := r.dynamic.Resource(localModelNodeGroupGVR).Delete(ctx, name, metav1.DeleteOptions{})
+// deleteNodeGroup removes a LocalModelNodeGroup and releases the KServe node
+// label it owned, unless another managed group still selects the same node.
+// A missing group is success, but its label is still cleaned up when the
+// caller knows the selector.
+func (r *ModelWarmupReconciler) deleteNodeGroup(ctx context.Context, name string, selector map[string]string) error {
+	if len(selector) == 0 {
+		existing, err := r.dynamic.Resource(localModelNodeGroupGVR).Get(ctx, name, metav1.GetOptions{})
+		if err == nil {
+			selector = nodeGroupSelector(existing)
+		} else if !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	if err := r.dynamic.Resource(localModelNodeGroupGVR).Delete(ctx, name, metav1.DeleteOptions{}); err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if len(selector) == 0 {
+		return nil
+	}
+	return r.unlabelWarmupNodes(ctx, selector)
+}
+
+// nodeGroupSelector recovers the label selector from the node affinity this
+// controller wrote onto a LocalModelNodeGroup.
+func nodeGroupSelector(group *unstructured.Unstructured) map[string]string {
+	terms, _, _ := unstructured.NestedSlice(group.Object, "spec", "persistentVolumeSpec", "nodeAffinity", "required", "nodeSelectorTerms")
+	selector := map[string]string{}
+	for _, term := range terms {
+		termMap, ok := term.(map[string]any)
+		if !ok {
+			continue
+		}
+		expressions, _ := termMap["matchExpressions"].([]any)
+		for _, expression := range expressions {
+			expr, ok := expression.(map[string]any)
+			if !ok {
+				continue
+			}
+			key, _ := expr["key"].(string)
+			operator, _ := expr["operator"].(string)
+			values, _ := expr["values"].([]any)
+			if key == "" || operator != "In" || len(values) != 1 {
+				continue
+			}
+			value, ok := values[0].(string)
+			if !ok {
+				continue
+			}
+			selector[key] = value
+		}
+	}
+	return selector
+}
+
+// labelWarmupNodes marks every node the group selects for the KServe
+// local-model agent. Without this label the group's nodes have no agent and
+// no LocalModelNode status, so the cache never leaves "warming".
+func (r *ModelWarmupReconciler) labelWarmupNodes(ctx context.Context, selector map[string]string) error {
+	if len(selector) == 0 {
+		return nil
+	}
+	nodes, err := r.dynamic.Resource(nodeGVR).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(selector).String(),
+	})
 	if apierrors.IsNotFound(err) {
 		return nil
 	}
-	return err
+	if err != nil {
+		return err
+	}
+	patch := []byte(`{"metadata":{"labels":{"` + kserveLocalModelLabel + `":"` + kserveLocalModelValue + `"}}}`)
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		if node.GetLabels()[kserveLocalModelLabel] == kserveLocalModelValue {
+			continue
+		}
+		if _, err := r.dynamic.Resource(nodeGVR).Patch(ctx, node.GetName(), types.MergePatchType, patch, metav1.PatchOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
+}
+
+// unlabelWarmupNodes releases the KServe label from the nodes a deleted
+// group selected, keeping it on nodes another managed group still needs.
+func (r *ModelWarmupReconciler) unlabelWarmupNodes(ctx context.Context, selector map[string]string) error {
+	nodes, err := r.dynamic.Resource(nodeGVR).List(ctx, metav1.ListOptions{
+		LabelSelector: labels.SelectorFromSet(selector).String(),
+	})
+	if apierrors.IsNotFound(err) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	remaining := map[string]map[string]string{}
+	groups, err := r.dynamic.Resource(localModelNodeGroupGVR).List(ctx, metav1.ListOptions{
+		LabelSelector: "app.kubernetes.io/managed-by=taas",
+	})
+	if err != nil && !apierrors.IsNotFound(err) {
+		return err
+	}
+	if err == nil {
+		for i := range groups.Items {
+			groupSelector := nodeGroupSelector(&groups.Items[i])
+			if len(groupSelector) == 0 {
+				continue
+			}
+			remaining[groups.Items[i].GetName()] = groupSelector
+		}
+	}
+	patch := []byte(`{"metadata":{"labels":{"` + kserveLocalModelLabel + `":null}}}`)
+	for i := range nodes.Items {
+		node := &nodes.Items[i]
+		keep := false
+		for _, other := range remaining {
+			if labels.SelectorFromSet(other).Matches(labels.Set(node.GetLabels())) {
+				keep = true
+				break
+			}
+		}
+		if keep {
+			continue
+		}
+		if _, err := r.dynamic.Resource(nodeGVR).Patch(ctx, node.GetName(), types.MergePatchType, patch, metav1.PatchOptions{}); err != nil && !apierrors.IsNotFound(err) {
+			return err
+		}
+	}
+	return nil
 }
 
 // ApplyModelWarmup consumes one warmup request. Cancellation deletes the
@@ -275,8 +407,10 @@ func (r *ModelWarmupReconciler) ensureNodeGroup(ctx context.Context, group warmu
 	resource := r.dynamic.Resource(localModelNodeGroupGVR)
 	existing, err := resource.Get(ctx, name, metav1.GetOptions{})
 	if apierrors.IsNotFound(err) {
-		_, err = resource.Create(ctx, object, metav1.CreateOptions{})
-		return err
+		if _, err = resource.Create(ctx, object, metav1.CreateOptions{}); err != nil {
+			return err
+		}
+		return r.labelWarmupNodes(ctx, group.NodeSelector)
 	}
 	if err != nil {
 		return err
@@ -288,7 +422,13 @@ func (r *ModelWarmupReconciler) ensureNodeGroup(ctx context.Context, group warmu
 	// changed limit must reach the group, but the volume specs are
 	// immutable in Kubernetes.
 	_, err = resource.Update(ctx, object, metav1.UpdateOptions{})
-	return err
+	if err != nil {
+		return err
+	}
+	// KServe runs its local-model node agent only on labelled nodes; the
+	// group's own node affinity is not enough, so every selected node must
+	// carry the agent label before a cache is created for it.
+	return r.labelWarmupNodes(ctx, group.NodeSelector)
 }
 
 // ensureCache creates or updates the LocalModelCache for a request.

@@ -3,6 +3,7 @@ package controller
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -10,7 +11,9 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	dynamicfake "k8s.io/client-go/dynamic/fake"
+	k8stesting "k8s.io/client-go/testing"
 
 	"github.com/go-taas/go-taas/pkg/config"
 	"github.com/go-taas/go-taas/pkg/mq"
@@ -20,7 +23,13 @@ import (
 
 func testWarmupReconciler(objects ...runtime.Object) (*ModelWarmupReconciler, *dynamicfake.FakeDynamicClient) {
 	scheme := runtime.NewScheme()
-	dyn := dynamicfake.NewSimpleDynamicClient(scheme, objects...)
+	dyn := dynamicfake.NewSimpleDynamicClientWithCustomListKinds(scheme, map[schema.GroupVersionResource]string{
+		nodeGVR:                "NodeList",
+		localModelNodeGroupGVR: "LocalModelNodeGroupList",
+		localModelCacheGVR:     "LocalModelCacheList",
+		localModelNodeGVR:      "LocalModelNodeList",
+		jobGVR:                 "JobList",
+	}, objects...)
 	return NewModelWarmupReconciler(dyn, mq.NewFake(), config.WarmupConfig{
 		Enabled: true,
 	}, storage.Config{}, "taas-infer", WarmupSeedConfig{}), dyn
@@ -409,4 +418,147 @@ func TestReportNodesPublishesLocalModelNodeSnapshot(t *testing.T) {
 	assert.Equal(t, []string{"gpu", "worker"}, byName["node-a"].NodeGroups)
 	assert.Equal(t, "ModelDownloaded", byName["node-a"].Models[0].State)
 	assert.Equal(t, 0, byName["node-b"].ModelCount)
+}
+
+func warmupNode(name string, labels map[string]string) *unstructured.Unstructured {
+	metadata := map[string]any{"name": name}
+	if labels != nil {
+		values := make(map[string]any, len(labels))
+		for key, value := range labels {
+			values[key] = value
+		}
+		metadata["labels"] = values
+	}
+	return &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "v1", "kind": "Node", "metadata": metadata,
+	}}
+}
+
+func TestApplyNodeGroupLabelsMatchingNodes(t *testing.T) {
+	matching := warmupNode("node-a", map[string]string{"gpu": "true"})
+	other := warmupNode("node-b", map[string]string{"gpu": "false"})
+	reconciler, dyn := testWarmupReconciler(matching, other)
+	body, err := json.Marshal(&warmup.NodeGroupEvent{NodeGroup: warmup.NodeGroup{
+		Name: "gpu", NodeSelector: map[string]string{"gpu": "true"},
+	}})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+
+	labelled, err := dyn.Resource(nodeGVR).Get(context.Background(), "node-a", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "worker", labelled.GetLabels()["kserve/localmodel"])
+	untouched, err := dyn.Resource(nodeGVR).Get(context.Background(), "node-b", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, untouched.GetLabels(), "kserve/localmodel")
+}
+
+func TestDeleteNodeGroupRemovesKServeLabel(t *testing.T) {
+	matching := warmupNode("node-a", map[string]string{
+		"gpu": "true", "kserve/localmodel": "worker",
+	})
+	group := &unstructured.Unstructured{Object: map[string]any{
+		"apiVersion": "serving.kserve.io/v1alpha1", "kind": "LocalModelNodeGroup",
+		"metadata": map[string]any{
+			"name":   "gpu",
+			"labels": map[string]any{"app.kubernetes.io/managed-by": "taas"},
+		},
+		"spec": map[string]any{
+			"persistentVolumeSpec": map[string]any{
+				"nodeAffinity": map[string]any{
+					"required": map[string]any{
+						"nodeSelectorTerms": []any{map[string]any{
+							"matchExpressions": []any{map[string]any{
+								"key": "gpu", "operator": "In", "values": []any{"true"},
+							}},
+						}},
+					},
+				},
+			},
+		},
+	}}
+	reconciler, dyn := testWarmupReconciler(matching, group)
+	body, err := json.Marshal(&warmup.NodeGroupEvent{
+		NodeGroup: warmup.NodeGroup{Name: "gpu"}, Deleted: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+
+	updated, err := dyn.Resource(nodeGVR).Get(context.Background(), "node-a", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, updated.GetLabels(), "kserve/localmodel")
+}
+
+func TestDeleteNodeGroupKeepsLabelNeededByAnotherGroup(t *testing.T) {
+	node := warmupNode("node-a", map[string]string{
+		"gpu": "true", "kserve/localmodel": "worker",
+	})
+	group := func(name string) *unstructured.Unstructured {
+		return &unstructured.Unstructured{Object: map[string]any{
+			"apiVersion": "serving.kserve.io/v1alpha1", "kind": "LocalModelNodeGroup",
+			"metadata": map[string]any{
+				"name":   name,
+				"labels": map[string]any{"app.kubernetes.io/managed-by": "taas"},
+			},
+			"spec": map[string]any{
+				"persistentVolumeSpec": map[string]any{
+					"nodeAffinity": nodeSelectorAffinity(map[string]string{"gpu": "true"}),
+				},
+			},
+		}}
+	}
+	reconciler, dyn := testWarmupReconciler(node, group("gpu"), group("shared"))
+	body, err := json.Marshal(&warmup.NodeGroupEvent{
+		NodeGroup: warmup.NodeGroup{Name: "gpu"}, Deleted: true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+
+	updated, err := dyn.Resource(nodeGVR).Get(context.Background(), "node-a", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "worker", updated.GetLabels()["kserve/localmodel"])
+}
+
+func TestApplyNodeGroupKeepsExistingKServeLabel(t *testing.T) {
+	node := warmupNode("node-a", map[string]string{
+		"gpu": "true", "kserve/localmodel": "worker",
+	})
+	reconciler, dyn := testWarmupReconciler(node)
+	group := warmup.NodeGroup{Name: "gpu", NodeSelector: map[string]string{"gpu": "true"}}
+	for i := 0; i < 2; i++ {
+		body, err := json.Marshal(&warmup.NodeGroupEvent{NodeGroup: group})
+		require.NoError(t, err)
+		require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+	}
+	updated, err := dyn.Resource(nodeGVR).Get(context.Background(), "node-a", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.Equal(t, "worker", updated.GetLabels()["kserve/localmodel"])
+}
+
+func TestDeleteMissingNodeGroupUnlabelsKnownSelector(t *testing.T) {
+	node := warmupNode("node-a", map[string]string{
+		"gpu": "true", "kserve/localmodel": "worker",
+	})
+	reconciler, dyn := testWarmupReconciler(node)
+	body, err := json.Marshal(&warmup.NodeGroupEvent{
+		NodeGroup: warmup.NodeGroup{Name: "gone", NodeSelector: map[string]string{"gpu": "true"}},
+		Deleted:   true,
+	})
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
+
+	updated, err := dyn.Resource(nodeGVR).Get(context.Background(), "node-a", metav1.GetOptions{})
+	require.NoError(t, err)
+	assert.NotContains(t, updated.GetLabels(), "kserve/localmodel")
+}
+
+func TestDeleteNodeGroupReturnsLookupError(t *testing.T) {
+	reconciler, dyn := testWarmupReconciler()
+	dyn.PrependReactor("get", "localmodelnodegroups", func(k8stesting.Action) (bool, runtime.Object, error) {
+		return true, nil, fmt.Errorf("api unavailable")
+	})
+	body, err := json.Marshal(&warmup.NodeGroupEvent{
+		NodeGroup: warmup.NodeGroup{Name: "gpu"}, Deleted: true,
+	})
+	require.NoError(t, err)
+	assert.Error(t, reconciler.ApplyNodeGroup(context.Background(), mq.Message{Body: body}))
 }

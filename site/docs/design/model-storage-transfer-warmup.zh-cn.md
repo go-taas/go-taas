@@ -136,6 +136,13 @@ Job 以 root 运行，才能读取属于其他 uid 的 hub 缓存和上传权重
 
 预热节点组**不是 Helm 配置**。平台管理员在“运维 > 预热节点组”中创建、编辑和删除，模型服务校验后写入 `warmup_node_groups`，Controller 监听 `model.warmups.groups` 创建、更新或删除对应的 KServe `LocalModelNodeGroup`。服务端每 30 秒发布一次完整期望集合，Controller 应用全部节点组并删除集合中已不存在的受管节点组，因此重启后无需数据库即可收敛，停机期间删除的节点组也会被清理。仍被排队、预热中或已就绪任务引用的节点组拒绝删除。
 
+KServe 的 local-model 节点 agent 是 DaemonSet，只调度到带
+`kserve/localmodel=worker` 标签的节点。节点组的 PV 节点亲和只决定哪些节点属于该池，
+不会调度 agent，因此 Controller 会给选择器匹配到的每个节点补上该标签，并在删除节点组时移除；
+若节点仍被其他受管节点组选中则保留。缺少该标签的节点没有 agent，其
+`LocalModelNode` 永远不会报告 `ModelDownloaded`，该池上的所有预热都会一直停在
+`warming`。
+
 `WarmModel` 校验模型版本与解析后的源 URI，支持可选的 `node_groups`（为空表示全部托管节点组），写入 `model_cache_entries`（`queued`）并发布携带完整节点组配置的 `model.warmups`。Controller 确保所选节点组与缓存存在，随后回报 `queued` → `warming` → `ready`（或 `failed`/`cancelled`），携带已预热节点、节点总数与字节数。
 
 KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携带平台的对象存储凭据。因此 Controller 对能解析到已配置后端的缓存都在节点上自行预热：每轮扫描缓存时找到对应的 `LocalModelNode`，从实时 `LocalModelNodeGroup` 解析节点组 hostPath，在目标节点运行一次性 `taas-transfer` Job（该 hostPath 挂载到 `/target`）。`cache` 交付的推理 Pod 也挂载同一 hostPath，因此修改节点组路径无需发布 Helm 即同时影响两条链路。文件系统源把 PVC 只读挂载到 `/source`；对象存储源把后端 Secret 投射为 `WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY`，由 transfer 拉取前缀。两者都复制到 `/target/models/<storageKey>`，只有 Job 成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。没有匹配后端的 HTTP 源继续走 KServe 原生路径。
