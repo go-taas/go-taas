@@ -14,6 +14,8 @@
 
 Deploying a model means writing engine flags: `max-model-len`, `gpu-memory-utilization`, `enable-chunked-prefill`, `tensor-parallel-size`, and for a multi-machine or PD layout a second and third set of them. The same model on the same card type always wants the same values, and those values are the part an operator gets wrong. A template captures them once, tagged with the context in which they are correct.
 
+A model's declared context length is not free: its KV cache has to fit beside the weights. A long-context model on a small card pair can therefore load its weights and still refuse to start, because one request at the model default needs more KV cache than remains. Set `max-model-len` to a length the card can actually hold, and lower `max-num-seqs` when the engine reports that CUDA-graph capture exceeds the available Mamba cache blocks. A template tagged with the exact card type is the right place to record those values.
+
 ## 2. The template
 
 `engine_param_templates`

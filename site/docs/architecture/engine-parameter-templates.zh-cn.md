@@ -14,6 +14,8 @@
 
 部署一个模型意味着一堆引擎参数：`max-model-len`、`gpu-memory-utilization`、`enable-chunked-prefill`、`tensor-parallel-size`，在多机或 PD 分离部署下还要再来两套。同一模型在同一卡型上想要的值永远一样，而这恰恰是最容易写错的部分。模板把这些值记录一次，并标注它们在什么上下文中才是正确的。
 
+模型声明的上下文长度不是免费的：KV cache 必须和权重一起放得下。长上下文模型跑在小显存组合上时，权重虽然加载成功，仍可能因为单个请求按模型默认长度需要的 KV cache 超过剩余显存而启动失败。应把 `max-model-len` 调低到该卡型真正能容纳的长度；当引擎报告 CUDA graph 捕获超过可用 Mamba cache block 数时，同时调低 `max-num-seqs`。这类取值最适合记录在按具体卡型标注的模板里。
+
 ## 2. 模板模型
 
 `engine_param_templates`
