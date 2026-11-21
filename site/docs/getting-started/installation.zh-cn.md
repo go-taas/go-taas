@@ -92,7 +92,7 @@ Go TaaS 不内置这些组件。请使用它们各自的 Chart 安装，并遵�
 | **JuiceFS CSI**（或任意 ReadWriteMany 存储） | 控制面（下载/上传）与推理 Pod（只读挂载）共享的同一套模型权重文件系统 | 模型下载/上传必需；任何 RWX 存储类均可 | [JuiceFS CSI 驱动](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor**（或其他镜像仓库） | 平台内部镜像仓库：镜像导入/上传流程把引擎镜像推到这里并注册本地引用 | 可选；未设置时镜像导入与上传功能关闭 | [Harbor 安装](https://goharbor.io/docs/2.11.0/install-config/) |
 | **kube-prometheus-stack** | 指标页面读取 Prometheus；没有它时相关页面回退到控制器自身采集的样本 | 可选 | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
-| **HAMi** | 共享 GPU 的 GPU 切分。仅使用切分（vGPU 切分）能力，暂未使用其异构卡纳管、设备插件与调度 | 可选 | [HAMi（Helm）](https://project-hami.io/docs/get-started/deploy-with-helm) |
+| **HAMi** | 共享 GPU 的 GPU 切分。它的 device plugin 会接管所管理节点上的 `nvidia.com/gpu`，因此只在启用 vGPU 时安装，且不要与厂商 device plugin 在同一节点同时运行；整卡服务不使用 HAMi 调度 | 可选，仅 vGPU 场景 | [HAMi（Helm）](https://project-hami.io/docs/get-started/deploy-with-helm) |
 | **cert-manager** | 为控制台与推理域名签发证书 | 可选（自带证书时不需要） | [cert-manager（Helm）](https://cert-manager.io/docs/installation/helm/) |
 
 ### 3.1 Gateway API 与 Envoy Gateway
@@ -662,8 +662,8 @@ helm uninstall taas -n taas
 | 控制台返回 "The admin console bundle is not built in this environment" | 服务端镜像未包含 `web/dist`（源码构建时未执行 `npm run build`） | 使用官方镜像，或在编译前先构建控制台 |
 | `curl https://taas.example.com` 返回 404 | HTTPRoute 挂错 Gateway，或 DNS 指向了推理 Gateway | 把控制台路由挂到平台 Gateway（步骤 5 方案 B），并检查 `kubectl -n taas get httproute` 的 `Accepted`/`ResolvedRefs` |
 | 用初始化密码登录被拒 | 初始化只会填充「缺失」的密码，之前的安装可能已设置过 | `exec` 进服务端查看 `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`，或通过另一位平台管理员重置 |
-| 加速卡页面显示 GPU 节点为 0 张，或节点 allocatable 中缺少 `nvidia.com/gpu` | 该节点没有运行 GPU device plugin；HAMi 的 device-plugin DaemonSet 只调度到带 `gpu=on` 标签的节点 | 给节点打标签（`kubectl label node <node> gpu=on`）并确认 device-plugin Pod 达到 `2/2 Running`，节点随后会通告其 vGPU 卡槽 |
-| 加速卡页面显示的张数多于节点实际卡数（例如 2 张卡的节点显示 20 张） | HAMi 的 device plugin 按 `devices.nvidia.deviceSplitCount` 为每张物理卡通告多个虚拟卡槽，默认安装为 10 | 关闭 vGPU 时把 HAMi values 中的 `devices.nvidia.deviceSplitCount` 设为 1 并滚动重启 device plugin；`nvidia.com/gpu` 随后等于物理卡数 |
+| 加速卡页面显示 GPU 节点为 0 张，或节点 allocatable 中缺少 `nvidia.com/gpu` | 该节点没有 device plugin 通告 `nvidia.com/gpu` | 关闭 vGPU 时，启用 NVIDIA GPU Operator 的 device plugin（`kubectl patch clusterpolicy cluster-policy --type merge -p '{"spec":{"devicePlugin":{"enabled":true}}}'`）；启用 vGPU 时，安装 HAMi 并给节点打 `gpu=on`，让它的 device-plugin Pod 运行在该节点 |
+| 加速卡页面显示的张数多于节点实际卡数（例如 2 张卡的节点显示 20 张） | HAMi 的 device plugin 按 `devices.nvidia.deviceSplitCount` 为每张物理卡通告多个虚拟卡槽，默认安装为 10 | 关闭 vGPU 时卸载 HAMi，让 NVIDIA GPU Operator 通告 `nvidia.com/gpu`，张数随后等于物理卡数；只有真正使用 vGPU 时才保留切分数量 |
 | 推理 Pod `Pending`，`0/N nodes are unavailable: Insufficient nvidia.com/gpu` | 没有空闲 GPU，或节点缺少所选卡型 | 释放设备或改选其他加速卡；`kubectl get node -o jsonpath='{.status.allocatable}'` |
 | 推理 Pod 已运行但引擎日志报 "weights not found" | 服务端与推理命名空间未共享权重文件系统 | 两个 PVC 必须来自同一个 RWX/JuiceFS 卷（步骤 3.4），且 `model.weightsDir` 必须为 `/data/weights` |
 | 推理域名返回 404、但直连某个 Pod 可用 | 数据面路由域名与 DNS 记录不一致 | 在 平台 → 网关设置 与 DNS 中设为同一域名 |
