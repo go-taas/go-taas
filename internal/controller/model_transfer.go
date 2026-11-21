@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	transferLabel            = "taas.io/model-transfer"
-	transferIDLabel          = "taas.io/model-transfer-id"
+	transferLabel            = "go-taas.com/model-transfer"
+	transferIDLabel          = "go-taas.com/model-transfer-id"
 	transferContainerName    = "transfer"
 	transferSpecEnv          = "TRANSFER_SPEC_JSON"
 	transferProgressInterval = 10 * time.Second

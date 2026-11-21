@@ -225,6 +225,9 @@ prefix is expected to be resolvable by whoever consumes it.
 | `go-taas.com/driver-version`, `go-taas.com/device-plugin` | nodes | accelerator driver and device-plugin health signals |
 | `go-taas.com/model`, `go-taas.com/model-id`, `go-taas.com/origin` | ModelClaim | model name, catalog id, and whether the claim came from a service or a registration |
 | `go-taas.com/task-type`, `go-taas.com/task-id` | image warmup Job | warmup task identity |
+| `go-taas.com/model-transfer`, `go-taas.com/model-transfer-id` | model transfer Job | transfer identity and owning row |
+| `go-taas.com/model-warmup-seed`, `go-taas.com/model-warmup-node`, `go-taas.com/model-cache-id` | warmup seed Job | seed job identity, target node, and cache row |
+| `go-taas.com/model-name`, `go-taas.com/model-version`, `go-taas.com/source-uri`, `go-taas.com/backend` | `LocalModelCache` annotations | warmup cache source metadata |
 | `go-taas.com/role` | compose cluster resources | static role of a volume, secret, or namespace |
 | `go-taas.com/vgpu-pool` | nodes | vGPU pool membership (`vgpu.hami.poolLabelPrefix`, configurable) |
 

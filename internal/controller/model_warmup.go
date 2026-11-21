@@ -43,9 +43,9 @@ const (
 	kserveLocalModelValue = "worker"
 
 	// Labels and mount points of the node-local seed Job.
-	warmupSeedLabel       = "taas.io/model-warmup-seed"
-	warmupSeedCacheLabel  = "taas.io/model-cache-id"
-	warmupSeedNodeLabel   = "taas.io/model-warmup-node"
+	warmupSeedLabel       = "go-taas.com/model-warmup-seed"
+	warmupSeedCacheLabel  = "go-taas.com/model-cache-id"
+	warmupSeedNodeLabel   = "go-taas.com/model-warmup-node"
 	warmupSeedSourceMount = "/source"
 	warmupSeedTargetMount = "/target"
 )
@@ -448,13 +448,13 @@ func (r *ModelWarmupReconciler) ensureCache(ctx context.Context, request *warmup
 			"name": name,
 			"labels": map[string]any{
 				"app.kubernetes.io/managed-by": "taas",
-				"taas.io/model-cache-id":       request.ID,
+				"go-taas.com/model-cache-id":   request.ID,
 			},
 			"annotations": map[string]any{
-				"taas.io/model-name":    request.ModelName,
-				"taas.io/model-version": request.Version,
-				"taas.io/source-uri":    request.SourceURI,
-				"taas.io/backend":       request.Backend,
+				"go-taas.com/model-name":    request.ModelName,
+				"go-taas.com/model-version": request.Version,
+				"go-taas.com/source-uri":    request.SourceURI,
+				"go-taas.com/backend":       request.Backend,
 			},
 		},
 		"spec": map[string]any{
@@ -485,10 +485,10 @@ func (r *ModelWarmupReconciler) ensureCache(ctx context.Context, request *warmup
 	if annotations == nil {
 		annotations = map[string]string{}
 	}
-	annotations["taas.io/model-name"] = request.ModelName
-	annotations["taas.io/model-version"] = request.Version
-	annotations["taas.io/source-uri"] = request.SourceURI
-	annotations["taas.io/backend"] = request.Backend
+	annotations["go-taas.com/model-name"] = request.ModelName
+	annotations["go-taas.com/model-version"] = request.Version
+	annotations["go-taas.com/source-uri"] = request.SourceURI
+	annotations["go-taas.com/backend"] = request.Backend
 	existing.SetAnnotations(annotations)
 	_, err = resourceAPI.Update(ctx, existing, metav1.UpdateOptions{})
 	return err
@@ -543,7 +543,7 @@ func (r *ModelWarmupReconciler) seedCaches(ctx context.Context) error {
 			continue
 		}
 		sourceURI, _ := spec["sourceModelUri"].(string)
-		source, ok := r.seedSource(sourceURI, cache.GetAnnotations()["taas.io/backend"])
+		source, ok := r.seedSource(sourceURI, cache.GetAnnotations()["go-taas.com/backend"])
 		if !ok {
 			// HTTP sources and sources no configured backend owns are left
 			// to KServe's own storage initializer.
@@ -993,7 +993,7 @@ func (r *ModelWarmupReconciler) deleteCache(ctx context.Context, name string) er
 
 // reportCaches publishes one status per owned LocalModelCache.
 func (r *ModelWarmupReconciler) reportCaches(ctx context.Context) error {
-	list, err := r.dynamic.Resource(localModelCacheGVR).List(ctx, metav1.ListOptions{LabelSelector: "taas.io/model-cache-id"})
+	list, err := r.dynamic.Resource(localModelCacheGVR).List(ctx, metav1.ListOptions{LabelSelector: "go-taas.com/model-cache-id"})
 	if err != nil {
 		if apierrors.IsNotFound(err) {
 			return nil
@@ -1004,7 +1004,7 @@ func (r *ModelWarmupReconciler) reportCaches(ctx context.Context) error {
 		cache := &list.Items[i]
 		id := ""
 		if labels := cache.GetLabels(); labels != nil {
-			id = labels["taas.io/model-cache-id"]
+			id = labels["go-taas.com/model-cache-id"]
 		}
 		if id == "" {
 			continue
@@ -1190,10 +1190,10 @@ func (r *k8sReconciler) warmCacheNames(ctx context.Context, modelName, version s
 	for i := range caches.Items {
 		cache := &caches.Items[i]
 		annotations := cache.GetAnnotations()
-		if annotations["taas.io/model-name"] != modelName {
+		if annotations["go-taas.com/model-name"] != modelName {
 			continue
 		}
-		if version != "" && annotations["taas.io/model-version"] != "" && annotations["taas.io/model-version"] != version {
+		if version != "" && annotations["go-taas.com/model-version"] != "" && annotations["go-taas.com/model-version"] != version {
 			continue
 		}
 		out[cache.GetName()] = true

@@ -68,8 +68,8 @@ func TestApplyModelWarmupCreatesGroupAndCache(t *testing.T) {
 	cacheSpec := cache.Object["spec"].(map[string]any)
 	assert.Equal(t, "pvc://model-weights/qwen/v1", cacheSpec["sourceModelUri"])
 	assert.Equal(t, []any{"worker"}, cacheSpec["nodeGroups"])
-	assert.Equal(t, "qwen", cache.GetAnnotations()["taas.io/model-name"])
-	assert.Equal(t, "v1", cache.GetAnnotations()["taas.io/model-version"])
+	assert.Equal(t, "qwen", cache.GetAnnotations()["go-taas.com/model-name"])
+	assert.Equal(t, "v1", cache.GetAnnotations()["go-taas.com/model-version"])
 
 	// Applying again updates instead of failing on AlreadyExists.
 	require.NoError(t, reconciler.ApplyModelWarmup(context.Background(), mq.Message{Body: body}))
@@ -81,7 +81,7 @@ func TestApplyModelWarmupCancelDeletesCache(t *testing.T) {
 		"kind":       "LocalModelCache",
 		"metadata": map[string]any{
 			"name":   "taas-model-cache-2",
-			"labels": map[string]any{"taas.io/model-cache-id": "cache-2"},
+			"labels": map[string]any{"go-taas.com/model-cache-id": "cache-2"},
 		},
 	}}
 	reconciler, dyn := testWarmupReconciler(cache)
@@ -97,7 +97,7 @@ func TestReportCachesPublishesReadyState(t *testing.T) {
 		"kind":       "LocalModelCache",
 		"metadata": map[string]any{
 			"name":   "taas-model-cache-3",
-			"labels": map[string]any{"taas.io/model-cache-id": "cache-3"},
+			"labels": map[string]any{"go-taas.com/model-cache-id": "cache-3"},
 		},
 		"spec": map[string]any{
 			"nodeGroups": []any{"worker"},
@@ -135,7 +135,7 @@ func TestApplyWarmupAffinity(t *testing.T) {
 		"kind":       "LocalModelCache",
 		"metadata": map[string]any{
 			"name":        "taas-model-cache-affinity",
-			"annotations": map[string]any{"taas.io/model-name": "qwen", "taas.io/model-version": "v1"},
+			"annotations": map[string]any{"go-taas.com/model-name": "qwen", "go-taas.com/model-version": "v1"},
 		},
 	}}
 	node := &unstructured.Unstructured{Object: map[string]any{
@@ -177,7 +177,7 @@ func TestSeedCachesCreatesPVCSeedJobAndMarksNodeDownloaded(t *testing.T) {
 		"kind":       "LocalModelCache",
 		"metadata": map[string]any{
 			"name":   "taas-model-cache-seed",
-			"labels": map[string]any{"taas.io/model-cache-id": "cache-seed"},
+			"labels": map[string]any{"go-taas.com/model-cache-id": "cache-seed"},
 		},
 		"spec": map[string]any{
 			"sourceModelUri": sourceURI,
@@ -239,9 +239,9 @@ func TestSeedCachesFetchesObjectStoreSource(t *testing.T) {
 		"kind":       "LocalModelCache",
 		"metadata": map[string]any{
 			"name":   "taas-model-cache-s3",
-			"labels": map[string]any{"taas.io/model-cache-id": "cache-s3"},
+			"labels": map[string]any{"go-taas.com/model-cache-id": "cache-s3"},
 			"annotations": map[string]any{
-				"taas.io/backend": "archive",
+				"go-taas.com/backend": "archive",
 			},
 		},
 		"spec": map[string]any{

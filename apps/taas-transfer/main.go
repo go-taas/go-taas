@@ -112,7 +112,7 @@ func (p *progressReporter) report(ctx context.Context, state, message string, by
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      p.name,
 			Namespace: p.ns,
-			Labels:    map[string]string{"taas.io/model-transfer": "true", "taas.io/model-transfer-id": p.id},
+			Labels:    map[string]string{"go-taas.com/model-transfer": "true", "go-taas.com/model-transfer-id": p.id},
 		},
 		Data: map[string]string{"progress.json": string(body)},
 	}

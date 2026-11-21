@@ -150,6 +150,9 @@ Chart 创建的每个资源都带 Kubernetes 推荐标签：
 | `go-taas.com/driver-version`、`go-taas.com/device-plugin` | 节点 | 加速卡驱动与 device-plugin 健康信号 |
 | `go-taas.com/model`、`go-taas.com/model-id`、`go-taas.com/origin` | ModelClaim | 模型名、目录 ID，以及 Claim 来自服务还是注册 |
 | `go-taas.com/task-type`、`go-taas.com/task-id` | 镜像预热 Job | 预热任务标识 |
+| `go-taas.com/model-transfer`、`go-taas.com/model-transfer-id` | 模型搬运 Job | 搬运标识与所属记录 |
+| `go-taas.com/model-warmup-seed`、`go-taas.com/model-warmup-node`、`go-taas.com/model-cache-id` | 预热播种 Job | 播种任务、目标节点与缓存记录标识 |
+| `go-taas.com/model-name`、`go-taas.com/model-version`、`go-taas.com/source-uri`、`go-taas.com/backend` | `LocalModelCache` 注解 | 预热缓存的来源元数据 |
 | `go-taas.com/role` | compose 集群资源 | 存储卷、Secret 或命名空间的静态角色 |
 | `go-taas.com/vgpu-pool` | 节点 | vGPU 池成员（`vgpu.hami.poolLabelPrefix`，可配置） |
 
