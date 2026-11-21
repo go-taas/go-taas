@@ -10,6 +10,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/mq"
@@ -183,7 +184,14 @@ func (s *Service) listWarmups(ctx context.Context, page *commonv1.PageRequest, m
 		return nil, nil, err
 	}
 	var rows []*ModelCacheEntry
-	if err := query.Order("created_at DESC").Order("id DESC").Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
+	// Ready warmups float to the top so the console lists usable caches first;
+	// every other state keeps the newest-first order.
+	if err := query.
+		Order(clause.OrderBy{Expression: clause.Expr{
+			SQL:  "CASE WHEN state = ? THEN 0 ELSE 1 END, created_at DESC, id DESC",
+			Vars: []interface{}{warmup.StateReady},
+		}}).
+		Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
 		return nil, nil, err
 	}
 	caches := make([]*modelv1.ModelCacheEntry, 0, len(rows))

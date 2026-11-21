@@ -60,6 +60,7 @@ export default function WarmupNodeGroupsPage() {
   const [editing, setEditing] = useState<WarmupNodeGroup | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [deleteTarget, setDeleteTarget] = useState<WarmupNodeGroup | null>(null);
+  const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
 
   const load = useCallback(async () => {
@@ -82,13 +83,16 @@ export default function WarmupNodeGroupsPage() {
   const remove = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
+    setDeleteError('');
     try {
       await api.del(`/api/v1/admin/model-warmup-node-groups/${encodeURIComponent(deleteTarget.name)}`, orgId);
       setNotice(t('warmupGroups.deleted', { name: deleteTarget.name }));
       setDeleteTarget(null);
       await load();
     } catch (e) {
-      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('warmupGroups.deleteFailed'));
+      // The dialog stays open so the operator can retry or cancel; reporting
+      // above it kept the page banner hidden behind the backdrop.
+      setDeleteError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('warmupGroups.deleteFailed'));
     } finally {
       setDeleting(false);
     }
@@ -164,7 +168,7 @@ export default function WarmupNodeGroupsPage() {
                       testId={`warmup-group-actions-${group.name}`}
                       actions={[
                         { key: 'edit', label: t('common.edit'), onClick: () => setEditing(group) },
-                        { key: 'delete', label: t('common.delete'), danger: true, onClick: () => setDeleteTarget(group) },
+                        { key: 'delete', label: t('common.delete'), danger: true, onClick: () => { setDeleteError(''); setDeleteTarget(group); } },
                       ]}
                     />
                   </td>
@@ -190,10 +194,15 @@ export default function WarmupNodeGroupsPage() {
       )}
 
       {deleteTarget && (
-        <Dialog title={t('warmupGroups.deleteTitle', { name: deleteTarget.name })} onClose={() => setDeleteTarget(null)} testId="delete-warmup-group-dialog">
+        <Dialog
+          title={t('warmupGroups.deleteTitle', { name: deleteTarget.name })}
+          onClose={() => { setDeleteTarget(null); setDeleteError(''); }}
+          testId="delete-warmup-group-dialog"
+        >
           <p>{t('warmupGroups.deleteBody')}</p>
+          {deleteError && <ErrorBanner message={deleteError} />}
           <div className="dialog-actions">
-            <button className="secondary" onClick={() => setDeleteTarget(null)}>{t('common.cancel')}</button>
+            <button className="secondary" onClick={() => { setDeleteTarget(null); setDeleteError(''); }}>{t('common.cancel')}</button>
             <button className="danger" disabled={deleting} onClick={() => void remove()}>
               {deleting ? t('common.working') : t('common.delete')}
             </button>

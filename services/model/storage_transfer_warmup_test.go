@@ -16,6 +16,7 @@ import (
 	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/pkg/transfer"
 	"github.com/go-taas/go-taas/pkg/warmup"
+	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
 )
 
@@ -512,4 +513,39 @@ func TestStartModelTransferRejectsGenericDownload(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "model downloads")
+}
+
+func TestListModelWarmupsOrdersReadyFirst(t *testing.T) {
+	svc := newModelTestService(t)
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	now := time.Now().UTC()
+	rows := []*ModelCacheEntry{
+		{ID: uuid.NewString(), ModelID: uuid.NewString(), ModelName: "queued-newest", Version: "v1", State: warmup.StateQueued, CreatedAt: now, UpdatedAt: now},
+		{ID: uuid.NewString(), ModelID: uuid.NewString(), ModelName: "ready-oldest", Version: "v1", State: warmup.StateReady, CreatedAt: now.Add(-3 * time.Hour), UpdatedAt: now},
+		{ID: uuid.NewString(), ModelID: uuid.NewString(), ModelName: "warming-middle", Version: "v1", State: warmup.StateWarming, CreatedAt: now.Add(-1 * time.Hour), UpdatedAt: now},
+		{ID: uuid.NewString(), ModelID: uuid.NewString(), ModelName: "ready-newer", Version: "v1", State: warmup.StateReady, CreatedAt: now.Add(-2 * time.Hour), UpdatedAt: now},
+		{ID: uuid.NewString(), ModelID: uuid.NewString(), ModelName: "failed-old", Version: "v1", State: warmup.StateFailed, CreatedAt: now.Add(-4 * time.Hour), UpdatedAt: now},
+	}
+	for _, row := range rows {
+		require.NoError(t, db.Create(row).Error)
+	}
+
+	list, err := svc.ListModelWarmups(adminCtx(), &modelv1.ListModelWarmupsRequest{})
+	require.NoError(t, err)
+	names := make([]string, 0, len(list.GetWarmups()))
+	for _, entry := range list.GetWarmups() {
+		names = append(names, entry.GetModelName())
+	}
+	assert.Equal(t, []string{
+		"ready-newer", "ready-oldest", "queued-newest", "warming-middle", "failed-old",
+	}, names)
+
+	page, err := svc.ListModelWarmups(adminCtx(), &modelv1.ListModelWarmupsRequest{
+		Page: &commonv1.PageRequest{Offset: 0, Limit: 2},
+	})
+	require.NoError(t, err)
+	require.Len(t, page.GetWarmups(), 2)
+	assert.Equal(t, "ready-newer", page.GetWarmups()[0].GetModelName())
+	assert.Equal(t, "ready-oldest", page.GetWarmups()[1].GetModelName())
 }
