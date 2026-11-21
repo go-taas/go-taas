@@ -89,7 +89,7 @@ Go TaaS does not vendor these. Install them with their own charts and follow the
 | --- | --- | --- | --- |
 | **Gateway API CRDs** + **Envoy Gateway** | Provides the `Gateway`/`HTTPRoute` API and the GatewayClass the console route and the data-plane route attach to | required to expose the console through a Gateway (option B in step 5) | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway (Helm)](https://gateway.envoyproxy.io/docs/install/install-helm/) |
 | **KServe** | The serving runtime: every service is one `LLMInferenceService`, whose controllers write the workload `Deployment` and the `Service` the platform routes to | required for inference (not for the console) | [KServe installation](https://kserve.github.io/docs/install/kserve) |
-| **Volcano** | Gang scheduling (one replica's pods are placed together) and priority preemption; supplies the scheduler the controller targets | recommended; needed only if you set `controller.scheduling.schedulerName: volcano` | [Volcano installation](https://volcano.sh/en/docs/installation/) |
+| **Volcano** | Gang scheduling (one replica's pods are placed together) and priority preemption; supplies the default scheduler the controller targets | required by the default chart; install it unless you explicitly set `controller.scheduling.schedulerName: ""` | [Volcano installation](https://volcano.sh/en/docs/installation/) |
 | **JuiceFS CSI** (or any ReadWriteMany storage) | One model-weights filesystem shared by the control plane (downloads/uploads) and the inference pods (read-only mounts) | required for model download/upload; any RWX class works | [JuiceFS CSI driver](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor** (or another registry) | The platform's internal image registry: the image import/upload flow pushes engine images here and registers the local reference | optional; image import and upload are disabled while unset | [Harbor installation](https://goharbor.io/docs/2.11.0/install-config/) |
 | **kube-prometheus-stack** | Metrics pages read Prometheus; without it those pages fall back to the controller's own samples | optional | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
@@ -199,7 +199,7 @@ helm install volcano volcano-sh/volcano --namespace volcano-system --create-name
 kubectl -n volcano-system get pods
 ```
 
-The controller targets the scheduler name `volcano` and three PriorityClasses. **The chart does not create PriorityClasses** — create them once per cluster (or point the values at classes you already have):
+The chart defaults the scheduler name to `volcano` and maps the service priorities `high` / `normal` / `low` onto three PriorityClasses. The same class is written to the inference pod and to its Volcano PodGroup, which is what Volcano uses for preemption. **The chart does not create PriorityClasses** — create them once per cluster (or point the values at classes you already have):
 
 ```bash
 cat <<'EOF' | kubectl apply -f -
@@ -233,7 +233,7 @@ EOF
 kubectl get priorityclass | grep -E "high-priority|normal-priority|low-priority"
 ```
 
-If you skip Volcano, leave `controller.scheduling.schedulerName` empty: inference pods then use the cluster default scheduler, one pod at a time, and the priority is only carried as a label on the pod.
+If you skip Volcano, set `controller.scheduling.schedulerName: ""` explicitly: the chart defaults to `volcano`, so deleting the block is not enough. Inference pods then use the cluster default scheduler, one pod at a time, and the priority is only carried as the pod's PriorityClass. To place PodGroups in a named queue, set `controller.scheduling.queue` to that queue; empty uses Volcano's default queue.
 
 ### 3.4 Shared model weights (JuiceFS CSI)
 
@@ -407,8 +407,8 @@ controller:
         pvcName: model-weights
         mountPath: /data/weights
         storageClass: juicefs-platform-shared   # the RWX class from step 3.4
-      # Gang scheduling and priority preemption (step 3.3). Drop this block
-      # when Volcano is not installed.
+      # Gang scheduling and priority preemption (step 3.3). The chart already
+      # defaults to Volcano; set schedulerName: "" only without Volcano.
       scheduling:
         schedulerName: volcano
         priorityClassHigh: high-priority
@@ -719,7 +719,7 @@ kubectl -n taas-infer get pods,llminferenceservices,podgroups
 | Claim | How it was checked |
 | --- | --- |
 | The values file in 5.1 (and the data-plane block in 9.2) is valid and reaches the containers | extracted from this document verbatim and rendered with `helm template taas deploy/helm/go-taas -f …`: 5 Deployments, both ConfigMap/Secret paths, and the expected `CONFIG_IMAGE_HARBOR_URL`, `CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME`, `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`, `CONFIG_MODEL_WEIGHTSDIR` values |
-| Default install needs no third-party component | the default render contains only Deployments, Services, PVCs, RBAC, a Namespace and a Secret — no Gateway API, KServe or Volcano objects |
+| The default render stays self-contained | the render contains only Deployments, Services, PVCs, RBAC, a Namespace and a Secret — it creates no Gateway API, KServe or Volcano objects. Inference still needs KServe, and the default `schedulerName: volcano` needs Volcano unless it is set to `""` |
 | The PriorityClass snippet is accepted by the API | `kubectl apply --dry-run=client` against the reference cluster |
 | The catalog/console navigation paths, `/healthz` port and login response are accurate | checked against the running reference deployment (console snapshots, `POST /api/v1/auth/login`, chart probes on 9092) |
 | A fresh, empty database seeds the administrator and accepts the documented login | a server built from this commit was started against an empty PostgreSQL/Redis/RabbitMQ with `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD` set: `POST /api/v1/auth/login` returned `realm: "admin"` and a session token, the wrong password returned `10002 invalid credentials`, `GET /api/v1/admin/auth/users` answered with the seeded `admin`, and `/healthz` on 9092 returned `ok` while 9091 answered with the console page |

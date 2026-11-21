@@ -153,6 +153,29 @@ func TestBuildPodGroup(t *testing.T) {
 	assert.Equal(t, "16Gi", minResources["memory"], "8 GiB x 2 pods")
 }
 
+// TestBuildPodGroupMapsPriorityAndQueue proves the inference service priority
+// reaches Volcano on the PodGroup of the configured queue, which is what
+// Volcano preempts on.
+func TestBuildPodGroupMapsPriorityAndQueue(t *testing.T) {
+	r := schedulingReconciler()
+	r.SetScheduling(SchedulerVolcano, "high-priority", "normal-priority", "low-priority", "taas-queue")
+
+	for priority, want := range map[string]string{
+		"high":   "high-priority",
+		"normal": "normal-priority",
+		"low":    "low-priority",
+		"":       "normal-priority",
+	} {
+		evt := testChangeEvent("upsert", "demo")
+		evt.Priority = priority
+		group := r.buildPodGroup(evt)
+		spec, _, err := unstructured.NestedMap(group.Object, "spec")
+		require.NoError(t, err)
+		assert.Equal(t, want, spec["priorityClassName"], "priority %q maps onto its class", priority)
+		assert.Equal(t, "taas-queue", spec["queue"])
+	}
+}
+
 // TestBuildPodGroupPDCountsBothRoles proves a PD service's gang is prefill plus
 // decode: half a PD pair serves nothing.
 func TestBuildPodGroupPDCountsBothRoles(t *testing.T) {

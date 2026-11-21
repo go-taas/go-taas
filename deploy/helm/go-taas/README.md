@@ -474,8 +474,9 @@ Three mechanisms, highest precedence first:
 | `controller.createNamespace` | `true` | create the managed inference namespace |
 | `controller.config.controller.namespace` | `taas-infer` | namespace the controller manages |
 | `controller.config.controller.weights.*` | `model-weights` / `/data/weights` / `""` | shared weights PVC name, mount path, StorageClass |
-| `controller.config.controller.scheduling.schedulerName` | `""` | `volcano` turns on gang scheduling with the PodGroups the controller writes; empty keeps the cluster default scheduler |
-| `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | PriorityClasses a service priority maps onto; an unmapped priority leaves the pod with the cluster default class |
+| `controller.config.controller.scheduling.schedulerName` | `volcano` | Scheduler inference pods ask for; `volcano` turns on gang scheduling with the PodGroups the controller writes. Set `""` only on a cluster without Volcano |
+| `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `high-priority` / `normal-priority` / `low-priority` | PriorityClasses a service priority maps onto, carried by both the pod and its Volcano PodGroup. They must exist in the cluster; an empty entry leaves the pod with the cluster default class |
+| `controller.config.controller.scheduling.queue` | `""` | Volcano queue the PodGroup joins; empty uses Volcano's default queue |
 | `storage.defaultBackend` / `storage.backends` | `""` / `{}` | named filesystem/object-store backends and their delivery modes; empty keeps the legacy weights PVC |
 | `transfer.enabled` / `mode` / `namespace` / `concurrency` | `true` / `job` / `taas-jobs` / `4` | run transfers as Kubernetes Jobs in a dedicated namespace; `inline` is the legacy path |
 | `transfer.image.name` / `tag` | `taas-transfer` / `""` | the transfer Job image |

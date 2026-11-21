@@ -88,7 +88,7 @@ Go TaaS 不内置这些组件。请使用它们各自的 Chart 安装，并遵�
 | --- | --- | --- | --- |
 | **Gateway API CRD** + **Envoy Gateway** | 提供 `Gateway`/`HTTPRoute` API，以及控制台路由与数据面路由挂载所需的 GatewayClass | 通过 Gateway 暴露控制台（步骤 5 方案 B）时必需 | [Gateway API](https://gateway-api.sigs.k8s.io/guides/) · [Envoy Gateway（Helm）](https://gateway.envoyproxy.io/docs/install/install-helm/) |
 | **KServe** | 推理运行时：每个推理服务都是一份 `LLMInferenceService`，由它写工作负载 `Deployment` 与平台路由指向的 `Service` | 推理必需（控制台不需要） | [KServe 安装](https://kserve.github.io/docs/install/kserve) |
-| **Volcano** | Gang 调度（一个副本的 Pod 整体放置）与优先级抢占；提供控制器所指向的调度器 | 推荐；仅当设置 `controller.scheduling.schedulerName: volcano` 时需要 | [Volcano 安装](https://volcano.sh/en/docs/installation/) |
+| **Volcano** | Gang 调度（一个副本的 Pod 整体放置）与优先级抢占；提供控制器默认使用的调度器 | 默认 Chart 需要；除非显式设置 `controller.scheduling.schedulerName: ""`，否则请安装 | [Volcano 安装](https://volcano.sh/en/docs/installation/) |
 | **JuiceFS CSI**（或任意 ReadWriteMany 存储） | 控制面（下载/上传）与推理 Pod（只读挂载）共享的同一套模型权重文件系统 | 模型下载/上传必需；任何 RWX 存储类均可 | [JuiceFS CSI 驱动](https://juicefs.com/docs/csi/getting_started/) |
 | **Harbor**（或其他镜像仓库） | 平台内部镜像仓库：镜像导入/上传流程把引擎镜像推到这里并注册本地引用 | 可选；未设置时镜像导入与上传功能关闭 | [Harbor 安装](https://goharbor.io/docs/2.11.0/install-config/) |
 | **kube-prometheus-stack** | 指标页面读取 Prometheus；没有它时相关页面回退到控制器自身采集的样本 | 可选 | [kube-prometheus-stack](https://github.com/prometheus-community/helm-charts/tree/main/charts/kube-prometheus-stack) |
@@ -186,7 +186,7 @@ helm install volcano volcano-sh/volcano --namespace volcano-system --create-name
 kubectl -n volcano-system get pods
 ```
 
-控制器使用调度器名 `volcano` 与三个 PriorityClass。**Chart 不会创建 PriorityClass** —— 请在集群中创建一次（或把 values 指向你已有的类）：
+Chart 默认把调度器设为 `volcano`，并把服务优先级 `high` / `normal` / `low` 映射到三个 PriorityClass。同一个类会写到推理 Pod 和它的 Volcano PodGroup，Volcano 正是据此抢占。**Chart 不会创建 PriorityClass** —— 请在集群中创建一次（或把 values 指向你已有的类）：
 
 ```bash
 cat <<'EOF' | kubectl apply -f -
@@ -220,7 +220,7 @@ EOF
 kubectl get priorityclass | grep -E "high-priority|normal-priority|low-priority"
 ```
 
-如果不安装 Volcano，请把 `controller.scheduling.schedulerName` 留空：推理 Pod 将使用集群默认调度器逐个放置，优先级只作为 Pod 上的标签存在。
+如果不安装 Volcano，请显式设置 `controller.scheduling.schedulerName: ""`：Chart 默认是 `volcano`，仅删除该配置块不会退回默认调度器。推理 Pod 将使用集群默认调度器逐个放置，优先级只作为 Pod 的 PriorityClass 存在。要让 PodGroup 加入指定队列，把 `controller.scheduling.queue` 设为该队列；留空使用 Volcano 默认队列。
 
 ### 3.4 共享模型权重（JuiceFS CSI）
 
@@ -384,7 +384,8 @@ controller:
         pvcName: model-weights
         mountPath: /data/weights
         storageClass: juicefs-platform-shared   # 步骤 3.4 中的 RWX 存储类
-      # Gang 调度与优先级抢占（步骤 3.3）。未安装 Volcano 时整块删除。
+      # Gang 调度与优先级抢占（步骤 3.3）。Chart 已默认 Volcano；
+      # 仅在没有 Volcano 时把 schedulerName 设为 ""。
       scheduling:
         schedulerName: volcano
         priorityClassHigh: high-priority
@@ -685,7 +686,7 @@ kubectl -n taas-infer get pods,llminferenceservices,podgroups
 | 结论 | 验证方式 |
 | --- | --- |
 | 5.1 的 values 文件（以及 9.2 的数据面片段）合法且能生效 | 从本文档原样抽取后用 `helm template taas deploy/helm/go-taas -f …` 渲染：得到 5 个 Deployment、ConfigMap/Secret 路径，以及预期的 `CONFIG_IMAGE_HARBOR_URL`、`CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME`、`CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`、`CONFIG_MODEL_WEIGHTSDIR` 取值 |
-| 默认安装不需要任何第三方组件 | 默认渲染结果只有 Deployment、Service、PVC、RBAC、Namespace 与 Secret —— 没有 Gateway API 或 KServe 对象 |
+| 默认渲染保持自包含 | 渲染结果只有 Deployment、Service、PVC、RBAC、Namespace 与 Secret —— 不创建 Gateway API、KServe 或 Volcano 对象。推理仍需要 KServe；默认的 `schedulerName: volcano` 需要 Volcano，除非显式设为 `""` |
 | PriorityClass 片段能被 API 接受 | 对参考集群执行 `kubectl apply --dry-run=client` |
 | 控制台导航路径、`/healthz` 端口与登录响应准确 | 对照运行中的参考部署（控制台快照、`POST /api/v1/auth/login`、Chart 在 9092 上的探针） |
 | 全新空库会初始化管理员，并接受文档中的登录 | 用本提交构建的服务端连接空的 PostgreSQL/Redis/RabbitMQ，并设置 `CONFIG_AUTH_SEEDSSO_ADMINLOCALPASSWORD`：`POST /api/v1/auth/login` 返回 `realm: "admin"` 与会话令牌，错误密码返回 `10002 invalid credentials`，`GET /api/v1/admin/auth/users` 返回 seed 的 `admin`，9092 的 `/healthz` 返回 `ok`，而 9091 返回控制台页面 |

@@ -357,8 +357,9 @@ secrets:
 | `controller.createNamespace` | `true` | 是否创建受管推理命名空间 |
 | `controller.config.controller.namespace` | `taas-infer` | 控制器管理的命名空间 |
 | `controller.config.controller.weights.*` | `model-weights` / `/data/weights` / `""` | 共享权重 PVC 名称、挂载路径、StorageClass |
-| `controller.config.controller.scheduling.schedulerName` | `""` | 设为 `volcano` 时启用 gang 调度（控制器写入 PodGroup）；为空则使用集群默认调度器 |
-| `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `""` | 服务优先级映射到的 PriorityClass；未映射时 Pod 使用集群默认类 |
+| `controller.config.controller.scheduling.schedulerName` | `volcano` | 推理 Pod 使用的调度器；`volcano` 启用 gang 调度（控制器写入 PodGroup）。仅在集群未安装 Volcano 时设为 `""` |
+| `controller.config.controller.scheduling.priorityClassHigh` / `Normal` / `Low` | `high-priority` / `normal-priority` / `low-priority` | 服务优先级映射到的 PriorityClass，同时写到 Pod 和 Volcano PodGroup；类必须已存在于集群，留空则 Pod 使用集群默认类 |
+| `controller.config.controller.scheduling.queue` | `""` | PodGroup 加入的 Volcano 队列；留空使用 Volcano 默认队列 |
 | `storage.defaultBackend` / `storage.backends` | `""` / `{}` | 命名的文件系统/对象存储后端及交付模式；为空时保持旧 weights PVC |
 | `transfer.enabled` / `mode` / `namespace` / `concurrency` | `true` / `job` / `taas-jobs` / `4` | 以 Kubernetes Job 执行搬运；`inline` 为旧路径 |
 | `transfer.image.name` / `tag` | `taas-transfer` / `""` | 搬运 Job 镜像 |

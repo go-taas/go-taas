@@ -900,18 +900,20 @@ controller:
     controller:
       # -- Namespace the controller manages inference resources in (`controller.namespace`).
       namespace: taas-infer
-      # Pod scheduling for inference pods. With Volcano installed, the pods of
+      # Pod scheduling for inference pods. Volcano is the default: the pods of
       # one replica are gang-scheduled (all placed or none) and a service's
-      # priority may preempt a lower one; without it the cluster default
-      # scheduler places them one by one and the priority is only a
-      # PriorityClass on the pod.
+      # priority may preempt a lower one. Set schedulerName to "" only on a
+      # cluster without Volcano.
       #
-      #   scheduling:
-      #     schedulerName: volcano              # CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME
-      #     priorityClassHigh: high-priority    # CONFIG_CONTROLLER_SCHEDULING_PRIORITYCLASSHIGH
-      #     priorityClassNormal: normal-priority
-      #     priorityClassLow: low-priority
-      #     queue: ""                           # Volcano queue, default if empty
+      # priorityClass* map a service priority onto the PriorityClass carried by
+      # both the pods and their Volcano PodGroup. They must name classes the
+      # cluster actually has; a missing class keeps the pod from being admitted.
+      scheduling:
+        schedulerName: volcano              # CONFIG_CONTROLLER_SCHEDULING_SCHEDULERNAME
+        priorityClassHigh: high-priority    # CONFIG_CONTROLLER_SCHEDULING_PRIORITYCLASSHIGH
+        priorityClassNormal: normal-priority
+        priorityClassLow: low-priority
+        queue: ""                           # Volcano queue, default if empty
       # RDMA devices for inference pods. The DeviceClass below is created by
       # this chart; the controller only needs its name for services that
       # accept the platform default.

@@ -54,7 +54,7 @@ message PodScheduling {
 
 **AD6 —— `minResources` 是一个副本的预留。** 组上携带一个副本的请求总和（卡、CPU、内存），Volcano 用它做队列核算与抢占判断。低估会让这个 gang 看起来比实际便宜。
 
-**AD7 —— 不配置即关闭。** `controller.scheduling.schedulerName` 默认为空，只有设为 `volcano` 才会启用（不写 PodGroup、不加注解、Pod 使用集群默认调度器）。没人读取的 PodGroup 只是噪声，而没有 Volcano 的安装也不应该给一个不存在的调度器打注解。随附的 chart 设置为 `volcano` 并配好三个优先级类，因为本平台需要 gang 调度。
+**AD7 —— 默认使用 Volcano。** 正式 Chart 与 `configs/controller.yaml` 都把 `controller.scheduling.schedulerName` 设为 `volcano`，整卡 Pod 因此启用 gang 调度；只有 `volcano` 会启用 PodGroup 路径。没有 Volcano 的集群显式设为 `""`，控制器就不写 PodGroup、不加注解，Pod 使用集群默认调度器。没人读取的 PodGroup 只是噪声，因此仍保留空值配置。
 
 **AD8 —— 优先级即 PriorityClass。** `high` / `normal` / `low` 映射到 `controller.scheduling.priorityClassHigh|Normal|Low`（集群中的 `high-priority` / `normal-priority` / `low-priority`）。未映射的优先级会让 Pod 保持集群默认类，而不是指向一个可能不存在的类 —— `priorityClassName` 不存在会导致 Pod 在准入阶段被拒绝，那比缺少优先级提示更糟。同一个值也会写到 PodGroup 上，Volcano 正是据此抢占：高优先级 gang 可以驱逐低优先级 gang 而不必等容量，被驱逐服务的 Pod 会在容量释放后回来。
 
