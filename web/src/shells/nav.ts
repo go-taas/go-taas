@@ -105,11 +105,11 @@ export const ADMIN_NAV_CATEGORIES: NavCategory[] = [
     icon: Stack,
     items: [
       { path: '/admin/models', labelKey: 'nav.models', testid: 'nav-models', icon: Cube },
+      { path: '/admin/images', labelKey: 'nav.images', testid: 'nav-images', icon: Package },
+      { path: '/admin/engine-templates', labelKey: 'nav.engineTemplates', testid: 'nav-engine-templates', icon: SlidersHorizontal },
       { path: '/admin/inference-services', labelKey: 'nav.inferenceServices', testid: 'nav-inference-services', icon: Rocket },
       { path: '/admin/providers', labelKey: 'nav.providers', testid: 'nav-providers', icon: Cube },
       { path: '/admin/deployments', labelKey: 'nav.deployments', testid: 'nav-deployments', icon: Scroll },
-      { path: '/admin/images', labelKey: 'nav.images', testid: 'nav-images', icon: Package },
-      { path: '/admin/engine-templates', labelKey: 'nav.engineTemplates', testid: 'nav-engine-templates', icon: SlidersHorizontal },
     ],
   },
   {
