@@ -322,7 +322,8 @@ and cannot diverge from the catalog.
 | GET | `/api/v1/admin/model-transfers/{transfer_id}` | one transfer with progress |
 | POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | cancel a queued/running transfer |
 | POST | `/api/v1/admin/model-warmups` | warm a model version on the requested (or all) warmup node groups |
-| GET | `/api/v1/admin/model-cache-entries` | list warmups, newest first, paginated |
+| GET | `/api/v1/admin/model-warmups` | list warmups as `warmups`, newest first, paginated |
+| GET | `/api/v1/admin/model-cache-entries` | legacy alias of the same list, returned as `caches` |
 | POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | remove a model warmup |
 | GET | `/api/v1/admin/model-warmup-node-groups` | list platform-managed warmup node groups with ready/total node counts |
 | POST | `/api/v1/admin/model-warmup-node-groups` | create a node group and ask the controller to materialize it |

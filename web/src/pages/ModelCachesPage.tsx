@@ -7,9 +7,13 @@ import { useI18n } from '../i18n';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StatusError, Toast } from '../components';
 import { formatBytes } from '../components/ModelDownloadsPanel';
 
+// ListModelWarmups returns `warmups`; the legacy ListModelCacheEntries alias
+// returns the same rows as `caches`. Read both so neither endpoint can render
+// an empty table while the server reports a non-zero total.
 interface ListResponse {
   response: { code: number; message: string };
-  caches: ModelCacheEntry[];
+  warmups?: ModelCacheEntry[];
+  caches?: ModelCacheEntry[];
   pageMeta?: PageMeta;
 }
 interface ModelsResponse {
@@ -50,7 +54,7 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
           `/api/v1/admin/model-warmups?page.offset=${offset}&page.limit=${PAGE_SIZE}`,
           orgId,
         );
-        setCaches(data.caches || []);
+        setCaches(data.warmups ?? data.caches ?? []);
         setTotal(parseInt(data.pageMeta?.total || '0', 10) || 0);
         setError('');
       } catch (e) {

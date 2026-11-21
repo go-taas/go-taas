@@ -172,7 +172,8 @@ KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携�
 | GET | `/api/v1/admin/model-transfers/{transfer_id}` | 单个搬运及进度 |
 | POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | 取消排队/运行中的搬运 |
 | POST | `/api/v1/admin/model-warmups` | 在指定（或全部）预热节点组预热模型版本 |
-| GET | `/api/v1/admin/model-cache-entries` | 分页列出预热任务，最新在前 |
+| GET | `/api/v1/admin/model-warmups` | 以 `warmups` 字段分页列出预热任务，最新在前 |
+| GET | `/api/v1/admin/model-cache-entries` | 同一列表的旧路径别名，字段名为 `caches` |
 | POST | `/api/v1/admin/model-warmups/{cache_id}:cancel` | 移除模型预热 |
 | GET | `/api/v1/admin/model-warmup-node-groups` | 列出平台管理的预热节点组及就绪/总节点数 |
 | POST | `/api/v1/admin/model-warmup-node-groups` | 创建节点组并让 Controller 落地 |
