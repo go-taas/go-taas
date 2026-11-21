@@ -1499,6 +1499,13 @@ func (r *k8sReconciler) buildPodTemplate(ctx context.Context, evt changeEvent, r
 		}},
 		Volumes:      []corev1.Volume{weightsVolume},
 		NodeSelector: nodeSelector,
+		// The engine can read the uploaded weights only through the group
+		// that owns them: it runs as root with every capability dropped, so
+		// DAC override is not available. A supplemental group grants access
+		// without chowning a multi-gigabyte claim at every pod start.
+		SecurityContext: &corev1.PodSecurityContext{
+			SupplementalGroups: []int64{weightsGroupID},
+		},
 	}
 	// RDMA devices come from the service's ResourceClaimTemplate: each pod
 	// created from this template gets its own allocation, so replicas never
@@ -1696,6 +1703,12 @@ func mergeSelectors(base, extra map[string]string) map[string]string {
 // device, and 12% headroom absorbs the engine's own activation and
 // CUDA-graph memory.
 const sliceMemoryUtilization = "0.88"
+
+// weightsGroupID is the group that owns model weights on the shared
+// filesystem. Uploaded directories are mode 0750, and the engine runs as root
+// with every capability dropped, so root cannot bypass the permission bits;
+// the pod joins this group as a supplemental group instead.
+const weightsGroupID int64 = 65532
 
 // rendezvousPort is the port the workers of a multi-pod role use to meet.
 // It is vLLM's default master port and is passed to SGLang as the

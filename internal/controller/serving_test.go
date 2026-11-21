@@ -178,3 +178,25 @@ func TestApplyLLMInferenceServiceCreatesThenUpdates(t *testing.T) {
 	// A duplicate create would come back as AlreadyExists here.
 	require.NoError(t, applyLLMInferenceService(context.Background(), r.dynamic, obj))
 }
+
+// TestBuildLLMInferenceServiceSharesWeightsGroup proves the engine pod joins
+// the weights group. Uploaded weights live in directories with mode 0750, and
+// the engine runs as root with every capability dropped, so root cannot read
+// them through DAC override; the supplemental group is what makes the shared
+// filesystem readable without loosening the weights themselves.
+func TestBuildLLMInferenceServiceSharesWeightsGroup(t *testing.T) {
+	evt := testChangeEvent("upsert", "demo")
+	obj, err := testReconciler().buildLLMInferenceService(context.Background(), evt)
+	require.NoError(t, err)
+
+	securityContext, found, err := unstructured.NestedMap(obj.Object, "spec", "template", "securityContext")
+	require.NoError(t, err)
+	require.True(t, found, "the template must carry a pod security context")
+
+	groups, found, err := unstructured.NestedSlice(securityContext, "supplementalGroups")
+	require.NoError(t, err)
+	require.True(t, found, "the pod must join the weights group")
+	require.Len(t, groups, 1)
+	// The LLM template round-trips through JSON, so numbers arrive as float64.
+	assert.Equal(t, float64(weightsGroupID), groups[0])
+}

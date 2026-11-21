@@ -126,6 +126,11 @@ mode into the change event, and the controller builds the pod accordingly:
   KServe local-model agent populate. The existing warm-aware affinity keeps
   the pod on a warmed node.
 
+Engine containers run with every Linux capability dropped, so root cannot
+bypass file permissions. Every serving pod therefore joins the weights group
+(gid 65532) as a supplemental group, which lets it traverse uploaded `0750`
+directories without recursively chowning a multi-gigabyte claim on each start.
+
 A version's `storage_backend` is recorded when it is registered, uploaded or
 downloaded, and every one of those requests names the backend explicitly
 (empty still means the platform default). The download job row stores the

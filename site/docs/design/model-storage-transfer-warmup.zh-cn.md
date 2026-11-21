@@ -67,6 +67,8 @@
 - `download` 增加一个 `storage-initializer` init 容器，把对象存储 URI 拉到共享 `emptyDir` 的 `/models`。容器获得后端的 endpoint/region/path-style 配置；当 `objectStore.credentials.existingSecret` 存在时，从该 Secret 注入 `AWS_ACCESS_KEY_ID` 与 `AWS_SECRET_ACCESS_KEY`。事件中只传名称，凭据值不出 Secret。
 - `cache` 以只读方式挂载预热节点组的 `hostPath`，并让引擎指向 `<hostPath>/models/<storageKey>`，即种子 Job 与 KServe local-model agent 写入的路径；已有的 warm-aware 亲和性把 Pod 约束到已预热节点。
 
+引擎容器丢弃全部 Linux capability，因此 root 也无法绕过文件权限。每个推理 Pod 都以附加组加入权重组（gid 65532），从而能穿过上传时创建的 `0750` 目录，同时不必在每次启动时递归 chown 一个数 GB 的 PVC。
+
 版本在注册、上传或下载时记录 `storage_backend`，这三种请求都显式指定后端（留空仍表示平台默认后端）；下载任务行也保存所选后端，恢复或重试时落回原位置。字段出现前的旧行按默认后端解析。预热不依赖 KServe agent 自带的对象存储凭据：Controller 的种子 Job 同时覆盖 `pvc://` 与已配置后端的对象存储 URI，并从推理命名空间投射后端 Secret。
 
 ## 4. 无状态搬运 Job
