@@ -179,10 +179,25 @@ Operations:
 
 | Operation | Effect |
 | --- | --- |
-| `copy` | copy a model prefix between two backends; object-to-object copies use temp staging when endpoint/bucket/prefix differ |
+| `move` | copy a model prefix to another backend, then delete the source prefix; the version's `storage_backend` becomes the target only after the whole operation succeeds |
+| `copy` | copy a model prefix between two backends and keep the source; object-to-object copies use temp staging when endpoint/bucket/prefix differ |
 | `download` | fetch a hub model into the target backend and register the version on completion |
 | `delete` | remove a model prefix from a backend after the catalog row is deleted |
 | `cancel` | controller deletes the Job with background propagation; the row moves to `cancelled` |
+
+A move is the console's only new-transfer operation. The source backend is
+fixed to the version's recorded backend; the caller selects only another
+target backend. The server rejects a client-named source that differs from
+the version's backend, a missing target, and a target that resolves to the
+same backend or URI as the source. The Job copies first and deletes the
+source only after the copy succeeds, so a failed or interrupted move never
+destroys the only copy. The version's home moves to the target backend when
+the terminal success status arrives, so serving reads the new backend; a
+failure leaves the version on the source backend.
+
+The `copy` and `delete` operations remain accepted by the API for
+compatibility with older clients and existing automation; the console no
+longer offers them for new transfers.
 
 Progress is a small JSON document (`state`, `bytes`, `totalBytes`,
 `message`) written by the Job and read by the controller; progress is
@@ -317,7 +332,7 @@ and cannot diverge from the catalog.
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/api/v1/admin/storage-backends` | list configured backends with type, delivery modes and capabilities |
-| POST | `/api/v1/admin/model-transfers` | queue a copy or delete transfer; hub downloads go through the model downloads API |
+| POST | `/api/v1/admin/model-transfers` | queue a move to another backend (`copy`/`delete` remain accepted for compatibility); hub downloads go through the model downloads API |
 | GET | `/api/v1/admin/model-transfers` | list transfers, newest first, paginated |
 | GET | `/api/v1/admin/model-transfers/{transfer_id}` | one transfer with progress |
 | POST | `/api/v1/admin/model-transfers/{transfer_id}:cancel` | cancel a queued/running transfer |
@@ -360,10 +375,13 @@ The platform-administrator console groups the surfaces by operator task:
   the catalog table and the detail page show the backend of the latest
   version. Warmup owns the previous model-cache list and a new **Nodes** tab
   that shows each `LocalModelNode`, its groups and its model copies.
-  Transfers owns the asynchronous copy/download/delete list and cancel
-  action. A job's failure reason is a warning icon after its status with the
-  message in a hover/focus tooltip, so a long error does not stretch the
-  row.
+  Transfers owns the asynchronous move/download/legacy list and cancel
+  action. The new-transfer dialog offers only **Move**: the source backend
+  is shown read-only and comes from the selected model, the target lists only
+  the other configured backends, and the model detail's backend becomes the
+  target once the move succeeds and the source data has been removed. A
+  job's failure reason is a warning icon after its status with the message
+  in a hover/focus tooltip, so a long error does not stretch the row.
   The old `/admin/model-transfers` and `/admin/model-cache-entries` routes
   redirect into the matching tab so bookmarks keep working.
 

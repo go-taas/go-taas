@@ -1,7 +1,7 @@
-// Model transfers page: asynchronous copy/download/delete jobs the
-// controller runs for model weights.
+// Model transfers page: asynchronous move jobs the controller runs for model
+// weights. Historical copy/download/delete rows remain visible.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { api, ApiError, formatTime, type ModelSummary, type ModelTransfer, type PageMeta, type StorageBackend } from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
@@ -18,6 +18,7 @@ interface ModelsResponse {
 }
 interface BackendsResponse {
   backends: StorageBackend[];
+  defaultBackend?: string;
 }
 
 const PAGE_SIZE = 20;
@@ -36,6 +37,7 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
   const [startOpen, setStartOpen] = useState(false);
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [backends, setBackends] = useState<StorageBackend[]>([]);
+  const [defaultBackend, setDefaultBackend] = useState('');
 
   const load = useCallback(
     async (quiet = false) => {
@@ -81,6 +83,7 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
       .then(([modelData, backendData]) => {
         setModels(modelData.models || []);
         setBackends(backendData.backends || []);
+        setDefaultBackend(backendData.defaultBackend || '');
       })
       .catch((e) => setError(e instanceof Error ? e.message : t('transfers.loadFailed')));
   }, [startOpen, orgId, t]);
@@ -192,6 +195,7 @@ export default function ModelTransfersPage({ embedded = false }: { embedded?: bo
           orgId={orgId}
           models={models}
           backends={backends}
+          defaultBackend={defaultBackend}
           onClose={() => setStartOpen(false)}
           onDone={() => {
             setStartOpen(false);
@@ -209,27 +213,40 @@ function StartTransferDialog({
   orgId,
   models,
   backends,
+  defaultBackend,
   onClose,
   onDone,
 }: {
   orgId: string;
   models: ModelSummary[];
   backends: StorageBackend[];
+  defaultBackend: string;
   onClose: () => void;
   onDone: () => void;
 }) {
   const { t } = useI18n();
   const fallbackModelId = models[0]?.modelId || '';
   const [modelId, setModelId] = useState(fallbackModelId);
-  const [operation, setOperation] = useState('copy');
-  const [sourceBackend, setSourceBackend] = useState('');
   const [targetBackend, setTargetBackend] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-  const targetTouched = useRef(false);
   const selectedModelId = modelId || fallbackModelId;
   const selectedModel = models.find((model) => model.modelId === selectedModelId);
-  const disableReason = models.length === 0 ? t('transfers.noModels') : '';
+  // A move always starts from the backend that currently holds the model.
+  // The model summary projects an empty version backend to the platform
+  // default, so this value is displayable and matches the server's choice.
+  const sourceBackend = selectedModel?.storageBackend || defaultBackend || '';
+  const otherBackends = useMemo(
+    () => backends.filter((backend) => backend.name !== sourceBackend),
+    [backends, sourceBackend],
+  );
+  const disableReason = models.length === 0
+    ? t('transfers.noModels')
+    : !sourceBackend
+      ? t('transfers.noSourceBackend')
+      : otherBackends.length === 0
+        ? t('transfers.noTargetBackend')
+        : '';
 
   // The dialog mounts before the model and backend lists finish loading, so
   // seed the selection once they arrive instead of freezing the initial
@@ -238,25 +255,23 @@ function StartTransferDialog({
     if (!modelId && fallbackModelId) setModelId(fallbackModelId);
   }, [fallbackModelId, modelId]);
 
-  // A copy defaults to a backend other than the model's current one; a
-  // blank selection would otherwise copy a version onto itself.
+  // Only another backend is a valid move target. Keep a manually chosen
+  // target when it remains valid, and otherwise fall back to the first one.
   useEffect(() => {
-    if (targetTouched.current || targetBackend) return;
-    const source = sourceBackend || selectedModel?.storageBackend || '';
-    const other = backends.find((backend) => backend.name !== source);
-    if (other) setTargetBackend(other.name);
-  }, [backends, selectedModel, sourceBackend, targetBackend]);
+    if (otherBackends.some((backend) => backend.name === targetBackend)) return;
+    setTargetBackend(otherBackends[0]?.name || '');
+  }, [otherBackends, targetBackend]);
 
   const submit = async () => {
-    if (!selectedModelId) return;
+    if (!selectedModelId || !sourceBackend || !targetBackend) return;
     setBusy(true);
     setError('');
     try {
       await api.post('/api/v1/admin/model-transfers', orgId, {
         modelId: selectedModelId,
-        operation,
+        operation: 'move',
         sourceBackend,
-        targetBackend: operation === 'delete' ? '' : targetBackend,
+        targetBackend,
       });
       onDone();
     } catch (e) {
@@ -279,45 +294,42 @@ function StartTransferDialog({
         </div>
         <div className="form-field">
           <label htmlFor="transfer-operation">{t('transfers.colOperation')}</label>
-          <select id="transfer-operation" value={operation} onChange={(e) => setOperation(e.target.value)}>
-            {['copy', 'delete'].map((value) => (
-              <option key={value} value={value}>{t(`transfers.operation.${value}`)}</option>
-            ))}
+          <select id="transfer-operation" value="move" disabled>
+            <option value="move">{t('transfers.operation.move')}</option>
           </select>
         </div>
         <div className="form-field">
           <label htmlFor="transfer-source">{t('transfers.sourceBackend')}</label>
-          <select id="transfer-source" value={sourceBackend} onChange={(e) => setSourceBackend(e.target.value)}>
-            <option value="">{t('transfers.defaultBackend')}</option>
-            {backends.map((backend) => (
-              <option key={backend.name} value={backend.name}>{backend.name}</option>
-            ))}
+          <select id="transfer-source" value={sourceBackend} disabled>
+            {sourceBackend ? (
+              <option value={sourceBackend}>{sourceBackend}</option>
+            ) : (
+              <option value="">{t('transfers.noSourceBackend')}</option>
+            )}
           </select>
         </div>
-        {operation !== 'delete' && (
-          <div className="form-field">
-            <label htmlFor="transfer-target">{t('transfers.targetBackend')}</label>
-            <select
-              id="transfer-target"
-              value={targetBackend}
-              onChange={(e) => {
-                targetTouched.current = true;
-                setTargetBackend(e.target.value);
-              }}
-            >
-              <option value="">{t('transfers.defaultBackend')}</option>
-              {backends.map((backend) => (
-                <option key={backend.name} value={backend.name}>{backend.name}</option>
-              ))}
-            </select>
-          </div>
-        )}
+        <div className="form-field">
+          <label htmlFor="transfer-target">{t('transfers.targetBackend')}</label>
+          <select
+            id="transfer-target"
+            value={targetBackend}
+            onChange={(e) => setTargetBackend(e.target.value)}
+            disabled={otherBackends.length === 0}
+          >
+            {otherBackends.map((backend) => (
+              <option key={backend.name} value={backend.name}>{backend.name}</option>
+            ))}
+            {otherBackends.length === 0 && (
+              <option value="">{t('transfers.noTargetBackend')}</option>
+            )}
+          </select>
+        </div>
       </div>
       {disableReason && <div className="muted" data-testid="transfer-disabled-reason">{disableReason}</div>}
       {error && <ErrorBanner message={error} />}
       <div className="dialog-actions">
         <button className="secondary" onClick={onClose}>{t('common.cancel')}</button>
-        <button disabled={busy || !selectedModelId} onClick={() => void submit()}>
+        <button disabled={busy || !selectedModelId || !sourceBackend || !targetBackend} onClick={() => void submit()}>
           {busy ? t('common.creating') : t('transfers.start')}
         </button>
       </div>

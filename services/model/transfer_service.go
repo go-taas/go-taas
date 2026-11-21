@@ -81,11 +81,11 @@ func (s *Service) StartModelTransfer(ctx context.Context, req *modelv1.StartMode
 		operation = transfer.OperationCopy
 	}
 	switch operation {
-	case transfer.OperationCopy, transfer.OperationDelete:
+	case transfer.OperationCopy, transfer.OperationDelete, transfer.OperationMove:
 	case transfer.OperationDownload:
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: hub downloads are started through the model downloads API, not a transfer")
 	default:
-		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: transfer operation must be copy or delete")
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: transfer operation must be move, copy or delete")
 	}
 	modelID := strings.TrimSpace(req.GetModelId())
 	if modelID == "" {
@@ -110,10 +110,31 @@ func (s *Service) StartModelTransfer(ctx context.Context, req *modelv1.StartMode
 	if !cfg.Enabled() {
 		return nil, apierrors.Newf(apierrors.CodeInternal, "model: storage backends are not configured")
 	}
+	// A move reads and then deletes the version's home. The caller cannot
+	// choose a different source: moving from a backend that does not hold the
+	// weights would delete unrelated data.
 	sourceBackendName := firstNonEmpty(strings.TrimSpace(req.GetSourceBackend()), version.StorageBackend, cfg.DefaultBackend)
+	if operation == transfer.OperationMove {
+		locked := firstNonEmpty(version.StorageBackend, cfg.DefaultBackend)
+		if locked == "" {
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: the model version has no source backend to move")
+		}
+		if requested := strings.TrimSpace(req.GetSourceBackend()); requested != "" && requested != locked {
+			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+				"model: source backend is fixed to %q for a move", locked)
+		}
+		sourceBackendName = locked
+	}
 	targetBackendName := firstNonEmpty(strings.TrimSpace(req.GetTargetBackend()), version.StorageBackend, cfg.DefaultBackend)
-	if operation == transfer.OperationCopy && targetBackendName == "" {
-		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: target_backend is required for a copy")
+	if operation == transfer.OperationMove && strings.TrimSpace(req.GetTargetBackend()) == "" {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: target_backend is required for a move")
+	}
+	if (operation == transfer.OperationCopy || operation == transfer.OperationMove) && targetBackendName == "" {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: target_backend is required for a %s", operation)
+	}
+	if operation == transfer.OperationMove && targetBackendName == sourceBackendName {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: target backend must differ from the source backend for a move")
 	}
 	sourceBackend, err := cfg.Resolve(sourceBackendName)
 	if err != nil {
@@ -133,6 +154,10 @@ func (s *Service) StartModelTransfer(ctx context.Context, req *modelv1.StartMode
 		if err != nil {
 			return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: %v", err)
 		}
+	}
+	if operation == transfer.OperationMove && targetURI == sourceURI {
+		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
+			"model: target backend must differ from the source backend for a move")
 	}
 	now := time.Now().UTC()
 	rowTransfer := &ModelTransfer{
@@ -168,6 +193,7 @@ func (s *Service) StartModelTransfer(ctx context.Context, req *modelv1.StartMode
 		SourceURI:     sourceURI,
 		TargetURI:     targetURI,
 		WeightPath:    version.WeightPath,
+		DeleteSource:  operation == transfer.OperationMove,
 	}
 	if operation == transfer.OperationDelete {
 		spec.TargetURI = ""
@@ -500,11 +526,11 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 			s.syncDownloadProgress(ctx, *row.DownloadID, status)
 		}
 	}
-	// A successful copy makes the target the version's home: serving must
-	// read the copy from the backend that now holds it instead of the
-	// source the version was uploaded to.
-	if row.Operation == transfer.OperationCopy && status.State == transfer.StateSucceeded &&
-		row.TargetBackend != "" && s.repo != nil {
+	// A successful copy or move makes the target the version's home:
+	// serving must read from the backend that now holds the weights instead
+	// of the source (which a move has just deleted).
+	if (row.Operation == transfer.OperationCopy || row.Operation == transfer.OperationMove) &&
+		status.State == transfer.StateSucceeded && row.TargetBackend != "" && s.repo != nil {
 		if err := s.repo.SetVersionStorageBackend(ctx, row.ModelID, row.Version, row.TargetBackend); err != nil {
 			logger.S().Warnw("model: record transfer target backend failed",
 				"transfer", row.ID, "model", row.ModelID, "version", row.Version, "err", err)
@@ -564,10 +590,40 @@ func (s *Service) runInlineTransfer(row *ModelTransfer, source, target storage.B
 		return
 	}
 	s.updateTransfer(ctx, row.ID, transfer.StateSucceeded, "", written, written)
+	// The inline path never passes through HandleModelTransferStatus, so it
+	// must record the new home itself. A serving pod that still resolved the
+	// old backend would read weights the move just deleted.
+	if (row.Operation == transfer.OperationCopy || row.Operation == transfer.OperationMove) &&
+		row.TargetBackend != "" && s.repo != nil {
+		if err := s.repo.SetVersionStorageBackend(ctx, row.ModelID, row.Version, row.TargetBackend); err != nil {
+			logger.S().Warnw("model: record inline transfer target backend failed",
+				"transfer", row.ID, "model", row.ModelID, "version", row.Version, "err", err)
+		}
+	}
 }
 
-// executeTransfer moves the bytes for the row and returns the byte count.
+// executeTransfer moves the bytes for the row and returns the byte count. A
+// move deletes the source only after the copy succeeded, so a failed copy
+// never loses the only copy of the weights.
 func (s *Service) executeTransfer(ctx context.Context, row *ModelTransfer, source, target storage.Backend, progress func(int64)) (int64, error) {
+	if row.Operation == transfer.OperationDelete {
+		return 0, s.deleteTransferSource(ctx, source, row)
+	}
+	written, err := s.copyTransfer(ctx, row, source, target, progress)
+	if err != nil {
+		return written, err
+	}
+	if row.Operation == transfer.OperationMove {
+		if err := s.deleteTransferSource(ctx, source, row); err != nil {
+			return written, fmt.Errorf("model: source cleanup after move failed: %w", err)
+		}
+	}
+	return written, nil
+}
+
+// copyTransfer writes the version's weights to the target and leaves the
+// source untouched.
+func (s *Service) copyTransfer(ctx context.Context, row *ModelTransfer, source, target storage.Backend, progress func(int64)) (int64, error) {
 	sourcePath, err := s.localPath(source, row.WeightPath)
 	if err != nil {
 		return 0, err
@@ -575,23 +631,6 @@ func (s *Service) executeTransfer(ctx context.Context, row *ModelTransfer, sourc
 	targetPath, err := s.localPath(target, row.WeightPath)
 	if err != nil {
 		return 0, err
-	}
-	if row.Operation == transfer.OperationDelete {
-		if source.Type == storage.TypeObjectStore {
-			ref, err := s.remoteRef(source)
-			if err != nil {
-				return 0, err
-			}
-			client, err := storage.NewRemoteClient(ref)
-			if err != nil {
-				return 0, err
-			}
-			return client.DeletePrefix(ctx, row.WeightPath)
-		}
-		if err := os.RemoveAll(sourcePath); err != nil {
-			return 0, err
-		}
-		return 0, nil
 	}
 	switch {
 	case source.Type == storage.TypeFilesystem && target.Type == storage.TypeFilesystem:
@@ -605,14 +644,7 @@ func (s *Service) executeTransfer(ctx context.Context, row *ModelTransfer, sourc
 		if err != nil {
 			return 0, err
 		}
-		written, err := client.UploadDir(ctx, sourcePath, row.WeightPath)
-		if err == nil && row.Operation == transfer.OperationCopy && row.SourceURI != row.TargetURI {
-			// A copy to another backend intentionally leaves the source in
-			// place; deleteSource is honored only when the caller asked for
-			// a move, which the console maps to delete after copy.
-			_ = progress
-		}
-		return written, err
+		return client.UploadDir(ctx, sourcePath, row.WeightPath)
 	case source.Type == storage.TypeObjectStore && target.Type == storage.TypeFilesystem:
 		ref, err := s.remoteRef(source)
 		if err != nil {
@@ -658,6 +690,28 @@ func (s *Service) executeTransfer(ctx context.Context, row *ModelTransfer, sourc
 	default:
 		return 0, fmt.Errorf("model: unsupported transfer from %s to %s", source.Type, target.Type)
 	}
+}
+
+// deleteTransferSource removes the version prefix from a backend. It is used
+// by an explicit delete and by a move once the target copy is complete.
+func (s *Service) deleteTransferSource(ctx context.Context, source storage.Backend, row *ModelTransfer) error {
+	if source.Type == storage.TypeObjectStore {
+		ref, err := s.remoteRef(source)
+		if err != nil {
+			return err
+		}
+		client, err := storage.NewRemoteClient(ref)
+		if err != nil {
+			return err
+		}
+		_, err = client.DeletePrefix(ctx, row.WeightPath)
+		return err
+	}
+	sourcePath, err := s.localPath(source, row.WeightPath)
+	if err != nil {
+		return err
+	}
+	return os.RemoveAll(sourcePath)
 }
 
 // localPath maps a backend key to a path this process can read. A

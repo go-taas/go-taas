@@ -549,3 +549,110 @@ func TestListModelWarmupsOrdersReadyFirst(t *testing.T) {
 	assert.Equal(t, "ready-newer", page.GetWarmups()[0].GetModelName())
 	assert.Equal(t, "ready-oldest", page.GetWarmups()[1].GetModelName())
 }
+
+// TestStartModelTransferQueuesMove locks the move semantics of a console
+// transfer: the source is the backend holding the version, the target is the
+// only caller-selectable side, and a successful move records the new backend.
+func TestStartModelTransferQueuesMove(t *testing.T) {
+	svc, source, target := storageTestService(t)
+	pub := &recordingPublisher{}
+	svc.SetTransferPublisher(pub)
+	svc.SetTransferSettings(TransferSettings{Mode: "job", Namespace: "taas-jobs", Image: "taas-transfer:test"})
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-move", HubModelId: "qwen/move", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	// The version records source as its home; a move must use it as the
+	// source even when the client leaves source_backend empty.
+	require.NoError(t, svc.repo.SetVersionStorageBackend(adminCtx(), reg.GetModelId(), "v1", source.Name))
+
+	resp, err := svc.StartModelTransfer(adminCtx(), &modelv1.StartModelTransferRequest{
+		ModelId: reg.GetModelId(), Operation: transfer.OperationMove, TargetBackend: target.Name,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, transfer.OperationMove, resp.GetTransfer().GetOperation())
+	assert.Equal(t, source.Name, resp.GetTransfer().GetSourceBackend())
+	assert.Equal(t, target.Name, resp.GetTransfer().GetTargetBackend())
+
+	var spec transfer.Spec
+	require.NoError(t, json.Unmarshal(pub.body, &spec))
+	assert.Equal(t, transfer.OperationMove, spec.Operation)
+	assert.Equal(t, source.Name, spec.SourceBackend)
+	assert.Equal(t, target.Name, spec.TargetBackend)
+	assert.True(t, spec.DeleteSource)
+	assert.Equal(t, filepath.Join(source.Filesystem.MountPath, "qwen/v1"), spec.SourcePath)
+	assert.Equal(t, filepath.Join(target.Filesystem.MountPath, "qwen/v1"), spec.TargetPath)
+
+	body, _ := json.Marshal(transfer.Status{ID: resp.GetTransfer().GetTransferId(), State: transfer.StateSucceeded})
+	require.NoError(t, svc.HandleModelTransferStatus(adminCtx(), body))
+	version, err := svc.repo.FindVersion(adminCtx(), reg.GetModelId(), "v1")
+	require.NoError(t, err)
+	assert.Equal(t, target.Name, version.StorageBackend)
+}
+
+func TestStartModelTransferMovesOnlyToAnotherBackend(t *testing.T) {
+	svc, source, target := storageTestService(t)
+	svc.SetTransferPublisher(&recordingPublisher{})
+	svc.SetTransferSettings(TransferSettings{Mode: "job", Image: "taas-transfer:test"})
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-fixed", HubModelId: "qwen/fixed", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	require.NoError(t, svc.repo.SetVersionStorageBackend(adminCtx(), reg.GetModelId(), "v1", source.Name))
+
+	// The client cannot move from a backend other than the model's.
+	_, err = svc.StartModelTransfer(adminCtx(), &modelv1.StartModelTransferRequest{
+		ModelId: reg.GetModelId(), Operation: transfer.OperationMove,
+		SourceBackend: target.Name, TargetBackend: target.Name,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "source backend is fixed")
+
+	// Moving onto the same backend cannot delete the target it just wrote.
+	_, err = svc.StartModelTransfer(adminCtx(), &modelv1.StartModelTransferRequest{
+		ModelId: reg.GetModelId(), Operation: transfer.OperationMove, TargetBackend: source.Name,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "target backend must differ")
+
+	// A move always needs a destination.
+	_, err = svc.StartModelTransfer(adminCtx(), &modelv1.StartModelTransferRequest{
+		ModelId: reg.GetModelId(), Operation: transfer.OperationMove,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "target_backend is required for a move")
+}
+
+func TestInlineMoveTransferDeletesSourceAndRetargetsVersion(t *testing.T) {
+	svc, source, target := storageTestService(t)
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-inline-move", HubModelId: "qwen/inline-move", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+	require.NoError(t, svc.repo.SetVersionStorageBackend(adminCtx(), reg.GetModelId(), "v1", source.Name))
+
+	sourceDir := filepath.Join(source.Filesystem.MountPath, "qwen/v1")
+	require.NoError(t, os.MkdirAll(sourceDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "model.bin"), []byte("weights"), 0o644))
+	row := &ModelTransfer{
+		ID: uuid.NewString(), Operation: transfer.OperationMove, ModelID: reg.GetModelId(),
+		ModelName: "qwen-inline-move", Version: "v1", SourceBackend: source.Name,
+		TargetBackend: target.Name, WeightPath: "qwen/v1", State: transfer.StateQueued,
+	}
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	require.NoError(t, db.Create(row).Error)
+
+	svc.runInlineTransfer(row, source, target)
+
+	var got ModelTransfer
+	require.NoError(t, db.Where("id = ?", row.ID).First(&got).Error)
+	assert.Equal(t, transfer.StateSucceeded, got.State)
+	assert.NoFileExists(t, sourceDir)
+	content, err := os.ReadFile(filepath.Join(target.Filesystem.MountPath, "qwen/v1", "model.bin"))
+	require.NoError(t, err)
+	assert.Equal(t, "weights", string(content))
+	version, err := svc.repo.FindVersion(adminCtx(), reg.GetModelId(), "v1")
+	require.NoError(t, err)
+	assert.Equal(t, target.Name, version.StorageBackend)
+}

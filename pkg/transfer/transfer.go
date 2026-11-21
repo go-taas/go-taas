@@ -14,7 +14,10 @@ const (
 	OperationCopy     = "copy"
 	OperationDownload = "download"
 	OperationDelete   = "delete"
-	OperationCancel   = "cancel"
+	// OperationMove copies a version to another backend and deletes the
+	// source only after the copy succeeds.
+	OperationMove   = "move"
+	OperationCancel = "cancel"
 )
 
 // Transfer states.
@@ -42,7 +45,7 @@ type ObjectStoreRef = storage.RemoteRef
 type Spec struct {
 	// ID is the model_transfers primary key (also the idempotency key).
 	ID string `json:"id"`
-	// Operation is copy, download or delete.
+	// Operation is copy, download, delete or move.
 	Operation string `json:"operation"`
 	// ModelID, ModelName and Version identify the catalog row for logging;
 	// they are not needed to move bytes.
@@ -67,7 +70,8 @@ type Spec struct {
 	// HubSource and HubModelID drive a download operation.
 	HubSource  string `json:"hubSource,omitempty"`
 	HubModelID string `json:"hubModelId,omitempty"`
-	// DeleteSource removes the source after a successful copy.
+	// DeleteSource asks the mover to remove the source after a successful
+	// copy. A move operation always deletes the source.
 	DeleteSource bool `json:"deleteSource,omitempty"`
 	// WeightPath is the logical relative key the model version keeps.
 	WeightPath string `json:"weightPath,omitempty"`

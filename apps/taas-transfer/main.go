@@ -161,6 +161,8 @@ func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) 
 		err = downloadOne(ctx, spec, progress)
 	case transfer.OperationDelete:
 		err = deleteOne(ctx, spec)
+	case transfer.OperationMove:
+		err = moveOne(ctx, spec, progress)
 	default:
 		return fmt.Errorf("unsupported operation %q", spec.Operation)
 	}
@@ -169,6 +171,18 @@ func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) 
 	}
 	if err := adoptTargetOwnership(spec); err != nil {
 		logger.S().Warnw("transfer: adopt target ownership failed", "transfer", spec.ID, "err", err)
+	}
+	return nil
+}
+
+// moveOne copies the version and only then deletes the source. A failed or
+// partial copy leaves the source intact, so the model is never lost.
+func moveOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+	if err := copyOne(ctx, spec, progress); err != nil {
+		return err
+	}
+	if err := deleteOne(ctx, spec); err != nil {
+		return fmt.Errorf("copy succeeded but source cleanup failed: %w", err)
 	}
 	return nil
 }

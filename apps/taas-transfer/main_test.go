@@ -198,3 +198,36 @@ func (d *blockingHubDownloader) Download(_ context.Context, _ modelhub.Source, _
 func (d *blockingHubDownloader) TotalBytes(context.Context, modelhub.Source, string) (int64, error) {
 	return d.total, nil
 }
+
+func TestMoveOneCopiesThenDeletesSource(t *testing.T) {
+	sourceRoot := t.TempDir()
+	targetRoot := t.TempDir()
+	sourceDir := filepath.Join(sourceRoot, "qwen", "v1")
+	require.NoError(t, os.MkdirAll(sourceDir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(sourceDir, "model.bin"), []byte("weights"), 0o644))
+
+	spec := &transfer.Spec{
+		Operation:  transfer.OperationMove,
+		SourcePath: sourceDir,
+		TargetPath: filepath.Join(targetRoot, "qwen", "v1"),
+		WeightPath: "qwen/v1",
+	}
+	require.NoError(t, moveOne(context.Background(), spec, func(int64, int64) {}))
+
+	content, err := os.ReadFile(filepath.Join(targetRoot, "qwen", "v1", "model.bin"))
+	require.NoError(t, err)
+	assert.Equal(t, "weights", string(content))
+	assert.NoFileExists(t, sourceDir)
+}
+
+func TestMoveOneKeepsSourceWhenCopyFails(t *testing.T) {
+	sourceRoot := t.TempDir()
+	sourceFile := filepath.Join(sourceRoot, "model.bin")
+	require.NoError(t, os.WriteFile(sourceFile, []byte("weights"), 0o644))
+	blocker := filepath.Join(t.TempDir(), "blocked")
+	require.NoError(t, os.WriteFile(blocker, []byte("not a directory"), 0o644))
+
+	spec := &transfer.Spec{Operation: transfer.OperationMove, SourcePath: sourceFile, TargetPath: filepath.Join(blocker, "child")}
+	require.Error(t, moveOne(context.Background(), spec, func(int64, int64) {}))
+	assert.FileExists(t, sourceFile)
+}

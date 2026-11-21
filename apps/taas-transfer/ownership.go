@@ -39,7 +39,8 @@ func envID(name string) int {
 // not root. Ownership is best effort: the transfer already succeeded, and the
 // caller logs the failure.
 func adoptTargetOwnership(spec *transfer.Spec) error {
-	if spec.Operation != transfer.OperationCopy && spec.Operation != transfer.OperationDownload {
+	if spec.Operation != transfer.OperationCopy && spec.Operation != transfer.OperationMove &&
+		spec.Operation != transfer.OperationDownload {
 		return nil
 	}
 	if objectStoreRefPresent(spec.TargetObjectStore) || strings.TrimSpace(spec.TargetPath) == "" {
