@@ -147,6 +147,8 @@ KServe 的 local-model 节点 agent 是 DaemonSet，只调度到带
 
 KServe storage-initializer 不支持 `pvc://`，local-model agent 也未必携带平台的对象存储凭据。因此 Controller 对能解析到已配置后端的缓存都在节点上自行预热：每轮扫描缓存时找到对应的 `LocalModelNode`，从实时 `LocalModelNodeGroup` 解析节点组 hostPath，在目标节点运行一次性 `taas-transfer` Job（该 hostPath 挂载到 `/target`）。`cache` 交付的推理 Pod 也挂载同一 hostPath，因此修改节点组路径无需发布 Helm 即同时影响两条链路。文件系统源把 PVC 只读挂载到 `/source`；对象存储源把后端 Secret 投射为 `WARMUP_SOURCE_ACCESS_KEY` / `WARMUP_SOURCE_SECRET_KEY`，由 transfer 拉取前缀。两者都复制到 `/target/models/<storageKey>`，只有 Job 成功后才把节点的 `status.modelStatus[cacheName]` 标记为 `ModelDownloaded`。storageKey 与 KServe 一致，取源 URI SHA-256 的前 16 个十六进制字符。种子 Job 以 root 运行，因为上传的权重可能属于任意 uid 且目录为 0750；复制出的文件可被任意用户读取，供非 root 推理进程使用。没有匹配后端的 HTTP 源继续走 KServe 原生路径。
 
+预热列表中的字节数是真实权重大小，而非 KServe 占位值。`WarmModel` 创建缓存时按所选后端解析（文件系统后端遍历目录），失败则回退到该版本最近一次成功的下载或传输记录；列表会修复仍带占位值的旧记录，无法解析时显示为未知而不是 `1 B`。
+
 ### 5.2 调度
 
 创建或更新 `LLMInferenceService` 前，Controller 列举 `LocalModelNode` 构建“模型 → 已下载节点”索引。模型存在已预热节点时，注入基于 `kubernetes.io/hostname` 的节点亲和：

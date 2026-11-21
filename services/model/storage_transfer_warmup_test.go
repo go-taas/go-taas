@@ -166,6 +166,110 @@ func TestWarmModelAndStatus(t *testing.T) {
 	assert.Equal(t, []string{"node-1"}, list.GetCaches()[0].GetWarmedNodes())
 }
 
+func TestWarmModelRecordsWeightSize(t *testing.T) {
+	svc, source, _ := storageTestService(t)
+	pub := &recordingPublisher{}
+	svc.SetTransferPublisher(pub)
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
+	// A warmup row must carry the real weight size so the console and the
+	// LocalModelCache storage accounting do not fall back to a placeholder.
+	dir := filepath.Join(source.Filesystem.MountPath, "qwen/v1")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "model.bin"), make([]byte, 4096), 0o644))
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-size", HubModelId: "qwen/size", Version: "v1", WeightPath: "qwen/v1",
+	})
+	require.NoError(t, err)
+
+	resp, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	assert.EqualValues(t, 4096, resp.GetCache().GetSizeBytes())
+
+	var request warmup.Request
+	require.NoError(t, json.Unmarshal(pub.body, &request))
+	assert.EqualValues(t, 4096, request.SizeBytes)
+}
+
+func TestWarmModelFallsBackToRecordedDownloadSize(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	svc.SetTransferPublisher(&recordingPublisher{})
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-remote", HubModelId: "qwen/remote", Version: "v1", WeightPath: "qwen/remote",
+	})
+	require.NoError(t, err)
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	require.NoError(t, db.Create(&DownloadJob{
+		ID: uuid.NewString(), Source: "modelscope", HubModelID: "qwen/remote",
+		Name: "qwen-remote", State: DownloadStateSucceeded,
+		TotalBytes: 8192, ModelID: reg.GetModelId(), CreatedAt: time.Now().UTC(),
+	}).Error)
+
+	resp, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	// The backend filesystem is not mounted in this test, so the recorded
+	// byte count is the only size the server can trust.
+	assert.EqualValues(t, 8192, resp.GetCache().GetSizeBytes())
+}
+
+func TestListWarmupsBackfillsLegacyOneByteSize(t *testing.T) {
+	svc, source, _ := storageTestService(t)
+	svc.SetTransferPublisher(&recordingPublisher{})
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-legacy", HubModelId: "qwen/legacy", Version: "v1", WeightPath: "qwen/legacy",
+	})
+	require.NoError(t, err)
+	resp, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	// Rows created before size resolution carry the 1-byte placeholder the
+	// controller wrote into LocalModelCache.modelSize.
+	require.NoError(t, db.Model(&ModelCacheEntry{}).Where("id = ?", resp.GetCache().GetCacheId()).
+		Update("size_bytes", 1).Error)
+	dir := filepath.Join(source.Filesystem.MountPath, "qwen/legacy")
+	require.NoError(t, os.MkdirAll(dir, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(dir, "model.bin"), make([]byte, 4096), 0o644))
+
+	list, err := svc.ListModelCacheEntries(adminCtx(), &modelv1.ListModelCacheEntriesRequest{})
+	require.NoError(t, err)
+	require.Len(t, list.GetCaches(), 1)
+	assert.EqualValues(t, 4096, list.GetCaches()[0].GetSizeBytes())
+	var row ModelCacheEntry
+	require.NoError(t, db.Where("id = ?", resp.GetCache().GetCacheId()).First(&row).Error)
+	assert.EqualValues(t, 4096, row.SizeBytes)
+}
+
+func TestWarmupStatusDoesNotOverwriteKnownSizeWithPlaceholder(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	svc.SetTransferPublisher(&recordingPublisher{})
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-placeholder", HubModelId: "qwen/placeholder", Version: "v1", WeightPath: "qwen/placeholder",
+	})
+	require.NoError(t, err)
+	resp, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{ModelId: reg.GetModelId()})
+	require.NoError(t, err)
+	db, err := svc.gormDB()
+	require.NoError(t, err)
+	require.NoError(t, db.Model(&ModelCacheEntry{}).Where("id = ?", resp.GetCache().GetCacheId()).
+		Update("size_bytes", 4096).Error)
+
+	body, _ := json.Marshal(warmup.Status{
+		ID: resp.GetCache().GetCacheId(), State: warmup.StateWarming, SizeBytes: 1,
+	})
+	require.NoError(t, svc.HandleModelWarmupStatus(adminCtx(), body))
+	var row ModelCacheEntry
+	require.NoError(t, db.Where("id = ?", resp.GetCache().GetCacheId()).First(&row).Error)
+	assert.EqualValues(t, 4096, row.SizeBytes)
+}
+
 func TestWarmModelIsIdempotentWhileCacheLive(t *testing.T) {
 	svc, _, _ := storageTestService(t)
 	svc.SetTransferPublisher(&recordingPublisher{})

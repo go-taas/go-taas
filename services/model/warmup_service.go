@@ -14,6 +14,8 @@ import (
 
 	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/go-taas/go-taas/pkg/mq"
+	"github.com/go-taas/go-taas/pkg/storage"
+	"github.com/go-taas/go-taas/pkg/transfer"
 	"github.com/go-taas/go-taas/pkg/warmup"
 	commonv1 "github.com/go-taas/go-taas/proto/taas/common/v1"
 	modelv1 "github.com/go-taas/go-taas/proto/taas/model/v1"
@@ -67,6 +69,7 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 	if err != nil {
 		return nil, err
 	}
+	sizeBytes := s.resolveWeightSize(ctx, db, row.ID, backend.Name, version.WeightPath)
 	groups, err := s.warmupGroupsFor(ctx, db, req.GetNodeGroups())
 	if err != nil {
 		return nil, err
@@ -84,6 +87,7 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 		Backend:    backend.Name,
 		SourceURI:  sourceURI,
 		WeightPath: version.WeightPath,
+		SizeBytes:  sizeBytes,
 		State:      warmup.StateQueued,
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -126,6 +130,7 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 		Backend:    backend.Name,
 		WeightPath: version.WeightPath,
 		SourceURI:  sourceURI,
+		SizeBytes:  sizeBytes,
 		NodeGroups: nodes,
 	}
 	if err := s.publishTransfer(ctx, mq.DefaultSubjects().ModelWarmups, payload); err != nil {
@@ -194,11 +199,69 @@ func (s *Service) listWarmups(ctx context.Context, page *commonv1.PageRequest, m
 		Offset(offset).Limit(limit).Find(&rows).Error; err != nil {
 		return nil, nil, err
 	}
+	s.backfillWarmupSizes(ctx, db, rows)
 	caches := make([]*modelv1.ModelCacheEntry, 0, len(rows))
 	for _, row := range rows {
 		caches = append(caches, cacheProjection(row))
 	}
 	return caches, &commonv1.PageMeta{Total: total, Offset: int64(offset), Limit: clampToInt32(limit)}, nil
+}
+
+// backfillWarmupSizes repairs rows created before the server resolved weight
+// sizes. Those rows carry the 1-byte placeholder the controller used when the
+// request had no size, which the console rendered as "1 B".
+func (s *Service) backfillWarmupSizes(ctx context.Context, db *gorm.DB, rows []*ModelCacheEntry) {
+	for _, row := range rows {
+		if row.SizeBytes > 1 {
+			continue
+		}
+		size := s.resolveWeightSize(ctx, db, row.ModelID, row.Backend, row.WeightPath)
+		if size <= 1 {
+			continue
+		}
+		row.SizeBytes = size
+		// UpdateColumn skips the automatic updated_at touch: repairing a
+		// cached size is not a state change the console should show.
+		_ = db.WithContext(ctx).Model(&ModelCacheEntry{}).
+			Where("id = ? AND size_bytes <= ?", row.ID, int64(1)).
+			UpdateColumn("size_bytes", size).Error
+	}
+}
+
+// resolveWeightSize returns the byte size of one version's weights. A mounted
+// filesystem backend is authoritative because it reflects what warmup copies;
+// otherwise the newest successful download/transfer record is the only size
+// the stateless server knows.
+func (s *Service) resolveWeightSize(ctx context.Context, db *gorm.DB, modelID, backendName, weightPath string) int64 {
+	if strings.TrimSpace(weightPath) != "" {
+		if backend, err := s.storageConfig.Resolve(backendName); err == nil && backend.Type == storage.TypeFilesystem {
+			if root := s.backendMountPath(backend); strings.TrimSpace(root) != "" {
+				if dir, joinErr := storage.CleanJoin(root, weightPath); joinErr == nil {
+					if size := storage.DirSize(dir); size > 1 {
+						return size
+					}
+				}
+			}
+		}
+	}
+	var download DownloadJob
+	if err := db.WithContext(ctx).
+		Where("model_id = ? AND state = ? AND total_bytes > 0", modelID, DownloadStateSucceeded).
+		Order("created_at DESC").Limit(1).Find(&download).Error; err == nil && download.TotalBytes > 0 {
+		return download.TotalBytes
+	}
+	var moved ModelTransfer
+	if err := db.WithContext(ctx).
+		Where("model_id = ? AND state = ? AND (total_bytes > 0 OR bytes > 0)", modelID, transfer.StateSucceeded).
+		Order("created_at DESC").Limit(1).Find(&moved).Error; err == nil {
+		if moved.TotalBytes > 1 {
+			return moved.TotalBytes
+		}
+		if moved.Bytes > 1 {
+			return moved.Bytes
+		}
+	}
+	return 0
 }
 
 // CancelModelWarmup marks a cache cancelled and asks the controller to
@@ -259,8 +322,12 @@ func (s *Service) HandleModelWarmupStatus(ctx context.Context, body []byte) erro
 		"node_groups_json":  string(groups),
 		"warmed_nodes_json": string(warmed),
 		"total_nodes":       status.TotalNodes,
-		"size_bytes":        status.SizeBytes,
 		"updated_at":        time.Now().UTC(),
+	}
+	// A controller that could not resolve a size sends 0 or the legacy
+	// 1-byte placeholder; keep the resolved value already on the row.
+	if status.SizeBytes > 1 {
+		updates["size_bytes"] = status.SizeBytes
 	}
 	result := db.WithContext(ctx).Model(&ModelCacheEntry{}).
 		Where("id = ? AND state <> ?", status.ID, warmup.StateCancelled).

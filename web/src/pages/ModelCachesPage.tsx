@@ -228,7 +228,9 @@ export default function ModelCachesPage({
                     {(cache.warmedNodes || []).length} / {cache.totalNodes || 0}
                     <div className="muted mono">{(cache.nodeGroups || []).join(', ')}</div>
                   </td>
-                  <td className="mono">{formatBytes(cache.sizeBytes || 0)}</td>
+                  <td className="mono">
+                    {Number(cache.sizeBytes || 0) > 1 ? formatBytes(cache.sizeBytes || 0) : '—'}
+                  </td>
                   <td>
                     <span className={`state state-${cache.state}`}>{t(`caches.state.${cache.state}`)}</span>
                     <StatusError message={cache.message} testId={`cache-error-${cache.cacheId}`} />

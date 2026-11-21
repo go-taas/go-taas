@@ -292,6 +292,13 @@ arbitrary uid with mode 0750; it writes world-readable files so non-root
 serving runtimes can read them. HTTP sources that no backend owns continue to
 use the KServe path.
 
+The byte size shown in the warmup list is the real weight size, not the
+KServe placeholder. On creation `WarmModel` resolves it from the selected
+backend (a directory walk for a filesystem backend) and falls back to the
+newest succeeded download or transfer record for the same version; the list
+repairs legacy rows that still carry a placeholder, and an unresolved size is
+reported as unknown instead of `1 B`.
+
 ### 5.2 Scheduling
 
 Before creating or updating an `LLMInferenceService`, the controller lists
