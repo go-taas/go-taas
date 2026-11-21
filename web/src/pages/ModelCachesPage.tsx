@@ -29,7 +29,16 @@ interface GroupsResponse {
 const PAGE_SIZE = 20;
 const ACTIVE_STATES = ['queued', 'warming'];
 
-export default function ModelCachesPage({ embedded = false }: { embedded?: boolean }) {
+export default function ModelCachesPage({
+  embedded = false,
+  initialWarmModelId,
+  onInitialWarmConsumed,
+}: {
+  embedded?: boolean;
+  /** Preselects this model and opens the warm dialog on mount. */
+  initialWarmModelId?: string;
+  onInitialWarmConsumed?: () => void;
+}) {
   const { orgId } = useOrg();
   const { t } = useI18n();
   const [tab, setTab] = useState<'models' | 'nodes'>('models');
@@ -42,9 +51,20 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [warmOpen, setWarmOpen] = useState(false);
+  const [warmOpen, setWarmOpen] = useState(Boolean(initialWarmModelId));
+  const [warmModelId, setWarmModelId] = useState(initialWarmModelId || '');
   const [models, setModels] = useState<ModelSummary[]>([]);
   const [modelsLoading, setModelsLoading] = useState(false);
+
+  useEffect(() => {
+    if (!initialWarmModelId) return;
+    // The request is consumed as soon as the dialog is open with its model;
+    // the parent clears it so switching tabs never reopens the dialog.
+    setWarmModelId(initialWarmModelId);
+    setWarmOpen(true);
+    onInitialWarmConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialWarmModelId]);
 
   const load = useCallback(
     async (quiet = false) => {
@@ -244,9 +264,11 @@ export default function ModelCachesPage({ embedded = false }: { embedded?: boole
           models={models}
           modelsLoading={modelsLoading}
           nodeGroups={nodeGroups}
-          onClose={() => setWarmOpen(false)}
+          initialModelId={warmModelId}
+          onClose={() => { setWarmOpen(false); setWarmModelId(''); }}
           onDone={() => {
             setWarmOpen(false);
+            setWarmModelId('');
             setNotice(t('caches.started'));
             void load();
           }}
@@ -312,6 +334,7 @@ function WarmModelDialog({
   models,
   modelsLoading,
   nodeGroups,
+  initialModelId,
   onClose,
   onDone,
 }: {
@@ -319,6 +342,7 @@ function WarmModelDialog({
   models: ModelSummary[];
   modelsLoading: boolean;
   nodeGroups: WarmupNodeGroup[];
+  initialModelId?: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -326,7 +350,9 @@ function WarmModelDialog({
   // The dialog mounts before the model list arrives, so the selected id must
   // follow the first model once it loads instead of staying empty forever.
   const fallbackModelId = models[0]?.modelId || '';
-  const [modelId, setModelId] = useState(fallbackModelId);
+  // A model-row shortcut passes its id before the option list loads, so keep
+  // that id until the operator picks another model.
+  const [modelId, setModelId] = useState(initialModelId || fallbackModelId);
   const [selectedGroups, setSelectedGroups] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');

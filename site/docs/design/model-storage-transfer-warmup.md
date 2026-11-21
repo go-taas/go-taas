@@ -353,8 +353,10 @@ The platform-administrator console groups the surfaces by operator task:
   are runtime configuration rather than Helm values.
 - **Models** — one page with three tabs: **Model catalog**, **Warmup** and
   **Transfers**. Each tab indents its content from the tab strip and keeps
-  its actions on the right. The catalog keeps register/upload/download/deploy
-  actions, and every import form names a storage backend (default first);
+  its actions on the right. A catalog row's warm action switches to the
+  warmup tab and opens the warm dialog with that model selected. The catalog
+  keeps register/upload/download/deploy actions, and every import form names a
+  storage backend (default first);
   the catalog table and the detail page show the backend of the latest
   version. Warmup owns the previous model-cache list and a new **Nodes** tab
   that shows each `LocalModelNode`, its groups and its model copies.

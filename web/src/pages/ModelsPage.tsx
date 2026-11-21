@@ -55,6 +55,9 @@ export default function ModelsPage() {
   // A local archive upload: the same catalog, filled from the operator's
   // own disk instead of a public hub.
   const [uploadOpen, setUploadOpen] = useState(false);
+  // A row-level warm shortcut hands the model to the warmup tab, which opens
+  // its dialog preselected; the value is consumed once that tab mounts.
+  const [warmModelId, setWarmModelId] = useState('');
   const [deleteTarget, setDeleteTarget] = useState<ModelSummary | null>(null);
   const [deleteError, setDeleteError] = useState('');
   const [deleting, setDeleting] = useState(false);
@@ -154,7 +157,11 @@ export default function ModelsPage() {
 
       <div className="models-tab-content">
       {tab === 'warmup' ? (
-        <ModelCachesPage embedded />
+        <ModelCachesPage
+          embedded
+          initialWarmModelId={warmModelId || undefined}
+          onInitialWarmConsumed={() => setWarmModelId('')}
+        />
       ) : tab === 'transfers' ? (
         <ModelTransfersPage embedded />
       ) : (
@@ -252,6 +259,14 @@ export default function ModelsPage() {
                                   `/admin/inference-services?create=1&modelId=${encodeURIComponent(m.modelId)}` +
                                     `&version=${encodeURIComponent(m.latestVersion)}`,
                                 ),
+                            },
+                            {
+                              key: `warm-${m.name}`,
+                              label: t('caches.warm'),
+                              onClick: () => {
+                                setWarmModelId(m.modelId);
+                                selectTab('warmup');
+                              },
                             },
                             {
                               key: `delete-model-${m.name}`,
