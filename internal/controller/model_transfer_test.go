@@ -188,3 +188,48 @@ func TestReportJobsPublishesProgressAndTerminalState(t *testing.T) {
 	assert.Equal(t, int64(42), got[0].Bytes)
 	assert.Equal(t, int64(100), got[0].TotalBytes)
 }
+
+func TestApplyModelTransferUploadCreatesJob(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	reconciler := NewModelTransferReconciler(client, mq.NewFake(), config.TransferConfig{
+		Namespace: "taas-jobs", Image: "hub.example.com/taas/taas-transfer:test",
+		ServiceAccount: "taas-transfer",
+		Job: config.TransferJobConfig{
+			BackoffLimit: 2, ActiveDeadlineSeconds: 600, TTLSecondsAfterFinish: 3600,
+		},
+	}, testTransferStorage())
+
+	spec := transfer.Spec{
+		ID:            "upload-1",
+		Operation:     transfer.OperationUpload,
+		SourceBackend: "archive", // staging object store
+		TargetBackend: "shared",  // model filesystem
+		TargetPath:    "/data/weights/acme/qwen/upload-x",
+		WeightPath:    "acme/qwen/upload-x/",
+		Upload: &transfer.UploadSpec{
+			ObjectKey:    "taas-uploads/upload-1/archive",
+			OriginalName: "qwen.tgz",
+			Format:       "tar.gz",
+		},
+	}
+	body, err := json.Marshal(&spec)
+	require.NoError(t, err)
+	require.NoError(t, reconciler.ApplyModelTransfer(context.Background(), mq.Message{Body: body}))
+
+	job, err := client.BatchV1().Jobs("taas-jobs").Get(context.Background(), "taas-transfer-upload-1", metav1.GetOptions{})
+	require.NoError(t, err)
+	// Source is an object store (no volume), target is the filesystem mount.
+	require.Len(t, job.Spec.Template.Spec.Volumes, 1)
+	assert.Equal(t, "model-weights", job.Spec.Template.Spec.Volumes[0].PersistentVolumeClaim.ClaimName)
+	container := job.Spec.Template.Spec.Containers[0]
+	env := map[string]corev1.EnvVar{}
+	for _, item := range container.Env {
+		env[item.Name] = item
+	}
+	decoded := mustDecodeSpec(t, env["TRANSFER_SPEC_JSON"].Value)
+	assert.Equal(t, transfer.OperationUpload, decoded.Operation)
+	require.NotNil(t, decoded.Upload)
+	assert.Equal(t, "taas-uploads/upload-1/archive", decoded.Upload.ObjectKey)
+	require.NotNil(t, env["TRANSFER_SOURCE_ACCESS_KEY"].ValueFrom)
+	assert.Equal(t, "archive-keys", env["TRANSFER_SOURCE_ACCESS_KEY"].ValueFrom.SecretKeyRef.Name)
+}
