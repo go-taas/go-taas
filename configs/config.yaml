@@ -451,13 +451,23 @@ model:
   # model-download feature. In the compose stack this is the JuiceFS
   # mount shared with the inference pods.
   weightsDir: ""
-  # upload configures the local model-upload flow (a model archive the
-  # platform extracts into the weights directory).
+  # upload configures the chunked, resumable model-upload flow. The
+  # browser slices the archive, chunks stream to the staging object store,
+  # and a transfer Job unpacks the composed archive into the target backend.
   upload:
     # maxArchiveBytes caps one uploaded archive (200 GiB).
     maxArchiveBytes: 214748364800
-    # tempDir is where an archive is staged before extraction. Empty
-    # uses the OS temp directory.
+    # partSizeBytes is the size of one resumable chunk in bytes. The
+    # object store requires at least 5 MiB per part; 16 MiB is the default.
+    partSizeBytes: 16777216
+    # maxConcurrency is how many chunks a client may upload in parallel.
+    maxConcurrency: 4
+    # stagingBackend names an object-store backend from storage.backends
+    # that holds the composed archive while an upload's transfer Job unpacks
+    # it into the target backend. Empty disables the chunked upload.
+    stagingBackend: ""
+    # tempDir is where a legacy archive is staged before extraction. Empty
+    # uses the OS temp directory. Only used by the non-object-store path.
     tempDir: ""
 
 image:

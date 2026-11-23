@@ -658,6 +658,9 @@ taasServer:
   #       weightsDir: /data/weights                    # CONFIG_MODEL_WEIGHTSDIR
   #       upload:
   #         maxArchiveBytes: 214748364800              # CONFIG_MODEL_UPLOAD_MAXARCHIVEBYTES (200 GiB)
+  #         partSizeBytes: 16777216                    # CONFIG_MODEL_UPLOAD_PARTSIZEBYTES (16 MiB)
+  #         maxConcurrency: 4                          # CONFIG_MODEL_UPLOAD_MAXCONCURRENCY
+  #         stagingBackend: uploads                    # CONFIG_MODEL_UPLOAD_STAGINGBACKEND
   #         tempDir: ""                                # CONFIG_MODEL_UPLOAD_TEMPDIR
   #     image:
   #       harbor:
