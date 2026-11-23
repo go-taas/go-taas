@@ -16,7 +16,12 @@ const (
 	OperationDelete   = "delete"
 	// OperationMove copies a version to another backend and deletes the
 	// source only after the copy succeeds.
-	OperationMove   = "move"
+	OperationMove = "move"
+	// OperationUpload turns a staged upload archive in the upload object
+	// store into a registered model: the Job downloads the single composed
+	// archive, extracts it into the target backend, and the server registers
+	// the version when the Job reports success.
+	OperationUpload = "upload"
 	OperationCancel = "cancel"
 )
 
@@ -75,6 +80,25 @@ type Spec struct {
 	DeleteSource bool `json:"deleteSource,omitempty"`
 	// WeightPath is the logical relative key the model version keeps.
 	WeightPath string `json:"weightPath,omitempty"`
+
+	// Upload carries the archive-specific inputs of an upload operation.
+	// The source object store holds the composed archive under UploadKey;
+	// the Job downloads it, unpacks it with UploadFormat, and writes the
+	// extracted tree into the target (TargetPath for filesystems, the
+	// TargetObjectStore otherwise).
+	Upload *UploadSpec `json:"upload,omitempty"`
+}
+
+// UploadSpec is the archive description of an upload transfer.
+type UploadSpec struct {
+	// ObjectKey is the staging object-store key of the composed archive.
+	ObjectKey string `json:"objectKey,omitempty"`
+	// OriginalName is the uploaded file's name, used to pick the format.
+	OriginalName string `json:"originalName,omitempty"`
+	// Format is the pre-resolved unpack format ("tar", "tar.gz" or "zip").
+	Format string `json:"format,omitempty"`
+	// StagingPrefix is the object-store prefix that holds the archive.
+	StagingPrefix string `json:"stagingPrefix,omitempty"`
 }
 
 // Progress is one progress snapshot a Job reports through its progress

@@ -546,7 +546,7 @@ func NewForFVT(db *gorm.DB) *Service {
 // model_authorizations) onto a caller-provided database for
 // full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	return db.AutoMigrate(&Model{}, &Version{}, &Authorization{}, &ModelTransfer{}, &ModelCacheEntry{}, &WarmupNodeGroup{}, &WarmupNode{})
+	return db.AutoMigrate(&Model{}, &Version{}, &Authorization{}, &ModelTransfer{}, &ModelCacheEntry{}, &WarmupNodeGroup{}, &WarmupNode{}, &ModelUpload{})
 }
 
 // AttachToServer implements server.Service.
@@ -579,7 +579,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err := migrateActiveVersionIndex(db); err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}, &ModelTransfer{}, &ModelCacheEntry{}, &WarmupNodeGroup{}, &WarmupNode{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Model{}, &Version{}, &Authorization{}, &DownloadJob{}, &ModelTransfer{}, &ModelCacheEntry{}, &WarmupNodeGroup{}, &WarmupNode{}, &ModelUpload{}); err != nil {
 		return err
 	}
 	// Downloads are in-process goroutines: a job left queued or running

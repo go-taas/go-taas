@@ -163,6 +163,8 @@ func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) 
 		err = deleteOne(ctx, spec)
 	case transfer.OperationMove:
 		err = moveOne(ctx, spec, progress)
+	case transfer.OperationUpload:
+		err = uploadOne(ctx, spec, progress)
 	default:
 		return fmt.Errorf("unsupported operation %q", spec.Operation)
 	}

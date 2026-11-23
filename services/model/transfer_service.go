@@ -526,6 +526,14 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 			s.syncDownloadProgress(ctx, *row.DownloadID, status)
 		}
 	}
+	// An upload Job unpacked the staged archive into the target backend. On
+	// success the catalog entry is registered; otherwise the linked session
+	// is failed.
+	if row.Operation == transfer.OperationUpload {
+		if transfer.Terminal(status.State) {
+			s.handleUploadTransferStatus(ctx, status, row)
+		}
+	}
 	// A successful copy or move makes the target the version's home:
 	// serving must read from the backend that now holds the weights instead
 	// of the source (which a move has just deleted).

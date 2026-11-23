@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -28,12 +29,22 @@ type RemoteRef struct {
 	SecretKeyEnv       string `json:"secretKeyEnv,omitempty"`
 }
 
-// RemoteClient wraps a MinIO/S3 client and its bucket.
+// RemoteClient wraps a MinIO/S3 client and its bucket. The core handle is
+// kept alongside the high-level client so chunked (multipart) uploads can
+// expose lower-level primitives that Client's high-level PutObject would not
+// represent as separate, resumable parts.
 type RemoteClient struct {
 	client *minio.Client
+	core   *minio.Core
 	bucket string
 	prefix string
 }
+
+// PartSize constants for the chunked upload contract.
+const (
+	// MinPartSize is S3/MinIO's lower bound for a multipart part.
+	MinPartSize = int64(5) << 20
+)
 
 // NewRemoteClient builds a client from a resolved reference. Anonymous
 // access is used when no credential env is declared.
@@ -67,7 +78,16 @@ func NewRemoteClient(ref RemoteRef) (*RemoteClient, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &RemoteClient{client: client, bucket: ref.Bucket, prefix: strings.Trim(ref.Prefix, "/")}, nil
+	core, err := minio.NewCore(endpoint, &minio.Options{
+		Creds:        creds,
+		Secure:       secure,
+		Region:       ref.Region,
+		BucketLookup: bucketLookup(ref.ForcePathStyle),
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &RemoteClient{client: client, core: core, bucket: ref.Bucket, prefix: strings.Trim(ref.Prefix, "/")}, nil
 }
 
 func bucketLookup(forcePath bool) minio.BucketLookupType {
@@ -285,3 +305,114 @@ func DirSize(dir string) int64 {
 
 // Now is a small test seam.
 var Now = func() time.Time { return time.Now().UTC() }
+
+// BeginMultipartUpload opens a new multi-part upload for one object and
+// returns its upload ID. The ID is the resume/cancel token the caller keeps,
+// and the same ID is re-used across retries so an incomplete upload can be
+// resumed instead of restarted.
+func (c *RemoteClient) BeginMultipartUpload(ctx context.Context, key string) (string, error) {
+	return c.core.NewMultipartUpload(ctx, c.bucket, c.key(key), minio.PutObjectOptions{})
+}
+
+// UploadPart sends one part of a multipart upload. partNumber is 1-based.
+// It returns the etag, which must be handed back at completion time in the
+// correct order. size caps the part read from r.
+func (c *RemoteClient) UploadPart(ctx context.Context, key, uploadID string, partNumber int, r io.Reader, size int64) (string, error) {
+	part, err := c.core.PutObjectPart(ctx, c.bucket, c.key(key), uploadID, partNumber, r, size, minio.PutObjectPartOptions{})
+	if err != nil {
+		return "", err
+	}
+	return part.ETag, nil
+}
+
+// ListUploadedParts returns the part numbers already present for an
+// incomplete upload, so a client can resume from where it stopped instead of
+// re-sending bytes. partsAreOrdered is true when the returned list is in
+// ascending part-number order (guaranteed by S3 compatible stores).
+func (c *RemoteClient) ListUploadedParts(ctx context.Context, key, uploadID string) ([]int, error) {
+	var parts []int
+	marker := 0
+	for {
+		result, err := c.core.ListObjectParts(ctx, c.bucket, c.key(key), uploadID, marker, 1000)
+		if err != nil {
+			return nil, err
+		}
+		for _, part := range result.ObjectParts {
+			parts = append(parts, part.PartNumber)
+			if part.PartNumber > marker {
+				marker = part.PartNumber
+			}
+		}
+		if !result.IsTruncated {
+			break
+		}
+	}
+	return parts, nil
+}
+
+// UploadedParts is the completion record of a multipart upload: the ordered
+// list of (partNumber, etag) pairs the store committed.
+type UploadedParts struct {
+	Parts []UploadedPart `json:"parts"`
+}
+
+// UploadedPart identifies one committed multipart part.
+type UploadedPart struct {
+	PartNumber int    `json:"partNumber"`
+	ETag       string `json:"etag"`
+}
+
+// CompleteUploadPartList re-reads the committed parts of an upload and
+// returns them in ascending order for CompleteMultipartUpload. It is the
+// authoritative source of what to finish, so the caller never trusts the
+// client for part etags.
+func (c *RemoteClient) CompleteUploadPartList(ctx context.Context, key, uploadID string) (*UploadedParts, error) {
+	var ordered []UploadedPart
+	marker := 0
+	for {
+		result, err := c.core.ListObjectParts(ctx, c.bucket, c.key(key), uploadID, marker, 1000)
+		if err != nil {
+			return nil, err
+		}
+		// ListObjectParts isn't guaranteed to sort, so collect then sort.
+		for _, part := range result.ObjectParts {
+			ordered = append(ordered, UploadedPart{PartNumber: part.PartNumber, ETag: part.ETag})
+			if part.PartNumber > marker {
+				marker = part.PartNumber
+			}
+		}
+		if !result.IsTruncated {
+			break
+		}
+	}
+	// Ascending part number is required by CompleteMultipartUpload.
+	sort.Slice(ordered, func(i, j int) bool { return ordered[i].PartNumber < ordered[j].PartNumber })
+	return &UploadedParts{Parts: ordered}, nil
+}
+
+// CompleteMultipartUpload concatenates the committed parts into one object.
+func (c *RemoteClient) CompleteMultipartUpload(ctx context.Context, key, uploadID string, parts *UploadedParts) error {
+	complete := make([]minio.CompletePart, 0, len(parts.Parts))
+	for _, part := range parts.Parts {
+		complete = append(complete, minio.CompletePart{PartNumber: part.PartNumber, ETag: part.ETag})
+	}
+	_, err := c.core.CompleteMultipartUpload(ctx, c.bucket, c.key(key), uploadID, complete, minio.PutObjectOptions{})
+	return err
+}
+
+// AbortMultipartUpload discards an incomplete multipart upload and its parts.
+func (c *RemoteClient) AbortMultipartUpload(ctx context.Context, key, uploadID string) error {
+	return c.core.AbortMultipartUpload(ctx, c.bucket, c.key(key), uploadID)
+}
+
+// StatObject returns the object metadata, used by the upload Job to size the
+// bytes fetched before extraction.
+func (c *RemoteClient) StatObject(ctx context.Context, key string) (minio.ObjectInfo, error) {
+	return c.client.StatObject(ctx, c.bucket, c.key(key), minio.GetObjectOptions{})
+}
+
+// OpenObject opens one object for streaming reads. The caller must close the
+// returned reader.
+func (c *RemoteClient) OpenObject(ctx context.Context, key string) (io.ReadCloser, error) {
+	return c.client.GetObject(ctx, c.bucket, c.key(key), minio.GetObjectOptions{})
+}

@@ -663,15 +663,29 @@ type ModelConfig struct {
 	Upload ModelUploadConfig `mapstructure:"upload"`
 }
 
-// ModelUploadConfig holds the local model-upload limits.
+// ModelUploadConfig holds the chunked local model-upload settings.
 type ModelUploadConfig struct {
 	// MaxArchiveBytes caps one uploaded archive. Defaults to 200 GiB, which
 	// fits an open model's weights in a single file.
 	MaxArchiveBytes int64 `mapstructure:"maxArchiveBytes"`
-	// TempDir is where the archive is staged before it is extracted. Empty
-	// uses the OS temp directory.
+	// PartSizeBytes is the size of one resumable chunk. Defaults to 16 MiB;
+	// the object store requires at least 5 MiB per part.
+	PartSizeBytes int64 `mapstructure:"partSizeBytes"`
+	// MaxConcurrency is how many chunks a client may upload in parallel.
+	// Defaults to 4.
+	MaxConcurrency int `mapstructure:"maxConcurrency"`
+	// StagingBackend names the object-store backend (from storage.backends)
+	// that holds the composed archive while an upload's transfer Job unpacks
+	// it. Empty leaves the legacy TempDir path active.
+	StagingBackend string `mapstructure:"stagingBackend"`
+	// TempDir is where a legacy upload is staged before it is extracted.
+	// Empty uses the OS temp directory. Kept only for the non-object-store
+	// fallback path.
 	TempDir string `mapstructure:"tempDir"`
 }
+
+// DefaultModelPartSizeBytes is the default resumable chunk size.
+const DefaultModelPartSizeBytes = int64(16) << 20
 
 // TransferConfig holds the asynchronous model-transfer settings.
 type TransferConfig struct {

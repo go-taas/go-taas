@@ -60,10 +60,9 @@ type Server interface {
 	// before Init; nil leaves the endpoint unregistered.
 	SetImageUpload(fn ImageUploadFunc)
 
-	// SetModelUpload installs the handler for POST
-	// /api/v1/admin/models:upload (a multipart model archive). It must be
-	// called before Init; nil leaves the endpoint unregistered.
-	SetModelUpload(fn ModelUploadFunc)
+	// SetModelUploadSession installs the chunked, resumable model-upload API.
+	// It must be called before Init; nil leaves the routes unregistered.
+	SetModelUploadSession(api ModelUploadSessionAPI)
 }
 
 type commonServer struct {
@@ -93,9 +92,9 @@ type commonServer struct {
 	// archive). Nil leaves the endpoint unregistered.
 	imageUpload ImageUploadFunc
 
-	// modelUpload handles POST /api/v1/admin/models:upload (a multipart
-	// model archive). Nil leaves the endpoint unregistered.
-	modelUpload ModelUploadFunc
+	// modelUploadSession handles the chunked model-upload API. Nil leaves
+	// the session routes unregistered.
+	modelUploadSession ModelUploadSessionAPI
 
 	components *components
 }
@@ -221,7 +220,7 @@ func (s *commonServer) Init() {
 		)
 		s.initGateway()
 		s.registerUploadRoute()
-		s.registerModelUploadRoute()
+		s.registerModelUploadSessionRoutes()
 	}
 
 	// Build the monitor server (metrics + health + pprof).

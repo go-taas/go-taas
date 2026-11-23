@@ -130,31 +130,10 @@ func main() {
 	if cfg.Model.WeightsDir != "" || cfg.Storage.Enabled() {
 		modelSvc.SetWeightsDir(cfg.Model.WeightsDir)
 		modelSvc.SetModelDownloader(modelhub.NewHTTPDownloader(modelhub.Options{}))
-		// The local upload endpoint extracts an archive into the same
-		// weights filesystem and registers the model, so an uploaded model
-		// is indistinguishable from a downloaded one.
-		srv.SetModelUpload(func(ctx context.Context, req server.ModelUploadRequest) (*server.ModelUploadResult, error) {
-			res, err := modelSvc.UploadModel(ctx, model.UploadModelRequest{
-				ArchivePath:    req.ArchivePath,
-				OriginalName:   req.OriginalName,
-				Name:           req.Name,
-				HubModelID:     req.HubModelID,
-				Version:        req.Version,
-				Description:    req.Description,
-				StorageBackend: req.StorageBackend,
-			})
-			if err != nil {
-				return nil, err
-			}
-			return &server.ModelUploadResult{
-				ModelID:        res.ModelID,
-				Version:        res.Version,
-				WeightPath:     res.WeightPath,
-				Bytes:          res.Bytes,
-				Files:          res.Files,
-				StorageBackend: res.StorageBackend,
-			}, nil
-		})
+		// Feature: chunked, resumable model uploads. The console slices the
+		// archive, the session streams each chunk to the staging object
+		// store, and a transfer Job unpacks and registers the model.
+		srv.SetModelUploadSession(modelSvc)
 	}
 	// Feature #48: the provider service owns the external-provider
 	// registry, the encrypted write-only keys, upstream-model curation, the
