@@ -344,10 +344,11 @@ func TestPaginationAndRange(t *testing.T) {
 	assert.Equal(t, 5, offset)
 	assert.Equal(t, 100, limit)
 
-	// Range defaults: until defaults to now+1, since to until-24h.
+	// Range defaults: until defaults to now+1, since to the full queryable
+	// window (maxRangeSeconds), so an unfiltered list shows history.
 	since, until, err := validateRange(0, 0)
 	require.NoError(t, err)
-	assert.Equal(t, until-24*3600, since)
+	assert.Equal(t, until-maxRangeSeconds, since)
 	assert.True(t, until > time.Now().Unix(), "until defaults to now+1")
 
 	// clampInt32.

@@ -29,7 +29,7 @@ const (
 	listDefaultLimit  = 20
 	listMaxLimit      = 100
 	maxRangeSeconds   = 366 * 24 * 3600 // 366 days
-	defaultRangeHours = 24
+	defaultRangeHours = 24 * 366        // default range window: the full queryable window
 )
 
 // organizationMetadataKey is the gRPC metadata key carrying the
