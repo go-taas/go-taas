@@ -7,15 +7,23 @@
 // it, and the platform streams it to the weights filesystem, extracts it and
 // registers the catalog entry.
 //
-// The transfer is an XMLHttpRequest rather than the api client: a model
-// archive is gigabytes, and only the browser's own upload progress events can
-// tell an operator that something is happening. The request stays open while
-// the server extracts, so the last few percent can pause on a large model;
-// the label says so instead of leaving a stuck bar.
+// The transfer is resumable and chunked rather than one long request. The
+// client asks the server to create an upload session (so the server fixes the
+// chunk size), slices the file into parts of exactly that size and streams
+// them with a bounded number of in-flight XMLHttpRequests, which is what gives
+// the browser upload-progress events. A part PUT carries the raw bytes and the
+// server composes them in order, so a restart can ask which parts already
+// arrived and only re-send the missing ones. After the last part the client
+// calls the complete endpoint and the server unpacks and registers the model.
 
 import { useEffect, useRef, useState } from 'react';
 import { Dialog } from '../components';
-import { ApiError, apiPrefix, sessionAuthHeader } from '../api';
+import {
+  ApiError,
+  apiPrefix,
+  sessionAuthHeader,
+  type ModelUploadSession,
+} from '../api';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 import { StorageBackendSelect } from './StorageBackendSelect';
@@ -28,6 +36,20 @@ interface Props {
 // ARCHIVE_ACCEPT is what the file picker offers. The server decides the format
 // from the extension and rejects anything else.
 const ARCHIVE_ACCEPT = '.tar,.tar.gz,.tgz,.zip,application/x-tar,application/gzip,application/zip';
+
+// MAX_IN_FLIGHT caps how many part PUTs run at once. Four parallel streams
+// saturate most links without overwhelming the server or the browser's
+// connection pool.
+const MAX_IN_FLIGHT = 4;
+
+// POLL_MS is how often the client re-checks a completed session that is
+// unpacking on the server.
+const POLL_MS = 2000;
+
+// CANCELLED is a sentinel the part uploads throw when the operator hits
+// cancel, so the submit loop can tell a deliberate abort from a transport
+// error.
+const CANCELLED = Symbol('cancelled');
 
 // sizeLabel renders a byte count with a binary unit, so the operator can
 // confirm the archive they picked is the one they meant.
@@ -52,13 +74,27 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
   const [storageBackend, setStorageBackend] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  // progress and phase drive the uploading bar and the extracting label.
   const [progress, setProgress] = useState(0);
   const [phase, setPhase] = useState<'idle' | 'uploading' | 'processing'>('idle');
-  const xhrRef = useRef<XMLHttpRequest | null>(null);
+  const [cancelled, setCancelled] = useState(false);
 
+  // In-flight part uploads, kept so cancel can abort them all at once.
+  const activeXhrsRef = useRef<Set<XMLHttpRequest>>(new Set());
+  // The current session id, needed by the cancel button to delete it.
+  const uploadIdRef = useRef('');
+  // Cancellation is a ref so the async workers see it immediately rather than
+  // through stale closure state.
+  const cancelledRef = useRef(false);
+  const pollTimerRef = useRef<number | null>(null);
+
+  // Abort any in-flight transfer and stop the completion poll when the dialog
+  // unmounts (the operator closed it another way).
   useEffect(
     () => () => {
-      xhrRef.current?.abort();
+      for (const xhr of activeXhrsRef.current) xhr.abort();
+      activeXhrsRef.current.clear();
+      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
     },
     [],
   );
@@ -71,6 +107,199 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
       const base = picked.name.replace(/\.(tar\.gz|tgz|tar|zip)$/i, '');
       setName(base.slice(0, 128));
     }
+  };
+
+  // applyAuth sets the Authorization header from the admin session onto a
+  // request, mirroring how the api client authenticates every other call.
+  const applyAuth = (xhr: XMLHttpRequest) => {
+    const authorization = sessionAuthHeader('admin');
+    if (authorization) xhr.setRequestHeader('Authorization', authorization);
+  };
+
+  // jsonRequest wraps a JSON call against the upload endpoints. Unlike the
+  // api client (which envelops and needs an org id), these endpoints return
+  // plain objects and authenticate solely by the admin session token.
+  const jsonRequest = async <T,>(method: string, path: string, body?: unknown): Promise<T> => {
+    const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+    const authorization = sessionAuthHeader('admin');
+    if (authorization) headers['Authorization'] = authorization;
+    let res: Response;
+    try {
+      res = await fetch(`${apiPrefix('admin')}${path}`, {
+        method,
+        headers,
+        body: body === undefined ? undefined : JSON.stringify(body),
+      });
+    } catch {
+      throw new ApiError(0, t('models.upload.failed'));
+    }
+    let data: Record<string, unknown> = {};
+    try {
+      data = (await res.json()) as Record<string, unknown>;
+    } catch {
+      // A non-JSON response is a transport failure.
+    }
+    if (!res.ok) {
+      const message =
+        (data.message as string | undefined) || (data.response as { message?: string } | undefined)?.message;
+      throw new ApiError(res.status, message || t('models.upload.failed'));
+    }
+    return data as T;
+  };
+
+  // uploadParts slices the file into partSizeBytes chunks, skips the parts the
+  // server already holds (resume), and pushes the missing ones with bounded
+  // concurrency. It resolves once every missing part is on the server or
+  // throws when a part fails or the operator cancels.
+  const uploadParts = async (session: ModelUploadSession, target: File) => {
+    const { uploadId, partSizeBytes, totalBytes } = session;
+    const part = partSizeBytes > 0 ? partSizeBytes : Math.max(totalBytes, 1);
+    const partCount = Math.max(1, Math.ceil(totalBytes / part));
+    const { parts } = await jsonRequest<{ parts?: number[] }>(
+      'GET',
+      `/models/uploads/${uploadId}/parts`,
+    );
+    const received = new Set(parts || []);
+    const missing: number[] = [];
+    for (let n = 1; n <= partCount; n += 1) {
+      if (!received.has(n)) missing.push(n);
+    }
+
+    // The server's byte count is the baseline; every uploaded part adds its
+    // own byte length, so a restarted session's progress includes the parts
+    // that already arrived before this dialog opened.
+    let uploaded = session.bytesReceived || 0;
+    const bump = (bytes: number) => {
+      uploaded += bytes;
+      const clamped = Math.min(uploaded, totalBytes);
+      setProgress(Math.round((clamped / totalBytes) * 100));
+    };
+
+    const sendPart = (n: number) =>
+      new Promise<void>((resolve, reject) => {
+        const start = (n - 1) * part;
+        const end = Math.min(start + part, totalBytes);
+        const blob = target.slice(start, end);
+        const xhr = new XMLHttpRequest();
+        activeXhrsRef.current.add(xhr);
+        xhr.open('PUT', `${apiPrefix('admin')}/models/uploads/${uploadId}/parts/${n}`);
+        applyAuth(xhr);
+        xhr.setRequestHeader('Content-Type', target.type || 'application/octet-stream');
+        xhr.onload = () => {
+          if (cancelledRef.current) {
+            reject(CANCELLED);
+            return;
+          }
+          activeXhrsRef.current.delete(xhr);
+          if (xhr.status >= 200 && xhr.status < 300) {
+            bump(blob.size);
+            resolve();
+            return;
+          }
+          let message = t('models.upload.failed');
+          try {
+            const body = JSON.parse(xhr.responseText) as { message?: string };
+            if (body.message) message = body.message;
+          } catch {
+            // Keep the generic message.
+          }
+          reject(new ApiError(0, message));
+        };
+        xhr.onerror = () => {
+          activeXhrsRef.current.delete(xhr);
+          reject(new ApiError(0, t('models.upload.failed')));
+        };
+        xhr.onabort = () => {
+          activeXhrsRef.current.delete(xhr);
+          reject(CANCELLED);
+        };
+        xhr.send(blob);
+      });
+
+    // Worker pool: keep at most MAX_IN_FLIGHT part requests in the air by
+    // letting each worker claim the next pending part when one finishes.
+    let next = 0;
+    const workers = Array.from({ length: Math.min(MAX_IN_FLIGHT, missing.length) }, async () => {
+      while (!cancelledRef.current) {
+        const n = missing[next];
+        if (n === undefined) return;
+        next += 1;
+        await sendPart(n);
+      }
+    });
+    await Promise.all(workers);
+    if (cancelledRef.current) throw CANCELLED;
+  };
+
+  // waitForOutcome polls a completed session until the server is done
+  // unpacking. It resolves with the terminal outcome so the caller can decide
+  // what to do: succeeded hands off to onDone, failed surfaces the server's
+  // message, and cancelled resets without a notice.
+  const waitForOutcome = async (
+    uploadId: string,
+  ): Promise<'succeeded' | 'failed' | 'cancelled' | 'error'> =>
+    new Promise((resolve) => {
+      const check = async () => {
+        let session: ModelUploadSession;
+        try {
+          session = await jsonRequest<ModelUploadSession>('GET', `/models/uploads/${uploadId}`);
+        } catch (e) {
+          setError(e instanceof Error ? e.message : t('models.upload.failed'));
+          setPhase('idle');
+          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+          resolve('error');
+          return;
+        }
+        if (session.state === 'succeeded') {
+          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+          resolve('succeeded');
+          return;
+        }
+        if (session.state === 'failed') {
+          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+          setError(session.message || t('models.upload.failed'));
+          setPhase('idle');
+          resolve('failed');
+          return;
+        }
+        if (session.state === 'cancelled') {
+          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+          pollTimerRef.current = null;
+          setPhase('idle');
+          resolve('cancelled');
+          return;
+        }
+        // Still processing (or a transient state): keep polling.
+      };
+      void check();
+      pollTimerRef.current = window.setInterval(() => void check(), POLL_MS);
+    });
+
+  // cancelUpload aborts the in-flight parts, deletes the session on the server
+  // so no orphan parts linger, and closes the dialog.
+  const cancelUpload = async () => {
+    if (cancelledRef.current || !submitting) return;
+    cancelledRef.current = true;
+    setCancelled(true);
+    for (const xhr of activeXhrsRef.current) xhr.abort();
+    activeXhrsRef.current.clear();
+    if (uploadIdRef.current) {
+      try {
+        const headers: Record<string, string> = {};
+        const authorization = sessionAuthHeader('admin');
+        if (authorization) headers['Authorization'] = authorization;
+        await fetch(`${apiPrefix('admin')}/models/uploads/${uploadIdRef.current}`, {
+          method: 'DELETE',
+          headers,
+        });
+      } catch {
+        // Best effort: the server also cleans up abandoned sessions.
+      }
+    }
+    onClose();
   };
 
   const submit = async () => {
@@ -93,61 +322,58 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
     setSubmitting(true);
     setError('');
     setProgress(0);
+    setCancelled(false);
+    cancelledRef.current = false;
     setPhase('uploading');
 
-    const form = new FormData();
-    form.append('file', file);
-    form.append('name', name.trim());
-    form.append('hubModelId', hubModelId.trim());
-    if (storageBackend) form.append('storageBackend', storageBackend);
-    if (description.trim()) form.append('description', description.trim());
-
-    const path = `${apiPrefix('admin')}/models:upload`;
     try {
-      await new Promise<void>((resolve, reject) => {
-        const xhr = new XMLHttpRequest();
-        xhrRef.current = xhr;
-        xhr.open('POST', path);
-        const authorization = sessionAuthHeader('admin');
-        if (authorization) xhr.setRequestHeader('Authorization', authorization);
-        xhr.upload.onprogress = (event) => {
-          if (event.lengthComputable) {
-            setProgress(Math.round((event.loaded / event.total) * 100));
-          }
-        };
-        // The body is sent before the server finishes extracting, so the bar
-        // switches meaning here rather than sitting at 100%.
-        xhr.upload.onload = () => setPhase('processing');
-        xhr.onload = () => {
-          let body: Record<string, unknown> = {};
-          try {
-            body = JSON.parse(xhr.responseText) as Record<string, unknown>;
-          } catch {
-            // A non-JSON response is a transport failure; reported below.
-          }
-          const envelope = (body.response ?? body) as { code?: number; message?: string };
-          if (xhr.status >= 200 && xhr.status < 300 && (envelope.code ?? 0) === 0) {
-            resolve();
-            return;
-          }
-          reject(new ApiError(envelope.code ?? 0, envelope.message || t('models.upload.failed')));
-        };
-        xhr.onerror = () => reject(new ApiError(0, t('models.upload.failed')));
-        xhr.onabort = () => reject(new ApiError(0, t('common.cancel')));
-        xhr.send(form);
+      // 1. Create the session; the server answers with the chunk size.
+      const session = await jsonRequest<ModelUploadSession>('POST', '/models/uploads', {
+        name: name.trim(),
+        hubModelId: hubModelId.trim(),
+        description: description.trim(),
+        storageBackend,
+        archiveName: file.name,
+        totalBytes: file.size,
       });
-      onDone();
+      uploadIdRef.current = session.uploadId;
+
+      // 2. Stream every missing part (resume-aware), with dashboard progress.
+      await uploadParts(session, file);
+      if (cancelledRef.current) return;
+
+      // 3. All parts are on the server; ask it to compose and unpack.
+      setPhase('processing');
+      await jsonRequest<ModelUploadSession>('POST', `/models/uploads/${session.uploadId}:complete`);
+
+      // 4. The server unpacks in the background; poll for the outcome. On
+      // success the parent shows the success notice; on failure or cancel the
+      // poll already showed the server message and reset the phase, so the
+      // dialog stays open and retryable.
+      const outcome = await waitForOutcome(session.uploadId);
+      if (cancelledRef.current) return;
+      if (outcome === 'succeeded') onDone();
     } catch (e) {
-      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('models.upload.failed'));
+      if (cancelledRef.current) return;
+      setError(e instanceof Error ? e.message : t('models.upload.failed'));
       setPhase('idle');
     } finally {
-      xhrRef.current = null;
-      setSubmitting(false);
+      if (!cancelledRef.current) setSubmitting(false);
     }
   };
 
+  // Close is disabled while a transfer is running so the operator cannot lose
+  // a half-done upload to a stray click; the explicit Cancel handles that.
+  const requestClose = () => {
+    if (submitting) return;
+    onClose();
+  };
+
+  const showProgress = submitting && phase !== 'idle';
+  const showCancel = submitting && phase === 'uploading' && !cancelled;
+
   return (
-    <Dialog title={t('models.upload.title')} onClose={onClose} testId="upload-model-dialog">
+    <Dialog title={t('models.upload.title')} onClose={requestClose} testId="upload-model-dialog">
       <p className="muted">{t('models.upload.hint')}</p>
       <FormLegend testId="upload-model-legend" />
       <FormSection
@@ -248,10 +474,13 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
         </div>
       </FormSection>
 
-      {submitting && (
+      {showProgress && (
         <div style={{ marginBottom: 12 }} data-testid="upload-model-progress">
           <div className="progress-bar">
-            <div className="progress-fill" style={{ width: `${phase === 'processing' ? 100 : progress}%` }} />
+            <div
+              className="progress-fill"
+              style={{ width: `${phase === 'processing' ? 100 : progress}%` }}
+            />
           </div>
           <div className="field-hint">
             {phase === 'processing'
@@ -271,10 +500,29 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
             !hubModelId.trim() && t('models.fieldHubModelId'),
           ].filter((entry): entry is string => Boolean(entry))}
         />
-        <button className="secondary" data-testid="upload-model-cancel" onClick={onClose} disabled={submitting}>
-          {t('common.cancel')}
-        </button>
-        <button data-testid="upload-model-submit" onClick={() => void submit()} disabled={submitting}>
+        {showCancel ? (
+          <button
+            className="secondary danger"
+            data-testid="upload-model-cancel"
+            onClick={() => void cancelUpload()}
+          >
+            {t('models.upload.cancel')}
+          </button>
+        ) : (
+          <button
+            className="secondary"
+            data-testid="upload-model-cancel"
+            onClick={requestClose}
+            disabled={submitting}
+          >
+            {t('common.cancel')}
+          </button>
+        )}
+        <button
+          data-testid="upload-model-submit"
+          onClick={() => void submit()}
+          disabled={submitting}
+        >
           {submitting ? t('models.upload.submitting') : t('models.upload.submit')}
         </button>
       </div>

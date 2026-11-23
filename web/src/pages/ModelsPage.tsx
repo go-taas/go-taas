@@ -10,6 +10,7 @@ import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
+import ModelUploadTasksDrawer from '../components/ModelUploadTasksDrawer';
 import ModelCachesPage from './ModelCachesPage';
 import ModelTransfersPage from './ModelTransfersPage';
 import UploadModelDialog from '../components/UploadModelDialog';
@@ -203,6 +204,8 @@ export default function ModelsPage() {
               <ModelDownloadsPanel defaultOpen />
             </div>
           )}
+
+          <ModelUploadTasksDrawer defaultOpen={false} />
 
           {uploadOpen && (
             <UploadModelDialog

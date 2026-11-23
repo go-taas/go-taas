@@ -329,6 +329,30 @@ export interface StorageBackend {
   warmupEnabled?: boolean;
 }
 
+// ModelUploadSession is one resumable, chunked upload of a local model
+// archive into the shared weights storage. The client creates the session,
+// streams the file in fixed-size parts (partSizeBytes), then completes it so
+// the platform extracts and registers the model.
+export interface ModelUploadSession {
+  uploadId: string;
+  name: string;
+  hubModelId: string;
+  version: string;
+  description: string;
+  storageBackend: string;
+  archiveName: string;
+  totalBytes: number;
+  partSizeBytes: number;
+  // state is creating, uploading, completing, processing, succeeded,
+  // failed or cancelled.
+  state: string;
+  bytesReceived: number;
+  modelId?: string;
+  message?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ModelTransfer is one asynchronous copy/download/delete job.
 export interface ModelTransfer {
   transferId: string;
