@@ -449,6 +449,28 @@ func TestServiceImportImageValidation(t *testing.T) {
 	assert.Equal(t, apierrors.CodeImageIncompatible, ae.Code)
 }
 
+func TestServiceImportImageRejectsOverlongPassword(t *testing.T) {
+	svc, _ := newServiceForTest(t)
+	ctx := context.Background()
+	setTestHarbor("hub.example.com", "admin", "secret", "taas")
+	svc.SetImporter(&fakeImporter{})
+
+	// A registry token longer than the stored column is invalid input, not an
+	// internal error: it must be refused before any row is written.
+	long := strings.Repeat("t", maxSourcePasswordLen+1)
+	_, err := svc.ImportImage(ctx, &imagev1.ImportImageRequest{
+		SourceReference: "vllm:latest",
+		Accelerator:     "nvidia",
+		Engine:          "vllm",
+		SourceUsername:  "user",
+		SourcePassword:  long,
+	})
+	require.Error(t, err)
+	ae, ok := apierrors.As(err)
+	require.True(t, ok)
+	assert.Equal(t, apierrors.CodeImageReferenceInvalid, ae.Code)
+}
+
 func TestServiceImportImageNotConfigured(t *testing.T) {
 	svc, _ := newServiceForTest(t)
 	ctx := context.Background()

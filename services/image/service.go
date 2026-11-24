@@ -525,6 +525,15 @@ const (
 	maxTagLen         = 128
 	maxEngineLen      = 64
 	maxDescriptionLen = 1024
+	// maxSourcePasswordLen bounds the source registry password a private pull
+	// may carry. It matches the source_password column: a longer secret cannot
+	// be stored, so it is rejected here as invalid input instead of failing in
+	// the database with an opaque 500.
+	maxSourcePasswordLen = 1024
+	// maxSourceUsernameLen and maxSourceReferenceLen match their columns for
+	// the same reason: a value the row cannot hold is a bad request.
+	maxSourceUsernameLen  = 255
+	maxSourceReferenceLen = 512
 )
 
 // namePattern accepts a lowercase repository reference without tag:
@@ -650,6 +659,18 @@ func (s *Service) ImportImage(ctx context.Context, req *imagev1.ImportImageReque
 	}
 	if len(description) > maxDescriptionLen {
 		return nil, errors.Newf(errors.CodeImageReferenceInvalid, "image: description must be at most %d characters", maxDescriptionLen)
+	}
+	if len(sourceRef) > maxSourceReferenceLen {
+		return nil, errors.Newf(errors.CodeImageReferenceInvalid,
+			"image: source_reference must be at most %d characters", maxSourceReferenceLen)
+	}
+	if len(srcUser) > maxSourceUsernameLen {
+		return nil, errors.Newf(errors.CodeImageReferenceInvalid,
+			"image: source_username must be at most %d characters", maxSourceUsernameLen)
+	}
+	if len(srcPass) > maxSourcePasswordLen {
+		return nil, errors.Newf(errors.CodeImageReferenceInvalid,
+			"image: source_password must be at most %d characters", maxSourcePasswordLen)
 	}
 
 	cfg := config.GetConfig()

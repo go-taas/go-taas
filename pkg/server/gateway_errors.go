@@ -13,16 +13,30 @@ package server
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 
+	apierrors "github.com/go-taas/go-taas/pkg/errors"
 	"github.com/grpc-ecosystem/grpc-gateway/v2/runtime"
 	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
 )
 
 func gatewayErrorHandler(ctx context.Context, mux *runtime.ServeMux, marshaler runtime.Marshaler, w http.ResponseWriter, r *http.Request, err error) {
-	// Delegate to the default renderer; it serializes the gRPC status
-	// (code + message) as JSON, which matches the unified envelope.
+	// Input errors answer 400 with the business code and message preserved;
+	// everything else delegates to the default renderer, which serializes
+	// the gRPC status as the unified envelope.
+	if st, ok := status.FromError(err); ok && isClientInputCode(int32(st.Code())) { //nolint:gosec // G115: business codes are small positive ints
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusBadRequest)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"code":    int32(st.Code()), //nolint:gosec // G115: business codes are small positive ints
+			"message": st.Message(),
+			"details": []any{},
+		})
+		return
+	}
 	runtime.DefaultHTTPErrorHandler(ctx, mux, marshaler, w, r, err)
 }
 
@@ -55,4 +69,19 @@ const pathMetadataKey = "x-request-path"
 // full-verification tests that build their own gateway mux.
 func PathMetadataAnnotator(_ context.Context, r *http.Request) metadata.MD {
 	return metadata.Pairs(pathMetadataKey, r.URL.Path)
+}
+
+// isClientInputCode reports whether a business code means the caller sent
+// malformed input. The gateway answers those with HTTP 400 while keeping the
+// business code and message in the envelope, so the console still shows the
+// precise reason instead of a generic server fault.
+func isClientInputCode(code int32) bool {
+	switch apierrors.Code(code) {
+	case apierrors.CodeImageDigestInvalid,
+		apierrors.CodeImageReferenceInvalid,
+		apierrors.CodeCompatibilityDimensionInvalid,
+		apierrors.CodeCompatibilityStatusInvalid:
+		return true
+	}
+	return false
 }
