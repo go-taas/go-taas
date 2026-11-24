@@ -20,7 +20,7 @@ import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 import ModelUploadTasksDrawer from '../components/ModelUploadTasksDrawer';
 import ModelCachesPage from './ModelCachesPage';
 import ModelTransfersPage from './ModelTransfersPage';
-import ModelUploadDrawer from '../components/ModelUploadDrawer';
+import ModelUploadPanel from '../components/ModelUploadPanel';
 import { StorageBackendSelect } from '../components/StorageBackendSelect';
 
 
@@ -204,11 +204,16 @@ export default function ModelsPage() {
                 className="secondary"
                 data-testid="open-model-upload"
                 onClick={() => {
+                  if (uploadOpen) {
+                    setUploadOpen(false);
+                    setResumeUpload(null);
+                    return;
+                  }
                   setResumeUpload(null);
                   setUploadOpen(true);
                 }}
               >
-                {t('models.upload.open')}
+                {uploadOpen ? t('models.upload.hide') : t('models.upload.open')}
               </button>
               <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
                 {t('models.register')}
@@ -222,16 +227,14 @@ export default function ModelsPage() {
             </div>
           )}
 
-          <ModelUploadTasksDrawer
-            defaultOpen={false}
-            onResume={(session) => {
-              setResumeUpload(session);
-              setUploadOpen(true);
-            }}
-          />
-
-          {uploadOpen && (
-            <ModelUploadDrawer
+          {/* Kept mounted while collapsed: the panel is only a view, so hiding it
+              must not abort a running transfer — collapsing then reopening shows
+              the progress again. */}
+          <div
+            className="downloads-section"
+            style={{ display: uploadOpen ? undefined : 'none' }}
+          >
+            <ModelUploadPanel
               resume={resumeUpload || undefined}
               onClose={() => {
                 setUploadOpen(false);
@@ -244,7 +247,16 @@ export default function ModelsPage() {
                 void load();
               }}
             />
-          )}
+          </div>
+
+
+          <ModelUploadTasksDrawer
+            defaultOpen={false}
+            onResume={(session) => {
+              setResumeUpload(session);
+              setUploadOpen(true);
+            }}
+          />
 
           <div className="panel">
             {loading ? (

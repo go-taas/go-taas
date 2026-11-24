@@ -1,15 +1,16 @@
-// Upload a model from the operator's own disk, in a right-side drawer.
+// Upload a model from the operator's own disk, in a panel that expands below the
+// catalog toolbar exactly like the download panel above it.
 //
-// The catalog could only be filled from a public hub before this drawer: the
+// The catalog could only be filled from a public hub before this panel: the
 // download panel fetched weights from ModelScope or HuggingFace. A fine-tuned
 // checkpoint, an offline installation or a model no hub carries had no way in,
 // so this is that way: pick an archive of the model directory, say what to call
 // it, and the platform streams it to the weights filesystem, extracts it and
 // registers the catalog entry.
 //
-// It is a drawer rather than a modal so it matches the model list's other
-// secondary surfaces: the catalog stays visible while an operator fills the
-// form, and a long transfer cannot trap them behind an overlay.
+// It expands in place rather than opening a modal so an operator keeps the
+// catalog in view while filling the form, and a long transfer cannot trap them
+// behind an overlay.
 //
 // The transfer is resumable and chunked rather than one long request. The
 // client asks the server to create an upload session (so the server fixes the
@@ -72,7 +73,7 @@ function sizeLabel(bytes: number): string {
   return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-export default function UploadModelDrawer({ onClose, onDone, resume }: Props) {
+export default function ModelUploadPanel({ onClose, onDone, resume }: Props) {
   const { t } = useI18n();
   // A resumed upload only needs the archive; its catalog metadata is already
   // stored on the session being resumed, so the picker is the only editable field.
@@ -432,7 +433,18 @@ export default function UploadModelDrawer({ onClose, onDone, resume }: Props) {
       // dialog stays open and retryable.
       const outcome = await waitForOutcome(session.uploadId);
       if (cancelledRef.current) return;
-      if (outcome === 'succeeded') onDone();
+      if (outcome === 'succeeded') {
+        // The panel stays mounted while collapsed, so clear the finished form
+        // rather than leaving the previous archive selected for the next one.
+        setFile(null);
+        setName('');
+        setHubModelId('');
+        setDescription('');
+        setStorageBackend('');
+        setProgress(0);
+        setPhase('idle');
+        onDone();
+      }
     } catch (e) {
       if (cancelledRef.current) return;
       setError(e instanceof Error ? e.message : t('models.upload.failed'));
@@ -454,22 +466,10 @@ export default function UploadModelDrawer({ onClose, onDone, resume }: Props) {
   const showCancel = submitting && phase === 'uploading' && !cancelled;
 
   return (
-    <div className="dialog-backdrop" data-testid="upload-model-backdrop">
-      <div className="dialog drawer" data-testid="upload-model-drawer">
-        <div className="page-header">
-          <div>
-            <h2>{t('models.upload.title')}</h2>
-            <div className="subtitle">{t('models.upload.drawerSubtitle')}</div>
-          </div>
-          <button
-            className="secondary"
-            data-testid="upload-model-close"
-            onClick={requestClose}
-            disabled={submitting}
-          >
-            {t('common.close')}
-          </button>
-        </div>
+    <section data-testid="model-upload-panel">
+      <div className="panel" style={{ marginBottom: 16 }} data-testid="upload-model-form">
+      <h2>{t('models.upload.title')}</h2>
+      <div className="subtitle" style={{ marginBottom: 12 }}>{t('models.upload.subtitle')}</div>
       <p className="muted">{resuming ? t('models.upload.resumeHint') : t('models.upload.hint')}</p>
       <FormLegend testId="upload-model-legend" />
       <FormSection
@@ -623,6 +623,6 @@ export default function UploadModelDrawer({ onClose, onDone, resume }: Props) {
         </button>
       </div>
       </div>
-    </div>
+    </section>
   );
 }

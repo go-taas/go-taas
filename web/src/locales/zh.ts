@@ -4202,7 +4202,8 @@ export const zh: Record<string, string> = {
   'storageBackends.nodeCacheTitle': '节点缓存需要两步配置',
   'storageBackends.nodeCacheBody': '先在存储后端允许缓存交付，再让预热节点组覆盖目标节点。在“模型 > 预热”发起复制，并在“模型 > 预热 > 节点”查看控制器上报的进度',
 
-  'models.upload.drawerSubtitle': '上传本地模型压缩包，支持断点续传',
+  'models.upload.subtitle': '上传本地模型压缩包，解压后注册到模型列表，支持断点续传',
+  'models.upload.hide': '收起本地上传',
   'models.upload.resumeHint': '这是上次中断的上传。请重新选择同一个压缩包：已上传的分片会保留，只补传剩余部分。',
   'models.upload.resumeUnavailable': '该上传会话当前状态为 {state}，无法继续',
   'models.upload.resumeSizeMismatch': '所选文件为 {actual}，与中断前的大小 {expected} 不一致，请选择同一个压缩包',
