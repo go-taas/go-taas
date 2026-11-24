@@ -1,9 +1,14 @@
-// Model uploads drawer: lists historical resumable upload sessions alongside
-// the catalog, matching the model-downloads panel. Unlike downloads (which run
-// entirely server-side) an upload session is driven in part by the browser it
-// started in, so the drawer is a place the operator returns to: it shows what
-// is still unpacking on the server, what succeeded into the catalog, and what
-// failed with the server's reason.
+// Model uploads task list: the resumable upload sessions of this console.
+//
+// It is embedded in ModelUploadPanel (embedded=true) so the local upload panel
+// shows both the form and its sessions, the way the download panel shows its
+// form and downloads. The standalone section mode is kept for pages that want
+// the list on its own, and is what its section header and toggle render.
+//
+// Unlike downloads (which run entirely server-side) an upload session is driven
+// in part by the browser it started in, so the list is a place the operator
+// returns to: it shows what is still unpacking on the server, what succeeded
+// into the catalog, and what failed with the server's reason.
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { navigate } from '../router';
@@ -29,15 +34,23 @@ interface ListResponse {
 
 export default function ModelUploadTasksDrawer({
   defaultOpen = false,
+  embedded = false,
+  active = true,
   onResume,
 }: {
   defaultOpen?: boolean;
+  // embedded drops the standalone section header and toggle: the upload panel
+  // owns them and shows this list inside itself, so the two cannot drift apart.
+  embedded?: boolean;
+  // active is false while the containing panel is collapsed; the list then
+  // stops loading and polling until it is shown again.
+  active?: boolean;
   // onResume hands an interrupted session back to the page, which opens the
-  // upload drawer on it so the operator can pick the same archive and continue.
+  // upload panel on it so the operator can pick the same archive and continue.
   onResume?: (session: ModelUploadSession) => void;
 }) {
   const { t } = useI18n();
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(defaultOpen || embedded);
   const [uploads, setUploads] = useState<ModelUploadSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -96,10 +109,11 @@ export default function ModelUploadTasksDrawer({
     [jsonRequest, t],
   );
 
+  const visible = embedded || open;
   useEffect(() => {
-    if (!open) return;
+    if (!visible || !active) return;
     void load();
-  }, [open, load]);
+  }, [visible, active, load]);
 
   // Poll while any session is still live so progress and the outcome advance.
   // The interval is cleared as soon as every session reached a terminal state.
@@ -108,13 +122,13 @@ export default function ModelUploadTasksDrawer({
     [uploads],
   );
   useEffect(() => {
-    if (!open || !hasActive) return undefined;
+    if (!visible || !active || !hasActive) return undefined;
     pollRef.current = window.setInterval(() => void load(true), 3000);
     return () => {
       if (pollRef.current !== null) window.clearInterval(pollRef.current);
       pollRef.current = null;
     };
-  }, [open, hasActive, load]);
+  }, [visible, active, hasActive, load]);
 
   const cancel = async (session: ModelUploadSession) => {
     setCancelling((s) => new Set(s).add(session.uploadId));
@@ -138,7 +152,8 @@ export default function ModelUploadTasksDrawer({
   };
 
   return (
-    <section data-testid="model-uploads-panel">
+    <section data-testid={embedded ? "upload-tasks" : "model-uploads-panel"}>
+      {!embedded && (
       <div className="section-header">
         <div>
           <h2 style={{ margin: 0 }}>{t('models.uploads.title')}</h2>
@@ -149,10 +164,12 @@ export default function ModelUploadTasksDrawer({
         </button>
       </div>
 
+      )}
+
       {error && <ErrorBanner message={error} />}
 
-      {open && (
-        <div className="panel" data-testid="uploads-list">
+      {visible && (
+        <div className={embedded ? undefined : "panel"} data-testid="uploads-list">
           <h2>{t('models.uploads.jobsTitle')}</h2>
           {loading ? (
             <div className="loading">{t('common.loading')}</div>

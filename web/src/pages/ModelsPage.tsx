@@ -17,7 +17,6 @@ import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, Toast } from '../components';
 import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
-import ModelUploadTasksDrawer from '../components/ModelUploadTasksDrawer';
 import ModelCachesPage from './ModelCachesPage';
 import ModelTransfersPage from './ModelTransfersPage';
 import ModelUploadPanel from '../components/ModelUploadPanel';
@@ -196,7 +195,16 @@ export default function ModelsPage() {
               <button
                 className="secondary"
                 data-testid="open-model-downloads"
-                onClick={() => setDownloadsOpen((open) => !open)}
+                onClick={() => {
+                  setDownloadsOpen((open) => {
+                    const next = !open;
+                    if (next) {
+                      setUploadOpen(false);
+                      setResumeUpload(null);
+                    }
+                    return next;
+                  });
+                }}
               >
                 {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
               </button>
@@ -209,6 +217,7 @@ export default function ModelsPage() {
                     setResumeUpload(null);
                     return;
                   }
+                  setDownloadsOpen(false);
                   setResumeUpload(null);
                   setUploadOpen(true);
                 }}
@@ -235,7 +244,12 @@ export default function ModelsPage() {
             style={{ display: uploadOpen ? undefined : 'none' }}
           >
             <ModelUploadPanel
+              visible={uploadOpen}
               resume={resumeUpload || undefined}
+              onResume={(session) => {
+                setResumeUpload(session);
+                setUploadOpen(true);
+              }}
               onClose={() => {
                 setUploadOpen(false);
                 setResumeUpload(null);
@@ -249,14 +263,6 @@ export default function ModelsPage() {
             />
           </div>
 
-
-          <ModelUploadTasksDrawer
-            defaultOpen={false}
-            onResume={(session) => {
-              setResumeUpload(session);
-              setUploadOpen(true);
-            }}
-          />
 
           <div className="panel">
             {loading ? (

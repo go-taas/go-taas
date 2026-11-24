@@ -31,6 +31,7 @@ import {
 } from '../api';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
+import ModelUploadTasksDrawer from './ModelUploadTasksDrawer';
 import { StorageBackendSelect } from './StorageBackendSelect';
 
 interface Props {
@@ -39,6 +40,12 @@ interface Props {
   // resume continues an interrupted session: the operator picks the same
   // archive again and only the missing parts are sent.
   resume?: ModelUploadSession;
+  // visible reports whether the containing section is expanded; the embedded
+  // task list stops polling while it is collapsed.
+  visible?: boolean;
+  // onResume hands an interrupted session to the page so the editor can pick
+  // the same archive and continue.
+  onResume?: (session: ModelUploadSession) => void;
 }
 
 // ARCHIVE_ACCEPT is what the file picker offers. The server decides the format
@@ -73,7 +80,13 @@ function sizeLabel(bytes: number): string {
   return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-export default function ModelUploadPanel({ onClose, onDone, resume }: Props) {
+export default function ModelUploadPanel({
+  onClose,
+  onDone,
+  resume,
+  visible = true,
+  onResume,
+}: Props) {
   const { t } = useI18n();
   // A resumed upload only needs the archive; its catalog metadata is already
   // stored on the session being resumed, so the picker is the only editable field.
@@ -154,6 +167,21 @@ export default function ModelUploadPanel({ onClose, onDone, resume }: Props) {
     window.addEventListener('pagehide', onPageHide);
     return () => window.removeEventListener('pagehide', onPageHide);
   }, [submitting]);
+
+  // resume may arrive while the panel is already open: clicking resume on a
+  // row of the embedded task list hands the session to this already-mounted
+  // editor, so refill it here instead of only in the initial state.
+  useEffect(() => {
+    if (!resume) return;
+    setName(resume.name || '');
+    setHubModelId(resume.hubModelId || '');
+    setDescription(resume.description || '');
+    setStorageBackend(resume.storageBackend || '');
+    setFile(null);
+    setError('');
+    setProgress(0);
+    setPhase('idle');
+  }, [resume?.uploadId]);
 
   // A picked file fills the name when the operator has not typed one: the
   // archive usually carries the model's name, and asking twice is noise.
@@ -622,6 +650,11 @@ export default function ModelUploadPanel({ onClose, onDone, resume }: Props) {
           {submitting ? t('models.upload.submitting') : t('models.upload.submit')}
         </button>
       </div>
+      <ModelUploadTasksDrawer
+        embedded
+        active={visible}
+        onResume={onResume}
+      />
       </div>
     </section>
   );
