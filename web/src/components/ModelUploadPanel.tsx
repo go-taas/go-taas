@@ -30,6 +30,7 @@ import {
   type ModelUploadSession,
 } from '../api';
 import { useI18n } from '../i18n';
+import { ErrorBanner } from '../components';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 import ModelUploadTasksDrawer from './ModelUploadTasksDrawer';
 import { StorageBackendSelect } from './StorageBackendSelect';
@@ -98,8 +99,13 @@ export default function ModelUploadPanel({
   const [storageBackend, setStorageBackend] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  // progress and phase drive the uploading bar and the extracting label.
-  const [progress, setProgress] = useState(0);
+  // formOpen folds the form away after a successful submit so the upload list
+  // is what the operator watches while bytes move; it reopens from the header.
+  const [formOpen, setFormOpen] = useState(true);
+  // listRefresh bumps when a session is created or ends so the embedded list
+  // reloads and starts polling the new row at once.
+  const [listRefresh, setListRefresh] = useState(0);
+  // phase drives the extracting label; the progress bar lives in the list.
   const [phase, setPhase] = useState<'idle' | 'uploading' | 'processing'>('idle');
   const [cancelled, setCancelled] = useState(false);
 
@@ -179,9 +185,14 @@ export default function ModelUploadPanel({
     setStorageBackend(resume.storageBackend || '');
     setFile(null);
     setError('');
-    setProgress(0);
     setPhase('idle');
   }, [resume?.uploadId]);
+
+  // Reopen the form whenever the panel is expanded again, so a finished
+  // upload does not leave the header toggle looking inert.
+  useEffect(() => {
+    if (visible && !submitting) setFormOpen(true);
+  }, [visible]);
 
   // A picked file fills the name when the operator has not typed one: the
   // archive usually carries the model's name, and asking twice is noise.
@@ -249,16 +260,6 @@ export default function ModelUploadPanel({
       if (!received.has(n)) missing.push(n);
     }
 
-    // The server's byte count is the baseline; every uploaded part adds its
-    // own byte length, so a restarted session's progress includes the parts
-    // that already arrived before this dialog opened.
-    let uploaded = session.bytesReceived || 0;
-    const bump = (bytes: number) => {
-      uploaded += bytes;
-      const clamped = Math.min(uploaded, totalBytes);
-      setProgress(Math.round((clamped / totalBytes) * 100));
-    };
-
     const sendPart = (n: number) =>
       new Promise<void>((resolve, reject) => {
         const start = (n - 1) * part;
@@ -276,7 +277,6 @@ export default function ModelUploadPanel({
           }
           activeXhrsRef.current.delete(xhr);
           if (xhr.status >= 200 && xhr.status < 300) {
-            bump(blob.size);
             resolve();
             return;
           }
@@ -403,9 +403,10 @@ export default function ModelUploadPanel({
       setError(t('models.validationHubModelId'));
       return;
     }
+    setFormOpen(false);
+    uploadIdRef.current = '';
     setSubmitting(true);
     setError('');
-    setProgress(0);
     setCancelled(false);
     cancelledRef.current = false;
     activeRef.current = true;
@@ -446,6 +447,7 @@ export default function ModelUploadPanel({
         });
       }
       uploadIdRef.current = session.uploadId;
+      setListRefresh((n) => n + 1);
 
       // 2. Stream every missing part (resume-aware), with dashboard progress.
       await uploadParts(session, file);
@@ -469,7 +471,6 @@ export default function ModelUploadPanel({
         setHubModelId('');
         setDescription('');
         setStorageBackend('');
-        setProgress(0);
         setPhase('idle');
         onDone();
       }
@@ -477,27 +478,40 @@ export default function ModelUploadPanel({
       if (cancelledRef.current) return;
       setError(e instanceof Error ? e.message : t('models.upload.failed'));
       setPhase('idle');
+      // A submit that never created a session has nothing to show in the list,
+      // so bring the form back with the reason instead of leaving only a banner.
+      if (!uploadIdRef.current) setFormOpen(true);
     } finally {
       activeRef.current = false;
       if (!cancelledRef.current) setSubmitting(false);
+      setListRefresh((n) => n + 1);
     }
   };
 
-  // Close is disabled while a transfer is running so the operator cannot lose
-  // a half-done upload to a stray click; the explicit Cancel handles that.
-  const requestClose = () => {
-    if (submitting) return;
-    onClose();
-  };
-
-  const showProgress = submitting && phase !== 'idle';
   const showCancel = submitting && phase === 'uploading' && !cancelled;
 
   return (
     <section data-testid="model-upload-panel">
+      <div className="section-header">
+        <div>
+          <h2 style={{ margin: 0 }}>{t('models.upload.title')}</h2>
+          <div className="subtitle">{t('models.upload.subtitle')}</div>
+        </div>
+        <button
+          className={formOpen ? 'secondary' : undefined}
+          data-testid="toggle-upload-form"
+          onClick={() => setFormOpen((open) => !open)}
+          disabled={submitting}
+        >
+          {formOpen ? t('common.cancel') : t('models.upload.open')}
+        </button>
+      </div>
+
+      {!formOpen && error && <ErrorBanner message={error} />}
+
+      {formOpen && (
       <div className="panel" style={{ marginBottom: 16 }} data-testid="upload-model-form">
-      <h2>{t('models.upload.title')}</h2>
-      <div className="subtitle" style={{ marginBottom: 12 }}>{t('models.upload.subtitle')}</div>
+      <h2>{t('models.upload.formTitle')}</h2>
       <p className="muted">{resuming ? t('models.upload.resumeHint') : t('models.upload.hint')}</p>
       <FormLegend testId="upload-model-legend" />
       <FormSection
@@ -598,25 +612,10 @@ export default function ModelUploadPanel({
         </div>
       </FormSection>
 
-      {showProgress && (
-        <div style={{ marginBottom: 12 }} data-testid="upload-model-progress">
-          <div className="progress-bar">
-            <div
-              className="progress-fill"
-              style={{ width: `${phase === 'processing' ? 100 : progress}%` }}
-            />
-          </div>
-          <div className="field-hint">
-            {phase === 'processing'
-              ? t('models.upload.extracting')
-              : t('models.upload.progress', { percent: String(progress) })}
-          </div>
-        </div>
-      )}
 
       {error && <div className="field-error">{error}</div>}
 
-      <div className="dialog-actions">
+      <div className="deploy-actions">
         <RequiredStatus
           missing={[
             !file && t('models.upload.archive'),
@@ -636,7 +635,7 @@ export default function ModelUploadPanel({
           <button
             className="secondary"
             data-testid="upload-model-cancel"
-            onClick={requestClose}
+            onClick={() => setFormOpen(false)}
             disabled={submitting}
           >
             {t('common.cancel')}
@@ -650,12 +649,15 @@ export default function ModelUploadPanel({
           {submitting ? t('models.upload.submitting') : t('models.upload.submit')}
         </button>
       </div>
+      </div>
+      )}
+
       <ModelUploadTasksDrawer
         embedded
         active={visible}
+        refreshKey={listRefresh}
         onResume={onResume}
       />
-      </div>
     </section>
   );
 }

@@ -4204,6 +4204,7 @@ export const zh: Record<string, string> = {
 
   'models.upload.subtitle': '上传本地模型压缩包，解压后注册到模型列表，支持断点续传',
   'models.upload.hide': '收起本地上传',
+  'models.upload.formTitle': '上传本地模型',
   'models.upload.resumeHint': '这是上次中断的上传。请重新选择同一个压缩包：已上传的分片会保留，只补传剩余部分。',
   'models.upload.resumeUnavailable': '该上传会话当前状态为 {state}，无法继续',
   'models.upload.resumeSizeMismatch': '所选文件为 {actual}，与中断前的大小 {expected} 不一致，请选择同一个压缩包',

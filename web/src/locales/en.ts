@@ -4240,6 +4240,7 @@ export const en: Record<string, string> = {
 
   'models.upload.subtitle': 'Upload a local model archive; it is extracted into the shared weights storage and registered in the catalog, resumable after an interruption.',
   'models.upload.hide': 'Hide local upload',
+  'models.upload.formTitle': 'Upload a local model',
   'models.upload.resumeHint': 'This upload was interrupted. Pick the same archive again: the parts already on the server are kept and only the rest is sent.',
   'models.upload.resumeUnavailable': 'This upload session is {state} and cannot be continued',
   'models.upload.resumeSizeMismatch': 'The selected archive is {actual}, not the {expected} the interrupted upload expects. Pick the same archive.',

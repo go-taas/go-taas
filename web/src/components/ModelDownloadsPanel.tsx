@@ -114,6 +114,8 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
       setName('');
       setDescription('');
       setOffset(0);
+      // A started download folds the form away so the job list takes the stage.
+      setFormOpen(false);
       await load();
     } catch (e) {
       setFormError(

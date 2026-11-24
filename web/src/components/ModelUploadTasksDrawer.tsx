@@ -36,6 +36,7 @@ export default function ModelUploadTasksDrawer({
   defaultOpen = false,
   embedded = false,
   active = true,
+  refreshKey = 0,
   onResume,
 }: {
   defaultOpen?: boolean;
@@ -45,6 +46,7 @@ export default function ModelUploadTasksDrawer({
   // active is false while the containing panel is collapsed; the list then
   // stops loading and polling until it is shown again.
   active?: boolean;
+  refreshKey?: number;
   // onResume hands an interrupted session back to the page, which opens the
   // upload panel on it so the operator can pick the same archive and continue.
   onResume?: (session: ModelUploadSession) => void;
@@ -115,6 +117,14 @@ export default function ModelUploadTasksDrawer({
     void load();
   }, [visible, active, load]);
 
+  // The form that embeds this list bumps refreshKey when a session starts or
+  // ends, so the new row shows up (and its progress starts moving) at once
+  // instead of waiting for the next poll tick.
+  useEffect(() => {
+    if (!active) return;
+    void load(true);
+  }, [refreshKey]);
+
   // Poll while any session is still live so progress and the outcome advance.
   // The interval is cleared as soon as every session reached a terminal state.
   const hasActive = useMemo(
@@ -169,7 +179,7 @@ export default function ModelUploadTasksDrawer({
       {error && <ErrorBanner message={error} />}
 
       {visible && (
-        <div className={embedded ? undefined : "panel"} data-testid="uploads-list">
+        <div className="panel" data-testid="uploads-list">
           <h2>{t('models.uploads.jobsTitle')}</h2>
           {loading ? (
             <div className="loading">{t('common.loading')}</div>
