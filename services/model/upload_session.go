@@ -222,6 +222,22 @@ func (s *Service) uploadPartRow(ctx context.Context, req uploadPartRequest) (str
 	if err != nil {
 		return "", err
 	}
+	// A resumed session re-sends the part it was in the middle of when the page
+	// went away. That part is already in the staging store, so keep the stored
+	// copy: storing it again would count its bytes twice and inflate progress.
+	if row.State == UploadStateInterrupted {
+		parts, listErr := remote.ListUploadedParts(ctx, row.ObjectKey, row.UploadID)
+		if listErr != nil {
+			return "", apierrors.Newf(apierrors.CodeModelPathInvalid,
+				"model: could not list uploaded parts: %v", listErr)
+		}
+		for _, stored := range parts {
+			if stored == req.PartNumber {
+				s.updateUploadState(ctx, row.ID, UploadStateUploading, "")
+				return "", nil
+			}
+		}
+	}
 	etag, err := remote.UploadPart(ctx, row.ObjectKey, row.UploadID, req.PartNumber, req.Body, req.Size)
 	if err != nil {
 		return "", apierrors.Newf(apierrors.CodeModelPathInvalid,
