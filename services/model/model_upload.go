@@ -4,13 +4,14 @@ import "time"
 
 // UploadSessionState values for a chunked model upload.
 const (
-	UploadStateCreating   = "creating"
-	UploadStateUploading  = "uploading"
-	UploadStateCompleting = "completing"
-	UploadStateProcessing = "processing" // handed to a transfer Job
-	UploadStateSucceeded  = "succeeded"
-	UploadStateFailed     = "failed"
-	UploadStateCancelled  = "cancelled"
+	UploadStateCreating    = "creating"
+	UploadStateUploading   = "uploading"
+	UploadStateCompleting  = "completing"
+	UploadStateProcessing  = "processing"  // handed to a transfer Job
+	UploadStateInterrupted = "interrupted" // the browser stopped driving it
+	UploadStateSucceeded   = "succeeded"
+	UploadStateFailed      = "failed"
+	UploadStateCancelled   = "cancelled"
 )
 
 // ModelUpload is the GORM model of the model_uploads table: one chunked model

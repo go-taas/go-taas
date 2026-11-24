@@ -41,6 +41,25 @@ type uploadPartRequest struct {
 	Size       int64
 }
 
+// uploadStaleAfter is how long an active session may go without the browser
+// touching it before the console reports it as interrupted. The browser marks
+// the session on page unload, so this is the fallback for a crash or a killed
+// tab; a live tab refreshes updated_at with every part it sends.
+const uploadStaleAfter = 90 * time.Second
+
+// uploadState is the state the console sees: an active session whose browser
+// is gone reads as interrupted rather than uploading, so the row offers a
+// resume instead of pretending to make progress.
+func uploadState(row *ModelUpload, now time.Time) string {
+	if row.State != UploadStateCreating && row.State != UploadStateUploading {
+		return row.State
+	}
+	if !row.UpdatedAt.IsZero() && now.Sub(row.UpdatedAt) > uploadStaleAfter {
+		return UploadStateInterrupted
+	}
+	return row.State
+}
+
 // stagingRemote builds the RemoteClient for the object-store backend that
 // stages upload chunks. It validates that the backend is an object store.
 func (s *Service) stagingRemote(ctx context.Context) (*storage.RemoteClient, error) {
@@ -187,7 +206,8 @@ func (s *Service) uploadPartRow(ctx context.Context, req uploadPartRequest) (str
 	if err != nil {
 		return "", err
 	}
-	if row.State != UploadStateCreating && row.State != UploadStateUploading {
+	if row.State != UploadStateCreating && row.State != UploadStateUploading &&
+		row.State != UploadStateInterrupted {
 		return "", apierrors.Newf(apierrors.CodeModelPathInvalid,
 			"model: upload is not accepting parts (state %s)", row.State)
 	}
@@ -208,6 +228,11 @@ func (s *Service) uploadPartRow(ctx context.Context, req uploadPartRequest) (str
 			"model: could not store part %d: %v", req.PartNumber, err)
 	}
 	s.addUploadBytes(ctx, row.ID, req.Size)
+	// A part from a resumed session proves the browser is back; stop showing
+	// the resume action as soon as bytes move again.
+	if row.State == UploadStateInterrupted {
+		s.updateUploadState(ctx, row.ID, UploadStateUploading, "")
+	}
 	return etag, nil
 }
 
@@ -226,6 +251,24 @@ func (s *Service) listUploadedPartsRow(ctx context.Context, uploadID string) ([]
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid, "model: %v", err)
 	}
 	return parts, nil
+}
+
+// markUploadInterruptedRow records that the browser driving an upload is gone, so
+// the console offers a resume instead of a frozen progress bar. It is a no-op
+// for a session that already left the uploading states: a late beacon must not
+// clobber a state the upload has since reached.
+func (s *Service) markUploadInterruptedRow(ctx context.Context, uploadID string) error {
+	id := strings.TrimSpace(uploadID)
+	if id == "" {
+		return apierrors.Newf(apierrors.CodeModelPathInvalid, "model: upload id is required")
+	}
+	db, err := s.gormDB()
+	if err != nil {
+		return err
+	}
+	return db.WithContext(ctx).Model(&ModelUpload{}).
+		Where("id = ? AND state IN ?", id, []string{UploadStateCreating, UploadStateUploading}).
+		Updates(map[string]any{"state": UploadStateInterrupted, "updated_at": time.Now().UTC()}).Error
 }
 
 // GetUploadSession returns one row.
@@ -258,7 +301,8 @@ func (s *Service) completeUploadSessionRow(ctx context.Context, uploadID string)
 	if err != nil {
 		return nil, err
 	}
-	if row.State != UploadStateUploading && row.State != UploadStateCreating {
+	if row.State != UploadStateUploading && row.State != UploadStateCreating &&
+		row.State != UploadStateInterrupted {
 		return nil, apierrors.Newf(apierrors.CodeModelPathInvalid,
 			"model: upload is not completeable in state %s", row.State)
 	}

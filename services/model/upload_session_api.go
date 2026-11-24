@@ -3,6 +3,7 @@ package model
 import (
 	"context"
 	"io"
+	"time"
 
 	"github.com/go-taas/go-taas/pkg/server"
 )
@@ -16,7 +17,9 @@ func stringValue(p *string) string {
 	return *p
 }
 
-// modelUploadView projects one session row for the console.
+// modelUploadView projects one session row for the console. The reported state
+// is the one the console should act on: a session whose browser is gone reads
+// as interrupted, so the row offers a resume instead of a frozen progress bar.
 func modelUploadView(row *ModelUpload) *server.ModelUploadSessionView {
 	return &server.ModelUploadSessionView{
 		UploadID:       row.ID,
@@ -28,7 +31,7 @@ func modelUploadView(row *ModelUpload) *server.ModelUploadSessionView {
 		ArchiveName:    row.ArchiveName,
 		TotalBytes:     row.TotalBytes,
 		PartSizeBytes:  row.PartSizeBytes,
-		State:          row.State,
+		State:          uploadState(row, time.Now().UTC()),
 		BytesReceived:  row.BytesReceived,
 		ModelID:        stringValue(row.ModelID),
 		Message:        row.Message,
@@ -89,4 +92,11 @@ func (s *Service) CompleteUploadSession(ctx context.Context, uploadID string) (*
 		return nil, err
 	}
 	return modelUploadView(row), nil
+}
+
+// MarkUploadInterrupted implements server.ModelUploadSessionAPI. The browser
+// calls it when the page goes away mid-upload, so the console shows a resumable
+// task at once instead of waiting for the stale-session fallback.
+func (s *Service) MarkUploadInterrupted(ctx context.Context, uploadID string) error {
+	return s.markUploadInterruptedRow(ctx, uploadID)
 }

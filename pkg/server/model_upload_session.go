@@ -13,6 +13,7 @@
 //	GET  /api/v1/admin/models/uploads/{id}/parts      received part numbers
 //	PUT  /api/v1/admin/models/uploads/{id}/parts/{n}  upload one chunk
 //	POST /api/v1/admin/models/uploads/{id}:complete   finalize + dispatch job
+//	POST /api/v1/admin/models/uploads/{id}:interrupt  mark the browser gone
 //	DELETE /api/v1/admin/models/uploads/{id}          cancel
 //
 // The browser slices the file, PUTs each chunk, and can resume an interrupted
@@ -73,6 +74,9 @@ type ModelUploadSessionAPI interface {
 	ListUploadedParts(ctx context.Context, uploadID string) ([]int, error)
 	UploadPart(ctx context.Context, uploadID string, partNumber int, body io.Reader, size int64) error
 	CompleteUploadSession(ctx context.Context, uploadID string) (*ModelUploadSessionView, error)
+	// MarkUploadInterrupted records that the browser driving the upload is
+	// gone, so the session can be resumed instead of looking stuck.
+	MarkUploadInterrupted(ctx context.Context, uploadID string) error
 	CancelUploadSession(ctx context.Context, uploadID string) error
 }
 
@@ -96,6 +100,7 @@ func (s *commonServer) registerModelUploadSessionRoutes() {
 		{http.MethodGet, "/api/v1/admin/models/uploads/{id}/parts", s.uploadSessionPartsHandler},
 		{http.MethodPut, "/api/v1/admin/models/uploads/{id}/parts/{n}", s.uploadSessionPartHandler},
 		{http.MethodPost, "/api/v1/admin/models/uploads/{id}:complete", s.uploadSessionCompleteHandler},
+		{http.MethodPost, "/api/v1/admin/models/uploads/{id}:interrupt", s.uploadSessionInterruptHandler},
 		{http.MethodDelete, "/api/v1/admin/models/uploads/{id}", s.uploadSessionCancelHandler},
 	}
 	for _, r := range routes {
@@ -209,6 +214,15 @@ func (s *commonServer) uploadSessionCompleteHandler(w http.ResponseWriter, r *ht
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
+}
+
+func (s *commonServer) uploadSessionInterruptHandler(w http.ResponseWriter, r *http.Request) {
+	if err := s.modelUploadSession.MarkUploadInterrupted(r.Context(), param(r, "id")); err != nil {
+		code, message := modelUploadError(err)
+		writeBusinessError(w, code, message)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"interrupted": true})
 }
 
 func (s *commonServer) uploadSessionCancelHandler(w http.ResponseWriter, r *http.Request) {

@@ -4238,4 +4238,10 @@ export const en: Record<string, string> = {
   'storageBackends.nodeCacheTitle': 'Node cache needs two choices',
   'storageBackends.nodeCacheBody': 'Allow cache delivery on the backend, then make a warmup node group cover the target nodes. Start the copy from Models > Warmup; the controller reports progress on Models > Warmup > Nodes.',
 
+  'models.upload.drawerSubtitle': 'Upload a local archive with resumable chunked transfer',
+  'models.upload.resumeHint': 'This upload was interrupted. Pick the same archive again: the parts already on the server are kept and only the rest is sent.',
+  'models.upload.resumeUnavailable': 'This upload session is {state} and cannot be continued',
+  'models.upload.resumeSizeMismatch': 'The selected archive is {actual}, not the {expected} the interrupted upload expects. Pick the same archive.',
+  'models.uploads.resume': 'Resume',
+  'models.uploads.state.interrupted': 'Interrupted',
 };

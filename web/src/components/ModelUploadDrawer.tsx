@@ -1,11 +1,15 @@
-// Upload a model from the operator's own disk.
+// Upload a model from the operator's own disk, in a right-side drawer.
 //
-// The catalog could only be filled from a public hub before this dialog: the
+// The catalog could only be filled from a public hub before this drawer: the
 // download panel fetched weights from ModelScope or HuggingFace. A fine-tuned
 // checkpoint, an offline installation or a model no hub carries had no way in,
 // so this is that way: pick an archive of the model directory, say what to call
 // it, and the platform streams it to the weights filesystem, extracts it and
 // registers the catalog entry.
+//
+// It is a drawer rather than a modal so it matches the model list's other
+// secondary surfaces: the catalog stays visible while an operator fills the
+// form, and a long transfer cannot trap them behind an overlay.
 //
 // The transfer is resumable and chunked rather than one long request. The
 // client asks the server to create an upload session (so the server fixes the
@@ -16,8 +20,8 @@
 // arrived and only re-send the missing ones. After the last part the client
 // calls the complete endpoint and the server unpacks and registers the model.
 
+
 import { useEffect, useRef, useState } from 'react';
-import { Dialog } from '../components';
 import {
   ApiError,
   apiPrefix,
@@ -31,6 +35,9 @@ import { StorageBackendSelect } from './StorageBackendSelect';
 interface Props {
   onClose: () => void;
   onDone: () => void;
+  // resume continues an interrupted session: the operator picks the same
+  // archive again and only the missing parts are sent.
+  resume?: ModelUploadSession;
 }
 
 // ARCHIVE_ACCEPT is what the file picker offers. The server decides the format
@@ -65,8 +72,11 @@ function sizeLabel(bytes: number): string {
   return `${value.toFixed(value >= 10 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
-export default function UploadModelDialog({ onClose, onDone }: Props) {
+export default function UploadModelDrawer({ onClose, onDone, resume }: Props) {
   const { t } = useI18n();
+  // A resumed upload only needs the archive; its catalog metadata is already
+  // stored on the session being resumed, so the picker is the only editable field.
+  const resuming = Boolean(resume);
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [hubModelId, setHubModelId] = useState('');
@@ -87,6 +97,38 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
   // through stale closure state.
   const cancelledRef = useRef(false);
   const pollTimerRef = useRef<number | null>(null);
+  // activeRef mirrors `submitting` for the unmount/pagehide handlers, whose
+  // closures would otherwise see the initial false.
+  const activeRef = useRef(false);
+  // markInterrupted tells the server the browser driving this upload is gone,
+  // so the session turns resumable (a row offers resume) instead of looking
+  // stuck in "uploading" until the stale fallback notices. It must survive the
+  // page going away, so it uses a keepalive request.
+  const markInterrupted = (uploadId: string) => {
+    if (!uploadId) return;
+    const headers: Record<string, string> = {};
+    const authorization = sessionAuthHeader('admin');
+    if (authorization) headers['Authorization'] = authorization;
+    void fetch(`${apiPrefix('admin')}/models/uploads/${uploadId}:interrupt`, {
+      method: 'POST',
+      headers,
+      keepalive: true,
+    }).catch(() => undefined);
+  };
+
+  // Abort any in-flight transfer and stop the completion poll when the dialog
+  // unmounts (the operator closed it another way). Aborting alone would leave
+  // the server row claiming to upload forever, so also mark it interrupted:
+  // the parts it already holds are kept and the row offers resume.
+  useEffect(
+    () => () => {
+      for (const xhr of activeXhrsRef.current) xhr.abort();
+      activeXhrsRef.current.clear();
+      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
+      if (activeRef.current && !cancelledRef.current) markInterrupted(uploadIdRef.current);
+    },
+    [],
+  );
 
   // Abort any in-flight transfer and stop the completion poll when the dialog
   // unmounts (the operator closed it another way).
@@ -98,6 +140,19 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
     },
     [],
   );
+
+  // A real page unload (refresh, tab close, navigation away from the console)
+  // does not always run React cleanup in time, so report the browser is gone
+  // from the page lifecycle hook as well. The keepalive request outlives the
+  // page and turns the session resumable at once.
+  useEffect(() => {
+    if (!submitting) return undefined;
+    const onPageHide = () => {
+      if (!cancelledRef.current) markInterrupted(uploadIdRef.current);
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => window.removeEventListener('pagehide', onPageHide);
+  }, [submitting]);
 
   // A picked file fills the name when the operator has not typed one: the
   // archive usually carries the model's name, and asking twice is noise.
@@ -324,18 +379,43 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
     setProgress(0);
     setCancelled(false);
     cancelledRef.current = false;
+    activeRef.current = true;
     setPhase('uploading');
 
     try {
-      // 1. Create the session; the server answers with the chunk size.
-      const session = await jsonRequest<ModelUploadSession>('POST', '/models/uploads', {
-        name: name.trim(),
-        hubModelId: hubModelId.trim(),
-        description: description.trim(),
-        storageBackend,
-        archiveName: file.name,
-        totalBytes: file.size,
-      });
+      // 1. Create the session, or re-read the interrupted one being resumed;
+      // the server answers with the chunk size the archive is cut at.
+      let session: ModelUploadSession;
+      if (resume) {
+        session = await jsonRequest<ModelUploadSession>(
+          'GET',
+          `/models/uploads/${resume.uploadId}`,
+        );
+        if (!['creating', 'uploading', 'interrupted'].includes(session.state)) {
+          setError(t('models.upload.resumeUnavailable', { state: session.state }));
+          setPhase('idle');
+          return;
+        }
+        if (session.totalBytes > 0 && file.size !== session.totalBytes) {
+          setError(
+            t('models.upload.resumeSizeMismatch', {
+              expected: sizeLabel(session.totalBytes),
+              actual: sizeLabel(file.size),
+            }),
+          );
+          setPhase('idle');
+          return;
+        }
+      } else {
+        session = await jsonRequest<ModelUploadSession>('POST', '/models/uploads', {
+          name: name.trim(),
+          hubModelId: hubModelId.trim(),
+          description: description.trim(),
+          storageBackend,
+          archiveName: file.name,
+          totalBytes: file.size,
+        });
+      }
       uploadIdRef.current = session.uploadId;
 
       // 2. Stream every missing part (resume-aware), with dashboard progress.
@@ -358,6 +438,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
       setError(e instanceof Error ? e.message : t('models.upload.failed'));
       setPhase('idle');
     } finally {
+      activeRef.current = false;
       if (!cancelledRef.current) setSubmitting(false);
     }
   };
@@ -373,8 +454,23 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
   const showCancel = submitting && phase === 'uploading' && !cancelled;
 
   return (
-    <Dialog title={t('models.upload.title')} onClose={requestClose} testId="upload-model-dialog">
-      <p className="muted">{t('models.upload.hint')}</p>
+    <div className="dialog-backdrop" data-testid="upload-model-backdrop">
+      <div className="dialog drawer" data-testid="upload-model-drawer">
+        <div className="page-header">
+          <div>
+            <h2>{t('models.upload.title')}</h2>
+            <div className="subtitle">{t('models.upload.drawerSubtitle')}</div>
+          </div>
+          <button
+            className="secondary"
+            data-testid="upload-model-close"
+            onClick={requestClose}
+            disabled={submitting}
+          >
+            {t('common.close')}
+          </button>
+        </div>
+      <p className="muted">{resuming ? t('models.upload.resumeHint') : t('models.upload.hint')}</p>
       <FormLegend testId="upload-model-legend" />
       <FormSection
         step={1}
@@ -426,7 +522,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
               data-testid="upload-model-name"
               value={name}
               maxLength={128}
-              disabled={submitting}
+              disabled={submitting || resuming}
               onChange={(e) => setName(e.target.value)}
               placeholder={t('models.upload.namePlaceholder')}
             />
@@ -443,7 +539,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
               data-testid="upload-model-hub-id"
               value={hubModelId}
               maxLength={255}
-              disabled={submitting}
+              disabled={submitting || resuming}
               onChange={(e) => setHubModelId(e.target.value)}
               placeholder={t('models.placeholderHubModelId')}
             />
@@ -454,7 +550,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
             testId="upload-storage-backend"
             value={storageBackend}
             onChange={setStorageBackend}
-            disabled={submitting}
+            disabled={submitting || resuming}
           />
           <div className="form-field full">
             <FieldLabel
@@ -467,7 +563,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
               data-testid="upload-model-description"
               value={description}
               maxLength={1024}
-              disabled={submitting}
+              disabled={submitting || resuming}
               onChange={(e) => setDescription(e.target.value)}
             />
           </div>
@@ -526,6 +622,7 @@ export default function UploadModelDialog({ onClose, onDone }: Props) {
           {submitting ? t('models.upload.submitting') : t('models.upload.submit')}
         </button>
       </div>
-    </Dialog>
+      </div>
+    </div>
   );
 }

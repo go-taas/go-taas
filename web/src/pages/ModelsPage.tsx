@@ -4,7 +4,14 @@
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { navigate } from '../router';
-import { api, ApiError, formatTime, type ModelSummary, type PageMeta } from '../api';
+import {
+  api,
+  ApiError,
+  formatTime,
+  type ModelSummary,
+  type ModelUploadSession,
+  type PageMeta,
+} from '../api';
 import { useOrg } from '../org';
 import { useI18n } from '../i18n';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
@@ -13,7 +20,7 @@ import ModelDownloadsPanel from '../components/ModelDownloadsPanel';
 import ModelUploadTasksDrawer from '../components/ModelUploadTasksDrawer';
 import ModelCachesPage from './ModelCachesPage';
 import ModelTransfersPage from './ModelTransfersPage';
-import UploadModelDialog from '../components/UploadModelDialog';
+import ModelUploadDrawer from '../components/ModelUploadDrawer';
 import { StorageBackendSelect } from '../components/StorageBackendSelect';
 
 
@@ -56,6 +63,9 @@ export default function ModelsPage() {
   // A local archive upload: the same catalog, filled from the operator's
   // own disk instead of a public hub.
   const [uploadOpen, setUploadOpen] = useState(false);
+  // resumeUpload is an interrupted session the operator asked to continue; the
+  // drawer prefills from it and only sends the parts the server is missing.
+  const [resumeUpload, setResumeUpload] = useState<ModelUploadSession | null>(null);
   // A row-level warm shortcut hands the model to the warmup tab, which opens
   // its dialog preselected; the value is consumed once that tab mounts.
   const [warmModelId, setWarmModelId] = useState('');
@@ -190,7 +200,14 @@ export default function ModelsPage() {
               >
                 {downloadsOpen ? t('models.downloads.hide') : t('models.downloads.open')}
               </button>
-              <button className="secondary" data-testid="open-model-upload" onClick={() => setUploadOpen(true)}>
+              <button
+                className="secondary"
+                data-testid="open-model-upload"
+                onClick={() => {
+                  setResumeUpload(null);
+                  setUploadOpen(true);
+                }}
+              >
                 {t('models.upload.open')}
               </button>
               <button data-testid="register-model" onClick={() => setRegisterOpen(true)}>
@@ -205,13 +222,24 @@ export default function ModelsPage() {
             </div>
           )}
 
-          <ModelUploadTasksDrawer defaultOpen={false} />
+          <ModelUploadTasksDrawer
+            defaultOpen={false}
+            onResume={(session) => {
+              setResumeUpload(session);
+              setUploadOpen(true);
+            }}
+          />
 
           {uploadOpen && (
-            <UploadModelDialog
-              onClose={() => setUploadOpen(false)}
+            <ModelUploadDrawer
+              resume={resumeUpload || undefined}
+              onClose={() => {
+                setUploadOpen(false);
+                setResumeUpload(null);
+              }}
               onDone={() => {
                 setUploadOpen(false);
+                setResumeUpload(null);
                 setNotice(t('models.upload.success'));
                 void load();
               }}

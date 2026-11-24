@@ -59,6 +59,12 @@ func (s *stubUploadAPI) CompleteUploadSession(_ context.Context, _ string) (*Mod
 	s.mu.Unlock()
 	return s.createView, nil
 }
+func (s *stubUploadAPI) MarkUploadInterrupted(_ context.Context, _ string) error {
+	s.mu.Lock()
+	s.last = "interrupt"
+	s.mu.Unlock()
+	return nil
+}
 func (s *stubUploadAPI) CancelUploadSession(_ context.Context, _ string) error {
 	s.mu.Lock()
 	s.last = "cancel"
@@ -111,4 +117,25 @@ func TestUploadSessionPartRoute(t *testing.T) {
 	last := api.last
 	api.mu.Unlock()
 	assert.Equal(t, "part", last, "PUT part must dispatch to the part handler")
+}
+
+// TestUploadSessionInterruptRoute proves the unload beacon reaches the
+// interrupt handler: that call is what turns a refreshed page into a resumable
+// task instead of a progress bar that never moves again.
+func TestUploadSessionInterruptRoute(t *testing.T) {
+	api := &stubUploadAPI{}
+	srv, err := NewServer(&Options{Name: "test", ServicePort: 1, MonitorPort: 2, EnableGateway: true, GatewayPort: 3})
+	require.NoError(t, err)
+	srv.SetModelUploadSession(api)
+	cs := srv.(*commonServer)
+	cs.gatewayMux = runtime.NewServeMux()
+	cs.registerModelUploadSessionRoutes()
+	mux := cs.gatewayMux
+
+	mux.ServeHTTP(httptest.NewRecorder(), httptest.NewRequest(http.MethodPost,
+		"/api/v1/admin/models/uploads/abc-123:interrupt", nil))
+	api.mu.Lock()
+	last := api.last
+	api.mu.Unlock()
+	assert.Equal(t, "interrupt", last)
 }

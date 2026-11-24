@@ -19,11 +19,23 @@ const ACTIVE_STATES = ['creating', 'uploading', 'completing', 'processing'];
 // CANCELLABLE_STATES are the states an operator may still stop from here.
 const CANCELLABLE_STATES = ['uploading', 'processing'];
 
+// RESUMABLE_STATES are the states whose bytes are still on the server and can
+// be continued by picking the same archive again.
+const RESUMABLE_STATES = ['interrupted'];
+
 interface ListResponse {
   uploads?: ModelUploadSession[];
 }
 
-export default function ModelUploadTasksDrawer({ defaultOpen = false }: { defaultOpen?: boolean }) {
+export default function ModelUploadTasksDrawer({
+  defaultOpen = false,
+  onResume,
+}: {
+  defaultOpen?: boolean;
+  // onResume hands an interrupted session back to the page, which opens the
+  // upload drawer on it so the operator can pick the same archive and continue.
+  onResume?: (session: ModelUploadSession) => void;
+}) {
   const { t } = useI18n();
   const [open, setOpen] = useState(defaultOpen);
   const [uploads, setUploads] = useState<ModelUploadSession[]>([]);
@@ -196,18 +208,35 @@ export default function ModelUploadTasksDrawer({ defaultOpen = false }: { defaul
                       </td>
                       <td>{formatTime(session.createdAt)}</td>
                       <td>
-                        {CANCELLABLE_STATES.includes(session.state) && (
+                        {(CANCELLABLE_STATES.includes(session.state) ||
+                          RESUMABLE_STATES.includes(session.state)) && (
                           <RowActionsMenu
                             label={t('common.actionsFor', { name: session.name })}
                             testId={`upload-actions-${session.uploadId}`}
                             actions={[
-                              {
-                                key: `cancel-${session.uploadId}`,
-                                label: t('models.uploads.cancel'),
-                                danger: true,
-                                disabled: cancelling.has(session.uploadId),
-                                onClick: () => void cancel(session),
-                              },
+                              // An interrupted session keeps its parts on the
+                              // server, so resuming it only sends the missing
+                              // chunks instead of starting from zero.
+                              ...(RESUMABLE_STATES.includes(session.state)
+                                ? [
+                                    {
+                                      key: `resume-${session.uploadId}`,
+                                      label: t('models.uploads.resume'),
+                                      onClick: () => onResume?.(session),
+                                    },
+                                  ]
+                                : []),
+                              ...(CANCELLABLE_STATES.includes(session.state)
+                                ? [
+                                    {
+                                      key: `cancel-${session.uploadId}`,
+                                      label: t('models.uploads.cancel'),
+                                      danger: true,
+                                      disabled: cancelling.has(session.uploadId),
+                                      onClick: () => void cancel(session),
+                                    },
+                                  ]
+                                : []),
                             ]}
                           />
                         )}
