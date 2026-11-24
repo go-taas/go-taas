@@ -8,7 +8,7 @@
 // body.
 //
 //	POST /api/v1/admin/models/uploads                create a session
-//	GET  /api/v1/admin/models/uploads/list           list uploads
+//	GET  /api/v1/admin/models/uploads                list uploads
 //	GET  /api/v1/admin/models/uploads/{id}            session detail
 //	GET  /api/v1/admin/models/uploads/{id}/parts      received part numbers
 //	PUT  /api/v1/admin/models/uploads/{id}/parts/{n}  upload one chunk
@@ -86,12 +86,12 @@ func (s *commonServer) registerModelUploadSessionRoutes() {
 		return
 	}
 	routes := []struct {
-		method   string
-		path     string
-		handler  func(w http.ResponseWriter, r *http.Request)
+		method  string
+		path    string
+		handler func(w http.ResponseWriter, r *http.Request)
 	}{
 		{http.MethodPost, "/api/v1/admin/models/uploads", s.uploadSessionCreateHandler},
-		{http.MethodGet, "/api/v1/admin/models/uploads/list", s.uploadSessionListHandler},
+		{http.MethodGet, "/api/v1/admin/models/uploads", s.uploadSessionListHandler},
 		{http.MethodGet, "/api/v1/admin/models/uploads/{id}", s.uploadSessionGetHandler},
 		{http.MethodGet, "/api/v1/admin/models/uploads/{id}/parts", s.uploadSessionPartsHandler},
 		{http.MethodPut, "/api/v1/admin/models/uploads/{id}/parts/{n}", s.uploadSessionPartHandler},

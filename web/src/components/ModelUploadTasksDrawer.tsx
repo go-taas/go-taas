@@ -72,7 +72,7 @@ export default function ModelUploadTasksDrawer({ defaultOpen = false }: { defaul
     async (quiet = false) => {
       if (!quiet) setLoading(true);
       try {
-        const data = await jsonRequest<ListResponse>('GET', '/models/uploads/list?limit=20');
+        const data = await jsonRequest<ListResponse>('GET', '/models/uploads?limit=20');
         setUploads(data.uploads || []);
         setError('');
       } catch (e) {
