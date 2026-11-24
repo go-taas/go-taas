@@ -519,14 +519,35 @@ func (s *Service) handleUploadTransferStatus(ctx context.Context, status transfe
 			msg = "upload job " + status.State
 		}
 		s.updateUploadState(ctx, row.ID, UploadStateFailed, msg)
+		s.dropUploadArchive(ctx, row)
 		return
 	}
 	weightPath := uploadWeightPath(row.Name, row.Version)
 	if err := s.registerUploadModel(ctx, row, weightPath); err != nil {
 		s.updateUploadState(ctx, row.ID, UploadStateFailed, err.Error())
+		s.dropUploadArchive(ctx, row)
 		return
 	}
 	s.updateUploadState(ctx, row.ID, UploadStateSucceeded, "")
+	// The composed archive has served its purpose; keeping it would grow the
+	// staging area by one full archive per upload.
+	s.dropUploadArchive(ctx, row)
+}
+
+// dropUploadArchive removes the staged archive of a finished upload. It is
+// best effort: the upload's outcome is already recorded, and an orphaned
+// archive is a storage cost, not a correctness problem.
+func (s *Service) dropUploadArchive(ctx context.Context, row *ModelUpload) {
+	if row == nil || strings.TrimSpace(row.ObjectKey) == "" {
+		return
+	}
+	remote, err := s.stagingRemote(ctx)
+	if err != nil || remote == nil {
+		return
+	}
+	if _, delErr := remote.DeletePrefix(ctx, row.ObjectKey); delErr != nil {
+		logger.S().Warnw("model: could not drop the upload archive", "upload", row.ID, "err", delErr)
+	}
 }
 
 // forwardRemoteRef resolves a named backend to a RemoteRef and sets its env
