@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -325,6 +326,13 @@ func (s *Service) startUploadTransfer(ctx context.Context, row *ModelUpload) (*M
 		if err != nil {
 			return nil, err
 		}
+		// Create the model directory as the server user: the weights tree must
+		// stay readable by non-root serving runtimes, and a later model delete
+		// must be able to remove it.
+		if mkErr := os.MkdirAll(filepath.Dir(spec.TargetPath), 0o755); mkErr != nil { //nolint:gosec // G301: weights must be readable by non-root serving runtimes
+			return nil, apierrors.Newf(apierrors.CodeInternal,
+				"model: could not create the model directory: %v", mkErr)
+		}
 	} else {
 		tgtRef, refErr := s.remoteRef(targetBackend)
 		if refErr != nil {
@@ -485,9 +493,9 @@ func (s *Service) CancelUploadSession(ctx context.Context, uploadID string) erro
 			"model: upload is already %s", row.State)
 	}
 	// Cancel any dispatch transfer too.
-	if row.TransferID != "" {
+	if row.TransferID != nil && *row.TransferID != "" {
 		_ = s.publishTransfer(ctx, mq.DefaultSubjects().ModelTransfers,
-			&transfer.Spec{ID: row.TransferID, Operation: transfer.OperationCancel})
+			&transfer.Spec{ID: *row.TransferID, Operation: transfer.OperationCancel})
 	}
 	remote, rerr := s.stagingRemote(ctx)
 	if rerr == nil {

@@ -4,13 +4,13 @@ import "time"
 
 // UploadSessionState values for a chunked model upload.
 const (
-	UploadStateCreating  = "creating"
-	UploadStateUploading = "uploading"
+	UploadStateCreating   = "creating"
+	UploadStateUploading  = "uploading"
 	UploadStateCompleting = "completing"
 	UploadStateProcessing = "processing" // handed to a transfer Job
-	UploadStateSucceeded = "succeeded"
-	UploadStateFailed    = "failed"
-	UploadStateCancelled = "cancelled"
+	UploadStateSucceeded  = "succeeded"
+	UploadStateFailed     = "failed"
+	UploadStateCancelled  = "cancelled"
 )
 
 // ModelUpload is the GORM model of the model_uploads table: one chunked model
@@ -49,10 +49,11 @@ type ModelUpload struct { //nolint:revive // the name is part of the model packa
 	State string `gorm:"size:16;not null;index"`
 	// BytesReceived is the number of bytes staged so far.
 	BytesReceived int64 `gorm:"not null;default:0"`
-	// ModelID is the catalog model registered on success.
-	ModelID string `gorm:"type:uuid;not null;default:''"`
-	// TransferID links the processing transfer Job that unpacks the archive.
-	TransferID string `gorm:"type:uuid;not null;default:''"`
+	// ModelID is the catalog model registered on success; null until then.
+	ModelID *string `gorm:"type:uuid;index"`
+	// TransferID links the processing transfer Job that unpacks the archive;
+	// null until the Job is dispatched.
+	TransferID *string `gorm:"type:uuid;index"`
 	// Message carries the failure reason.
 	Message string `gorm:"size:1024;not null;default:''"`
 	// Actor is the creating user id, for the audit trail.

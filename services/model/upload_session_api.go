@@ -7,6 +7,15 @@ import (
 	"github.com/go-taas/go-taas/pkg/server"
 )
 
+// stringValue dereferences an optional string, mapping nil to the empty
+// string the API uses for "not set yet".
+func stringValue(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
+}
+
 // modelUploadView projects one session row for the console.
 func modelUploadView(row *ModelUpload) *server.ModelUploadSessionView {
 	return &server.ModelUploadSessionView{
@@ -21,7 +30,7 @@ func modelUploadView(row *ModelUpload) *server.ModelUploadSessionView {
 		PartSizeBytes:  row.PartSizeBytes,
 		State:          row.State,
 		BytesReceived:  row.BytesReceived,
-		ModelID:        row.ModelID,
+		ModelID:        stringValue(row.ModelID),
 		Message:        row.Message,
 		CreatedAt:      row.CreatedAt.Format("2006-01-02T15:04:05Z"),
 		UpdatedAt:      row.UpdatedAt.Format("2006-01-02T15:04:05Z"),

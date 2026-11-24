@@ -33,14 +33,25 @@ func envID(name string) int {
 	return value
 }
 
+// adoptsLocalTarget reports whether an operation writes a local target that
+// the server user must be able to read afterwards and later delete.
+func adoptsLocalTarget(operation string) bool {
+	switch operation {
+	case transfer.OperationCopy, transfer.OperationMove,
+		transfer.OperationDownload, transfer.OperationUpload:
+		return true
+	default:
+		return false
+	}
+}
+
 // adoptTargetOwnership hands a local transfer target to the server user so a
 // later model deletion can remove it. It is a no-op when the transfer does not
 // write a local path (object-store targets and deletes) or when the process is
 // not root. Ownership is best effort: the transfer already succeeded, and the
 // caller logs the failure.
 func adoptTargetOwnership(spec *transfer.Spec) error {
-	if spec.Operation != transfer.OperationCopy && spec.Operation != transfer.OperationMove &&
-		spec.Operation != transfer.OperationDownload {
+	if !adoptsLocalTarget(spec.Operation) {
 		return nil
 	}
 	if objectStoreRefPresent(spec.TargetObjectStore) || strings.TrimSpace(spec.TargetPath) == "" {

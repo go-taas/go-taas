@@ -164,7 +164,8 @@ func writeEntry(dest, name string, src io.Reader) (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+	// 0755 so the non-root server user and serving runtimes can read the tree.
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil { //nolint:gosec // G301: weights must be readable by non-root serving runtimes
 		return 0, err
 	}
 	// 0644 matches what the hub downloader writes: the weights directory is a

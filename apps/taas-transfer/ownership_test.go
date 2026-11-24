@@ -90,3 +90,12 @@ func TestAdoptTreeChownsEveryEntry(t *testing.T) {
 func TestAdoptTreeIgnoresAMissingRoot(t *testing.T) {
 	assert.NoError(t, adoptTree(filepath.Join(t.TempDir(), "absent"), os.Getuid(), os.Getgid()))
 }
+
+// TestAdoptsLocalTarget pins the operations that need ownership adoption: an
+// upload writes a local target just like a download, so a root-run Job must
+// hand it to the server user or the model cannot be read.
+func TestAdoptsLocalTarget(t *testing.T) {
+	assert.True(t, adoptsLocalTarget(transfer.OperationUpload))
+	assert.True(t, adoptsLocalTarget(transfer.OperationDownload))
+	assert.False(t, adoptsLocalTarget(transfer.OperationDelete))
+}
