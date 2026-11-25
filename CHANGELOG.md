@@ -1,3 +1,16 @@
+# [1.130.0](https://github.com/go-taas/go-taas/compare/v1.129.0...v1.130.0) (2026-11-25)
+
+
+### Bug Fixes
+
+* **controller:** only fail a transfer when its job ends ([82ab1de](https://github.com/go-taas/go-taas/commit/82ab1dedac681cde1844038bea306e9b4a956d09))
+* **model:** retry and resume hub downloads after a truncated stream ([1adfb5b](https://github.com/go-taas/go-taas/commit/1adfb5b26c7aa8b666f30dd0cfe8f849152bd9f9))
+
+
+### Features
+
+* **image:** panel-based import and upload with history and progress ([6a18a3f](https://github.com/go-taas/go-taas/commit/6a18a3f8d483ea4308d8dd2fbb7051946d785344))
+
 # [1.129.0](https://github.com/go-taas/go-taas/compare/v1.128.0...v1.129.0) (2026-11-25)
 
 
