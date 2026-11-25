@@ -40,7 +40,7 @@ type ImportTask struct {
 	// SourcePassword optionally authenticates against a private source
 	// registry. It is stored only for the lifetime of the task and
 	// cleared once the copy finishes.
-	SourcePassword string `gorm:"size:1024;not null;default:''"`
+	SourcePassword string `gorm:"size:2048;not null;default:''"`
 	// State is one of the ImportState values.
 	State string `gorm:"size:16;not null;index"`
 	// FailureReason carries the failure detail; empty on success.

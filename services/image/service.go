@@ -529,7 +529,7 @@ const (
 	// may carry. It matches the source_password column: a longer secret cannot
 	// be stored, so it is rejected here as invalid input instead of failing in
 	// the database with an opaque 500.
-	maxSourcePasswordLen = 1024
+	maxSourcePasswordLen = 2048
 	// maxSourceUsernameLen and maxSourceReferenceLen match their columns for
 	// the same reason: a value the row cannot hold is a bad request.
 	maxSourceUsernameLen  = 255

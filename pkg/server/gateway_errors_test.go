@@ -21,7 +21,7 @@ import (
 func TestGatewayErrorHandlerAnswersBadRequestForInputCodes(t *testing.T) {
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/admin/images:import", nil)
-	err := status.Error(codes.Code(apierrors.CodeImageReferenceInvalid), "image: source_password must be at most 1024 characters")
+	err := status.Error(codes.Code(apierrors.CodeImageReferenceInvalid), "image: source_password must be at most 2048 characters")
 
 	gatewayErrorHandler(context.Background(), runtime.NewServeMux(), &runtime.JSONPb{}, rec, req, err)
 
@@ -29,7 +29,7 @@ func TestGatewayErrorHandlerAnswersBadRequestForInputCodes(t *testing.T) {
 	var body map[string]any
 	require.NoError(t, json.NewDecoder(rec.Body).Decode(&body))
 	assert.Equal(t, float64(apierrors.CodeImageReferenceInvalid), body["code"])
-	assert.Equal(t, "image: source_password must be at most 1024 characters", body["message"])
+	assert.Equal(t, "image: source_password must be at most 2048 characters", body["message"])
 }
 
 // TestGatewayErrorHandlerKeepsServerFaultsAsFiveHundred proves the mapping is
