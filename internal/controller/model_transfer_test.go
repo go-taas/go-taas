@@ -189,6 +189,124 @@ func TestReportJobsPublishesProgressAndTerminalState(t *testing.T) {
 	assert.Equal(t, int64(100), got[0].TotalBytes)
 }
 
+// TestReportJobsKeepsRetryingJobRunning guards the fix for a Job that has a
+// failed pod but is still retrying: `failed > 0` must not be reported as a
+// terminal state, or the download is marked failed while bytes are still
+// being moved.
+func TestReportJobsKeepsRetryingJobRunning(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "taas-transfer-transfer-4",
+				Namespace: "taas-jobs",
+				Labels:    map[string]string{transferLabel: "true", transferIDLabel: "transfer-4"},
+			},
+			Status: batchv1.JobStatus{Failed: 1, Active: 1},
+		},
+		&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "taas-transfer-progress-transfer-4", Namespace: "taas-jobs"},
+			Data:       map[string]string{"progress.json": `{"state":"failed","message":"modelhub: write /tmp/x/model.safetensors: unexpected EOF","bytes":100,"totalBytes":200}`},
+		},
+	)
+	clientMQ := mq.NewFake()
+	var got []transfer.Status
+	require.NoError(t, clientMQ.Subscribe(context.Background(), mq.DefaultSubjects().ModelTransferStatus, func(msg mq.Message) error {
+		var status transfer.Status
+		if err := json.Unmarshal(msg.Body, &status); err != nil {
+			return err
+		}
+		got = append(got, status)
+		return nil
+	}))
+	reconciler := NewModelTransferReconciler(client, clientMQ, config.TransferConfig{Namespace: "taas-jobs", Image: "transfer:test"}, testTransferStorage())
+	require.NoError(t, reconciler.reportJobs(context.Background()))
+	require.Len(t, got, 1)
+	assert.Equal(t, transfer.StateRunning, got[0].State)
+	assert.Empty(t, got[0].Message)
+}
+
+// TestReportJobsFailedKeepsSpecificMessage verifies a Job that really
+// exhausted its retries is reported failed with the mover's own error from
+// the progress ConfigMap, not with the generic Job condition text.
+func TestReportJobsFailedKeepsSpecificMessage(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "taas-transfer-transfer-5",
+				Namespace: "taas-jobs",
+				Labels:    map[string]string{transferLabel: "true", transferIDLabel: "transfer-5"},
+			},
+			Status: batchv1.JobStatus{
+				Failed: 3,
+				Conditions: []batchv1.JobCondition{{
+					Type:    batchv1.JobFailed,
+					Status:  corev1.ConditionTrue,
+					Reason:  "BackoffLimitExceeded",
+					Message: "Job has reached the specified backoff limit",
+				}},
+			},
+		},
+		&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "taas-transfer-progress-transfer-5", Namespace: "taas-jobs"},
+			Data:       map[string]string{"progress.json": `{"state":"failed","message":"modelhub: write /tmp/x/model.safetensors: unexpected EOF","bytes":30731480918,"totalBytes":30890038630}`},
+		},
+	)
+	clientMQ := mq.NewFake()
+	var got []transfer.Status
+	require.NoError(t, clientMQ.Subscribe(context.Background(), mq.DefaultSubjects().ModelTransferStatus, func(msg mq.Message) error {
+		var status transfer.Status
+		if err := json.Unmarshal(msg.Body, &status); err != nil {
+			return err
+		}
+		got = append(got, status)
+		return nil
+	}))
+	reconciler := NewModelTransferReconciler(client, clientMQ, config.TransferConfig{Namespace: "taas-jobs", Image: "transfer:test"}, testTransferStorage())
+	require.NoError(t, reconciler.reportJobs(context.Background()))
+	require.Len(t, got, 1)
+	assert.Equal(t, transfer.StateFailed, got[0].State)
+	assert.Equal(t, "modelhub: write /tmp/x/model.safetensors: unexpected EOF", got[0].Message)
+}
+
+// TestReportJobsFailedFallsBackToConditionMessage covers a mover that died
+// without writing a failure into its progress ConfigMap: the Job condition
+// message is then the only cause available.
+func TestReportJobsFailedFallsBackToConditionMessage(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "taas-transfer-transfer-6",
+				Namespace: "taas-jobs",
+				Labels:    map[string]string{transferLabel: "true", transferIDLabel: "transfer-6"},
+			},
+			Status: batchv1.JobStatus{
+				Failed: 3,
+				Conditions: []batchv1.JobCondition{{
+					Type:    batchv1.JobFailed,
+					Status:  corev1.ConditionTrue,
+					Reason:  "BackoffLimitExceeded",
+					Message: "Job has reached the specified backoff limit",
+				}},
+			},
+		},
+	)
+	clientMQ := mq.NewFake()
+	var got []transfer.Status
+	require.NoError(t, clientMQ.Subscribe(context.Background(), mq.DefaultSubjects().ModelTransferStatus, func(msg mq.Message) error {
+		var status transfer.Status
+		if err := json.Unmarshal(msg.Body, &status); err != nil {
+			return err
+		}
+		got = append(got, status)
+		return nil
+	}))
+	reconciler := NewModelTransferReconciler(client, clientMQ, config.TransferConfig{Namespace: "taas-jobs", Image: "transfer:test"}, testTransferStorage())
+	require.NoError(t, reconciler.reportJobs(context.Background()))
+	require.Len(t, got, 1)
+	assert.Equal(t, transfer.StateFailed, got[0].State)
+	assert.Equal(t, "Job has reached the specified backoff limit", got[0].Message)
+}
+
 func TestApplyModelTransferUploadCreatesJob(t *testing.T) {
 	client := fake.NewSimpleClientset()
 	reconciler := NewModelTransferReconciler(client, mq.NewFake(), config.TransferConfig{

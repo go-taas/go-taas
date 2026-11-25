@@ -138,20 +138,34 @@ func (r *ModelTransferReconciler) reportJobs(ctx context.Context) error {
 			continue
 		}
 		status := transfer.Status{ID: id, JobName: job.Name, UpdatedAt: time.Now().UTC()}
-		if progress, err := r.readProgress(ctx, id); err == nil && progress != nil {
+		var progress *transfer.Progress
+		if progress, err = r.readProgress(ctx, id); err != nil {
+			progress = nil
+		}
+		if progress != nil {
 			status.Bytes = progress.Bytes
 			status.TotalBytes = progress.TotalBytes
-			if progress.Message != "" && job.Status.Failed > 0 {
-				status.Message = progress.Message
-			}
 		}
 		switch {
 		case job.Status.Succeeded > 0:
 			status.State = transfer.StateSucceeded
-		case job.Status.Failed > 0:
+		case jobFailed(job):
 			status.State = transfer.StateFailed
-			status.Message = jobFailureMessage(job)
+			// The mover records the real cause (a truncated hub stream, a
+			// bad credential) in its progress ConfigMap; the Job condition
+			// only says the retries were exhausted. Keep the specific
+			// message and fall back to the condition only when the mover
+			// never reported one.
+			if progress != nil && strings.TrimSpace(progress.Message) != "" {
+				status.Message = progress.Message
+			} else {
+				status.Message = jobFailureMessage(job)
+			}
 		case job.Status.Active > 0:
+			// A Job that fails a pod retries with a new one. `failed > 0`
+			// therefore does not mean the transfer is over: reporting the
+			// terminal state here would fail the download while the Job is
+			// still running. Only the JobFailed condition ends the Job.
 			status.State = transfer.StateRunning
 		default:
 			status.State = transfer.StateQueued
@@ -398,6 +412,19 @@ func volumeNameFor(claim string) string {
 		name = name[:50]
 	}
 	return "weights-" + name
+}
+
+// jobFailed reports whether the Job reached its terminal failed state. A
+// non-zero status.failed is not enough: a failed pod is replaced by a retry
+// while the Job is still active, so only the JobFailed condition means the
+// transfer is over.
+func jobFailed(job *batchv1.Job) bool {
+	for _, condition := range job.Status.Conditions {
+		if condition.Type == batchv1.JobFailed && condition.Status == corev1.ConditionTrue {
+			return true
+		}
+	}
+	return false
 }
 
 func jobFailureMessage(job *batchv1.Job) string {
