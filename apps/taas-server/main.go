@@ -187,6 +187,15 @@ func main() {
 				Tag:       res.Tag,
 			}, nil
 		})
+		// The upload history: every archive upload leaves a row the console
+		// lists under the upload panel, with live progress while it streams.
+		srv.SetImageUploadTasks(imageUploadTaskAdapter{
+			svc: imageSvc,
+			actor: func(ctx context.Context) string {
+				actor, _ := authSvc.SessionUserID(ctx)
+				return actor
+			},
+		})
 	}
 	inferSvc := infer.New(srv.Components())
 	inferSvc.SetStorageConfig(cfg.Storage)
@@ -1054,4 +1063,85 @@ func main() {
 	}
 
 	srv.Serve()
+}
+
+// imageUploadTaskAdapter bridges the image module's upload history onto the
+// server seam: it resolves the caller for the audit trail and converts the
+// module's view types into the wire types.
+type imageUploadTaskAdapter struct {
+	svc   *image.Service
+	actor func(ctx context.Context) string
+}
+
+// BeginImageUpload opens a history row for an archive about to stream in.
+func (a imageUploadTaskAdapter) BeginImageUpload(ctx context.Context, req server.ImageUploadBeginRequest) (string, error) {
+	return a.svc.BeginUploadTask(ctx, &image.UploadTaskBegin{
+		ArchiveName:     req.ArchiveName,
+		Name:            req.Name,
+		Tag:             req.Tag,
+		SourceReference: req.SourceReference,
+		Accelerator:     req.Accelerator,
+		Engine:          req.Engine,
+		Description:     req.Description,
+		TotalBytes:      req.TotalBytes,
+		Actor:           a.actor(ctx),
+	})
+}
+
+// RecordImageUploadProgress stores the byte count that landed so far.
+func (a imageUploadTaskAdapter) RecordImageUploadProgress(ctx context.Context, taskID string, received int64) {
+	a.svc.RecordUploadProgress(ctx, taskID, received)
+}
+
+// CompleteImageUpload pushes the staged archive through the image module.
+func (a imageUploadTaskAdapter) CompleteImageUpload(ctx context.Context, taskID, archivePath string) (*server.ImageUploadResult, error) {
+	res, err := a.svc.CompleteUploadTask(ctx, taskID, archivePath)
+	if err != nil {
+		return nil, err
+	}
+	return &server.ImageUploadResult{
+		ImageID:   res.ImageID,
+		Reference: res.Reference,
+		Name:      res.Name,
+		Tag:       res.Tag,
+	}, nil
+}
+
+// FailImageUpload records an upload that aborted before the push.
+func (a imageUploadTaskAdapter) FailImageUpload(ctx context.Context, taskID, message string) {
+	a.svc.FailUploadTask(ctx, taskID, message)
+}
+
+// ListImageUploadTasks returns one page of the upload history.
+func (a imageUploadTaskAdapter) ListImageUploadTasks(ctx context.Context, offset, limit int) ([]*server.ImageUploadTaskView, int64, error) {
+	views, total, err := a.svc.ListUploadTasks(ctx, offset, limit)
+	if err != nil {
+		return nil, 0, err
+	}
+	out := make([]*server.ImageUploadTaskView, 0, len(views))
+	for _, v := range views {
+		out = append(out, &server.ImageUploadTaskView{
+			TaskID:        v.TaskID,
+			ArchiveName:   v.ArchiveName,
+			Name:          v.Name,
+			Tag:           v.Tag,
+			Accelerator:   v.Accelerator,
+			Engine:        v.Engine,
+			State:         v.State,
+			BytesReceived: v.BytesReceived,
+			TotalBytes:    v.TotalBytes,
+			ImageID:       v.ImageID,
+			Reference:     v.Reference,
+			Message:       v.Message,
+			Actor:         v.Actor,
+			CreatedAt:     v.CreatedAt,
+			UpdatedAt:     v.UpdatedAt,
+		})
+	}
+	return out, total, nil
+}
+
+// CancelImageUploadTask stops a running upload.
+func (a imageUploadTaskAdapter) CancelImageUploadTask(ctx context.Context, taskID string) error {
+	return a.svc.CancelUploadTask(ctx, taskID)
 }

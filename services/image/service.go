@@ -97,6 +97,11 @@ type Service struct {
 	// and FVT inject it directly.
 	importTasks *ImportTaskRepository
 
+	// uploadTasks is the archive upload history repository. Production
+	// resolves it lazily from the shared components; tests and FVT inject
+	// it directly.
+	uploadTasks *UploadTaskRepository
+
 	// compatRepo is the compatibility matrix repository (feature #19).
 	// Production resolves it lazily from the shared components; tests
 	// and FVT inject it directly.
@@ -318,6 +323,7 @@ func NewForFVT(db *gorm.DB, publisher mq.Client) *Service {
 		repo:        NewRepository(db),
 		tasks:       NewWarmupTaskRepository(db),
 		importTasks: NewImportTaskRepository(db),
+		uploadTasks: NewUploadTaskRepository(db),
 		compatRepo:  NewCompatibilityRepository(db),
 		modelRepo:   model.NewRepository(db),
 		publisher:   publisher,
@@ -344,7 +350,7 @@ func NewWarmupTasksForNodeProvider(db *gorm.DB) WarmupTasksForNodeProvider {
 // compatibility_cells, image_import_tasks) onto a caller-provided
 // database for full-verification tests.
 func MigrateSchemaForFVT(db *gorm.DB) error {
-	if err := db.AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}, &ImportTask{}); err != nil {
+	if err := db.AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}, &ImportTask{}, &UploadTask{}); err != nil {
 		return err
 	}
 	return db.Exec(oneActivePartialIndex).Error
@@ -373,7 +379,7 @@ func (s *Service) Migrate(ctx context.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := db.WithContext(ctx).AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}, &ImportTask{}); err != nil {
+	if err := db.WithContext(ctx).AutoMigrate(&Image{}, &WarmupTask{}, &CompatibilityCell{}, &ImportTask{}, &UploadTask{}); err != nil {
 		return err
 	}
 	if err := db.WithContext(ctx).Exec(oneActivePartialIndex).Error; err != nil {

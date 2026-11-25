@@ -24,6 +24,7 @@ func newServiceForTest(t *testing.T) (*Service, *Image) {
 	db := newImageTestDB(t)
 	svc := NewWithRepositories(NewRepository(db), NewWarmupTaskRepository(db))
 	svc.importTasks = NewImportTaskRepository(db)
+	svc.uploadTasks = NewUploadTaskRepository(db)
 	wireRegistry(db)
 	ctx := context.Background()
 	img := &Image{Name: "ghcr.io/go-taas/vllm", Tag: "v0.6.3", Accelerator: "nvidia", Engine: "vllm", Description: "vLLM engine"}

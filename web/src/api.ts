@@ -353,6 +353,47 @@ export interface ModelUploadSession {
   updatedAt: string;
 }
 
+// ImageImportTask is one asynchronous registry import: the server copies the
+// source image into the platform's Harbor project, then registers the catalog
+// row. The console polls the task list for the state while it runs.
+export interface ImageImportTask {
+  taskId: string;
+  sourceReference: string;
+  destinationReference: string;
+  accelerator: string;
+  engine: string;
+  description: string;
+  // state is pending, running, succeeded or failed.
+  state: string;
+  failureReason: string;
+  imageId: string;
+  // createdAt is the enqueue time in unix seconds (formatTime reads it).
+  createdAt: string | number;
+  updatedAt: string | number;
+}
+
+// ImageUploadTask is one archive upload from the operator's disk. The row is
+// created when the transfer starts, so the panel shows live progress the way
+// the model upload list does.
+export interface ImageUploadTask {
+  taskId: string;
+  archiveName: string;
+  name: string;
+  tag: string;
+  accelerator: string;
+  engine: string;
+  // state is uploading, processing, succeeded, failed or cancelled.
+  state: string;
+  bytesReceived: number;
+  totalBytes: number;
+  imageId: string;
+  reference: string;
+  message: string;
+  actor: string;
+  createdAt: string | number;
+  updatedAt: string | number;
+}
+
 // ModelTransfer is one asynchronous copy/download/delete job.
 export interface ModelTransfer {
   transferId: string;

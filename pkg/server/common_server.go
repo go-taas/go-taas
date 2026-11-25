@@ -60,6 +60,11 @@ type Server interface {
 	// before Init; nil leaves the endpoint unregistered.
 	SetImageUpload(fn ImageUploadFunc)
 
+	// SetImageUploadTasks installs the archive upload history API behind
+	// GET /api/v1/admin/image-upload-tasks. It must be called before Init;
+	// nil leaves the history routes unregistered.
+	SetImageUploadTasks(api ImageUploadTaskAPI)
+
 	// SetModelUploadSession installs the chunked, resumable model-upload API.
 	// It must be called before Init; nil leaves the routes unregistered.
 	SetModelUploadSession(api ModelUploadSessionAPI)
@@ -91,6 +96,10 @@ type commonServer struct {
 	// imageUpload handles POST /api/v1/admin/images:upload (a multipart
 	// archive). Nil leaves the endpoint unregistered.
 	imageUpload ImageUploadFunc
+
+	// imageUploadTasks persists the archive upload history. Nil keeps the
+	// upload endpoint working without task rows.
+	imageUploadTasks ImageUploadTaskAPI
 
 	// modelUploadSession handles the chunked model-upload API. Nil leaves
 	// the session routes unregistered.
@@ -220,6 +229,7 @@ func (s *commonServer) Init() {
 		)
 		s.initGateway()
 		s.registerUploadRoute()
+		s.registerImageUploadTaskRoutes()
 		s.registerModelUploadSessionRoutes()
 	}
 

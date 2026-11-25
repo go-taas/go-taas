@@ -15,9 +15,10 @@ import {
 import { useOrg } from '../org';
 import { Dialog, ErrorBanner, Pagination, RowActionsMenu, StateBadge, Toast } from '../components';
 import { useI18n } from '../i18n';
-import { FieldLabel, FormLegend, FormSection, RequiredStatus } from '../components/FormField';
+import { FieldLabel } from '../components/FormField';
 import { CPU_ACCELERATOR, useFleetAccelerators } from '../hooks/useFleetAccelerators';
-import UploadImageDialog from '../components/UploadImageDialog';
+import ImageImportPanel from '../components/ImageImportPanel';
+import ImageUploadPanel from '../components/ImageUploadPanel';
 
 interface ListResponse {
   response: { code: number; message: string };
@@ -98,17 +99,31 @@ export default function ImagesPage() {
             data-testid="import-image"
             disabled={registry !== null && !registry.configured}
             title={registry && !registry.configured ? t('images.registryUnconfigured') : undefined}
-            onClick={() => setImportOpen(true)}
+            onClick={() => {
+              setImportOpen((open) => {
+                const next = !open;
+                if (next) setUploadOpen(false);
+                return next;
+              });
+            }}
           >
-            {t('images.import')}
+            {importOpen ? t('images.importHide') : t('images.importOpen')}
           </button>
           <button
+            className="secondary"
             data-testid="upload-image"
             disabled={registry !== null && !registry.configured}
             title={registry && !registry.configured ? t('images.registryUnconfigured') : undefined}
-            onClick={() => setUploadOpen(true)}
+            onClick={() => {
+              if (uploadOpen) {
+                setUploadOpen(false);
+                return;
+              }
+              setImportOpen(false);
+              setUploadOpen(true);
+            }}
           >
-            {t('images.upload')}
+            {uploadOpen ? t('images.uploadHide') : t('images.uploadOpen')}
           </button>
         </div>
       </div>
@@ -148,6 +163,34 @@ export default function ImagesPage() {
             {t('images.registryUnconfigured')}
           </div>
         )}
+      </div>
+
+      {importOpen && (
+        <div className="downloads-section">
+          <ImageImportPanel
+            defaultOpen
+            registry={registry}
+            onDone={() => {
+              setNotice(t('images.importSuccess'));
+              void load();
+            }}
+          />
+        </div>
+      )}
+
+      {/* Kept mounted while collapsed: the panel is only a view, so hiding it
+          must not abort a running transfer — collapsing then reopening shows
+          the progress again. */}
+      <div className="downloads-section" style={{ display: uploadOpen ? undefined : 'none' }}>
+        <ImageUploadPanel
+          defaultOpen
+          active={uploadOpen}
+          registry={registry}
+          onDone={() => {
+            setNotice(t('images.uploadSuccess'));
+            void load();
+          }}
+        />
       </div>
 
       <div className="toolbar" style={{ marginBottom: 14 }}>
@@ -260,32 +303,6 @@ export default function ImagesPage() {
         )}
       </div>
 
-      {uploadOpen && (
-        <UploadImageDialog
-          orgId={orgId}
-          registry={registry}
-          onClose={() => setUploadOpen(false)}
-          onDone={() => {
-            setUploadOpen(false);
-            setNotice(t('images.uploadSuccess'));
-            void load();
-          }}
-        />
-      )}
-
-      {importOpen && (
-        <ImportImageDialog
-          orgId={orgId}
-          registry={registry}
-          onClose={() => setImportOpen(false)}
-          onDone={() => {
-            setImportOpen(false);
-            setNotice(t('images.importSuccess'));
-            void load();
-          }}
-        />
-      )}
-
       {editTarget && (
         <EditImageDialog
           orgId={orgId}
@@ -328,265 +345,6 @@ export default function ImagesPage() {
         />
       )}
     </div>
-  );
-}
-
-// ImportImageDialog pulls an external image into the cluster's own Harbor
-// project and registers the local reference. The destination is decided by
-// the server from the chart's `image.harbor` settings, so the form shows
-// where the image will land instead of asking for a registry.
-function ImportImageDialog({
-  orgId,
-  registry,
-  onClose,
-  onDone,
-}: {
-  orgId: string;
-  registry: ImageRegistryConfig | null;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const { t } = useI18n();
-  const fleet = useFleetAccelerators(orgId);
-  const [sourceReference, setSourceReference] = useState('');
-  const [accelerator, setAccelerator] = useState('');
-  const [engine, setEngine] = useState('');
-  const [description, setDescription] = useState('');
-  const [sourceUsername, setSourceUsername] = useState('');
-  const [sourcePassword, setSourcePassword] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (!accelerator) setAccelerator(fleet.vendors[0] || CPU_ACCELERATOR);
-  }, [accelerator, fleet.vendors]);
-
-  // The local name the server will derive: the image's last path segment,
-  // in the Harbor project. Shown so the operator sees the result before the
-  // transfer starts.
-  const localName = (() => {
-    const ref = sourceReference.trim();
-    if (!ref) return '';
-    const withoutTag = ref.includes(':') ? ref.slice(0, ref.lastIndexOf(':')) : ref;
-    const leaf = withoutTag.split('/').filter(Boolean).pop() || '';
-    return leaf;
-  })();
-
-  const submit = async () => {
-    const ref = sourceReference.trim();
-    if (!ref) {
-      setError(t('images.validationSource'));
-      return;
-    }
-    if (!engine.trim()) {
-      setError(t('images.validationEngine'));
-      return;
-    }
-    setSubmitting(true);
-    setError('');
-    try {
-      const res = await api.post<{ taskId?: string; reference?: string }>(
-        '/api/v1/admin/images:import',
-        orgId,
-        {
-          sourceReference: ref,
-          accelerator,
-          engine: engine.trim(),
-          description: description.trim(),
-          sourceUsername: sourceUsername.trim() || undefined,
-          sourcePassword: sourceUsername.trim() ? sourcePassword : undefined,
-        },
-      );
-      // The import is asynchronous: the server returns a task id and the
-      // image is registered in the background. Close the dialog and let
-      // the operator track progress via the import task list.
-      void res;
-      onDone();
-    } catch (e) {
-      setError(e instanceof ApiError ? `${e.message} (code ${e.code})` : t('images.importFailed'));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  // The destination is a fact, not a placeholder: the platform's own registry
-  // and project, as the server reports them.
-  const destination = registry?.configured
-    ? `${registry.hostname}/${registry.project}`
-    : '';
-
-  return (
-    <Dialog title={t('images.importTitle')} onClose={onClose} testId="import-image-dialog">
-      <p className="muted">
-        {registry?.configured
-          ? t('images.importHintConfigured', { registry: destination })
-          : t('images.importHint')}
-      </p>
-      <p className="muted" data-testid="import-async-hint">
-        {t('images.importAsyncHint')}
-      </p>
-      <div className="kv-grid settings-summary" data-testid="import-destination">
-        <div>
-          <span className="kv-label">{t('images.importDestinationLabel')}</span>
-          <span className="mono settings-url">
-            {destination || t('images.registryUnconfigured')}
-          </span>
-        </div>
-      </div>
-      <FormLegend testId="import-image-legend" />
-      <FormSection
-        step={1}
-        title={t('images.importSectionSource')}
-        hint={t('images.importSectionSourceHint')}
-        requirement="required"
-        testId="import-image-section-source"
-      >
-      <div className="form-grid">
-        <div className="form-field full">
-          <FieldLabel
-            htmlFor="import-source"
-            text={t('images.sourceReference')}
-            requirement="required"
-          />
-          <input
-            id="import-source"
-            className="mono"
-            data-testid="import-source-input"
-            value={sourceReference}
-            onChange={(e) => setSourceReference(e.target.value)}
-            placeholder="docker.io/library/a/b/hello:1.0.0"
-          />
-          <div className="field-hint">
-            {localName && registry?.configured
-              ? t('images.importTarget', {
-                  name: localName,
-                  registry: `${registry.hostname}/${registry.project}/`,
-                })
-              : registry?.configured
-                ? t('images.importTargetHintNamed', { registry: `${registry.hostname}/${registry.project}/` })
-                : t('images.registryUnconfigured')}
-          </div>
-        </div>
-      </div>
-      </FormSection>
-
-      <FormSection
-        step={2}
-        title={t('images.importSectionRuntime')}
-        hint={t('images.importSectionRuntimeHint')}
-        requirement="required"
-        testId="import-image-section-runtime"
-      >
-      <div className="form-grid">
-        <div className="form-field">
-          <FieldLabel
-            htmlFor="import-accelerator"
-            text={t('images.fieldAccelerator')}
-            requirement="defaulted"
-          />
-          <select
-            id="import-accelerator"
-            data-testid="import-accelerator-select"
-            value={accelerator}
-            onChange={(e) => setAccelerator(e.target.value)}
-          >
-            {[...fleet.vendors, CPU_ACCELERATOR].map((a) => (
-              <option key={a} value={a}>
-                {a === CPU_ACCELERATOR ? t('images.acceleratorCpu') : a}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div className="form-field">
-          <FieldLabel htmlFor="import-engine" text={t('images.fieldEngine')} requirement="required" />
-          <input
-            id="import-engine"
-            data-testid="import-engine-input"
-            value={engine}
-            maxLength={64}
-            onChange={(e) => setEngine(e.target.value)}
-            placeholder={t('images.placeholderEngine')}
-          />
-        </div>
-      </div>
-      </FormSection>
-
-      {/* Credentials are for a private source registry only, so the pair is
-          optional as a block and the password is disabled until a user name
-          is given. */}
-      <FormSection
-        step={3}
-        title={t('images.importSectionAuth')}
-        hint={t('images.importSectionAuthHint')}
-        requirement="optional"
-        testId="import-image-section-auth"
-      >
-      <div className="form-grid">
-        <div className="form-field">
-          <FieldLabel
-            htmlFor="import-src-user"
-            text={t('images.sourceUsername')}
-            requirement="optional"
-          />
-          <input
-            id="import-src-user"
-            data-testid="import-source-username"
-            value={sourceUsername}
-            onChange={(e) => setSourceUsername(e.target.value)}
-            placeholder={t('images.sourceAuthOptional')}
-            autoComplete="off"
-          />
-        </div>
-        <div className="form-field">
-          <FieldLabel
-            htmlFor="import-src-pass"
-            text={t('images.sourcePassword')}
-            requirement="optional"
-          />
-          <input
-            id="import-src-pass"
-            type="password"
-            data-testid="import-source-password"
-            value={sourcePassword}
-            onChange={(e) => setSourcePassword(e.target.value)}
-            disabled={!sourceUsername.trim()}
-            autoComplete="off"
-          />
-        </div>
-        <div className="form-field full">
-          <FieldLabel
-            htmlFor="import-desc"
-            text={t('common.descriptionOptional')}
-            requirement="optional"
-          />
-          <textarea
-            id="import-desc"
-            data-testid="import-description"
-            rows={2}
-            maxLength={1024}
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-          />
-        </div>
-      </div>
-      </FormSection>
-      {error && <ErrorBanner message={error} />}
-
-      <div className="dialog-actions">
-        <RequiredStatus
-          missing={[
-            !sourceReference.trim() && t('images.sourceReference'),
-            !engine.trim() && t('images.fieldEngine'),
-          ].filter((entry): entry is string => Boolean(entry))}
-        />
-        <button className="secondary" onClick={onClose}>
-          {t('common.cancel')}
-        </button>
-        <button data-testid="submit-import" disabled={submitting} onClick={() => void submit()}>
-          {submitting ? t('images.importing') : t('images.import')}
-        </button>
-      </div>
-    </Dialog>
   );
 }
 

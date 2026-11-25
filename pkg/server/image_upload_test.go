@@ -150,7 +150,7 @@ func TestImageUploadHandlerUnconfigured(t *testing.T) {
 // archive type, so an operator inspecting the temp directory can tell what it
 // was.
 func TestStageUploadKeepsExtension(t *testing.T) {
-	path, err := stageUpload(bytes.NewReader([]byte("x")), "engine-image.tar.gz")
+	path, err := stageUpload(bytes.NewReader([]byte("x")), "engine-image.tar.gz", nil)
 	require.NoError(t, err)
 	defer func() { _ = os.Remove(path) }()
 	assert.Contains(t, filepath.Base(path), ".tar.gz")

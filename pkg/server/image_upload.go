@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 
 	"google.golang.org/grpc/metadata"
@@ -118,6 +119,55 @@ func (s *commonServer) imageUploadHandler(w http.ResponseWriter, r *http.Request
 
 	fields := map[string]string{}
 	archivePath := ""
+	taskID := ""
+	totalBytes := int64(0)
+
+	ctx := uploadContext(r)
+	if s.sessionRoles != nil {
+		ctx = authctx.WithResolver(ctx, s.sessionRoles)
+	}
+
+	// beginTask opens the history row as soon as the form metadata is known.
+	// It runs before the file part arrives for a console that puts the fields
+	// first, so the list shows progress from the first byte; a legacy body that
+	// streams the file first gets its row once the fields are in.
+	beginTask := func() error {
+		if s.imageUploadTasks == nil || taskID != "" {
+			return nil
+		}
+		if strings.TrimSpace(fields["engine"]) == "" && strings.TrimSpace(fields["name"]) == "" {
+			return nil
+		}
+		id, err := s.imageUploadTasks.BeginImageUpload(ctx, ImageUploadBeginRequest{
+			ArchiveName:     fields["archiveName"],
+			Name:            fields["name"],
+			Tag:             fields["tag"],
+			SourceReference: fields["sourceReference"],
+			Accelerator:     fields["accelerator"],
+			Engine:          fields["engine"],
+			Description:     fields["description"],
+			TotalBytes:      totalBytes,
+		})
+		if err != nil {
+			return err
+		}
+		taskID = id
+		return nil
+	}
+	failTask := func(message string) {
+		if s.imageUploadTasks == nil || taskID == "" {
+			return
+		}
+		s.imageUploadTasks.FailImageUpload(ctx, taskID, message)
+	}
+
+	progress := func(received int64) {
+		if s.imageUploadTasks == nil || taskID == "" {
+			return
+		}
+		s.imageUploadTasks.RecordImageUploadProgress(ctx, taskID, received)
+	}
+
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -125,42 +175,67 @@ func (s *commonServer) imageUploadHandler(w http.ResponseWriter, r *http.Request
 		}
 		if err != nil {
 			removeStaged(archivePath)
+			failTask(fmt.Sprintf("image: could not read the upload: %v", err))
 			writeBusinessError(w, int(apierrors.CodeImageReferenceInvalid),
 				fmt.Sprintf("image: could not read the upload: %v", err))
 			return
 		}
 		if part.FormName() == "file" {
-			path, stageErr := stageUpload(part, part.FileName())
+			if beginErr := beginTask(); beginErr != nil {
+				logger.S().Warnw("image: create upload task failed", "err", beginErr)
+			}
+			path, stageErr := stageUpload(part, part.FileName(), progress)
 			_ = part.Close()
 			if stageErr != nil {
 				removeStaged(archivePath)
+				failTask("image: could not store the upload")
 				logger.S().Errorw("image: stage upload failed", "err", stageErr)
 				writeBusinessError(w, int(apierrors.CodeImageReferenceInvalid), "image: could not store the upload")
 				return
 			}
 			removeStaged(archivePath)
 			archivePath = path
+			fields["archiveName"] = part.FileName()
 			continue
 		}
 		value, readErr := io.ReadAll(io.LimitReader(part, maxUploadFieldBytes))
 		_ = part.Close()
 		if readErr != nil {
 			removeStaged(archivePath)
+			failTask("image: could not read the upload")
 			writeBusinessError(w, int(apierrors.CodeImageReferenceInvalid), "image: could not read the upload")
 			return
 		}
 		fields[part.FormName()] = string(value)
+		if part.FormName() == "totalBytes" {
+			if n, err := strconv.ParseInt(strings.TrimSpace(string(value)), 10, 64); err == nil && n > 0 {
+				totalBytes = n
+			}
+		}
 	}
 	if archivePath == "" {
+		failTask("image: the upload needs a file field")
 		writeBusinessError(w, int(apierrors.CodeImageReferenceInvalid), "image: the upload needs a file field")
 		return
 	}
 	defer removeStaged(archivePath)
 
-	ctx := uploadContext(r)
-	if s.sessionRoles != nil {
-		ctx = authctx.WithResolver(ctx, s.sessionRoles)
+	if s.imageUploadTasks != nil {
+		if err := beginTask(); err != nil {
+			logger.S().Warnw("image: create upload task failed", "err", err)
+		}
+		if taskID != "" {
+			result, err := s.imageUploadTasks.CompleteImageUpload(ctx, taskID, archivePath)
+			if err != nil {
+				code, message := imageUploadError(err)
+				writeBusinessError(w, code, message)
+				return
+			}
+			writeUploadResult(w, result, taskID)
+			return
+		}
 	}
+
 	result, err := s.imageUpload(ctx, ImageUploadRequest{
 		ArchivePath:     archivePath,
 		Name:            fields["name"],
@@ -175,15 +250,25 @@ func (s *commonServer) imageUploadHandler(w http.ResponseWriter, r *http.Request
 		writeBusinessError(w, code, message)
 		return
 	}
+	writeUploadResult(w, result, "")
+}
+
+// writeUploadResult answers a finished upload with the catalog entry and, when
+// the history row exists, its task id so the console can highlight the row.
+func writeUploadResult(w http.ResponseWriter, result *ImageUploadResult, taskID string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	_ = json.NewEncoder(w).Encode(map[string]any{
+	payload := map[string]any{
 		"response":  map[string]any{"code": 0, "message": "OK"},
 		"imageId":   result.ImageID,
 		"reference": result.Reference,
 		"name":      result.Name,
 		"tag":       result.Tag,
-	})
+	}
+	if taskID != "" {
+		payload["taskId"] = taskID
+	}
+	_ = json.NewEncoder(w).Encode(payload)
 }
 
 // maxUploadFieldBytes bounds one form field of the upload.
@@ -202,7 +287,7 @@ func removeStaged(path string) {
 // stageUpload copies the multipart part into a temp file and returns its
 // path. The archive is never extracted, so the only filesystem write is this
 // one file in the configured temp directory.
-func stageUpload(src io.Reader, filename string) (string, error) {
+func stageUpload(src io.Reader, filename string, progress func(received int64)) (string, error) {
 	dir := ""
 	if cfg := config.GetConfig(); cfg != nil {
 		dir = cfg.Image.Upload.TempDir
@@ -216,7 +301,8 @@ func stageUpload(src io.Reader, filename string) (string, error) {
 		return "", err
 	}
 	path := temp.Name()
-	if _, err := io.Copy(temp, src); err != nil {
+	counter := &progressCounter{writer: temp, onReport: progress}
+	if _, err := io.Copy(counter, src); err != nil {
 		_ = temp.Close()
 		_ = os.Remove(path)
 		return "", err
@@ -243,6 +329,31 @@ func archiveExtension(filename string) string {
 		return ""
 	}
 }
+
+// progressCounter counts the bytes copied into the staged archive and reports
+// them in coarse steps, so the console's history row advances without writing
+// a database row per chunk.
+type progressCounter struct {
+	writer   io.Writer
+	onReport func(received int64)
+	written  int64
+	reported int64
+}
+
+// Write implements io.Writer; it copies first so the count reflects what the
+// staged file actually holds.
+func (c *progressCounter) Write(p []byte) (int, error) {
+	n, err := c.writer.Write(p)
+	c.written += int64(n)
+	if c.onReport != nil && c.written-c.reported >= uploadProgressStride {
+		c.reported = c.written
+		c.onReport(c.written)
+	}
+	return n, err
+}
+
+// uploadProgressStride is how many bytes may land between two progress rows.
+const uploadProgressStride = int64(16 << 20)
 
 // uploadContext forwards the request's credentials into gRPC metadata, so the
 // session resolver sees exactly what it sees for a transcoded call.
