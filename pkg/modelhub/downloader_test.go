@@ -1,13 +1,18 @@
 package modelhub
 
 import (
+	"bytes"
 	"context"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -283,4 +288,161 @@ func TestDownloadPreservesModelIDSlashes(t *testing.T) {
 			assert.NotContains(t, gotPath, "%2F")
 		})
 	}
+}
+
+// shortDelay makes retries instant in the tests that exercise them.
+func shortDelay(t *testing.T) {
+	t.Helper()
+	old := downloadRetryDelay
+	downloadRetryDelay = func(int) time.Duration { return time.Millisecond }
+	t.Cleanup(func() { downloadRetryDelay = old })
+}
+
+// truncatedResponse announces the full Content-Length, writes only a
+// prefix and then drops the connection, which is what a CDN cutting a
+// large transfer looks like to the client (io.ErrUnexpectedEOF).
+func truncatedResponse(w http.ResponseWriter, payload []byte, prefix int) {
+	w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+	_, _ = w.Write(payload[:prefix])
+	w.(http.Flusher).Flush()
+	conn, _, err := w.(http.Hijacker).Hijack()
+	if err != nil {
+		return
+	}
+	_ = conn.Close()
+}
+
+// TestDownloadResumesTruncatedStream guards the retry-and-resume path: the
+// second request must continue at the byte the first one reached instead
+// of restarting a multi-gigabyte file from zero.
+func TestDownloadResumesTruncatedStream(t *testing.T) {
+	shortDelay(t)
+	payload := bytes.Repeat([]byte("0123456789"), 1000) // 10 000 bytes
+	var mu sync.Mutex
+	requests := 0
+	var ranges []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			_, _ = fmt.Fprintf(w, `{"Data":{"Files":[{"Path":"model.safetensors","Size":%d}]}}`, len(payload))
+			return
+		}
+		mu.Lock()
+		requests++
+		attempt := requests
+		ranges = append(ranges, r.Header.Get("Range"))
+		mu.Unlock()
+		if attempt == 1 {
+			truncatedResponse(w, payload, len(payload)/2)
+			return
+		}
+		start := 0
+		if _, err := fmt.Sscanf(r.Header.Get("Range"), "bytes=%d-", &start); err != nil {
+			start = 0
+		}
+		w.Header().Set("Content-Range", fmt.Sprintf("bytes %d-%d/%d", start, len(payload)-1, len(payload)))
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)-start))
+		w.WriteHeader(http.StatusPartialContent)
+		_, _ = w.Write(payload[start:])
+	}))
+	t.Cleanup(srv.Close)
+
+	d := NewHTTPDownloader(Options{BaseURL: srv.URL})
+	dest := t.TempDir()
+	require.NoError(t, d.Download(context.Background(), SourceModelScope, "org/model", dest))
+	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
+	require.NoError(t, err)
+	assert.Equal(t, payload, got)
+	assert.Equal(t, 2, requests, "one truncated attempt plus one resumed attempt")
+	assert.Equal(t, []string{"", "bytes=5000-"}, ranges)
+}
+
+// TestDownloadRestartsWhenHubIgnoresRange covers a hub that answers a Range
+// request with the whole file (200): the partial prefix must be dropped so
+// bytes are not written twice.
+func TestDownloadRestartsWhenHubIgnoresRange(t *testing.T) {
+	shortDelay(t)
+	payload := bytes.Repeat([]byte("abcdefghij"), 1000)
+	var mu sync.Mutex
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			_, _ = fmt.Fprintf(w, `{"Data":{"Files":[{"Path":"model.safetensors","Size":%d}]}}`, len(payload))
+			return
+		}
+		mu.Lock()
+		requests++
+		attempt := requests
+		mu.Unlock()
+		if attempt == 1 {
+			truncatedResponse(w, payload, len(payload)/2)
+			return
+		}
+		w.Header().Set("Content-Length", strconv.Itoa(len(payload)))
+		_, _ = w.Write(payload)
+	}))
+	t.Cleanup(srv.Close)
+
+	d := NewHTTPDownloader(Options{BaseURL: srv.URL})
+	dest := t.TempDir()
+	require.NoError(t, d.Download(context.Background(), SourceModelScope, "org/model", dest))
+	got, err := os.ReadFile(filepath.Join(dest, "model.safetensors"))
+	require.NoError(t, err)
+	assert.Equal(t, payload, got, "an ignored Range must not duplicate the prefix")
+	assert.Equal(t, 2, requests)
+}
+
+// TestDownloadFailsAfterRetriesWhenStreamTruncates verifies a connection
+// that always breaks mid-file fails after the bounded number of attempts
+// instead of retrying forever.
+func TestDownloadFailsAfterRetriesWhenStreamTruncates(t *testing.T) {
+	shortDelay(t)
+	oldAttempts := downloadAttempts
+	downloadAttempts = 2
+	t.Cleanup(func() { downloadAttempts = oldAttempts })
+
+	payload := bytes.Repeat([]byte("xyz"), 1000)
+	var mu sync.Mutex
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			_, _ = fmt.Fprintf(w, `{"Data":{"Files":[{"Path":"model.safetensors","Size":%d}]}}`, len(payload))
+			return
+		}
+		mu.Lock()
+		requests++
+		mu.Unlock()
+		truncatedResponse(w, payload, len(payload)/2)
+	}))
+	t.Cleanup(srv.Close)
+
+	d := NewHTTPDownloader(Options{BaseURL: srv.URL})
+	err := d.Download(context.Background(), SourceModelScope, "org/model", t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "unexpected EOF")
+	assert.Equal(t, 2, requests)
+}
+
+// TestDownloadDoesNotRetryForbidden guards against retrying a final status:
+// a 403 will not change, so the download must fail on the first response.
+func TestDownloadDoesNotRetryForbidden(t *testing.T) {
+	shortDelay(t)
+	var mu sync.Mutex
+	requests := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/api/") {
+			_, _ = w.Write([]byte(`{"Data":{"Files":[{"Path":"model.safetensors","Size":10}]}}`))
+			return
+		}
+		mu.Lock()
+		requests++
+		mu.Unlock()
+		http.Error(w, "forbidden", http.StatusForbidden)
+	}))
+	t.Cleanup(srv.Close)
+
+	d := NewHTTPDownloader(Options{BaseURL: srv.URL})
+	err := d.Download(context.Background(), SourceModelScope, "org/model", t.TempDir())
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "403")
+	assert.Equal(t, 1, requests)
 }

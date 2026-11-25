@@ -6,6 +6,7 @@ package modelhub
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,9 +14,28 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
+
+// downloadAttempts is how many times one file is fetched before its
+// failure fails the whole download. Hubs and the CDNs in front of them
+// drop long transfers mid-file; re-requesting the missing tail is what
+// lets a multi-gigabyte model survive a flaky connection.
+var downloadAttempts = 4
+
+// downloadRetryDelay is the pause before retry number n (1-based). It
+// grows linearly and is capped so a retry loop never spins. It is a
+// variable so tests can shorten the wait.
+var downloadRetryDelay = func(n int) time.Duration {
+	delay := time.Duration(n) * 500 * time.Millisecond
+	if delay > 5*time.Second {
+		delay = 5 * time.Second
+	}
+	return delay
+}
 
 // Source identifies a model hub.
 type Source string
@@ -145,12 +165,12 @@ func (d *HTTPDownloader) Download(ctx context.Context, source Source, modelID, d
 	errCh := make(chan error, len(files))
 	for _, f := range files {
 		wg.Add(1)
-		go func(file string) {
+		go func(file FileInfo) {
 			defer wg.Done()
 			if err := d.downloadFile(ctx, source, modelID, file, destDir); err != nil {
 				errCh <- err
 			}
-		}(f.Path)
+		}(f)
 	}
 	wg.Wait()
 	close(errCh)
@@ -261,8 +281,11 @@ func parseHuggingFaceFiles(body []byte) ([]FileInfo, error) {
 }
 
 // downloadFile downloads one model file into destDir, preserving its
-// relative path. The download URL is derived per source.
-func (d *HTTPDownloader) downloadFile(ctx context.Context, source Source, modelID, file, destDir string) error {
+// relative path. The download URL is derived per source. A transient
+// failure (the hub CDN cutting a long stream, which surfaces as
+// "unexpected EOF") is retried from the byte already on disk, so a
+// multi-gigabyte transfer does not start over from zero.
+func (d *HTTPDownloader) downloadFile(ctx context.Context, source Source, modelID string, file FileInfo, destDir string) error {
 	d.sem <- struct{}{}
 	defer func() { <-d.sem }()
 
@@ -270,41 +293,176 @@ func (d *HTTPDownloader) downloadFile(ctx context.Context, source Source, modelI
 	var dlURL string
 	switch source {
 	case SourceModelScope:
-		dlURL = base + "/models/" + pathEscapePath(modelID) + "/resolve/master/" + pathEscapePath(file)
+		dlURL = base + "/models/" + pathEscapePath(modelID) + "/resolve/master/" + pathEscapePath(file.Path)
 	case SourceHuggingFace:
-		dlURL = base + "/" + pathEscapePath(modelID) + "/resolve/main/" + pathEscapePath(file)
+		dlURL = base + "/" + pathEscapePath(modelID) + "/resolve/main/" + pathEscapePath(file.Path)
 	default:
 		return fmt.Errorf("modelhub: unsupported source %q", source)
+	}
+
+	dest := filepath.Join(destDir, filepath.FromSlash(file.Path))
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
+		return fmt.Errorf("modelhub: mkdir %s: %w", filepath.Dir(dest), err)
+	}
+
+	var lastErr error
+	for attempt := 1; attempt <= downloadAttempts; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("modelhub: download %s: %w", file.Path, ctx.Err())
+			case <-time.After(downloadRetryDelay(attempt - 1)):
+			}
+		}
+		lastErr = d.downloadFileOnce(ctx, dlURL, dest, file)
+		if lastErr == nil {
+			return nil
+		}
+		if ctx.Err() != nil || !retryableDownloadError(lastErr) {
+			return lastErr
+		}
+	}
+	return lastErr
+}
+
+// downloadFileOnce performs one request for a file and continues an
+// already-written prefix when one exists. The expected size, when the hub
+// reports it, is checked at the end so a silently truncated body fails the
+// attempt instead of being mistaken for a complete file.
+func (d *HTTPDownloader) downloadFileOnce(ctx context.Context, dlURL, dest string, file FileInfo) error {
+	offset := int64(0)
+	if info, err := os.Stat(dest); err == nil {
+		offset = info.Size()
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("modelhub: stat %s: %w", dest, err)
+	}
+	if file.Size > 0 && offset > file.Size {
+		// More bytes than the hub advertises cannot be a usable prefix;
+		// restart so the file is never a mix of two runs.
+		if err := os.Truncate(dest, 0); err != nil {
+			return fmt.Errorf("modelhub: truncate %s: %w", dest, err)
+		}
+		offset = 0
+	}
+	if file.Size > 0 && offset == file.Size {
+		return nil
 	}
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, dlURL, nil)
 	if err != nil {
 		return err
 	}
+	if offset > 0 {
+		req.Header.Set("Range", fmt.Sprintf("bytes=%d-", offset))
+	}
 	resp, err := d.client.Do(req)
 	if err != nil {
-		return fmt.Errorf("modelhub: download %s: %w", file, err)
+		return fmt.Errorf("modelhub: download %s: %w", file.Path, err)
 	}
 	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("modelhub: download %s: unexpected status %d", file, resp.StatusCode)
+
+	switch resp.StatusCode {
+	case http.StatusPartialContent:
+		if offset == 0 {
+			return fmt.Errorf("modelhub: download %s: unexpected partial response", file.Path)
+		}
+		if start, ok := contentRangeStart(resp.Header.Get("Content-Range")); ok && start != offset {
+			// The hub resumed at a different offset than requested; the
+			// on-disk prefix cannot be trusted, so drop it and retry
+			// from zero.
+			if err := os.Truncate(dest, 0); err != nil {
+				return fmt.Errorf("modelhub: truncate %s: %w", dest, err)
+			}
+			return fmt.Errorf("modelhub: download %s: range start %d, want %d", file.Path, start, offset)
+		}
+	case http.StatusOK:
+		if offset > 0 {
+			// The hub ignored the Range header and sent the whole file;
+			// restart from zero so no byte is written twice.
+			if err := os.Truncate(dest, 0); err != nil {
+				return fmt.Errorf("modelhub: truncate %s: %w", dest, err)
+			}
+			offset = 0
+		}
+	case http.StatusRequestedRangeNotSatisfiable:
+		// The hub says the requested range starts at or past the end.
+		// Only an exact-size file is done; anything else is inconsistent.
+		if file.Size > 0 && offset == file.Size {
+			return nil
+		}
+		return fmt.Errorf("modelhub: download %s: range not satisfiable at %d bytes", file.Path, offset)
+	default:
+		return &hubHTTPError{file: file.Path, status: resp.StatusCode}
 	}
 
-	dest := filepath.Join(destDir, filepath.FromSlash(file))
-	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
-		return fmt.Errorf("modelhub: mkdir %s: %w", filepath.Dir(dest), err)
+	flags := os.O_WRONLY | os.O_CREATE | os.O_TRUNC
+	if offset > 0 {
+		flags = os.O_WRONLY | os.O_CREATE | os.O_APPEND
 	}
 	// #nosec G304 -- dest is derived from the validated model file list
 	// and the caller-provided destination directory.
-	out, err := os.Create(dest)
+	out, err := os.OpenFile(dest, flags, 0o640)
 	if err != nil {
 		return fmt.Errorf("modelhub: create %s: %w", dest, err)
 	}
-	defer func() { _ = out.Close() }()
 	if _, err := io.Copy(out, resp.Body); err != nil {
+		_ = out.Close()
 		return fmt.Errorf("modelhub: write %s: %w", dest, err)
 	}
+	if err := out.Close(); err != nil {
+		return fmt.Errorf("modelhub: close %s: %w", dest, err)
+	}
+	if file.Size > 0 {
+		info, err := os.Stat(dest)
+		if err != nil {
+			return fmt.Errorf("modelhub: stat %s: %w", dest, err)
+		}
+		if info.Size() != file.Size {
+			return fmt.Errorf("modelhub: write %s: short download (%d of %d bytes)", dest, info.Size(), file.Size)
+		}
+	}
 	return nil
+}
+
+// hubHTTPError is a non-success status from a hub download endpoint. A 4xx
+// is final; a 5xx is worth another attempt.
+type hubHTTPError struct {
+	file   string
+	status int
+}
+
+// Error implements error.
+func (e *hubHTTPError) Error() string {
+	return fmt.Sprintf("modelhub: download %s: unexpected status %d", e.file, e.status)
+}
+
+// retryableDownloadError reports whether another attempt can succeed. Any
+// transport, stream or short-body failure is retried; a 4xx status is not.
+func retryableDownloadError(err error) bool {
+	var httpErr *hubHTTPError
+	if errors.As(err, &httpErr) {
+		return httpErr.status >= http.StatusInternalServerError
+	}
+	return true
+}
+
+// contentRangeStart parses the start offset of a "bytes <start>-<end>/<size>"
+// Content-Range header. ok is false when the header is absent or malformed.
+func contentRangeStart(header string) (start int64, ok bool) {
+	header = strings.TrimSpace(header)
+	if !strings.HasPrefix(header, "bytes ") {
+		return 0, false
+	}
+	spec := strings.TrimPrefix(header, "bytes ")
+	dash := strings.IndexByte(spec, '-')
+	if dash <= 0 {
+		return 0, false
+	}
+	start, err := strconv.ParseInt(strings.TrimSpace(spec[:dash]), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return start, true
 }
 
 // pathEscapePath escapes each path segment so nested files survive URL
