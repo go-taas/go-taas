@@ -1,3 +1,53 @@
+# [1.129.0](https://github.com/go-taas/go-taas/compare/v1.128.0...v1.129.0) (2026-11-25)
+
+
+### Bug Fixes
+
+* **accelerator:** report labeled cards when the device plugin is absent ([7fc839a](https://github.com/go-taas/go-taas/commit/7fc839a14fb07cea5496ddb858c6ae8f662820bc))
+* **audit:** default the list range to the full queryable window ([38a78b6](https://github.com/go-taas/go-taas/commit/38a78b673b695fcc52d74a7fbaa4efd2fe9f0e4d))
+* **console:** align model tab actions and hints ([76dc5c0](https://github.com/go-taas/go-taas/commit/76dc5c0069d0eefadc769996e71797538620dc22))
+* **console:** keep job error tooltips visible in scrolling tables ([33bb2af](https://github.com/go-taas/go-taas/commit/33bb2af2ecf3a5d6f9eb4e7d57d7fcff86c6dde3))
+* **console:** keep the transfer dialog usable after models load ([2ea8310](https://github.com/go-taas/go-taas/commit/2ea8310962c20e60e5f37947a1f4abdb9b498eb5))
+* **console:** keep the warm-model dialog usable after models load ([2494155](https://github.com/go-taas/go-taas/commit/249415532b1a013824bc03c722ce4a577501677b))
+* **console:** move the scope switch into the account block ([530f768](https://github.com/go-taas/go-taas/commit/530f768fd0edcc46e5442d6bf2ea132288f3cfc9))
+* **console:** read warmup rows from the warmups field ([1e52e16](https://github.com/go-taas/go-taas/commit/1e52e1623572a9f32cc3b08f00bf187033fb6b96))
+* **controller:** label warmup node group nodes for KServe agent ([690d140](https://github.com/go-taas/go-taas/commit/690d140a1890c1fceb4a83e5199700719bbd499e))
+* **controller:** let serving pods read group-owned weights ([169a52d](https://github.com/go-taas/go-taas/commit/169a52d00b1a274ae71396a1328873413d92f082))
+* **controller:** skip hub source backend for download jobs ([b57315f](https://github.com/go-taas/go-taas/commit/b57315f0a7331bcea631d0b051acedc5f5efe643))
+* **controller:** use go-taas.com prefix for transfer and warmup labels ([25e1a4c](https://github.com/go-taas/go-taas/commit/25e1a4c2c3d0b8ba5e7c1e65fafa93d7c02213fa))
+* **image:** answer over-long source credentials with a bad request ([d370525](https://github.com/go-taas/go-taas/commit/d3705256dd16110a94350b6b5176e6560adf38ed))
+* **image:** raise the source password limit to 2048 characters ([a68fc70](https://github.com/go-taas/go-taas/commit/a68fc70cfb93fb6ee865f5bb84ee06c8774c7a91))
+* **model:** adopt transfer targets so model deletion frees weights ([ad935ea](https://github.com/go-taas/go-taas/commit/ad935eaa8d77c31695a7f2bc1341d3051209e1f8))
+* **model:** drop the composed upload archive once it is consumed ([4533c11](https://github.com/go-taas/go-taas/commit/4533c11500bc512f95e3cfe380f3592cec0f3ca0))
+* **model:** keep a resumed part instead of storing it twice ([a97be5a](https://github.com/go-taas/go-taas/commit/a97be5a67c1b846dc84cf99a0a8adcc6f495fd7c))
+* **model:** keep upload rows migratable and uploaded weights usable ([4fba551](https://github.com/go-taas/go-taas/commit/4fba551d07bce6107e32e273ae0c6a6ba3697c9f))
+* **model:** list ready warmups first and show delete errors in dialog ([a81e0e9](https://github.com/go-taas/go-taas/commit/a81e0e9c32d16077b87ed5d63ae83e613da5805b))
+* **model:** queue hub downloads for object storage backends ([e92f520](https://github.com/go-taas/go-taas/commit/e92f520dbaa11989dfb9133dcd4daf1052cad7e3))
+* **model:** reject hub downloads on the generic transfer endpoint ([6cad2ef](https://github.com/go-taas/go-taas/commit/6cad2efe5fd6b23bdd8b4f8474b491b64b5dc4c0))
+* **model:** remove empty weight parents when deleting a model ([52ab438](https://github.com/go-taas/go-taas/commit/52ab43826b7bd044cb804bee5e5650ffb9e3d483))
+* **model:** report live transfer progress on model downloads ([067c30f](https://github.com/go-taas/go-taas/commit/067c30f7f78e98cd64aab2ab508830f8ae38bb5c))
+* **model:** report the default backend for legacy versions ([1ae9921](https://github.com/go-taas/go-taas/commit/1ae99210538e1250447982f84f697870bb89eab6))
+* **model:** resolve real weight size for warmups ([772cf4a](https://github.com/go-taas/go-taas/commit/772cf4aa1896f1a710d2fad15a40f977044b437a))
+* **server:** serve the upload list on the collection path ([4ed97fd](https://github.com/go-taas/go-taas/commit/4ed97fd04d061bdf81ea6bc76916be153f9dc46a))
+* **transfer:** upload hub downloads to object storage ([1b9eed5](https://github.com/go-taas/go-taas/commit/1b9eed5824c9b3b3a762beba12de6e3a23aaac6f))
+* **web:** expand the local upload form in place, not as an overlay ([70a7a08](https://github.com/go-taas/go-taas/commit/70a7a0884ebf7de1415ad964d5e63fa9993fe49e))
+* **web:** fold the form after a submit and split it from the job list ([c9f9d1a](https://github.com/go-taas/go-taas/commit/c9f9d1a7710c204c08f3965ad882432358f758cf))
+* **web:** put upload tasks in the upload panel and drop it when downloads open ([db6140f](https://github.com/go-taas/go-taas/commit/db6140f11b083b7221b45f5ad3af46f79f1b3477))
+
+
+### Features
+
+* **console:** open the warm dialog from a model row ([925dd54](https://github.com/go-taas/go-taas/commit/925dd547f234d091966ef8652e1cdfebfc8f0de5))
+* **controller:** default whole-card pods to Volcano priorities ([bfc95b0](https://github.com/go-taas/go-taas/commit/bfc95b026803b99de77d19ae4583c4a810cbbd5d))
+* **deploy:** configure chunked upload and remove nginx body cap ([2f5af6c](https://github.com/go-taas/go-taas/commit/2f5af6c3329a75bc8122e8a7967a45924701f787))
+* **model:** add resumable chunked model upload ([a33eea4](https://github.com/go-taas/go-taas/commit/a33eea4fdaefbdcc117459ef9e7645a81f721217))
+* **model:** let an interrupted local upload be resumed ([d65a4ed](https://github.com/go-taas/go-taas/commit/d65a4ed84bf87b2f5efdecaf2ab5123ca6f7b817))
+* **model:** move model weights between storage backends ([a6ff19b](https://github.com/go-taas/go-taas/commit/a6ff19b731e9096b69795e7ab0114316f6b156c9))
+* **model:** select storage backends and surface job errors ([9f62e42](https://github.com/go-taas/go-taas/commit/9f62e42748b75aa736e8c2d65b855818a41aaf0d))
+* **web:** add transfer action to model catalog rows ([32b6691](https://github.com/go-taas/go-taas/commit/32b6691d4d708a1a22b375de5bcd35c12e77d311))
+* **web:** move image and engine-template nav entries above inference services ([263f90c](https://github.com/go-taas/go-taas/commit/263f90c36f891f49221e67c182765490e0fa6fd5))
+* **web:** resumable chunked model upload UI ([2468466](https://github.com/go-taas/go-taas/commit/2468466792887bc6dd365659fbf3f3cce6055176))
+
 # [1.128.0](https://github.com/go-taas/go-taas/compare/v1.127.0...v1.128.0) (2026-11-20)
 
 
