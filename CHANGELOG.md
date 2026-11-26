@@ -1,3 +1,11 @@
+# [1.131.0](https://github.com/go-taas/go-taas/compare/v1.130.0...v1.131.0) (2026-11-26)
+
+
+### Features
+
+* **transfer:** report the store-write phase so progress never freezes at 100% ([4749cda](https://github.com/go-taas/go-taas/commit/4749cda29daecb7b9b264bd7bc902635858b5e90))
+* **web:** show the transfer phase next to the progress ([5e04dfd](https://github.com/go-taas/go-taas/commit/5e04dfdb9365b6e4ef08893a5b1699ac83864eca))
+
 # [1.130.0](https://github.com/go-taas/go-taas/compare/v1.129.0...v1.130.0) (2026-11-25)
 
 
