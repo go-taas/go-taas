@@ -1,3 +1,18 @@
+# [1.132.0](https://github.com/go-taas/go-taas/compare/v1.131.0...v1.132.0) (2026-11-26)
+
+
+### Bug Fixes
+
+* **model:** return upload timestamps as unix seconds ([b49e0e2](https://github.com/go-taas/go-taas/commit/b49e0e2df61c6a4595d1fa6f79c529fff817e9c9))
+* **transfer:** show the total when copying an object-store prefix ([4930ba3](https://github.com/go-taas/go-taas/commit/4930ba32d79f758f73779d488dc5dd8aff594b99))
+* **web:** show a resumed upload as uploading at once ([5fa2e09](https://github.com/go-taas/go-taas/commit/5fa2e0950d629c20ab3256abd35b7a87694433dd))
+* **web:** translate the upload transfer operation ([636abbf](https://github.com/go-taas/go-taas/commit/636abbfdcbc2bc69de8e49902caad0eb4dd38b0f))
+
+
+### Features
+
+* **web:** keep model uploads running across in-console navigation ([4eef326](https://github.com/go-taas/go-taas/commit/4eef326d5966430af9761c81972629e12b9f52f4))
+
 # [1.131.0](https://github.com/go-taas/go-taas/compare/v1.130.0...v1.131.0) (2026-11-26)
 
 
