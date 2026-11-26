@@ -4189,6 +4189,7 @@ export const en: Record<string, string> = {
   'transfers.operation.copy': 'Copy',
   'transfers.operation.move': 'Move',
   'transfers.operation.download': 'Download',
+  'transfers.operation.upload': 'Upload',
   'transfers.operation.delete': 'Delete',
   'transfers.state.queued': 'Queued',
   'transfers.state.running': 'Running',

@@ -174,7 +174,7 @@ export default function ModelTransfersPage({
                     <strong>{transfer.modelName || '—'}</strong>
                     <div className="muted mono">{transfer.version}</div>
                   </td>
-                  <td>{t(`transfers.operation.${transfer.operation}`)}</td>
+                  <td>{tEnum('transfers.operation', transfer.operation)}</td>
                   <td className="mono muted">
                     {transfer.sourceBackend} → {transfer.targetBackend || '—'}
                   </td>

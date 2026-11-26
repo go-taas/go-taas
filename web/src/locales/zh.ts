@@ -4153,6 +4153,7 @@ export const zh: Record<string, string> = {
   'transfers.operation.copy': '复制',
   'transfers.operation.move': '移动',
   'transfers.operation.download': '下载',
+  'transfers.operation.upload': '上传',
   'transfers.operation.delete': '删除',
   'transfers.state.queued': '排队中',
   'transfers.state.running': '执行中',
