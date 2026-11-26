@@ -35,7 +35,7 @@ export default function ModelTransfersPage({
   onInitialTransferConsumed?: () => void;
 }) {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [transfers, setTransfers] = useState<ModelTransfer[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -179,6 +179,15 @@ export default function ModelTransfersPage({
                     {transfer.sourceBackend} → {transfer.targetBackend || '—'}
                   </td>
                   <td className="mono">
+                    {transfer.phase && (
+                      <div
+                        className="muted small"
+                        data-testid={`transfer-phase-${transfer.transferId}`}
+                        data-phase={transfer.phase}
+                      >
+                        {tEnum('transfers.phase', transfer.phase)}
+                      </div>
+                    )}
                     {formatBytes(transfer.bytes)}
                     {Number(transfer.totalBytes || 0) > 0 ? ` / ${formatBytes(transfer.totalBytes || 0)}` : ''}
                   </td>

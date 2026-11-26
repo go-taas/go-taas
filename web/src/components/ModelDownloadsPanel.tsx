@@ -36,7 +36,7 @@ const HUBS = [
 
 export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOpen?: boolean }) {
   const { orgId } = useOrg();
-  const { t } = useI18n();
+  const { t, tEnum } = useI18n();
   const [downloads, setDownloads] = useState<ModelDownload[]>([]);
   const [total, setTotal] = useState(0);
   const [offset, setOffset] = useState(0);
@@ -313,6 +313,15 @@ export default function ModelDownloadsPanel({ defaultOpen = false }: { defaultOp
                     )}
                   </td>
                   <td style={{ minWidth: 180 }}>
+                    {d.phase && (
+                      <div
+                        className="muted small"
+                        data-testid={`download-phase-${d.downloadId}`}
+                        data-phase={d.phase}
+                      >
+                        {tEnum('models.downloads.phase', d.phase)}
+                      </div>
+                    )}
                     <div className="muted small" data-testid={`download-bytes-${d.downloadId}`}>
                       {progressLabel(d)}
                     </div>
@@ -387,6 +396,7 @@ function DownloadProgress({ download }: { download: ModelDownload }) {
       aria-valuemax={100}
       data-testid={`download-progress-${download.downloadId}`}
       data-percent={pct}
+      data-phase={download.phase || ''}
     >
       {/* progress-fill is the fill; progress-bar is the track, so nesting
           a progress-bar here would paint a second grey track instead of a

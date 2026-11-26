@@ -300,6 +300,9 @@ export interface ModelDownload {
   // state is queued, downloading, succeeded or failed.
   state: string;
   message?: string;
+  // phase names the stage moving bytes: download (hub -> temp dir) or
+  // upload (temp dir -> object store). Empty when unknown.
+  phase?: string;
   // bytes is the number of weight bytes already on disk (JSON string for
   // the int64 proto field).
   bytes: string | number;
@@ -408,6 +411,8 @@ export interface ModelTransfer {
   weightPath?: string;
   state: string;
   message?: string;
+  // phase names the stage moving bytes: download, upload or unpack.
+  phase?: string;
   // int64 fields arrive as JSON strings.
   bytes: string | number;
   totalBytes?: string | number;
