@@ -208,6 +208,21 @@ func (r *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
+// PrefixBytes returns the summed size of the objects under key. A transfer
+// that downloads a whole prefix uses it as the progress total, so the console
+// shows "12 GB / 30 GB" instead of a bare byte count.
+func (c *RemoteClient) PrefixBytes(ctx context.Context, key string) (int64, error) {
+	prefix := c.key(key)
+	var total int64
+	for object := range c.client.ListObjects(ctx, c.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if object.Err != nil {
+			return 0, object.Err
+		}
+		total += object.Size
+	}
+	return total, nil
+}
+
 // UploadDir copies a local directory under key. It is used by the upload
 // flow when the backend is an object store.
 func (c *RemoteClient) UploadDir(ctx context.Context, dir, key string) (int64, error) {

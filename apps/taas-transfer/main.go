@@ -230,8 +230,12 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(string, int
 		if strings.TrimSpace(spec.TargetPath) == "" {
 			return fmt.Errorf("copy needs a target path")
 		}
+		// The prefix listing gives the transfer a real total, so the
+		// console shows a percentage instead of only the bytes so far.
+		total, _ := sourceRemote.PrefixBytes(ctx, spec.WeightPath)
+		progress(transfer.PhaseDownload, 0, total)
 		_, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, spec.TargetPath, func(n int64) {
-			progress(transfer.PhaseDownload, n, 0)
+			progress(transfer.PhaseDownload, n, total)
 		})
 		return err
 	case sourceRemote == nil && targetRemote != nil:
@@ -252,8 +256,10 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(string, int
 			return err
 		}
 		defer func() { _ = os.RemoveAll(temp) }()
+		downloadTotal, _ := sourceRemote.PrefixBytes(ctx, spec.WeightPath)
+		progress(transfer.PhaseDownload, 0, downloadTotal)
 		if _, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, temp, func(n int64) {
-			progress(transfer.PhaseDownload, n, 0)
+			progress(transfer.PhaseDownload, n, downloadTotal)
 		}); err != nil {
 			return err
 		}
