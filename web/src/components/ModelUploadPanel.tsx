@@ -22,7 +22,7 @@
 // calls the complete endpoint and the server unpacks and registers the model.
 
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import {
   ApiError,
   apiPrefix,
@@ -33,6 +33,7 @@ import { useI18n } from '../i18n';
 import { ErrorBanner } from '../components';
 import { FieldLabel, FormLegend, FormSection, RequiredStatus } from './FormField';
 import ModelUploadTasksDrawer from './ModelUploadTasksDrawer';
+import { uploadManager } from '../upload/manager';
 import { StorageBackendSelect } from './StorageBackendSelect';
 
 interface Props {
@@ -52,20 +53,6 @@ interface Props {
 // ARCHIVE_ACCEPT is what the file picker offers. The server decides the format
 // from the extension and rejects anything else.
 const ARCHIVE_ACCEPT = '.tar,.tar.gz,.tgz,.zip,application/x-tar,application/gzip,application/zip';
-
-// MAX_IN_FLIGHT caps how many part PUTs run at once. Four parallel streams
-// saturate most links without overwhelming the server or the browser's
-// connection pool.
-const MAX_IN_FLIGHT = 4;
-
-// POLL_MS is how often the client re-checks a completed session that is
-// unpacking on the server.
-const POLL_MS = 2000;
-
-// CANCELLED is a sentinel the part uploads throw when the operator hits
-// cancel, so the submit loop can tell a deliberate abort from a transport
-// error.
-const CANCELLED = Symbol('cancelled');
 
 // sizeLabel renders a byte count with a binary unit, so the operator can
 // confirm the archive they picked is the one they meant.
@@ -105,74 +92,12 @@ export default function ModelUploadPanel({
   // listRefresh bumps when a session is created or ends so the embedded list
   // reloads and starts polling the new row at once.
   const [listRefresh, setListRefresh] = useState(0);
-  // phase drives the extracting label; the progress bar lives in the list.
-  const [phase, setPhase] = useState<'idle' | 'uploading' | 'processing'>('idle');
-  const [cancelled, setCancelled] = useState(false);
 
-  // In-flight part uploads, kept so cancel can abort them all at once.
-  const activeXhrsRef = useRef<Set<XMLHttpRequest>>(new Set());
-  // The current session id, needed by the cancel button to delete it.
-  const uploadIdRef = useRef('');
-  // Cancellation is a ref so the async workers see it immediately rather than
-  // through stale closure state.
-  const cancelledRef = useRef(false);
-  const pollTimerRef = useRef<number | null>(null);
-  // activeRef mirrors `submitting` for the unmount/pagehide handlers, whose
-  // closures would otherwise see the initial false.
-  const activeRef = useRef(false);
-  // markInterrupted tells the server the browser driving this upload is gone,
-  // so the session turns resumable (a row offers resume) instead of looking
-  // stuck in "uploading" until the stale fallback notices. It must survive the
-  // page going away, so it uses a keepalive request.
-  const markInterrupted = (uploadId: string) => {
-    if (!uploadId) return;
-    const headers: Record<string, string> = {};
-    const authorization = sessionAuthHeader('admin');
-    if (authorization) headers['Authorization'] = authorization;
-    void fetch(`${apiPrefix('admin')}/models/uploads/${uploadId}:interrupt`, {
-      method: 'POST',
-      headers,
-      keepalive: true,
-    }).catch(() => undefined);
-  };
-
-  // Abort any in-flight transfer and stop the completion poll when the dialog
-  // unmounts (the operator closed it another way). Aborting alone would leave
-  // the server row claiming to upload forever, so also mark it interrupted:
-  // the parts it already holds are kept and the row offers resume.
-  useEffect(
-    () => () => {
-      for (const xhr of activeXhrsRef.current) xhr.abort();
-      activeXhrsRef.current.clear();
-      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
-      if (activeRef.current && !cancelledRef.current) markInterrupted(uploadIdRef.current);
-    },
-    [],
-  );
-
-  // Abort any in-flight transfer and stop the completion poll when the dialog
-  // unmounts (the operator closed it another way).
-  useEffect(
-    () => () => {
-      for (const xhr of activeXhrsRef.current) xhr.abort();
-      activeXhrsRef.current.clear();
-      if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
-    },
-    [],
-  );
-
-  // A real page unload (refresh, tab close, navigation away from the console)
-  // does not always run React cleanup in time, so report the browser is gone
-  // from the page lifecycle hook as well. The keepalive request outlives the
-  // page and turns the session resumable at once.
-  useEffect(() => {
-    if (!submitting) return undefined;
-    const onPageHide = () => {
-      if (!cancelledRef.current) markInterrupted(uploadIdRef.current);
-    };
-    window.addEventListener('pagehide', onPageHide);
-    return () => window.removeEventListener('pagehide', onPageHide);
-  }, [submitting]);
+  // The transfer runs in a module-level engine, so navigating inside the
+  // console (which unmounts this panel) does not abort it. The panel only
+  // subscribes for display and starts/stops the job.
+  const job = useSyncExternalStore(uploadManager.subscribe, uploadManager.getState);
+  const busy = submitting || job.status === 'uploading' || job.status === 'processing';
 
   // resume may arrive while the panel is already open: clicking resume on a
   // row of the embedded task list hands the session to this already-mounted
@@ -185,7 +110,6 @@ export default function ModelUploadPanel({
     setStorageBackend(resume.storageBackend || '');
     setFile(null);
     setError('');
-    setPhase('idle');
   }, [resume?.uploadId]);
 
   // Reopen the form whenever the panel is expanded again, so a finished
@@ -202,13 +126,6 @@ export default function ModelUploadPanel({
       const base = picked.name.replace(/\.(tar\.gz|tgz|tar|zip)$/i, '');
       setName(base.slice(0, 128));
     }
-  };
-
-  // applyAuth sets the Authorization header from the admin session onto a
-  // request, mirroring how the api client authenticates every other call.
-  const applyAuth = (xhr: XMLHttpRequest) => {
-    const authorization = sessionAuthHeader('admin');
-    if (authorization) xhr.setRequestHeader('Authorization', authorization);
   };
 
   // jsonRequest wraps a JSON call against the upload endpoints. Unlike the
@@ -242,150 +159,10 @@ export default function ModelUploadPanel({
     return data as T;
   };
 
-  // uploadParts slices the file into partSizeBytes chunks, skips the parts the
-  // server already holds (resume), and pushes the missing ones with bounded
-  // concurrency. It resolves once every missing part is on the server or
-  // throws when a part fails or the operator cancels.
-  const uploadParts = async (session: ModelUploadSession, target: File) => {
-    const { uploadId, partSizeBytes, totalBytes } = session;
-    const part = partSizeBytes > 0 ? partSizeBytes : Math.max(totalBytes, 1);
-    const partCount = Math.max(1, Math.ceil(totalBytes / part));
-    const { parts } = await jsonRequest<{ parts?: number[] }>(
-      'GET',
-      `/models/uploads/${uploadId}/parts`,
-    );
-    const received = new Set(parts || []);
-    const missing: number[] = [];
-    for (let n = 1; n <= partCount; n += 1) {
-      if (!received.has(n)) missing.push(n);
-    }
-
-    const sendPart = (n: number) =>
-      new Promise<void>((resolve, reject) => {
-        const start = (n - 1) * part;
-        const end = Math.min(start + part, totalBytes);
-        const blob = target.slice(start, end);
-        const xhr = new XMLHttpRequest();
-        activeXhrsRef.current.add(xhr);
-        xhr.open('PUT', `${apiPrefix('admin')}/models/uploads/${uploadId}/parts/${n}`);
-        applyAuth(xhr);
-        xhr.setRequestHeader('Content-Type', target.type || 'application/octet-stream');
-        xhr.onload = () => {
-          if (cancelledRef.current) {
-            reject(CANCELLED);
-            return;
-          }
-          activeXhrsRef.current.delete(xhr);
-          if (xhr.status >= 200 && xhr.status < 300) {
-            resolve();
-            return;
-          }
-          let message = t('models.upload.failed');
-          try {
-            const body = JSON.parse(xhr.responseText) as { message?: string };
-            if (body.message) message = body.message;
-          } catch {
-            // Keep the generic message.
-          }
-          reject(new ApiError(0, message));
-        };
-        xhr.onerror = () => {
-          activeXhrsRef.current.delete(xhr);
-          reject(new ApiError(0, t('models.upload.failed')));
-        };
-        xhr.onabort = () => {
-          activeXhrsRef.current.delete(xhr);
-          reject(CANCELLED);
-        };
-        xhr.send(blob);
-      });
-
-    // Worker pool: keep at most MAX_IN_FLIGHT part requests in the air by
-    // letting each worker claim the next pending part when one finishes.
-    let next = 0;
-    const workers = Array.from({ length: Math.min(MAX_IN_FLIGHT, missing.length) }, async () => {
-      while (!cancelledRef.current) {
-        const n = missing[next];
-        if (n === undefined) return;
-        next += 1;
-        await sendPart(n);
-      }
-    });
-    await Promise.all(workers);
-    if (cancelledRef.current) throw CANCELLED;
-  };
-
-  // waitForOutcome polls a completed session until the server is done
-  // unpacking. It resolves with the terminal outcome so the caller can decide
-  // what to do: succeeded hands off to onDone, failed surfaces the server's
-  // message, and cancelled resets without a notice.
-  const waitForOutcome = async (
-    uploadId: string,
-  ): Promise<'succeeded' | 'failed' | 'cancelled' | 'error'> =>
-    new Promise((resolve) => {
-      const check = async () => {
-        let session: ModelUploadSession;
-        try {
-          session = await jsonRequest<ModelUploadSession>('GET', `/models/uploads/${uploadId}`);
-        } catch (e) {
-          setError(e instanceof Error ? e.message : t('models.upload.failed'));
-          setPhase('idle');
-          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
-          pollTimerRef.current = null;
-          resolve('error');
-          return;
-        }
-        if (session.state === 'succeeded') {
-          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
-          pollTimerRef.current = null;
-          resolve('succeeded');
-          return;
-        }
-        if (session.state === 'failed') {
-          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
-          pollTimerRef.current = null;
-          setError(session.message || t('models.upload.failed'));
-          setPhase('idle');
-          resolve('failed');
-          return;
-        }
-        if (session.state === 'cancelled') {
-          if (pollTimerRef.current !== null) window.clearInterval(pollTimerRef.current);
-          pollTimerRef.current = null;
-          setPhase('idle');
-          resolve('cancelled');
-          return;
-        }
-        // Still processing (or a transient state): keep polling.
-      };
-      void check();
-      pollTimerRef.current = window.setInterval(() => void check(), POLL_MS);
-    });
-
-  // cancelUpload aborts the in-flight parts, deletes the session on the server
-  // so no orphan parts linger, and closes the dialog.
-  const cancelUpload = async () => {
-    if (cancelledRef.current || !submitting) return;
-    cancelledRef.current = true;
-    setCancelled(true);
-    for (const xhr of activeXhrsRef.current) xhr.abort();
-    activeXhrsRef.current.clear();
-    if (uploadIdRef.current) {
-      try {
-        const headers: Record<string, string> = {};
-        const authorization = sessionAuthHeader('admin');
-        if (authorization) headers['Authorization'] = authorization;
-        await fetch(`${apiPrefix('admin')}/models/uploads/${uploadIdRef.current}`, {
-          method: 'DELETE',
-          headers,
-        });
-      } catch {
-        // Best effort: the server also cleans up abandoned sessions.
-      }
-    }
-    onClose();
-  };
-
+  // submit validates the form, prepares the resume session (the server-side
+  // checks need the stored session), then hands the transfer to the engine.
+  // The engine keeps running if this panel unmounts; a settled job is applied
+  // by the effect below.
   const submit = async () => {
     if (!file) {
       setError(t('models.upload.validationFile'));
@@ -404,26 +181,20 @@ export default function ModelUploadPanel({
       return;
     }
     setFormOpen(false);
-    uploadIdRef.current = '';
-    setSubmitting(true);
     setError('');
-    setCancelled(false);
-    cancelledRef.current = false;
-    activeRef.current = true;
-    setPhase('uploading');
+    setSubmitting(true);
 
     try {
-      // 1. Create the session, or re-read the interrupted one being resumed;
-      // the server answers with the chunk size the archive is cut at.
-      let session: ModelUploadSession;
       if (resume) {
-        session = await jsonRequest<ModelUploadSession>(
+        // Re-read the session being resumed: the server decides whether it is
+        // still resumable and what chunk size it expects.
+        const session = await jsonRequest<ModelUploadSession>(
           'GET',
           `/models/uploads/${resume.uploadId}`,
         );
         if (!['creating', 'uploading', 'interrupted'].includes(session.state)) {
           setError(t('models.upload.resumeUnavailable', { state: session.state }));
-          setPhase('idle');
+          setSubmitting(false);
           return;
         }
         if (session.totalBytes > 0 && file.size !== session.totalBytes) {
@@ -433,62 +204,66 @@ export default function ModelUploadPanel({
               actual: sizeLabel(file.size),
             }),
           );
-          setPhase('idle');
+          setSubmitting(false);
           return;
         }
-      } else {
-        session = await jsonRequest<ModelUploadSession>('POST', '/models/uploads', {
-          name: name.trim(),
-          hubModelId: hubModelId.trim(),
-          description: description.trim(),
-          storageBackend,
-          archiveName: file.name,
-          totalBytes: file.size,
-        });
+        void uploadManager.resume(session, file);
+        return;
       }
-      uploadIdRef.current = session.uploadId;
-      setListRefresh((n) => n + 1);
-
-      // 2. Stream every missing part (resume-aware), with dashboard progress.
-      await uploadParts(session, file);
-      if (cancelledRef.current) return;
-
-      // 3. All parts are on the server; ask it to compose and unpack.
-      setPhase('processing');
-      await jsonRequest<ModelUploadSession>('POST', `/models/uploads/${session.uploadId}:complete`);
-
-      // 4. The server unpacks in the background; poll for the outcome. On
-      // success the parent shows the success notice; on failure or cancel the
-      // poll already showed the server message and reset the phase, so the
-      // dialog stays open and retryable.
-      const outcome = await waitForOutcome(session.uploadId);
-      if (cancelledRef.current) return;
-      if (outcome === 'succeeded') {
-        // The panel stays mounted while collapsed, so clear the finished form
-        // rather than leaving the previous archive selected for the next one.
-        setFile(null);
-        setName('');
-        setHubModelId('');
-        setDescription('');
-        setStorageBackend('');
-        setPhase('idle');
-        onDone();
-      }
+      void uploadManager.start(file, {
+        name: name.trim(),
+        hubModelId: hubModelId.trim(),
+        description: description.trim(),
+        storageBackend,
+      });
     } catch (e) {
-      if (cancelledRef.current) return;
       setError(e instanceof Error ? e.message : t('models.upload.failed'));
-      setPhase('idle');
-      // A submit that never created a session has nothing to show in the list,
-      // so bring the form back with the reason instead of leaving only a banner.
-      if (!uploadIdRef.current) setFormOpen(true);
-    } finally {
-      activeRef.current = false;
-      if (!cancelledRef.current) setSubmitting(false);
-      setListRefresh((n) => n + 1);
+      setSubmitting(false);
+      setFormOpen(true);
     }
   };
 
-  const showCancel = submitting && phase === 'uploading' && !cancelled;
+  // cancelUpload stops the engine, deletes the session and its staged parts,
+  // and closes the panel.
+  const cancelUpload = () => {
+    void uploadManager.cancel();
+    setSubmitting(false);
+    onClose();
+  };
+
+  // A settled job is applied once: success clears the form and tells the page
+  // to refresh the catalog; failure shows the server's reason and reopens the
+  // form so the operator can retry.
+  useEffect(() => {
+    if (job.status === 'succeeded') {
+      setSubmitting(false);
+      setFile(null);
+      setName('');
+      setHubModelId('');
+      setDescription('');
+      setStorageBackend('');
+      setListRefresh((n) => n + 1);
+      onDone();
+      uploadManager.reset();
+      return;
+    }
+    if (job.status === 'failed') {
+      setSubmitting(false);
+      setError(job.error || t('models.upload.failed'));
+      setFormOpen(true);
+      setListRefresh((n) => n + 1);
+      uploadManager.reset();
+      return;
+    }
+    if (job.status === 'cancelled') {
+      setSubmitting(false);
+      setListRefresh((n) => n + 1);
+      uploadManager.reset();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.status]);
+
+  const showCancel = busy;
 
   return (
     <section data-testid="model-upload-panel">
@@ -501,7 +276,7 @@ export default function ModelUploadPanel({
           className={formOpen ? 'secondary' : undefined}
           data-testid="toggle-upload-form"
           onClick={() => setFormOpen((open) => !open)}
-          disabled={submitting}
+          disabled={busy}
         >
           {formOpen ? t('common.cancel') : t('models.upload.open')}
         </button>
@@ -533,7 +308,7 @@ export default function ModelUploadPanel({
               data-testid="upload-model-archive"
               type="file"
               accept={ARCHIVE_ACCEPT}
-              disabled={submitting}
+              disabled={busy}
               onChange={(e) => pickFile(e.target.files?.[0] || null)}
             />
             <div className="field-hint">
@@ -636,7 +411,7 @@ export default function ModelUploadPanel({
             className="secondary"
             data-testid="upload-model-cancel"
             onClick={() => setFormOpen(false)}
-            disabled={submitting}
+            disabled={busy}
           >
             {t('common.cancel')}
           </button>
@@ -644,9 +419,9 @@ export default function ModelUploadPanel({
         <button
           data-testid="upload-model-submit"
           onClick={() => void submit()}
-          disabled={submitting}
+          disabled={busy}
         >
-          {submitting ? t('models.upload.submitting') : t('models.upload.submit')}
+          {busy ? t('models.upload.submitting') : t('models.upload.submit')}
         </button>
       </div>
       </div>

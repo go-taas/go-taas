@@ -10,19 +10,22 @@
 // returns to: it shows what is still unpacking on the server, what succeeded
 // into the catalog, and what failed with the server's reason.
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { navigate } from '../router';
 import { ApiError, apiPrefix, sessionAuthHeader, formatTime, type ModelUploadSession } from '../api';
 import { useI18n } from '../i18n';
 import { ErrorBanner, RowActionsMenu, StatusError } from '../components';
 import { formatBytes } from './ModelDownloadsPanel';
+import { uploadManager } from '../upload/manager';
 
 // ACTIVE_STATES are the session states that still change on their own, so the
 // panel keeps polling while any of them is present.
 const ACTIVE_STATES = ['creating', 'uploading', 'completing', 'processing'];
 
 // CANCELLABLE_STATES are the states an operator may still stop from here.
-const CANCELLABLE_STATES = ['uploading', 'processing'];
+// An interrupted session is included: its staged parts are still on the
+// server, and cancelling is how an operator abandons it and reclaims them.
+const CANCELLABLE_STATES = ['uploading', 'processing', 'interrupted'];
 
 // RESUMABLE_STATES are the states whose bytes are still on the server and can
 // be continued by picking the same archive again.
@@ -60,6 +63,11 @@ export default function ModelUploadTasksDrawer({
   // a progressing state instead of double-firing.
   const [cancelling, setCancelling] = useState<Set<string>>(new Set());
   const pollRef = useRef<number | null>(null);
+  // The engine may be driving a resume this list cannot see from the rows
+  // alone (a just-created session, or an interrupted row flipped back to
+  // uploading). Subscribing keeps the list polling and refreshed.
+  const job = useSyncExternalStore(uploadManager.subscribe, uploadManager.getState);
+  const managerBusy = job.status === 'uploading' || job.status === 'processing';
 
   // jsonRequest talks to the upload endpoints directly: they return plain
   // objects and authenticate with the admin session token (like the dialog).
@@ -128,8 +136,8 @@ export default function ModelUploadTasksDrawer({
   // Poll while any session is still live so progress and the outcome advance.
   // The interval is cleared as soon as every session reached a terminal state.
   const hasActive = useMemo(
-    () => uploads.some((u) => ACTIVE_STATES.includes(u.state)),
-    [uploads],
+    () => managerBusy || uploads.some((u) => ACTIVE_STATES.includes(u.state)),
+    [managerBusy, uploads],
   );
   useEffect(() => {
     if (!visible || !active || !hasActive) return undefined;
@@ -140,13 +148,18 @@ export default function ModelUploadTasksDrawer({
     };
   }, [visible, active, hasActive, load]);
 
+  // reload when the engine moves to a new phase, so a resumed row stops
+  // reading as interrupted the moment its parts start landing again.
+  useEffect(() => {
+    if (!active) return;
+    void load(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [job.status]);
+
   const cancel = async (session: ModelUploadSession) => {
     setCancelling((s) => new Set(s).add(session.uploadId));
     try {
-      await jsonRequest<{ cancelled: boolean }>(
-        'DELETE',
-        `/models/uploads/${session.uploadId}`,
-      );
+      await uploadManager.cancelSession(session.uploadId);
       await load(true);
     } catch (e) {
       setError(
