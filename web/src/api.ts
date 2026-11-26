@@ -352,8 +352,9 @@ export interface ModelUploadSession {
   bytesReceived: number;
   modelId?: string;
   message?: string;
-  createdAt: string;
-  updatedAt: string;
+  // Unix seconds, formatted by formatTime().
+  createdAt: string | number;
+  updatedAt: string | number;
 }
 
 // ImageImportTask is one asynchronous registry import: the server copies the

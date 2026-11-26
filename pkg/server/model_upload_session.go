@@ -51,8 +51,10 @@ type ModelUploadSessionView struct {
 	BytesReceived  int64  `json:"bytesReceived"`
 	ModelID        string `json:"modelId,omitempty"`
 	Message        string `json:"message,omitempty"`
-	CreatedAt      string `json:"createdAt"`
-	UpdatedAt      string `json:"updatedAt"`
+	// created_at/updated_at are Unix seconds, like every other console
+	// timestamp: the web formatTime() reads them as seconds.
+	CreatedAt int64 `json:"createdAt"`
+	UpdatedAt int64 `json:"updatedAt"`
 }
 
 // ModelUploadCreateRequest is the create-session body.

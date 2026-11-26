@@ -35,8 +35,8 @@ func modelUploadView(row *ModelUpload) *server.ModelUploadSessionView {
 		BytesReceived:  row.BytesReceived,
 		ModelID:        stringValue(row.ModelID),
 		Message:        row.Message,
-		CreatedAt:      row.CreatedAt.Format("2006-01-02T15:04:05Z"),
-		UpdatedAt:      row.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+		CreatedAt:      row.CreatedAt.Unix(),
+		UpdatedAt:      row.UpdatedAt.Unix(),
 	}
 }
 

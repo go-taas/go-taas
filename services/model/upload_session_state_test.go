@@ -53,3 +53,15 @@ func TestUploadStateReportsAStaleUploadAsInterrupted(t *testing.T) {
 		})
 	}
 }
+
+// TestModelUploadViewUsesUnixTimestamps guards the console contract: every
+// other timestamp the console formats is Unix seconds (formatTime reads a
+// number), so an ISO string here rendered as 1970-01-01.
+func TestModelUploadViewUsesUnixTimestamps(t *testing.T) {
+	now := time.Date(2026, 11, 26, 12, 0, 0, 0, time.UTC)
+	view := modelUploadView(&ModelUpload{
+		ID: "upload-1", State: UploadStateUploading, CreatedAt: now, UpdatedAt: now,
+	})
+	assert.Equal(t, now.Unix(), view.CreatedAt)
+	assert.Equal(t, now.Unix(), view.UpdatedAt)
+}
