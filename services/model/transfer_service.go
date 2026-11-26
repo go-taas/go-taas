@@ -333,6 +333,7 @@ func (s *Service) completeDownloadTransfer(ctx context.Context, row *ModelTransf
 			"state":      DownloadStateFailed,
 			"message":    truncateMessage(message),
 			"bytes":      status.Bytes,
+			"phase":      status.Phase,
 			"updated_at": time.Now().UTC(),
 		})
 		return
@@ -366,6 +367,7 @@ func (s *Service) completeDownloadTransfer(ctx context.Context, row *ModelTransf
 		"state":       DownloadStateSucceeded,
 		"message":     "",
 		"bytes":       status.Bytes,
+		"phase":       "",
 		"weight_path": row.WeightPath,
 		"model_id":    modelID,
 		"updated_at":  time.Now().UTC(),
@@ -499,6 +501,9 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 		"total_bytes": status.TotalBytes,
 		"updated_at":  time.Now().UTC(),
 	}
+	if status.Phase != "" {
+		updates["phase"] = status.Phase
+	}
 	if status.State != "" {
 		updates["state"] = status.State
 	}
@@ -523,7 +528,10 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 		if transfer.Terminal(status.State) {
 			s.completeDownloadTransfer(ctx, row, status)
 		} else {
-			s.syncDownloadProgress(ctx, *row.DownloadID, status)
+			// A new phase starts counting from zero; only that report may
+			// overwrite a byte count with a smaller value.
+			phaseChanged := status.Phase != "" && status.Phase != row.Phase
+			s.syncDownloadProgress(ctx, *row.DownloadID, status, phaseChanged)
 		}
 	}
 	// An upload Job unpacked the staged archive into the target backend. On
@@ -551,18 +559,22 @@ func (s *Service) HandleModelTransferStatus(ctx context.Context, body []byte) er
 // model_downloads row it was queued for. Without it the download row keeps
 // the state it was created with until the Job reaches a terminal state, so
 // the console shows a download stuck in the queue with no progress.
-func (s *Service) syncDownloadProgress(ctx context.Context, downloadID string, status transfer.Status) {
+func (s *Service) syncDownloadProgress(ctx context.Context, downloadID string, status transfer.Status, phaseChanged bool) {
 	updates := map[string]any{"updated_at": time.Now().UTC()}
 	if status.State == transfer.StateRunning {
 		updates["state"] = DownloadStateDownloading
 	}
 	// A progress report may omit a value it has not measured yet; a zero
-	// must not erase a byte count the row already has.
-	if status.Bytes > 0 {
+	// must not erase a byte count the row already has. A new phase is the
+	// exception: its counter legitimately restarts at zero.
+	if status.Bytes > 0 || phaseChanged {
 		updates["bytes"] = status.Bytes
 	}
 	if status.TotalBytes > 0 {
 		updates["total_bytes"] = status.TotalBytes
+	}
+	if status.Phase != "" {
+		updates["phase"] = status.Phase
 	}
 	s.updateDownload(ctx, downloadID, updates)
 }
@@ -811,6 +823,7 @@ func transferProjection(row *ModelTransfer) *modelv1.ModelTransfer {
 		WeightPath:    row.WeightPath,
 		State:         row.State,
 		Message:       row.Message,
+		Phase:         row.Phase,
 		Bytes:         row.Bytes,
 		TotalBytes:    row.TotalBytes,
 		JobName:       row.JobName,

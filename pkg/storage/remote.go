@@ -173,9 +173,52 @@ func (c *RemoteClient) DownloadPrefix(ctx context.Context, key, destDir string, 
 	return written, nil
 }
 
+// uploadProgressInterval bounds how often an upload reports its byte count,
+// so a fast object store does not turn every read into a progress report.
+// The Job writes each report to a Kubernetes ConfigMap, which is the reason
+// the interval is coarse.
+const uploadProgressInterval = time.Second
+
+// countingReader reports how many bytes have been read from it, at most
+// once per interval and once more at EOF. It lets an object upload show
+// progress inside one large file instead of jumping from 0 to its size.
+type countingReader struct {
+	reader   io.Reader
+	interval time.Duration
+	read     int64
+	reported int64
+	last     time.Time
+	progress func(int64)
+}
+
+// Read implements io.Reader.
+func (r *countingReader) Read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	r.read += int64(n)
+	if r.last.IsZero() {
+		r.last = time.Now()
+	}
+	// Report the size at EOF even inside one throttle window, but never
+	// report the same byte count twice.
+	if r.progress != nil && (err == io.EOF || time.Since(r.last) >= r.interval) && r.read > r.reported {
+		r.reported = r.read
+		r.last = time.Now()
+		r.progress(r.read)
+	}
+	return n, err
+}
+
 // UploadDir copies a local directory under key. It is used by the upload
 // flow when the backend is an object store.
 func (c *RemoteClient) UploadDir(ctx context.Context, dir, key string) (int64, error) {
+	return c.UploadDirWithProgress(ctx, dir, key, nil)
+}
+
+// UploadDirWithProgress copies a local directory under key and calls
+// progress with the cumulative bytes written. It is the upload counterpart
+// of DownloadPrefix: a transfer that stages through the Job can report the
+// object-store write instead of freezing at the download's 100%.
+func (c *RemoteClient) UploadDirWithProgress(ctx context.Context, dir, key string, progress func(int64)) (int64, error) {
 	var written int64
 	err := filepath.Walk(dir, func(path string, info os.FileInfo, walkErr error) error {
 		if walkErr != nil {
@@ -189,11 +232,32 @@ func (c *RemoteClient) UploadDir(ctx context.Context, dir, key string) (int64, e
 			return err
 		}
 		objectKey := c.key(joinObjectKey(key, rel))
-		upload, err := c.client.FPutObject(ctx, c.bucket, objectKey, path, minio.PutObjectOptions{})
+		in, err := os.Open(path) //nolint:gosec // path is under the validated destination root
 		if err != nil {
 			return err
 		}
+		base := written
+		reader := &countingReader{
+			reader:   in,
+			interval: uploadProgressInterval,
+			progress: func(n int64) {
+				if progress != nil {
+					progress(base + n)
+				}
+			},
+		}
+		upload, err := c.client.PutObject(ctx, c.bucket, objectKey, reader, info.Size(), minio.PutObjectOptions{})
+		closeErr := in.Close()
+		if err != nil {
+			return err
+		}
+		if closeErr != nil {
+			return closeErr
+		}
 		written += upload.Size
+		if progress != nil {
+			progress(written)
+		}
 		return nil
 	})
 	return written, err

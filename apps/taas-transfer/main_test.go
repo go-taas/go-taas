@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"sync"
@@ -10,8 +11,11 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/client-go/kubernetes/fake"
 
 	"github.com/go-taas/go-taas/pkg/modelhub"
+	"github.com/go-taas/go-taas/pkg/storage"
 	"github.com/go-taas/go-taas/pkg/transfer"
 )
 
@@ -25,9 +29,13 @@ func TestDownloadOneUploadsToObjectStoreTarget(t *testing.T) {
 
 	newHubDownloader = func() modelhub.Downloader { return fakeHubDownloader{} }
 	var uploadedDir, uploadedKey string
-	uploadDirTo = func(_ context.Context, _ *transfer.ObjectStoreRef, dir, key string) (int64, error) {
+	uploadDirTo = func(_ context.Context, _ *transfer.ObjectStoreRef, dir, key string, progress func(int64)) (int64, error) {
 		uploadedDir, uploadedKey = dir, key
-		return 6, nil
+		written := storage.DirSize(dir)
+		if progress != nil {
+			progress(written)
+		}
+		return written, nil
 	}
 
 	spec := &transfer.Spec{
@@ -38,14 +46,18 @@ func TestDownloadOneUploadsToObjectStoreTarget(t *testing.T) {
 		WeightPath:        "Qwen__Qwen2.5-0.5B-Instruct/",
 	}
 	var reported, reportedTotal int64
-	require.NoError(t, downloadOne(context.Background(), spec, func(n, total int64) {
+	var phases []string
+	require.NoError(t, downloadOne(context.Background(), spec, func(phase string, n, total int64) {
+		phases = append(phases, phase)
 		reported, reportedTotal = n, total
 	}))
 
 	assert.Equal(t, "Qwen__Qwen2.5-0.5B-Instruct/", uploadedKey)
 	require.NotEmpty(t, uploadedDir)
-	assert.Equal(t, int64(6), reported)
-	assert.Zero(t, reportedTotal)
+	assert.EqualValues(t, 2, reported, "config.json is the two bytes the fake hub wrote")
+	assert.EqualValues(t, 2, reportedTotal, "the upload phase reports the bytes it moves")
+	assert.Contains(t, phases, transfer.PhaseUpload, "the object-store write is its own phase")
+	assert.Contains(t, phases, transfer.PhaseDownload)
 }
 
 func TestDownloadOneRequiresFilesystemTargetPath(t *testing.T) {
@@ -54,7 +66,7 @@ func TestDownloadOneRequiresFilesystemTargetPath(t *testing.T) {
 		HubSource:  "modelscope",
 		HubModelID: "Qwen/Qwen2.5-0.5B-Instruct",
 	}
-	err := downloadOne(context.Background(), spec, func(int64, int64) {})
+	err := downloadOne(context.Background(), spec, func(string, int64, int64) {})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "target path")
 }
@@ -82,15 +94,20 @@ func TestDownloadOneReportsTheHubTotal(t *testing.T) {
 		finalBytes int64
 		finalTotal int64
 	)
-	require.NoError(t, downloadOne(context.Background(), spec, func(n, total int64) {
+	var sawDownloadPhase bool
+	require.NoError(t, downloadOne(context.Background(), spec, func(phase string, n, total int64) {
 		mu.Lock()
 		defer mu.Unlock()
+		if phase == transfer.PhaseDownload {
+			sawDownloadPhase = true
+		}
 		if total > 0 {
 			totalSeen = total
 		}
 		finalBytes, finalTotal = n, total
 	}))
 
+	assert.True(t, sawDownloadPhase)
 	assert.EqualValues(t, 1000, totalSeen)
 	assert.Greater(t, finalBytes, int64(0))
 	assert.EqualValues(t, 1000, finalTotal)
@@ -126,7 +143,7 @@ func TestDownloadOneReportsProgressWhileItRuns(t *testing.T) {
 	)
 	done := make(chan error, 1)
 	go func() {
-		done <- downloadOne(context.Background(), spec, func(n, total int64) {
+		done <- downloadOne(context.Background(), spec, func(_ string, n, total int64) {
 			mu.Lock()
 			defer mu.Unlock()
 			if n > 0 && n < total {
@@ -212,7 +229,7 @@ func TestMoveOneCopiesThenDeletesSource(t *testing.T) {
 		TargetPath: filepath.Join(targetRoot, "qwen", "v1"),
 		WeightPath: "qwen/v1",
 	}
-	require.NoError(t, moveOne(context.Background(), spec, func(int64, int64) {}))
+	require.NoError(t, moveOne(context.Background(), spec, func(string, int64, int64) {}))
 
 	content, err := os.ReadFile(filepath.Join(targetRoot, "qwen", "v1", "model.bin"))
 	require.NoError(t, err)
@@ -228,6 +245,44 @@ func TestMoveOneKeepsSourceWhenCopyFails(t *testing.T) {
 	require.NoError(t, os.WriteFile(blocker, []byte("not a directory"), 0o644))
 
 	spec := &transfer.Spec{Operation: transfer.OperationMove, SourcePath: sourceFile, TargetPath: filepath.Join(blocker, "child")}
-	require.Error(t, moveOne(context.Background(), spec, func(int64, int64) {}))
+	require.Error(t, moveOne(context.Background(), spec, func(string, int64, int64) {}))
 	assert.FileExists(t, sourceFile)
+}
+
+// TestProgressReporterResetsBytesOnPhaseChange guards the console display:
+// after the hub download reaches its total, the upload phase must start at
+// zero bytes instead of reporting the download's 100% as the upload's.
+func TestProgressReporterResetsBytesOnPhaseChange(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	reporter := &progressReporter{id: "phase-test", client: client, ns: "taas", name: "taas-transfer-progress-phase-test"}
+	ctx := context.Background()
+
+	reporter.report(ctx, transfer.PhaseDownload, transfer.StateRunning, "", 100, 100)
+	reporter.report(ctx, transfer.PhaseUpload, transfer.StateRunning, "", 0, 100)
+	reporter.report(ctx, transfer.PhaseUpload, transfer.StateRunning, "", 40, 100)
+
+	cm, err := client.CoreV1().ConfigMaps("taas").Get(ctx, "taas-transfer-progress-phase-test", metav1.GetOptions{})
+	require.NoError(t, err)
+	var got transfer.Progress
+	require.NoError(t, json.Unmarshal([]byte(cm.Data["progress.json"]), &got))
+	assert.Equal(t, transfer.PhaseUpload, got.Phase)
+	assert.EqualValues(t, 40, got.Bytes)
+	assert.EqualValues(t, 100, got.TotalBytes)
+}
+
+// TestProgressReporterPhaseResetsBytes asserts the reset directly: the
+// upload's first sample is zero even though the download ended at its total.
+func TestProgressReporterPhaseResetsBytes(t *testing.T) {
+	client := fake.NewSimpleClientset()
+	reporter := &progressReporter{id: "phase-test-2", client: client, ns: "taas", name: "taas-transfer-progress-phase-test-2"}
+	ctx := context.Background()
+
+	reporter.report(ctx, transfer.PhaseDownload, transfer.StateRunning, "", 100, 100)
+	reporter.report(ctx, transfer.PhaseUpload, transfer.StateRunning, "", 0, 100)
+
+	cm, err := client.CoreV1().ConfigMaps("taas").Get(ctx, "taas-transfer-progress-phase-test-2", metav1.GetOptions{})
+	require.NoError(t, err)
+	var got transfer.Progress
+	require.NoError(t, json.Unmarshal([]byte(cm.Data["progress.json"]), &got))
+	assert.EqualValues(t, 0, got.Bytes, "a new phase starts at zero bytes")
 }

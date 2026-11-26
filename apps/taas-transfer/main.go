@@ -45,14 +45,16 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	reporter := newProgressReporter(spec.ID)
-	reporter.report(ctx, transfer.StateRunning, "", 0, 0)
-	progress := func(n, total int64) { reporter.report(ctx, transfer.StateRunning, "", n, total) }
+	reporter.report(ctx, "", transfer.StateRunning, "", 0, 0)
+	progress := func(phase string, n, total int64) {
+		reporter.report(ctx, phase, transfer.StateRunning, "", n, total)
+	}
 	if err := run(ctx, &spec, progress); err != nil {
-		reporter.report(ctx, transfer.StateFailed, err.Error(), 0, 0)
+		reporter.report(ctx, "", transfer.StateFailed, err.Error(), 0, 0)
 		logger.S().Errorw("transfer failed", "transfer", spec.ID, "operation", spec.Operation, "err", err)
 		os.Exit(1)
 	}
-	reporter.report(context.Background(), transfer.StateSucceeded, "", 0, 0)
+	reporter.report(context.Background(), "", transfer.StateSucceeded, "", 0, 0)
 	logger.S().Infow("transfer succeeded", "transfer", spec.ID, "operation", spec.Operation)
 }
 
@@ -67,6 +69,7 @@ type progressReporter struct {
 	mu     sync.Mutex
 	bytes  int64
 	total  int64
+	phase  string
 }
 
 func newProgressReporter(id string) *progressReporter {
@@ -85,11 +88,21 @@ func newProgressReporter(id string) *progressReporter {
 	return &progressReporter{id: id, client: client, ns: namespace, name: "taas-transfer-progress-" + id}
 }
 
-func (p *progressReporter) report(ctx context.Context, state, message string, bytes, total int64) {
+func (p *progressReporter) report(ctx context.Context, phase, state, message string, bytes, total int64) {
 	if p.client == nil {
 		return
 	}
 	p.mu.Lock()
+	// A phase is sticky: the failure and success reports carry no phase of
+	// their own, but the row should still say which phase ended the job.
+	if phase != "" {
+		if phase != p.phase {
+			// Bytes belong to a phase: the upload restarts at zero after a
+			// completed download, so the console does not sit at 99.5%.
+			p.bytes = 0
+		}
+		p.phase = phase
+	}
 	if bytes > 0 {
 		p.bytes = bytes
 	}
@@ -99,6 +112,7 @@ func (p *progressReporter) report(ctx context.Context, state, message string, by
 	payload := transfer.Progress{
 		State:      state,
 		Message:    message,
+		Phase:      p.phase,
 		Bytes:      p.bytes,
 		TotalBytes: p.total,
 		UpdatedAt:  time.Now().UTC(),
@@ -134,9 +148,16 @@ var progressInterval = 2 * time.Second
 // the end.
 func watchProgress(dir string, total int64, progress func(int64, int64)) (stop func()) {
 	done := make(chan struct{})
+	finished := make(chan struct{})
 	var once sync.Once
-	stop = func() { once.Do(func() { close(done) }) }
+	stop = func() {
+		once.Do(func() { close(done) })
+		// Wait for the sampler to exit: a sample that lands after the next
+		// phase began would report the previous phase again.
+		<-finished
+	}
 	go func() {
+		defer close(finished)
 		ticker := time.NewTicker(progressInterval)
 		defer ticker.Stop()
 		for {
@@ -152,7 +173,7 @@ func watchProgress(dir string, total int64, progress func(int64, int64)) (stop f
 }
 
 // run executes one spec.
-func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+func run(ctx context.Context, spec *transfer.Spec, progress func(string, int64, int64)) error {
 	var err error
 	switch spec.Operation {
 	case transfer.OperationCopy:
@@ -179,7 +200,7 @@ func run(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) 
 
 // moveOne copies the version and only then deletes the source. A failed or
 // partial copy leaves the source intact, so the model is never lost.
-func moveOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+func moveOne(ctx context.Context, spec *transfer.Spec, progress func(string, int64, int64)) error {
 	if err := copyOne(ctx, spec, progress); err != nil {
 		return err
 	}
@@ -189,7 +210,7 @@ func moveOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int6
 	return nil
 }
 
-func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+func copyOne(ctx context.Context, spec *transfer.Spec, progress func(string, int64, int64)) error {
 	sourceRemote, err := remoteFor(spec.SourceObjectStore)
 	if err != nil {
 		return err
@@ -209,13 +230,19 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int6
 		if strings.TrimSpace(spec.TargetPath) == "" {
 			return fmt.Errorf("copy needs a target path")
 		}
-		_, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, spec.TargetPath, func(n int64) { progress(n, 0) })
+		_, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, spec.TargetPath, func(n int64) {
+			progress(transfer.PhaseDownload, n, 0)
+		})
 		return err
 	case sourceRemote == nil && targetRemote != nil:
 		if strings.TrimSpace(spec.SourcePath) == "" {
 			return fmt.Errorf("copy needs a source path")
 		}
-		_, err := targetRemote.UploadDir(ctx, spec.SourcePath, spec.WeightPath)
+		total := storage.DirSize(spec.SourcePath)
+		progress(transfer.PhaseUpload, 0, total)
+		_, err := targetRemote.UploadDirWithProgress(ctx, spec.SourcePath, spec.WeightPath, func(n int64) {
+			progress(transfer.PhaseUpload, n, total)
+		})
 		return err
 	default:
 		// A cross-bucket copy has no server-side API across buckets; the
@@ -225,10 +252,16 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int6
 			return err
 		}
 		defer func() { _ = os.RemoveAll(temp) }()
-		if _, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, temp, func(n int64) { progress(n, 0) }); err != nil {
+		if _, err := sourceRemote.DownloadPrefix(ctx, spec.WeightPath, temp, func(n int64) {
+			progress(transfer.PhaseDownload, n, 0)
+		}); err != nil {
 			return err
 		}
-		_, err = targetRemote.UploadDir(ctx, temp, spec.WeightPath)
+		total := storage.DirSize(temp)
+		progress(transfer.PhaseUpload, 0, total)
+		_, err = targetRemote.UploadDirWithProgress(ctx, temp, spec.WeightPath, func(n int64) {
+			progress(transfer.PhaseUpload, n, total)
+		})
 		return err
 	}
 }
@@ -238,15 +271,15 @@ func copyOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int6
 var newHubDownloader = func() modelhub.Downloader { return modelhub.NewHTTPDownloader(modelhub.Options{}) }
 
 // uploadDirTo moves a downloaded directory into an object-store backend.
-var uploadDirTo = func(ctx context.Context, ref *transfer.ObjectStoreRef, dir, key string) (int64, error) {
+var uploadDirTo = func(ctx context.Context, ref *transfer.ObjectStoreRef, dir, key string, progress func(int64)) (int64, error) {
 	remote, err := remoteFor(ref)
 	if err != nil {
 		return 0, err
 	}
-	return remote.UploadDir(ctx, dir, key)
+	return remote.UploadDirWithProgress(ctx, dir, key, progress)
 }
 
-func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(string, int64, int64)) error {
 	if strings.TrimSpace(spec.HubSource) == "" || strings.TrimSpace(spec.HubModelID) == "" {
 		return fmt.Errorf("download needs hub source and model id")
 	}
@@ -263,30 +296,41 @@ func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, 
 			total = size
 		}
 	}
-	progress(0, total)
+	progress(transfer.PhaseDownload, 0, total)
 	if objectStoreRefPresent(spec.TargetObjectStore) {
 		temp, err := os.MkdirTemp("", "taas-transfer-download-")
 		if err != nil {
 			return err
 		}
 		defer func() { _ = os.RemoveAll(temp) }()
-		stop := watchProgress(temp, total, progress)
+		stop := watchProgress(temp, total, func(n, t int64) {
+			progress(transfer.PhaseDownload, n, t)
+		})
 		defer stop()
 		if err := downloader.Download(ctx, source, spec.HubModelID, temp); err != nil {
 			return err
 		}
 		stop()
-		written, err := uploadDirTo(ctx, spec.TargetObjectStore, temp, spec.WeightPath)
+		// The upload is a phase of its own: its bytes start again from
+		// zero and its total is what actually landed on disk, so the
+		// console no longer sits at the download's 100%.
+		uploadTotal := storage.DirSize(temp)
+		progress(transfer.PhaseUpload, 0, uploadTotal)
+		written, err := uploadDirTo(ctx, spec.TargetObjectStore, temp, spec.WeightPath, func(n int64) {
+			progress(transfer.PhaseUpload, n, uploadTotal)
+		})
 		if err != nil {
 			return err
 		}
-		progress(written, total)
+		progress(transfer.PhaseUpload, written, uploadTotal)
 		return nil
 	}
 	if strings.TrimSpace(spec.TargetPath) == "" {
 		return fmt.Errorf("download needs a target path or object store")
 	}
-	stop := watchProgress(spec.TargetPath, total, progress)
+	stop := watchProgress(spec.TargetPath, total, func(n, t int64) {
+		progress(transfer.PhaseDownload, n, t)
+	})
 	defer stop()
 	if err := downloader.Download(ctx, source, spec.HubModelID, spec.TargetPath); err != nil {
 		return err
@@ -296,7 +340,7 @@ func downloadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, 
 	if total < written {
 		total = written
 	}
-	progress(written, total)
+	progress(transfer.PhaseDownload, written, total)
 	return nil
 }
 

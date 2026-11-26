@@ -30,6 +30,9 @@ type ModelTransfer struct { //nolint:revive // the name is part of the model pac
 	State string `gorm:"size:16;not null;index"`
 	// Message carries the failure reason or the Job name while running.
 	Message string `gorm:"size:1024;not null;default:''"`
+	// Phase names the stage that is moving bytes: "download", "upload" or
+	// "unpack". Empty when the Job does not report one.
+	Phase string `gorm:"size:16;not null;default:''"`
 	// Bytes is the number of bytes moved so far.
 	Bytes int64 `gorm:"not null;default:0"`
 	// TotalBytes is the expected size when known.

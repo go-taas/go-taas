@@ -25,7 +25,7 @@ import (
 //
 // Registration happens server-side once the Job reports success, so the Job
 // only ever moves bytes — it has no database access.
-func uploadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, int64)) error {
+func uploadOne(ctx context.Context, spec *transfer.Spec, progress func(string, int64, int64)) error {
 	if spec.Upload == nil || spec.Upload.ObjectKey == "" {
 		return fmt.Errorf("upload needs an upload object key")
 	}
@@ -48,13 +48,15 @@ func uploadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, in
 	}
 	defer func() { _ = os.RemoveAll(tempDir) }()
 	archivePath := filepath.Join(tempDir, "archive")
-	if err := downloadSingle(ctx, source, spec.Upload.ObjectKey, archivePath, func(n int64) { progress(n, 0) }); err != nil {
+	if err := downloadSingle(ctx, source, spec.Upload.ObjectKey, archivePath, func(n int64) {
+		progress(transfer.PhaseDownload, n, 0)
+	}); err != nil {
 		return err
 	}
 
 	// Learn the archive size for a determinate progress bar.
 	total := fileSize(archivePath)
-	progress(0, total)
+	progress(transfer.PhaseDownload, total, total)
 
 	if objectStoreRefPresent(spec.TargetObjectStore) {
 		// Extract into a temp dir, then push the tree into the object store.
@@ -62,24 +64,32 @@ func uploadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, in
 		if err := os.MkdirAll(extractDir, 0o750); err != nil {
 			return err
 		}
-		stop := watchProgress(extractDir, total, progress)
+		stop := watchProgress(extractDir, total, func(n, t int64) {
+			progress(transfer.PhaseUnpack, n, t)
+		})
 		_, _, err = modelarchive.Unpack(archivePath, spec.Upload.Format, extractDir)
 		stop()
 		if err != nil {
 			return err
 		}
-		written, upErr := uploadDirTo(ctx, spec.TargetObjectStore, extractDir, spec.WeightPath)
+		uploadTotal := storage.DirSize(extractDir)
+		progress(transfer.PhaseUpload, 0, uploadTotal)
+		written, upErr := uploadDirTo(ctx, spec.TargetObjectStore, extractDir, spec.WeightPath, func(n int64) {
+			progress(transfer.PhaseUpload, n, uploadTotal)
+		})
 		if upErr != nil {
 			return upErr
 		}
-		progress(written, total)
+		progress(transfer.PhaseUpload, written, uploadTotal)
 		return nil
 	}
 
 	if strings.TrimSpace(spec.TargetPath) == "" {
 		return fmt.Errorf("upload needs a target path or object store")
 	}
-	stop := watchProgress(spec.TargetPath, total, progress)
+	stop := watchProgress(spec.TargetPath, total, func(n, t int64) {
+		progress(transfer.PhaseUnpack, n, t)
+	})
 	defer stop()
 	_, _, err = modelarchive.Unpack(archivePath, spec.Upload.Format, spec.TargetPath)
 	if err != nil {
@@ -90,7 +100,7 @@ func uploadOne(ctx context.Context, spec *transfer.Spec, progress func(int64, in
 	if total < written {
 		total = written
 	}
-	progress(written, total)
+	progress(transfer.PhaseUnpack, written, total)
 	return nil
 }
 

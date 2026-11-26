@@ -533,6 +533,11 @@ message ModelDownload {
   int64 total_bytes = 13;
   // storage_backend is the backend the job writes the weights to.
   string storage_backend = 14;
+  // phase names the stage that is moving bytes: "download" while the hub
+  // is fetched into the transfer Job's temp directory, "upload" while that
+  // directory is written to an object-store backend. Empty when the job
+  // does not report one. bytes/total_bytes describe the named phase.
+  string phase = 15;
 }
 
 message ListModelDownloadsRequest {
@@ -649,6 +654,9 @@ message ModelTransfer {
   string job_name = 15;
   int64 created_at = 16;
   int64 updated_at = 17;
+  // phase names the stage that is moving bytes (download, upload or
+  // unpack); bytes/total_bytes describe that stage.
+  string phase = 18;
 }
 
 // WarmModelRequest asks the controller to populate the node-local caches.

@@ -39,6 +39,11 @@ type DownloadJob struct {
 	State string `gorm:"size:16;not null;index"`
 	// Message carries the failure reason; empty on success.
 	Message string `gorm:"size:1024;not null;default:''"`
+	// Phase names the part of the job that is moving bytes: "download"
+	// while the hub is fetched into the Job's temp directory, "upload"
+	// while the temp directory is written to an object-store backend.
+	// Empty for a filesystem backend, which has no second phase.
+	Phase string `gorm:"size:16;not null;default:''"`
 	// Bytes is the number of weight bytes already on disk, sampled while
 	// the download runs so the console can show progress.
 	Bytes int64 `gorm:"not null;default:0"`

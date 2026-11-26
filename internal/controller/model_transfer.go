@@ -145,6 +145,9 @@ func (r *ModelTransferReconciler) reportJobs(ctx context.Context) error {
 		if progress != nil {
 			status.Bytes = progress.Bytes
 			status.TotalBytes = progress.TotalBytes
+			// The Job names the phase it is moving bytes for; the console
+			// uses it to tell a finished download from the store write.
+			status.Phase = progress.Phase
 		}
 		switch {
 		case job.Status.Succeeded > 0:

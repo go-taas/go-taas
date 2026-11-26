@@ -385,6 +385,7 @@ func downloadProjection(job *DownloadJob) *modelv1.ModelDownload {
 		Version:        job.Version,
 		State:          job.State,
 		Message:        job.Message,
+		Phase:          job.Phase,
 		Bytes:          job.Bytes,
 		TotalBytes:     job.TotalBytes,
 		WeightPath:     job.WeightPath,

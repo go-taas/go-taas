@@ -578,7 +578,7 @@ func TestHandleModelTransferStatusTracksDownloadProgress(t *testing.T) {
 	// The Job starts moving bytes: the download row follows before the
 	// transfer reaches a terminal state.
 	running, _ := json.Marshal(transfer.Status{
-		ID: transferID, State: transfer.StateRunning,
+		ID: transferID, State: transfer.StateRunning, Phase: transfer.PhaseUpload,
 		Bytes: 120, TotalBytes: 480, JobName: "taas-transfer-live",
 	})
 	require.NoError(t, svc.HandleModelTransferStatus(ctx, running))
@@ -587,6 +587,7 @@ func TestHandleModelTransferStatusTracksDownloadProgress(t *testing.T) {
 	require.Len(t, downloads.GetDownloads(), 1)
 	live := downloads.GetDownloads()[0]
 	assert.Equal(t, DownloadStateDownloading, live.GetState())
+	assert.Equal(t, transfer.PhaseUpload, live.GetPhase(), "the upload phase is visible to the console")
 	assert.EqualValues(t, 120, live.GetBytes())
 	assert.EqualValues(t, 480, live.GetTotalBytes())
 
@@ -600,6 +601,7 @@ func TestHandleModelTransferStatusTracksDownloadProgress(t *testing.T) {
 	require.NoError(t, err)
 	finished := downloads.GetDownloads()[0]
 	assert.Equal(t, DownloadStateSucceeded, finished.GetState())
+	assert.Empty(t, finished.GetPhase(), "a terminal row no longer names a phase")
 	assert.EqualValues(t, 480, finished.GetBytes())
 	assert.EqualValues(t, 480, finished.GetTotalBytes())
 	assert.NotEmpty(t, finished.GetModelId())
@@ -759,4 +761,58 @@ func TestInlineMoveTransferDeletesSourceAndRetargetsVersion(t *testing.T) {
 	version, err := svc.repo.FindVersion(adminCtx(), reg.GetModelId(), "v1")
 	require.NoError(t, err)
 	assert.Equal(t, target.Name, version.StorageBackend)
+}
+
+// TestHandleModelTransferStatusResetsBytesOnUploadPhase guards the display
+// the operator sees when a download finishes: the upload to the object store
+// is a new phase whose byte counter starts at zero, so the row must not keep
+// reporting the finished download's 100%.
+func TestHandleModelTransferStatusResetsBytesOnUploadPhase(t *testing.T) {
+	svc := newDownloadTestService(t)
+	root := t.TempDir()
+	svc.SetStorageConfig(storage.Config{
+		DefaultBackend: "shared",
+		Backends: map[string]storage.Backend{
+			"shared": {
+				Name:       "shared",
+				Type:       storage.TypeFilesystem,
+				Filesystem: storage.Filesystem{ExistingClaim: "shared-claim", MountPath: root},
+			},
+		},
+	})
+	svc.SetTransferSettings(TransferSettings{Mode: "job", Image: "taas-transfer:test"})
+	svc.SetTransferPublisher(&recordingPublisher{})
+	ctx := adminCtx()
+
+	_, err := svc.StartModelDownload(ctx, &modelv1.StartModelDownloadRequest{
+		Source: "modelscope", HubModelId: "Qwen/Qwen2.5-0.5B-Instruct",
+	})
+	require.NoError(t, err)
+	transfers, err := svc.ListModelTransfers(ctx, &modelv1.ListModelTransfersRequest{})
+	require.NoError(t, err)
+	require.Len(t, transfers.GetTransfers(), 1)
+	transferID := transfers.GetTransfers()[0].GetTransferId()
+
+	// The hub download finished: the row reports the full size.
+	finishedDownload, _ := json.Marshal(transfer.Status{
+		ID: transferID, State: transfer.StateRunning, Phase: transfer.PhaseDownload,
+		Bytes: 480, TotalBytes: 480,
+	})
+	require.NoError(t, svc.HandleModelTransferStatus(ctx, finishedDownload))
+	downloads, err := svc.ListModelDownloads(ctx, &modelv1.ListModelDownloadsRequest{})
+	require.NoError(t, err)
+	require.Len(t, downloads.GetDownloads(), 1)
+	assert.EqualValues(t, 480, downloads.GetDownloads()[0].GetBytes())
+
+	// The upload phase begins: its counter restarts at zero.
+	uploadStart, _ := json.Marshal(transfer.Status{
+		ID: transferID, State: transfer.StateRunning, Phase: transfer.PhaseUpload,
+		Bytes: 0, TotalBytes: 480,
+	})
+	require.NoError(t, svc.HandleModelTransferStatus(ctx, uploadStart))
+	downloads, err = svc.ListModelDownloads(ctx, &modelv1.ListModelDownloadsRequest{})
+	require.NoError(t, err)
+	row := downloads.GetDownloads()[0]
+	assert.Equal(t, transfer.PhaseUpload, row.GetPhase())
+	assert.EqualValues(t, 0, row.GetBytes(), "the upload phase starts at zero, not at the download's total")
 }

@@ -34,6 +34,20 @@ const (
 	StateCancelled = "cancelled"
 )
 
+// Transfer phases. A Job reports which part of the operation is moving its
+// bytes, so the console can tell a finished hub download (100% of the
+// download phase) from the object-store upload that still has to run.
+const (
+	// PhaseDownload is bytes being fetched: a hub into the Job's temp
+	// directory, or an object store into a staging directory.
+	PhaseDownload = "download"
+	// PhaseUpload is bytes being written to the target object store.
+	PhaseUpload = "upload"
+	// PhaseUnpack is archive extraction, which moves no new bytes but can
+	// take minutes on a large model.
+	PhaseUnpack = "unpack"
+)
+
 // Terminal reports whether a state can no longer change.
 func Terminal(state string) bool {
 	switch state {
@@ -102,10 +116,13 @@ type UploadSpec struct {
 }
 
 // Progress is one progress snapshot a Job reports through its progress
-// ConfigMap. Bytes is monotonic while the Job runs.
+// ConfigMap. Bytes is monotonic within one phase: it restarts at the bytes
+// already written when the Job moves on from the download phase to the
+// upload phase.
 type Progress struct {
 	State      string    `json:"state"`
 	Message    string    `json:"message,omitempty"`
+	Phase      string    `json:"phase,omitempty"`
 	Bytes      int64     `json:"bytes,omitempty"`
 	TotalBytes int64     `json:"totalBytes,omitempty"`
 	UpdatedAt  time.Time `json:"updatedAt"`
@@ -117,6 +134,7 @@ type Status struct {
 	ID         string    `json:"id"`
 	State      string    `json:"state"`
 	Message    string    `json:"message,omitempty"`
+	Phase      string    `json:"phase,omitempty"`
 	Bytes      int64     `json:"bytes,omitempty"`
 	TotalBytes int64     `json:"totalBytes,omitempty"`
 	JobName    string    `json:"jobName,omitempty"`

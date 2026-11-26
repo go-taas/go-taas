@@ -351,3 +351,39 @@ func TestApplyModelTransferUploadCreatesJob(t *testing.T) {
 	require.NotNil(t, env["TRANSFER_SOURCE_ACCESS_KEY"].ValueFrom)
 	assert.Equal(t, "archive-keys", env["TRANSFER_SOURCE_ACCESS_KEY"].ValueFrom.SecretKeyRef.Name)
 }
+
+// TestReportJobsCarriesThePhase verifies the Job's current phase (hub
+// download vs object-store upload) reaches the server, so the console can
+// label the progress instead of showing a stuck 100% download.
+func TestReportJobsCarriesThePhase(t *testing.T) {
+	client := fake.NewSimpleClientset(
+		&batchv1.Job{
+			ObjectMeta: metav1.ObjectMeta{
+				Name:      "taas-transfer-transfer-7",
+				Namespace: "taas-jobs",
+				Labels:    map[string]string{transferLabel: "true", transferIDLabel: "transfer-7"},
+			},
+			Status: batchv1.JobStatus{Active: 1},
+		},
+		&corev1.ConfigMap{
+			ObjectMeta: metav1.ObjectMeta{Name: "taas-transfer-progress-transfer-7", Namespace: "taas-jobs"},
+			Data:       map[string]string{"progress.json": `{"state":"running","phase":"upload","bytes":42,"totalBytes":100}`},
+		},
+	)
+	clientMQ := mq.NewFake()
+	var got []transfer.Status
+	require.NoError(t, clientMQ.Subscribe(context.Background(), mq.DefaultSubjects().ModelTransferStatus, func(msg mq.Message) error {
+		var status transfer.Status
+		if err := json.Unmarshal(msg.Body, &status); err != nil {
+			return err
+		}
+		got = append(got, status)
+		return nil
+	}))
+	reconciler := NewModelTransferReconciler(client, clientMQ, config.TransferConfig{Namespace: "taas-jobs", Image: "transfer:test"}, testTransferStorage())
+	require.NoError(t, reconciler.reportJobs(context.Background()))
+	require.Len(t, got, 1)
+	assert.Equal(t, transfer.StateRunning, got[0].State)
+	assert.Equal(t, transfer.PhaseUpload, got[0].Phase)
+	assert.EqualValues(t, 42, got[0].Bytes)
+}
