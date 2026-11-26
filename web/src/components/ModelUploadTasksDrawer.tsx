@@ -214,7 +214,12 @@ export default function ModelUploadTasksDrawer({
                   </tr>
                 </thead>
                 <tbody>
-                  {uploads.map((session) => (
+                  {uploads.map((session) => {
+                    // The engine may be driving a session the last list snapshot
+                    // still calls interrupted; show the truth immediately.
+                    const activeState =
+                      managerBusy && job.uploadId === session.uploadId ? 'uploading' : session.state;
+                    return (
                     <tr key={session.uploadId} data-testid={`upload-row-${session.name}`}>
                       <td>
                         <strong className="mono">{session.hubModelId || session.name}</strong>
@@ -225,8 +230,8 @@ export default function ModelUploadTasksDrawer({
                       </td>
                       <td className="mono muted">{session.version || '—'}</td>
                       <td>
-                        <span className={`badge ${stateBadgeClass(session.state)}`}>
-                          {t(`models.uploads.state.${session.state}`)}
+                        <span className={`badge ${stateBadgeClass(activeState)}`}>
+                          {t(`models.uploads.state.${activeState}`)}
                         </span>
                         <StatusError message={session.message} testId={`upload-error-${session.uploadId}`} />
                         {session.modelId && (
@@ -242,14 +247,14 @@ export default function ModelUploadTasksDrawer({
                         <div className="muted small" data-testid={`upload-bytes-${session.uploadId}`}>
                           {progressLabel(session)}
                         </div>
-                        {ACTIVE_STATES.includes(session.state) && (
+                        {ACTIVE_STATES.includes(activeState) && (
                           <UploadProgress session={session} />
                         )}
                       </td>
                       <td>{formatTime(session.createdAt)}</td>
                       <td>
-                        {(CANCELLABLE_STATES.includes(session.state) ||
-                          RESUMABLE_STATES.includes(session.state)) && (
+                        {(CANCELLABLE_STATES.includes(activeState) ||
+                          RESUMABLE_STATES.includes(activeState)) && (
                           <RowActionsMenu
                             label={t('common.actionsFor', { name: session.name })}
                             testId={`upload-actions-${session.uploadId}`}
@@ -257,7 +262,7 @@ export default function ModelUploadTasksDrawer({
                               // An interrupted session keeps its parts on the
                               // server, so resuming it only sends the missing
                               // chunks instead of starting from zero.
-                              ...(RESUMABLE_STATES.includes(session.state)
+                              ...(RESUMABLE_STATES.includes(activeState)
                                 ? [
                                     {
                                       key: `resume-${session.uploadId}`,
@@ -266,7 +271,7 @@ export default function ModelUploadTasksDrawer({
                                     },
                                   ]
                                 : []),
-                              ...(CANCELLABLE_STATES.includes(session.state)
+                              ...(CANCELLABLE_STATES.includes(activeState)
                                 ? [
                                     {
                                       key: `cancel-${session.uploadId}`,
@@ -282,7 +287,8 @@ export default function ModelUploadTasksDrawer({
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
