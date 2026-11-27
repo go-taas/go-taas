@@ -1,3 +1,11 @@
+## [1.132.1](https://github.com/go-taas/go-taas/compare/v1.132.0...v1.132.1) (2026-11-27)
+
+
+### Bug Fixes
+
+* **model:** delete object-store weights with the model ([23a27fe](https://github.com/go-taas/go-taas/commit/23a27fef05ac0e3af08be6ac4396438531c36e40))
+* **model:** warm a live cache on the node group that was asked for ([3d56da1](https://github.com/go-taas/go-taas/commit/3d56da17fd02ce557a11830d503d2b6d1d5ac635))
+
 # [1.132.0](https://github.com/go-taas/go-taas/compare/v1.131.0...v1.132.0) (2026-11-26)
 
 
