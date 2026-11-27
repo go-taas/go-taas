@@ -816,3 +816,59 @@ func TestHandleModelTransferStatusResetsBytesOnUploadPhase(t *testing.T) {
 	assert.Equal(t, transfer.PhaseUpload, row.GetPhase())
 	assert.EqualValues(t, 0, row.GetBytes(), "the upload phase starts at zero, not at the download's total")
 }
+
+// TestWarmModelAddsANewNodeGroupToTheLiveCache verifies re-warming an already
+// warmed model on another pool reaches the controller: the existing cache is
+// extended with the new group instead of the request being swallowed.
+func TestWarmModelAddsANewNodeGroupToTheLiveCache(t *testing.T) {
+	svc, _, _ := storageTestService(t)
+	pub := &recordingPublisher{}
+	svc.SetTransferPublisher(pub)
+	svc.SetWarmupSettings(true)
+	createTestWarmupGroup(t, svc, "gpu", "10Gi")
+	createTestWarmupGroup(t, svc, "cpu", "10Gi")
+	reg, err := svc.RegisterModel(adminCtx(), &modelv1.RegisterModelRequest{
+		Name: "qwen-regroup", HubModelId: "qwen/regroup", Version: "v1", WeightPath: "qwen/regroup",
+	})
+	require.NoError(t, err)
+
+	first, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{
+		ModelId: reg.GetModelId(), NodeGroups: []string{"gpu"},
+	})
+	require.NoError(t, err)
+	var firstRequest warmup.Request
+	require.NoError(t, json.Unmarshal(pub.body, &firstRequest))
+	assert.Equal(t, []string{"gpu"}, nodeGroupNames(firstRequest.NodeGroups))
+
+	// A second warmup on another pool must extend the live cache.
+	second, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{
+		ModelId: reg.GetModelId(), NodeGroups: []string{"cpu"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, first.GetCache().GetCacheId(), second.GetCache().GetCacheId(),
+		"the live cache row is reused, so the controller updates one LocalModelCache")
+	assert.ElementsMatch(t, []string{"gpu", "cpu"}, second.GetCache().GetNodeGroups())
+
+	var secondRequest warmup.Request
+	require.NoError(t, json.Unmarshal(pub.body, &secondRequest))
+	assert.ElementsMatch(t, []string{"gpu", "cpu"}, nodeGroupNames(secondRequest.NodeGroups),
+		"the republished request carries the old and the new pool")
+	assert.Equal(t, warmup.StateQueued, second.GetCache().GetState())
+
+	// Warming the same set again is idempotent: no second republish.
+	published := string(pub.body)
+	third, err := svc.WarmModel(adminCtx(), &modelv1.WarmModelRequest{
+		ModelId: reg.GetModelId(), NodeGroups: []string{"cpu", "gpu"},
+	})
+	require.NoError(t, err)
+	assert.Equal(t, first.GetCache().GetCacheId(), third.GetCache().GetCacheId())
+	assert.Equal(t, published, string(pub.body), "an unchanged group set publishes nothing")
+}
+
+func nodeGroupNames(groups []warmup.NodeGroup) []string {
+	names := make([]string, 0, len(groups))
+	for _, group := range groups {
+		names = append(names, group.Name)
+	}
+	return names
+}

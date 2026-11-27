@@ -80,22 +80,24 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 	}
 	now := time.Now().UTC()
 	entry := &ModelCacheEntry{
-		ID:         uuid.NewString(),
-		ModelID:    row.ID,
-		ModelName:  row.Name,
-		Version:    version.Version,
-		Backend:    backend.Name,
-		SourceURI:  sourceURI,
-		WeightPath: version.WeightPath,
-		SizeBytes:  sizeBytes,
-		State:      warmup.StateQueued,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		ID:             uuid.NewString(),
+		ModelID:        row.ID,
+		ModelName:      row.Name,
+		Version:        version.Version,
+		Backend:        backend.Name,
+		SourceURI:      sourceURI,
+		WeightPath:     version.WeightPath,
+		SizeBytes:      sizeBytes,
+		NodeGroupsJSON: mustJSON(groupNames(groups)),
+		State:          warmup.StateQueued,
+		CreatedAt:      now,
+		UpdatedAt:      now,
 	}
-	// A model version can only have one live cache. KServe rejects a second
-	// LocalModelCache with the same source URI, so re-warming an already
-	// queued/warming/ready version returns the existing request instead of
-	// creating a row the controller can never satisfy.
+	// A model version can only have one live cache: KServe rejects a second
+	// LocalModelCache with the same source URI. Its node groups may still
+	// grow, though: re-warming an already queued/warming/ready version on a
+	// new pool must reach the controller (which updates the existing cache's
+	// nodeGroups), not be swallowed by the existing row.
 	var existing ModelCacheEntry
 	err = db.WithContext(ctx).
 		Where("model_id = ? AND version = ? AND backend = ? AND source_uri = ? AND state NOT IN ?",
@@ -104,7 +106,7 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 		Order("created_at DESC").
 		First(&existing).Error
 	if err == nil {
-		return &modelv1.WarmModelResponse{Response: okResponse(), Cache: cacheProjection(&existing)}, nil
+		return s.extendWarmupGroups(ctx, db, &existing, groups, sizeBytes)
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil, err
@@ -146,6 +148,156 @@ func (s *Service) WarmModel(ctx context.Context, req *modelv1.WarmModelRequest) 
 		return nil, apierrors.Newf(apierrors.CodeInternal, "model: model warmup controller is unavailable")
 	}
 	return &modelv1.WarmModelResponse{Response: okResponse(), Cache: cacheProjection(entry)}, nil
+}
+
+// extendWarmupGroups adds node groups to a live cache entry. Warming the
+// same version again on another pool must extend the LocalModelCache's node
+// groups (the controller replaces the spec list with what the request
+// carries), so the request is republished with the union. An unchanged set is
+// an idempotent no-op that returns the existing row.
+func (s *Service) extendWarmupGroups(ctx context.Context, db *gorm.DB, entry *ModelCacheEntry, requested []WarmupNodeGroupSettings, sizeBytes int64) (*modelv1.WarmModelResponse, error) {
+	requestedNames := groupNames(requested)
+	current := decodeStringList(entry.NodeGroupsJSON)
+	all, err := s.warmupGroupsFor(ctx, db, nil)
+	if err != nil {
+		return nil, err
+	}
+	available := make(map[string]WarmupNodeGroupSettings, len(all))
+	for _, g := range all {
+		available[g.Name] = g
+	}
+	// A group deleted since the last warmup must not block the request.
+	kept := make([]string, 0, len(current))
+	for _, name := range current {
+		if _, ok := available[name]; ok {
+			kept = append(kept, name)
+		}
+	}
+	merged := mergeStringList(kept, requestedNames)
+	if sameStringSet(current, merged) {
+		return &modelv1.WarmModelResponse{Response: okResponse(), Cache: cacheProjection(entry)}, nil
+	}
+	nodes := make([]warmup.NodeGroup, 0, len(merged))
+	for _, name := range merged {
+		g := available[name]
+		nodes = append(nodes, warmup.NodeGroup{
+			Name:         g.Name,
+			NodeSelector: g.NodeSelector,
+			StorageLimit: g.StorageLimit,
+			HostPath:     g.HostPath,
+			StorageClass: g.StorageClass,
+		})
+	}
+	groupsJSON := mustJSON(merged)
+	updates := map[string]any{
+		"node_groups_json": groupsJSON,
+		"state":            warmup.StateQueued,
+		"message":          "",
+		"updated_at":       time.Now().UTC(),
+	}
+	if err := db.WithContext(ctx).Model(&ModelCacheEntry{}).Where("id = ?", entry.ID).Updates(updates).Error; err != nil {
+		return nil, err
+	}
+	entry.NodeGroupsJSON = groupsJSON
+	entry.State = warmup.StateQueued
+	entry.Message = ""
+	entry.UpdatedAt = time.Now().UTC()
+	size := sizeBytes
+	if size <= 0 {
+		size = entry.SizeBytes
+	}
+	payload := &warmup.Request{
+		ID:         entry.ID,
+		ModelID:    entry.ModelID,
+		ModelName:  entry.ModelName,
+		Version:    entry.Version,
+		Backend:    entry.Backend,
+		WeightPath: entry.WeightPath,
+		SourceURI:  entry.SourceURI,
+		SizeBytes:  size,
+		NodeGroups: nodes,
+	}
+	if err := s.publishTransfer(ctx, mq.DefaultSubjects().ModelWarmups, payload); err != nil {
+		entry.State = warmup.StateFailed
+		entry.Message = "warmup controller unavailable: " + err.Error()
+		_ = db.WithContext(ctx).Model(&ModelCacheEntry{}).Where("id = ?", entry.ID).Updates(map[string]any{
+			"state":      entry.State,
+			"message":    entry.Message,
+			"updated_at": time.Now().UTC(),
+		}).Error
+		return nil, apierrors.Newf(apierrors.CodeInternal, "model: model warmup controller is unavailable")
+	}
+	return &modelv1.WarmModelResponse{Response: okResponse(), Cache: cacheProjection(entry)}, nil
+}
+
+// groupNames returns the names of resolved warmup group settings.
+func groupNames(groups []WarmupNodeGroupSettings) []string {
+	names := make([]string, 0, len(groups))
+	for _, g := range groups {
+		names = append(names, g.Name)
+	}
+	return names
+}
+
+// mustJSON marshals a plain value into the JSON stored on a row. The only
+// caller marshals a []string, which cannot fail; an empty string is a safe
+// fallback for the not-null column.
+func mustJSON(v any) string {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return ""
+	}
+	return string(data)
+}
+
+// decodeStringList parses a JSON string array, returning nil on anything
+// unexpected so a legacy row never blocks a warmup.
+func decodeStringList(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	var out []string
+	if err := json.Unmarshal([]byte(raw), &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+// mergeStringList returns a's names followed by the names of b not already
+// present, trimming and dropping empties.
+func mergeStringList(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, list := range [][]string{a, b} {
+		for _, raw := range list {
+			name := strings.TrimSpace(raw)
+			if name == "" || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, name)
+		}
+	}
+	return out
+}
+
+// sameStringSet reports whether two name lists hold the same set of names.
+func sameStringSet(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	seen := make(map[string]int, len(a))
+	for _, name := range a {
+		seen[strings.TrimSpace(name)]++
+	}
+	for _, name := range b {
+		key := strings.TrimSpace(name)
+		if seen[key] == 0 {
+			return false
+		}
+		seen[key]--
+	}
+	return true
 }
 
 // ListModelWarmups returns one page of warmup entries, newest first. It is
