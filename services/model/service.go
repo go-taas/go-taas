@@ -1207,22 +1207,46 @@ func (s *Service) DeleteModel(ctx context.Context, req *modelv1.DeleteModelReque
 	return &modelv1.DeleteModelResponse{Response: okResponse()}, nil
 }
 
-// removeModelWeights deletes the on-disk weight directories a model's
-// versions point at, so deleting a model also frees the storage it
-// occupied. Every path is resolved under the weights root and refused
-// when it escapes it, so a stale row cannot delete an unrelated
-// directory. Removing an already-absent directory is not an error.
+// removeModelWeights deletes the weights a model's versions point at, so
+// deleting a model also frees the storage it occupied. A filesystem version
+// is removed under its backend's mount path; an object-store version has its
+// prefix deleted through the backend's client (otherwise the bucket keeps
+// paying for a model the catalog no longer lists). Every path is resolved
+// under the backend root and refused when it escapes it. Removing an
+// already-absent directory or prefix is not an error.
 func (s *Service) removeModelWeights(ctx context.Context, repo *Repository, modelID string, versions []*Version) {
-	if s.weightsDir == "" {
-		return
-	}
-	root := filepath.Clean(s.weightsDir)
 	removed := make(map[string]struct{}, len(versions))
 	for _, v := range versions {
 		rel := strings.TrimSpace(v.WeightPath)
 		if rel == "" {
 			continue
 		}
+		// Another model may point at the same weights (a re-registered name,
+		// a shared download); its weights are not ours to delete.
+		shared, err := repo.CountOtherVersionsWithWeightPath(ctx, rel, modelID)
+		if err != nil {
+			logger.S().Warnw("model: check shared weight path failed",
+				"model_id", v.ModelID, "weight_path", v.WeightPath, "err", err)
+			continue
+		}
+		if shared > 0 {
+			continue
+		}
+		backend, resolved := s.weightBackendFor(v)
+		if resolved && backend.Type == storage.TypeObjectStore {
+			s.deleteRemoteWeights(ctx, v, backend)
+			continue
+		}
+		root := strings.TrimSpace(s.weightsDir)
+		if resolved {
+			if mount := strings.TrimSpace(backend.Filesystem.MountPath); mount != "" {
+				root = mount
+			}
+		}
+		if root == "" {
+			continue
+		}
+		root = filepath.Clean(root)
 		dir := filepath.Clean(filepath.Join(root, filepath.FromSlash(rel)))
 		if dir == root || !strings.HasPrefix(dir, root+string(os.PathSeparator)) {
 			logger.S().Warnw("model: refusing to delete weights outside the weights root",
@@ -1230,17 +1254,6 @@ func (s *Service) removeModelWeights(ctx context.Context, repo *Repository, mode
 			continue
 		}
 		if _, seen := removed[dir]; seen {
-			continue
-		}
-		// Another model may point at the same directory (a re-registered
-		// name, a shared download); its weights are not ours to delete.
-		shared, err := repo.CountOtherVersionsWithWeightPath(ctx, v.WeightPath, modelID)
-		if err != nil {
-			logger.S().Warnw("model: check shared weight path failed",
-				"model_id", v.ModelID, "weight_path", v.WeightPath, "err", err)
-			continue
-		}
-		if shared > 0 {
 			continue
 		}
 		removed[dir] = struct{}{}
@@ -1252,6 +1265,49 @@ func (s *Service) removeModelWeights(ctx context.Context, repo *Repository, mode
 		pruneEmptyWeightParents(dir, root)
 		logger.S().Infow("model: deleted model weights", "model_id", v.ModelID, "dir", dir)
 	}
+}
+
+// weightBackendFor resolves the backend a version's weights live on. ok is
+// false when the platform has no storage configuration (the legacy layout
+// where every weight path is relative to the weights directory) or the named
+// backend is unknown; the caller then falls back to the weights directory.
+func (s *Service) weightBackendFor(v *Version) (storage.Backend, bool) {
+	name := s.storageBackendName(v.StorageBackend)
+	if name == "" || !s.storageConfig.Enabled() {
+		return storage.Backend{}, false
+	}
+	backend, err := s.storageConfig.Resolve(name)
+	if err != nil {
+		logger.S().Warnw("model: resolve storage backend for weight cleanup failed",
+			"model_id", v.ModelID, "backend", name, "err", err)
+		return storage.Backend{}, false
+	}
+	return backend, true
+}
+
+// deleteRemoteWeights removes one version's object-store prefix. It is best
+// effort: a failure keeps the catalog delete, and the log names the prefix
+// that has to be reclaimed by hand.
+func (s *Service) deleteRemoteWeights(ctx context.Context, v *Version, backend storage.Backend) {
+	ref, err := s.remoteRef(backend)
+	if err != nil {
+		logger.S().Warnw("model: resolve object-store credentials for weight cleanup failed",
+			"model_id", v.ModelID, "backend", backend.Name, "err", err)
+		return
+	}
+	client, err := storage.NewRemoteClient(ref)
+	if err != nil {
+		logger.S().Warnw("model: object-store client for weight cleanup failed",
+			"model_id", v.ModelID, "backend", backend.Name, "err", err)
+		return
+	}
+	if _, err := client.DeletePrefix(ctx, v.WeightPath); err != nil {
+		logger.S().Warnw("model: delete model weights from object store failed",
+			"model_id", v.ModelID, "backend", backend.Name, "prefix", v.WeightPath, "err", err)
+		return
+	}
+	logger.S().Infow("model: deleted model weights from object store",
+		"model_id", v.ModelID, "backend", backend.Name, "prefix", v.WeightPath)
 }
 
 // pruneEmptyWeightParents removes directories left empty above a deleted
